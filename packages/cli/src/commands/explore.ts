@@ -753,6 +753,27 @@ export const exploreCommand = buildListCommand("explore", {
         run: 'explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
       },
       {
+        description: "Most used agent tools, with their failure rates",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d',
+      },
+      {
+        description: "Agent tools ranked by failed calls, not failure rate",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -F "equation|failure_rate() * count()" -q "gen_ai.operation.type:tool" --sort "-equation|failure_rate() * count()" --period 7d',
+      },
+      {
+        description: "Agent model calls, tokens, and cost in USD by model",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.request.model -F "count()" -F "sum(gen_ai.usage.total_tokens)" -F "sum(gen_ai.cost.total_tokens)" -q "gen_ai.operation.type:ai_client" --sort "-sum(gen_ai.cost.total_tokens)" --period 7d',
+      },
+      {
+        description:
+          "Agent runs, conversations, p95 latency, and failure rate by agent",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.agent.name -F "count()" -F "count_unique(gen_ai.conversation.id)" -F "p95(span.duration)" -F "failure_rate()" -q "gen_ai.operation.type:agent" --sort "-count()" --period 7d',
+      },
+      {
+        description: "Daily calls to one agent tool",
+        run: 'explore my-org/my-agent --dataset spans -F "count()" -q "gen_ai.operation.type:tool gen_ai.tool.name:search_issues" --time-series 1d --period 7d',
+      },
+      {
         description: "Error counts in 15-minute buckets over the last hour",
         run: "explore my-org/cli --time-series 15m --period 1h",
       },
