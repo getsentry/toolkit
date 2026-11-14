@@ -203,7 +203,7 @@ function viewButton(name: string): HTMLButtonElement {
   if (!screen.queryByRole("button", { name })) {
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
   }
-  return screen.getByRole("button", { name }) as HTMLButtonElement;
+  return screen.getByRole<HTMLButtonElement>("button", { name });
 }
 
 function captureAction(name: string): HTMLButtonElement {
@@ -515,7 +515,7 @@ describe("local receiver to viewer integration", () => {
       expect(detail.textContent).not.toContain("No additional event details.");
       const frames = screen.getAllByRole("list", { name: "Stack frames" });
       expect(frames[0]?.textContent?.indexOf("submitOrder")).toBeLessThan(
-        frames[0]!.textContent!.indexOf("runMain"),
+        frames[0]!.textContent.indexOf("runMain"),
       );
       fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
       await waitFor(() =>
@@ -524,7 +524,7 @@ describe("local receiver to viewer integration", () => {
         ),
       );
       expect(
-        JSON.parse(screen.getByTestId("highlighted-json").textContent!),
+        JSON.parse(screen.getByTestId("highlighted-json").textContent),
       ).toEqual({ ...sdkException, type: "event" });
     } finally {
       cleanup();
@@ -723,13 +723,12 @@ describe("local receiver to viewer integration", () => {
       screen.getByRole("status", { name: "Checking receiver" }),
     ).not.toBeNull();
     expect(screen.queryByText("Advanced connection")).toBeNull();
-    const endpoint = screen.getByLabelText(
-      "Receiver endpoint",
-    ) as HTMLInputElement;
+    const endpoint =
+      screen.getByLabelText<HTMLInputElement>("Receiver endpoint");
     expect(endpoint.value).toBe("http://localhost:8969/stream");
-    const connectButton = screen.getByRole("button", {
+    const connectButton = screen.getByRole<HTMLButtonElement>("button", {
       name: "Connect",
-    }) as HTMLButtonElement;
+    });
     expect(connectButton.disabled).toBe(false);
     expect(connectButton.getAttribute("aria-busy")).toBe("false");
     expect(
@@ -1175,11 +1174,9 @@ describe("local receiver to viewer integration", () => {
         screen.getByRole("heading", { name: "No events displayed" }),
       ).not.toBeNull();
       expect(
-        (
-          screen.getByRole("button", {
-            name: "Reconnect",
-          }) as HTMLButtonElement
-        ).disabled,
+        screen.getByRole<HTMLButtonElement>("button", {
+          name: "Reconnect",
+        }).disabled,
       ).toBe(false);
       fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
       const reconnected = await openLatestReceiver();
@@ -1247,7 +1244,7 @@ describe("local receiver to viewer integration", () => {
     await screen.findByText("Connection lost", { exact: true });
     fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
     expect(
-      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+      screen.getByLabelText<HTMLInputElement>("Receiver endpoint").value,
     ).toBe("http://127.0.0.1:8969/stream");
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await openLatestReceiver();
@@ -1339,9 +1336,9 @@ describe("local receiver to viewer integration", () => {
 
       const source = ControllableEventSource.instances[1];
       expect(source).toBeDefined();
-      const connectingButton = screen.getByRole("button", {
+      const connectingButton = screen.getByRole<HTMLButtonElement>("button", {
         name: "Connecting to receiver",
-      }) as HTMLButtonElement;
+      });
       expect(connectingButton.disabled).toBe(true);
       expect(connectingButton.getAttribute("aria-busy")).toBe("true");
 
@@ -1355,7 +1352,7 @@ describe("local receiver to viewer integration", () => {
           .textContent,
       ).toContain("Connection timed out after 10 seconds");
       expect(
-        (screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement)
+        screen.getByRole<HTMLButtonElement>("button", { name: "Connect" })
           .disabled,
       ).toBe(false);
     } finally {
@@ -1730,14 +1727,14 @@ describe("local receiver to viewer integration", () => {
       );
       expect(
         (
-          (await settings.findByRole("button", {
+          await settings.findByRole<HTMLButtonElement>("button", {
             name: "Applying…",
-          })) as HTMLButtonElement
+          })
         ).disabled,
       ).toBe(true);
       // The edited input is already 2000 while the HTTP mutation is pending.
       expect(
-        (settings.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        settings.getByLabelText<HTMLInputElement>("Envelope limit").value,
       ).toBe("2000");
       expect(retention.getSettings().maxEnvelopes).toBe(1000);
       // Await completion, allowing the receiver's five-second request timeout
@@ -1827,7 +1824,7 @@ describe("local receiver to viewer integration", () => {
     );
     await waitFor(() =>
       expect(
-        (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+        screen.getByLabelText<HTMLInputElement>("Envelope limit").value,
       ).toBe("1000"),
     );
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -1985,7 +1982,7 @@ describe("local receiver to viewer integration", () => {
         );
       await waitFor(() =>
         expect(
-          (screen.getByLabelText("Envelope limit") as HTMLInputElement).value,
+          screen.getByLabelText<HTMLInputElement>("Envelope limit").value,
         ).toBe("1000"),
       );
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -2167,9 +2164,7 @@ describe("local receiver to viewer integration", () => {
       });
 
       const clearButton = captureAction("Delete captured events");
-      await waitFor(() =>
-        expect((clearButton as HTMLButtonElement).disabled).toBe(false),
-      );
+      await waitFor(() => expect(clearButton.disabled).toBe(false));
       fireEvent.click(clearButton);
       fireEvent.click(
         screen.getByRole("button", {

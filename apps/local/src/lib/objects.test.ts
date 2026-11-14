@@ -8,7 +8,7 @@ describe("withoutUndefined", () => {
       parentId: undefined as string | undefined,
       count: 0,
       label: "",
-      payload: null as unknown,
+      payload: null,
     });
     expect(value).toStrictEqual({
       id: "span",

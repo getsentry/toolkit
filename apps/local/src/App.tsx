@@ -1052,6 +1052,7 @@ export default function App() {
           <DialogFooter>
             <Button
               variant="outline"
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- focus Cancel when the destructive confirmation dialog opens.
               autoFocus
               onClick={() => setIsDeleteConfirmationOpen(false)}
             >

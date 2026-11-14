@@ -97,6 +97,7 @@ export function SessionSwitcher({
         <PopoverTrigger asChild>
           <Button
             variant="outline"
+            // oxlint-disable-next-line jsx-a11y/role-has-required-aria-props -- Radix PopoverTrigger sets aria-controls to the popover content id at runtime.
             role="combobox"
             aria-label="Session"
             aria-expanded={open}

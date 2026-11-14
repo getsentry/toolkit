@@ -1,9 +1,17 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  // A nested config replaces the root one for files under it, so extend the
+  // root to keep its rules here and add only what the React app needs.
+  "extends": ["../../.oxlintrc.json"],
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "jsx-a11y", "react"],
   "rules": {
     "react/rules-of-hooks": "error",
     "typescript/return-await": ["error", "always"],
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    // The workspace builds ARIA widgets from styled elements: the trace
+    // waterfall is a role="table" grid, the resizable handle a separator, and
+    // live regions use role="status". Tests query these roles; swapping the
+    // elements for native tags is a markup change, not a lint fix.
+    "jsx-a11y/prefer-tag-over-role": "off"
   }
 }

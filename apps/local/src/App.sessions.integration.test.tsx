@@ -183,9 +183,8 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     await screen.findAllByText("/worker-job");
     expect(screen.queryByText("/web-request")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    const limit = (await screen.findByLabelText(
-      "Envelope limit",
-    )) as HTMLInputElement;
+    const limit =
+      await screen.findByLabelText<HTMLInputElement>("Envelope limit");
     expect(limit.value).toBe("1000");
     fireEvent.change(limit, { target: { value: "2000" } });
     fireEvent.click(
@@ -393,8 +392,7 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("dialog", { name: "Settings" });
     expect(
-      ((await screen.findByLabelText("Envelope limit")) as HTMLInputElement)
-        .value,
+      (await screen.findByLabelText<HTMLInputElement>("Envelope limit")).value,
     ).toBe("500");
     expect(
       screen.getByRole("button", { name: "Apply envelope limit" }),
@@ -676,9 +674,8 @@ test("hosted standalone receiver edits retention without losing saved events", a
     renderSession({ streamUrl });
     await screen.findByRole("button", { name: "View event event" });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    const input = (await screen.findByLabelText(
-      "Envelope limit",
-    )) as HTMLInputElement;
+    const input =
+      await screen.findByLabelText<HTMLInputElement>("Envelope limit");
     fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.click(
       screen.getByRole("button", { name: "Apply envelope limit" }),
