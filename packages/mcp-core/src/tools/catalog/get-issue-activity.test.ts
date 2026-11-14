@@ -1,5 +1,5 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
-import { afterEach, describe, expect, it } from "vitest";
+import { assert, afterEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import type { IssueActivity } from "../../api-client/types";
 import {
@@ -454,6 +454,17 @@ describe("get_issue_activity", () => {
       deletedPr,
       blankCommit,
     ] = activity;
+    assert(
+      unmerge &&
+        resolved &&
+        rca &&
+        seerPr &&
+        createIssue &&
+        resolvedByAge &&
+        deletedPr &&
+        blankCommit,
+      "Expected eight activity entries",
+    );
     expect(unmerge["unmerge"]).toEqual({
       fingerprintCount: 2,
       source: { shortId: "CLOUDFLARE-MCP-42" },
@@ -517,7 +528,7 @@ describe("get_issue_activity", () => {
     const [assigned] = getStructuredContent<{
       activity: Array<{ assignee?: { name: string | null } }>;
     }>(result).activity;
-    expect(assigned.assignee).toEqual({
+    expect(assigned?.assignee).toEqual({
       id: "43",
       type: "user",
       name: "jane@corp.com",

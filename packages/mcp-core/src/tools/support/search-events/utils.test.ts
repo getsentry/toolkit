@@ -80,8 +80,8 @@ describe("validateSearch tool contract", () => {
     });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0].getAll("environment")).toEqual([]);
-    expect(requests[0].get("query")).toBe(query);
+    expect(requests[0]?.getAll("environment")).toEqual([]);
+    expect(requests[0]?.get("query")).toBe(query);
     expect(result).toEqual({
       result: { valid: true, message: "Search validation passed." },
     });
@@ -1162,7 +1162,7 @@ describe("fetchCustomAttributes", () => {
       );
 
       expect(requests).toHaveLength(1);
-      expect(requests[0].get("attributeType")).toBeNull();
+      expect(requests[0]?.get("attributeType")).toBeNull();
       for (const params of requests) {
         expect(params.get("itemType")).toBe("spans");
         expect(params.get("project")).toBe("123");

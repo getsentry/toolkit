@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { UserInputError } from "../../errors";
 import { createTestContext } from "../../test-utils/context";
 import { metricMonitor } from "../../test-utils/metric-monitor";
@@ -188,7 +188,9 @@ describe("update_metric_monitor", () => {
         query: "",
         environment: null,
       };
-      const source = structuredClone(metricMonitor.dataSources[0]);
+      const [fixtureSource] = metricMonitor.dataSources;
+      assert(fixtureSource, "Expected a fixture data source");
+      const source = structuredClone(fixtureSource);
       Object.assign(source.queryObj.snubaQuery, {
         ...query,
         timeWindow: 7200,

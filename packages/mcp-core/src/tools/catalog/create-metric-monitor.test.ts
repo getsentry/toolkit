@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { MetricMonitorCreate } from "../../api-client/types";
 import { createTestContext } from "../../test-utils/context";
@@ -57,8 +57,11 @@ function create(changes: Record<string, unknown> = {}) {
 }
 
 function savedMonitor(body: MetricMonitorCreate) {
-  const source = structuredClone(metricMonitor.dataSources[0]);
-  Object.assign(source.queryObj.snubaQuery, body.dataSources[0]);
+  const [fixtureSource] = metricMonitor.dataSources;
+  const [bodySource] = body.dataSources ?? [];
+  assert(fixtureSource && bodySource, "Expected a data source");
+  const source = structuredClone(fixtureSource);
+  Object.assign(source.queryObj.snubaQuery, bodySource);
   return {
     ...metricMonitor,
     ...body,

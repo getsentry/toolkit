@@ -6,7 +6,7 @@ import {
   NoOutputGeneratedError,
   RetryError,
   type StepResult,
-  type Tool,
+  type ToolSet,
 } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -85,9 +85,7 @@ describe("callEmbeddedAgent", () => {
       throw new Error("Expected a stop condition");
     }
 
-    const step = { toolResults: [{ output: false }] } as StepResult<
-      Record<string, Tool>
-    >;
+    const step = { toolResults: [{ output: false }] } as StepResult<ToolSet>;
     const firstFour = Array.from({ length: 4 }, () => step);
     expect(stopWhen({ steps: firstFour })).toBe(false);
     expect(stopWhen({ steps: [...firstFour, step] })).toBe(true);

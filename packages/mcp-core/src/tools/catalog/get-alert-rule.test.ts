@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { assert, beforeEach, describe, expect, it } from "vitest";
 import { getStructuredContent } from "../../test-utils/structured-content";
 import { prepareToolParams } from "../catalog-runtime/availability";
 import getAlertRule, { getAlertRuleOutputSchema } from "./get-alert-rule.js";
@@ -527,8 +527,10 @@ describe("get_alert_rule", () => {
       ...issueAlertRule.triggers.conditions[0],
       id: `condition-${i}`,
     }));
+    const [actionFilter] = issueAlertRule.actionFilters;
+    assert(actionFilter, "Fixture has no action filter");
     const actions = Array.from({ length: 6 }, (_, i) => ({
-      ...issueAlertRule.actionFilters[0].actions[0],
+      ...actionFilter.actions[0],
       id: `action-${i}`,
     }));
     const groups = Array.from({ length: 6 }, (_, i) => ({

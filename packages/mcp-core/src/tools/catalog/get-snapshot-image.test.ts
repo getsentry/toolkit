@@ -2,7 +2,7 @@ import type { ImageContent, TextContent } from "@modelcontextprotocol/server";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { decode as decodePng, encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { getServerContext } from "../../test-setup.js";
 import getSnapshotImage from "./get-snapshot-image.js";
 
@@ -150,21 +150,21 @@ describe("get_snapshot_image", () => {
     const result = await callHandler();
     const { textParts, imageParts } = splitParts(result);
 
-    expect(textParts[0].text).toContain("## login_screen.png");
-    expect(textParts[0].text).toContain(
+    expect(textParts[0]?.text).toContain("## login_screen.png");
+    expect(textParts[0]?.text).toContain(
       "- **URL**: https://sentry.sentry.io/preprod/snapshots/231949/?selectedSnapshot=login_screen.png",
     );
-    expect(textParts[0].text).toContain("**Status**: changed");
-    expect(textParts[0].text).toContain("**Diff**: 12.5%");
-    expect(textParts[0].text).toContain("**Image Resolution**: preview");
-    expect(textParts[0].text).toContain(
+    expect(textParts[0]?.text).toContain("**Status**: changed");
+    expect(textParts[0]?.text).toContain("**Diff**: 12.5%");
+    expect(textParts[0]?.text).toContain("**Image Resolution**: preview");
+    expect(textParts[0]?.text).toContain(
       "Use the Sentry tool `get_snapshot_image` for full-resolution image bytes",
     );
-    expect(textParts[0].text).toContain("### Context");
-    expect(textParts[0].text).toContain("- **device_name**: iPhone 16");
-    expect(textParts[1].text).toBe("### Head (current) — preview");
-    expect(textParts[2].text).toBe("### Base (previous) — preview");
-    expect(textParts[3].text).toBe("### Diff Mask — preview");
+    expect(textParts[0]?.text).toContain("### Context");
+    expect(textParts[0]?.text).toContain("- **device_name**: iPhone 16");
+    expect(textParts[1]?.text).toBe("### Head (current) — preview");
+    expect(textParts[2]?.text).toBe("### Base (previous) — preview");
+    expect(textParts[3]?.text).toBe("### Diff Mask — preview");
     expect(textParts.map((part) => part.text)).toMatchInlineSnapshot(`
       [
         "## login_screen.png
@@ -190,8 +190,8 @@ describe("get_snapshot_image", () => {
       ]
     `);
     expect(imageParts).toHaveLength(3);
-    expect(imageParts[0].mimeType).toBe("image/png");
-    expect(imageParts[1].mimeType).toBe("image/png");
+    expect(imageParts[0]?.mimeType).toBe("image/png");
+    expect(imageParts[1]?.mimeType).toBe("image/png");
   });
 
   it("downsamples 16-bit PNGs in preview responses", async () => {
@@ -219,14 +219,16 @@ describe("get_snapshot_image", () => {
     const result = await callHandler();
     const { textParts, imageParts } = splitParts(result);
 
-    expect(textParts[1].text).toBe("### Head (current) — preview");
+    expect(textParts[1]?.text).toBe("### Head (current) — preview");
     expect(imageParts).toHaveLength(1);
-    expect(imageParts[0].mimeType).toBe("image/png");
-    expect(imageParts[0].data).not.toBe(
+    const [imagePart] = imageParts;
+    assert(imagePart, "Expected one image part");
+    expect(imagePart.mimeType).toBe("image/png");
+    expect(imagePart.data).not.toBe(
       Buffer.from(largeSixteenBitPng).toString("base64"),
     );
 
-    const decoded = decodePng(Buffer.from(imageParts[0].data, "base64"));
+    const decoded = decodePng(Buffer.from(imagePart.data, "base64"));
     expect(decoded.width).toBe(1024);
     expect(decoded.height).toBe(512);
     expect(decoded.depth).toBe(8);
@@ -240,10 +242,10 @@ describe("get_snapshot_image", () => {
     });
     const { textParts, imageParts } = splitParts(result);
 
-    expect(textParts[0].text).toContain("**Image Resolution**: full");
-    expect(textParts[1].text).toBe("### Head (current) — full");
-    expect(imageParts[0].data).toBe(Buffer.from(fakePng).toString("base64"));
-    expect(imageParts[1].data).toBe(Buffer.from(fakePng).toString("base64"));
+    expect(textParts[0]?.text).toContain("**Image Resolution**: full");
+    expect(textParts[1]?.text).toBe("### Head (current) — full");
+    expect(imageParts[0]?.data).toBe(Buffer.from(fakePng).toString("base64"));
+    expect(imageParts[1]?.data).toBe(Buffer.from(fakePng).toString("base64"));
   });
 
   it("throws on missing explicit snapshot params", async () => {
@@ -294,7 +296,7 @@ describe("get_snapshot_image", () => {
     const result = await callHandler();
     const { textParts, imageParts } = splitParts(result);
 
-    expect(textParts[1].text).toBe(
+    expect(textParts[1]?.text).toBe(
       "### Head (current) — preview unavailable. Retry with imageResolution=full to fetch the original image.",
     );
     expect(imageParts).toHaveLength(0);
@@ -332,8 +334,8 @@ describe("get_snapshot_image", () => {
     });
     const { textParts } = splitParts(result);
 
-    expect(textParts[0].text).toContain(`## ${slashImageIdentifier}`);
-    expect(textParts[0].text).toContain(
+    expect(textParts[0]?.text).toContain(`## ${slashImageIdentifier}`);
+    expect(textParts[0]?.text).toContain(
       `- **File**: \`${slashImageIdentifier}\``,
     );
   });
@@ -344,7 +346,7 @@ describe("get_snapshot_image", () => {
     const result = await callHandler();
     const { imageParts } = splitParts(result);
 
-    expect(imageParts[0].mimeType).toBe("image/png");
+    expect(imageParts[0]?.mimeType).toBe("image/png");
   });
 
   it("throws when no image data is available", async () => {

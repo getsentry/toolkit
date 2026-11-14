@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -115,8 +115,9 @@ describe("update_alert_rule", () => {
   it("reports when Sentry saves a Slack destination without resolving its channel ID", async () => {
     const { writes } = useAlertRuleHandlers();
     const actionFilters = structuredClone(alertRule.actionFilters);
-    actionFilters[0].actions[0].config.targetDisplay = "#new-channel";
-    actionFilters[0].actions[0].config.targetIdentifier = "";
+    const slackConfig = first(first(actionFilters).actions).config;
+    slackConfig.targetDisplay = "#new-channel";
+    slackConfig.targetIdentifier = "";
 
     await expect(updateRule({ actionFilters })).rejects.toThrow(
       "The alert was saved, but Sentry did not resolve a Slack destination.",
@@ -208,7 +209,8 @@ describe("update_alert_rule", () => {
       const actionFilters: Parameters<
         typeof updateAlertRule.handler
       >[0]["actionFilters"] = structuredClone(alertRule.actionFilters);
-      actionFilters[0].actions.push({
+      const primaryGroup = first(actionFilters);
+      primaryGroup.actions.push({
         id: "22",
         type: "email",
         integrationId: null,
@@ -220,18 +222,19 @@ describe("update_alert_rule", () => {
         },
       });
       actionFilters.push({
-        ...actionFilters[0],
+        ...primaryGroup,
         id: "30",
         actions: [{ ...slackAction, id: "31" }],
       });
-      actionFilters[0].actions[0].config = {
+      const primaryAction = first(primaryGroup.actions);
+      primaryAction.config = {
         ...slackAction.config,
         targetDisplay,
         targetIdentifier: inputId,
       };
-      actionFilters[0].actions[0].integrationId = integrationId;
+      primaryAction.integrationId = integrationId;
       const savedFilters = structuredClone(actionFilters);
-      savedFilters[0].actions[0].config["targetIdentifier"] = "CNEW";
+      first(first(savedFilters).actions).config["targetIdentifier"] = "CNEW";
       mswServer.use(
         http.put(endpoint, async ({ request }) => {
           writes.push((await request.json()) as Record<string, unknown>);
@@ -244,8 +247,9 @@ describe("update_alert_rule", () => {
 
       const result = await updateRule({ actionFilters });
       const expectedFilters = structuredClone(actionFilters);
-      const expectedConfig: Record<string, unknown> =
-        expectedFilters[0].actions[0].config;
+      const expectedConfig: Record<string, unknown> = first(
+        first(expectedFilters).actions,
+      ).config;
       if (expectedId === undefined) delete expectedConfig["targetIdentifier"];
       else expectedConfig["targetIdentifier"] = expectedId;
       expect(writes).toEqual([
@@ -313,7 +317,7 @@ describe("update_alert_rule", () => {
         alertRule: { actionFilters: (typeof group)[] };
       }>(await getAlertRule.handler({ ...params, kind: "issue" }, context));
       const actionFilters = inspected.actionFilters;
-      actionFilters[0].actions[0].config = action.config;
+      first(first(actionFilters).actions).config = action.config;
       // Teams always resolves the supplied name, replacing even an old channel ID.
       const savedAction =
         type === "msteams"
@@ -389,9 +393,12 @@ describe("update_alert_rule", () => {
       triggers: { ...changes.triggers, logicType: "all" },
       actionFilters: [
         {
-          ...changes.actionFilters[0],
+          ...first(changes.actionFilters),
           conditions: [
-            { ...changes.actionFilters[0].conditions[0], comparison: 25 },
+            {
+              ...first(first(changes.actionFilters).conditions),
+              comparison: 25,
+            },
           ],
         },
       ],
@@ -656,7 +663,7 @@ describe("update_alert_rule", () => {
       { ...context, constraints: { projectSlug: "cloudflare-mcp" } },
     );
 
-    expect(queries[0].searchParams.get("projectSlug")).toBe("cloudflare-mcp");
+    expect(queries[0]?.searchParams.get("projectSlug")).toBe("cloudflare-mcp");
     expect(reads).toHaveLength(1);
     expect(writes).toEqual([{ name: "Renamed alert", enabled: true }]);
   });
@@ -733,3 +740,9 @@ describe("update_alert_rule", () => {
     expect(writes).toEqual([]);
   });
 });
+
+function first<T>(items: readonly T[]): T {
+  const [item] = items;
+  assert(item !== undefined, "Expected a non-empty fixture array");
+  return item;
+}
