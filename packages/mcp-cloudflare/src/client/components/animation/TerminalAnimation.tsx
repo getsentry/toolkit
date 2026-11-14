@@ -44,7 +44,7 @@ function getPulseColorClass(index: number): string {
   }
 }
 
-const steps: Step[] = [
+const steps: [Step, ...Step[]] = [
   {
     label: "Copypaste Sentry Issue URL",
     description: "Copy the Sentry issue url directly from your browser",

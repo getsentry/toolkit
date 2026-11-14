@@ -33,11 +33,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
   } = useMcpMetadata(isAuthenticated);
 
   // Initialize streaming simulation first (without scroll callback)
-  const {
-    isStreaming: isLocalStreaming,
-    startStreaming,
-    isMessageStreaming,
-  } = useStreamingSimulation();
+  const { startStreaming, isMessageStreaming } = useStreamingSimulation();
 
   // Manage input state manually (AI SDK 5+ removed built-in input management)
   const [input, setInput] = useState("");
@@ -424,7 +420,6 @@ Try asking me things like:
           input={input}
           error={error}
           isChatLoading={status === "streaming" || status === "submitted"}
-          isLocalStreaming={isLocalStreaming}
           isMessageStreaming={isMessageStreaming}
           isOpen={isOpen}
           onInputChange={handleInputChange}
