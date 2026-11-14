@@ -41,6 +41,7 @@ import {
 import { redactCredentialText } from "./credential-redaction.js";
 import {
   ApiError,
+  AssemblyError,
   AuthError,
   CliError,
   ContextError,
@@ -74,7 +75,8 @@ type SilenceReason =
   | "user_validation"
   | "user_input_error"
   | "seer_unavailable_self_hosted"
-  | "unexpected_response_self_hosted";
+  | "unexpected_response_self_hosted"
+  | "assembly_failed_self_hosted";
 
 /**
  * A raw network TypeError, or the ApiError(status 0) that SDK-backed calls
@@ -202,6 +204,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     !isSaaS()
   ) {
     return "unexpected_response_self_hosted";
+  }
+  // The server's assemble task failed ("Not all chunks available for
+  // assembling", "internal server error"). On self-hosted the failure is in
+  // the user's own Sentry instance, not a CLI bug (CLI-36Z). On SaaS it stays
+  // captured: there it can point at a Sentry or CLI problem.
+  if (error instanceof AssemblyError && !isSaaS()) {
+    return "assembly_failed_self_hosted";
   }
   // A child process launched by `sentry local run` or `sentry monitor run`
   // that exits with a non-zero code throws `CliError("Process exited with

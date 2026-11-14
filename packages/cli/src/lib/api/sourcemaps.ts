@@ -19,7 +19,7 @@
 import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ApiError, ValidationError } from "../errors.js";
+import { AssemblyError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import { type ZipCompression, ZipWriter } from "../sourcemap/zip.js";
 import {
@@ -335,10 +335,9 @@ async function uploadArtifactBundle(opts: {
 
   // Fail fast on server-side assembly error
   if (firstAssemble.state === "error") {
-    throw new ApiError(
-      "Artifact bundle assembly failed",
-      500,
-      firstAssemble.detail ?? "Unknown error",
+    throw new AssemblyError(
+      "Artifact bundle",
+      firstAssemble.detail,
       assembleEndpoint,
     );
   }
