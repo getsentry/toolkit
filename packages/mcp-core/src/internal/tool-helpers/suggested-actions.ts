@@ -43,8 +43,8 @@ export function buildSuggestedToolAction({
   arguments: Record<string, SuggestedActionValue>;
   reason: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): SuggestedToolAction | null {
   const route = getToolCallRoute(toolName, {
     experimentalMode,

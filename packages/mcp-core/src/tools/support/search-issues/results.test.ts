@@ -198,7 +198,7 @@ describe("buildIssueResults", () => {
 
     expect(
       structuredContent.suggestedActions.map((action) => [
-        action.arguments.resourceId,
+        action.arguments["resourceId"],
         action.reason,
       ]),
     ).toEqual([

@@ -9,41 +9,41 @@ import {
 } from "./azure-openai-provider.js";
 
 describe("azure-openai-provider", () => {
-  const originalModel = process.env.OPENAI_MODEL;
-  const originalApiKey = process.env.OPENAI_API_KEY;
-  const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-  const originalApiVersion = process.env.OPENAI_API_VERSION;
+  const originalModel = process.env["OPENAI_MODEL"];
+  const originalApiKey = process.env["OPENAI_API_KEY"];
+  const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+  const originalApiVersion = process.env["OPENAI_API_VERSION"];
 
   beforeEach(() => {
     setAzureOpenAIBaseUrl(undefined);
-    delete process.env.OPENAI_MODEL;
-    delete process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENAI_API_VERSION;
+    delete process.env["OPENAI_MODEL"];
+    delete process.env["OPENROUTER_API_KEY"];
+    delete process.env["OPENAI_API_VERSION"];
   });
 
   afterEach(() => {
     if (originalModel === undefined) {
-      delete process.env.OPENAI_MODEL;
+      delete process.env["OPENAI_MODEL"];
     } else {
-      process.env.OPENAI_MODEL = originalModel;
+      process.env["OPENAI_MODEL"] = originalModel;
     }
 
     if (originalApiKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env["OPENAI_API_KEY"];
     } else {
-      process.env.OPENAI_API_KEY = originalApiKey;
+      process.env["OPENAI_API_KEY"] = originalApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env["OPENROUTER_API_KEY"];
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalApiVersion === undefined) {
-      delete process.env.OPENAI_API_VERSION;
+      delete process.env["OPENAI_API_VERSION"];
     } else {
-      process.env.OPENAI_API_VERSION = originalApiVersion;
+      process.env["OPENAI_API_VERSION"] = originalApiVersion;
     }
 
     vi.unstubAllGlobals();
@@ -64,8 +64,8 @@ describe("azure-openai-provider", () => {
   });
 
   it("uses responses API for Azure v1 endpoints", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENAI_API_VERSION = "2024-02-15-preview";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENAI_API_VERSION"] = "2024-02-15-preview";
     setAzureOpenAIBaseUrl("https://proxy.example.com/openai/v1/");
     let requestUrl: string | undefined;
     let apiKeyHeader: string | null | undefined;
@@ -112,8 +112,8 @@ describe("azure-openai-provider", () => {
   });
 
   it("uses chat completions for deployment-style Azure endpoints", async () => {
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENAI_API_VERSION = "2024-02-15-preview";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENAI_API_VERSION"] = "2024-02-15-preview";
     setAzureOpenAIBaseUrl(
       "https://proxy.example.com/openai/deployments/test-model",
     );

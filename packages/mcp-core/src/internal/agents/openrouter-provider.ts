@@ -20,14 +20,14 @@ const OPENROUTER_REASONING_EFFORTS = [
 
 type OpenRouterReasoningEffort = (typeof OPENROUTER_REASONING_EFFORTS)[number];
 
-// Null prototype so Object.prototype keys like "constructor" cannot slip through.
-const OPENROUTER_REASONING_EFFORT_ALIASES: Record<
+// A Map so Object.prototype keys like "constructor" cannot slip through.
+const OPENROUTER_REASONING_EFFORT_ALIASES = new Map<
   string,
   OpenRouterReasoningEffort
-> = Object.assign(Object.create(null), {
+>([
   // OpenRouter sometimes documents "max"; AI SDK accepts "xhigh".
-  max: "xhigh",
-});
+  ["max", "xhigh"],
+]);
 
 function resolveOpenRouterReasoningEffort(
   value: string | undefined,
@@ -42,8 +42,9 @@ function resolveOpenRouterReasoningEffort(
   }
 
   const normalized = value.trim().toLowerCase();
-  if (Object.hasOwn(OPENROUTER_REASONING_EFFORT_ALIASES, normalized)) {
-    return OPENROUTER_REASONING_EFFORT_ALIASES[normalized];
+  const alias = OPENROUTER_REASONING_EFFORT_ALIASES.get(normalized);
+  if (alias !== undefined) {
+    return alias;
   }
 
   if (
@@ -63,8 +64,9 @@ function resolveOpenRouterReasoningEffort(
  * Builds an OpenRouter chat-completions model for embedded agent calls.
  */
 export function getOpenRouterModel(model?: string): LanguageModel {
+  const apiKey = process.env["OPENROUTER_API_KEY"];
   const factory = createOpenAI({
-    apiKey: process.env.OPENROUTER_API_KEY,
+    ...(apiKey !== undefined && { apiKey }),
     baseURL: OPENROUTER_BASE_URL,
     headers: {
       "User-Agent": getUserAgent(),
@@ -74,7 +76,7 @@ export function getOpenRouterModel(model?: string): LanguageModel {
   });
 
   return factory.chat(
-    model ?? process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL,
+    model ?? process.env["OPENROUTER_MODEL"] ?? DEFAULT_OPENROUTER_MODEL,
   );
 }
 
@@ -86,7 +88,7 @@ export function getOpenRouterModel(model?: string): LanguageModel {
  */
 export function getOpenRouterProviderOptions(): ProviderOptions {
   const reasoningEffort = resolveOpenRouterReasoningEffort(
-    process.env.OPENROUTER_REASONING_EFFORT,
+    process.env["OPENROUTER_REASONING_EFFORT"],
   );
 
   return {

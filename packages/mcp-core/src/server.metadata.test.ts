@@ -233,10 +233,14 @@ describe("outputSchema skip lists", () => {
 
   it("name listed tools without an outputSchema", () => {
     const problems = [
-      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
-      ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
+      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map(
+        (name) => ["EXEMPT", name] as const,
+      ),
+      ...Object.keys(OUTPUT_SCHEMA_PENDING).map(
+        (name) => ["PENDING", name] as const,
+      ),
     ].flatMap(([list, name]) => {
-      const tools = listings(name!);
+      const tools = listings(name);
       if (tools.length === 0) {
         return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
       }

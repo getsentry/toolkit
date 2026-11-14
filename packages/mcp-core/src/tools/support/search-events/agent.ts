@@ -125,7 +125,7 @@ export interface SearchEventsAgentOptions {
   query: string;
   organizationSlug: string;
   apiService: SentryApiService;
-  projectId?: string;
+  projectId?: string | undefined;
   /**
    * The org's real environment names, used to ground the prompt. When omitted
    * the agent fetches them itself; the search_events tool passes a pre-fetched
@@ -171,7 +171,7 @@ export function buildSystemPromptWithEnvironments(
 export async function fetchEnvironmentNames(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }): Promise<string[]> {
   try {
     const environments = await options.apiService.listEnvironments({

@@ -18,7 +18,7 @@ describe("analyze_issue_with_seer", () => {
         ({ params }) =>
           HttpResponse.json(
             createUnsupportedIssue({
-              shortId: String(params.issueId),
+              shortId: String(params["issueId"]),
             }),
           ),
       ),
@@ -43,9 +43,7 @@ describe("analyze_issue_with_seer", () => {
         issueUrl: undefined,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -125,9 +123,7 @@ describe("analyze_issue_with_seer", () => {
         issueUrl: undefined,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -190,9 +186,7 @@ describe("analyze_issue_with_seer", () => {
         issueId: "CLOUDFLARE-MCP-99",
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -236,9 +230,7 @@ describe("analyze_issue_with_seer", () => {
         issueId: "CLOUDFLARE-MCP-500",
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -292,9 +284,7 @@ describe("analyze_issue_with_seer", () => {
         issueId: "CLOUDFLARE-MCP-TIMEOUT",
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -345,9 +335,7 @@ describe("analyze_issue_with_seer", () => {
         issueId: "CLOUDFLARE-MCP-ERRORS",
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -405,9 +393,7 @@ describe("analyze_issue_with_seer", () => {
         instruction,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -487,7 +473,7 @@ describe("analyze_issue_with_seer", () => {
           instruction: undefined,
         },
         {
-          constraints: { organizationSlug: undefined },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -537,7 +523,7 @@ describe("analyze_issue_with_seer", () => {
           instruction: undefined,
         },
         {
-          constraints: { organizationSlug: undefined },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -576,7 +562,7 @@ describe("analyze_issue_with_seer", () => {
           instruction: undefined,
         },
         {
-          constraints: { organizationSlug: undefined },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -615,7 +601,7 @@ describe("analyze_issue_with_seer", () => {
           instruction: undefined,
         },
         {
-          constraints: { organizationSlug: undefined },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -687,7 +673,7 @@ describe("analyze_issue_with_seer", () => {
         instruction: undefined,
       },
       {
-        constraints: { organizationSlug: undefined },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -799,9 +785,7 @@ describe("analyze_issue_with_seer", () => {
         instruction: undefined,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -824,7 +808,6 @@ describe("analyze_issue_with_seer", () => {
         },
         {
           constraints: {
-            organizationSlug: undefined,
             projectSlug: "frontend",
           },
           accessToken: "access-token",

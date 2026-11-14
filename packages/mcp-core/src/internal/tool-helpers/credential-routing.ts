@@ -28,7 +28,7 @@ const ORGANIZATION_URL_PARAMS = [
 export function getTargetOrganizationSlug(
   params: Record<string, unknown>,
 ): string | null {
-  const slug = params.organizationSlug;
+  const slug = params["organizationSlug"];
   if (typeof slug === "string" && slug.trim()) {
     return slug.trim();
   }
@@ -192,9 +192,12 @@ export async function mapCredentialContexts<T>(
     }),
   );
   const results: Array<{ entry: CredentialContext; value: T }> = [];
-  let firstError: unknown;
+  let firstError: ApiError | undefined;
   for (const [index, result] of settled.entries()) {
-    const entry = entries[index]!;
+    const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
     if (result.status === "fulfilled") {
       results.push({ entry, value: result.value });
       continue;

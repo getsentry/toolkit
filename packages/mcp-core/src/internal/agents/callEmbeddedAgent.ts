@@ -370,7 +370,7 @@ function extractJsonCandidates(text: string): string[] {
   const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/g;
   const allMatches = [...text.matchAll(codeBlockRegex)];
   for (const match of allMatches) {
-    candidates.add(match[1]!.trim());
+    candidates.add((match[1] ?? "").trim());
   }
 
   // Strategy 2: Find balanced JSON objects anywhere in the text.
@@ -393,7 +393,7 @@ function rescueFromText<TOutput>(
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed: unknown = JSON.parse(candidate);
       const result = schema.safeParse(parsed);
       if (result.success) {
         return result.data;

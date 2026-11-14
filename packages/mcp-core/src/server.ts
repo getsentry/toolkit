@@ -129,7 +129,7 @@ function markUnknownToolCalls(
   }
 
   requestHandlers.set("tools/call", async (request, ctx) => {
-    const name = request.params?.name;
+    const name = request.params?.["name"];
     if (typeof name !== "string" || registeredToolNames.has(name)) {
       return await handleToolsCall(request, ctx);
     }
@@ -230,17 +230,18 @@ function toWellFormedOutput<T>(value: T): T {
     return value;
   }
   if (Array.isArray(value)) {
+    const items: unknown[] = value;
     let copy: unknown[] | undefined;
-    for (let index = 0; index < value.length; index++) {
-      const next = toWellFormedOutput(value[index]);
-      if (next !== value[index]) {
-        copy ??= [...value];
+    for (let index = 0; index < items.length; index++) {
+      const next = toWellFormedOutput(items[index]);
+      if (next !== items[index]) {
+        copy ??= [...items];
         copy[index] = next;
       }
     }
     return (copy ?? value) as T;
   }
-  const prototype = Object.getPrototypeOf(value);
+  const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     return value;
   }
@@ -310,6 +311,9 @@ export function buildServer({
     tools: customTools,
     toolCallSpanAttributes,
   });
+  const instructions = buildServerInstructions(
+    new Set(registrations.map(({ name }) => name)),
+  );
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
@@ -317,9 +321,7 @@ export function buildServer({
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
-      instructions: buildServerInstructions(
-        new Set(registrations.map(({ name }) => name)),
-      ),
+      ...(instructions !== undefined && { instructions }),
     },
   );
   server.server.onerror = (error) => {
@@ -364,7 +366,7 @@ function configureServer({
 }: {
   context: ServerContext;
   experimentalMode?: boolean;
-  tools?: ToolRegistry;
+  tools?: ToolRegistry | undefined;
   toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {
   const registrations = [];

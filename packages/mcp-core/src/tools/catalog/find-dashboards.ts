@@ -51,15 +51,15 @@ function isProjectDashboardCursor(
 
   const cursor = value as Record<string, unknown>;
   return (
-    cursor.v === 1 &&
-    (typeof cursor.apiCursor === "string" || cursor.apiCursor === null) &&
-    typeof cursor.offset === "number" &&
-    Number.isInteger(cursor.offset) &&
-    cursor.offset >= 0 &&
-    typeof cursor.pageLimit === "number" &&
-    Number.isInteger(cursor.pageLimit) &&
-    cursor.pageLimit > 0 &&
-    cursor.pageLimit <= 100
+    cursor["v"] === 1 &&
+    (typeof cursor["apiCursor"] === "string" || cursor["apiCursor"] === null) &&
+    typeof cursor["offset"] === "number" &&
+    Number.isInteger(cursor["offset"]) &&
+    cursor["offset"] >= 0 &&
+    typeof cursor["pageLimit"] === "number" &&
+    Number.isInteger(cursor["pageLimit"]) &&
+    cursor["pageLimit"] > 0 &&
+    cursor["pageLimit"] <= 100
   );
 }
 

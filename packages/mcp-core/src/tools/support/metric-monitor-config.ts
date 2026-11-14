@@ -6,6 +6,7 @@ import {
 import { z } from "zod";
 import type { Detector, MetricMonitorUpdate } from "../../api-client/types";
 import { UserInputError } from "../../errors";
+import { omitUndefined } from "../../internal/type-guards";
 import {
   conditionGroupSchema,
   getMetricQuery,
@@ -142,20 +143,25 @@ export function toMetricMonitorUpdate(
   if (status !== undefined) body.enabled = status === "active";
   if (query !== undefined) {
     const sources = current.dataSources ?? [];
-    const existing = sources.length === 1 ? getMetricQuery(sources[0]!) : null;
+    const [source] = sources;
+    const existing =
+      sources.length === 1 && source ? getMetricQuery(source) : null;
     if (!existing) {
       throw new UserInputError(
         "This monitor's query is unavailable or has multiple sources; cannot safely update it.",
       );
     }
-    const { timeWindowSeconds, ...merged } = { ...existing, ...query };
+    const { timeWindowSeconds, ...merged } = {
+      ...existing,
+      ...omitUndefined(query),
+    };
     // GET nests the query in queryObj.snubaQuery; PUT accepts only the flat query fields.
     body.dataSources = [{ ...merged, timeWindow: timeWindowSeconds }];
   }
   if (config !== undefined || conditionGroup !== undefined) {
     if (
       config?.detectionType !== undefined &&
-      config.detectionType !== current.config.detectionType &&
+      config.detectionType !== current.config["detectionType"] &&
       !conditionGroup
     ) {
       throw new UserInputError(
@@ -164,7 +170,7 @@ export function toMetricMonitorUpdate(
     }
     // Config replaces the stored object. Resending it also refreshes Seer for Dynamic condition changes.
     body.config = toMetricDetectionConfig(
-      config ?? {},
+      omitUndefined(config ?? {}),
       conditionGroup?.conditions ??
         conditionGroupSchema.parse(current.conditionGroup).conditions,
       current.config,
@@ -188,17 +194,17 @@ export function toMetricDetectionConfig(
   const { comparisonDeltaSeconds, ...changes } = config;
   const result: Detector["config"] = { ...current, ...changes };
   if (comparisonDeltaSeconds !== undefined)
-    result.comparisonDelta = comparisonDeltaSeconds;
-  if (result.detectionType !== "percent") {
+    result["comparisonDelta"] = comparisonDeltaSeconds;
+  if (result["detectionType"] !== "percent") {
     if (comparisonDeltaSeconds != null) {
       throw new UserInputError(
         "comparisonDeltaSeconds is only supported for Percent detection.",
       );
     }
     // A retained delta still enables percentage evaluation in the backend, regardless of detectionType.
-    if (config.detectionType !== undefined) result.comparisonDelta = null;
+    if (config.detectionType !== undefined) result["comparisonDelta"] = null;
   }
-  const dynamic = result.detectionType === "dynamic";
+  const dynamic = result["detectionType"] === "dynamic";
   if (dynamic && conditions.length !== 1) {
     throw new UserInputError(
       "Dynamic detection requires exactly one anomaly_detection condition.",
@@ -214,8 +220,11 @@ export function toMetricDetectionConfig(
     );
   }
   if (
-    result.detectionType === "percent" &&
-    !(typeof result.comparisonDelta === "number" && result.comparisonDelta > 0)
+    result["detectionType"] === "percent" &&
+    !(
+      typeof result["comparisonDelta"] === "number" &&
+      result["comparisonDelta"] > 0
+    )
   ) {
     throw new UserInputError(
       "Percent detection requires comparisonDeltaSeconds.",

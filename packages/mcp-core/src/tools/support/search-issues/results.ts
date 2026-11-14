@@ -83,15 +83,15 @@ export interface BuildIssueResultsParams {
   query: string;
   sort: IssueSort;
   period: string;
-  projectSlugOrId?: string;
-  explanation?: string;
+  projectSlugOrId?: string | undefined;
+  explanation?: string | undefined;
   notes: string[];
-  regionUrl?: string;
-  host?: string;
-  protocol?: SentryProtocol;
+  regionUrl?: string | undefined;
+  host?: string | undefined;
+  protocol?: SentryProtocol | undefined;
   experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 function formatAssignee(assignee: Issue["assignedTo"]): string | null {

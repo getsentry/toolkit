@@ -23,6 +23,7 @@ import {
   toUptimeMonitorSummary,
   uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
+import { omitUndefined } from "../../internal/type-guards";
 
 export const updateUptimeMonitorOutputSchema = z.object({
   monitor: uptimeMonitorSummarySchema,
@@ -155,25 +156,27 @@ export default defineTool({
     }
 
     const monitor = await apiService
-      .updateUptimeMonitor({
-        organizationSlug,
-        projectSlug: params.projectSlug,
-        uptimeMonitorId: params.uptimeMonitorId,
-        name: params.name,
-        url: params.url,
-        intervalSeconds: params.intervalSeconds,
-        timeoutMs: params.timeoutMs,
-        method: params.method,
-        headers: params.headers && toUptimeHeaderPairs(params.headers),
-        body: params.body,
-        status: params.status,
-        owner: params.owner,
-        environment: params.environment,
-        traceSampling: params.traceSampling,
-        responseCaptureEnabled: params.responseCaptureEnabled,
-        recoveryThreshold: params.recoveryThreshold,
-        downtimeThreshold: params.downtimeThreshold,
-      })
+      .updateUptimeMonitor(
+        omitUndefined({
+          organizationSlug,
+          projectSlug: params.projectSlug,
+          uptimeMonitorId: params.uptimeMonitorId,
+          name: params.name,
+          url: params.url,
+          intervalSeconds: params.intervalSeconds,
+          timeoutMs: params.timeoutMs,
+          method: params.method,
+          headers: params.headers && toUptimeHeaderPairs(params.headers),
+          body: params.body,
+          status: params.status,
+          owner: params.owner,
+          environment: params.environment,
+          traceSampling: params.traceSampling,
+          responseCaptureEnabled: params.responseCaptureEnabled,
+          recoveryThreshold: params.recoveryThreshold,
+          downtimeThreshold: params.downtimeThreshold,
+        }),
+      )
       .catch((error: unknown) => {
         const reason = params.status === "active" && getSeatErrorReason(error);
         if (reason) {

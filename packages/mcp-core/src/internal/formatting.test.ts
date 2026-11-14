@@ -2469,7 +2469,7 @@ describe("formatEventOutput metric alert details", () => {
 
   it("formats below-threshold conditions and omits an empty environment", () => {
     const evidenceData = createLogsMonitorEvidence({ environment: null });
-    evidenceData.conditions = [{ type: "lt", comparison: 10 }];
+    evidenceData["conditions"] = [{ type: "lt", comparison: 10 }];
 
     const output = formatEventOutput(createMetricIssueEvent({ evidenceData }));
 
@@ -2500,12 +2500,12 @@ describe("formatEventOutput metric alert details", () => {
 
   it("formats dynamic alert values without object placeholders", () => {
     const evidenceData = createLogsMonitorEvidence();
-    evidenceData.value = {
+    evidenceData["value"] = {
       value: 12.5,
       source_id: "123",
       timestamp: 1780272000,
     };
-    evidenceData.conditions = [
+    evidenceData["conditions"] = [
       {
         type: "anomaly_detection",
         comparison: {

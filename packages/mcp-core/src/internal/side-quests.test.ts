@@ -72,7 +72,7 @@ describe("buildSideQuests", () => {
         session,
       ) ?? [];
 
-    expect(quest.next).toEqual([
+    expect(quest?.next).toEqual([
       { tool: "search_events", args: { query: "a" } },
       { tool: "get_issue_details", args: { issueId: "WEB-1" } },
     ]);

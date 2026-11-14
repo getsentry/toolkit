@@ -27,7 +27,7 @@ export interface SideQuest {
   /** A docs.sentry.io page for the fix. */
   docs?: string;
   /** One line per cause, when causes differ by file. */
-  details?: string[];
+  details?: string[] | undefined;
 }
 
 interface SideQuestCall {

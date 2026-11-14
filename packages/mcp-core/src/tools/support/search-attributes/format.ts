@@ -44,8 +44,8 @@ export function formatListResult({
 }: QuerySettings & {
   attributes: TraceItemAttribute[];
   limit: number;
-  notes?: string[];
-  importantInfo?: string[];
+  notes?: string[] | undefined;
+  importantInfo?: string[] | undefined;
 }): string {
   const labels = DATASET_LABELS[dataset];
   const lines: string[] = [];

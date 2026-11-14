@@ -4,7 +4,15 @@ import {
   teamFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  assert,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
@@ -1918,9 +1926,14 @@ describe("rate limit retry", () => {
     const fetchMock = vi.fn(
       (_input: Request | string | URL, init?: RequestInit) =>
         new Promise<Response>((_, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(init.signal?.reason),
-          );
+          init?.signal?.addEventListener("abort", () => {
+            const abortReason: unknown = init.signal?.reason;
+            reject(
+              abortReason instanceof Error
+                ? abortReason
+                : new Error(String(abortReason)),
+            );
+          });
         }),
     );
     globalThis.fetch = fetchMock;
@@ -1972,8 +1985,10 @@ describe("request headers", () => {
       accessToken: "test-token",
     }).getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0]!;
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
       "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
     );
@@ -2005,8 +2020,10 @@ describe("request headers", () => {
 
     await apiService.getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0]!;
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id")).toBe(
       "abc123",
     );
@@ -2043,8 +2060,10 @@ describe("request headers", () => {
 
     await apiService.getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0]!;
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(
       new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id"),
     ).toBeNull();
@@ -2940,7 +2959,9 @@ describe("API query builders", () => {
         },
       ]);
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const [url] = urls;
+      assert(url, "Expected one request");
+      const params = new URL(url).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("project")).toBe("123");
       expect(params.get("statsPeriod")).toBe("7d");
@@ -2978,7 +2999,9 @@ describe("API query builders", () => {
       });
 
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const [url] = urls;
+      assert(url, "Expected one request");
+      const params = new URL(url).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("expand")).toBe("context");
     });
@@ -3547,8 +3570,8 @@ describe("API query builders", () => {
       });
 
       expect(repos).toHaveLength(1);
-      expect(repos[0]!.externalSlug).toBeNull();
-      expect(repos[0]!.externalId).toBeNull();
+      expect(repos[0]?.externalSlug).toBeNull();
+      expect(repos[0]?.externalId).toBeNull();
     });
   });
 

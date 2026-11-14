@@ -135,8 +135,8 @@ export function assertResolvedAlertDestinations(
       group.actions.some(
         (action) =>
           action.type === "slack" &&
-          (typeof action.config.targetIdentifier !== "string" ||
-            action.config.targetIdentifier.length === 0),
+          (typeof action.config["targetIdentifier"] !== "string" ||
+            action.config["targetIdentifier"].length === 0),
       ),
     )
   ) {

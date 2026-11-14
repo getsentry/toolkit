@@ -19,8 +19,8 @@ import {
 
 interface InstructionContext {
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 function viewImageInstruction(
@@ -159,9 +159,9 @@ export default defineTool({
       compactMetadata: true,
     })) as Record<string, unknown>;
 
-    const snapshotId = snapshotString(data.id) ?? null;
-    const images = snapshotImageEntries(data.images);
-    const appInfo = data.app_info as
+    const snapshotId = snapshotString(data["id"]) ?? null;
+    const images = snapshotImageEntries(data["images"]);
+    const appInfo = data["app_info"] as
       | { name?: unknown; platform?: unknown }
       | null
       | undefined;
@@ -182,7 +182,7 @@ export default defineTool({
               platform: snapshotString(appInfo.platform) ?? null,
             }
           : null,
-      vcs: toSnapshotVcs(data.vcs_info as SnapshotVcsInfo | undefined),
+      vcs: toSnapshotVcs(data["vcs_info"] as SnapshotVcsInfo | undefined),
       totalImages: images.length,
       groups: toSnapshotImageGroups(images),
       responseNotes:

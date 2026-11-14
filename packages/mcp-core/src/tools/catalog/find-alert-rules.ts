@@ -79,7 +79,7 @@ function getIssueAlertRuleFrequency(rule: IssueAlertRule): number | null {
   if (typeof rule.frequency === "number") {
     return rule.frequency;
   }
-  const frequency = rule.config.frequency;
+  const frequency = rule.config["frequency"];
   return typeof frequency === "number" ? frequency : null;
 }
 

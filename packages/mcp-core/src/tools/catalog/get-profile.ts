@@ -26,8 +26,8 @@ import {
 
 interface ResolvedProfileParams {
   organizationSlug: string;
-  projectSlugOrId?: string | number;
-  transactionName?: string;
+  projectSlugOrId?: string | number | undefined;
+  transactionName?: string | undefined;
 }
 
 /**
@@ -35,10 +35,10 @@ interface ResolvedProfileParams {
  * URL takes precedence if provided and valid.
  */
 function resolveProfileParams(params: {
-  profileUrl?: string | null;
-  organizationSlug?: string | null;
-  projectSlugOrId?: string | number | null;
-  transactionName?: string | null;
+  profileUrl?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  projectSlugOrId?: string | number | null | undefined;
+  transactionName?: string | null | undefined;
 }): ResolvedProfileParams {
   // URL-based resolution
   if (params.profileUrl) {

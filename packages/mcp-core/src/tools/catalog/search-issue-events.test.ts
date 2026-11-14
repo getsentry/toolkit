@@ -130,8 +130,8 @@ describe("search_issue_events", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
   });
 
@@ -515,7 +515,7 @@ describe("search_issue_events", () => {
     );
 
     const [emptyUser, emptyGeo] = sc(result).events;
-    expect(emptyUser!.user).toBeNull();
+    expect(emptyUser?.user).toBeNull();
     expect(emptyGeo?.user).toEqual({
       id: "user-1",
       email: null,
@@ -1118,9 +1118,9 @@ describe("search_issue_events", () => {
   });
 
   it("should search events with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
