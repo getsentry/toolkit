@@ -43,40 +43,8 @@ export default defineTool({
   title: "Update DSN",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:write"],
-  description: [
-    "Update settings for an existing DSN (client key) in a project, such as name, active status, rate limit, and loader script options.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- Deactivating or activating a DSN/client key",
-    "- Setting or removing DSN rate limits ('set rate limit of 1000 per hour on DSN X')",
-    "- Renaming a DSN ('rename DSN X to Production')",
-    "- Configuring Javascript SDK loader script options (session replay, performance, debug, feedback, etc.)",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "<examples>",
-    "### Rename DSN and set rate limit",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', name='Production Key', rateLimitWindow=3600, rateLimitCount=500)",
-    "```",
-    "",
-    "### Deactivate a DSN",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', isActive=false)",
-    "```",
-    "",
-    "### Disable rate limit entirely",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', disableRateLimit=true)",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use `find_dsns()` first to find the `keyId` for the DSN you want to update.",
-    "- Both `rateLimitWindow` (seconds) and `rateLimitCount` (error cap) must be provided together to set a rate limit.",
-    "- Returns the settings Sentry saved after the update. Compare them with what you requested and tell the user if any field didn't change.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Update a DSN (client key) on a Sentry project: rename it, activate or deactivate it, set or remove its rate limit, or change JavaScript Loader Script options. Returns the settings Sentry saved; tell the user if any requested setting did not change.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -85,71 +53,58 @@ export default defineTool({
       .string()
       .trim()
       .superRefine(validateResourceId)
-      .describe(
-        "The ID of the DSN (client key) to update. Use find_dsns() to retrieve this ID first.",
-      ),
-    name: z
-      .string()
-      .trim()
-      .max(64)
-      .describe("The new name for the DSN.")
-      .optional(),
+      .describe("Client key ID from find_dsns."),
+    name: z.string().trim().max(64).describe("New key name.").optional(),
     isActive: z
       .boolean()
-      .describe("Activate or deactivate the DSN.")
+      .describe("False stops the key from accepting events.")
       .optional(),
     rateLimitWindow: z
       .number()
       .int()
       .min(0)
       .max(60 * 60 * 24)
-      .describe("The time window in seconds for the rate limit.")
+      .describe("Rate limit window in seconds. Requires rateLimitCount.")
       .optional(),
     rateLimitCount: z
       .number()
       .int()
       .min(0)
-      .describe(
-        "The maximum number of errors allowed within the rate limit window.",
-      )
+      .describe("Maximum events accepted per window. Requires rateLimitWindow.")
       .optional(),
     disableRateLimit: z
       .boolean()
       .describe(
-        "Set to true to disable the rate limit entirely (removes the cap).",
+        "True removes the rate limit. Do not combine with rateLimitWindow or rateLimitCount.",
       )
       .optional(),
     browserSdkVersion: z
       .string()
       .trim()
       .describe(
-        "The Sentry Javascript SDK version to use (e.g. 'latest', '7.x').",
+        "JavaScript SDK version the Loader Script serves, such as `latest` or `8.x`.",
       )
       .optional(),
     loaderHasReplay: z
       .boolean()
-      .describe("Configure Session Replay for the Javascript Loader Script.")
+      .describe("Loader Script: enable Session Replay.")
       .optional(),
     loaderHasPerformance: z
       .boolean()
-      .describe(
-        "Configure Performance Monitoring for the Javascript Loader Script.",
-      )
+      .describe("Loader Script: enable tracing (performance monitoring).")
       .optional(),
     loaderHasDebug: z
       .boolean()
-      .describe(
-        "Configure Debug Bundles & Logging for the Javascript Loader Script.",
-      )
+      .describe("Loader Script: use the debug bundle with SDK logging.")
       .optional(),
     loaderHasFeedback: z
       .boolean()
-      .describe("Configure User Feedback for the Javascript Loader Script.")
+      .describe("Loader Script: enable User Feedback.")
       .optional(),
     loaderHasLogsAndMetrics: z
       .boolean()
       .describe(
-        "Configure Logs and Metrics for the Javascript Loader Script (requires SDK >= 10.0.0).",
+        "Loader Script: enable logs and metrics. Requires SDK 10.0.0 or later.",
       )
       .optional(),
   },

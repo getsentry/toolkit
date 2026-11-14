@@ -226,10 +226,8 @@ describe("skills module", () => {
       );
 
       expect(inspectDescription).toContain("monitors");
-      expect(inspectDescription).toContain("- monitor: <monitorSlug>");
 
       expect(triageDescription).not.toContain("monitors");
-      expect(triageDescription).not.toContain("- monitor: <monitorSlug>");
     });
   });
 });

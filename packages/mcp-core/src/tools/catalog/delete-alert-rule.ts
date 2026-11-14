@@ -17,14 +17,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Permanently delete a Sentry Alert (workflow), preserving its connected monitors.",
-    "Use get_alert_rule(kind='issue') to inspect the Alert and obtain its workflow ID before deletion. Metric Monitor IDs and legacy metric alert IDs are not workflow IDs.",
-    "Deleting a shared Alert removes its notifications for every connected project and monitor. Use update_alert_rule to disconnect individual sources or disable it instead.",
-    "A project-constrained session can only delete Alerts affecting that project exclusively.",
-    "Sentry removes the Alert from normal reads immediately and completes internal deletion in the background.",
-    "<examples>",
-    "delete_alert_rule(organizationSlug='my-org', ruleId='12345')",
-    "</examples>",
+    "Permanently delete a Sentry Alert (notification workflow) and its notifications for every connected project and monitor. Connected monitors are kept.",
+    "To stop one source or pause it, use update_alert_rule. Metric Monitors are deleted with delete_metric_monitor.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -33,7 +27,9 @@ export default defineTool({
     ruleId: z
       .string()
       .regex(/^\d+$/)
-      .describe("Workflow ID from get_alert_rule(kind='issue')."),
+      .describe(
+        "Alert workflow ID from get_alert_rule with `issue`. Metric Monitor and legacy metric alert IDs are not workflow IDs.",
+      ),
   },
   annotations: {
     readOnlyHint: false,

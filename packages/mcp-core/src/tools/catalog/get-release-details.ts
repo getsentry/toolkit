@@ -147,24 +147,8 @@ export default defineTool({
   title: "Get Release Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
-  description: [
-    "Get details for a Sentry release.",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect an exact release version",
-    "- Scope a release lookup to a specific project",
-    "- See deploys and environments for a release",
-    "- See recent commits attached to a release",
-    "- Gather release health metadata when a project is known",
-    "",
-    "To find issues introduced in a release, call search_issues with query `release:<version>`.",
-    "",
-    "<examples>",
-    "get_release_details(organizationSlug='my-organization', releaseVersion='1.2.3')",
-    "get_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', projectSlugOrId='backend')",
-    "get_release_details(organizationSlug='my-organization', releaseVersion='1.2.3', includeHealth=true, projectSlugOrId='backend')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Get one Sentry release by exact version: its projects, deploys, environments, recent commits, and optionally release health (adoption stages and session bounds). To find issues introduced in a release, use search_issues with `release:<version>`.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -174,30 +158,30 @@ export default defineTool({
       .trim()
       .superRefine(validateSlugOrId)
       .describe(
-        "Optional project slug or numeric ID. Use this to scope release details, deploys, and commits to one project; required for health metadata unless the session is already project-constrained.",
+        "Project slug or numeric ID. Scopes details, deploys, and commits to one project.",
       )
       .nullable()
       .default(null),
     includeHealth: z
       .boolean()
       .describe(
-        "Include project-specific release health metadata. Requires projectSlugOrId unless the session is already project-constrained.",
+        "Include release health for one project. Requires projectSlugOrId unless the session is limited to a project.",
       )
       .default(false),
     includeDeploys: z
       .boolean()
-      .describe("Include recent deploys for this release.")
+      .describe("Include recent deploys.")
       .default(true),
     includeCommits: z
       .boolean()
-      .describe("Include recent commits attached to this release.")
+      .describe("Include recent commits.")
       .default(true),
     limit: z
       .number()
       .int()
       .positive()
       .max(50)
-      .describe("Maximum number of deploys and commits to return, up to 50.")
+      .describe("Maximum deploys and commits to return, each.")
       .default(10),
   },
   outputSchema: getReleaseDetailsOutputSchema,

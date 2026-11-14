@@ -138,16 +138,7 @@ export default defineTool({
   title: "Find Organizations",
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["org:read"],
-  description: [
-    "List or search the Sentry organizations the user has access to.",
-    "",
-    "Use this tool when you need to:",
-    "- View organizations in Sentry",
-    "- Find an organization's slug to aid other tool requests",
-    "- Search for specific organizations by name or slug",
-    "",
-    `Returns up to ${RESULT_LIMIT} results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.`,
-  ].join("\n"),
+  description: `List or search the Sentry organizations the user can access. Returns each organization's slug and region URL, which other Sentry tools take, plus its web URL; ${RESULT_LIMIT} per page.`,
   inputSchema: {
     query: ParamSearchQuery.nullable().default(null),
     cursor: ParamCursor.nullable().default(null),

@@ -37,49 +37,8 @@ export default defineTool({
   title: "Analyze Issue with Seer",
   skills: ["seer"], // Only available in seer skill
   requiredScopes: [], // No Sentry API scopes required - authorization via 'seer' skill
-  description: [
-    "Use Seer to analyze production errors and get detailed root cause analysis with specific code fixes.",
-    "",
-    "Use this tool when:",
-    "- The user explicitly asks for root cause analysis, Seer analysis, or help fixing/debugging an issue",
-    "- You are unable to accurately determine the root cause from the issue details alone",
-    "",
-    "Do NOT call this tool as an automatic follow-up to get_sentry_resource.",
-    "",
-    "What this tool provides:",
-    "- Root cause analysis with code-level explanations",
-    "- Specific file locations and line numbers where errors occur",
-    "- Concrete code fixes you can apply",
-    "- Step-by-step implementation guidance",
-    "",
-    "This tool automatically:",
-    "1. Checks if analysis already exists (instant results)",
-    "2. Starts new AI analysis if needed (~2-5 minutes)",
-    "3. Returns complete fix recommendations",
-    "",
-    "<examples>",
-    '### User: "Run Seer on this issue"',
-    "",
-    "```",
-    "analyze_issue_with_seer(issueUrl='https://my-org.sentry.io/issues/PROJECT-1Z43')",
-    "```",
-    "",
-    '### User: "Analyze this issue and suggest a fix"',
-    "",
-    "```",
-    "analyze_issue_with_seer(organizationSlug='my-organization', issueId='ERROR-456')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Only use when the user explicitly requests analysis or you cannot determine the root cause from issue details alone",
-    "- Seer Autofix does not support metric alert issues (issueCategory: metric); use get_issue_details and search_metrics or search_traces instead",
-    "- Starting a new analysis requires a GitHub or GitLab integration and repositories connected to the issue's project; without them the tool reports that no analysis started",
-    "- If the user provides an issueUrl, extract it and use that parameter alone",
-    "- The analysis includes actual code snippets and fixes, not just error descriptions",
-    "- Results are cached - subsequent calls return instantly",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Run Seer AI root cause analysis on a Sentry issue and return the root cause, affected code locations, and a suggested code fix. Returns an existing analysis at once; a new one takes minutes, so call it only when the user asks for Seer or a fix, or the issue details do not show the cause. Does not support metric alert issues.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -87,7 +46,7 @@ export default defineTool({
     issueUrl: ParamIssueUrl.optional(),
     instruction: z
       .string()
-      .describe("Optional custom instruction for the AI analysis")
+      .describe("Extra guidance for the analysis.")
       .optional(),
   },
   annotations: {

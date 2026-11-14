@@ -54,37 +54,28 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Discover available actions, conditions, or sources for a Sentry Alert (notification workflow).",
-    "",
-    "Choose one section per call; reuse its cursor with the same section and filters.",
-    "- actions: installed integrations, notification services, native config/data schemas and Sentry App settings. These schemas use Sentry's internal field names and target enums; inputGuide explains the update format.",
-    "- conditions: condition types and comparison schemas for workflow triggers or action filters.",
-    "- sources: accessible monitors and project issue streams. Use an issue_stream source to connect all issues from its project; a source with projectId=null covers all projects.",
-    "Slack and Teams accept channel names; Discord needs a channel ID or URL. Dynamic Sentry App fields require explicit values; this tool does not enumerate their external choices.",
-    "",
-    "<examples>",
-    "get_alert_options(organizationSlug='my-org', section='actions', actionTypes=['slack', 'msteams'])",
-    "get_alert_options(organizationSlug='my-org', section='conditions', conditionGroup='action_filter')",
-    "get_alert_options(organizationSlug='my-org', section='sources', projectSlug='backend', sourceTypes=['issue_stream'])",
-    "</examples>",
+    "List what a Sentry Alert (notification workflow) can use: notification actions and integrations (Slack, Teams, email, PagerDuty) with their config schemas, trigger and filter conditions, or monitor and issue-stream sources.",
+    "Use the results in create_alert_rule or update_alert_rule. Slack and Teams take channel names; Discord needs a channel ID or URL. Choices for dynamic Sentry App fields are not listed.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
-    section: sectionSchema.describe("The kind of Alert options to discover."),
+    section: sectionSchema.describe(
+      "`actions`: integrations and action config schemas. `conditions`: condition types and comparison schemas. `sources`: monitors and project issue streams to connect.",
+    ),
     actionTypes: z
       .array(z.string().trim().min(1))
       .max(20)
       .nullable()
       .default(null)
       .describe(
-        "Actions only: restrict to action types, such as slack, msteams, email, or pagerduty.",
+        "Action types to include, such as slack, msteams, email, or pagerduty. Only with `actions`.",
       ),
     conditionGroup: conditionGroupSchema
       .nullable()
       .default(null)
       .describe(
-        "Required for conditions: workflow_trigger for Alert triggers, action_filter for action groups.",
+        "Required with `conditions`: workflow_trigger for Alert triggers, action_filter for action group filters.",
       ),
     projectSlug: ParamProjectSlugOrAll.nullable().default(null),
     sourceTypes: z
@@ -93,7 +84,7 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Sources only: restrict by monitor type, such as issue_stream or metric_issue.",
+        "Monitor types to include, such as issue_stream (all issues in a project) or metric_issue. A source with no project covers all projects. Only with `sources`.",
       ),
     query: z
       .string()

@@ -9,32 +9,20 @@ import { buildSearchEventsOutputSchema } from "../support/search-events/structur
 
 export const searchLogsOutputSchema = buildSearchEventsOutputSchema("logs");
 
+const datasetSearchInputSchema = buildDatasetSearchInputSchema();
+
 export default defineTool({
   ...searchToolBase("search_logs"),
   name: "search_logs",
   title: "Search Logs",
-  description: [
-    "Search Sentry logs: application log entries, including error- and warning-severity log messages. Use for log counts, statistics, trends, and individual log lines.",
-    "",
-    "`query` is natural language (preferred) or Sentry search syntax; a configured agent translates it into query, fields, and sort.",
-    "",
-    "Supports aggregations ('warning logs by service'), individual entries ('error logs from the last hour'), and time series ('error logs per hour').",
-    "",
-    "NOT for exceptions/crashes (use search_errors). For requests or spans whose trace also has a matching log, use search_traces.",
-    "",
-    "<examples>",
-    "search_logs(organizationSlug='my-org', query='error logs from the last hour')",
-    "search_logs(organizationSlug='my-org', query='logs mentioning payment timeout in production')",
-    "search_logs(organizationSlug='my-org', query='count warning logs by service over 7 days')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.",
-    "- Natural language is usually enough. Only pass fields/sort when you need exact columns or ordering.",
-    "- Sentry search syntax for logs includes RE2 regex filters, never quoted: `message://^Timeout after \\d+ms//`.",
-    "</hints>",
-  ].join("\n"),
-  inputSchema: buildDatasetSearchInputSchema(),
+  description:
+    "Search Sentry logs: application log lines at any severity, including trends over time. Returns individual events, counts, and aggregates; for grouped issue lists, use search_issues. For exceptions and crashes, use search_errors; for requests whose trace has a matching log, use search_traces.",
+  inputSchema: {
+    ...datasetSearchInputSchema,
+    query: datasetSearchInputSchema.query.describe(
+      "What to find, in natural language or Sentry search syntax. Put environment and release filters here. Regex filters are unquoted RE2: `message://timeout \\d+ms//`.",
+    ),
+  },
   outputSchema: searchLogsOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "logs" }, context, {

@@ -16,21 +16,33 @@ const metricConditionSchema = conditionGroupSchema.shape.conditions.element;
 const { critical, warning, resolved } = METRIC_MONITOR_PRIORITY;
 const thresholdCondition = metricConditionSchema.extend({
   type: z.enum(METRIC_MONITOR_THRESHOLD_TYPES),
-  comparison: z.number(),
-  conditionResult: z.literal([critical, warning, resolved]),
+  comparison: z
+    .number()
+    .describe(
+      "Threshold value. For Percent detection it is an absolute percentage of the earlier window: 110 means 10% higher.",
+    ),
+  conditionResult: z
+    .literal([critical, warning, resolved])
+    .describe("75 critical, 50 warning, 0 resolved."),
 });
 const anomalyCondition = metricConditionSchema.extend({
   type: z.literal("anomaly_detection"),
   comparison: z.object({
     sensitivity: z.enum(["low", "medium", "high"]),
     seasonality: z.literal("auto"),
-    thresholdType: z.literal([0, 1, 2]),
+    thresholdType: z
+      .literal([0, 1, 2])
+      .describe("0 above, 1 below, 2 above or below."),
   }),
   conditionResult: z.literal([critical, warning]),
 });
 
 const metricMonitorQuerySchema = metricQueryDetailsSchema.extend({
-  dataset: z.enum(METRIC_MONITOR_DATASETS),
+  dataset: z
+    .enum(METRIC_MONITOR_DATASETS)
+    .describe(
+      "`metrics` is crash-free releases. `events_analytics_platform` covers spans, logs, and application metrics, chosen by eventTypes.",
+    ),
   aggregate: z.string().min(1),
   timeWindowSeconds: z.number().int().positive(),
 });
@@ -56,7 +68,7 @@ export const metricMonitorConfigFields = {
     .regex(/^(user|team):\d+$/)
     .nullable()
     .optional()
-    .describe("Owner actor, e.g. team:123 or user:123. Pass null to clear."),
+    .describe("Owner as user:<id> or team:<id>. Null clears it."),
   query: metricMonitorQuerySchema
     .partial()
     .refine(
@@ -65,7 +77,7 @@ export const metricMonitorConfigFields = {
     )
     .optional()
     .describe(
-      "Partial query changes. Omitted fields are preserved; environment:null clears its filter. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Dataset changes must include compatible aggregate and eventTypes.",
+      "Query fields to change; omitted fields are kept and a null environment clears the filter. A new dataset needs a matching aggregate and eventTypes.",
     ),
   config: metricMonitorDetectionConfigSchema
     .partial()
@@ -75,18 +87,18 @@ export const metricMonitorConfigFields = {
     )
     .optional()
     .describe(
-      "Partial detection config. Percent mode requires comparisonDeltaSeconds. Selecting Static or Dynamic clears the comparison delta. Changing detectionType also requires compatible conditionGroup.",
+      "Detection config fields to change. Static and Dynamic clear the comparison delta; a new detection type needs a matching condition group.",
     ),
   conditionGroup: metricMonitorConditionGroupSchema
     .optional()
     .describe(
-      "Replaces ALL detection conditions; preserve existing IDs. Static/Percent use numeric comparisons, results 75 critical, 50 warning, 0 resolved, including a resolution condition. Percent 110 means 10% higher. Dynamic uses anomaly_detection with sensitivity, seasonality:auto and thresholdType 0 above, 1 below, 2 both.",
+      "Replaces all detection conditions; keep existing IDs. Static and Percent use threshold conditions, including a resolved one. Dynamic uses one anomaly_detection condition.",
     ),
   workflowIds: z
     .array(z.string().regex(/^\d+$/))
     .optional()
     .describe(
-      "Replaces this monitor's Alert connections. Copy all IDs to retain from get_metric_monitor_details; [] disconnects all. Does not edit the Alerts themselves.",
+      "Alert workflow IDs to connect; replaces the current list. Copy IDs to keep from get_metric_monitor_details; [] disconnects all. The Alerts are not edited.",
     ),
 };
 
@@ -98,11 +110,9 @@ export const metricMonitorCreateFields = {
     .extend({
       environment: metricMonitorQuerySchema.shape.environment.default(null),
     })
-    .describe(
-      "Complete query: dataset, aggregate, filter, eventTypes and timeWindowSeconds. metrics is crash-free Releases; events_analytics_platform supports spans, logs and application metrics via eventTypes. Omitted environment means all environments.",
-    ),
+    .describe("Complete metric query. Omit environment for all environments."),
   config: metricMonitorDetectionConfigSchema.describe(
-    "Detection mode. Percent requires comparisonDeltaSeconds. Static and Dynamic do not use a comparison delta.",
+    "Detection mode: Static thresholds, Percent change against an earlier window (needs comparisonDeltaSeconds), or Dynamic anomaly detection (needs enough history).",
   ),
   conditionGroup: metricMonitorConditionGroupSchema
     .omit({ id: true })
@@ -119,12 +129,12 @@ export const metricMonitorCreateFields = {
         .max(3),
     })
     .describe(
-      "Complete conditions, using logicType any. Copied group and condition IDs are discarded. Static/Percent require thresholds and resolution (results 75 critical, 50 warning, 0 resolved). Percent 110 means 10% higher. Dynamic requires one anomaly_detection condition: sensitivity, seasonality:auto, thresholdType 0 above/1 below/2 both.",
+      "Complete detection conditions; copied IDs are dropped. Static and Percent use threshold conditions, including a resolved one. Dynamic uses one anomaly_detection condition.",
     ),
   workflowIds: metricMonitorConfigFields.workflowIds
     .default([])
     .describe(
-      "Existing notification Alert IDs to connect. Omit or pass [] to create without connected Alerts. Use find_alert_rules(kind='issue') to find workflow IDs.",
+      "Alert workflow IDs to connect, from find_alert_rules with `issue`. Omit to create with no Alerts.",
     ),
 };
 

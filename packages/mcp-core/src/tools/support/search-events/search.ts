@@ -459,12 +459,12 @@ const searchLimitParam = z
   .min(1)
   .max(100)
   .default(10)
-  .describe("Maximum number of results to return (1-100)");
+  .describe("Maximum number of results to return.");
 
 const includeExplanationParam = z
   .boolean()
   .default(false)
-  .describe("Include explanation of how the query was translated or repaired");
+  .describe("Explain how the query was translated or repaired.");
 
 const environmentParam = (description: string) =>
   z
@@ -484,19 +484,19 @@ export function buildSearchEventsInputSchema() {
       .enum(SEARCH_EVENTS_DATASETS)
       .optional()
       .describe(
-        "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. Always pass it, including for natural language queries. The agent may correct it when configured.",
+        "Dataset to search. Always pass it, even for a natural language query; it may be corrected.",
       ),
     query: z
       .string()
       .trim()
       .optional()
-      .describe("Natural language or Sentry event search query syntax."),
+      .describe("What to find, in natural language or Sentry search syntax."),
     fields: z
       .array(z.string())
       .nullable()
       .optional()
       .describe(
-        "Fields to return for event datasets. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics. Leave null for dataset='replays'.",
+        "Columns to return; omit for defaults. Include aggregates such as count() or avg() for statistics. Leave null for replays.",
       ),
     sort: z
       .string()
@@ -504,11 +504,11 @@ export function buildSearchEventsInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). If omitted, event datasets default to -timestamp and replays default to -started_at. Use -count() for event aggregations. For dataset='replays', use replay sorts like -started_at or -count_errors.",
+        "Sort field, - prefix for descending, such as -count() for aggregates. Replays use replay sorts such as -started_at or -count_errors.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
     environment: environmentParam(
-      "Optional environment filter for dataset='replays'. Use a string for one environment or an array for multiple. Omit when unused. For other datasets, filter environment in the query string instead.",
+      "Environment name or list of names; replays only. For other datasets, filter environment in the query.",
     ),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -530,14 +530,14 @@ export function buildDatasetSearchInputSchema() {
       .trim()
       .optional()
       .describe(
-        "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+        "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
       ),
     fields: z
       .array(z.string())
       .nullable()
       .optional()
       .describe(
-        "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+        "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
       ),
     sort: z
       .string()
@@ -545,7 +545,7 @@ export function buildDatasetSearchInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+        "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
     period: ParamPeriod.optional(),
@@ -567,7 +567,7 @@ export function buildReplaySearchInputSchema() {
       .trim()
       .optional()
       .describe(
-        "What to find, in natural language (preferred) or replay search syntax.",
+        "What to find, in natural language or replay search syntax such as count_errors:>0 or url:*checkout*.",
       ),
     sort: z
       .string()
@@ -575,12 +575,10 @@ export function buildReplaySearchInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
+        "Replay sort, - prefix for descending: -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
-    environment: environmentParam(
-      "Optional environment filter. Use a string for one environment or an array for multiple. Omit when unused.",
-    ),
+    environment: environmentParam("Environment name or list of names."),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     limit: searchLimitParam,
