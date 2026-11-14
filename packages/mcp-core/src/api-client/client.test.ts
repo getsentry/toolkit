@@ -1926,9 +1926,14 @@ describe("rate limit retry", () => {
     const fetchMock = vi.fn(
       (_input: Request | string | URL, init?: RequestInit) =>
         new Promise<Response>((_, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(init.signal?.reason),
-          );
+          init?.signal?.addEventListener("abort", () => {
+            const abortReason: unknown = init.signal?.reason;
+            reject(
+              abortReason instanceof Error
+                ? abortReason
+                : new Error(String(abortReason)),
+            );
+          });
         }),
     );
     globalThis.fetch = fetchMock;

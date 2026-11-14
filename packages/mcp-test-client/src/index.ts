@@ -235,15 +235,14 @@ program
   });
 
 // Handle uncaught errors
-process.on("unhandledRejection", async (error) => {
+process.on("unhandledRejection", (error) => {
   const eventId = Sentry.captureException(error);
   logError(
     "Unhandled error",
     `${error instanceof Error ? error.message : String(error)}. Event ID: ${eventId}`,
   );
   // Ensure Sentry events are flushed before exit
-  await Sentry.flush(5000);
-  process.exit(1);
+  void Sentry.flush(5000).finally(() => process.exit(1));
 });
 
 program.parse(process.argv);

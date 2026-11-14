@@ -424,8 +424,12 @@ Try asking me things like:
           isOpen={isOpen}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
-          onStop={stop}
-          onRetry={regenerate}
+          onStop={() => {
+            void stop();
+          }}
+          onRetry={() => {
+            void regenerate();
+          }}
           onSlashCommand={handleSlashCommand}
           onSendPrompt={handleSendPrompt}
         />

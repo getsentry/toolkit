@@ -101,7 +101,13 @@ export function RetentionSettings({
         currently retained.
       </p>
       {editable ? (
-        <form noValidate onSubmit={save} className="space-y-4">
+        <form
+          noValidate
+          onSubmit={(event) => {
+            void save(event);
+          }}
+          className="space-y-4"
+        >
           <div className="space-y-2">
             <label htmlFor="retention-limit" className="text-sm font-medium">
               Envelope limit

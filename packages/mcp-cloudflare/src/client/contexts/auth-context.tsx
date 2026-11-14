@@ -180,17 +180,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, 300000); // 5 minutes
   }, [processOAuthResult]);
 
-  const handleLogout = useCallback(async () => {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch {
-      // Ignore errors, proceed with local logout
-    }
+  const handleLogout = useCallback(() => {
+    void (async () => {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch {
+        // Ignore errors, proceed with local logout
+      }
 
-    setIsAuthenticated(false);
+      setIsAuthenticated(false);
+    })();
   }, []);
 
   const clearAuthState = useCallback(() => {
