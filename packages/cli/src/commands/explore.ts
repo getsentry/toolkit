@@ -47,6 +47,7 @@ import { toSearchQueryError, ValidationError } from "../lib/errors.js";
 import { toExploreFieldError } from "../lib/explore-errors.js";
 import {
   parseTimeSeriesInterval,
+  parseTimeSeriesTransformations,
   resolveTimeSeriesInterval,
 } from "../lib/explore-timeseries.js";
 import {
@@ -167,6 +168,7 @@ type ExploreFlags = {
   readonly limit?: number;
   /** Bucket duration or "auto"; omitted for tabular output. */
   readonly "time-series"?: string;
+  readonly transform?: string[];
   readonly cursor?: string;
   readonly json: boolean;
   readonly fresh: boolean;
@@ -536,6 +538,12 @@ function resolveEventsQuery(
 /** Reject table-only flags and dimensions before a temporal query is sent. */
 function validateTimeSeriesFlags(flags: ExploreFlags): void {
   if (flags["time-series"] === undefined) {
+    if (flags.transform?.length) {
+      throw new ValidationError(
+        "--transform requires --time-series.",
+        "transform",
+      );
+    }
     return;
   }
   for (const flag of ["cursor", "limit", "sort"] as const) {
@@ -701,6 +709,7 @@ export const exploreCommand = buildListCommand("explore", {
       "Time series use one chart per aggregate on graphics-capable terminals, with table fallback. " +
       "This is a single historical query, not a live stream. " +
       "Grouping, --sort, --limit, and --cursor are table-only.\n\n" +
+      "Repeat --transform '0:fill(linear)' and --transform '0:smooth(sma,3)' to apply ordered stages to a zero-based axis.\n\n" +
       "Datasets:\n" +
       "  errors   Error events (default)\n" +
       "  spans    Span data\n" +
@@ -764,6 +773,11 @@ export const exploreCommand = buildListCommand("explore", {
       {
         description: "A metric over time using its discovered type and unit",
         run: "explore my-org/cli --dataset metrics -m cache.hit_rate --agg avg -b -t 1h",
+      },
+      {
+        description:
+          "Compare independent transformations for duplicate latency axes",
+        run: "explore my-org/cli --dataset spans -F 'p95(span.duration)' -F 'p95(span.duration)' -b 5m -t 24h --transform '0:fill(linear)' --transform '0:smooth(sma,3)' --transform '1:smooth(ema,3,0.5)'",
       },
       {
         description:
@@ -879,6 +893,15 @@ export const exploreCommand = buildListCommand("explore", {
         optional: true,
         inferEmpty: true,
       },
+      transform: {
+        kind: "parsed",
+        parse: textParser(String),
+        placeholder: "axis:stage",
+        brief:
+          "Ordered per-axis stage, e.g., 0:fill(linear) (repeatable; requires --time-series)",
+        optional: true,
+        variadic: true,
+      },
       period: {
         kind: "parsed" as const,
         parse: parsePeriod,
@@ -971,6 +994,10 @@ export const exploreCommand = buildListCommand("explore", {
     }
 
     if (flags["time-series"] !== undefined) {
+      const transformations = parseTimeSeriesTransformations(
+        flags.transform,
+        fieldList.length,
+      );
       const resolved = resolveEventsQuery(
         dataset,
         flags.query,
@@ -995,6 +1022,7 @@ export const exploreCommand = buildListCommand("explore", {
             query: resolved.query,
             projectId,
             interval,
+            ...(transformations ? { transformations } : {}),
             ...timeParams,
           }).catch((error: unknown): never => {
             const fieldError = toExploreFieldError(error, {

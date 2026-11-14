@@ -52,6 +52,22 @@ function formatSeries(series: TimeSeries): string {
   const chart =
     series.values.length > 0 ? formatExploreTimeSeriesChart(series) : undefined;
   const details: string[] = [];
+  if (series.axisIndex !== undefined) {
+    details.push(`Axis ${series.axisIndex}`);
+    details.push(
+      `Transformations: ${text(series.requestedTransformations?.join(" -> ") || "none")}`,
+    );
+  }
+  if (series.values.some((bucket) => bucket.filled !== undefined)) {
+    details.push(
+      `Filled buckets: ${series.values.filter((bucket) => bucket.filled).length}`,
+    );
+  }
+  if (series.values.some((bucket) => bucket.smoothed !== undefined)) {
+    details.push(
+      `Smoothed buckets: ${series.values.filter((bucket) => bucket.smoothed).length}`,
+    );
+  }
   // Every admitted Explore chart has room for its single fitted legend label.
   // Keep the original expression when its fitted label omits more than syntax.
   if (!chart || formatLegendLabel(series.yAxis).abbreviated) {
@@ -110,6 +126,10 @@ function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
     time: formatUtcTimestamp(bucket.timestamp),
     value: bucket.value,
     status: formatBucketStatus(bucket),
+    filled: bucket.filled,
+    smoothed: bucket.smoothed,
+    comparisonFilled: bucket.comparisonFilled,
+    comparisonSmoothed: bucket.comparisonSmoothed,
   }));
   const columns = buildMetaColumns(
     ["time", "value"],
@@ -128,6 +148,16 @@ function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
   );
   if (buckets.some((bucket) => bucket.incomplete)) {
     columns.push(...buildMetaColumns(["status"]));
+  }
+  for (const field of [
+    "filled",
+    "smoothed",
+    "comparisonFilled",
+    "comparisonSmoothed",
+  ] as const) {
+    if (buckets.some((bucket) => bucket[field] !== undefined)) {
+      columns.push(...buildMetaColumns([field]));
+    }
   }
 
   return formatTable(rows, columns);

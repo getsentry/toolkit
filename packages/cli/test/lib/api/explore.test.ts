@@ -388,6 +388,114 @@ describe("queryEventsTimeSeries", () => {
     });
   }
 
+  test("accepts all-false provenance and keeps a raw duplicate axis independent", async () => {
+    const raw = {
+      yAxis: "count()",
+      meta: { interval: 300_000, valueType: "integer", valueUnit: null },
+      values: [{ timestamp: 0, value: null, incomplete: false }],
+    };
+    const transformed = {
+      ...raw,
+      values: [
+        {
+          timestamp: 0,
+          value: null,
+          incomplete: false,
+          filled: false,
+          smoothed: false,
+          comparisonValue: null,
+          comparisonFilled: false,
+          comparisonSmoothed: false,
+        },
+      ],
+    };
+    mockResponse({ timeSeries: [raw, transformed] });
+    const result = await queryEventsTimeSeries("timeseries-org", {
+      fields: ["count()", "count()"],
+      interval: "1m",
+      transformations: { 1: ["smooth(asap)"] },
+    });
+    expect(result).toEqual({
+      timeSeries: [
+        { ...raw, axisIndex: 0, requestedTransformations: [] },
+        {
+          ...transformed,
+          axisIndex: 1,
+          requestedTransformations: ["smooth(asap)"],
+        },
+      ],
+    });
+    const params = new URL(requests[0]!.url).searchParams;
+    expect(params.getAll("yAxis")).toEqual(["count()", "count()"]);
+    expect(params.getAll("transformations[1]")).toEqual(["smooth(asap)"]);
+    expect(params.has("transformations[0]")).toBe(false);
+  });
+
+  test.each([
+    {
+      name: "feature-disabled raw values",
+      yAxis: "count()",
+      values: [{ timestamp: 0, value: 42, incomplete: false }],
+    },
+    { name: "empty transformed series", yAxis: "count()", values: [] },
+    {
+      name: "mismatched axes",
+      yAxis: "avg(span.duration)",
+      values: [
+        {
+          timestamp: 0,
+          value: 42,
+          incomplete: false,
+          filled: false,
+          smoothed: true,
+        },
+      ],
+    },
+  ])(
+    "rejects $name without falling back to a raw request",
+    async ({ yAxis, values }) => {
+      mockResponse({
+        timeSeries: [
+          {
+            yAxis,
+            values,
+            meta: { interval: 60_000, valueType: "integer", valueUnit: null },
+          },
+        ],
+      });
+      await expect(
+        queryEventsTimeSeries("timeseries-org", {
+          fields: ["count()"],
+          interval: "1m",
+          transformations: { 0: ["fill(zero)"] },
+        }),
+      ).rejects.toThrow("Sentry could not verify transformations for axis 0");
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  test("preserves backend transformation validation errors", async () => {
+    mockResponse(
+      {
+        detail:
+          "smooth(sma,0): window_size argument invalid: Window size must be positive.",
+      },
+      400,
+    );
+    await expect(
+      queryEventsTimeSeries("timeseries-org", {
+        fields: ["count()"],
+        interval: "1m",
+        transformations: { 0: ["smooth(sma,0)"] },
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      detail:
+        "smooth(sma,0): window_size argument invalid: Window size must be positive.",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
   test("queries the org region and preserves values, nulls, and complete metadata", async () => {
     const response = {
       meta: {
