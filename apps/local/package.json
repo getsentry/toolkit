@@ -45,11 +45,13 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
+    "@rolldown/plugin-babel": "^0.3.1",
     "@testing-library/react": "^16.3.2",
+    "@types/convert-source-map": "^2.0.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@vitejs/plugin-react": "^6.3.0",
     "eventsource": "^4.1.0",
     "jsdom": "^28.1.0",
     "oxlint": "^1.79.0",
