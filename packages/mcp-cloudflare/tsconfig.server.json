@@ -1,6 +1,11 @@
 {
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
+    "noEmit": true,
+    // skipLibCheck exception: `@cloudflare/workers-types` and `@types/node` declare the same globals (TS2300 DOMException/Blob, TS2451 console/crypto, TS2502 PerformanceEntry); the Worker uses nodejs_compat and needs both. Remove when both can load in one program without conflicts.
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6 dist/index.d.ts). Remove when they check cleanly.
+    // skipLibCheck exception: `ai` declarations fail TS2304 on DOM names @cloudflare/workers-types lacks (RequestCredentials, FileList). Remove when they check cleanly.
+    "skipLibCheck": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
     "types": [
       "@cloudflare/workers-types",

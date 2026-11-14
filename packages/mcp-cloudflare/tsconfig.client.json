@@ -1,6 +1,11 @@
 {
   "extends": "@sentry/mcp-server-tsconfig/tsconfig.vite.json",
   "compilerOptions": {
+    // Type checking only; vite builds the client bundle.
+    "noEmit": true,
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6 dist/index.d.ts). Remove when they check cleanly.
+    // skipLibCheck exception: `ai` and `@ai-sdk/provider-utils` declarations reference Node-only names in this browser program (TS2591 Buffer, node:http; TS2694). Remove when they check cleanly without @types/node.
+    "skipLibCheck": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.client.tsbuildinfo",
     "paths": {
       "@/*": [
