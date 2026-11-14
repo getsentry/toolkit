@@ -31,7 +31,7 @@ import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-archive-");
 
-function makeRelease(status: string): SentryRelease {
+function makeRelease(status: "archived" | "open"): SentryRelease {
   return {
     id: 1,
     version: "1.0.0",

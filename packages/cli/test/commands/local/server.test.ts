@@ -9,7 +9,15 @@ import { createLocalControlPlane } from "../../../src/commands/local/control-pla
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import {
   buildApp,
   consumeSSE,
@@ -235,7 +243,7 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
-  let info: ReturnType<typeof vi.spyOn>;
+  let info: MockInstance<(typeof logger)["info"]>;
   beforeEach(() => {
     info = vi.spyOn(logger, "info").mockImplementation(() => {});
   });

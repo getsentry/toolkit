@@ -16,7 +16,7 @@ import {
   beforeEach,
   describe,
   expect,
-  type mock,
+  type Mock,
   test,
   vi,
   type MockInstance,
@@ -121,9 +121,7 @@ function createMockContext() {
 /**
  * Collect all output written to a mock write function.
  */
-function collectMockOutput(
-  writeMock: ReturnType<typeof mock<() => boolean>>,
-): string {
+function collectMockOutput(writeMock: Mock<Writer["write"]>): string {
   return writeMock.mock.calls
     .map((c) => {
       const arg = c[0];

@@ -64,7 +64,12 @@ import {
 } from "../../../src/lib/errors.js";
 import type { TimeRange } from "../../../src/lib/time-range.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import {
+  mockFetch,
+  useTestConfigDir,
+  at,
+  issueProject,
+} from "../../helpers.js";
 
 type ListFlags = {
   readonly query?: string;
@@ -143,7 +148,7 @@ function mockDefaultProject(url: string): Response | null {
 }
 
 /** Build a mock issue response */
-function mockIssue(overrides?: Record<string, unknown>) {
+function mockIssue(overrides: Partial<SentryIssue> = {}): SentryIssue {
   return {
     id: "123",
     shortId: "TEST-PROJECT-1",
@@ -950,7 +955,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     };
   }
 
-  const sampleIssue = {
+  const sampleIssue: SentryIssue = {
     id: "1",
     shortId: "PROJ-1",
     title: "Test Error",
@@ -962,7 +967,7 @@ describe("issue list: org-all mode (cursor pagination)", () => {
     lastSeen: "2025-01-01T00:00:00Z",
     firstSeen: "2025-01-01T00:00:00Z",
     level: "error",
-    project: { slug: "test-proj" },
+    project: issueProject("test-proj"),
   };
 
   beforeEach(async () => {
@@ -1305,7 +1310,7 @@ describe("issue list: Phase 2 budget redistribution", () => {
       firstSeen: "2025-01-01T00:00:00Z",
       level: "error",
       platform: "javascript",
-      project: { slug: "myproj" },
+      project: issueProject("myproj"),
     });
 
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -1494,7 +1499,7 @@ describe("issue list: compound cursor resume", () => {
 // ---------------------------------------------------------------------------
 
 describe("issue list: collapse parameter optimization", () => {
-  const sampleIssue = {
+  const sampleIssue: SentryIssue = {
     id: "1",
     shortId: "PROJ-1",
     title: "Test Error",
@@ -1506,7 +1511,7 @@ describe("issue list: collapse parameter optimization", () => {
     lastSeen: "2025-01-01T00:00:00Z",
     firstSeen: "2025-01-01T00:00:00Z",
     level: "error",
-    project: { slug: "test-proj" },
+    project: issueProject("test-proj"),
   };
 
   function createOrgAllContext() {
@@ -1757,7 +1762,7 @@ describe("issue list: multi-target cursor-safe budget", () => {
     return mockIssue({
       id: `${org}-${index}`,
       shortId: `${org.toUpperCase()}-${index}`,
-      project: { slug: "myproj" },
+      project: issueProject("myproj"),
     });
   }
 
@@ -1844,7 +1849,7 @@ describe("issue list: multi-target cursor-safe budget", () => {
       mockIssue({
         id,
         shortId: id.toUpperCase(),
-        project: { slug: "myproj" },
+        project: issueProject("myproj"),
         count: String(count),
         userCount: count,
         filtered: {
@@ -2038,7 +2043,6 @@ describe("parseSort", () => {
 
 describe("build400Detail", () => {
   const flags = {
-    query: undefined,
     period: parsePeriod("90d"),
     sort: "recommended" as const,
   };
@@ -2174,8 +2178,16 @@ describe("issue list: comma-separated project slugs", () => {
   test("looks up each slug and selects all IDs in one SDK request", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "web", shortId: "WEB-1", project: { slug: "web" } }),
-        mockIssue({ id: "api", shortId: "API-1", project: { slug: "api" } }),
+        mockIssue({
+          id: "web",
+          shortId: "WEB-1",
+          project: issueProject("web"),
+        }),
+        mockIssue({
+          id: "api",
+          shortId: "API-1",
+          project: issueProject("api"),
+        }),
       ],
       nextCursor: undefined,
     });
@@ -2198,8 +2210,8 @@ describe("issue list: comma-separated project slugs", () => {
   test("registers aliases that resolve from any directory", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
-        mockIssue({ id: "2", shortId: "API-1", project: { slug: "api" } }),
+        mockIssue({ id: "1", shortId: "WEB-1", project: issueProject("web") }),
+        mockIssue({ id: "2", shortId: "API-1", project: issueProject("api") }),
       ],
       nextCursor: undefined,
     });
@@ -2242,7 +2254,7 @@ describe("issue list: comma-separated project slugs", () => {
   test("resumes the cursor when the slugs are retyped in another order", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [
-        mockIssue({ id: "1", shortId: "WEB-1", project: { slug: "web" } }),
+        mockIssue({ id: "1", shortId: "WEB-1", project: issueProject("web") }),
       ],
       nextCursor: "1735689600:0:1",
     });
@@ -2300,7 +2312,7 @@ describe("issue list: comma-separated project slugs", () => {
       if (slug === "api") {
         throw new ApiError("Forbidden", 403);
       }
-      return catalog[0];
+      return at(catalog, 0);
     });
 
     const error = await func

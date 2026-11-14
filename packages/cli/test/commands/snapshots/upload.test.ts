@@ -10,7 +10,15 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import { uploadCommand } from "../../../src/commands/snapshots/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
@@ -68,7 +76,7 @@ const UPLOAD_OPTIONS = {
 
 describe("snapshots upload", () => {
   let existsSpy: ReturnType<typeof vi.spyOn>;
-  let putSpy: ReturnType<typeof vi.spyOn>;
+  let putSpy: MockInstance<(typeof objectstore)["putObjects"]>;
   let createSpy: ReturnType<typeof vi.spyOn>;
   let uploadOptionsSpy: ReturnType<typeof vi.spyOn>;
 
@@ -102,7 +110,7 @@ describe("snapshots upload", () => {
   /** Object keys passed to `putObjects` across all calls. */
   function uploadedKeys(): string[] {
     return putSpy.mock.calls.flatMap(([, uploads]) =>
-      (uploads as objectstore.ObjectUpload[]).map((u) => u.key),
+      uploads.map((u) => u.key),
     );
   }
 

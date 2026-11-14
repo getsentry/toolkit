@@ -8,7 +8,15 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import { gradleCommand } from "../../../src/commands/react-native/gradle.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
@@ -43,7 +51,7 @@ function createContext() {
 }
 
 describe("react-native gradle", () => {
-  let uploadSpy: ReturnType<typeof vi.spyOn>;
+  let uploadSpy: MockInstance<(typeof sourcemaps)["uploadSourcemaps"]>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "rn-gradle-"));
@@ -81,7 +89,7 @@ describe("react-native gradle", () => {
     await func.call(createContext().context, { bundle, sourcemap });
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
-    const opts = uploadSpy.mock.calls[0][0] as sourcemaps.UploadOptions;
+    const opts = at(uploadSpy.mock.calls, 0)[0];
     expect(opts.org).toBe("acme");
     expect(opts.project).toBe("mobile");
     expect(opts.release).toBeUndefined();
@@ -108,12 +116,10 @@ describe("react-native gradle", () => {
     });
 
     expect(uploadSpy).toHaveBeenCalledTimes(2);
-    const dists = uploadSpy.mock.calls.map(
-      (c) => (c[0] as sourcemaps.UploadOptions).dist,
-    );
+    const dists = uploadSpy.mock.calls.map((c) => c[0].dist);
     expect(dists).toEqual(["1000", "1001"]);
     for (const call of uploadSpy.mock.calls) {
-      expect((call[0] as sourcemaps.UploadOptions).release).toBe("1.0.0");
+      expect(call[0].release).toBe("1.0.0");
     }
   });
 
@@ -121,17 +127,17 @@ describe("react-native gradle", () => {
     const func = await loadCommand(gradleCommand);
 
     await func.call(createContext().context, { bundle, sourcemap });
-    expect(uploadSpy.mock.calls[0][0]).toMatchObject({ wait: false });
+    expect(at(uploadSpy.mock.calls, 0)[0]).toMatchObject({ wait: false });
 
     await func.call(createContext().context, { bundle, sourcemap, wait: true });
-    expect(uploadSpy.mock.calls[1][0]).toMatchObject({ wait: true });
+    expect(at(uploadSpy.mock.calls, 1)[0]).toMatchObject({ wait: true });
 
     await func.call(createContext().context, {
       bundle,
       sourcemap,
       "wait-for": 30,
     });
-    expect(uploadSpy.mock.calls[2][0]).toMatchObject({
+    expect(at(uploadSpy.mock.calls, 2)[0]).toMatchObject({
       wait: true,
       maxWaitMs: 30_000,
     });

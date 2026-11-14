@@ -6,7 +6,7 @@
  * release wrap+upload) can be exercised off-device.
  */
 
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncOptions, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,7 +92,7 @@ describe("react-native xcode", () => {
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv },
+        spawnOpts?: SpawnSyncOptions,
       ) => {
         const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {
@@ -171,7 +171,7 @@ describe("react-native xcode", () => {
         (
           _cmd: string,
           _args: readonly string[] | undefined,
-          spawnOpts?: { env?: NodeJS.ProcessEnv },
+          spawnOpts?: SpawnSyncOptions,
         ) => {
           const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
           if (reportPath) {
@@ -206,7 +206,7 @@ describe("react-native xcode", () => {
       (
         _cmd: string,
         _args: readonly string[] | undefined,
-        spawnOpts?: { env?: NodeJS.ProcessEnv },
+        spawnOpts?: SpawnSyncOptions,
       ) => {
         const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {

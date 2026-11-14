@@ -4,7 +4,11 @@ import { withEnv } from "../../../src/lib/env.js";
 import { ApiError, CliError, EXIT } from "../../../src/lib/errors.js";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
 import { useTestConfigDir, loadCommand } from "../../helpers.js";
-import { createMockServer, type MockServer } from "../../mocks/server.js";
+import {
+  createMockServer,
+  type MockServer,
+  type StaticResponseBody,
+} from "../../mocks/server.js";
 
 useTestConfigDir("test-games-leaderboard-");
 
@@ -29,7 +33,7 @@ async function run(
 
 async function withServer<T>(
   status: number,
-  body: unknown,
+  body: StaticResponseBody,
   fn: (server: MockServer) => Promise<T>,
 ): Promise<T> {
   const server = createMockServer([

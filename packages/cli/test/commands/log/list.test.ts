@@ -109,7 +109,12 @@ vi.mock("../../../src/lib/version-check.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as versionCheck from "../../../src/lib/version-check.js";
 import type { SentryLog, TraceLog } from "../../../src/types/sentry.js";
-import { loadCommand, at, must } from "../../helpers.js";
+import {
+  loadCommand,
+  at,
+  must,
+  passthroughWithProgress,
+} from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
@@ -185,19 +190,6 @@ function createMockContext() {
     stdoutWrite,
     stderrWrite,
   };
-}
-
-/** No-op setMessage callback for withProgress mock */
-function noop() {
-  // no-op for test
-}
-
-/** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
-function mockWithProgress(
-  _opts: unknown,
-  fn: (setMessage: () => void) => unknown,
-) {
-  return fn(noop);
 }
 
 /** Standard flags for non-follow batch mode (period omitted = use mode default) */
@@ -336,7 +328,7 @@ describe("listCommand.func — standard mode", () => {
     vi.spyOn(resolveTarget, "resolveLogProjectId").mockResolvedValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -562,7 +554,7 @@ describe("listCommand.func — trace mode", () => {
       .mockReturnValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -761,7 +753,7 @@ describe("listCommand.func — positional disambiguation", () => {
       .mockReturnValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -837,7 +829,7 @@ describe("listCommand.func — period flag", () => {
       .mockReturnValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -900,7 +892,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
       .mockReturnValue(undefined);
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -1205,7 +1197,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     await promise;
 
     // Each log should be written as a separate JSON object (streaming NDJSON)
-    const calls = stdoutWrite.mock.calls.map((c) => c[0]);
+    const calls = stdoutWrite.mock.calls.map((c) => String(c[0]));
     const jsonObjects = calls.filter((s: string) => {
       try {
         JSON.parse(s);
@@ -1457,7 +1449,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     sigint.trigger();
     await promise;
 
-    const calls = stdoutWrite.mock.calls.map((c) => c[0]);
+    const calls = stdoutWrite.mock.calls.map((c) => String(c[0]));
     const jsonLines = calls.filter((s: string) => {
       try {
         JSON.parse(s);
@@ -1552,7 +1544,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     // (trace-logs endpoint doesn't support it)
     const pollCall = at(listTraceLogsSpy.mock.calls, 1);
     expect(pollCall).toBeDefined();
-    expect(must(pollCall[2]).afterTimestamp).toBeUndefined();
+    expect(Reflect.get(must(pollCall[2]), "afterTimestamp")).toBeUndefined();
     expect(must(pollCall[2]).statsPeriod).toBe("10m");
   });
 

@@ -456,7 +456,7 @@ describe("Local control plane", () => {
       ["GET", "/envelopes/id"],
       ["POST", "/close"],
       ["POST", "/reset"],
-    ]) {
+    ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },

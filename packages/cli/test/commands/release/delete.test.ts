@@ -38,10 +38,10 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { loadCommand } from "../../helpers.js";
-import type { Writer } from "../../../src/types/index.js";
+import type { SentryRelease, Writer } from "../../../src/types/index.js";
 
 /** Minimal release shape returned by getRelease */
-const sampleRelease = {
+const sampleRelease: SentryRelease = {
   id: 1,
   version: "1.0.0",
   shortVersion: "1.0.0",

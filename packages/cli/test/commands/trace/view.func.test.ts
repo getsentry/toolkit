@@ -62,12 +62,33 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { TraceSpan } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, issueProject } from "../../helpers.js";
+import type { ReplayListItem } from "../../../src/types/replay.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // formatTraceView
 // ============================================================================
+
+/** A replay list row; trace view reads only its `id`. */
+function makeReplay(id: string): ReplayListItem {
+  return {
+    id,
+    count_errors: 0,
+    count_segments: 1,
+    duration: 1,
+    error_ids: [],
+    info_ids: [],
+    started_at: "2025-01-30T14:32:15+00:00",
+    tags: {},
+    project_id: "42",
+    trace_ids: [],
+    urls: [],
+    user: { display_name: "Test User" },
+    warning_ids: [],
+    releases: [],
+  };
+}
 
 describe("formatTraceView", () => {
   const mockSummary = {
@@ -561,7 +582,7 @@ describe("viewCommand.func", () => {
     }
 
     test("shows the stored replay ID without a hint", async () => {
-      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+      findTraceReplaySpy.mockResolvedValue(makeReplay(REPLAY_ID));
 
       const output = await renderHuman();
 
@@ -619,7 +640,7 @@ describe("viewCommand.func", () => {
     });
 
     test("selects replayId with --fields", async () => {
-      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+      findTraceReplaySpy.mockResolvedValue(makeReplay(REPLAY_ID));
 
       expect(await renderJson("replayId")).toEqual({ replayId: REPLAY_ID });
       expect(getDetailedTraceSpy).toHaveBeenCalledWith("test-org", TRACE_ID, {
@@ -841,11 +862,10 @@ describe("viewCommand.func", () => {
     const traceIdFromEvent = "eeee1111ffff2222aaaa3333bbbb4444";
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getIssueByShortIdSpy.mockResolvedValue({
-      platform: null,
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",
-      project: { slug: "test-project" },
+      project: issueProject("test-project"),
     });
     getLatestEventSpy.mockResolvedValue({
       eventID: "event-abc123",
@@ -874,11 +894,10 @@ describe("viewCommand.func", () => {
   test("auto-recovery throws ValidationError when event has no trace context", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getIssueByShortIdSpy.mockResolvedValue({
-      platform: null,
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",
-      project: { slug: "test-project" },
+      project: issueProject("test-project"),
     });
     getLatestEventSpy.mockResolvedValue({
       eventID: "event-abc123",

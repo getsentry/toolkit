@@ -42,7 +42,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // Sample test data
@@ -96,7 +96,9 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs JSON array when --json flag is set", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue(sampleRepos);
@@ -115,7 +117,9 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs empty JSON array when no repos found with --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue([]);
@@ -130,7 +134,9 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes 'No repositories found' when empty without --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue([]);
@@ -145,7 +151,9 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes header and rows for human output", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue(sampleRepos);
@@ -170,12 +178,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows count when results exceed limit", async () => {
     const manyRepos = Array.from({ length: 10 }, (_, i) => ({
-      ...sampleRepos[0],
+      ...at(sampleRepos, 0),
       id: String(i),
       name: `repo-${i}`,
     }));
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue(manyRepos);
@@ -190,7 +200,9 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows all repos when count is under limit", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-proj", orgSlug: "test-org" }],
+      projects: [
+        { id: "1", slug: "test-proj", name: "test-proj", orgSlug: "test-org" },
+      ],
       orgs: [],
     });
     listRepositoriesSpy.mockResolvedValue(sampleRepos);

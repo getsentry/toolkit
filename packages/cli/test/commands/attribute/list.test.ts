@@ -43,7 +43,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { useTestConfigDir, at } from "../../helpers.js";
+import { useTestConfigDir, at, must } from "../../helpers.js";
 
 useTestConfigDir("attribute-list-");
 
@@ -258,7 +258,7 @@ describe("fetchAttributeTypePage", () => {
     listSpy.mockImplementation(async (_org, options) => {
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page;
+      return must(page);
     });
 
     const page = await fetchAttributeTypePage(
@@ -505,7 +505,7 @@ describe("listCommand.func", () => {
       expect(options.perPage).toBe(2);
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page;
+      return must(page);
     });
     const collected: string[] = [];
     for (let index = 0; index < 5; index++) {

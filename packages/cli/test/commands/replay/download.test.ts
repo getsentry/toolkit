@@ -67,6 +67,7 @@ function sampleReplay(overrides: Partial<ReplayDetails> = {}): ReplayDetails {
     urls: [],
     user: { display_name: "Test User" },
     warning_ids: [],
+    releases: [],
     ...overrides,
   };
 }

@@ -45,9 +45,13 @@ vi.mock("node:child_process", async (importOriginal) => {
       options?: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
-      spawnCapture.env = options?.env;
+      if (options?.env === undefined) {
+        delete spawnCapture.env;
+      } else {
+        spawnCapture.env = options.env;
+      }
       spawnCapture.stdio = options?.stdio;
-      return actual.spawn(cmd, args as string[], options);
+      return actual.spawn(cmd, [...args], options ?? {});
     },
   };
 });
@@ -96,8 +100,8 @@ function makeContext(cwd?: string) {
 
 describe("sentry local run", () => {
   beforeEach(() => {
-    spawnCapture.args = undefined;
-    spawnCapture.env = undefined;
+    delete spawnCapture.args;
+    delete spawnCapture.env;
     spawnCapture.stdio = undefined;
   });
 

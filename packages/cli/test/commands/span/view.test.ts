@@ -48,6 +48,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parseTraceArgumentsInput } from "../../../src/lib/trace-target.js";
+import type { TraceSpan } from "../../../src/types/index.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const VALID_SPAN_ID = "a1b2c3d4e5f67890";
@@ -251,7 +252,7 @@ type ViewFunc = (
 ) => Promise<void>;
 
 /** Minimal trace span tree for testing */
-function makeTraceSpan(spanId: string, children: unknown[] = []): unknown {
+function makeTraceSpan(spanId: string, children: TraceSpan[] = []): TraceSpan {
   return {
     span_id: spanId,
     parent_span_id: null,
@@ -301,7 +302,7 @@ describe("viewCommand.func", () => {
       .spyOn(apiClient, "getSpanDetails")
       .mockResolvedValue({
         itemId: "mock-span",
-        itemType: "span",
+        timestamp: "2023-11-14T22:13:20.000Z",
         attributes: [],
       });
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");

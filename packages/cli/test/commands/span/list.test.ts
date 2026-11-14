@@ -59,9 +59,6 @@ import { at, must } from "../../helpers.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
-
 // Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
 // ============================================================================

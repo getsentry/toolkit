@@ -92,7 +92,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs JSON array when --json flag is set", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
@@ -111,7 +118,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs empty JSON array when no teams found with --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue([]);
@@ -126,7 +140,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes 'No teams found' when empty without --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue([]);
@@ -141,7 +162,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes header and rows for human output", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
@@ -171,7 +199,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
       name: `Team ${i}`,
     }));
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(manyTeams);
@@ -186,7 +221,14 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows all teams when count is under limit", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);

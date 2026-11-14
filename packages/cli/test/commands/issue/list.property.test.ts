@@ -23,10 +23,10 @@ import {
 import { describe, expect, test } from "vitest";
 import {
   __testing,
-  type IssueListResult,
-  type IssueWithOptions,
+  type IssueListFetchResult,
   type SortValue,
 } from "../../../src/commands/issue/list.js";
+import type { IssueTableRow } from "../../../src/lib/formatters/human.js";
 import type { SentryIssue } from "../../../src/types/index.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
@@ -50,9 +50,9 @@ const slugArb = array(
   { minLength: 1, maxLength: 12 },
 ).map((chars) => chars.join(""));
 
-/** Generates an IssueWithOptions for testing trimWithProjectGuarantee */
+/** Generates an IssueTableRow for testing trimWithProjectGuarantee */
 const issueWithOptionsArb = tuple(slugArb, slugArb).map(
-  ([org, proj]): IssueWithOptions => ({
+  ([org, proj]): IssueTableRow => ({
     issue: {
       id: `${Math.random()}`,
       shortId: `${proj.toUpperCase()}-1`,
@@ -80,9 +80,7 @@ const cursorValueArb = oneof(
 );
 
 /** Sort value arbitrary */
-const sortValueArb = constantFrom(...VALID_SORT_VALUES) as ReturnType<
-  typeof constantFrom<SortValue>
->;
+const sortValueArb = constantFrom<SortValue>(...VALID_SORT_VALUES);
 
 /** ISO date string arbitrary */
 const isoDateArb = integer({
@@ -451,7 +449,7 @@ describe("property: parseSort", () => {
 // --- buildProjectAliasMap ---
 
 describe("property: buildProjectAliasMap", () => {
-  function makeResult(org: string, project: string): IssueListResult {
+  function makeResult(org: string, project: string): IssueListFetchResult {
     return {
       target: { org, project, orgDisplay: org, projectDisplay: project },
       issues: [],

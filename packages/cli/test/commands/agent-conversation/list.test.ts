@@ -67,7 +67,7 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { ConversationListItem } from "../../../src/types/conversation.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, passthroughWithProgress } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
@@ -90,19 +90,6 @@ function createMockContext() {
     stdoutWrite,
     stderrWrite,
   };
-}
-
-/** No-op setMessage callback for withProgress mock */
-function noop() {
-  // no-op for test
-}
-
-/** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
-function mockWithProgress(
-  _opts: unknown,
-  fn: (setMessage: () => void) => unknown,
-) {
-  return fn(noop);
 }
 
 function makeConversation(
@@ -195,7 +182,7 @@ describe("listCommand.func", () => {
       .mockResolvedValue({ org: ORG });
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
     resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
       cursor: undefined,
       direction: "next" as const,

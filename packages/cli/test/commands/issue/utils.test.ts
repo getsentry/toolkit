@@ -14,6 +14,7 @@ import {
   resolveOrgAndIssueId,
 } from "../../../src/commands/issue/utils.js";
 import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
+import { parseIssueArgument } from "../../../src/lib/issue-arguments.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setCachedProject } from "../../../src/lib/db/project-cache.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
@@ -33,21 +34,22 @@ describe("mapIssueArgsConcurrently", () => {
   test("reports only partial failures", async () => {
     const failure = new Error("missing");
     const onError = vi.fn();
+    const missing = parseIssueArgument("missing");
 
     const result = await mapIssueArgsConcurrently(
-      ["missing", "found"],
+      [missing, parseIssueArgument("found")],
       async (issueArg) => {
-        if (issueArg === "missing") {
+        if (issueArg.text === "missing") {
           throw failure;
         }
-        return issueArg;
+        return issueArg.text;
       },
       onError,
     );
 
     expect(result).toEqual(["found"]);
     expect(onError).toHaveBeenCalledOnce();
-    expect(onError).toHaveBeenCalledWith("missing", failure);
+    expect(onError).toHaveBeenCalledWith(missing, failure);
   });
 
   test("rethrows total failure without emitting warnings", async () => {
@@ -57,9 +59,9 @@ describe("mapIssueArgsConcurrently", () => {
 
     await expect(
       mapIssueArgsConcurrently(
-        ["first", "second"],
+        [parseIssueArgument("first"), parseIssueArgument("second")],
         async (issueArg) => {
-          throw issueArg === "first" ? primary : secondary;
+          throw issueArg.text === "first" ? primary : secondary;
         },
         onError,
       ),

@@ -18,7 +18,6 @@ const originalPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
 
 function feedback(overrides: Partial<SentryFeedback> = {}): SentryFeedback {
   return {
-    platform: null,
     id: "1",
     shortId: "WEB-1",
     title: "User Feedback",
@@ -27,7 +26,7 @@ function feedback(overrides: Partial<SentryFeedback> = {}): SentryFeedback {
     status: "unresolved",
     hasSeen: false,
     firstSeen: "2026-07-16T12:00:00Z",
-    project: { id: "1", slug: "web", name: "Web" },
+    project: { id: "1", slug: "web", name: "Web", platform: null },
     metadata: { message: "Button | failed\nwith **markdown**" },
     ...overrides,
   };

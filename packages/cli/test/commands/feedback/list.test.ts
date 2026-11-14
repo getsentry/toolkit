@@ -44,7 +44,6 @@ function sampleFeedback(
   overrides: Partial<SentryFeedback> = {},
 ): SentryFeedback {
   return {
-    platform: null,
     id: "5146636313",
     shortId: "TEST-PROJECT-2SDJ",
     title: "User Feedback",
@@ -55,7 +54,12 @@ function sampleFeedback(
     firstSeen: "2026-07-16T12:00:00Z",
     permalink:
       "https://sentry.io/organizations/test-org/feedback/?feedbackSlug=test-project%3A5146636313",
-    project: { id: "42", slug: "test-project", name: "Test Project" },
+    project: {
+      id: "42",
+      slug: "test-project",
+      name: "Test Project",
+      platform: null,
+    },
     metadata: {
       message: "The checkout button does not work",
       name: "Ada",

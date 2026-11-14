@@ -58,7 +58,7 @@ import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, passthroughWithProgress } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
@@ -80,19 +80,6 @@ function createMockContext() {
     stdoutWrite,
     stderrWrite,
   };
-}
-
-/** No-op setMessage callback for withProgress mock */
-function noop() {
-  // no-op for test
-}
-
-/** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
-function mockWithProgress(
-  _opts: unknown,
-  fn: (setMessage: () => void) => unknown,
-) {
-  return fn(noop);
 }
 
 function makeSpan(
@@ -169,7 +156,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue({ org: ORG });
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {

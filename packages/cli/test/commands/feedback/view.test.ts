@@ -45,7 +45,6 @@ const EXTRA_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
 
 function feedback(): SentryFeedback {
   return {
-    platform: null,
     id: "5146636313",
     shortId: "TEST-PROJECT-2SDJ",
     title: "User Feedback",
@@ -56,7 +55,12 @@ function feedback(): SentryFeedback {
     firstSeen: "2026-07-16T12:00:00Z",
     permalink:
       "https://sentry.io/organizations/test-org/feedback/?feedbackSlug=test-project%3A5146636313",
-    project: { id: "42", slug: "test-project", name: "Test Project" },
+    project: {
+      id: "42",
+      slug: "test-project",
+      name: "Test Project",
+      platform: null,
+    },
     metadata: {
       message: "Checkout is broken\nPlease help",
       name: "Ada",

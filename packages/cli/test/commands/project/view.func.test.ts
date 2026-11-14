@@ -39,7 +39,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import type { ProjectKey, SentryProject } from "../../../src/types/sentry.js";
+import type { SentryProject } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
@@ -51,15 +51,6 @@ const sampleProject: SentryProject = {
   dateCreated: "2025-01-01T00:00:00.000Z",
   status: "active",
 };
-
-const _sampleKeys: ProjectKey[] = [
-  {
-    id: "key-1",
-    name: "Default",
-    dsn: { public: "https://abc123@o1.ingest.sentry.io/42" },
-    isActive: true,
-  },
-];
 
 function createMockContext() {
   const stdoutWrite = vi.fn<Writer["write"]>(() => true);
@@ -178,8 +169,8 @@ describe("viewCommand.func", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { ...sampleProject, slug: "frontend" },
     });
-    getProjectSpy.mockResolvedValue({ ...sampleProject, slug: "frontend" });
     tryGetPrimaryDsnSpy.mockResolvedValue(
       "https://abc123@o1.ingest.sentry.io/42",
     );
@@ -302,12 +293,12 @@ describe("viewCommand.func", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { ...sampleProject, slug: "frontend" },
     });
+    // The search already returned the project, so the DSN lookup is the
+    // only API call left on this path.
     const apiErr = new Error("403 Forbidden");
-    getProjectSpy.mockRejectedValue(apiErr);
-    tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42",
-    );
+    tryGetPrimaryDsnSpy.mockRejectedValue(apiErr);
 
     const { context } = createMockContext();
     const func = await loadCommand(viewCommand);

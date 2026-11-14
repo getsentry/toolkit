@@ -257,7 +257,11 @@ async function runExploreArgs(args: string[]) {
     ...context,
     process: {
       ...process,
-      stderr: { ...process.stderr, write: context.stderr.write },
+      // Keep the real stream's members but capture what Stricli writes.
+      stderr: new Proxy(process.stderr, {
+        get: (target, key) =>
+          key === "write" ? context.stderr.write : Reflect.get(target, key),
+      }),
       exitCode: undefined,
     },
   };

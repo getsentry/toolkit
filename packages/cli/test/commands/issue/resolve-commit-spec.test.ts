@@ -13,6 +13,7 @@ import { ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as gitLib from "../../../src/lib/git.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
+import { rejection } from "../../helpers.js";
 
 function makeRepo(overrides: Partial<SentryRepository>): SentryRepository {
   return {
@@ -173,11 +174,13 @@ describe("resolveCommitSpec — error messages are actionable", () => {
         makeRepo({ name: "getsentry/sentry" }),
       ]);
     try {
-      const err = await resolveCommitSpec(
-        { kind: "explicit", repository: "typo/repo", commit: "abc" },
-        "sentry",
-        "/tmp",
-      ).catch((e: Error) => e);
+      const err = await rejection(
+        resolveCommitSpec(
+          { kind: "explicit", repository: "typo/repo", commit: "abc" },
+          "sentry",
+          "/tmp",
+        ),
+      );
       expect(err).toBeInstanceOf(ValidationError);
       expect(err.message).toContain("getsentry/cli");
       expect(err.message).toContain("getsentry/sentry");

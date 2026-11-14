@@ -93,6 +93,7 @@ describe("listCommand.func", () => {
       urls: [],
       user: { display_name: "Test User" },
       warning_ids: [],
+      releases: [],
     },
   ];
 

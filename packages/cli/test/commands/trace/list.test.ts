@@ -58,9 +58,6 @@ import type { TransactionListItem } from "../../../src/types/sentry.js";
 import { loadCommand, at, must } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
-
 // ============================================================================
 // validateLimit (shared utility from arg-parsing.ts)
 // ============================================================================

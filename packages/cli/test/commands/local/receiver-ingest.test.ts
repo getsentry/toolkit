@@ -23,7 +23,7 @@ test.each([1, 2])(
     );
     expect(
       await ingestReceiverEnvelope(retention.buffer, {
-        body: Buffer.from(bodies[0]),
+        body: Buffer.from(at(bodies, 0)),
       }),
     ).toBe(204);
     const frames: { id?: string; data: string }[] = [];
