@@ -542,6 +542,9 @@ importers:
       '@sentry/mcp-server-tsconfig':
         specifier: workspace:*
         version: link:../../packages/mcp-server-tsconfig
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.3
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
