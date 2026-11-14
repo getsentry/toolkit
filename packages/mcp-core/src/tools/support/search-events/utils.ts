@@ -1518,6 +1518,17 @@ export function createValidateEventsSearchTool(options: {
       });
 
       if (validation.valid) {
+        // Sentry only validates RPC datasets. For others, such as errors, it
+        // returns valid with a dataset note and checks nothing else.
+        const skipped = validation.dataset.find(
+          (entry) => entry.valid && entry.error,
+        );
+        if (skipped) {
+          return {
+            valid: true,
+            message: `Search validation was skipped: ${skipped.error}. Fields, functions, and filters, including project:, were not checked. Use only fields from datasetAttributes and functions from the dataset guidance.`,
+          };
+        }
         return {
           valid: true,
           message: "Search validation passed.",

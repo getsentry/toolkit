@@ -86,6 +86,58 @@ describe("validateSearch tool contract", () => {
       result: { valid: true, message: "Search validation passed." },
     });
   });
+
+  it("says validation was skipped when Sentry cannot validate the dataset", async () => {
+    // Sentry returns this for datasets outside RPC_DATASETS, such as errors,
+    // without checking the project: filter or the latest() function below.
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          HttpResponse.json({
+            valid: true,
+            projects: [],
+            dataset: [
+              {
+                name: "errors",
+                valid: true,
+                error:
+                  "This dataset is not compatible with the validate endpoint, your request may still be valid",
+              },
+            ],
+            environment: [],
+            field: [],
+            query: { valid: true, error: null, fields: [] },
+            orderby: [],
+          }),
+      ),
+    );
+    const tool = createValidateEventsSearchTool({
+      apiService: new SentryApiService({ accessToken: "test-token" }),
+      organizationSlug: "test-org",
+    });
+    type ToolInput = Parameters<NonNullable<typeof tool.execute>>[0];
+    const schema = tool.inputSchema as z.ZodType<ToolInput>;
+    const input = schema.parse({
+      dataset: "errors",
+      query: "project:[checkout-api,checkout-worker]",
+      fields: ["issue", "latest(id)", "count()"],
+      sort: "-count()",
+    });
+
+    const result = await tool.execute!(input, {
+      toolCallId: "validate-search-skipped-test",
+      messages: [],
+    });
+
+    expect(result).toEqual({
+      result: {
+        valid: true,
+        message:
+          "Search validation was skipped: This dataset is not compatible with the validate endpoint, your request may still be valid. Fields, functions, and filters, including project:, were not checked. Use only fields from datasetAttributes and functions from the dataset guidance.",
+      },
+    });
+  });
 });
 
 describe("formatEventValue", () => {
