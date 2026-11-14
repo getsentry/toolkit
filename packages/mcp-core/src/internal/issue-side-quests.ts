@@ -25,6 +25,16 @@ export interface IssueSideQuestInput {
   sourceMapDebug?: SourceMapDebug;
 }
 
+/**
+ * The ids of the issue side quests. Analytics query them as span attributes
+ * and metric tags, so renaming one breaks dashboards.
+ */
+export const ISSUE_SIDE_QUEST_IDS = {
+  jsSourceMaps: "js_source_maps",
+  missingStackTrace: "missing_stack_trace",
+  missingUserIdentity: "missing_user_identity",
+} as const;
+
 const MAX_FILES = 3;
 
 const JS_SOURCE_MAPS_TROUBLESHOOTING_URL =
@@ -180,7 +190,7 @@ function detectJsSourceMapFailure({
   const fallback = `${matched.map(([, detail]) => detail.problem).join("; ")}. ${[...new Set(matched.map(([, detail]) => detail.fix))].join(" ")}`;
   const quest = (tip: string, details?: string[]): SideQuestCandidate => ({
     rank: 0,
-    id: "js_source_maps",
+    id: ISSUE_SIDE_QUEST_IDS.jsSourceMaps,
     tip,
     docs: JS_SOURCE_MAPS_TROUBLESHOOTING_URL,
     details,
@@ -314,7 +324,7 @@ function detectMissingUserIdentity({
 
   return {
     rank: 10,
-    id: "missing_user_identity",
+    id: ISSUE_SIDE_QUEST_IDS.missingUserIdentity,
     tip: `${problem} Call ${call} after sign-in; an opaque ID is enough.`,
     docs,
   };
@@ -522,7 +532,7 @@ export function hasReadableStack(event: Event): boolean {
 }
 
 function missingStackTrace(tip: string, docs: string): SideQuestCandidate {
-  return { rank: 5, id: "missing_stack_trace", tip, docs };
+  return { rank: 5, id: ISSUE_SIDE_QUEST_IDS.missingStackTrace, tip, docs };
 }
 
 /**
