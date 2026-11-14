@@ -4,6 +4,7 @@
   "private": true,
   "files": [
     "tsconfig.base.json",
+    "tsconfig.policy.json",
     "tsconfig.vite.json"
   ]
 }

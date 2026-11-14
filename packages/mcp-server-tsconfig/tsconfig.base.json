@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "Default",
-  "extends": "../../tsconfig.base.json",
+  "extends": "./tsconfig.policy.json",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "ES2024.String"],

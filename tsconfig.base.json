@@ -1,27 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  // Shared type-checking policy for every first-party TypeScript project.
-  // Projects extend this and set only their runtime: module resolution, lib,
-  // ambient types, JSX, and emit. Do not weaken these options in a project;
-  // scripts/tsconfig-policy.test.mjs fails when a project does.
-  "compilerOptions": {
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noUncheckedSideEffectImports": true,
-    "allowUnreachableCode": false,
-    "allowUnusedLabels": false,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "skipLibCheck": false
-  }
+  // The shared type-checking policy, for projects that do not use the MCP
+  // preset. See packages/mcp-server-tsconfig/tsconfig.policy.json.
+  "extends": "./packages/mcp-server-tsconfig/tsconfig.policy.json"
 }
