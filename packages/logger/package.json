@@ -60,8 +60,8 @@
     "build": "tsdown",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "test:package": "bash test/package/check.sh",
-    "tsc": "tsc --noEmit"
+    "test:package": "sh test/package/check.sh",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "catalog:",

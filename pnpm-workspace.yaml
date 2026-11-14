@@ -38,7 +38,7 @@ overrides:
   zod: ^4.6.6
 
 catalog:
-  "@ast-grep/cli": ^0.43.0
+  "@ast-grep/cli": ^0.51.2
   "@ai-sdk/anthropic": ^3.0.33
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
@@ -61,11 +61,11 @@ catalog:
   "@sentry/vite-plugin": ^4.6.1
   "@tailwindcss/typography": ^0.5.16
   "@tailwindcss/vite": ^4.3.3
-  "@types/node": ^22.15.33
+  "@types/node": ^22.20.3
   "@types/react": ^19.1.8
   "@types/react-dom": ^19.1.6
   "@vitejs/plugin-react": ^4.6.0
-  "@vitest/coverage-v8": ^5.0.5
+  "@vitest/coverage-v8": ~5.0.5
   agents: 0.32.0
   ai: ^6.0.64
   chalk: ^5.4.1
@@ -75,7 +75,7 @@ catalog:
   dotenv: ^16.6.1
   dotenv-cli: ^8.0.0
   hono: ^4.13.16
-  lint-staged: ^15.5.2
+  lint-staged: ^16.4.0
   lucide-react: ^0.503.0
   marked: ^15.0.12
   mdast-util-from-markdown: ^2.0.2
@@ -83,29 +83,42 @@ catalog:
   micromark-extension-gfm: ^3.0.0
   # Keep Dynamic Worker tests on the same Miniflare/workerd runtime as Wrangler.
   miniflare: 5.20261101.0-beta
-  msw: ^2.10.2
+  msw: ^2.15.0
   open: ^10.1.2
-  oxfmt: 0.72.0
-  oxlint: 1.87.0
-  oxlint-tsgolint: 7.0.2004
+  oxfmt: 0.78.0
+  oxlint: 1.93.0
+  oxlint-tsgolint: 7.0.2007
   react: ^19.2.8
   react-dom: ^19.2.8
   react-markdown: ^9.1.0
   remark-gfm: ^4.0.1
-  simple-git-hooks: ^2.13.1
+  simple-git-hooks: ^2.14.0
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.3.3
-  tsdown: ^0.12.9
-  tsx: ^4.20.3
+  tsdown: ^0.23.7
   tw-animate-css: ^1.3.4
-  typescript: ^5.9.3
+  typescript: ^7.0.2
+  # TypeScript 7 has no JavaScript compiler API. Scripts that parse or print
+  # TypeScript with it import this package instead; `tsc` stays on TypeScript 7.
+  "@typescript/typescript6": 6.0.2
   valibot: ^1.4.2
   vite: ^6.4.5
-  vitest: ^5.0.5
+  # Vitest 5.1's mocker calls AsyncLocalStorage.disable(), which workerd does
+  # not implement, so every mcp-cloudflare test that imports
+  # @sentry/cloudflare fails to load under @cloudflare/vitest-plugin 1.4.12.
+  # Plugin 1.7.0 shims it; raise both together.
+  vitest: ~5.0.5
   vitest-evals: ^0.18.0
   workers-mcp: 0.1.0-3
   wrangler: 4.156.1
   zod: ^4.6.6
+
+catalogs:
+  # `astro check` (@astrojs/check 0.9) supports TypeScript ^5 || ^6 only.
+  # Only apps/cli-docs uses this; move it to the default catalog once
+  # @astrojs/check supports TypeScript 7.
+  astro-check:
+    typescript: 6.0.3
 
 minimumReleaseAgeExclude:
   - "@ai-sdk/gateway@3.0.153"
@@ -129,46 +142,6 @@ minimumReleaseAgeExclude:
   - "@sentry/search-syntax@1.0.0"
   - "@sentry/server-runtime-injection@11.12.0"
   - "@sentry/server-utils@11.12.0"
-  - "@oxfmt/binding-android-arm-eabi@0.72.0"
-  - "@oxfmt/binding-android-arm64@0.72.0"
-  - "@oxfmt/binding-darwin-arm64@0.72.0"
-  - "@oxfmt/binding-darwin-x64@0.72.0"
-  - "@oxfmt/binding-freebsd-x64@0.72.0"
-  - "@oxfmt/binding-linux-arm-gnueabihf@0.72.0"
-  - "@oxfmt/binding-linux-arm-musleabihf@0.72.0"
-  - "@oxfmt/binding-linux-arm64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-arm64-musl@0.72.0"
-  - "@oxfmt/binding-linux-ppc64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-riscv64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-riscv64-musl@0.72.0"
-  - "@oxfmt/binding-linux-s390x-gnu@0.72.0"
-  - "@oxfmt/binding-linux-x64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-x64-musl@0.72.0"
-  - "@oxfmt/binding-openharmony-arm64@0.72.0"
-  - "@oxfmt/binding-win32-arm64-msvc@0.72.0"
-  - "@oxfmt/binding-win32-ia32-msvc@0.72.0"
-  - "@oxfmt/binding-win32-x64-msvc@0.72.0"
-  - "@oxlint/binding-android-arm-eabi@1.87.0"
-  - "@oxlint/binding-android-arm64@1.87.0"
-  - "@oxlint/binding-darwin-arm64@1.87.0"
-  - "@oxlint/binding-darwin-x64@1.87.0"
-  - "@oxlint/binding-freebsd-x64@1.87.0"
-  - "@oxlint/binding-linux-arm-gnueabihf@1.87.0"
-  - "@oxlint/binding-linux-arm-musleabihf@1.87.0"
-  - "@oxlint/binding-linux-arm64-gnu@1.87.0"
-  - "@oxlint/binding-linux-arm64-musl@1.87.0"
-  - "@oxlint/binding-linux-ppc64-gnu@1.87.0"
-  - "@oxlint/binding-linux-riscv64-gnu@1.87.0"
-  - "@oxlint/binding-linux-riscv64-musl@1.87.0"
-  - "@oxlint/binding-linux-s390x-gnu@1.87.0"
-  - "@oxlint/binding-linux-x64-gnu@1.87.0"
-  - "@oxlint/binding-linux-x64-musl@1.87.0"
-  - "@oxlint/binding-openharmony-arm64@1.87.0"
-  - "@oxlint/binding-win32-arm64-msvc@1.87.0"
-  - "@oxlint/binding-win32-ia32-msvc@1.87.0"
-  - "@oxlint/binding-win32-x64-msvc@1.87.0"
-  - oxfmt@0.72.0
-  - oxlint@1.87.0
   - "@sentry/api@2.0.0"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
