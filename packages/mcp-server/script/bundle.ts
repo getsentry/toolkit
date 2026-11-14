@@ -122,8 +122,12 @@ const result = await build({
   define: {
     SENTRY_CLI_VERSION: JSON.stringify(cliPkg.version),
     // Without it, the CLI falls back to its committed default client ID.
-    ...(process.env.SENTRY_CLIENT_ID
-      ? { SENTRY_CLIENT_ID_BUILD: JSON.stringify(process.env.SENTRY_CLIENT_ID) }
+    ...(process.env["SENTRY_CLIENT_ID"]
+      ? {
+          SENTRY_CLIENT_ID_BUILD: JSON.stringify(
+            process.env["SENTRY_CLIENT_ID"],
+          ),
+        }
       : {}),
     "process.env.NODE_ENV": JSON.stringify("production"),
     // Tree-shakes the SDK's runtime module hooks, which can't instrument a
