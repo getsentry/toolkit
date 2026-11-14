@@ -696,7 +696,7 @@ export async function executeImport(
 /** Parse a stored import record from JSON. Returns null on parse failure. */
 function parseImportRecord(raw: string): ImportRecord | null {
   try {
-    const parsed = JSON.parse(raw) as ImportRecord;
+    const parsed = JSON.parse(raw) as ImportRecord | null;
     if (!Array.isArray(parsed?.sources)) {
       log.debug("Import record has invalid sources field");
       return null;

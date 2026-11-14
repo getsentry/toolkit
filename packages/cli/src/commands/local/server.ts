@@ -828,7 +828,8 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
 ): Promise<"no-connection" | "connected-then-lost" | "retained"> {
-  let wasConnected = false;
+  // Widened: set in a callback, which control-flow narrowing cannot see.
+  let wasConnected = false as boolean;
   const augmented = {
     ...opts,
     onConnected: () => {
@@ -909,7 +910,8 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  // Widened: set in a callback, which control-flow narrowing cannot see.
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);

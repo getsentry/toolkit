@@ -99,6 +99,9 @@ const LEGACY_CACHE_FILE_SUFFIX = `-${PLATFORM}.bin`;
 /** The oldest Node major version {@link canLoadChunks} accepts. */
 const MIN_NODE_MAJOR = 22;
 
+/** Node before 20.12 has no `vm.constants`, so its loader may be missing. */
+const vmConstants: Partial<typeof constants> | undefined = constants;
+
 /**
  * Whether this runtime can run chunks with {@link createChunkLoader}. Without
  * `USE_MAIN_CONTEXT_DEFAULT_LOADER` (Node < 20.12), a chunk could not
@@ -113,7 +116,7 @@ export function canLoadChunks(
   return (
     versions.bun === undefined &&
     Number.parseInt(versions.node, 10) >= MIN_NODE_MAJOR &&
-    constants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
+    vmConstants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
   );
 }
 

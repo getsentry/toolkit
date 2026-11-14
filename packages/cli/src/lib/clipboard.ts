@@ -59,11 +59,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       stdio: ["pipe", "ignore", "ignore"],
     });
 
-    const { stdin } = proc;
-    if (stdin) {
-      stdin.write(text);
-      stdin.end();
-    }
+    proc.stdin.write(text);
+    proc.stdin.end();
 
     const exitCode = await new Promise<number>((resolve) => {
       proc.on("close", (code) => resolve(code ?? 1));
