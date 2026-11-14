@@ -1,18 +1,11 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "skipLibCheck": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["@codemod.com/jssg-types"],
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": true,
-    "strict": true,
-    "strictNullChecks": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true
+    "noEmit": true
   },
   "exclude": ["tests"]
 }
