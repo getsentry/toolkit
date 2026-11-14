@@ -27,9 +27,7 @@ function structured(result: unknown) {
 }
 
 const serverContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };

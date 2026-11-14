@@ -26,9 +26,7 @@ import getIssueDetails, {
 } from "./get-issue-details.js";
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -208,9 +206,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -856,9 +852,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1015,10 +1009,10 @@ describe("get_issue_details", () => {
       throw new Error("Expected string result");
     }
 
-    const performanceSection = result
+    const [beforeTags = ""] = result
       .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
-      .trim();
+      .split("### Tags");
+    const performanceSection = beforeTags.trim();
 
     expect(performanceSection).toMatchInlineSnapshot(`
       "### Repeated Database Queries
@@ -1105,10 +1099,10 @@ describe("get_issue_details", () => {
       throw new Error("Expected string result");
     }
 
-    const performanceSection = result
+    const [beforeTags = ""] = result
       .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
-      .trim();
+      .split("### Tags");
+    const performanceSection = beforeTags.trim();
 
     expect(performanceSection).toMatchInlineSnapshot(`
       "### Repeated Database Queries
@@ -1149,9 +1143,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1262,9 +1254,7 @@ describe("get_issue_details", () => {
           regionUrl: "https",
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1301,9 +1291,7 @@ describe("get_issue_details", () => {
           regionUrl: null,
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1332,9 +1320,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1453,9 +1439,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1496,9 +1480,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1551,9 +1533,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1614,9 +1594,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1827,9 +1805,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },

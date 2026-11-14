@@ -387,7 +387,7 @@ const params = {
 };
 
 const experimentalContext = {
-  constraints: { organizationSlug: undefined },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
   experimentalMode: true,

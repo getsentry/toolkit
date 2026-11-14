@@ -42,9 +42,7 @@ function expectReplayWithDeadClick(result: unknown) {
 }
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };

@@ -88,10 +88,10 @@ describe("applyDefaultOrganization", () => {
       requiredOrgTool,
       getServerContext(),
     );
-    expect(unscoped["organizationSlug"].safeParse(undefined).success).toBe(
+    expect(unscoped["organizationSlug"]?.safeParse(undefined).success).toBe(
       true,
     );
-    expect(unscoped["organizationSlug"].safeParse("").success).toBe(false);
+    expect(unscoped["organizationSlug"]?.safeParse("").success).toBe(false);
 
     const scoped = getFilteredInputSchema(
       requiredOrgTool,
@@ -277,14 +277,15 @@ describe("applyDefaultOrganization", () => {
           : HttpResponse.json({ detail: "Internal error" }, { status: 500 });
       }),
     );
+    const workCredential = { id: "work", accessToken: "work-token" };
     const credentials = [
-      { id: "work", accessToken: "work-token" },
+      workCredential,
       { id: "personal", accessToken: "personal-token" },
     ];
     const context = getServerContext({
       sentryHost: "sentry.io",
       credentialRouter: {
-        resolve: async () => credentials[0],
+        resolve: async () => workCredential,
         list: async () => credentials,
       },
     });
@@ -314,12 +315,13 @@ describe("applyDefaultOrganization", () => {
         ),
       ),
     );
+    const workCredential = { id: "work", accessToken: "work-token" };
     const credentials = [
-      { id: "work", accessToken: "work-token" },
+      workCredential,
       { id: "personal", accessToken: "personal-token" },
     ];
     const credentialRouter: CredentialRouter = {
-      resolve: async () => credentials[0],
+      resolve: async () => workCredential,
       list: async () => credentials,
     };
     const context = getServerContext({
