@@ -98,6 +98,7 @@ export function flattenAttribute(
   value: LogAttributeValue,
   depth = 1,
 ): void {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- JavaScript callers of this published package can pass null, and Object.keys(null) throws.
   if (typeof value !== "object" || value === null) {
     setField(target, key, value);
   } else if (depth > MAX_ATTRIBUTE_DEPTH) {
