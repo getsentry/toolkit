@@ -645,6 +645,9 @@ describe.each(["external", "inline"] as const)(
       // Turbopack's snippet after the same minification, which also folds
       // the inline registry initialization into a logical assignment.
       turbopackLogicalAssignment: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof global<\`u\`?global:typeof window<\`u\`?window:typeof self<\`u\`?self:{},t=new e.Error().stack;t&&((e._debugIds||={})[t]=\`${debugId}\`)}catch{}})();`,
+      // Emitted by the React Native Metro plugin, which registers on a bare
+      // global instead of a property of the global object.
+      reactNativeMetro: `var _sentryDebugIds,_sentryDebugIdIdentifier;void 0===_sentryDebugIds&&(_sentryDebugIds={});try{var stack=(new Error).stack;stack&&(_sentryDebugIds[stack]="${debugId}",_sentryDebugIdIdentifier="sentry-dbid-${debugId}")}catch(e){}`,
       // No minifier tested emits these two, but the registration check
       // accepts them, so they pin those branches.
       nullishAssignment: `(function(){var e=globalThis,t=new e.Error().stack;t&&((e._debugIds??={})[t]=\`${debugId}\`)})();`,
@@ -773,12 +776,14 @@ describe.each(["external", "inline"] as const)(
       },
     );
 
-    // Near misses of the template literal and logical assignment forms that
-    // do not register the ID, so injection must still happen.
+    // Near misses of the accepted forms that do not register the ID, so
+    // injection must still happen.
     const nearMisses: Record<string, string> = {
       interpolatedTemplate: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]=\`\${t}${debugId}\`;`,
       andAssignment: `var e=globalThis,t="s";try{(e._debugIds&&={})[t]=\`${debugId}\`}catch{}`,
       comparison: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]==\`${debugId}\`;`,
+      // A different identifier that only ends with the registry name.
+      longerIdentifier: `var my_sentryDebugIds={},t="s";my_sentryDebugIds[t]="${debugId}";`,
     };
 
     test.each(Object.keys(nearMisses))(
