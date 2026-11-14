@@ -522,12 +522,16 @@ export function buildSearchEventsInputSchema() {
  * search_traces, search_metrics, search_profiles). The dataset comes from the
  * tool, so there is no `dataset` parameter. Environment goes in the query.
  */
-export function buildDatasetSearchInputSchema({
-  queryDescription = "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
-}: { queryDescription?: string } = {}) {
+export function buildDatasetSearchInputSchema() {
   return {
     organizationSlug: ParamOrganizationSlug,
-    query: z.string().trim().optional().describe(queryDescription),
+    query: z
+      .string()
+      .trim()
+      .optional()
+      .describe(
+        "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
+      ),
     fields: z
       .array(z.string())
       .nullable()

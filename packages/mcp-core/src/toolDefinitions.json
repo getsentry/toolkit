@@ -12350,7 +12350,7 @@
           "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
         },
         "query": {
-          "description": "What to find, in natural language or Sentry search syntax. Put environment and release filters here. Regex filters are unquoted RE2: message://timeout \\d+ms//",
+          "description": "What to find, in natural language or Sentry search syntax. Put environment and release filters here. Regex filters are unquoted RE2: `message://timeout \\d+ms//`.",
           "type": "string"
         },
         "fields": {
