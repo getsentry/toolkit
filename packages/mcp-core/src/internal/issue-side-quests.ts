@@ -1,74 +1,32 @@
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import { z } from "zod";
 import type { Event, SourceMapDebug } from "../api-client/types";
-import { diagnoseSourceMaps } from "./source-map-diagnosis";
+import {
+  type SideQuest,
+  type SideQuestCandidate,
+  type SideQuestDetector,
+  MAX_DETAILS,
+  buildSideQuests,
+} from "./side-quests";
+import { diagnoseSourceMaps, formatFileList } from "./source-map-diagnosis";
+import type { ToolSession } from "./tool-helpers/tool-call-formatting";
 
 /**
- * Concerns are problems with the project's Sentry setup, such as missing
- * source maps, that are optional to fix but would make future issues easier to
- * debug. Detectors read the event and the checks already fetched for it in
- * `ConcernContext`, such as Sentry's source map debug result. When the problem
- * also changes how to read this event, the concern carries a one-line `caveat`
- * that renders next to the affected data.
+ * The side quests for an issue's event: setup problems, such as missing
+ * source maps, that would make future issues easier to debug. Detectors read
+ * the event and the checks already fetched for it, such as Sentry's source
+ * map debug result.
  *
- * To add one, write a detector that returns a `Concern` or null and add it to
- * `DETECTORS`. `buildConcerns` orders them by priority and keeps the first
- * `MAX_CONCERNS`.
+ * To add one, write a detector that returns a quest or null and add it to
+ * `DETECTORS`.
  */
-export const concernSchema = z.object({
-  code: z
-    .string()
-    .describe("Stable identifier of the problem, such as js_source_maps."),
-  title: z.string(),
-  message: z.string().describe("What is wrong and how to fix it."),
-  docsUrl: z.string(),
-  errorTypes: z
-    .array(z.string())
-    .describe("The Sentry event processing error types behind it."),
-  files: z
-    .array(z.string())
-    .describe("Affected files, capped; fileCount says how many there are."),
-  fileCount: z.number(),
-  diagnosis: z
-    .array(
-      z.object({
-        problem: z.string(),
-        fix: z.string(),
-        files: z.array(z.string()),
-      }),
-    )
-    .describe(
-      "Cause and fix for the affected files, from a Sentry check of this event. Empty when no check ran.",
-    ),
-  caveat: z
-    .string()
-    .nullable()
-    .describe("How the problem affects reading this event, when it does."),
-});
-
-export type Concern = z.output<typeof concernSchema>;
-
-const MAX_CONCERNS = 3;
-const MAX_FILES = 3;
-
-interface PrioritizedConcern {
-  /** Lower comes first. */
-  priority: number;
-  concern: Concern;
-}
-
-/** Optional checks fetched for the event; a detector works without them. */
-export interface ConcernContext {
+export interface IssueSideQuestInput {
+  event: Event;
+  /** Optional; a detector works without it. */
   sourceMapDebug?: SourceMapDebug;
 }
 
-type Detector = (
-  event: Event,
-  context: ConcernContext,
-) => PrioritizedConcern | null;
+const MAX_FILES = 3;
 
-const JS_SOURCE_MAPS_DOCS_URL =
-  "https://docs.sentry.io/platforms/javascript/sourcemaps/";
 const JS_SOURCE_MAPS_TROUBLESHOOTING_URL =
   "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/";
 
@@ -186,10 +144,18 @@ export function hasJsSourceMapErrors(event: Event): boolean {
   );
 }
 
-function detectJsSourceMapFailure(
-  event: Event,
-  { sourceMapDebug }: ConcernContext,
-): PrioritizedConcern | null {
+const NOT_APPLIED = "Source maps weren't applied";
+const MINIFIED = "so frames may be minified";
+
+/**
+ * Warns when Sentry could not apply source maps. With Sentry's source map
+ * check, the tip names each file's cause and fix; when causes differ by file,
+ * `details` lists them. Otherwise the error types' problems and fixes apply.
+ */
+function detectJsSourceMapFailure({
+  event,
+  sourceMapDebug,
+}: IssueSideQuestInput): SideQuestCandidate | null {
   const errorTypes = new Set<string>();
   // each affected file with the error types reported for it
   const files = new Map<string, Set<string>>();
@@ -210,38 +176,57 @@ function detectJsSourceMapFailure(
   const matched = [...JS_SOURCE_MAP_ERRORS].filter(([type]) =>
     errorTypes.has(type),
   );
-  const problems = matched.map(([, detail]) => detail.problem).join("; ");
+  // what the error types imply, for files the check does not explain
+  const fallback = `${matched.map(([, detail]) => detail.problem).join("; ")}. ${[...new Set(matched.map(([, detail]) => detail.fix))].join(" ")}`;
+  const quest = (tip: string, details?: string[]): SideQuestCandidate => ({
+    rank: 0,
+    id: "js_source_maps",
+    tip,
+    docs: JS_SOURCE_MAPS_TROUBLESHOOTING_URL,
+    details,
+  });
+
   const listed = new Map([...files].slice(0, MAX_FILES));
-  const listedFiles = [...listed.keys()];
   const diagnosis = sourceMapDebug
     ? diagnoseSourceMaps({ event, debug: sourceMapDebug, files: listed })
     : [];
-  // a diagnosis names the exact fix for its files; the error types' fix
-  // covers the rest, and events whose errors name no file
-  const fix =
-    countDiagnosedFiles(diagnosis) === files.size && files.size > 0
-      ? ""
-      : ` Fix: ${[...new Set(matched.map(([, detail]) => detail.fix))].join(" ")}`;
+  const diagnosed = new Set(diagnosis.flatMap((finding) => finding.files));
+  const undiagnosed = [...listed.keys()].filter((file) => !diagnosed.has(file));
+  const unlisted = files.size - listed.size;
 
-  return {
-    priority: 0,
-    concern: {
-      code: "js_source_maps",
-      title: "Fix JavaScript source maps",
-      message: `Sentry could not apply source maps to this event: ${problems}.${fix} Troubleshooting: ${JS_SOURCE_MAPS_TROUBLESHOOTING_URL}`,
-      docsUrl: JS_SOURCE_MAPS_DOCS_URL,
-      errorTypes: matched.map(([type]) => type),
-      files: listedFiles,
-      fileCount: files.size,
-      diagnosis,
-      caveat:
-        "Source maps were not applied to this event; frames may point to minified code. See Concerns Identified.",
-    },
-  };
-}
+  if (diagnosis.length === 0) {
+    const where =
+      files.size > 0
+        ? ` to ${formatFileList([...listed.keys()], unlisted)}`
+        : "";
+    return quest(`${NOT_APPLIED}${where}, ${MINIFIED}: ${fallback}`);
+  }
+  const [only] = diagnosis;
+  if (diagnosis.length === 1 && diagnosed.size === files.size) {
+    return quest(`${NOT_APPLIED}, ${MINIFIED}: ${only.problem}. ${only.fix}`);
+  }
 
-function countDiagnosedFiles(diagnosis: Concern["diagnosis"]): number {
-  return diagnosis.reduce((count, { files }) => count + files.length, 0);
+  // causes differ by file, or some files have no diagnosis. The remainder
+  // line takes the last slot under the details cap, so a cause past it joins
+  // the remainder instead of pushing the remainder out.
+  const hasRest = undiagnosed.length > 0 || unlisted > 0;
+  const shown = diagnosis.slice(0, hasRest ? MAX_DETAILS - 1 : MAX_DETAILS);
+  const details = shown.map(({ problem, fix }) => `${problem}. ${fix}`);
+  const restFiles = [
+    ...diagnosis.slice(shown.length).flatMap((finding) => finding.files),
+    ...undiagnosed,
+  ];
+  if (hasRest) {
+    const rest =
+      restFiles.length > 0
+        ? formatFileList(restFiles, unlisted)
+        : `${unlisted} more ${unlisted === 1 ? "file" : "files"}`;
+    details.push(`${rest}: ${fallback}`);
+  }
+  return quest(
+    `${NOT_APPLIED} to ${files.size} files, ${MINIFIED}; the cause differs by file.`,
+    details,
+  );
 }
 
 const JS_SET_USER = "Sentry.setUser({ id: user.id })";
@@ -294,7 +279,9 @@ function hasValue(value: string | null | undefined) {
  * (transactions), metric, cron, uptime, and other generic issues, and CSP
  * reports do not come from code that can identify a signed-in user.
  */
-function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
+function detectMissingUserIdentity({
+  event,
+}: IssueSideQuestInput): SideQuestCandidate | null {
   if (event.type !== "error" && event.type !== "default") {
     return null;
   }
@@ -309,29 +296,27 @@ function detectMissingUserIdentity(event: Event): PrioritizedConcern | null {
   const call = setUser
     ? inlineCode(setUser.call)
     : `${inlineCode(JS_SET_USER)} or your SDK's equivalent`;
+
+  // the JavaScript identify-user pages redirect to the SDK APIs page
+  const page =
+    setUser?.call === JS_SET_USER
+      ? "configuration/apis"
+      : "enriching-events/identify-user";
   // the generic page asks which platform to show
-  const docsUrl = setUser
-    ? `https://docs.sentry.io/platforms/${setUser.docs}/enriching-events/identify-user/`
+  const docs = setUser
+    ? `https://docs.sentry.io/platforms/${setUser.docs}/${page}/`
     : "https://docs.sentry.io/platform-redirect/?next=/enriching-events/identify-user/";
 
   const problem =
     hasValue(user?.ip_address) || hasValue(user?.ip)
-      ? "This event identifies the user only by IP address, so Users Impacted is approximate and you can't tell which signed-in users hit it."
-      : "This event has no user, so it doesn't count toward Users Impacted.";
+      ? "The user is identified only by IP, so Users Impacted is approximate."
+      : "The event has no user, so it doesn't count toward Users Impacted.";
 
   return {
-    priority: 10,
-    concern: {
-      code: "missing_user_identity",
-      title: "Identify users in events",
-      message: `${problem} Call ${call} after sign-in; an opaque internal ID is enough.`,
-      docsUrl,
-      errorTypes: [],
-      files: [],
-      fileCount: 0,
-      diagnosis: [],
-      caveat: null,
-    },
+    rank: 10,
+    id: "missing_user_identity",
+    tip: `${problem} Call ${call} after sign-in; an opaque ID is enough.`,
+    docs,
   };
 }
 
@@ -536,26 +521,8 @@ export function hasReadableStack(event: Event): boolean {
   return hasStackFrames(event) && !isCrossOriginScriptError(event);
 }
 
-function missingStackTrace(
-  title: string,
-  message: string,
-  docsUrl: string,
-): PrioritizedConcern {
-  return {
-    priority: 5,
-    concern: {
-      code: "missing_stack_trace",
-      title,
-      message,
-      docsUrl,
-      errorTypes: [],
-      files: [],
-      fileCount: 0,
-      diagnosis: [],
-      // the missing stack is already plain in Event Details
-      caveat: null,
-    },
-  };
+function missingStackTrace(tip: string, docs: string): SideQuestCandidate {
+  return { rank: 5, id: "missing_stack_trace", tip, docs };
 }
 
 /**
@@ -569,13 +536,14 @@ function missingStackTrace(
  *
  * Only error and default (message) events are checked, as for user identity.
  */
-function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
+function detectMissingStackTrace({
+  event,
+}: IssueSideQuestInput): SideQuestCandidate | null {
   if (event.type !== "error" && event.type !== "default") {
     return null;
   }
   if (isCrossOriginScriptError(event)) {
     return missingStackTrace(
-      "Allow cross-origin script errors",
       `The browser hid this error's message and stack because the script came from another origin. Add ${inlineCode('crossorigin="anonymous"')} to its ${inlineCode("<script>")} tag and serve the script with an ${inlineCode("Access-Control-Allow-Origin")} header.`,
       `${JS_TROUBLESHOOTING_URL}#cors-attributes-and-headers`,
     );
@@ -587,7 +555,6 @@ function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
     getEventMessages(event).some((message) => NON_ERROR_VALUE.test(message))
   ) {
     return missingStackTrace(
-      "Throw Error objects",
       `The code threw or rejected with a value that is not an ${inlineCode("Error")}, so there was no stack to capture. Wrap the value in ${inlineCode("new Error(...)")} where it is thrown or rejected.`,
       `${JS_TROUBLESHOOTING_URL}#events-with-non-error-exception`,
     );
@@ -608,7 +575,6 @@ function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
     }
     // the logger name is upstream data, so it is quoted with inlineCode
     return missingStackTrace(
-      "Log errors with their exception",
       `This event came from the ${inlineCode(logger)} logger with no exception attached. ${logging.fix}`,
       logging.docsUrl,
     );
@@ -619,66 +585,21 @@ function detectMissingStackTrace(event: Event): PrioritizedConcern | null {
     return null;
   }
   return missingStackTrace(
-    "Capture errors with a stack trace",
     `This event was captured as a message, which has no stack trace. Report caught errors with ${inlineCode(message.capture)} instead, or set ${inlineCode(message.option)} to attach the current stack to messages.`,
     message.docsUrl,
   );
 }
 
-const DETECTORS: readonly Detector[] = [
+const DETECTORS: readonly SideQuestDetector<IssueSideQuestInput>[] = [
   detectJsSourceMapFailure,
   detectMissingStackTrace,
   detectMissingUserIdentity,
 ];
 
-/** The concerns an event points to, most important first. */
-export function buildConcerns(
-  event: Event,
-  context: ConcernContext = {},
-): Concern[] {
-  return DETECTORS.flatMap((detect) => {
-    const result = detect(event, context);
-    return result ? [result] : [];
-  })
-    .sort((a, b) => a.priority - b.priority)
-    .slice(0, MAX_CONCERNS)
-    .map((result) => result.concern);
-}
-
-/** One warning line per caveat, to render before the data they affect. */
-export function formatConcernCaveats(concerns: Concern[]): string {
-  const caveats = concerns.flatMap(({ caveat }) =>
-    caveat ? [`⚠️ ${caveat}\n\n`] : [],
-  );
-  return caveats.join("");
-}
-
-/** The `## Concerns Identified` markdown section, or an empty string. */
-export function formatConcernsSection(concerns: Concern[]): string {
-  if (concerns.length === 0) {
-    return "";
-  }
-  let output = "## Concerns Identified\n\n";
-  output +=
-    "Optional fixes that would make future issues easier to debug. They are not needed to investigate this issue.\n\n";
-  for (const concern of concerns) {
-    // messages are built from constants, and the diagnosis quotes upstream
-    // values with inlineCode, so neither needs escaping here
-    output += `- **${concern.title}**: ${concern.message}\n`;
-    for (const { problem, fix, files } of concern.diagnosis) {
-      output += `  - ${files.map(inlineCode).join(", ")}: ${problem}. Fix: ${fix}\n`;
-    }
-    if (
-      concern.files.length > 0 &&
-      countDiagnosedFiles(concern.diagnosis) < concern.fileCount
-    ) {
-      const more =
-        concern.fileCount > concern.files.length
-          ? ` (and ${concern.fileCount - concern.files.length} more)`
-          : "";
-      output += `  - Affected files: ${concern.files.map(inlineCode).join(", ")}${more}\n`;
-    }
-    output += `  - Docs: ${concern.docsUrl}\n`;
-  }
-  return `${output}\n`;
+/** The side quests an issue's event points to, most useful first. */
+export function buildIssueSideQuests(
+  input: IssueSideQuestInput,
+  session: ToolSession,
+): SideQuest[] | undefined {
+  return buildSideQuests(input, DETECTORS, session);
 }

@@ -14,7 +14,8 @@ import type {
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
-import { buildConcerns, concernSchema } from "../../internal/concerns";
+import { buildIssueSideQuests } from "../../internal/issue-side-quests";
+import { sideQuestsSchema } from "../../internal/side-quests";
 import {
   dedupeReplayIds,
   getMetricAlertContext,
@@ -39,6 +40,7 @@ import {
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import { structuredResult } from "../../internal/tool-helpers/results";
+import type { ToolSession } from "../../internal/tool-helpers/tool-call-formatting";
 import {
   MAX_SUGGESTED_ACTIONS,
   type SuggestedToolAction,
@@ -153,12 +155,8 @@ export const getIssueDetailsOutputSchema = z.object({
       }),
     )
     .nullable(),
-  concerns: z
-    .array(concernSchema)
-    .describe(
-      "Setup problems, such as missing source maps, that are optional to fix but would make future issues easier to debug.",
-    ),
   suggestedActions: z.array(suggestedToolActionSchema),
+  sideQuests: sideQuestsSchema,
 });
 
 export type GetIssueDetailsPayload = z.output<
@@ -231,6 +229,12 @@ function buildIssueDetailsPayload({
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
   const suspectCommit = getSuspectCommit(committers);
+  const session = {
+    experimentalMode: experimentalMode ?? false,
+    availableToolNames,
+    directToolNames,
+  };
+  const sideQuests = buildIssueSideQuests({ event, sourceMapDebug }, session);
 
   return {
     issue: {
@@ -304,19 +308,16 @@ function buildIssueDetailsPayload({
           spanId: conversation.spanId ?? null,
         }))
       : null,
-    concerns: buildConcerns(event, { sourceMapDebug }),
     suggestedActions: buildIssueSuggestedActions({
       organizationSlug,
       issue,
       event,
       apiService,
       aiConversations,
-      session: {
-        experimentalMode: experimentalMode ?? false,
-        availableToolNames,
-        directToolNames,
-      },
+      session,
     }),
+    // omitted, not empty, when there are none
+    ...(sideQuests && { sideQuests }),
   };
 }
 
@@ -346,11 +347,7 @@ function buildIssueSuggestedActions({
   event: Event;
   apiService: SentryApiService;
   aiConversations?: AIConversationReference[];
-  session: {
-    experimentalMode: boolean;
-    availableToolNames?: ReadonlySet<string>;
-    directToolNames?: ReadonlySet<string>;
-  };
+  session: ToolSession;
 }): SuggestedToolAction[] {
   const candidates: Array<SuggestedToolAction | null> = [];
   const metricAlertContext = getMetricAlertContext(event);
