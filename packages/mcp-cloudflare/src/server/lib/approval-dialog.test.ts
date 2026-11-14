@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { signState } from "../oauth/state";
 import {
   getRememberedSkillsForClient,
@@ -31,6 +31,13 @@ function extractCookiePair(setCookie: string, cookieName: string): string {
   const rest = setCookie.slice(start);
   const end = rest.indexOf(";");
   return end === -1 ? rest : rest.slice(0, end);
+}
+
+/** Returns the signed state embedded in the approval form. */
+function extractSignedState(html: string): string {
+  const state = html.match(/name="state" value="([^"]+)"/)?.[1];
+  assert(state, "approval form should include a signed state");
+  return state;
 }
 
 describe("approval-dialog", () => {
@@ -235,12 +242,11 @@ describe("approval-dialog", () => {
       const html = await response.text();
 
       // Extract the signed state from the HTML form
-      const stateMatch = html.match(/name="state" value="([^"]+)"/);
-      expect(stateMatch).toBeTruthy();
-      const signedState = stateMatch![1];
+      const signedState = extractSignedState(html);
 
       // Step 2: Tamper with the state (try to change clientId)
       const [sig, b64] = signedState.split(".");
+      assert(sig && b64, "signed state should be <signature>.<payload>");
       const payload = JSON.parse(atob(b64));
 
       // Modify the clientId to a malicious one
@@ -319,8 +325,7 @@ describe("approval-dialog", () => {
       );
 
       const html = await response.text();
-      const stateMatch = html.match(/name="state" value="([^"]+)"/);
-      const encodedState = stateMatch![1];
+      const encodedState = extractSignedState(html);
 
       // Step 2: Submit valid form
       const formData = new FormData();
@@ -360,8 +365,7 @@ describe("approval-dialog", () => {
         },
       );
       const html = await response.text();
-      const stateMatch = html.match(/name="state" value="([^"]+)"/);
-      const encodedState = stateMatch![1];
+      const encodedState = extractSignedState(html);
 
       const formData = new FormData();
       formData.append("state", encodedState);
@@ -541,8 +545,7 @@ describe("approval-dialog", () => {
       );
 
       const html = await response.text();
-      const stateMatch = html.match(/name="state" value="([^"]+)"/);
-      const signedState = stateMatch![1];
+      const signedState = extractSignedState(html);
 
       // Try to verify with different secret
       const formData = new FormData();

@@ -4,6 +4,7 @@
  * The Cloudflare Vitest plugin configures Miniflare's `outboundService`
  * centrally from vitest.config.ts so test files do not need per-file setup.
  */
+import type { Headers as UndiciHeaders, MockAgent } from "undici";
 import {
   autofixStateFixture,
   clientKeyFixture,
@@ -45,14 +46,21 @@ function normalizeQuery(query: string | null): string | null {
   return query ? query.split(" ").sort().join(" ") : query;
 }
 
+// Request headers as undici's MockAgent hands them to reply callbacks.
+type MockRequestHeaders = UndiciHeaders | Record<string, string>;
+
+function isHeaders(headers: MockRequestHeaders): headers is UndiciHeaders {
+  return "get" in headers && typeof headers.get === "function";
+}
+
 function getMockRequestHeader(
-  headers: Headers | Record<string, string> | undefined,
+  headers: MockRequestHeaders | undefined,
   name: string,
 ): string | null {
   if (!headers) {
     return null;
   }
-  if ("get" in headers && typeof headers.get === "function") {
+  if (isHeaders(headers)) {
     return headers.get(name);
   }
 
@@ -75,23 +83,6 @@ const VALID_ERROR_EVENT_QUERIES = new Set<string | null>(
 
 let fetchMockConfigured = false;
 
-export type FetchMockLike = {
-  activate(): void;
-  disableNetConnect(): void;
-  get(origin: string): {
-    intercept(options: Record<string, unknown>): {
-      reply(
-        statusCode: number,
-        body: unknown,
-        options?: Record<string, unknown>,
-      ): {
-        persist(): void;
-      };
-    };
-  };
-  assertNoPendingInterceptors?(): void;
-};
-
 /**
  * Register outbound interceptors on a MockAgent-like object.
  *
@@ -99,7 +90,7 @@ export type FetchMockLike = {
  * (first match wins). Always register specific path handlers BEFORE
  * general pattern handlers to ensure correct matching.
  */
-export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
+export function registerFetchMockInterceptors(fetchMock: MockAgent) {
   if (fetchMockConfigured) {
     return;
   }
@@ -144,7 +135,10 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
     if (host === "https://direct-token.test") {
       pool
         .intercept({ path: "/api/0/auth/" })
-        .reply((req) => {
+        // Without the explicit TData, branch-specific data types make no reply()
+        // overload match (TS2769), so the default type argument is required here.
+        // oxlint-disable-next-line typescript/no-unnecessary-type-arguments
+        .reply<object>((req) => {
           const authorization = getMockRequestHeader(
             req.headers,
             "authorization",
@@ -443,7 +437,10 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
             "/api/0/organizations/sentry-mcp-evals/trace-items/attributes/",
           ),
       })
-      .reply((req) => {
+      // Without the explicit TData, branch-specific data types make no reply()
+      // overload match (TS2769), so the default type argument is required here.
+      // oxlint-disable-next-line typescript/no-unnecessary-type-arguments
+      .reply<object>((req) => {
         const url = new URL(req.path, "https://sentry.io");
         const itemType = url.searchParams.get("itemType");
         const attributeType = url.searchParams.get("attributeType");
@@ -538,7 +535,10 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
         path: (p: string) =>
           p.startsWith("/api/0/organizations/sentry-mcp-evals/events/"),
       })
-      .reply((req) => {
+      // Without the explicit TData, branch-specific data types make no reply()
+      // overload match (TS2769), so the default type argument is required here.
+      // oxlint-disable-next-line typescript/no-unnecessary-type-arguments
+      .reply<object>((req) => {
         const url = new URL(req.path, "https://sentry.io");
         const dataset = url.searchParams.get("dataset");
         const query = url.searchParams.get("query");
