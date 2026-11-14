@@ -28,7 +28,7 @@ const allSkills = Object.keys(SKILLS) as Skill[];
 
 const context: ServerContext = {
   accessToken,
-  sentryHost: process.env.SENTRY_HOST ?? "sentry.io",
+  sentryHost: process.env["SENTRY_HOST"] ?? "sentry.io",
   grantedSkills: new Set<Skill>(allSkills),
   constraints: {
     organizationSlug: null,

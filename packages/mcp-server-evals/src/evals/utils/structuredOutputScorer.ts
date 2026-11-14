@@ -1,7 +1,20 @@
 import type { Score, ScoreFn, BaseScorerOptions } from "vitest-evals/legacy";
 
 interface StructuredOutputScorerOptions extends BaseScorerOptions {
-  expected?: Record<string, any>;
+  expected?: Record<string, unknown>;
+}
+
+type MatchFn = (expected: unknown, actual: unknown, key: string) => boolean;
+
+/** A custom validator an expected value can be, under fuzzy matching. */
+type Validator = (actual: unknown) => unknown;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isValidator(value: unknown): value is Validator {
+  return typeof value === "function";
 }
 
 interface StructuredOutputScorerConfig {
@@ -12,10 +25,7 @@ interface StructuredOutputScorerConfig {
    * - Custom function: Your own comparison logic
    * @default "strict"
    */
-  match?:
-    | "strict"
-    | "fuzzy"
-    | ((expected: any, actual: any, key: string) => boolean);
+  match?: "strict" | "fuzzy" | MatchFn;
 
   /**
    * Whether all expected fields must be present for a passing score
@@ -102,9 +112,10 @@ export function StructuredOutputScorer(
       }
     }
 
-    let parsed: Record<string, any>;
+    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(output);
+      const value: unknown = JSON.parse(output);
+      parsed = isRecord(value) ? value : {};
     } catch (error) {
       return {
         score: 0,
@@ -115,10 +126,13 @@ export function StructuredOutputScorer(
     }
 
     // Check for error field in output
-    if (parsed.error && parsed.error !== "" && parsed.error !== null) {
+    const outputError = parsed["error"];
+    if (outputError) {
       return {
         score: 0,
-        metadata: { rationale: `Output contains error: ${parsed.error}` },
+        metadata: {
+          rationale: `Output contains error: ${typeof outputError === "string" ? outputError : formatValue(outputError)}`,
+        },
       };
     }
 
@@ -187,7 +201,7 @@ export function StructuredOutputScorer(
 
 function getMatchFunction(
   match: StructuredOutputScorerConfig["match"],
-): (expected: any, actual: any, key: string) => boolean {
+): MatchFn {
   if (typeof match === "function") {
     return match;
   }
@@ -199,19 +213,19 @@ function getMatchFunction(
   return strictMatch;
 }
 
-function strictMatch(expected: any, actual: any): boolean {
+function strictMatch(expected: unknown, actual: unknown): boolean {
   return JSON.stringify(expected) === JSON.stringify(actual);
 }
 
-function fuzzyMatch(expected: any, actual: any): boolean {
+function fuzzyMatch(expected: unknown, actual: unknown): boolean {
   // Handle regex patterns
   if (expected instanceof RegExp) {
     return typeof actual === "string" && expected.test(actual);
   }
 
   // Handle functions (custom validators)
-  if (typeof expected === "function") {
-    return expected(actual);
+  if (isValidator(expected)) {
+    return Boolean(expected(actual));
   }
 
   // Handle null/undefined (intentionally using == for null/undefined check)
@@ -226,12 +240,14 @@ function fuzzyMatch(expected: any, actual: any): boolean {
 
   // Handle arrays
   if (Array.isArray(expected) && Array.isArray(actual)) {
-    if (expected.length !== actual.length) return false;
-    return expected.every((exp, i) => fuzzyMatch(exp, actual[i]));
+    const expectedItems: unknown[] = expected;
+    const actualItems: unknown[] = actual;
+    if (expectedItems.length !== actualItems.length) return false;
+    return expectedItems.every((exp, i) => fuzzyMatch(exp, actualItems[i]));
   }
 
   // Handle objects
-  if (typeof expected === "object" && typeof actual === "object") {
+  if (isRecord(expected) && isRecord(actual)) {
     return Object.keys(expected).every((key) =>
       fuzzyMatch(expected[key], actual[key]),
     );
@@ -243,15 +259,15 @@ function fuzzyMatch(expected: any, actual: any): boolean {
 }
 
 interface ComparisonResult {
-  matches: Array<{ key: string; expected: any; actual: any }>;
-  mismatches: Array<{ key: string; expected: any; actual: any }>;
+  matches: Array<{ key: string; expected: unknown; actual: unknown }>;
+  mismatches: Array<{ key: string; expected: unknown; actual: unknown }>;
   extras: string[];
 }
 
 function compareObjects(
-  expected: Record<string, any>,
-  actual: Record<string, any>,
-  matchFn: (expected: any, actual: any, key: string) => boolean,
+  expected: Record<string, unknown>,
+  actual: Record<string, unknown>,
+  matchFn: MatchFn,
 ): ComparisonResult {
   const matches: ComparisonResult["matches"] = [];
   const mismatches: ComparisonResult["mismatches"] = [];
@@ -274,11 +290,21 @@ function compareObjects(
   return { matches, mismatches, extras };
 }
 
-function formatValue(value: any): string {
+function formatValue(value: unknown): string {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
   if (value instanceof RegExp) return value.toString();
   if (typeof value === "string") return `"${value}"`;
   if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  if (typeof value === "function" || typeof value === "symbol") {
+    return value.toString();
+  }
+  return "";
 }

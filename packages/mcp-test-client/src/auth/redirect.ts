@@ -32,10 +32,10 @@ export interface OAuthRedirect {
 export function resolveOAuthRedirect(
   env: NodeJS.ProcessEnv = process.env,
 ): OAuthRedirect {
-  const port = resolvePort(env.MCP_OAUTH_PORT);
-  const host = env.MCP_OAUTH_HOST?.trim() || DEFAULT_OAUTH_CALLBACK_HOST;
+  const port = resolvePort(env["MCP_OAUTH_PORT"]);
+  const host = env["MCP_OAUTH_HOST"]?.trim() || DEFAULT_OAUTH_CALLBACK_HOST;
   const redirectUri =
-    resolveRedirectUri(env.MCP_OAUTH_REDIRECT_URI) ??
+    resolveRedirectUri(env["MCP_OAUTH_REDIRECT_URI"]) ??
     `http://localhost:${port}/callback`;
 
   return { port, host, redirectUri };

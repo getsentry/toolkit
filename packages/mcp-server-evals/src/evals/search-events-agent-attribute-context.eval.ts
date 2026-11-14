@@ -12,8 +12,11 @@ import "../setup-env";
 //
 // This service forces the context on or off for every attributes request.
 class AttributeContextApiService extends SentryApiService {
-  constructor(private readonly attributeContext: boolean) {
+  private readonly attributeContext: boolean;
+
+  constructor(attributeContext: boolean) {
     super({ accessToken: "test-token" });
+    this.attributeContext = attributeContext;
   }
 
   override listTraceItemAttributes(
@@ -227,7 +230,7 @@ describeEval("search-events-agent-attributes-without-context", {
 
     return {
       result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call: any) => ({
+      toolCalls: agentResult.toolCalls.map((call) => ({
         name: call.toolName,
         arguments: call.args,
       })),
@@ -476,7 +479,7 @@ describeEval("search-events-agent-attributes-with-context", {
 
     return {
       result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call: any) => ({
+      toolCalls: agentResult.toolCalls.map((call) => ({
         name: call.toolName,
         arguments: call.args,
       })),

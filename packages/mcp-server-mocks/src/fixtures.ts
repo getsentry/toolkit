@@ -39,35 +39,35 @@ type DeepPartial<T> = T extends object
     }
   : T;
 
+// Tests override and read fields these JSON files lack (exception entries,
+// extra evidence keys), so the factories stay loosely typed on purpose.
+// oxlint-disable-next-line typescript/no-explicit-any -- deliberate escape hatch for test fixture builders
+type LooseFixture = any;
+
 // Internal baseline fixtures (not exported - use factory functions instead)
-const defaultEventFixture = defaultEventFixtureJson as any;
-const genericEventFixture = genericEventFixtureJson as any;
-const unknownEventFixture = unknownEventFixtureJson as any;
-const performanceIssueFixture = performanceIssueFixtureJson as any;
-const regressedIssueFixture = regressedIssueFixtureJson as any;
-const unsupportedIssueFixture = unsupportedIssueFixtureJson as any;
-const performanceEventFixture = performanceEventFixtureJson as any;
-const cspIssueFixture = cspIssueFixtureJson as any;
-const cspEventFixture = cspEventFixtureJson as any;
-const feedbackIssueFixture = feedbackIssueFixtureJson as any;
+const defaultEventFixture: LooseFixture = defaultEventFixtureJson;
+const genericEventFixture: LooseFixture = genericEventFixtureJson;
+const unknownEventFixture: LooseFixture = unknownEventFixtureJson;
+const performanceIssueFixture: LooseFixture = performanceIssueFixtureJson;
+const regressedIssueFixture: LooseFixture = regressedIssueFixtureJson;
+const unsupportedIssueFixture: LooseFixture = unsupportedIssueFixtureJson;
+const performanceEventFixture: LooseFixture = performanceEventFixtureJson;
+const cspIssueFixture: LooseFixture = cspIssueFixtureJson;
+const cspEventFixture: LooseFixture = cspEventFixtureJson;
+const feedbackIssueFixture: LooseFixture = feedbackIssueFixtureJson;
 
 /**
  * Deep merge helper that recursively merges objects.
  * Arrays are replaced, not merged.
  */
 function deepMerge<T>(target: T, source: DeepPartial<T>): T {
-  const output = { ...target } as any;
+  const output = { ...target } as Record<string, unknown>;
 
   if (isObject(target) && isObject(source)) {
-    for (const key of Object.keys(source)) {
-      const sourceValue = (source as any)[key];
+    for (const [key, sourceValue] of Object.entries(source)) {
       const targetValue = output[key];
 
-      if (
-        isObject(sourceValue) &&
-        isObject(targetValue) &&
-        !Array.isArray(sourceValue)
-      ) {
+      if (isObject(sourceValue) && isObject(targetValue)) {
         output[key] = deepMerge(targetValue, sourceValue);
       } else {
         output[key] = sourceValue;
@@ -75,11 +75,11 @@ function deepMerge<T>(target: T, source: DeepPartial<T>): T {
     }
   }
 
-  return output;
+  return output as T;
 }
 
-function isObject(item: any): boolean {
-  return item && typeof item === "object" && !Array.isArray(item);
+function isObject(item: unknown): item is Record<string, unknown> {
+  return typeof item === "object" && item !== null && !Array.isArray(item);
 }
 
 /**
@@ -100,7 +100,7 @@ function isObject(item: any): boolean {
 export function createDefaultEvent(
   overrides: DeepPartial<typeof defaultEventFixture> = {},
 ): typeof defaultEventFixture {
-  return deepMerge(JSON.parse(JSON.stringify(defaultEventFixture)), overrides);
+  return deepMerge(structuredClone(defaultEventFixture), overrides);
 }
 
 /**
@@ -123,7 +123,7 @@ export function createDefaultEvent(
 export function createGenericEvent(
   overrides: DeepPartial<typeof genericEventFixture> = {},
 ): typeof genericEventFixture {
-  return deepMerge(JSON.parse(JSON.stringify(genericEventFixture)), overrides);
+  return deepMerge(structuredClone(genericEventFixture), overrides);
 }
 
 /**
@@ -144,7 +144,7 @@ export function createGenericEvent(
 export function createUnknownEvent(
   overrides: DeepPartial<typeof unknownEventFixture> = {},
 ): typeof unknownEventFixture {
-  return deepMerge(JSON.parse(JSON.stringify(unknownEventFixture)), overrides);
+  return deepMerge(structuredClone(unknownEventFixture), overrides);
 }
 
 /**
@@ -168,10 +168,7 @@ export function createUnknownEvent(
 export function createPerformanceEvent(
   overrides: DeepPartial<typeof performanceEventFixture> = {},
 ): typeof performanceEventFixture {
-  return deepMerge(
-    JSON.parse(JSON.stringify(performanceEventFixture)),
-    overrides,
-  );
+  return deepMerge(structuredClone(performanceEventFixture), overrides);
 }
 
 /**
@@ -195,10 +192,7 @@ export function createPerformanceEvent(
 export function createPerformanceIssue(
   overrides: DeepPartial<typeof performanceIssueFixture> = {},
 ): typeof performanceIssueFixture {
-  return deepMerge(
-    JSON.parse(JSON.stringify(performanceIssueFixture)),
-    overrides,
-  );
+  return deepMerge(structuredClone(performanceIssueFixture), overrides);
 }
 
 /**
@@ -221,10 +215,7 @@ export function createPerformanceIssue(
 export function createRegressedIssue(
   overrides: DeepPartial<typeof regressedIssueFixture> = {},
 ): typeof regressedIssueFixture {
-  return deepMerge(
-    JSON.parse(JSON.stringify(regressedIssueFixture)),
-    overrides,
-  );
+  return deepMerge(structuredClone(regressedIssueFixture), overrides);
 }
 
 /**
@@ -245,10 +236,7 @@ export function createRegressedIssue(
 export function createUnsupportedIssue(
   overrides: DeepPartial<typeof unsupportedIssueFixture> = {},
 ): typeof unsupportedIssueFixture {
-  return deepMerge(
-    JSON.parse(JSON.stringify(unsupportedIssueFixture)),
-    overrides,
-  );
+  return deepMerge(structuredClone(unsupportedIssueFixture), overrides);
 }
 
 /**
@@ -272,7 +260,7 @@ export function createUnsupportedIssue(
 export function createCspIssue(
   overrides: DeepPartial<typeof cspIssueFixture> = {},
 ): typeof cspIssueFixture {
-  return deepMerge(JSON.parse(JSON.stringify(cspIssueFixture)), overrides);
+  return deepMerge(structuredClone(cspIssueFixture), overrides);
 }
 
 /**
@@ -296,7 +284,7 @@ export function createCspIssue(
 export function createCspEvent(
   overrides: DeepPartial<typeof cspEventFixture> = {},
 ): typeof cspEventFixture {
-  return deepMerge(JSON.parse(JSON.stringify(cspEventFixture)), overrides);
+  return deepMerge(structuredClone(cspEventFixture), overrides);
 }
 
 /**
@@ -320,5 +308,5 @@ export function createCspEvent(
 export function createFeedbackIssue(
   overrides: DeepPartial<typeof feedbackIssueFixture> = {},
 ): typeof feedbackIssueFixture {
-  return deepMerge(JSON.parse(JSON.stringify(feedbackIssueFixture)), overrides);
+  return deepMerge(structuredClone(feedbackIssueFixture), overrides);
 }

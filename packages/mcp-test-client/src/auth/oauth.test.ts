@@ -6,6 +6,38 @@ vi.mock("open", () => ({
   default: vi.fn().mockResolvedValue(undefined),
 }));
 
+/**
+ * The private members these tests stub. Indexed access ties each type to
+ * OAuthClient, so a rename or signature change fails to compile here.
+ */
+interface OAuthClientInternals {
+  configManager: OAuthClient["configManager"];
+  exchangeCodeForToken: OAuthClient["exchangeCodeForToken"];
+  generatePKCE: OAuthClient["generatePKCE"];
+  generateState: OAuthClient["generateState"];
+  getOrRegisterClientId: OAuthClient["getOrRegisterClientId"];
+  redirect: OAuthClient["redirect"];
+  registerClient: OAuthClient["registerClient"];
+  startCallbackServer: OAuthClient["startCallbackServer"];
+}
+
+function internals(client: OAuthClient): OAuthClientInternals {
+  // TypeScript has no typed view of private members; this one cast is the
+  // only place the tests reach past OAuthClient's public API.
+  return client as unknown as OAuthClientInternals;
+}
+
+/** The URL of the only browser window the flow opened. */
+function openedUrl(): URL {
+  const calls = vi.mocked(open).mock.calls;
+  expect(calls).toHaveLength(1);
+  const [target] = calls[0] ?? [];
+  if (target === undefined) {
+    throw new Error("open() was not called with a URL");
+  }
+  return new URL(target);
+}
+
 describe("OAuthClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -13,7 +45,7 @@ describe("OAuthClient", () => {
   });
 
   afterEach(() => {
-    delete process.env.MCP_OAUTH_REDIRECT_URI;
+    delete process.env["MCP_OAUTH_REDIRECT_URI"];
   });
 
   it("includes the protected resource in the authorization request", async () => {
@@ -21,33 +53,32 @@ describe("OAuthClient", () => {
       mcpHost: "https://mcp.sentry.dev/mcp/sentry/javascript",
     });
 
-    vi.spyOn(client as never, "getOrRegisterClientId").mockResolvedValue(
+    vi.spyOn(internals(client), "getOrRegisterClientId").mockResolvedValue(
       "client-123",
     );
-    vi.spyOn(client as never, "startCallbackServer").mockResolvedValue({
+    vi.spyOn(internals(client), "startCallbackServer").mockResolvedValue({
       waitForCallback: async () => ({
         code: "auth-code",
         state: "oauth-state",
       }),
     });
-    vi.spyOn(client as never, "generateState").mockReturnValue("oauth-state");
-    vi.spyOn(client as never, "generatePKCE").mockReturnValue({
+    vi.spyOn(internals(client), "generateState").mockReturnValue("oauth-state");
+    vi.spyOn(internals(client), "generatePKCE").mockReturnValue({
       verifier: "verifier",
       challenge: "challenge",
     });
-    vi.spyOn(client as never, "exchangeCodeForToken").mockResolvedValue({
+    vi.spyOn(internals(client), "exchangeCodeForToken").mockResolvedValue({
       access_token: "access-token",
       token_type: "Bearer",
     });
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "setAccessToken",
     ).mockResolvedValue(undefined);
 
     await client.authenticate();
 
-    expect(open).toHaveBeenCalledTimes(1);
-    const authUrl = new URL(vi.mocked(open).mock.calls[0][0]);
+    const authUrl = openedUrl();
     expect(authUrl.origin).toBe("https://mcp.sentry.dev");
     expect(authUrl.pathname).toBe("/oauth/authorize");
     expect(authUrl.searchParams.get("resource")).toBe(
@@ -57,40 +88,40 @@ describe("OAuthClient", () => {
 
   it("sends one redirect URI to registration, authorization, and token exchange", async () => {
     const redirectUri = "http://192.168.1.20:8765/callback";
-    process.env.MCP_OAUTH_REDIRECT_URI = redirectUri;
+    process.env["MCP_OAUTH_REDIRECT_URI"] = redirectUri;
 
     const client = new OAuthClient({ mcpHost: "https://mcp.sentry.dev" });
 
     const registerClient = vi
-      .spyOn(client as never, "registerClient")
+      .spyOn(internals(client), "registerClient")
       .mockResolvedValue("client-123");
     const exchangeCodeForToken = vi
-      .spyOn(client as never, "exchangeCodeForToken")
+      .spyOn(internals(client), "exchangeCodeForToken")
       .mockResolvedValue({
         access_token: "access-token",
         token_type: "Bearer",
       });
-    vi.spyOn(client as never, "startCallbackServer").mockResolvedValue({
+    vi.spyOn(internals(client), "startCallbackServer").mockResolvedValue({
       waitForCallback: async () => ({
         code: "auth-code",
         state: "oauth-state",
       }),
     });
-    vi.spyOn(client as never, "generateState").mockReturnValue("oauth-state");
-    vi.spyOn(client as never, "generatePKCE").mockReturnValue({
+    vi.spyOn(internals(client), "generateState").mockReturnValue("oauth-state");
+    vi.spyOn(internals(client), "generatePKCE").mockReturnValue({
       verifier: "verifier",
       challenge: "challenge",
     });
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "getOAuthClient",
     ).mockResolvedValue(null);
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "setOAuthClientId",
     ).mockResolvedValue(undefined);
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "setAccessToken",
     ).mockResolvedValue(undefined);
 
@@ -99,25 +130,21 @@ describe("OAuthClient", () => {
     // Registration is what binds the URI server-side; the other two are
     // validated against it and must match byte for byte.
     expect(registerClient).toHaveBeenCalledTimes(1);
-    expect((client as never).redirect.redirectUri).toBe(redirectUri);
-    expect(
-      new URL(vi.mocked(open).mock.calls[0][0]).searchParams.get(
-        "redirect_uri",
-      ),
-    ).toBe(redirectUri);
+    expect(internals(client).redirect.redirectUri).toBe(redirectUri);
+    expect(openedUrl().searchParams.get("redirect_uri")).toBe(redirectUri);
     expect(exchangeCodeForToken).toHaveBeenCalledTimes(1);
   });
 
   it("re-registers when the redirect URI no longer matches the stored client", async () => {
-    process.env.MCP_OAUTH_REDIRECT_URI = "http://192.168.1.20:8765/callback";
+    process.env["MCP_OAUTH_REDIRECT_URI"] = "http://192.168.1.20:8765/callback";
 
     const client = new OAuthClient({ mcpHost: "https://mcp.sentry.dev" });
 
     const registerClient = vi
-      .spyOn(client as never, "registerClient")
+      .spyOn(internals(client), "registerClient")
       .mockResolvedValue("client-new");
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "getOAuthClient",
     ).mockResolvedValue({
       clientId: "client-old",
@@ -126,10 +153,10 @@ describe("OAuthClient", () => {
       registeredAt: new Date().toISOString(),
     });
     const setOAuthClientId = vi
-      .spyOn((client as never).configManager, "setOAuthClientId")
+      .spyOn(internals(client).configManager, "setOAuthClientId")
       .mockResolvedValue(undefined);
 
-    const clientId = await (client as never).getOrRegisterClientId();
+    const clientId = await internals(client).getOrRegisterClientId();
 
     expect(registerClient).toHaveBeenCalledTimes(1);
     expect(clientId).toBe("client-new");
@@ -143,9 +170,9 @@ describe("OAuthClient", () => {
   it("reuses a client registered before the redirect URI was recorded", async () => {
     const client = new OAuthClient({ mcpHost: "https://mcp.sentry.dev" });
 
-    const registerClient = vi.spyOn(client as never, "registerClient");
+    const registerClient = vi.spyOn(internals(client), "registerClient");
     vi.spyOn(
-      (client as never).configManager,
+      internals(client).configManager,
       "getOAuthClient",
     ).mockResolvedValue({
       clientId: "client-legacy",
@@ -153,7 +180,7 @@ describe("OAuthClient", () => {
       registeredAt: new Date().toISOString(),
     });
 
-    const clientId = await (client as never).getOrRegisterClientId();
+    const clientId = await internals(client).getOrRegisterClientId();
 
     expect(clientId).toBe("client-legacy");
     expect(registerClient).not.toHaveBeenCalled();
