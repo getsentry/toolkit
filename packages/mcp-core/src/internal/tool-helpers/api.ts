@@ -37,6 +37,8 @@ export function apiServiceFromContext(
     clientName: context.clientName,
     clientFamily: context.clientFamily,
     utmSource: context.utmSource,
+    // The cache identity belongs to `accessToken`; a router swaps tokens.
+    responseCache: context.credentialRouter ? null : context.responseCache,
   });
 }
 

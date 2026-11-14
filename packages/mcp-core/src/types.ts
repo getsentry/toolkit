@@ -5,6 +5,7 @@
  * and server context. Uses advanced TypeScript patterns for type-safe parameter
  * extraction and handler registration.
  */
+import type { TransportCache } from "@sentry/api/client";
 import type { Skill } from "./skills";
 
 /**
@@ -77,6 +78,19 @@ export type CredentialRouter = {
   list(): Promise<RoutedCredential[]>;
 };
 
+/**
+ * A host's cache for Sentry API GET responses, bound to one identity.
+ */
+export type ResponseCache = {
+  /**
+   * Stable hash of who is asking, which scopes every entry. Never a raw
+   * token, and it must differ whenever `ServerContext.accessToken` can
+   * belong to someone else.
+   */
+  identity: string;
+  cache: TransportCache;
+};
+
 export type ServerContext = {
   sentryHost?: string;
   sentryProtocol?: SentryProtocol;
@@ -119,4 +133,9 @@ export type ServerContext = {
    * default credential's token.
    */
   credentialRouter?: CredentialRouter;
+  /**
+   * Caches GET responses for this context's single credential. Ignored when
+   * `credentialRouter` is set, since routed calls run with other tokens.
+   */
+  responseCache?: ResponseCache;
 };

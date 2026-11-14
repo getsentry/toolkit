@@ -341,6 +341,37 @@ Interpretation:
 - Upstream/provider 429s increment `app.server.response` with status `429`, but
   do not include `app.response.reason`
 
+### Response Cache Metrics
+
+The hosted MCP's Sentry API response cache (`MCP_RESPONSE_CACHE`, see
+[Cloudflare Architecture](../cloudflare/architecture.md#sentry-api-response-cache))
+sends these through the same metrics API. Nothing is sent while the cache is
+off.
+
+- `app.response_cache.lookup` - Count of cache lookups, with
+  `app.response_cache.result`: `hit` (served from cache), `miss`, or `stale`
+  (an expired entry with an `ETag`, revalidated with `If-None-Match`)
+- `app.response_cache.write` - Count of responses the memory store kept, with
+  `app.response_cache.encoding`: `zstd`, `br`, or `identity` (bodies under 256
+  bytes). Writes the store rejects, such as oversized bodies, are not counted.
+  `br` on every write means the Worker has no zstd.
+- `app.response_cache.eviction` - Count of entries evicted to stay within the
+  memory budget
+- `app.response_cache.memory.bytes` - Gauge of bytes the isolate's store
+  charges against its budget, after each write
+- `app.response_cache.memory.entries` - Gauge of entries in the isolate's
+  store, after each write
+
+The first eviction in an isolate also logs `Response cache reached its memory
+budget` at info level, with the budget, bytes, and entry count.
+
+Interpretation:
+
+- Hit rate: `sum(app.response_cache.lookup)` filtered to `result=hit`, over
+  the unfiltered sum
+- A steady eviction rate with `memory.bytes` at the budget means the budget is
+  too small for the traffic an isolate serves
+
 ### Traces Configuration
 
 ```typescript
