@@ -36,9 +36,7 @@ test("first run copies a capture command and keeps existing receiver entry secon
   const existing = screen.getByText("Connect an existing receiver");
   fireEvent.click(existing);
   fireEvent.submit(
-    screen
-      .getByRole("button", { name: "Connect", exact: true })
-      .closest("form")!,
+    screen.getByRole("button", { name: "Connect" }).closest("form")!,
   );
   expect(form.onConnect).toHaveBeenCalledOnce();
 });

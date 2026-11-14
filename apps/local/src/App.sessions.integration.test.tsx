@@ -123,24 +123,21 @@ function renderViewer() {
 }
 async function selectSession(label: string) {
   if (!screen.queryByRole("listbox"))
-    fireEvent.click(
-      screen.getByRole("combobox", { name: "Session", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
   fireEvent.click(
     await screen.findByRole("option", { name: new RegExp(`^${label} ·`) }),
   );
 }
 
 function captureAction(name: string): HTMLButtonElement {
-  let action = screen.queryByRole("button", { name, exact: true });
+  let action = screen.queryByRole("button", { name });
   if (!action) {
     fireEvent.click(
       screen.getAllByRole("button", {
         name: "Capture actions",
-        exact: true,
       })[0]!,
     );
-    action = screen.getByRole("button", { name, exact: true });
+    action = screen.getByRole("button", { name });
   }
   return action as HTMLButtonElement;
 }
@@ -185,9 +182,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     await selectSession("worker");
     await screen.findAllByText("/worker-job");
     expect(screen.queryByText("/web-request")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const limit = (await screen.findByLabelText(
       "Envelope limit",
     )) as HTMLInputElement;
@@ -206,7 +201,7 @@ test("hosted viewer switches live sessions without mixing events and replays ret
       daemon.plane.sessionStore.getBuffer(worker.id).read({ all: true }),
     ).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Stop capture" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await daemon.ingest(web, "/web-after-switch");
     await daemon.ingest(worker, "/worker-after-switch");
     await screen.findAllByText("/worker-after-switch");
@@ -224,7 +219,6 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     );
     const search = screen.getByRole("combobox", {
       name: "Search sessions",
-      exact: true,
     });
     fireEvent.change(search, { target: { value: "api" } });
     await waitFor(() =>
@@ -234,15 +228,14 @@ test("hosted viewer switches live sessions without mixing events and replays ret
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(picker));
     expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
+      screen.getByRole("combobox", { name: "Session" }).textContent,
     ).toContain("api");
     daemon.plane.sessionStore.close(worker.id);
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
     fireEvent.click(picker);
     await screen.findByRole("option", { name: /worker.*Saved/ });
     fireEvent.keyDown(
-      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      screen.getByRole("combobox", { name: "Search sessions" }),
       { key: "Escape" },
     );
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
@@ -318,21 +311,15 @@ test("hosted viewer offers tab-local Clear view while delete and stop stay unava
     fireEvent.click(
       screen.getAllByRole("button", {
         name: "Capture actions",
-        exact: true,
       })[0]!,
     );
     expect(
       screen.queryByRole("button", {
         name: "Delete captured events",
-        exact: true,
       }),
     ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Stop capture", exact: true }),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Clear view", exact: true }),
-    );
+    expect(screen.queryByRole("button", { name: "Stop capture" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear view" }));
     await screen.findByRole("heading", { name: "No events displayed" });
     expect(requests).not.toHaveBeenCalled();
     expect(
@@ -354,17 +341,13 @@ test("expired sessions disappear without clearing already displayed telemetry", 
     await daemon.ingest(web, "/retained-in-viewer");
     renderSession(web);
     await screen.findAllByText("/retained-in-viewer");
-    fireEvent.click(
-      screen.getByRole("combobox", { name: "Session", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
     await screen.findByRole("option", { name: /web.*Capturing/ });
     await selectSession("web");
     daemon.plane.sessionStore.close(web.id);
     now += SESSION_RETENTION_MS;
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
-    fireEvent.click(
-      screen.getByRole("combobox", { name: "Session", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
     await screen.findByText("No sessions available.");
     expect(screen.getAllByText("/retained-in-viewer").length).toBeGreaterThan(
       0,
@@ -385,13 +368,10 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     const stream = new URL("/stream", web.streamUrl).toString();
     renderSession({ streamUrl: web.streamUrl });
     await screen.findAllByText("/plain-web");
-    expect(
-      screen.queryByRole("combobox", { name: "Session", exact: true }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Session" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
         name: "Switch receiver",
-        exact: true,
       }),
     );
     // The prefilled display address is identical; clear it to make this an explicit edit.
@@ -401,22 +381,17 @@ test("pasting a plain receiver discovers active sessions and waits for newly sta
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: stream },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Connect", exact: true }),
-    );
-    await screen.findByRole("combobox", { name: "Session", exact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await screen.findByRole("combobox", { name: "Session" });
     await selectSession("worker");
     await screen.findAllByText("/plain-worker");
     expect(screen.queryByText("/plain-web")).toBeNull();
     expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
+      screen.getByRole("combobox", { name: "Session" }).textContent,
     ).toContain("worker");
     expect(screen.queryByText("Envelope limit")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", exact: true }),
-    );
-    await screen.findByRole("dialog", { name: "Settings", exact: true });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByRole("dialog", { name: "Settings" });
     expect(
       ((await screen.findByLabelText("Envelope limit")) as HTMLInputElement)
         .value,
@@ -441,15 +416,13 @@ test("an empty receiver discovers the first session when it starts without recon
     renderSession({
       streamUrl: new URL("/stream", reservation.streamUrl).toString(),
     });
-    await screen.findByRole("combobox", { name: "Session", exact: true });
-    fireEvent.click(
-      screen.getByRole("combobox", { name: "Session", exact: true }),
-    );
+    await screen.findByRole("combobox", { name: "Session" });
+    fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
     await screen.findByText("No sessions available.");
     const web = await daemon.create("new-run");
     await daemon.ingest(web, "/late-start");
     fireEvent.keyDown(
-      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      screen.getByRole("combobox", { name: "Search sessions" }),
       { key: "Escape" },
     );
     fireEvent.click(screen.getByRole("button", { name: "Refresh sessions" }));
@@ -468,13 +441,11 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
     await first.ingest(old, "/before-restart");
     renderSession(old);
     await screen.findAllByText("/before-restart");
-    await screen.findByRole("combobox", { name: "Session", exact: true });
-    fireEvent.click(
-      screen.getByRole("combobox", { name: "Session", exact: true }),
-    );
+    await screen.findByRole("combobox", { name: "Session" });
+    fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
     await screen.findByRole("option", { name: /^old-run ·/ });
     fireEvent.keyDown(
-      screen.getByRole("combobox", { name: "Search sessions", exact: true }),
+      screen.getByRole("combobox", { name: "Search sessions" }),
       { key: "Escape" },
     );
     await first.stop();
@@ -485,7 +456,6 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
     fireEvent.click(
       screen.getByRole("button", {
         name: "Switch receiver",
-        exact: true,
       }),
     );
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
@@ -494,14 +464,11 @@ test("reconnecting a plain receiver after daemon restart never selects a stale d
     fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
       target: { value: `http://127.0.0.1:${first.port}/stream` },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Connect", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await screen.findAllByText("/after-restart");
     expect(screen.queryByText("/before-restart")).toBeNull();
     expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
+      screen.getByRole("combobox", { name: "Session" }).textContent,
     ).toContain("current-run");
   } finally {
     cleanup();
@@ -539,15 +506,12 @@ test("retrying a failed CLI-selected stream keeps that session instead of discov
     );
     renderSession(worker);
     await screen.findByRole("alert", { name: "Receiver connection error" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Connect", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await screen.findAllByText("/retry-worker");
     expect(screen.queryByText("/retry-web")).toBeNull();
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Session", exact: true })
-          .textContent,
+        screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("worker"),
     );
   } finally {
@@ -582,8 +546,7 @@ test("a CLI viewer query link discovers both runs and does not override the sele
     expect(screen.queryByText("/link-web")).toBeNull();
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Session", exact: true })
-          .textContent,
+        screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("worker"),
     );
   } finally {
@@ -605,8 +568,7 @@ test("a session lifecycle refresh immediately replaces a stale Capturing badge w
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Session", exact: true })
-          .textContent,
+        screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("Capturing"),
     );
     const response = await fetch(
@@ -624,8 +586,7 @@ test("a session lifecycle refresh immediately replaces a stale Capturing badge w
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Session", exact: true })
-          .textContent,
+        screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("Saved"),
     );
   } finally {
@@ -662,24 +623,18 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
     fireEvent.click(captureAction("Clear view"));
     await screen.findByRole("heading", {
       name: "No events displayed",
-      exact: true,
     });
     expect(screen.queryByLabelText("Receiver endpoint")).toBeNull();
     expect(
       screen.getByRole("complementary", { name: "Workspace navigation" }),
     ).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload capture", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload capture" }));
     await screen.findAllByText("/archived-web");
     fireEvent.click(captureAction("Disconnect viewer"));
     await screen.findByRole("heading", {
       name: "Capture a local session",
-      exact: true,
     });
-    expect(
-      screen.queryByRole("combobox", { name: "Session", exact: true }),
-    ).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Session" })).toBeNull();
     expect(
       daemon.plane.sessionStore.getRetention(web.id).getSettings()
         .retainedEnvelopes,
@@ -688,12 +643,9 @@ test("close, archive replay, clear and disconnect keep the viewer lifecycle stab
     renderViewer();
     await screen.findByRole("heading", {
       name: "Capture a local session",
-      exact: true,
     });
     expect(screen.queryByText("/archived-web")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Connect", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     await screen.findAllByText("/archived-web");
     await waitFor(() =>
       expect(
@@ -723,9 +675,7 @@ test("hosted standalone receiver edits retention without losing saved events", a
     });
     renderSession({ streamUrl });
     await screen.findByRole("button", { name: "View event event" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const input = (await screen.findByLabelText(
       "Envelope limit",
     )) as HTMLInputElement;
