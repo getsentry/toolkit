@@ -13,7 +13,7 @@ import {
 
 export type ConnectionFormProps = {
   endpoint: string;
-  error?: string;
+  error?: string | undefined;
   isConnecting: boolean;
   onConnect: () => void;
   onEndpointChange: (value: string) => void;

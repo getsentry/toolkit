@@ -27,7 +27,7 @@ import {
 type EventDetailProps = {
   item: LocalFeedItem;
   relatedItems?: readonly LocalFeedItem[];
-  trace?: TraceGroup;
+  trace?: TraceGroup | undefined;
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 };

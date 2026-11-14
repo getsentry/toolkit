@@ -13,7 +13,7 @@ type Props = {
   count: number;
   streamUrl: string;
   editable: boolean;
-  unavailableReason?: string;
+  unavailableReason?: string | undefined;
 };
 
 /** Changes the selected session's limit without replacing its live stream. */

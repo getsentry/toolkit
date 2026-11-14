@@ -4,6 +4,7 @@ import {
   type LocalFeedItem,
 } from "./spotlight.js";
 import { isErrorEvent } from "./workspace.js";
+import { withoutUndefined } from "./objects.ts";
 import { addProfileSpans, profileSources } from "./profile-spans.ts";
 
 export type TraceSpan = {
@@ -93,7 +94,7 @@ function getPayloadSpan(
     operation ??
     item.type;
 
-  return {
+  return withoutUndefined({
     id,
     parentId:
       getString(trace["parent_span_id"]) ?? getString(event["parent_span_id"]),
@@ -106,7 +107,7 @@ function getPayloadSpan(
     payload,
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
-  };
+  });
 }
 
 function defined(value: Record<string, unknown>): Record<string, unknown> {
@@ -181,7 +182,7 @@ function mergeSpan(
   const startTimestamp = starts.length ? Math.min(...starts) : undefined;
   const endTimestamp = ends.length ? Math.max(...ends) : undefined;
   const durationMs = getDurationMs(startTimestamp, endTimestamp);
-  return {
+  return withoutUndefined({
     ...secondary,
     ...primary,
     description,
@@ -191,13 +192,13 @@ function mergeSpan(
     endTimestamp,
     durationMs,
     payload,
-    metadata: {
+    metadata: withoutUndefined({
       ...defined(secondary.metadata),
       ...defined(primary.metadata),
       title: description,
       durationMs,
-    },
-  };
+    }),
+  });
 }
 
 function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
@@ -218,7 +219,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
     const endTimestamp = getTimestamp(value["timestamp"]);
     const operation = getString(value["op"]);
     return [
-      {
+      withoutUndefined({
         id,
         parentId: getString(value["parent_span_id"]),
         operation,
@@ -230,7 +231,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         payload: value,
         metadata: getEventMetadata(value, "span"),
         children: [],
-      },
+      }),
     ];
   });
 }
@@ -282,7 +283,9 @@ function updateTraceTiming(trace: MutableTraceGroup): void {
   if (start === Infinity) return;
   trace.startTimestamp = start;
   trace.endTimestamp = end;
-  trace.durationMs = getDurationMs(start, end);
+  const durationMs = getDurationMs(start, end);
+  if (durationMs === undefined) delete trace.durationMs;
+  else trace.durationMs = durationMs;
 }
 
 /** Build a small, read-only trace model once for every view in Local. */
@@ -423,7 +426,7 @@ export function buildTraceGroups(
         sortByTimestamp(span.children);
       }
 
-      return {
+      return withoutUndefined({
         id: trace.id,
         title: trace.title,
         items: trace.items,
@@ -435,7 +438,7 @@ export function buildTraceGroups(
         startTimestamp: trace.startTimestamp,
         endTimestamp: trace.endTimestamp,
         durationMs: trace.durationMs,
-      };
+      });
     })
     .map((trace) => addProfileSpans(trace, profiles))
     .sort(

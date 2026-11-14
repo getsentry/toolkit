@@ -30,7 +30,7 @@ export function SessionSwitcher({
   selectInitialSession?: boolean;
   onCurrentSessionChange?: (session: ViewerSession | undefined) => void;
   showState?: boolean;
-  refreshKey?: string;
+  refreshKey?: string | undefined;
   onRetainedSession?: (streamUrl: string) => void;
   directoryUrl: string;
   streamUrl: string;

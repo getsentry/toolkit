@@ -1,3 +1,5 @@
+import { withoutUndefined } from "./objects.ts";
+
 /** Display fields from untrusted SDK exception payloads; raw JSON stays intact. */
 export type ExceptionFrame = {
   function: string;
@@ -76,7 +78,7 @@ export function getEventExceptions(payload: unknown): EventException[] {
                   : line;
               if (!filename && !name && !source) return [];
               return [
-                {
+                withoutUndefined({
                   function: name ?? "<anonymous>",
                   filename: filename ?? "Unknown source",
                   line: coordinate(frame["lineno"]),
@@ -88,19 +90,19 @@ export function getEventExceptions(payload: unknown): EventException[] {
                   ...(text(frame["abs_path"]) && frame["abs_path"] !== filename
                     ? { editorPath: text(frame["abs_path"]) }
                     : {}),
-                },
+                }),
               ];
             })
             .reverse()
         : [];
       return type || message || frames.length
         ? [
-            {
+            withoutUndefined({
               type,
               value: message,
               frames,
               isCause: record(exception["mechanism"])?.["source"] === "cause",
-            },
+            }),
           ]
         : [];
     })

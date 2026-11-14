@@ -1,4 +1,5 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
+import { withoutUndefined } from "./objects.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
@@ -136,7 +137,7 @@ export function getEventMetadata(
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100
       : undefined;
 
-  return {
+  return withoutUndefined({
     title:
       (exception?.type || exception?.value
         ? formatExceptionTitle(exception)
@@ -169,7 +170,7 @@ export function getEventMetadata(
       getString(data["sentry.origin"]) ??
       getString(event["origin"]) ??
       getAttributeString(attributes, "sentry.origin"),
-  };
+  });
 }
 
 function getBatchedPayloadItems(payload: unknown, type: string): unknown[] {
@@ -340,23 +341,25 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
     const type =
       typeof header["type"] === "string" ? header["type"] : "unknown";
     const payloads = getBatchedPayloadItems(item[1], type);
-    return payloads.map((payload, payloadIndex) => ({
-      id:
-        payloads.length === 1
-          ? `${eventId}:${index}`
-          : `${eventId}:${index}:${payloadIndex}`,
-      type,
-      envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
-      itemHeader: header,
-      timestamp: getItemTimestamp(payload),
-      text: JSON.stringify(payload, null, 2) ?? String(payload),
-      payload,
-      metadata: {
-        ...getEventMetadata(payload, type),
-        ...(type === "attachment" && typeof header["filename"] === "string"
-          ? { title: header["filename"] }
-          : {}),
-      },
-    }));
+    return payloads.map((payload, payloadIndex) =>
+      withoutUndefined({
+        id:
+          payloads.length === 1
+            ? `${eventId}:${index}`
+            : `${eventId}:${index}:${payloadIndex}`,
+        type,
+        envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
+        itemHeader: header,
+        timestamp: getItemTimestamp(payload),
+        text: JSON.stringify(payload, null, 2) ?? String(payload),
+        payload,
+        metadata: {
+          ...getEventMetadata(payload, type),
+          ...(type === "attachment" && typeof header["filename"] === "string"
+            ? { title: header["filename"] }
+            : {}),
+        },
+      }),
+    );
   });
 }
