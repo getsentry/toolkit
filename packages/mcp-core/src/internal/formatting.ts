@@ -28,11 +28,14 @@ import type {
   ExternalIssueList,
   GenericEvent,
   Issue,
+  SourceMapDebug,
   Trace,
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { buildIssueSideQuests, hasReadableStack } from "./issue-side-quests";
 import { selectEventPackages } from "./event-packages";
+import { formatSideQuests } from "./side-quests";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -2279,6 +2282,7 @@ export function formatIssueOutput({
   aiConversations,
   codeLocation,
   committers,
+  sourceMapDebug,
   experimentalMode,
   availableToolNames,
   directToolNames,
@@ -2295,6 +2299,7 @@ export function formatIssueOutput({
   aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation;
   committers?: CommitterList;
+  sourceMapDebug?: SourceMapDebug;
   experimentalMode?: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
@@ -2366,6 +2371,15 @@ export function formatIssueOutput({
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
+  const sideQuests = buildIssueSideQuests(
+    { event, sourceMapDebug },
+    {
+      experimentalMode: experimentalMode ?? false,
+      availableToolNames,
+      directToolNames,
+    },
+  );
+
   if (codeLocation) {
     output += formatCodeLocation(codeLocation);
   }
@@ -2409,6 +2423,9 @@ export function formatIssueOutput({
       output += ` and Sentry Event ID **${sentryEventId}**`;
     }
     output += " to help us add support for this event type.\n";
+    if (sideQuests) {
+      output += `\n${formatSideQuests(sideQuests)}`;
+    }
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
@@ -2486,6 +2503,8 @@ export function formatIssueOutput({
     output += "\n";
   }
 
+  output += formatSideQuests(sideQuests);
+
   output += "## Response Notes\n\n";
   for (const note of buildIssueResponseNotes({
     organizationSlug,
@@ -2549,7 +2568,7 @@ export function buildIssueResponseNotes({
         directToolNames,
       }),
     );
-  } else {
+  } else if (hasReadableStack(event)) {
     notes.push(
       "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
     );

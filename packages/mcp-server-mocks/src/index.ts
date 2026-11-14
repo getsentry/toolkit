@@ -58,6 +58,7 @@ import releaseCommitsFixture from "./fixtures/release-commits.json" with { type:
 import releaseDeploysFixture from "./fixtures/release-deploys.json" with { type: "json" };
 import replayDetailsFixture from "./fixtures/replay-details.json" with { type: "json" };
 import replayRecordingSegmentsFixture from "./fixtures/replay-recording-segments.json" with { type: "json" };
+import sourceMapDebugFixture from "./fixtures/source-map-debug.json" with { type: "json" };
 import tagsFixture from "./fixtures/tags.json" with { type: "json" };
 import teamFixture from "./fixtures/team.json" with { type: "json" };
 import traceFixture from "./fixtures/trace.json" with { type: "json" };
@@ -904,6 +905,12 @@ export const restHandlers = buildHandlers([
     method: "get",
     path: "/api/0/organizations/sentry-mcp-evals/issues/6507376926/events/latest/",
     fetch: () => HttpResponse.json(eventsFixture),
+  },
+  // Sentry's source map check for the event above: no release and no debug IDs
+  {
+    method: "get",
+    path: "/api/0/projects/sentry-mcp-evals/:project/events/7ca573c0f4814912aaa9bdc77d1a7d51/source-map-debug/",
+    fetch: () => HttpResponse.json(sourceMapDebugFixture),
   },
   {
     method: "get",
@@ -2054,6 +2061,20 @@ The page \`/ai/mcp\` does not exist.
       },
     );
   }),
+  // Moved pages answer with a relative redirect to the new .md path.
+  http.get("https://docs.sentry.io/product/rate-limits.md", () => {
+    return new HttpResponse(null, {
+      status: 308,
+      headers: { Location: "/product/rate-limiting.md#quotas" },
+    });
+  }),
+  // A redirect off the docs hosts, like develop.sentry.io's login redirect.
+  http.get("https://docs.sentry.io/product/offsite.md", () => {
+    return new HttpResponse(null, {
+      status: 302,
+      headers: { Location: "https://sentry.io/auth/login/" },
+    });
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });
@@ -2143,6 +2164,7 @@ export {
   releaseFixture,
   replayDetailsFixture,
   replayRecordingSegmentsFixture,
+  sourceMapDebugFixture,
   tagsFixture,
   teamFixture,
   traceEventFixture,

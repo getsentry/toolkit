@@ -5,8 +5,8 @@ const execFileSyncMock = vi.fn(
   (_file: string, _args: string[], _options?: unknown) => "",
 );
 vi.mock("node:child_process", () => ({
-  execFileSync: (file: string, args: string[], options?: unknown) =>
-    execFileSyncMock(file, args, options),
+  execFileSync: (...args: Parameters<typeof execFileSyncMock>) =>
+    execFileSyncMock(...args),
 }));
 
 import { getCommitLog } from "../../src/lib/git.js";

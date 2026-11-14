@@ -180,6 +180,7 @@ import {
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
   SpansSearchResponseSchema,
+  SourceMapDebugSchema,
   StacktraceLinkSchema,
   TagListSchema,
   TeamListSchema,
@@ -254,6 +255,7 @@ import type {
   SentryAppComponentList,
   SentryAppExternalRequestOptions,
   SentryAppInstallationList,
+  SourceMapDebug,
   StacktraceLink,
   TagList,
   Team,
@@ -3849,6 +3851,34 @@ export class SentryApiService {
       opts,
     );
     return StacktraceLinkSchema.parse(body);
+  }
+
+  /**
+   * Checks frame by frame why Sentry could or could not apply JavaScript source
+   * maps to an event: debug IDs, release artifacts, and fetched sources.
+   *
+   * @see https://github.com/getsentry/sentry/blob/master/src/sentry/api/endpoints/source_map_debug.py
+   */
+  async getSourceMapDebug(
+    {
+      organizationSlug,
+      projectSlug,
+      eventId,
+      signal,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      eventId: string;
+      signal?: AbortSignal;
+    },
+    opts?: RequestOptions,
+  ): Promise<SourceMapDebug> {
+    const body = await this.requestJSON(
+      apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/source-map-debug/`,
+      { signal },
+      opts,
+    );
+    return SourceMapDebugSchema.parse(body);
   }
 
   /**

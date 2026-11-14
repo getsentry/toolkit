@@ -41,11 +41,11 @@ vi.mock("node:child_process", async (importOriginal) => {
     spawn: (
       cmd: string,
       args: readonly string[],
-      options: Parameters<typeof actual.spawn>[2],
+      options?: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
-      spawnCapture.env = options.env;
-      spawnCapture.stdio = options.stdio;
+      spawnCapture.env = options?.env;
+      spawnCapture.stdio = options?.stdio;
       return actual.spawn(cmd, args as string[], options);
     },
   };

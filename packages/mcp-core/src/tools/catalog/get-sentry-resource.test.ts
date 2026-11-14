@@ -1247,10 +1247,16 @@ describe("event package selection", () => {
 
         - \`example\`: \`1.2.3\`
 
+        ## Concerns Identified
+
+        Optional; not needed for the current task.
+
+        - This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages. Docs: https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace
+        - The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough. Docs: https://docs.sentry.io/platforms/python/enriching-events/identify-user/
+
         ## Response Notes
 
         - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-        - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
         - Issue event search: Use the Sentry tool \`search_issue_events\`
         "
       `);

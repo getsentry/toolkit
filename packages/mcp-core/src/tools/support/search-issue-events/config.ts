@@ -54,7 +54,10 @@ For time-based queries ("last hour", "yesterday", "from Dec 16"):
   - "yesterday" → {"statsPeriod": "24h"}
   - "last week" → {"statsPeriod": "7d"}
 - Absolute: Use start/end (ISO 8601 format)
-  - "from Dec 16 2025 17:50 UTC" → {"start": "2025-12-16T17:50:00Z", "end": "2025-12-17T23:59:59Z"}
+  - "between Dec 16 2025 17:50 and Dec 17 2025 09:00 UTC" → {"start": "2025-12-16T17:50:00Z", "end": "2025-12-17T09:00:00Z"}
+- Open-ended: For "since X", "after X", or timestamp:>=X, set only start. Omitting end means "until now".
+  - "since Dec 16 2025 17:50 UTC" → {"start": "2025-12-16T17:50:00Z"}
+  - "timestamp:>=2025-12-16T17:50:00Z" → {"start": "2025-12-16T17:50:00Z"}
 - Default: If no time mentioned, use {"statsPeriod": "14d"}
 
 FIELD SELECTION:
@@ -101,7 +104,8 @@ Return a JSON object with:
 - "timeRange": Optional time range
   - Relative: {"statsPeriod": "24h"}
   - Absolute: {"start": "2025-01-01T00:00:00Z", "end": "2025-01-02T00:00:00Z"}
-  - Omit for default 14-day window
+  - Open-ended: {"start": "2025-01-01T00:00:00Z"} (until now)
+  - null for default 14-day window
 - "explanation": Brief explanation of how you translated the query
 
 CORRECT QUERY EXAMPLES:
