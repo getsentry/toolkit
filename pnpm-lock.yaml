@@ -813,6 +813,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      undici-types:
+        specifier: ^6.21.0
+        version: 6.21.0
       uuidv7:
         specifier: ^1.2.1
         version: 1.2.1
