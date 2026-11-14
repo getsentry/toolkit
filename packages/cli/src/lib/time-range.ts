@@ -10,6 +10,7 @@
  * Datetimes with explicit timezone offsets are passed through as-is.
  */
 
+import { STATS_PERIOD_UNIT_SECONDS } from "@sentry/toolkit-core/stats-period";
 import { ValidationError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
@@ -47,13 +48,7 @@ export type TimeRangeApiParams = {
 // ---------------------------------------------------------------------------
 
 /** Seconds per unit for relative period computation. @internal Exported for reuse in duration parsers. */
-export const UNIT_SECONDS: Record<string, number> = {
-  s: 1,
-  m: 60,
-  h: 3600,
-  d: 86_400,
-  w: 604_800,
-};
+export const UNIT_SECONDS = STATS_PERIOD_UNIT_SECONDS;
 
 /** Valid unit suffixes for relative period strings, derived from UNIT_SECONDS */
 const PERIOD_UNITS = new Set(Object.keys(UNIT_SECONDS));
