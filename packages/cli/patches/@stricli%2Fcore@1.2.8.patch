@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5ea209e29 100644
+index a9afbc1..433eefb 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -1277,6 +1277,35 @@ var RouteMapSymbol = Symbol("RouteMap");
@@ -211,10 +211,21 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    checkForInvalidVariadicSeparators(flags);
    let loader;
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+index 111d1fd..4fdc1d1 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
-@@ -402,6 +402,25 @@ interface ScannerConfiguration {
+@@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
+     /**
+      * A number which will be the process exit code.
+      */
+-    exitCode?: number | string | null;
++    // PATCH(getsentry/cli): accept `undefined`, as Node's `process.exitCode`
++    // does, so `NodeJS.Process` satisfies this under exactOptionalPropertyTypes.
++    exitCode?: number | string | null | undefined;
+ }
+ /**
+  * Environment variable names used by Stricli.
+@@ -402,6 +404,25 @@ interface ScannerConfiguration {
       * Default value is `false`
       */
      readonly allowArgumentEscapeSequence: boolean;
@@ -240,7 +251,7 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
      /**
       * Options used when calculating distance for alternative inputs ("did you mean?").
       *
-@@ -470,6 +489,28 @@ interface DocumentationConfiguration {
+@@ -470,6 +491,28 @@ interface DocumentationConfiguration {
       * Defaults to `false`.
       */
      readonly disableAnsiColor: boolean;
@@ -270,10 +281,21 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
  /**
   * Configuration for controlling the behavior of completion proposals.
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab670451851709a7e2 100644
+index 111d1fd..4fdc1d1 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -402,6 +402,25 @@ interface ScannerConfiguration {
+@@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
+     /**
+      * A number which will be the process exit code.
+      */
+-    exitCode?: number | string | null;
++    // PATCH(getsentry/cli): accept `undefined`, as Node's `process.exitCode`
++    // does, so `NodeJS.Process` satisfies this under exactOptionalPropertyTypes.
++    exitCode?: number | string | null | undefined;
+ }
+ /**
+  * Environment variable names used by Stricli.
+@@ -402,6 +404,25 @@ interface ScannerConfiguration {
       * Default value is `false`
       */
      readonly allowArgumentEscapeSequence: boolean;
@@ -299,7 +321,7 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
      /**
       * Options used when calculating distance for alternative inputs ("did you mean?").
       *
-@@ -470,6 +489,28 @@ interface DocumentationConfiguration {
+@@ -470,6 +491,28 @@ interface DocumentationConfiguration {
       * Defaults to `false`.
       */
      readonly disableAnsiColor: boolean;
@@ -329,7 +351,7 @@ index 111d1fd9e926f23b71359a692cd2e9e05ebf379e..1714047c8cf7d46e38062bab67045185
  /**
   * Configuration for controlling the behavior of completion proposals.
 diff --git a/dist/index.js b/dist/index.js
-index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d87c52de17 100644
+index f766396..63d3a08 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1229,6 +1229,35 @@ var RouteMapSymbol = Symbol("RouteMap");
