@@ -304,7 +304,7 @@ describe("dashboard widget add", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
-    expect(at(addedWidget.queries, 0).columns).toEqual([]);
+    expect(at(must(addedWidget.queries), 0).columns).toEqual([]);
   });
 
   test("issue dataset defaults columns to ['issue'] and orderby to -count()", async () => {
@@ -319,9 +319,9 @@ describe("dashboard widget add", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
-    expect(at(addedWidget.queries, 0).columns).toEqual(["issue"]);
-    expect(at(addedWidget.queries, 0).fields).toContain("issue");
-    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["issue"]);
+    expect(at(must(addedWidget.queries), 0).fields).toContain("issue");
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("resolves dataset alias 'errors' to 'error-events' in PUT body", async () => {
@@ -385,7 +385,9 @@ describe("dashboard widget add", () => {
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
-    expect(at(addedWidget.queries, 0).aggregates).toEqual(["last_seen()"]);
+    expect(at(must(addedWidget.queries), 0).aggregates).toEqual([
+      "last_seen()",
+    ]);
   });
 
   test("case-insensitive dataset values are accepted", async () => {
@@ -450,7 +452,7 @@ describe("dashboard widget add", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
-    expect(at(addedWidget.queries, 0).columns).toEqual(["project"]);
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["project"]);
   });
 
   // -------------------------------------------------------------------------
@@ -570,7 +572,7 @@ describe("dashboard widget add", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
-    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("auto-defaults --limit to 5 when --group-by is used without --limit", async () => {
@@ -591,8 +593,8 @@ describe("dashboard widget add", () => {
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBe(5);
-    expect(at(addedWidget.queries, 0).columns).toEqual(["browser.name"]);
-    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["browser.name"]);
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("explicit --limit wins over auto-default for grouped widgets", async () => {

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { runCli } from "../fixture.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, at } from "../helpers.js";
 
 /** Capability URLs returned explicitly by session creation. */
 type Session = {
@@ -160,7 +160,7 @@ describe("Local daemon E2E", () => {
       }
       expect(text).toContain("event: sentry.local.directory");
       directoryUrl = (
-        JSON.parse(text.match(/data: (.+)/)![1]) as { directoryUrl: string }
+        JSON.parse(at(text.match(/data: (.+)/)!, 1)) as { directoryUrl: string }
       ).directoryUrl;
     } finally {
       await bootstrapReader.cancel();

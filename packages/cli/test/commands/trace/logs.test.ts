@@ -66,7 +66,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TraceLog } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // Note: trace-target parsing tests are in test/lib/trace-target.test.ts
@@ -322,7 +322,7 @@ describe("logsCommand.func", () => {
     });
 
     test("uses singular 'log' for exactly one result", async () => {
-      listTraceLogsSpy.mockResolvedValue([sampleLogs[0]]);
+      listTraceLogsSpy.mockResolvedValue([at(sampleLogs, 0)]);
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();

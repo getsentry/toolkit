@@ -1470,12 +1470,12 @@ describe("listCommand.func — follow mode (trace)", () => {
     // Poll batch: 1 JSON line per item (bare JSONL)
     expect(jsonLines.length).toBe(2);
     // First line is an envelope with data array (the initial trace batch)
-    const firstBatch = JSON.parse(jsonLines[0]);
+    const firstBatch = JSON.parse(at(jsonLines, 0));
     expect(firstBatch).toHaveProperty("data");
     expect(Array.isArray(firstBatch.data)).toBe(true);
     expect(firstBatch.data).toHaveLength(3);
     // Second line is a bare object (polled item)
-    const pollItem = JSON.parse(jsonLines[1]);
+    const pollItem = JSON.parse(at(jsonLines, 1));
     expect(pollItem.message).toBe("New poll result");
   });
 

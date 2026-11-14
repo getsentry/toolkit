@@ -920,6 +920,7 @@ describe("resolveEventTarget", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { id: "1", slug: "frontend", name: "Frontend" },
     });
 
     const result = await resolveEventTarget({
@@ -1219,7 +1220,7 @@ describe("viewCommand.func", () => {
       VALID_EVENT_ID,
     );
 
-    expect(result?.hint).toBeUndefined();
+    expect(result).toBeUndefined();
   });
 
   test("includes attachment metadata and download URLs in JSON", async () => {

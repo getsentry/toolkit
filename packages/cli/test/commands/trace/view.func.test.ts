@@ -841,6 +841,7 @@ describe("viewCommand.func", () => {
     const traceIdFromEvent = "eeee1111ffff2222aaaa3333bbbb4444";
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getIssueByShortIdSpy.mockResolvedValue({
+      platform: null,
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",
@@ -873,6 +874,7 @@ describe("viewCommand.func", () => {
   test("auto-recovery throws ValidationError when event has no trace context", async () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
     getIssueByShortIdSpy.mockResolvedValue({
+      platform: null,
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",

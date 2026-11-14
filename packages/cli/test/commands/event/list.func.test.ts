@@ -53,9 +53,6 @@ import type { IssueEvent, SentryIssue } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
-
 // ============================================================================
 // Test fixtures
 // ============================================================================
@@ -94,7 +91,7 @@ function makeMockEvent(overrides?: Partial<IssueEvent>): IssueEvent {
     platform: "javascript",
     dateCreated: new Date().toISOString(),
     crashFile: null,
-    metadata: null,
+    metadata: {},
     ...overrides,
   };
 }
@@ -295,9 +292,9 @@ describe("event list command func()", () => {
     );
   });
 
-  test("throws ContextError when org is undefined", async () => {
+  test("throws ContextError when org is empty", async () => {
     resolveIssueSpy.mockResolvedValue({
-      org: undefined,
+      org: "",
       issue: makeMockIssue(),
     });
 

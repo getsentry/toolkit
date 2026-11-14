@@ -175,7 +175,7 @@ describe("compareReports", () => {
           ...baseline.entries[0],
           stats: { ...at(baseline.entries, 0).stats, p50: 15 },
         },
-        baseline.entries[1],
+        at(baseline.entries, 1),
       ],
     };
     const rows = compareReports(baseline, current, 0.2);
@@ -193,7 +193,7 @@ describe("compareReports", () => {
           ...baseline.entries[0],
           stats: { ...at(baseline.entries, 0).stats, p50: 7 },
         },
-        baseline.entries[1],
+        at(baseline.entries, 1),
       ],
     };
     const rows = compareReports(baseline, current, 0.2);
@@ -204,7 +204,7 @@ describe("compareReports", () => {
   test("reports missing current entry when op disappears", () => {
     const current: BenchReport = {
       ...baseline,
-      entries: [baseline.entries[1]],
+      entries: [at(baseline.entries, 1)],
     };
     const rows = compareReports(baseline, current, 0.2);
     const cold = rows.find((r) => r.operation === "detectDsn.cold");

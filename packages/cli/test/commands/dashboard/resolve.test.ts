@@ -363,7 +363,7 @@ describe("enrichDashboardError", () => {
             id: "100",
             title: "Error Overview",
             dateCreated: "",
-            createdBy: { id: 0, name: "", email: "" },
+            createdBy: { name: "", email: "" },
             widgets: [],
             projects: [],
           },
@@ -371,12 +371,11 @@ describe("enrichDashboardError", () => {
             id: "200",
             title: "Performance",
             dateCreated: "",
-            createdBy: { id: 0, name: "", email: "" },
+            createdBy: { name: "", email: "" },
             widgets: [],
             projects: [],
           },
         ],
-        nextCursor: undefined,
       });
     try {
       await enrichDashboardError(apiErr, {

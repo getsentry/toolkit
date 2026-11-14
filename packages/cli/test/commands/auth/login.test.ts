@@ -188,6 +188,9 @@ type LoginFunc = (
   email?: string,
 ) => Promise<void>;
 
+/** Account id that the mocked `setAuthToken` hands back. */
+const TEST_ACCOUNT_ID = "test-account";
+
 const SAMPLE_USER = {
   id: "42",
   name: "Jane Doe",
@@ -531,7 +534,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: stores token, fetches user, writes success", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -604,7 +607,7 @@ describe("loginCommand.func --token path", () => {
     "--token normalizes surrounding whitespace and controls before storage %#",
     async (token) => {
       isAuthenticatedSpy.mockReturnValue(false);
-      setAuthTokenSpy.mockReturnValue(undefined);
+      setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
       checkTokenAccessSpy.mockResolvedValue(undefined);
       getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
       setUserInfoSpy.mockReturnValue(undefined);
@@ -619,7 +622,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: null user.name is converted to undefined in setUserInfo", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({
       id: "5",
@@ -668,7 +671,7 @@ describe("loginCommand.func --token path", () => {
     // A network/server failure during validation is not a token problem:
     // surface the real error and do NOT clear a possibly-valid token (CLI-19).
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     const cause = new ApiError("Server error", 503);
     checkTokenAccessSpy.mockRejectedValue(cause);
     clearAuthSpy.mockResolvedValue(undefined);
@@ -685,7 +688,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: shows 'Logged in as' when user info fetch succeeds", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({ id: "5", email: "only@email.com" });
     setUserInfoSpy.mockReturnValue(undefined);
@@ -703,7 +706,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: login succeeds even when getCurrentUser() fails transiently", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockRejectedValue(new Error("Network error"));
 
@@ -726,7 +729,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: warms caches once the result is printed", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -815,7 +818,7 @@ describe("loginCommand.func --token path", () => {
   test("--force --token when authenticated: replaces the active account's token", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -890,7 +893,10 @@ describe("login re-authentication interactive prompt", () => {
     // Defaults
     isEnvTokenActiveSpy.mockReturnValue(false);
     clearAuthSpy.mockResolvedValue(undefined);
-    runInteractiveLoginSpy.mockResolvedValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
     mockIsatty.mockReturnValue(true);
     mockPrompt.mockClear();
 
@@ -996,7 +1002,7 @@ describe("login re-authentication interactive prompt", () => {
     mockPrompt.mockResolvedValue(true);
 
     const setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
-    setAuthTokenSpy.mockImplementation(noop);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     const checkTokenAccessSpy = vi.spyOn(apiClient, "checkTokenAccess");
     checkTokenAccessSpy.mockResolvedValue(undefined);
     const getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
@@ -1239,9 +1245,9 @@ function makeRcConfig(
   url?: string,
 ): SentryCliRcConfig {
   return {
-    token,
-    url,
-    sources: { token: token ? "~/.sentryclirc" : undefined },
+    ...(token === undefined ? {} : { token }),
+    ...(url === undefined ? {} : { url }),
+    sources: token ? { token: "~/.sentryclirc" } : {},
   };
 }
 

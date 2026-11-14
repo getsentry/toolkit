@@ -803,7 +803,7 @@ describe("getDetailedTrace", () => {
     expect(result).toHaveLength(1);
     expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]);
+    const url = new URL(at(getCapturedUrls(), 0));
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
     expect(url.searchParams.get("statsPeriod")).toBeNull();
     expect(url.searchParams.has("limit")).toBe(false);
@@ -817,7 +817,7 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(1);
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]);
+    const url = new URL(at(getCapturedUrls(), 0));
     expect(url.searchParams.get("statsPeriod")).toBe("14d");
     expect(url.searchParams.get("timestamp")).toBeNull();
   });
@@ -830,17 +830,17 @@ describe("getDetailedTrace", () => {
     expect(result).toHaveLength(1);
     expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
-    expect(new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod")).toBe(
-      "14d",
-    );
-    expect(new URL(getCapturedUrls()[1]).searchParams.get("statsPeriod")).toBe(
-      "90d",
-    );
     expect(
-      new URL(getCapturedUrls()[0]).searchParams.get("timestamp"),
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("statsPeriod"),
+    ).toBe("14d");
+    expect(
+      new URL(at(getCapturedUrls(), 1)).searchParams.get("statsPeriod"),
+    ).toBe("90d");
+    expect(
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("timestamp"),
     ).toBeNull();
     expect(
-      new URL(getCapturedUrls()[1]).searchParams.get("timestamp"),
+      new URL(at(getCapturedUrls(), 1)).searchParams.get("timestamp"),
     ).toBeNull();
   });
 
@@ -853,11 +853,11 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(0);
     expect(getCapturedUrls()).toHaveLength(1);
-    expect(new URL(getCapturedUrls()[0]).searchParams.get("timestamp")).toBe(
-      "1700000000",
-    );
     expect(
-      new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod"),
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("timestamp"),
+    ).toBe("1700000000");
+    expect(
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("statsPeriod"),
     ).toBeNull();
   });
 

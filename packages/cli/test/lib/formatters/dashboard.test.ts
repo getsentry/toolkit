@@ -37,6 +37,7 @@ import type {
   TimeseriesResult,
   UnsupportedResult,
 } from "../../../src/types/dashboard.js";
+import { at } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Constants (must match source)
@@ -329,14 +330,14 @@ describe("formatDashboardWithData", () => {
       const output = formatDashboardWithData(data);
       const lines = output.split("\n");
       // First line contains title and period
-      const firstLine = stripAnsi(lines[0]);
+      const firstLine = stripAnsi(at(lines, 0));
       expect(firstLine).toContain("24h");
     });
 
     test("renders environment with green color", () => {
       const data = makeDashboardData({ environment: ["production"] });
       const output = formatDashboardWithData(data);
-      const firstLine = stripAnsi(output.split("\n")[0]);
+      const firstLine = stripAnsi(at(output.split("\n"), 0));
       expect(firstLine).toContain("production");
     });
 
@@ -345,9 +346,9 @@ describe("formatDashboardWithData", () => {
       const data = makeDashboardData({ url });
       const output = formatDashboardWithData(data);
       // Rendered mode: title line, muted underline, blank separator
-      const secondLine = stripAnsi(output.split("\n")[1]);
+      const secondLine = stripAnsi(at(output.split("\n"), 1));
       expect(secondLine).toMatch(/^─+$/);
-      expect(stripAnsi(output.split("\n")[2])).toBe("");
+      expect(stripAnsi(at(output.split("\n"), 2))).toBe("");
     });
   });
 

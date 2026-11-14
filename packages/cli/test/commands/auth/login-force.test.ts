@@ -66,7 +66,11 @@ function addAccount(
     host: SAAS,
     newAccount: true,
   });
-  setUserInfo({ userId, email, username });
+  setUserInfo({
+    userId,
+    email,
+    ...(username === undefined ? {} : { username }),
+  });
   return id;
 }
 

@@ -44,6 +44,7 @@ function sampleFeedback(
   overrides: Partial<SentryFeedback> = {},
 ): SentryFeedback {
   return {
+    platform: null,
     id: "5146636313",
     shortId: "TEST-PROJECT-2SDJ",
     title: "User Feedback",

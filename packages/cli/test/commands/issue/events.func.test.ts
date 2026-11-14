@@ -51,11 +51,8 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { IssueEvent, SentryIssue } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
-
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
 
 // ============================================================================
 // Test fixtures
@@ -95,7 +92,7 @@ function makeMockEvent(overrides?: Partial<IssueEvent>): IssueEvent {
     platform: "javascript",
     dateCreated: new Date().toISOString(),
     crashFile: null,
-    metadata: null,
+    metadata: {},
     ...overrides,
   };
 }
@@ -311,7 +308,7 @@ describe("eventsCommand.func()", () => {
       org: "test-org",
       issue: makeMockIssue(),
     });
-    listIssueEventsSpy.mockResolvedValue({ data: [sampleEvents[0]] });
+    listIssueEventsSpy.mockResolvedValue({ data: [at(sampleEvents, 0)] });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await loadCommand(eventsCommand);

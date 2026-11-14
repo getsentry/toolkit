@@ -1796,7 +1796,7 @@ describe("getLogs", () => {
         const batchIds = bracketMatch ? must(bracketMatch[1]).split(",") : [];
         return new Response(
           JSON.stringify({
-            data: [makeLogEntry(batchIds[0])],
+            data: [makeLogEntry(at(batchIds, 0))],
             meta: { fields: {} },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },

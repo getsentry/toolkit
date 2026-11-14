@@ -15,7 +15,7 @@ import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("replays-api-test-");
 
@@ -312,7 +312,7 @@ describe("resolveReplay", () => {
     expect(replay.id).toBe(REPLAY_ID);
     expect(capturedUrls).toHaveLength(3);
 
-    const listUrl = new URL(capturedUrls[1]);
+    const listUrl = new URL(at(capturedUrls, 1));
     expect(listUrl.pathname).toContain(
       "/api/0/organizations/test-org/replays/",
     );
@@ -347,7 +347,7 @@ describe("resolveReplay", () => {
       detail: "Replay not found",
     });
 
-    const listUrl = new URL(capturedUrls[1]);
+    const listUrl = new URL(at(capturedUrls, 1));
     expect(listUrl.searchParams.get("query")).toBe(`trace:${TRACE_ID}`);
     expect(listUrl.searchParams.get("project")).toBe("-1");
     expect(listUrl.searchParams.get("projectSlug")).toBeNull();
@@ -446,11 +446,11 @@ describe("getReplayRecordingSegments", () => {
     expect(segments).toHaveLength(101);
     expect(capturedUrls).toHaveLength(2);
 
-    const firstUrl = new URL(capturedUrls[0]);
+    const firstUrl = new URL(at(capturedUrls, 0));
     expect(firstUrl.searchParams.get("per_page")).toBe("100");
     expect(firstUrl.searchParams.get("cursor")).toBeNull();
 
-    const secondUrl = new URL(capturedUrls[1]);
+    const secondUrl = new URL(at(capturedUrls, 1));
     expect(secondUrl.searchParams.get("cursor")).toBe("0:100:0");
     expect(secondUrl.searchParams.get("per_page")).toBe("100");
   });

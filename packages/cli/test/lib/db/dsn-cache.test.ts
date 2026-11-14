@@ -18,7 +18,7 @@ import {
   updateCachedResolution,
 } from "../../../src/lib/db/dsn-cache.js";
 import type { DetectedDsn } from "../../../src/lib/dsn/types.js";
-import { useTestConfigDir, at } from "../../helpers.js";
+import { useTestConfigDir, at, must } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("test-dsn-cache-");
 let testProjectDir: string;
@@ -312,7 +312,7 @@ describe("getCachedDetection", () => {
     expect(result).toBeDefined();
     expect(result?.fingerprint).toBe("test-fingerprint");
     expect(result?.allDsns).toHaveLength(1);
-    expect(at(result?.allDsns, 0).raw).toBe(testDsn.raw);
+    expect(at(must(result?.allDsns), 0).raw).toBe(testDsn.raw);
   });
 
   test("invalidates cache when source file mtime changes", async () => {
@@ -557,7 +557,7 @@ describe("setCachedDetection", () => {
 
     const result = await getCachedDetection(testProjectDir);
     expect(result?.fingerprint).toBe("fp-second");
-    expect(at(result?.allDsns, 0).raw).toBe(
+    expect(at(must(result?.allDsns), 0).raw).toBe(
       "https://second@o2.ingest.sentry.io/2",
     );
   });

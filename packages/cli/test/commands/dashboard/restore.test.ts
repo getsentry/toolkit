@@ -24,7 +24,7 @@ import * as apiClient from "../../../src/lib/api-client.js";
 import * as polling from "../../../src/lib/polling.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ describe("dashboard restore command", () => {
   test("human output includes dashboard details table", async () => {
     const { context, stdoutWrite } = createMockContext();
     const func = await loadCommand(restoreCommand);
-    await func.call(context, defaultFlags({ revision: 1 }), "123");
+    await func.call(context, defaultFlags({ revision: "1" }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain("ID");
@@ -317,9 +317,7 @@ describe("dashboard restore command", () => {
     await func.call(context, defaultFlags({ revision: "42" }), "123");
 
     expect(withProgressSpy).toHaveBeenCalled();
-    const [opts] = withProgressSpy.mock.calls[0] as [
-      { message: string; json: boolean },
-    ];
+    const [opts] = at(withProgressSpy.mock.calls, 0);
     expect(opts.message).toContain("Restoring revision 42");
   });
 });

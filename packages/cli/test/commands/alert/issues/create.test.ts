@@ -207,7 +207,7 @@ describe("alert issues create", () => {
         context,
         {
           name: "Busy",
-          condition,
+          ...(condition === undefined ? {} : { condition }),
           action: ['{"id":"action-a"}'],
           filter: [
             '{"type":"event_frequency_count","comparison":{"value":50,"interval":"1d"},"conditionResult":true}',

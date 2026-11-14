@@ -19,6 +19,7 @@ import type {
   SentryLog,
   TraceItemAttribute,
 } from "../../../src/types/index.js";
+import { at } from "../../helpers.js";
 
 /** Force rendered (TTY) mode for a describe block */
 function useRenderedMode() {
@@ -627,7 +628,7 @@ describe("buildLogRowCells", () => {
   test("first cell contains full log ID", () => {
     const log = createTestLog();
     const cells = buildLogRowCells(log);
-    expect(stripAnsi(cells[0])).toContain("test-id-123");
+    expect(stripAnsi(at(cells, 0))).toContain("test-id-123");
   });
 
   test("appends extra field cells when provided", () => {

@@ -147,7 +147,7 @@ const {
   versionExists,
 } = await import("../../src/lib/upgrade.js");
 
-import { TEST_TMP_DIR, useTestConfigDir } from "../helpers.js";
+import { TEST_TMP_DIR, useTestConfigDir, at } from "../helpers.js";
 
 // Store original fetch for restoration
 let originalFetch: typeof globalThis.fetch;
@@ -1458,7 +1458,7 @@ describe("detectPackageManagerFromPath", () => {
   });
 
   test("returns null when argv[1] is undefined", () => {
-    process.argv = [process.argv[0]];
+    process.argv = [at(process.argv, 0)];
     expect(detectPackageManagerFromPath()).toBeNull();
   });
 

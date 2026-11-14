@@ -6,6 +6,7 @@ import {
   createLocalSessionStore,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
+import { at } from "../../helpers.js";
 
 const CONTROL_TOKEN = "control-token";
 
@@ -89,7 +90,7 @@ describe("Local control plane", () => {
     try {
       const chunk = new TextDecoder().decode((await reader.read()).value);
       expect(chunk).toContain("event: sentry.local.directory");
-      const data = JSON.parse(chunk.match(/data: (.+)/)![1]);
+      const data = JSON.parse(at(chunk.match(/data: (.+)/)!, 1));
       expect(new URL(data.directoryUrl).pathname).toBe(
         "/_local/v1/ui/sessions",
       );

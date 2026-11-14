@@ -58,12 +58,8 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
+import type { ReplayListItem } from "../../src/types/replay.js";
 import { useTestConfigDir } from "../helpers.js";
-
-// Keep namespace references alive so linting doesn't strip the imports
-const _apiRef = apiClient;
-const _paginationRef = paginationDb;
-const _resolveRef = resolveTarget;
 
 useTestConfigDir("explore-test-");
 
@@ -113,7 +109,9 @@ const MOCK_EVENTS_RESPONSE = {
 };
 
 // Shape from events-timeseries responses, with anonymized values and timestamps.
-const MOCK_TIME_SERIES_RESPONSE = {
+const MOCK_TIME_SERIES_RESPONSE: Awaited<
+  ReturnType<(typeof apiClient)["queryEventsTimeSeries"]>
+> = {
   meta: {
     dataset: "errors",
     start: 1_735_689_600_000,
@@ -148,7 +146,7 @@ const MOCK_TIME_SERIES_RESPONSE = {
   ],
 };
 
-const MOCK_REPLAYS_RESPONSE = [
+const MOCK_REPLAYS_RESPONSE: ReplayListItem[] = [
   {
     id: "346789a703f6454384f1de473b8b9fcc",
     count_dead_clicks: 1,
@@ -163,6 +161,7 @@ const MOCK_REPLAYS_RESPONSE = [
     urls: ["/checkout"],
     user: { email: "user@example.com" },
     warning_ids: [],
+    releases: [],
   },
 ];
 
@@ -203,7 +202,6 @@ beforeEach(async () => {
   listReplaysSpy = vi.spyOn(apiClient, "listReplays");
   listReplaysSpy.mockResolvedValue({
     data: MOCK_REPLAYS_RESPONSE,
-    nextCursor: undefined,
   });
 
   // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
@@ -1370,7 +1368,11 @@ describe("sentry explore", () => {
 
     const rejectedArgument = (fn: string, argument: string, hint?: string) => ({
       code: "invalid_function_argument",
-      functionArgument: { function: fn, argument, hint },
+      functionArgument: {
+        function: fn,
+        argument,
+        ...(hint === undefined ? {} : { hint }),
+      },
     });
     const rejectedArgumentError = (
       detail: string,
@@ -1588,7 +1590,13 @@ describe("sentry explore", () => {
       query: 'span.description:*"POST',
     };
     const parseError = (code?: string) =>
-      new ApiError("Bad request", 400, detail, undefined, { code });
+      new ApiError(
+        "Bad request",
+        400,
+        detail,
+        undefined,
+        code === undefined ? {} : { code },
+      );
 
     test("reports an unparseable --query as a query ValidationError", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });

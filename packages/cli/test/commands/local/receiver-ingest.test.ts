@@ -327,7 +327,7 @@ test("retention changes include preceding compressed admissions and preserve cur
   await expect(retention.resize(1)).rejects.toThrow(/2 retained envelopes/);
   expect(await Promise.all(writes)).toEqual([204, 204]);
   const history = retention.buffer.read({ all: true });
-  const cursor = receiverEnvelopeId(history[1]);
+  const cursor = receiverEnvelopeId(at(history, 1));
   const seen: string[] = [];
   const reader = retention.buffer.subscribe(
     (item) => seen.push(item.getData().toString()),
@@ -379,7 +379,7 @@ test("raw attachments remain byte exact and malformed SSE remains inspectable wi
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: malformed }),
   ).toBe(204);
-  const latest = retention.buffer.read({ all: true })[0];
+  const latest = at(retention.buffer.read({ all: true }), 0);
   const frames: { id?: string; data: string }[] = [];
   const handler = buildSSEHandler({
     writeSSE: async (frame) => {
@@ -426,7 +426,7 @@ test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize"
     writeSSE: async (frame) => {
       frames.push(frame);
     },
-  })(retention.buffer.read({ all: true })[0]);
+  })(at(retention.buffer.read({ all: true }), 0));
   expect(frames).toHaveLength(1);
   expect(at(frames, 0).data).toBe(raw);
 });

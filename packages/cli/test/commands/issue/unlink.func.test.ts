@@ -8,7 +8,7 @@ import {
   unlinkExternalIssue,
 } from "../../../src/lib/issue-links.js";
 import { confirmByTyping } from "../../../src/lib/mutate-command.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 
 const { mockIsatty } = vi.hoisted(() => ({ mockIsatty: vi.fn(() => false) }));
 
@@ -182,7 +182,7 @@ describe("issue unlink", () => {
     );
     expect(unlinkExternalIssue).toHaveBeenCalledOnce();
     expect(vi.mocked(confirmByTyping).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(unlinkExternalIssue).mock.invocationCallOrder[0],
+      at(vi.mocked(unlinkExternalIssue).mock.invocationCallOrder, 0),
     );
   });
 

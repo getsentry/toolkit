@@ -470,7 +470,7 @@ describe("property: cross-function invariants", () => {
 
           // Aliases should match direct prefixes for simple unique slugs
           for (const [key, alias] of aliasMap) {
-            const project = key.split("/")[1];
+            const project = at(key.split("/"), 1);
             expect(directPrefixes.get(project)).toBe(alias);
           }
         },

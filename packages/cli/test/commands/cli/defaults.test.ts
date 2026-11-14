@@ -16,6 +16,7 @@ import {
   getDefaultProject,
   getDefaultUrl,
   getOnOffPreference,
+  type DefaultsState,
   ON_OFF_PREFERENCES,
   setDefaultOrganization,
   setDefaultProject,
@@ -374,16 +375,27 @@ describe("computeTelemetryEffective", () => {
 // formatDefaultsResult (human formatter)
 // ---------------------------------------------------------------------------
 
+/** A {@link DefaultsState} with every default unset, plus `overrides`. */
+function defaultsState(overrides: Partial<DefaultsState> = {}): DefaultsState {
+  return {
+    organization: null,
+    project: null,
+    url: null,
+    headers: null,
+    "ca-cert": null,
+    telemetry: null,
+    "agent-skills": null,
+    graphics: null,
+    tips: null,
+    ...overrides,
+  };
+}
+
 describe("formatDefaultsResult", () => {
   test("show action with empty defaults", () => {
     const result = formatDefaultsResult({
       action: "show",
-      defaults: {
-        organization: null,
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      defaults: defaultsState(),
       telemetryEffective: { enabled: true, source: "default" },
     });
     const plain = stripAnsi(result);
@@ -397,14 +409,14 @@ describe("formatDefaultsResult", () => {
   test("show action with populated defaults", () => {
     const result = formatDefaultsResult({
       action: "show",
-      defaults: {
+      defaults: defaultsState({
         organization: "my-org",
         project: "my-proj",
         telemetry: "off",
         graphics: "off",
         tips: "off",
         url: "https://sentry.example.com",
-      },
+      }),
       telemetryEffective: { enabled: false, source: "preference" },
     });
     const plain = stripAnsi(result);
@@ -419,12 +431,9 @@ describe("formatDefaultsResult", () => {
   test("show action with env var override shows note", () => {
     const result = formatDefaultsResult({
       action: "show",
-      defaults: {
-        organization: null,
-        project: null,
+      defaults: defaultsState({
         telemetry: "on",
-        url: null,
-      },
+      }),
       telemetryEffective: {
         enabled: false,
         source: "env:SENTRY_CLI_NO_TELEMETRY",
@@ -438,12 +447,7 @@ describe("formatDefaultsResult", () => {
   test("show action with DO_NOT_TRACK override shows note", () => {
     const result = formatDefaultsResult({
       action: "show",
-      defaults: {
-        organization: null,
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      defaults: defaultsState(),
       telemetryEffective: { enabled: false, source: "env:DO_NOT_TRACK" },
     });
     const plain = stripAnsi(result);
@@ -454,12 +458,9 @@ describe("formatDefaultsResult", () => {
   test("show action without env override shows no note", () => {
     const result = formatDefaultsResult({
       action: "show",
-      defaults: {
-        organization: null,
-        project: null,
+      defaults: defaultsState({
         telemetry: "off",
-        url: null,
-      },
+      }),
       telemetryEffective: { enabled: false, source: "preference" },
     });
     const plain = stripAnsi(result);
@@ -469,12 +470,9 @@ describe("formatDefaultsResult", () => {
   test("set action formats correctly", () => {
     const result = formatDefaultsResult({
       action: "set",
-      defaults: {
+      defaults: defaultsState({
         organization: "my-org",
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      }),
       changed: {
         key: "organization",
         previousValue: null,
@@ -490,12 +488,7 @@ describe("formatDefaultsResult", () => {
   test("clear action formats correctly", () => {
     const result = formatDefaultsResult({
       action: "clear",
-      defaults: {
-        organization: null,
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      defaults: defaultsState(),
       changed: { key: "project", previousValue: "old-proj", newValue: null },
     });
     const plain = stripAnsi(result);
@@ -506,12 +499,7 @@ describe("formatDefaultsResult", () => {
   test("clear-all action formats correctly", () => {
     const result = formatDefaultsResult({
       action: "clear-all",
-      defaults: {
-        organization: null,
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      defaults: defaultsState(),
     });
     const plain = stripAnsi(result);
     expect(plain).toContain("All defaults cleared");
@@ -520,12 +508,7 @@ describe("formatDefaultsResult", () => {
   test("set action with unknown key falls back to key name", () => {
     const result = formatDefaultsResult({
       action: "set",
-      defaults: {
-        organization: null,
-        project: null,
-        telemetry: null,
-        url: null,
-      },
+      defaults: defaultsState(),
       changed: { key: "unknown_key", previousValue: null, newValue: "val" },
     });
     const plain = stripAnsi(result);

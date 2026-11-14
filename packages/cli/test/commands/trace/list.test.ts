@@ -447,7 +447,7 @@ describe("listCommand.func", () => {
   });
 
   test("uses singular 'trace' for single result", async () => {
-    listTransactionsSpy.mockResolvedValue({ data: [sampleTraces[0]] });
+    listTransactionsSpy.mockResolvedValue({ data: [at(sampleTraces, 0)] });
 
     const { context, stdoutWrite } = createMockContext();
     const func = await loadCommand(listCommand);

@@ -130,7 +130,7 @@ describe("statusCommand.func", () => {
 
     // Defaults that most tests override
     getAuthTokenSpy.mockReturnValue("fake-oauth-token");
-    getUserInfoSpy.mockReturnValue(null);
+    getUserInfoSpy.mockReturnValue(undefined);
     getDefaultOrgSpy.mockReturnValue(null);
     getDefaultProjectSpy.mockReturnValue(null);
     getDbPathSpy.mockReturnValue("/fake/db/path");
@@ -476,6 +476,7 @@ describe("statusCommand.func", () => {
       });
       isAuthenticatedSpy.mockReturnValue(true);
       getUserInfoSpy.mockReturnValue({
+        userId: "user-1",
         name: "Jane Doe",
         email: "jane@example.com",
       });
@@ -556,6 +557,7 @@ describe("statusCommand.func", () => {
       });
       isAuthenticatedSpy.mockReturnValue(true);
       getUserInfoSpy.mockReturnValue({
+        userId: "user-1",
         name: "Jane Doe",
         email: "jane@example.com",
         username: "janedoe",

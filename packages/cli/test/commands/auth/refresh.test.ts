@@ -47,6 +47,14 @@ function createContext() {
   return { context, getStdout: () => stdoutLines.join("") };
 }
 
+/** Fields of a `RefreshTokenResult` that these tests do not vary. */
+const REFRESH_RESULT_BASE = {
+  host: "https://sentry.io",
+  identity: "user-1",
+  source: "oauth",
+  refreshable: true,
+} satisfies Partial<dbAuth.RefreshTokenResult>;
+
 describe("refreshCommand.func", () => {
   let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
   let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
@@ -144,6 +152,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,
@@ -166,6 +175,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "current_token",
       refreshed: false,
       expiresIn: 1800,
@@ -187,6 +197,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
     });
@@ -207,6 +218,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,
@@ -369,6 +381,7 @@ describe("refreshCommand.func scope re-authentication (--scope / --read-only)", 
 
   test("no scope flags uses standard token refresh path", async () => {
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,

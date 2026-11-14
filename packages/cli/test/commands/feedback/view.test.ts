@@ -45,6 +45,7 @@ const EXTRA_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
 
 function feedback(): SentryFeedback {
   return {
+    platform: null,
     id: "5146636313",
     shortId: "TEST-PROJECT-2SDJ",
     title: "User Feedback",

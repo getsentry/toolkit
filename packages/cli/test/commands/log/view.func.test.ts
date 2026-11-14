@@ -332,6 +332,7 @@ describe("viewCommand.func", () => {
       resolveProjectBoundSlugSpy.mockResolvedValue({
         org: "resolved-org",
         project: "resolved-proj",
+        projectData: { id: "1", slug: "resolved-proj", name: "Resolved Proj" },
       });
       getLogsSpy.mockResolvedValue([makeSampleLog(ID1)]);
 

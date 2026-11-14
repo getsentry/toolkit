@@ -401,7 +401,7 @@ describe("Explore time-series graphics", () => {
       const images = kittyImages(output);
 
       expect(images).toHaveLength(1);
-      expect(textPixels(images[0], 0, 0, label.length)).toEqual(
+      expect(textPixels(at(images, 0), 0, 0, label.length)).toEqual(
         labelPixels(label),
       );
       expect(output).toContain("Interval: 5m · Unit: 1/second");

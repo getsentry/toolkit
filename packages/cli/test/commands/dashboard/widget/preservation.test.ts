@@ -137,7 +137,7 @@ test.each([
   const result = await ctx.run([
     "dashboard",
     "widget",
-    args[0],
+    at(args, 0),
     "test-org/123",
     ...args.slice(1),
     "--json",

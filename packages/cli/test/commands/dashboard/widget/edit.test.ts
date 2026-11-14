@@ -155,7 +155,7 @@ describe("dashboard widget edit", () => {
   test("asks for --display when the widget's display type is null", async () => {
     getDashboardSpy.mockResolvedValue({
       ...sampleDashboard,
-      widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
+      widgets: [{ ...at(must(sampleDashboard.widgets), 0), displayType: null }],
     });
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
@@ -175,7 +175,7 @@ describe("dashboard widget edit", () => {
   test("sets --display on a widget whose display type is null", async () => {
     getDashboardSpy.mockResolvedValue({
       ...sampleDashboard,
-      widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
+      widgets: [{ ...at(must(sampleDashboard.widgets), 0), displayType: null }],
     });
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
@@ -234,11 +234,11 @@ describe("dashboard widget edit", () => {
     const edited = at(body.widgets, 1);
     // Display changed but queries preserved from original
     expect(edited.displayType).toBe("bar");
-    expect(at(edited.queries, 0).aggregates).toEqual([
+    expect(at(must(edited.queries), 0).aggregates).toEqual([
       "p95(span.duration)",
       "count()",
     ]);
-    expect(at(edited.queries, 0).columns).toEqual(["span.description"]);
+    expect(at(must(edited.queries), 0).columns).toEqual(["span.description"]);
   });
 
   // The backend validates displayType and widgetType as independent enums —
@@ -468,7 +468,7 @@ describe("dashboard widget edit", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(at(body.widgets, 0).widgetType).toBe("error-events");
-    expect(at(at(body.widgets, 0).queries, 0).aggregates).toEqual([
+    expect(at(must(at(body.widgets, 0).queries), 0).aggregates).toEqual([
       "last_seen()",
     ]);
   });
@@ -507,7 +507,7 @@ describe("dashboard widget edit", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(at(body.widgets, 0).widgetType).toBe("error-events");
-    expect(at(at(body.widgets, 0).queries, 0).aggregates).toEqual([
+    expect(at(must(at(body.widgets, 0).queries), 0).aggregates).toEqual([
       "last_seen()",
     ]);
   });
@@ -539,7 +539,7 @@ describe("dashboard widget edit", () => {
 
     const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(at(body.widgets, 0).limit).toBe(5);
-    expect(at(at(body.widgets, 0).queries, 0).columns).toEqual([
+    expect(at(must(at(body.widgets, 0).queries), 0).columns).toEqual([
       "browser.name",
     ]);
   });
