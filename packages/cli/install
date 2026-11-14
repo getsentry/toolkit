@@ -152,20 +152,22 @@ esac
 # Official Node.js SEA binaries target glibc, not musl.
 if [[ "$os" == "linux" ]]; then
   detect_musl() {
-    # Heuristic 1: Check for musl dynamic linker
+    # Heuristic 1: ldd --version outputs "musl libc" on musl systems. It reports
+    # the running libc, so it wins over the loader file below. musl's ldd exits
+    # non-zero, so capture its output instead of piping it under pipefail.
+    if command -v ldd >/dev/null 2>&1; then
+      grep -qi musl <<<"$(ldd --version 2>&1 || true)"
+      return
+    fi
+
+    # Heuristic 2: without ldd, check for the musl dynamic linker. glibc systems
+    # can have it too when the musl package is installed.
     local musl_arch
     case "$arch" in
       x64) musl_arch="x86_64" ;;
       arm64) musl_arch="aarch64" ;;
     esac
-    [ -f "/lib/ld-musl-${musl_arch}.so.1" ] && return 0
-
-    # Heuristic 2: ldd --version outputs "musl libc" on musl systems
-    if command -v ldd >/dev/null 2>&1; then
-      ldd --version 2>&1 | grep -qi musl && return 0
-    fi
-
-    return 1
+    [ -f "/lib/ld-musl-${musl_arch}.so.1" ]
   }
 
   if detect_musl; then

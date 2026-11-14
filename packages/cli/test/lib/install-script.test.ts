@@ -567,9 +567,10 @@ process.exitCode = result.status ?? 1;
   });
 
   test("directs musl users to the npm package before downloading a glibc binary", () => {
+    // Like the real musl ldd: version on stderr, non-zero exit.
     writeFileSync(
       join(binDir, "ldd"),
-      "#!/bin/sh\nprintf 'musl libc (x86_64)\\n'\n",
+      "#!/bin/sh\nprintf 'musl libc (x86_64)\\n' >&2\nexit 1\n",
       {
         mode: 0o700,
       },
