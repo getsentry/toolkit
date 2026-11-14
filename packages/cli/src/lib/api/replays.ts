@@ -23,9 +23,11 @@ import {
   type ReplayStringProjectId,
 } from "../../types/index.js";
 
+import { buildSentryApiUrl } from "@sentry/api/client";
 import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkConfig } from "../sentry-client.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -35,6 +37,7 @@ import {
   type PaginatedResponse,
   paginate,
   parseLinkHeader,
+  throwRawApiError,
   unwrapPaginatedResult,
   unwrapValidatedResult,
 } from "./infrastructure.js";
@@ -366,6 +369,37 @@ export async function getReplayRecordingSegments(
       "The recording may be incomplete.",
   );
   return segments;
+}
+
+/**
+ * Download one segment's mobile replay video (an mp4 clip).
+ *
+ * The endpoint (`ProjectReplayVideoDetailsEndpoint`) is not in the public API
+ * catalog, so this is a direct request. It returns 404 for segments without
+ * video.
+ *
+ * @throws {ApiError} On a non-2xx response
+ */
+export async function downloadReplayVideoClip(
+  orgSlug: string,
+  projectSlugOrId: string,
+  replayId: string,
+  segmentId: number,
+): Promise<Uint8Array> {
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  const config = getSdkConfig(regionUrl, { bufferResponseBody: true });
+  const endpoint = `/projects/${orgSlug}/${projectSlugOrId}/replays/${replayId}/videos/${segmentId}/`;
+  const response = await config.fetch(
+    buildSentryApiUrl(config.baseUrl, endpoint),
+  );
+  if (!response.ok) {
+    await throwRawApiError(
+      response,
+      endpoint,
+      "Failed to download replay video",
+    );
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 /**

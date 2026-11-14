@@ -3,9 +3,17 @@
  *
  * Drives the command via its wrapper `loader()`. Org resolution and the
  * replay API are spied; the rrweb file is written for real into a temp cwd.
+ * For mobile replays, the ffmpeg lookup and the ffmpeg join are spied.
  */
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ArgumentParseError } from "@stricli/core";
@@ -44,6 +52,20 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+
+vi.mock("../../../src/lib/which.js", () => ({ whichSync: vi.fn() }));
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as which from "../../../src/lib/which.js";
+
+vi.mock("../../../src/lib/replay-video.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/replay-video.js")>();
+  return { ...actual, joinClips: vi.fn(actual.joinClips) };
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as replayVideo from "../../../src/lib/replay-video.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
@@ -58,6 +80,33 @@ const SEGMENTS = [
   ],
   [{ type: 3, data: { source: 1 }, timestamp: T0 + 5000 }],
 ];
+
+/** A mobile recording: one 5 s clip per segment, 15 s apart. */
+const VIDEO_SEGMENTS = [
+  [
+    videoEvent(0, T0),
+    { type: 5, data: { tag: "breadcrumb" }, timestamp: T0 + 100 },
+  ],
+  [videoEvent(1, T0 + 15_000)],
+];
+
+function videoEvent(segmentId: number, timestamp: number) {
+  return {
+    type: 5,
+    timestamp,
+    data: {
+      tag: "video",
+      payload: {
+        segmentId,
+        duration: 5000,
+        width: 540,
+        height: 960,
+        container: "mp4",
+        encoding: "h264",
+      },
+    },
+  };
+}
 
 function sampleReplay(overrides: Partial<ReplayDetails> = {}): ReplayDetails {
   return {
@@ -173,6 +222,7 @@ describe("replay download", () => {
     expect(JSON.parse(harness.output())).toEqual({
       org: "test-org",
       replayId: REPLAY_ID,
+      format: "rrweb",
       output: join(tmpDir, `${REPLAY_ID}.rrweb.json`),
       segmentCount: 2,
       eventCount: 5,
@@ -198,7 +248,7 @@ describe("replay download", () => {
 
   test("still writes a recording without a full snapshot", async () => {
     segmentsSpy.mockResolvedValue([
-      [{ type: 5, data: { tag: "video" }, timestamp: T0 }],
+      [{ type: 5, data: { tag: "breadcrumb" }, timestamp: T0 }],
     ]);
     const func = await downloadCommand.loader();
 
@@ -257,6 +307,172 @@ describe("replay download", () => {
     await expect(
       func.call(createContext().context, { fresh: false }, REPLAY_ID),
     ).rejects.toThrow(/not found/);
+  });
+
+  describe("mobile replays", () => {
+    let clipSpy: ReturnType<typeof vi.spyOn>;
+    let joinSpy: ReturnType<typeof vi.spyOn>;
+    let concatList: string | undefined;
+
+    beforeEach(() => {
+      segmentsSpy.mockResolvedValue(VIDEO_SEGMENTS);
+      clipSpy = vi
+        .spyOn(apiClient, "downloadReplayVideoClip")
+        .mockImplementation(async (_org, _project, _replay, segmentId) =>
+          new TextEncoder().encode(`clip ${segmentId}`),
+        );
+      vi.mocked(which.whichSync).mockReturnValue("/usr/bin/ffmpeg");
+      concatList = undefined;
+      joinSpy = vi
+        .spyOn(replayVideo, "joinClips")
+        .mockImplementation(async ({ listPath, outputPath }) => {
+          concatList = await readFile(listPath, "utf8");
+          await writeFile(outputPath, "joined");
+        });
+    });
+
+    test("joins the clips into <replay-id>.mp4 with ffmpeg", async () => {
+      const harness = createContext();
+      const func = await downloadCommand.loader();
+
+      await func.call(harness.context, { fresh: false, json: true }, REPLAY_ID);
+
+      const output = join(tmpDir, `${REPLAY_ID}.mp4`);
+      expect(await readFile(output, "utf8")).toBe("joined");
+      expect(clipSpy).toHaveBeenCalledWith("test-org", "42", REPLAY_ID, 0);
+      expect(clipSpy).toHaveBeenCalledWith("test-org", "42", REPLAY_ID, 1);
+      expect(joinSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ffmpeg: "/usr/bin/ffmpeg",
+          outputPath: output,
+        }),
+      );
+      // The first clip holds its last frame until the second starts
+      expect(concatList).toContain("file clip-00000.mp4\nduration 15.000");
+      expect(concatList).toContain("file clip-00001.mp4\nduration 5.000");
+      // The temporary clip directory is removed
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}.mp4`]);
+      expect(JSON.parse(harness.output())).toEqual({
+        org: "test-org",
+        replayId: REPLAY_ID,
+        format: "mp4",
+        output,
+        segmentCount: 2,
+        eventCount: 3,
+        clipCount: 2,
+        durationMs: 20_000,
+      });
+    });
+
+    test("saves the clips in a directory when ffmpeg is missing", async () => {
+      vi.mocked(which.whichSync).mockReturnValue(null);
+      const harness = createContext();
+      const func = await downloadCommand.loader();
+
+      await func.call(harness.context, { fresh: false, json: true }, REPLAY_ID);
+
+      const clipsDir = join(tmpDir, `${REPLAY_ID}-clips`);
+      expect((await readdir(clipsDir)).sort()).toEqual([
+        "clip-00000.mp4",
+        "clip-00001.mp4",
+        "clips.txt",
+      ]);
+      expect(await readFile(join(clipsDir, "clip-00001.mp4"), "utf8")).toBe(
+        "clip 1",
+      );
+      expect(joinSpy).not.toHaveBeenCalled();
+      expect(JSON.parse(harness.output())).toMatchObject({
+        format: "clips",
+        output: clipsDir,
+        clipCount: 2,
+      });
+    });
+
+    test("keeps the clips when ffmpeg fails", async () => {
+      joinSpy.mockRejectedValue(
+        Object.assign(new Error("Command failed"), {
+          stderr: "clip-00001.mp4: Invalid data found when processing input\n",
+        }),
+      );
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(/ffmpeg could not join.*Invalid data found/s);
+
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+    });
+
+    test("replaces clips from an earlier run", async () => {
+      const clipsDir = join(tmpDir, `${REPLAY_ID}-clips`);
+      await mkdir(clipsDir);
+      await writeFile(join(clipsDir, "clip-00009.mp4"), "stale");
+      joinSpy.mockRejectedValue(new Error("Command failed"));
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(/ffmpeg could not join/);
+
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+      expect((await readdir(clipsDir)).sort()).toEqual([
+        "clip-00000.mp4",
+        "clip-00001.mp4",
+        "clips.txt",
+      ]);
+
+      vi.mocked(which.whichSync).mockReturnValue(null);
+      await writeFile(join(clipsDir, "clip-00009.mp4"), "stale");
+      await func.call(createContext().context, { fresh: false }, REPLAY_ID);
+
+      expect(await readdir(clipsDir)).not.toContain("clip-00009.mp4");
+    });
+
+    test("skips clips with no stored video", async () => {
+      clipSpy.mockImplementation(async (_org, _project, _replay, segmentId) => {
+        if (segmentId === 1) {
+          throw new ApiError("Not found", 404);
+        }
+        return new TextEncoder().encode("clip 0");
+      });
+      const harness = createContext();
+      const func = await downloadCommand.loader();
+
+      await func.call(harness.context, { fresh: false, json: true }, REPLAY_ID);
+
+      expect(concatList).toBe(
+        "ffconcat version 1.0\nfile clip-00000.mp4\nduration 5.000\n",
+      );
+      expect(JSON.parse(harness.output())).toMatchObject({ clipCount: 1 });
+    });
+
+    test("keeps clips from an earlier run when a rerun fails", async () => {
+      vi.mocked(which.whichSync).mockReturnValue(null);
+      const clipsDir = join(tmpDir, `${REPLAY_ID}-clips`);
+      await mkdir(clipsDir);
+      await writeFile(join(clipsDir, "clip-00000.mp4"), "earlier");
+      clipSpy.mockRejectedValue(new ApiError("Server error", 500));
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(ApiError);
+
+      expect(await readdir(tmpDir)).toEqual([`${REPLAY_ID}-clips`]);
+      expect(await readFile(join(clipsDir, "clip-00000.mp4"), "utf8")).toBe(
+        "earlier",
+      );
+    });
+
+    test("rejects a replay whose clips are all missing", async () => {
+      clipSpy.mockRejectedValue(new ApiError("Not found", 404));
+      const func = await downloadCommand.loader();
+
+      await expect(
+        func.call(createContext().context, { fresh: false }, REPLAY_ID),
+      ).rejects.toThrow(/has no recording to download/);
+      expect(await readdir(tmpDir)).toEqual([]);
+    });
   });
 
   test("shows its own usage when the replay ID is missing", async () => {
