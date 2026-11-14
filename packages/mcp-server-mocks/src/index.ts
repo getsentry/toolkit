@@ -475,7 +475,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     method: "get",
     path: "/api/0/projects/:organizationSlug/:projectSlugOrId/",
     fetch: ({ params }) => {
-      const projectSlugOrId = String(params.projectSlugOrId);
+      const projectSlugOrId = String(params["projectSlugOrId"]);
       const numericProjectId = Number(projectSlugOrId);
 
       return HttpResponse.json({
@@ -545,7 +545,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
           : null;
       return HttpResponse.json({
         ...clientKeyFixture,
-        id: params.keyId,
+        id: params["keyId"],
         name: body.name ?? clientKeyFixture.name,
         isActive:
           body.isActive !== undefined
@@ -1012,16 +1012,16 @@ export const restHandlers: HttpHandler[] = buildHandlers([
           ...body,
           id: "4509100000001002",
           projectSlug: "cloudflare-mcp",
-          status: body.status ?? "active",
+          status: body["status"] ?? "active",
           uptimeStatus: 1,
-          method: body.method ?? "GET",
-          headers: body.headers ?? [],
-          body: body.body ?? null,
-          assertion: body.assertion ?? null,
-          recoveryThreshold: body.recoveryThreshold ?? 1,
-          downtimeThreshold: body.downtimeThreshold ?? 3,
-          traceSampling: body.traceSampling ?? false,
-          responseCaptureEnabled: body.responseCaptureEnabled ?? true,
+          method: body["method"] ?? "GET",
+          headers: body["headers"] ?? [],
+          body: body["body"] ?? null,
+          assertion: body["assertion"] ?? null,
+          recoveryThreshold: body["recoveryThreshold"] ?? 1,
+          downtimeThreshold: body["downtimeThreshold"] ?? 3,
+          traceSampling: body["traceSampling"] ?? false,
+          responseCaptureEnabled: body["responseCaptureEnabled"] ?? true,
         },
         { status: 201 },
       );
@@ -1453,7 +1453,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     method: "get",
     path: "/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
     fetch: ({ params }) => {
-      const tagKey = params.tagKey as string;
+      const tagKey = params["tagKey"] as string;
       // Sentry answers a key the issue does not have with a generic 404.
       if (!issueTagsFixture.some((tag) => tag.key === tagKey)) {
         return HttpResponse.json(
@@ -1483,7 +1483,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     method: "post",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/teams/:teamSlug/",
     fetch: async ({ params }) => {
-      const teamSlug = params.teamSlug as string;
+      const teamSlug = params["teamSlug"] as string;
       return HttpResponse.json({
         ...teamFixture,
         id: "4509109078196224",
@@ -1591,7 +1591,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     method: "get",
     path: "/api/0/projects/:organizationSlug/:projectSlugOrId/profiling/profiles/:profileId/",
     fetch: ({ params }) => {
-      const profileId = String(params.profileId);
+      const profileId = String(params["profileId"]);
       return HttpResponse.json({
         ...transactionProfileV1Fixture,
         event_id: profileId,

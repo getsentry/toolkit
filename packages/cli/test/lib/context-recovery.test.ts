@@ -133,8 +133,8 @@ beforeEach(async () => {
   failedOrgs = new Set();
   paginatedOrgs = new Set();
   requests = [];
-  process.env.SENTRY_URL = server.url;
-  process.env.SENTRY_NO_CACHE = "1";
+  process.env["SENTRY_URL"] = server.url;
+  process.env["SENTRY_NO_CACHE"] = "1";
   setAuthToken(TOKEN, undefined, undefined, { host: server.url });
 
   const realFetch = (globalThis as { __originalFetch?: typeof fetch })
@@ -359,7 +359,7 @@ describe("bounded target guidance", () => {
     "keeps candidates within the %s organization without changing defaults",
     async (source) => {
       if (source === "environment") {
-        process.env.SENTRY_ORG = "test-org-2";
+        process.env["SENTRY_ORG"] = "test-org-2";
       } else {
         setDefaultOrganization("test-org-2");
       }

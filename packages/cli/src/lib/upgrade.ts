@@ -133,8 +133,8 @@ function extractReleaseVersions(
       (release): release is Record<string, unknown> =>
         typeof release === "object" && release !== null,
     )
-    .filter((release) => !(release.draft || release.prerelease))
-    .map((release) => release.tag_name)
+    .filter((release) => !(release["draft"] || release["prerelease"]))
+    .map((release) => release["tag_name"])
     .filter(
       (tag): tag is string =>
         typeof tag === "string" && tag.startsWith(source.tagPrefix),
@@ -200,7 +200,7 @@ export function buildKnownCurlPaths(
 ): string[] {
   const paths = KNOWN_CURL_DIRS.map((dir) => join(homeDir, dir) + sep);
   // Honor an absolute XDG_BIN_HOME, matching determineInstallDir's precedence.
-  const xdgBinHome = env.XDG_BIN_HOME;
+  const xdgBinHome = env["XDG_BIN_HOME"];
   if (xdgBinHome && isAbsolute(xdgBinHome)) {
     // join(dir, ".") strips any trailing separator so we don't emit a double
     // separator (e.g. `/custom/bin//`) that would break the startsWith checks.

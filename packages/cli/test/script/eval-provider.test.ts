@@ -60,7 +60,7 @@ describe("resolveEvalProvider", () => {
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect((init as RequestInit).method).toBe("POST");
     const headers = (init as RequestInit).headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer or-key");
+    expect(headers["Authorization"]).toBe("Bearer or-key");
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.model).toBe("anthropic/claude-sonnet-4.6");
     expect(body.max_tokens).toBe(128);

@@ -349,8 +349,8 @@ export function applyLoginUrl(url: string | undefined): string {
   const env = getEnv();
 
   if (url) {
-    env.SENTRY_HOST = url;
-    env.SENTRY_URL = url;
+    env["SENTRY_HOST"] = url;
+    env["SENTRY_URL"] = url;
     registerLoginTrustAnchor(url);
     return url;
   }

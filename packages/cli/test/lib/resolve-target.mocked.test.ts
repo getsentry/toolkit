@@ -992,14 +992,14 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   afterEach(() => {
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   // --- resolveOrg ---
 
   test("resolveOrg: returns org from SENTRY_ORG when no CLI flag", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1010,7 +1010,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: CLI flag takes priority over env var", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrg({ org: "flag-org", cwd: "/test" });
 
@@ -1018,7 +1018,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: SENTRY_PROJECT=org/project combo provides org", async () => {
-    process.env.SENTRY_PROJECT = "combo-org/combo-project";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-project";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1026,8 +1026,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: combo SENTRY_PROJECT overrides SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "combo-org/combo-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-project";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1038,8 +1038,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveOrgAndProject ---
 
   test("resolveOrgAndProject: uses SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1053,7 +1053,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: SENTRY_PROJECT=org/project combo works", async () => {
-    process.env.SENTRY_PROJECT = "my-org/my-project";
+    process.env["SENTRY_PROJECT"] = "my-org/my-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1064,8 +1064,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: CLI flags take priority over env vars", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveOrgAndProject({
       org: "flag-org",
@@ -1078,7 +1078,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: SENTRY_ORG alone (no project) falls through", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     // No SENTRY_PROJECT — resolveFromEnvVars returns org-only, but
     // resolveOrgAndProject requires project, so it falls through
 
@@ -1089,8 +1089,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: env vars beat config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     mockGetDefaultOrganization.mockReturnValue("default-org");
     mockGetDefaultProject.mockReturnValue("default-project");
 
@@ -1105,8 +1105,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveAllTargets ---
 
   test("resolveAllTargets: uses SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveAllTargets({ cwd: "/test" });
 
@@ -1117,7 +1117,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveAllTargets: SENTRY_PROJECT=org/project combo", async () => {
-    process.env.SENTRY_PROJECT = "combo-org/combo-proj";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-proj";
 
     const result = await resolveAllTargets({ cwd: "/test" });
 
@@ -1127,8 +1127,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveAllTargets: env vars beat config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     mockGetDefaultOrganization.mockReturnValue("default-org");
     mockGetDefaultProject.mockReturnValue("default-project");
 
@@ -1141,7 +1141,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveOrgsForListing ---
 
   test("resolveOrgsForListing: returns org from SENTRY_ORG when no flag or defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrgsForListing(undefined, "/test");
 
@@ -1151,8 +1151,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- Edge cases ---
 
   test("whitespace-only env vars are ignored", async () => {
-    process.env.SENTRY_ORG = "  ";
-    process.env.SENTRY_PROJECT = "  ";
+    process.env["SENTRY_ORG"] = "  ";
+    process.env["SENTRY_PROJECT"] = "  ";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1161,7 +1161,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("SENTRY_PROJECT with trailing slash is treated as invalid combo", async () => {
-    process.env.SENTRY_PROJECT = "my-org/";
+    process.env["SENTRY_PROJECT"] = "my-org/";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1170,7 +1170,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("SENTRY_PROJECT with leading slash is treated as invalid combo", async () => {
-    process.env.SENTRY_PROJECT = "/my-project";
+    process.env["SENTRY_PROJECT"] = "/my-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1182,8 +1182,11 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
     // Regression: SENTRY_PROJECT="org/" + SENTRY_ORG="my-org" must NOT
     // produce project="org/" — the malformed combo should be discarded
     // and only the org from SENTRY_ORG should be returned.
-    process.env.SENTRY_ORG = "my-org";
-    process.env.SENTRY_PROJECT = "other-org/";
+    // Regression: SENTRY_PROJECT="org/" + SENTRY_ORG="my-org" must NOT
+    // produce project="org/" — the malformed combo should be discarded
+    // and only the org from SENTRY_ORG should be returned.
+    process.env["SENTRY_ORG"] = "my-org";
+    process.env["SENTRY_PROJECT"] = "other-org/";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1194,8 +1197,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("malformed SENTRY_PROJECT with slash still provides org via SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "my-org";
-    process.env.SENTRY_PROJECT = "other-org/";
+    process.env["SENTRY_ORG"] = "my-org";
+    process.env["SENTRY_PROJECT"] = "other-org/";
 
     const result = await resolveOrg({ cwd: "/test" });
 

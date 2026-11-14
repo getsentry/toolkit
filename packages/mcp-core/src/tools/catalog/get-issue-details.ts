@@ -960,7 +960,7 @@ async function findAIConversationsForTrace({
 
     references.set(conversationId, {
       conversationId,
-      spanId: getString(record.span_id),
+      spanId: getString(record["span_id"]),
     });
 
     if (references.size >= MAX_AI_CONVERSATION_MATCHES) {
@@ -992,7 +992,7 @@ function buildConversationLookupTimeParams(event: Event): {
 }
 
 function getEventTraceId(event: Event): string | undefined {
-  const traceId = event.contexts?.trace?.trace_id;
+  const traceId = event.contexts?.["trace"]?.["trace_id"];
   return getString(traceId);
 }
 
@@ -1012,7 +1012,7 @@ function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
   }
 
   // Check if we have a trace ID
-  const traceId = event.contexts?.trace?.trace_id;
+  const traceId = event.contexts?.["trace"]?.["trace_id"];
 
   if (typeof traceId !== "string" || traceId.length === 0) {
     return null;

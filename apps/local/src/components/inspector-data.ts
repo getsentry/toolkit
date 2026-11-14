@@ -9,7 +9,7 @@ export function detailRecord(value: unknown): Record<string, unknown> {
 export function attributeFields(value: unknown): DetailField[] {
   return Object.entries(detailRecord(value)).map(([label, attribute]) => {
     const record = detailRecord(attribute);
-    const content = "value" in record ? record.value : attribute;
+    const content = "value" in record ? record["value"] : attribute;
     return {
       label,
       value:

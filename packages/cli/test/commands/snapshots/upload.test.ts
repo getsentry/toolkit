@@ -134,21 +134,24 @@ describe("snapshots upload", () => {
         string,
         Record<string, unknown>,
       ];
-      expect(manifest.app_id).toBe("com.example.app");
-      const images = manifest.images as Record<string, Record<string, unknown>>;
+      expect(manifest["app_id"]).toBe("com.example.app");
+      const images = manifest["images"] as Record<
+        string,
+        Record<string, unknown>
+      >;
       expect(Object.keys(images).sort()).toEqual(["a.png", "sub/b.png"]);
       expect(images["a.png"]).toMatchObject({
         width: 4,
         height: 3,
         note: "hi",
       });
-      expect(images["a.png"].content_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(images["a.png"]["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
       // selective omitted when not requested.
-      expect(manifest.selective).toBeUndefined();
+      expect(manifest["selective"]).toBeUndefined();
       expect(harness.output()).toContain("snap-1");
 
       // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
-      const hash = images["a.png"].content_hash as string;
+      const hash = images["a.png"]["content_hash"] as string;
       const key = uploadedKeys().find((k) => k.endsWith(hash)) as string;
       expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
       expect(existsSpy).toHaveBeenCalledTimes(1);
@@ -188,13 +191,13 @@ describe("snapshots upload", () => {
       string,
       Record<string, unknown>,
     ];
-    const entry = (manifest.images as Record<string, Record<string, unknown>>)[
-      "a.png"
-    ];
-    expect(entry.width).toBe(4);
-    expect(entry.height).toBe(3);
-    expect(entry.content_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(entry.keep).toBe(1);
+    const entry = (
+      manifest["images"] as Record<string, Record<string, unknown>>
+    )["a.png"];
+    expect(entry["width"]).toBe(4);
+    expect(entry["height"]).toBe(3);
+    expect(entry["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(entry["keep"]).toBe(1);
   });
 
   test("rejects --pr-number without a resolvable base SHA", async () => {
@@ -409,7 +412,7 @@ describe("snapshots upload", () => {
       string,
       Record<string, unknown>,
     ];
-    expect(manifest.diff_threshold).toBe(0.05);
-    expect(manifest.selective).toBe(true);
+    expect(manifest["diff_threshold"]).toBe(0.05);
+    expect(manifest["selective"]).toBe(true);
   });
 });

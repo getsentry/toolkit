@@ -39,34 +39,34 @@ describe("db/auth host scoping", () => {
   });
 
   test("setAuthToken without host explicit uses configured host", () => {
-    const prevHost = process.env.SENTRY_HOST;
-    process.env.SENTRY_HOST = "https://env-host.example.com";
+    const prevHost = process.env["SENTRY_HOST"];
+    process.env["SENTRY_HOST"] = "https://env-host.example.com";
     try {
       setAuthToken("tok-2");
       expect(getStoredAuthHost()).toBe("https://env-host.example.com");
     } finally {
       if (prevHost === undefined) {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       } else {
-        process.env.SENTRY_HOST = prevHost;
+        process.env["SENTRY_HOST"] = prevHost;
       }
     }
   });
 
   test("setAuthToken without host falls back to DEFAULT_SENTRY_URL", () => {
-    const prevHost = process.env.SENTRY_HOST;
-    const prevUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    const prevHost = process.env["SENTRY_HOST"];
+    const prevUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     try {
       setAuthToken("tok-3");
       expect(getStoredAuthHost()).toBe("https://sentry.io");
     } finally {
       if (prevHost !== undefined) {
-        process.env.SENTRY_HOST = prevHost;
+        process.env["SENTRY_HOST"] = prevHost;
       }
       if (prevUrl !== undefined) {
-        process.env.SENTRY_URL = prevUrl;
+        process.env["SENTRY_URL"] = prevUrl;
       }
     }
   });
@@ -95,8 +95,8 @@ describe("db/auth host scoping", () => {
     const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
-    const prevHost = process.env.SENTRY_HOST;
-    process.env.SENTRY_HOST = "https://legacy-configured.example.com";
+    const prevHost = process.env["SENTRY_HOST"];
+    process.env["SENTRY_HOST"] = "https://legacy-configured.example.com";
     captureEnvTokenHost();
 
     try {
@@ -112,9 +112,9 @@ describe("db/auth host scoping", () => {
       expect(row.host).toBe("https://legacy-configured.example.com");
     } finally {
       if (prevHost === undefined) {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       } else {
-        process.env.SENTRY_HOST = prevHost;
+        process.env["SENTRY_HOST"] = prevHost;
       }
       resetEnvTokenHostForTesting();
     }
@@ -129,20 +129,20 @@ describe("db/auth host scoping", () => {
     const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
-    const prevHost = process.env.SENTRY_HOST;
-    const prevUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    const prevHost = process.env["SENTRY_HOST"];
+    const prevUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     captureEnvTokenHost(); // captures DEFAULT_SENTRY_URL (SaaS)
 
     try {
       expect(getStoredAuthHost()).toBe("https://sentry.io");
     } finally {
       if (prevHost !== undefined) {
-        process.env.SENTRY_HOST = prevHost;
+        process.env["SENTRY_HOST"] = prevHost;
       }
       if (prevUrl !== undefined) {
-        process.env.SENTRY_URL = prevUrl;
+        process.env["SENTRY_URL"] = prevUrl;
       }
       resetEnvTokenHostForTesting();
     }
@@ -162,28 +162,29 @@ describe("db/auth host scoping", () => {
     const { captureEnvTokenHost, resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
     resetEnvTokenHostForTesting();
-    const prevHost = process.env.SENTRY_HOST;
-    const prevUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    const prevHost = process.env["SENTRY_HOST"];
+    const prevUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     captureEnvTokenHost(); // snapshots SaaS default
 
     // Simulate rc shim writing env.SENTRY_URL AFTER boot
-    process.env.SENTRY_URL = "https://rc-sourced.example.com";
+    // Simulate rc shim writing env.SENTRY_URL AFTER boot
+    process.env["SENTRY_URL"] = "https://rc-sourced.example.com";
 
     try {
       // Must migrate to the BOOT snapshot (SaaS), not the rc-sourced URL
       expect(getStoredAuthHost()).toBe("https://sentry.io");
     } finally {
       if (prevHost !== undefined) {
-        process.env.SENTRY_HOST = prevHost;
+        process.env["SENTRY_HOST"] = prevHost;
       } else {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       }
       if (prevUrl !== undefined) {
-        process.env.SENTRY_URL = prevUrl;
+        process.env["SENTRY_URL"] = prevUrl;
       } else {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       }
       resetEnvTokenHostForTesting();
     }

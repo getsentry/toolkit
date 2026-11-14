@@ -310,8 +310,8 @@ describe("sentry local run", () => {
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
-    const originalRate = process.env.SENTRY_TRACES_SAMPLE_RATE;
-    process.env.SENTRY_TRACES_SAMPLE_RATE = "0.5";
+    const originalRate = process.env["SENTRY_TRACES_SAMPLE_RATE"];
+    process.env["SENTRY_TRACES_SAMPLE_RATE"] = "0.5";
     try {
       const func = (await runCommand.loader()) as unknown as RunFunc;
       const ctx = makeContext();
@@ -325,9 +325,9 @@ describe("sentry local run", () => {
       );
     } finally {
       if (originalRate === undefined) {
-        delete process.env.SENTRY_TRACES_SAMPLE_RATE;
+        delete process.env["SENTRY_TRACES_SAMPLE_RATE"];
       } else {
-        process.env.SENTRY_TRACES_SAMPLE_RATE = originalRate;
+        process.env["SENTRY_TRACES_SAMPLE_RATE"] = originalRate;
       }
     }
   });
@@ -632,7 +632,7 @@ describe("sentry local run", () => {
     const capturedEnv = spawnCapture.env;
     expect(capturedEnv).toBeDefined();
     // Base name read by server-side SDKs.
-    expect(capturedEnv?.SENTRY_SPOTLIGHT).toBe(expectedUrl);
+    expect(capturedEnv?.["SENTRY_SPOTLIGHT"]).toBe(expectedUrl);
     // Every framework client variant points at the same URL.
     for (const prefix of CLIENT_SPOTLIGHT_PREFIXES) {
       expect(capturedEnv?.[`${prefix}SENTRY_SPOTLIGHT`]).toBe(expectedUrl);

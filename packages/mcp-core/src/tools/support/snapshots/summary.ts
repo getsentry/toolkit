@@ -121,17 +121,17 @@ export async function getSnapshotSummary(
     compactMetadata: true,
   })) as Record<string, unknown>;
 
-  const allImages = asObjects<SnapshotImageEntry>(data.images);
-  const changed = asObjects<SnapshotDiffPair>(data.changed);
-  const renamed = asObjects<SnapshotDiffPair>(data.renamed);
-  const added = asObjects<SnapshotImageEntry>(data.added);
-  const removed = asObjects<SnapshotImageEntry>(data.removed);
-  const errored = asObjects<SnapshotDiffPair>(data.errored);
+  const allImages = asObjects<SnapshotImageEntry>(data["images"]);
+  const changed = asObjects<SnapshotDiffPair>(data["changed"]);
+  const renamed = asObjects<SnapshotDiffPair>(data["renamed"]);
+  const added = asObjects<SnapshotImageEntry>(data["added"]);
+  const removed = asObjects<SnapshotImageEntry>(data["removed"]);
+  const errored = asObjects<SnapshotDiffPair>(data["errored"]);
   const unchanged = asObjects<SnapshotDiffPair | SnapshotImageEntry>(
-    data.unchanged,
+    data["unchanged"],
   );
   const skipped = asObjects<SnapshotDiffPair | SnapshotImageEntry>(
-    data.skipped,
+    data["skipped"],
   );
 
   const counts = {
@@ -146,8 +146,8 @@ export async function getSnapshotSummary(
   };
 
   const url = apiService.getPreprodSnapshotUrl(organizationSlug, snapshotId);
-  const comparisonType = snapshotString(data.comparison_type) ?? null;
-  const approvalInfo = data.approval_info as
+  const comparisonType = snapshotString(data["comparison_type"]) ?? null;
+  const approvalInfo = data["approval_info"] as
     | { status?: unknown; is_auto_approved?: unknown }
     | null
     | undefined;
@@ -202,10 +202,10 @@ export async function getSnapshotSummary(
     snapshotId,
     url,
     comparisonType,
-    state: snapshotString(data.state) ?? null,
-    projectId: snapshotString(data.project_id) ?? null,
+    state: snapshotString(data["state"]) ?? null,
+    projectId: snapshotString(data["project_id"]) ?? null,
     counts,
-    vcs: toSnapshotVcs(data.vcs_info as SnapshotVcsInfo | undefined),
+    vcs: toSnapshotVcs(data["vcs_info"] as SnapshotVcsInfo | undefined),
     approval:
       approvalInfo && typeof approvalInfo === "object"
         ? {

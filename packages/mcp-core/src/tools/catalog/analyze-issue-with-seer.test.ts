@@ -18,7 +18,7 @@ describe("analyze_issue_with_seer", () => {
         ({ params }) =>
           HttpResponse.json(
             createUnsupportedIssue({
-              shortId: String(params.issueId),
+              shortId: String(params["issueId"]),
             }),
           ),
       ),

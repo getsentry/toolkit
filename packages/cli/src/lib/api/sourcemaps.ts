@@ -190,7 +190,7 @@ export async function buildArtifactBundle(
       headers["debug-id"] = file.debugId;
     }
     if (file.sourcemapFilename) {
-      headers.Sourcemap = file.sourcemapFilename;
+      headers["Sourcemap"] = file.sourcemapFilename;
     }
 
     filesManifest[bundlePath] = {

@@ -682,7 +682,7 @@ function parseDashboard(
   return {
     ...input,
     // Warnings name the command's own usage
-    warnings: (input.warnings as readonly string[]).map((warning) =>
+    warnings: (input["warnings"] as readonly string[]).map((warning) =>
       warning.replace(/ Expected: .*$/s, ""),
     ),
   };

@@ -103,7 +103,7 @@ export function toMetricMonitorDetails(
     dataSources: (detector.dataSources ?? []).map((source) => {
       const query = getMetricQuery(source);
       return {
-        type: typeof source.type === "string" ? source.type : "unknown",
+        type: typeof source["type"] === "string" ? source["type"] : "unknown",
         ...(query
           ? { query }
           : { unavailableReason: "Source configuration is unavailable." }),

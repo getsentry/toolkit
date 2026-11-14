@@ -137,14 +137,14 @@ function issueIndexResponse(
   serverUrl: string,
 ): MockResponse {
   const supportedOrgs = [TEST_ORG, TEST_FEEDBACK_LATEST_ORG];
-  if (!supportedOrgs.includes(params.orgSlug)) {
+  if (!supportedOrgs.includes(params["orgSlug"])) {
     return { status: 404, body: notFoundFixture };
   }
 
   const url = new URL(req.url);
   const query = url.searchParams.get("query") ?? "";
   if (query.includes("issue.category:feedback")) {
-    return feedbackIssueIndexResponse(url, params.orgSlug, serverUrl);
+    return feedbackIssueIndexResponse(url, params["orgSlug"], serverUrl);
   }
   return { body: issuesFixture };
 }

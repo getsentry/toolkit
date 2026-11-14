@@ -32,7 +32,7 @@ export function toRRWebEvents(segments: ReplayRecordingSegments): RRWebEvent[] {
 
 /** Whether the events include a full DOM snapshot, which playback requires. */
 export function hasFullSnapshot(events: RRWebEvent[]): boolean {
-  return events.some((event) => event.type === EVENT_TYPE_FULL_SNAPSHOT);
+  return events.some((event) => event["type"] === EVENT_TYPE_FULL_SNAPSHOT);
 }
 
 /** Recording length in milliseconds, from the first to the last event. */
@@ -55,7 +55,7 @@ function normalizeTimestamp(event: RRWebEvent): RRWebEvent {
 }
 
 function timestampOf(event: RRWebEvent): number {
-  return typeof event.timestamp === "number" ? event.timestamp : 0;
+  return typeof event["timestamp"] === "number" ? event["timestamp"] : 0;
 }
 
 const EVENT_TYPE_FULL_SNAPSHOT = 2;

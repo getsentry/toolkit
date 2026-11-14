@@ -115,10 +115,10 @@ export function StructuredOutputScorer(
     }
 
     // Check for error field in output
-    if (parsed.error && parsed.error !== "" && parsed.error !== null) {
+    if (parsed["error"] && parsed["error"] !== "" && parsed["error"] !== null) {
       return {
         score: 0,
-        metadata: { rationale: `Output contains error: ${parsed.error}` },
+        metadata: { rationale: `Output contains error: ${parsed["error"]}` },
       };
     }
 

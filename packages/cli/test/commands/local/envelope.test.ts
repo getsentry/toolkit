@@ -30,7 +30,9 @@ describe("receiver envelope codec", () => {
       ],
       [{ type: "log" }, { items: [], type: "log" }],
     ]);
-    expect(parsed?.envelope[0].__spotlight_sender_user_agent).toBe("test-sdk");
+    expect(parsed?.envelope[0]["__spotlight_sender_user_agent"]).toBe(
+      "test-sdk",
+    );
     expect(container.getParsedEnvelope()).toBe(parsed);
     expect(container.getEventTypes()).toEqual(["attachment", "event", "log"]);
   });

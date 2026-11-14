@@ -489,7 +489,7 @@ describe("stringifyUnknown", () => {
 
   test("falls back to String() for circular references", () => {
     const circular: Record<string, unknown> = { name: "loop" };
-    circular.self = circular;
+    circular["self"] = circular;
     // Should not throw — falls back to String() which returns [object Object]
     expect(() => stringifyUnknown(circular)).not.toThrow();
     expect(stringifyUnknown(circular)).toBe("[object Object]");

@@ -454,7 +454,7 @@ describe("get_issue_activity", () => {
       deletedPr,
       blankCommit,
     ] = activity;
-    expect(unmerge.unmerge).toEqual({
+    expect(unmerge["unmerge"]).toEqual({
       fingerprintCount: 2,
       source: { shortId: "CLOUDFLARE-MCP-42" },
       destination: null,
@@ -467,18 +467,21 @@ describe("get_issue_activity", () => {
       "text",
       "type",
     ]);
-    expect(rca.text).toBe("Null org slug reaches the API client.");
-    expect(seerPr.pullRequestUrls).toEqual([
+    expect(rca["text"]).toBe("Null org slug reaches the API client.");
+    expect(seerPr["pullRequestUrls"]).toEqual([
       "https://github.com/getsentry/sentry-mcp/pull/7",
     ]);
-    expect(createIssue.externalIssue).toEqual({
+    expect(createIssue["externalIssue"]).toEqual({
       title: "Fix null org",
       provider: "Jira",
       location: "https://example.atlassian.net/browse/ENG-1",
     });
-    expect(resolvedByAge.age).toBe(720);
-    expect(deletedPr.pullRequest).toBeNull();
-    expect(blankCommit.commit).toMatchObject({ id: "abc123", message: null });
+    expect(resolvedByAge["age"]).toBe(720);
+    expect(deletedPr["pullRequest"]).toBeNull();
+    expect(blankCommit["commit"]).toMatchObject({
+      id: "abc123",
+      message: null,
+    });
 
     const serialized = JSON.stringify(structuredContent);
     for (const leaked of [

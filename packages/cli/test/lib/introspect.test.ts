@@ -555,8 +555,9 @@ describe("extractCommandCompletions", () => {
     });
 
     expect(
-      extractCommandCompletions(makeRouteMap([makeEntry("create", create)]))
-        .create?.flagNames,
+      extractCommandCompletions(makeRouteMap([makeEntry("create", create)]))[
+        "create"
+      ]?.flagNames,
     ).toEqual({
       "--json": { brief: "Output as JSON" },
       "--tag": { brief: "A tag", aliases: ["-t"], variadic: true },

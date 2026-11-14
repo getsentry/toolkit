@@ -722,16 +722,16 @@ describe("formatDashboardCreated", () => {
 
 describe("formatUpgradeResult", () => {
   // Force plain output so we get raw markdown (no ANSI codes)
-  const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
+  const origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
   function withPlain(fn: () => void) {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     try {
       fn();
     } finally {
       if (origPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
       }
     }
   }

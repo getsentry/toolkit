@@ -704,15 +704,15 @@ describe("oauth callback routes", () => {
         unknown
       >;
 
-      expect(props.upstreamScopes).toEqual([
+      expect(props["upstreamScopes"]).toEqual([
         "alerts:write",
         "event:write",
         "org:read",
         "project:write",
         "team:write",
       ]);
-      expect(props.grantedSkills).toEqual(["inspect"]);
-      expect(props.grantedScopes).not.toEqual(props.upstreamScopes);
+      expect(props["grantedSkills"]).toEqual(["inspect"]);
+      expect(props["grantedScopes"]).not.toEqual(props["upstreamScopes"]);
     });
 
     it("omits upstreamScopes when Sentry's token response has no scope", async () => {
@@ -737,7 +737,7 @@ describe("oauth callback routes", () => {
         string,
         unknown
       >;
-      expect(props.upstreamScopes).toBeUndefined();
+      expect(props["upstreamScopes"]).toBeUndefined();
     });
 
     it("completes callback for a scoped resource, exchanges the code, and uses the token at the same scoped /mcp path", async () => {

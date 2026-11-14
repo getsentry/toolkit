@@ -38,7 +38,8 @@ type RequestLog = {
 
 beforeEach(async () => {
   // Set required env var for OAuth refresh
-  process.env.SENTRY_CLIENT_ID = "test-client-id";
+  // Set required env var for OAuth refresh
+  process.env["SENTRY_CLIENT_ID"] = "test-client-id";
 
   // Save original fetch
   originalFetch = globalThis.fetch;
@@ -110,12 +111,12 @@ describe("401 retry behavior", () => {
 
   let savedAuthToken: string | undefined;
   beforeEach(() => {
-    savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
   });
   afterEach(() => {
     if (savedAuthToken !== undefined) {
-      process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+      process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
     }
   });
 

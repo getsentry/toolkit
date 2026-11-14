@@ -1243,8 +1243,8 @@ describe("pollAutofixState", () => {
     let fetchCount = 0;
 
     // Force rich output so the spinner isn't suppressed in non-TTY test env
-    const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    const origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -1315,9 +1315,9 @@ describe("pollAutofixState", () => {
     } finally {
       process.stdout.write = origWrite;
       if (origPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
       }
     }
   });
@@ -1729,8 +1729,8 @@ describe("ensureRootCauseAnalysis", () => {
     let triggerCalled = false;
 
     // Force rich output so the spinner isn't suppressed in non-TTY test env
-    const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    const origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
 
     // Spy on process.stdout.write to capture spinner output
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -1794,9 +1794,9 @@ describe("ensureRootCauseAnalysis", () => {
     } finally {
       process.stdout.write = origWrite;
       if (origPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
       }
     }
   });
@@ -2371,7 +2371,7 @@ describe("resolveIssue with search text", () => {
   }
 
   function resolve(issueArg: string) {
-    process.env.SENTRY_ORG = "my-org";
+    process.env["SENTRY_ORG"] = "my-org";
     return resolveIssue({ issueArg, cwd: getConfigDir(), command: "view" });
   }
 

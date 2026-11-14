@@ -231,7 +231,7 @@ describe("update_alert_rule", () => {
       };
       actionFilters[0].actions[0].integrationId = integrationId;
       const savedFilters = structuredClone(actionFilters);
-      savedFilters[0].actions[0].config.targetIdentifier = "CNEW";
+      savedFilters[0].actions[0].config["targetIdentifier"] = "CNEW";
       mswServer.use(
         http.put(endpoint, async ({ request }) => {
           writes.push((await request.json()) as Record<string, unknown>);
@@ -246,8 +246,8 @@ describe("update_alert_rule", () => {
       const expectedFilters = structuredClone(actionFilters);
       const expectedConfig: Record<string, unknown> =
         expectedFilters[0].actions[0].config;
-      if (expectedId === undefined) delete expectedConfig.targetIdentifier;
-      else expectedConfig.targetIdentifier = expectedId;
+      if (expectedId === undefined) delete expectedConfig["targetIdentifier"];
+      else expectedConfig["targetIdentifier"] = expectedId;
       expect(writes).toEqual([
         {
           name: alertRule.name,
@@ -443,7 +443,11 @@ describe("update_alert_rule", () => {
         );
       }),
       http.get(`${detectorsEndpoint}:id/`, ({ params: path }) =>
-        HttpResponse.json({ ...detector, id: path.id, type: "metric_issue" }),
+        HttpResponse.json({
+          ...detector,
+          id: path["id"],
+          type: "metric_issue",
+        }),
       ),
     );
 
@@ -592,7 +596,7 @@ describe("update_alert_rule", () => {
       useProjectScope(["100"]);
       mswServer.use(
         http.get(`${detectorsEndpoint}:id/`, ({ params: path }) =>
-          HttpResponse.json({ ...detector, id: path.id, projectId }),
+          HttpResponse.json({ ...detector, id: path["id"], projectId }),
         ),
       );
 

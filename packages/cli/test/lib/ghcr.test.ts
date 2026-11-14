@@ -236,8 +236,8 @@ describe("fetchNightlyManifest", () => {
 
     const result = await fetchNightlyManifest("my-token");
     expect(result).toEqual(manifest);
-    expect(capturedHeaders.authorization).toBe("Bearer my-token");
-    expect(capturedHeaders.accept).toBe(
+    expect(capturedHeaders["authorization"]).toBe("Bearer my-token");
+    expect(capturedHeaders["accept"]).toBe(
       "application/vnd.oci.image.manifest.v1+json",
     );
   });
@@ -387,7 +387,7 @@ describe("downloadNightlyBlob", () => {
     expect(requestCount).toBe(2);
     expect(response.status).toBe(200);
     // Auth header must NOT be forwarded to Azure
-    expect(secondRequestHeaders.authorization).toBeUndefined();
+    expect(secondRequestHeaders["authorization"]).toBeUndefined();
     const body = await response.arrayBuffer();
     expect(new Uint8Array(body)).toEqual(binaryContent);
   });

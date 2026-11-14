@@ -64,7 +64,7 @@ function resolveOpenRouterReasoningEffort(
  */
 export function getOpenRouterModel(model?: string): LanguageModel {
   const factory = createOpenAI({
-    apiKey: process.env.OPENROUTER_API_KEY,
+    apiKey: process.env["OPENROUTER_API_KEY"],
     baseURL: OPENROUTER_BASE_URL,
     headers: {
       "User-Agent": getUserAgent(),
@@ -74,7 +74,7 @@ export function getOpenRouterModel(model?: string): LanguageModel {
   });
 
   return factory.chat(
-    model ?? process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL,
+    model ?? process.env["OPENROUTER_MODEL"] ?? DEFAULT_OPENROUTER_MODEL,
   );
 }
 
@@ -86,7 +86,7 @@ export function getOpenRouterModel(model?: string): LanguageModel {
  */
 export function getOpenRouterProviderOptions(): ProviderOptions {
   const reasoningEffort = resolveOpenRouterReasoningEffort(
-    process.env.OPENROUTER_REASONING_EFFORT,
+    process.env["OPENROUTER_REASONING_EFFORT"],
   );
 
   return {

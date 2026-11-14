@@ -1172,15 +1172,15 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     let message = breadcrumb.message ?? "";
     if (!message && breadcrumb.data) {
       const data = breadcrumb.data;
-      if (data.url && data.method) {
-        const status = data.status_code
-          ? ` → ${stringifyUnknown(data.status_code)}`
+      if (data["url"] && data["method"]) {
+        const status = data["status_code"]
+          ? ` → ${stringifyUnknown(data["status_code"])}`
           : "";
-        message = `${stringifyUnknown(data.method)} ${stringifyUnknown(data.url)}${status}`;
-      } else if (data.from && data.to) {
-        message = `${stringifyUnknown(data.from)} → ${stringifyUnknown(data.to)}`;
-      } else if (data.arguments && Array.isArray(data.arguments)) {
-        message = String(data.arguments[0] || "").slice(0, 60);
+        message = `${stringifyUnknown(data["method"])} ${stringifyUnknown(data["url"])}${status}`;
+      } else if (data["from"] && data["to"]) {
+        message = `${stringifyUnknown(data["from"])} → ${stringifyUnknown(data["to"])}`;
+      } else if (data["arguments"] && Array.isArray(data["arguments"])) {
+        message = String(data["arguments"][0] || "").slice(0, 60);
       }
     }
 
@@ -1468,14 +1468,14 @@ function buildUserMarkdown(event: SentryEvent): string {
   if (user.geo) {
     const geo = user.geo;
     const parts: string[] = [];
-    if (geo.city) {
-      parts.push(geo.city);
+    if (geo["city"]) {
+      parts.push(geo["city"]);
     }
-    if (geo.region && geo.region !== geo.city) {
-      parts.push(geo.region);
+    if (geo["region"] && geo["region"] !== geo["city"]) {
+      parts.push(geo["region"]);
     }
-    if (geo.country_code) {
-      parts.push(`(${geo.country_code})`);
+    if (geo["country_code"]) {
+      parts.push(`(${geo["country_code"]})`);
     }
     if (parts.length > 0) {
       kvRows.push(["Location", parts.join(", ")]);
@@ -1665,7 +1665,7 @@ export function formatOrgDetails(org: SentryOrganization): string {
   kvRows.push(["2FA", org.require2FA ? "Required" : "Not required"]);
   kvRows.push(["Early Adopter", org.isEarlyAdopter ? "Yes" : "No"]);
   // orgRole is returned by the detail API but not yet typed in the SDK
-  const orgRole = (org as Record<string, unknown>).orgRole as
+  const orgRole = (org as Record<string, unknown>)["orgRole"] as
     | string
     | undefined;
   if (orgRole) {

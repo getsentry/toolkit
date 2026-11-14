@@ -29,7 +29,9 @@ describe("CVE defense-in-depth: refresh token", () => {
   beforeEach(() => {
     // A client ID is required for refreshAccessToken to proceed past the
     // config check. We want it to reach (and fail at) the host assertion.
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    // A client ID is required for refreshAccessToken to proceed past the
+    // config check. We want it to reach (and fail at) the host assertion.
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
     resetEnvTokenHostForTesting();
     // Intercept fetch to detect any outbound request attempt.
     fetchCalls = [];
@@ -56,7 +58,10 @@ describe("CVE defense-in-depth: refresh token", () => {
     // Step 2: simulate the bypass — something writes env.SENTRY_URL AFTER
     // the snapshot. This is the attack shape: env got poisoned by a
     // code path that skipped the URL-arg / rc-shim guards.
-    process.env.SENTRY_URL = "https://evil.com";
+    // Step 2: simulate the bypass — something writes env.SENTRY_URL AFTER
+    // the snapshot. This is the attack shape: env got poisoned by a
+    // code path that skipped the URL-arg / rc-shim guards.
+    process.env["SENTRY_URL"] = "https://evil.com";
 
     await expect(
       refreshAccessToken("fake-refresh-token", { credentialHost }),
@@ -68,11 +73,13 @@ describe("CVE defense-in-depth: refresh token", () => {
 
   test("refreshAccessToken proceeds when URL matches token scope", async () => {
     // Pin env-token to the self-hosted instance BEFORE the url is used.
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    // Pin env-token to the self-hosted instance BEFORE the url is used.
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     resetEnvTokenHostForTesting();
     captureEnvTokenHost();
     // Also set SENTRY_URL so getSentryUrl() returns the same host
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    // Also set SENTRY_URL so getSentryUrl() returns the same host
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
 
     // Should NOT throw at the host-assertion; the actual fetch will fail
     // with the mock "test: unexpected fetch" error, which is fine — the
@@ -98,8 +105,8 @@ describe("CVE defense-in-depth: refresh token", () => {
   ])(
     "%s refresh failure names the credential host",
     async (_, failure, prefix) => {
-      delete process.env.SENTRY_HOST;
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_HOST"];
+      delete process.env["SENTRY_URL"];
       const credentialHost = "https://sentry.example.com:8443";
       globalThis.fetch = async (input: RequestInfo | URL) => {
         fetchCalls.push(extractFetchUrl(input));

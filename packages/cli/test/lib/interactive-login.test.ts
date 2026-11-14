@@ -39,14 +39,14 @@ import type { TokenResponse } from "../../src/types/index.js";
 // Force plain output for predictable string matching
 let origPlain: string | undefined;
 beforeAll(() => {
-  origPlain = process.env.SENTRY_PLAIN_OUTPUT;
-  process.env.SENTRY_PLAIN_OUTPUT = "1";
+  origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+  process.env["SENTRY_PLAIN_OUTPUT"] = "1";
 });
 afterAll(() => {
   if (origPlain === undefined) {
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   } else {
-    process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+    process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
   }
 });
 

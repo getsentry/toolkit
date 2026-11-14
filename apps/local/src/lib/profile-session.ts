@@ -23,13 +23,13 @@ export function profileSampleEndMs(sample: object): number | undefined {
 export function profileSampleTimeMs(
   sample: Record<string, unknown>,
 ): number | undefined {
-  const ns = sample.elapsed_since_start_ns;
+  const ns = sample["elapsed_since_start_ns"];
   if (
     (typeof ns === "number" || (typeof ns === "string" && ns.trim())) &&
     Number.isFinite(Number(ns))
   )
     return Number(ns) / 1e6;
-  const seconds = finite(sample.timestamp);
+  const seconds = finite(sample["timestamp"]);
   return seconds === undefined ? undefined : seconds * 1000;
 }
 const mergedSessions = new WeakMap<
@@ -46,8 +46,8 @@ export function profileSampleSource(
 
 export function profileData(item: LocalFeedItem): Record<string, unknown> {
   const payload = record(item.payload);
-  return Object.keys(record(payload.profile)).length
-    ? record(payload.profile)
+  return Object.keys(record(payload["profile"])).length
+    ? record(payload["profile"])
     : payload;
 }
 
@@ -56,16 +56,16 @@ export function profileSessionItems(
   item: LocalFeedItem,
   items: readonly LocalFeedItem[],
 ): LocalFeedItem[] {
-  const id = text(record(item.payload).profiler_id);
+  const id = text(record(item.payload)["profiler_id"]);
   if (item.type !== "profile_chunk" || !id) return [item];
   const chunks = new Map<string, LocalFeedItem>();
   for (const chunk of items) {
     if (
       chunk.type !== "profile_chunk" ||
-      record(chunk.payload).profiler_id !== id
+      record(chunk.payload)["profiler_id"] !== id
     )
       continue;
-    chunks.set(text(record(chunk.payload).chunk_id) ?? chunk.id, chunk);
+    chunks.set(text(record(chunk.payload)["chunk_id"]) ?? chunk.id, chunk);
   }
   if (!chunks.size) return [item];
   return [...chunks.values()].sort(
@@ -76,11 +76,11 @@ export function profileSessionItems(
 function firstTimestamp(item: LocalFeedItem): number {
   const cached = firstTimestamps.get(item);
   if (cached !== undefined) return cached;
-  const samples = profileData(item).samples;
+  const samples = profileData(item)["samples"];
   let first = Infinity;
   if (Array.isArray(samples))
     for (const sample of samples) {
-      const timestamp = finite(record(sample).timestamp);
+      const timestamp = finite(record(sample)["timestamp"]);
       if (timestamp !== undefined) first = Math.min(first, timestamp);
     }
   const result = first === Infinity ? 0 : first;
@@ -122,11 +122,11 @@ export function mergeProfileChunks(
   const threadMetadata: Record<string, unknown> = {};
   for (const chunk of chunks) {
     const profile = profileData(chunk);
-    Object.assign(threadMetadata, record(profile.thread_metadata));
+    Object.assign(threadMetadata, record(profile["thread_metadata"]));
     const frameMap = new Map<number, number>(),
       stackMap = new Map<number, number>();
-    if (Array.isArray(profile.frames))
-      profile.frames.forEach((frame, index) => {
+    if (Array.isArray(profile["frames"]))
+      profile["frames"].forEach((frame, index) => {
         if (!Object.keys(record(frame)).length) return;
         const key = profileValueKey(frame);
         let id = frameIds.get(key);
@@ -137,8 +137,8 @@ export function mergeProfileChunks(
         }
         frameMap.set(index, id);
       });
-    if (Array.isArray(profile.stacks))
-      profile.stacks.forEach((stack, index) => {
+    if (Array.isArray(profile["stacks"]))
+      profile["stacks"].forEach((stack, index) => {
         if (!Array.isArray(stack)) return;
         const mapped: number[] = [];
         for (const frame of stack) {
@@ -157,10 +157,10 @@ export function mergeProfileChunks(
         stackMap.set(index, id);
       });
     const chunkThreads = new Map<string, Record<string, unknown>[]>();
-    if (Array.isArray(profile.samples))
-      for (const value of profile.samples) {
+    if (Array.isArray(profile["samples"]))
+      for (const value of profile["samples"]) {
         const sample = record(value),
-          stack = finite(sample.stack_id);
+          stack = finite(sample["stack_id"]);
         const mapped = {
           ...sample,
           stack_id: stack === undefined ? undefined : stackMap.get(stack),
@@ -173,7 +173,7 @@ export function mergeProfileChunks(
           sampleSources.set(mapped, chunk);
           samples.push(mapped);
         }
-        const thread = profileThreadId(sample.thread_id) ?? "main";
+        const thread = profileThreadId(sample["thread_id"]) ?? "main";
         const list = chunkThreads.get(thread) ?? [];
         list.push(retained);
         chunkThreads.set(thread, list);

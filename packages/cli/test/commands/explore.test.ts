@@ -269,7 +269,7 @@ async function runExploreArgs(args: string[]) {
 }
 
 const parseExploreDataset = (
-  exploreCommand.parameters.flags!.dataset as {
+  exploreCommand.parameters.flags!["dataset"] as {
     parse: (value: string) => string;
   }
 ).parse;

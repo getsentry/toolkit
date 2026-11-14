@@ -92,7 +92,7 @@ describe("react-native xcode", () => {
         _args: readonly string[] | undefined,
         spawnOpts?: { env?: NodeJS.ProcessEnv },
       ) => {
-        const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+        const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {
           writeFileSync(
             reportPath,
@@ -125,8 +125,8 @@ describe("react-native xcode", () => {
     // Non-SEA (npm) run: NODE_BINARY must re-invoke the CLI via a shim, not
     // plain node, so RN re-enters the wrapper.
     const wrapEnv = spawnMock.mock.calls[0][2]?.env;
-    expect(wrapEnv?.NODE_BINARY).toMatch(/sentry-rn-node\.sh$/);
-    expect(wrapEnv?.__SENTRY_RN_WRAP_XCODE_CALL).toBe("1");
+    expect(wrapEnv?.["NODE_BINARY"]).toMatch(/sentry-rn-node\.sh$/);
+    expect(wrapEnv?.["__SENTRY_RN_WRAP_XCODE_CALL"]).toBe("1");
 
     expect(sourcemaps.uploadSourcemaps).toHaveBeenCalledTimes(1);
     const opts = vi.mocked(sourcemaps.uploadSourcemaps).mock.calls[0][0];
@@ -171,7 +171,7 @@ describe("react-native xcode", () => {
           _args: readonly string[] | undefined,
           spawnOpts?: { env?: NodeJS.ProcessEnv },
         ) => {
-          const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+          const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
           if (reportPath) {
             if (reportState === "missing") {
               rmSync(reportPath);
@@ -194,7 +194,7 @@ describe("react-native xcode", () => {
       const func = await xcodeCommand.loader();
       await func.call(ctx, { "build-script": script });
 
-      expect(ctx.process.exitCode).toBe(status === 0 ? undefined : status);
+      expect(ctx["process"].exitCode).toBe(status === 0 ? undefined : status);
       expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
     },
   );
@@ -206,7 +206,7 @@ describe("react-native xcode", () => {
         _args: readonly string[] | undefined,
         spawnOpts?: { env?: NodeJS.ProcessEnv },
       ) => {
-        const reportPath = spawnOpts?.env?.SENTRY_RN_SOURCEMAP_REPORT;
+        const reportPath = spawnOpts?.env?.["SENTRY_RN_SOURCEMAP_REPORT"];
         if (reportPath) {
           writeFileSync(reportPath, "{}");
         }

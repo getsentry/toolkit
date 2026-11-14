@@ -120,7 +120,7 @@ describe("token create", () => {
   });
 
   test("prints the token without styling or padding in a rendered terminal", async () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const { context, stdoutWrite } = createMockContext();
     const func = await createCommand.loader();
     await func.call(context, flags, "my-org/github-actions");

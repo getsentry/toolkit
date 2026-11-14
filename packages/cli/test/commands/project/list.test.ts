@@ -1370,14 +1370,14 @@ describe("fetchOrgProjectsSafe", () => {
     // Clear auth token so the API client throws AuthError before making any request
     await clearAuth();
 
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
 
     try {
       await expect(fetchOrgProjectsSafe("myorg")).rejects.toThrow(AuthError);
     } finally {
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     }
   });
@@ -1525,7 +1525,7 @@ describe("handleAutoDetect", () => {
     expect(result.items).toHaveLength(2);
     expect(result.hasMore).toBe(true);
     expect(result.jsonExtra).toBeDefined();
-    expect(result.jsonExtra?.hint).toBeString();
+    expect(result.jsonExtra?.["hint"]).toBeString();
   });
 
   test("respects --platform flag", async () => {
@@ -1609,7 +1609,7 @@ describe("handleAutoDetect", () => {
     expect(result.hasMore).toBe(true);
     expect(result.items).toHaveLength(2);
     expect(result.jsonExtra).toBeDefined();
-    const jsonHint = result.jsonExtra?.hint;
+    const jsonHint = result.jsonExtra?.["hint"];
     expect(jsonHint).toContain("test-org/");
     expect(jsonHint).toContain("--json");
   });
@@ -1629,7 +1629,7 @@ describe("handleAutoDetect", () => {
     });
 
     expect(result.hasMore).toBe(true);
-    const jsonHint = result.jsonExtra?.hint;
+    const jsonHint = result.jsonExtra?.["hint"];
     expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 
@@ -1682,8 +1682,8 @@ describe("handleAutoDetect", () => {
     // Clear auth so getAuthToken() throws AuthError before any fetch
     await clearAuth();
 
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
 
     try {
       await expect(
@@ -1695,7 +1695,7 @@ describe("handleAutoDetect", () => {
       ).rejects.toThrow(AuthError);
     } finally {
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     }
   });

@@ -118,8 +118,8 @@ function createMockContext(
   // whether to render) is not suppressed in non-TTY test environments.
   // The formatUpgradeResult output will contain ANSI codes, but test
   // assertions use toContain() which matches through them.
-  const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
-  process.env.SENTRY_PLAIN_OUTPUT = "0";
+  const origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+  process.env["SENTRY_PLAIN_OUTPUT"] = "0";
 
   // Capture logger output (routed to process.stderr)
   const origStderrWrite = process.stderr.write.bind(process.stderr);
@@ -188,9 +188,9 @@ function createMockContext(
       process.stderr.write = origStderrWrite;
       process.stdout.write = origStdoutWrite;
       if (origPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
       }
     },
   };
@@ -1946,22 +1946,22 @@ describe("resolveUpgradeInstallDir", () => {
   let savedXdgBinHome: string | undefined;
 
   beforeEach(() => {
-    savedInstallDir = process.env.SENTRY_INSTALL_DIR;
-    savedXdgBinHome = process.env.XDG_BIN_HOME;
-    delete process.env.SENTRY_INSTALL_DIR;
-    delete process.env.XDG_BIN_HOME;
+    savedInstallDir = process.env["SENTRY_INSTALL_DIR"];
+    savedXdgBinHome = process.env["XDG_BIN_HOME"];
+    delete process.env["SENTRY_INSTALL_DIR"];
+    delete process.env["XDG_BIN_HOME"];
   });
 
   afterEach(() => {
     if (savedInstallDir === undefined) {
-      delete process.env.SENTRY_INSTALL_DIR;
+      delete process.env["SENTRY_INSTALL_DIR"];
     } else {
-      process.env.SENTRY_INSTALL_DIR = savedInstallDir;
+      process.env["SENTRY_INSTALL_DIR"] = savedInstallDir;
     }
     if (savedXdgBinHome === undefined) {
-      delete process.env.XDG_BIN_HOME;
+      delete process.env["XDG_BIN_HOME"];
     } else {
-      process.env.XDG_BIN_HOME = savedXdgBinHome;
+      process.env["XDG_BIN_HOME"] = savedXdgBinHome;
     }
   });
 

@@ -87,7 +87,7 @@ describe("telemetry credential boundaries", () => {
     expect(serialized).not.toContain("SYNTHETIC");
     expect(serialized).toContain("[REDACTED]");
     expect(serialized).toContain('"status":500');
-    expect(event.contexts?.cli_error?.detail).toBe(headerError);
+    expect(event.contexts?.["cli_error"]?.["detail"]).toBe(headerError);
   });
 
   test("scrubs exception causes in the outgoing Sentry envelope", async () => {
@@ -191,7 +191,7 @@ describe("telemetry credential boundaries", () => {
       expect(serialized).toContain("/_local/v1/sessions/sdk/");
     }
     expect(event.request?.url).toBe(ingestUrl);
-    expect(event.extra?.resetUrl).toBe(resetUrl);
+    expect(event.extra?.["resetUrl"]).toBe(resetUrl);
   });
 
   test("redacts before deriving a grouping key from the first line", () => {

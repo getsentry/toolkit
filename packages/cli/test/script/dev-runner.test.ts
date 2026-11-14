@@ -17,7 +17,7 @@ test("the cli script shares module instances with lazy requires", () => {
   const { scripts } = JSON.parse(
     readFileSync(join(pkgRoot, "package.json"), "utf-8"),
   ) as { scripts: Record<string, string> };
-  const runner = scripts.cli?.match(RUNNER_RE)?.[1];
+  const runner = scripts["cli"]?.match(RUNNER_RE)?.[1];
   expect(runner, "cli script runs `<runner> src/bin.ts`").toBeDefined();
 
   const [command, ...args] = (runner as string).split(" ");

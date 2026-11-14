@@ -36,8 +36,8 @@ describe("CVE: URL argument credential exfiltration", () => {
     ).toThrow(/does not match|sentry auth login --url/);
 
     // Env untouched — no routing poison.
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("parseOrgProjectArg with attacker URL throws before env is poisoned", () => {
@@ -47,8 +47,8 @@ describe("CVE: URL argument credential exfiltration", () => {
       ),
     ).toThrow(/does not match|sentry auth login --url/);
 
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("event view with attacker URL throws before env is poisoned", async () => {
@@ -56,7 +56,7 @@ describe("CVE: URL argument credential exfiltration", () => {
       "https://evil.com/organizations/acme/issues/999/events/deadbeef/";
     // Parsing only returns the server, for the command to check and apply
     expect(parseEventViewInput([url]).baseUrl).toBe("https://evil.com");
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
 
     const func = await viewCommand.loader();
     const context = {
@@ -68,8 +68,8 @@ describe("CVE: URL argument credential exfiltration", () => {
       func.call(context as never, { json: true, web: false, spans: 0 }, url),
     ).rejects.toThrow(/does not match|sentry auth login --url/);
 
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("share URL from attacker host throws (CVE #3: custom-headers leak)", () => {
@@ -81,29 +81,32 @@ describe("CVE: URL argument credential exfiltration", () => {
       ),
     ).toThrow(/does not match|sentry auth login --url/);
 
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("SaaS URL arg proceeds even when SENTRY_HOST is currently set to self-hosted", () => {
     // SaaS URLs always proceed — they're part of the SaaS trust class
     // when the active token is SaaS-scoped, and they clear env to route
     // correctly.
-    process.env.SENTRY_HOST = "https://old-self-hosted.example.com";
-    process.env.SENTRY_URL = "https://old-self-hosted.example.com";
+    // SaaS URLs always proceed — they're part of the SaaS trust class
+    // when the active token is SaaS-scoped, and they clear env to route
+    // correctly.
+    process.env["SENTRY_HOST"] = "https://old-self-hosted.example.com";
+    process.env["SENTRY_URL"] = "https://old-self-hosted.example.com";
     parseIssueArg("https://sentry.io/organizations/acme/issues/1234/");
     // env cleared so default SaaS routing takes over
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("matching self-hosted URL arg is honored when token scoped to that host", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     resetEnvTokenHostForTesting();
     parseOrgProjectArg(
       "https://sentry.example.com/organizations/acme/issues/1/",
     );
-    expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_HOST"]).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_URL"]).toBe("https://sentry.example.com");
   });
 });

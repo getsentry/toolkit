@@ -383,22 +383,26 @@ export async function applySentryCliRcEnvShim(cwd: string): Promise<void> {
 
   if (
     config.token &&
-    !env.SENTRY_AUTH_TOKEN?.trim() &&
-    !env.SENTRY_TOKEN?.trim()
+    !env["SENTRY_AUTH_TOKEN"]?.trim() &&
+    !env["SENTRY_TOKEN"]?.trim()
   ) {
     log.debug(
       `Setting SENTRY_AUTH_TOKEN from ${CONFIG_FILENAME} (${config.sources.token})`,
     );
-    env.SENTRY_AUTH_TOKEN = config.token;
+    env["SENTRY_AUTH_TOKEN"] = config.token;
     rcInjectedTokenSource().path = config.sources.token;
   }
 
   const normalizedRcUrl = config.url ? normalizeUrl(config.url) : undefined;
-  if (normalizedRcUrl && !env.SENTRY_HOST?.trim() && !env.SENTRY_URL?.trim()) {
+  if (
+    normalizedRcUrl &&
+    !env["SENTRY_HOST"]?.trim() &&
+    !env["SENTRY_URL"]?.trim()
+  ) {
     log.debug(
       `Setting SENTRY_URL from ${CONFIG_FILENAME} (${config.sources.url})`,
     );
-    env.SENTRY_URL = normalizedRcUrl;
+    env["SENTRY_URL"] = normalizedRcUrl;
   }
 }
 

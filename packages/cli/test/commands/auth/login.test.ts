@@ -517,7 +517,8 @@ describe("loginCommand.func --token path", () => {
     isEnvTokenActiveSpy.mockReturnValue(true);
     hasStoredAuthCredentialsSpy.mockReturnValue(false);
     // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
-    process.env.SENTRY_TOKEN = "sntrys_token_456";
+    // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
+    process.env["SENTRY_TOKEN"] = "sntrys_token_456";
     runInteractiveLoginSpy.mockResolvedValue({
       method: "oauth",
       configPath: "/fake",
@@ -529,7 +530,7 @@ describe("loginCommand.func --token path", () => {
 
       expect(runInteractiveLoginSpy).toHaveBeenCalled();
     } finally {
-      delete process.env.SENTRY_TOKEN;
+      delete process.env["SENTRY_TOKEN"];
     }
   });
 
@@ -571,8 +572,8 @@ describe("loginCommand.func --token path", () => {
     "--force --token rejects %s before changing the session or host",
     async (_, token) => {
       isAuthenticatedSpy.mockReturnValue(true);
-      process.env.SENTRY_HOST = "https://previous.example.com";
-      process.env.SENTRY_URL = "https://previous.example.com";
+      process.env["SENTRY_HOST"] = "https://previous.example.com";
+      process.env["SENTRY_URL"] = "https://previous.example.com";
       const fetchSpy = vi.spyOn(globalThis, "fetch");
 
       try {
@@ -586,8 +587,8 @@ describe("loginCommand.func --token path", () => {
           }),
         ).rejects.toBeInstanceOf(MalformedAuthTokenError);
 
-        expect(process.env.SENTRY_HOST).toBe("https://previous.example.com");
-        expect(process.env.SENTRY_URL).toBe("https://previous.example.com");
+        expect(process.env["SENTRY_HOST"]).toBe("https://previous.example.com");
+        expect(process.env["SENTRY_URL"]).toBe("https://previous.example.com");
         expect(clearAuthSpy).not.toHaveBeenCalled();
         expect(setAuthTokenSpy).not.toHaveBeenCalled();
         expect(setUserInfoSpy).not.toHaveBeenCalled();
@@ -1069,22 +1070,22 @@ describe("applyLoginUrl (host resolution)", () => {
   let savedUrl: string | undefined;
 
   beforeEach(() => {
-    savedHost = process.env.SENTRY_HOST;
-    savedUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    savedHost = process.env["SENTRY_HOST"];
+    savedUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
   });
 
   afterEach(() => {
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (savedUrl !== undefined) {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
   });
 
@@ -1093,8 +1094,8 @@ describe("applyLoginUrl (host resolution)", () => {
       await import("../../../src/commands/auth/login.js");
     const host = applyLoginUrl("https://sentry.example.com");
     expect(host).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_HOST"]).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_URL"]).toBe("https://sentry.example.com");
   });
 
   test("no --url + no env falls back to SaaS default", async () => {
@@ -1104,7 +1105,7 @@ describe("applyLoginUrl (host resolution)", () => {
   });
 
   test("no --url + SENTRY_HOST with scheme uses env host", async () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
@@ -1114,22 +1115,25 @@ describe("applyLoginUrl (host resolution)", () => {
     // Regression: applyLoginUrl previously called normalizeOrigin directly
     // on bare hostnames. new URL("sentry.acme.com") throws → silent fallback
     // to SaaS default → token mis-scoped.
-    process.env.SENTRY_HOST = "sentry.acme.com";
+    // Regression: applyLoginUrl previously called normalizeOrigin directly
+    // on bare hostnames. new URL("sentry.acme.com") throws → silent fallback
+    // to SaaS default → token mis-scoped.
+    process.env["SENTRY_HOST"] = "sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("no --url + bare hostname SENTRY_URL prefixes https://", async () => {
-    process.env.SENTRY_URL = "sentry.acme.com";
+    process.env["SENTRY_URL"] = "sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", async () => {
-    process.env.SENTRY_HOST = "https://host.example.com";
-    process.env.SENTRY_URL = "https://url.example.com";
+    process.env["SENTRY_HOST"] = "https://host.example.com";
+    process.env["SENTRY_URL"] = "https://url.example.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://host.example.com");
@@ -1141,10 +1145,10 @@ describe("applyLoginUrl (trust anchor registration)", () => {
   let savedUrl: string | undefined;
 
   beforeEach(async () => {
-    savedHost = process.env.SENTRY_HOST;
-    savedUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    savedHost = process.env["SENTRY_HOST"];
+    savedUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     const { resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
     const { resetLoginTrustAnchorForTesting } =
@@ -1155,14 +1159,14 @@ describe("applyLoginUrl (trust anchor registration)", () => {
 
   afterEach(async () => {
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (savedUrl !== undefined) {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
     const { resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
@@ -1186,7 +1190,7 @@ describe("applyLoginUrl (trust anchor registration)", () => {
   });
 
   test("SENTRY_HOST from boot env registers trust anchor (shell export is trusted)", async () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -1210,7 +1214,9 @@ describe("applyLoginUrl (trust anchor registration)", () => {
 
     // Simulate .sentryclirc shim writing env.SENTRY_URL AFTER boot (the
     // auth login has skipRcUrlCheck: true). This is the attacker path.
-    process.env.SENTRY_URL = "https://evil.com";
+    // Simulate .sentryclirc shim writing env.SENTRY_URL AFTER boot (the
+    // auth login has skipRcUrlCheck: true). This is the attacker path.
+    process.env["SENTRY_URL"] = "https://evil.com";
 
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");

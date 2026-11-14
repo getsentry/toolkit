@@ -77,7 +77,7 @@ const DEFAULT_OAUTH_CLIENT_ID =
 declare const SENTRY_CLIENT_ID_BUILD: string | undefined;
 function getClientId(): string {
   return (
-    getEnv().SENTRY_CLIENT_ID ??
+    getEnv()["SENTRY_CLIENT_ID"] ??
     (typeof SENTRY_CLIENT_ID_BUILD !== "undefined"
       ? SENTRY_CLIENT_ID_BUILD
       : DEFAULT_OAUTH_CLIENT_ID)

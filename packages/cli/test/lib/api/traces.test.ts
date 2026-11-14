@@ -621,8 +621,8 @@ describe("getSpanDetails", () => {
     expect(capturedUrl).toContain(
       "/projects/my-org/my-project/trace-items/span-id-abc/",
     );
-    expect(capturedParams.item_type).toBe("spans");
-    expect(capturedParams.trace_id).toBe("trace-id-xyz");
+    expect(capturedParams["item_type"]).toBe("spans");
+    expect(capturedParams["trace_id"]).toBe("trace-id-xyz");
   });
 
   test("returns parsed attributes", async () => {

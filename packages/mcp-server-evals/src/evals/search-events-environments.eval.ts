@@ -66,8 +66,8 @@ describeEval("search-events-environment-grounding", {
       expect(call.args).not.toBeNull();
       expect(call.args).not.toHaveProperty("environment");
       const args = call.args as Record<string, unknown>;
-      expect(args.query).toBeTypeOf("string");
-      queries.push(args.query as string);
+      expect(args["query"]).toBeTypeOf("string");
+      queries.push(args["query"] as string);
     }
 
     // Check every attempted validation, not just the final successful query:

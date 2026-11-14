@@ -206,22 +206,22 @@ function summarizeTaggedReplayEvent(
 function summarizeReplayEvent(
   event: ReplayRecordingEvent,
 ): ReplayActivityEvent | null {
-  const timestampMs = getEventTimestampMillis(event.timestamp);
-  if (hasReplayTag(event.data)) {
+  const timestampMs = getEventTimestampMillis(event["timestamp"]);
+  if (hasReplayTag(event["data"])) {
     const replayEvent = summarizeTaggedReplayEvent(
-      event.data.tag,
-      event.data.payload,
+      event["data"].tag,
+      event["data"].payload,
     );
     if (replayEvent) {
       return { timestampMs, ...replayEvent };
     }
   }
 
-  if (hasReplayHref(event.data)) {
+  if (hasReplayHref(event["data"])) {
     return {
       timestampMs,
       label: "page.view",
-      details: [`href=${event.data.href}`],
+      details: [`href=${event["data"].href}`],
     };
   }
 

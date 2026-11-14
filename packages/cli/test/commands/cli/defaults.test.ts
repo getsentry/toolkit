@@ -186,22 +186,22 @@ describe("isTelemetryEnabled", () => {
     // so the lazy require("../telemetry.js") is skipped. Under vitest
     // (Node.js), that CJS require path can't resolve ESM .js imports.
     getDatabase();
-    savedNoTelemetry = process.env.SENTRY_CLI_NO_TELEMETRY;
-    savedDoNotTrack = process.env.DO_NOT_TRACK;
+    savedNoTelemetry = process.env["SENTRY_CLI_NO_TELEMETRY"];
+    savedDoNotTrack = process.env["DO_NOT_TRACK"];
     // Clear both env vars so persistent preference is tested
-    delete process.env.SENTRY_CLI_NO_TELEMETRY;
-    delete process.env.DO_NOT_TRACK;
+    delete process.env["SENTRY_CLI_NO_TELEMETRY"];
+    delete process.env["DO_NOT_TRACK"];
   };
   const teardown = () => {
     if (savedNoTelemetry !== undefined) {
-      process.env.SENTRY_CLI_NO_TELEMETRY = savedNoTelemetry;
+      process.env["SENTRY_CLI_NO_TELEMETRY"] = savedNoTelemetry;
     } else {
-      delete process.env.SENTRY_CLI_NO_TELEMETRY;
+      delete process.env["SENTRY_CLI_NO_TELEMETRY"];
     }
     if (savedDoNotTrack !== undefined) {
-      process.env.DO_NOT_TRACK = savedDoNotTrack;
+      process.env["DO_NOT_TRACK"] = savedDoNotTrack;
     } else {
-      delete process.env.DO_NOT_TRACK;
+      delete process.env["DO_NOT_TRACK"];
     }
   };
 
@@ -238,7 +238,7 @@ describe("isTelemetryEnabled", () => {
     setup();
     try {
       setOnOffPreference("telemetry", true);
-      process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+      process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
       teardown();
@@ -249,7 +249,7 @@ describe("isTelemetryEnabled", () => {
     setup();
     try {
       setOnOffPreference("telemetry", true);
-      process.env.DO_NOT_TRACK = "1";
+      process.env["DO_NOT_TRACK"] = "1";
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
       teardown();
@@ -260,8 +260,9 @@ describe("isTelemetryEnabled", () => {
     setup();
     try {
       // Both set — SENTRY_CLI_NO_TELEMETRY is checked first
-      process.env.SENTRY_CLI_NO_TELEMETRY = "1";
-      process.env.DO_NOT_TRACK = "0";
+      // Both set — SENTRY_CLI_NO_TELEMETRY is checked first
+      process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
+      process.env["DO_NOT_TRACK"] = "0";
       expect(isTelemetryEnabled()).toBe(false);
     } finally {
       teardown();
@@ -271,7 +272,7 @@ describe("isTelemetryEnabled", () => {
   test("DO_NOT_TRACK=0 does not disable telemetry", () => {
     setup();
     try {
-      process.env.DO_NOT_TRACK = "0";
+      process.env["DO_NOT_TRACK"] = "0";
       expect(isTelemetryEnabled()).toBe(true);
     } finally {
       teardown();
@@ -291,21 +292,21 @@ describe("computeTelemetryEffective", () => {
     // Force DB initialization while SENTRY_CLI_NO_TELEMETRY is still set
     // (see isTelemetryEnabled setup comment for rationale).
     getDatabase();
-    savedNoTelemetry = process.env.SENTRY_CLI_NO_TELEMETRY;
-    savedDoNotTrack = process.env.DO_NOT_TRACK;
-    delete process.env.SENTRY_CLI_NO_TELEMETRY;
-    delete process.env.DO_NOT_TRACK;
+    savedNoTelemetry = process.env["SENTRY_CLI_NO_TELEMETRY"];
+    savedDoNotTrack = process.env["DO_NOT_TRACK"];
+    delete process.env["SENTRY_CLI_NO_TELEMETRY"];
+    delete process.env["DO_NOT_TRACK"];
   };
   const teardown = () => {
     if (savedNoTelemetry !== undefined) {
-      process.env.SENTRY_CLI_NO_TELEMETRY = savedNoTelemetry;
+      process.env["SENTRY_CLI_NO_TELEMETRY"] = savedNoTelemetry;
     } else {
-      delete process.env.SENTRY_CLI_NO_TELEMETRY;
+      delete process.env["SENTRY_CLI_NO_TELEMETRY"];
     }
     if (savedDoNotTrack !== undefined) {
-      process.env.DO_NOT_TRACK = savedDoNotTrack;
+      process.env["DO_NOT_TRACK"] = savedDoNotTrack;
     } else {
-      delete process.env.DO_NOT_TRACK;
+      delete process.env["DO_NOT_TRACK"];
     }
   };
 
@@ -345,7 +346,7 @@ describe("computeTelemetryEffective", () => {
     setup();
     try {
       setOnOffPreference("telemetry", true);
-      process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+      process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
       const result = computeTelemetryEffective();
       expect(result.enabled).toBe(false);
       expect(result.source).toBe("env:SENTRY_CLI_NO_TELEMETRY");
@@ -358,7 +359,7 @@ describe("computeTelemetryEffective", () => {
     setup();
     try {
       setOnOffPreference("telemetry", true);
-      process.env.DO_NOT_TRACK = "1";
+      process.env["DO_NOT_TRACK"] = "1";
       const result = computeTelemetryEffective();
       expect(result.enabled).toBe(false);
       expect(result.source).toBe("env:DO_NOT_TRACK");

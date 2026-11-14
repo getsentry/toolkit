@@ -110,8 +110,8 @@ async function main(): Promise<void> {
   const client = createClient(provider);
   const skillContent = await readFile(SKILL_PATH, "utf-8");
   const testCases = cases as unknown as TestCase[];
-  const threshold = process.env.EVAL_THRESHOLD
-    ? Number.parseFloat(process.env.EVAL_THRESHOLD)
+  const threshold = process.env["EVAL_THRESHOLD"]
+    ? Number.parseFloat(process.env["EVAL_THRESHOLD"])
     : DEFAULT_THRESHOLD;
 
   logger.info(

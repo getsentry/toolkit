@@ -176,7 +176,7 @@ describe("parseSpanListInput", () => {
   });
 
   test("a pasted URL's server is returned, not applied", () => {
-    const savedUrl = process.env.SENTRY_URL;
+    const savedUrl = process.env["SENTRY_URL"];
     expect(
       parseSpanListInput([
         `https://sentry.example.com/organizations/acme/traces/${VALID_TRACE_ID}/`,
@@ -185,7 +185,7 @@ describe("parseSpanListInput", () => {
       mode: "trace",
       trace: { baseUrl: "https://sentry.example.com" },
     });
-    expect(process.env.SENTRY_URL).toBe(savedUrl);
+    expect(process.env["SENTRY_URL"]).toBe(savedUrl);
   });
 });
 

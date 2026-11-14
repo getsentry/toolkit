@@ -31,14 +31,14 @@ export function parsed(value: unknown): unknown {
 export function spanData(payload: unknown): Record<string, unknown> {
   const p = record(payload);
   const attributes = Object.fromEntries(
-    Object.entries(record(p.attributes)).map(([key, value]) => [
+    Object.entries(record(p["attributes"])).map(([key, value]) => [
       key,
-      "value" in record(value) ? record(value).value : value,
+      "value" in record(value) ? record(value)["value"] : value,
     ]),
   );
   return {
-    ...record(record(record(p.contexts).trace).data),
-    ...record(p.data),
+    ...record(record(record(p["contexts"])["trace"])["data"]),
+    ...record(p["data"]),
     ...attributes,
   };
 }
@@ -47,9 +47,9 @@ export function isAiPayload(payload: unknown): boolean {
     data = spanData(p);
   return (
     [
-      p.type,
-      p.op,
-      record(record(p.contexts).trace).op,
+      p["type"],
+      p["op"],
+      record(record(p["contexts"])["trace"])["op"],
       data["sentry.op"],
       data["sentry.origin"],
     ].some(
@@ -67,15 +67,15 @@ export function aiItems(items: readonly LocalFeedItem[]): LocalFeedItem[] {
     const payload = record(item.payload);
     const candidates = [
       item,
-      ...(Array.isArray(payload.spans) ? payload.spans : [])
+      ...(Array.isArray(payload["spans"]) ? payload["spans"] : [])
         .filter(isAiPayload)
         .map((span, index): LocalFeedItem => {
           const data = record(span);
           const traceId = item.metadata?.traceId;
-          const enriched = { ...data, trace_id: data.trace_id ?? traceId };
+          const enriched = { ...data, trace_id: data["trace_id"] ?? traceId };
           return {
             ...item,
-            id: `${item.id}:span:${text(data.span_id) ?? index}`,
+            id: `${item.id}:span:${text(data["span_id"]) ?? index}`,
             type: "span",
             payload: enriched,
             text: display(enriched),
@@ -195,17 +195,17 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
   const hasMessages = (value: unknown) =>
     Array.isArray(value) &&
     value.length > 0 &&
-    value.every((message) => typeof record(message).role === "string");
+    value.every((message) => typeof record(message)["role"] === "string");
   // Pick usable content before raw fallback without stripping multimodal blocks
   // or unknown captured fields from the conversation.
   const messages =
     prompts.find(
-      (value) => hasMessages(value) || hasMessages(record(value).messages),
+      (value) => hasMessages(value) || hasMessages(record(value)["messages"]),
     ) ??
     prompts.find(meaningful) ??
     parsed(pick(...messageKeys));
   const wrappedSystem = prompts
-    .map((value) => record(value).system)
+    .map((value) => record(value)["system"])
     .find(meaningful);
   const responseKeys = [
     "gen_ai.response.text",
@@ -234,7 +234,7 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
 }
 export function feedbackData(payload: unknown): Record<string, unknown> {
   const p = record(payload);
-  return { ...p, ...record(record(p.contexts).feedback) };
+  return { ...p, ...record(record(p["contexts"])["feedback"]) };
 }
 export type SdkEntry = {
   name: string;
@@ -247,17 +247,17 @@ export function sdkInventory(items: readonly LocalFeedItem[]): SdkEntry[] {
   const entries = new Map<string, SdkEntry>();
   for (const item of items) {
     const p = record(item.payload),
-      sdk = { ...record(item.envelopeHeader?.sdk), ...record(p.sdk) };
-    const name = text(sdk.name);
+      sdk = { ...record(item.envelopeHeader?.["sdk"]), ...record(p["sdk"]) };
+    const name = text(sdk["name"]);
     if (!name) continue;
-    const version = text(sdk.version) ?? "Unknown",
+    const version = text(sdk["version"]) ?? "Unknown",
       key = `${name}@${version}`;
     const previous = entries.get(key);
-    const timestamp = item.timestamp ?? text(item.envelopeHeader?.sent_at);
+    const timestamp = item.timestamp ?? text(item.envelopeHeader?.["sent_at"]);
     entries.set(key, {
       name,
       version,
-      platform: text(p.platform) ?? previous?.platform ?? "Unknown",
+      platform: text(p["platform"]) ?? previous?.platform ?? "Unknown",
       lastSeen: timestamp ?? previous?.lastSeen,
       count: (previous?.count ?? 0) + 1,
     });
@@ -278,7 +278,7 @@ export function errorMarkdown(item: LocalFeedItem): string {
   return [
     `# ${item.metadata?.title ?? item.type}`,
     exceptions,
-    `## Captured context\n\n${display({ request: p.request, contexts: p.contexts, tags: p.tags, extra: p.extra, breadcrumbs: p.breadcrumbs })}`,
+    `## Captured context\n\n${display({ request: p["request"], contexts: p["contexts"], tags: p["tags"], extra: p["extra"], breadcrumbs: p["breadcrumbs"] })}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -293,9 +293,9 @@ export const EVENT_CONTEXT_SECTIONS = [
 ] as const;
 export function hasEventContext(payload: unknown): boolean {
   const value = record(payload);
-  const breadcrumbs = Array.isArray(value.breadcrumbs)
-    ? value.breadcrumbs
-    : record(value.breadcrumbs).values;
+  const breadcrumbs = Array.isArray(value["breadcrumbs"])
+    ? value["breadcrumbs"]
+    : record(value["breadcrumbs"])["values"];
   return (
     (Array.isArray(breadcrumbs) && breadcrumbs.length > 0) ||
     EVENT_CONTEXT_SECTIONS.some(

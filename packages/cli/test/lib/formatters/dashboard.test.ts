@@ -73,30 +73,30 @@ function usePlainMode() {
   let savedPlain: string | undefined;
 
   beforeEach(() => {
-    savedNoColor = process.env.NO_COLOR;
-    savedForceColor = process.env.FORCE_COLOR;
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
+    savedNoColor = process.env["NO_COLOR"];
+    savedForceColor = process.env["FORCE_COLOR"];
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
 
-    process.env.NO_COLOR = "1";
-    delete process.env.FORCE_COLOR;
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    process.env["NO_COLOR"] = "1";
+    delete process.env["FORCE_COLOR"];
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   });
 
   afterEach(() => {
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
     if (savedForceColor === undefined) {
-      delete process.env.FORCE_COLOR;
+      delete process.env["FORCE_COLOR"];
     } else {
-      process.env.FORCE_COLOR = savedForceColor;
+      process.env["FORCE_COLOR"] = savedForceColor;
     }
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -114,26 +114,26 @@ function useRenderedMode() {
   let savedChalkLevel: typeof chalk.level;
 
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    savedNoColor = process.env.NO_COLOR;
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    savedNoColor = process.env["NO_COLOR"];
     savedChalkLevel = chalk.level;
 
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
-    delete process.env.NO_COLOR;
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
+    delete process.env["NO_COLOR"];
     chalk.level = 3;
   });
 
   afterEach(() => {
     chalk.level = savedChalkLevel;
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
   });
 }

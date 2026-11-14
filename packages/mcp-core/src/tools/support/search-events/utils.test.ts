@@ -252,7 +252,7 @@ describe("formatEventValue", () => {
 
     it("should handle circular references", () => {
       const obj: Record<string, unknown> = { type: "test" };
-      obj.self = obj;
+      obj["self"] = obj;
       const result = formatEventValue(obj);
       expect(result).toContain("[Circular]");
       expect(result).not.toContain("[object Object]");

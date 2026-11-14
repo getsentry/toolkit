@@ -550,7 +550,7 @@ function resolveAutoCheckout(
   const inGitCheckout = isInsideGitWorkTree(cwd);
   const target = `${orgSlug}/${version}`;
   let note: string | undefined;
-  if (env.VERCEL) {
+  if (env["VERCEL"]) {
     note =
       "Vercel builds have no .git directory, and --auto only reads VERCEL_GIT_* in production builds. Use --commit to associate commits from preview builds.";
   } else if (!inGitCheckout) {

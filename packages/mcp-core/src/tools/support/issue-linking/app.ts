@@ -329,7 +329,7 @@ export async function linkAppIssue(
   );
   const component =
     matchingComponents.length === 1 ? matchingComponents[0] : undefined;
-  const parsed = LinkFormSchema.safeParse(component?.schema.link);
+  const parsed = LinkFormSchema.safeParse(component?.schema["link"]);
   if (!component || component.error || !parsed.success) {
     throw new UserInputError(
       `Sentry App '${appSlug}' has no usable existing-issue link form.`,

@@ -28,7 +28,7 @@ const ORGANIZATION_URL_PARAMS = [
 export function getTargetOrganizationSlug(
   params: Record<string, unknown>,
 ): string | null {
-  const slug = params.organizationSlug;
+  const slug = params["organizationSlug"];
   if (typeof slug === "string" && slug.trim()) {
     return slug.trim();
   }

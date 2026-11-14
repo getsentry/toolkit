@@ -98,34 +98,34 @@ function applyMetricCoreFields(
 ): string | undefined {
   let notice: string | undefined;
   if (flags.name !== undefined) {
-    body.name = flags.name;
+    body["name"] = flags.name;
   }
   if (flags.status !== undefined) {
-    body.status = statusToMetricValue(flags.status);
+    body["status"] = statusToMetricValue(flags.status);
   }
   if (flags.query !== undefined) {
-    body.query = flags.query;
+    body["query"] = flags.query;
   }
   if (flags.aggregate !== undefined) {
     if (!flags.aggregate.trim()) {
       throw new ValidationError("aggregate cannot be empty.", "aggregate");
     }
-    body.aggregate = flags.aggregate;
+    body["aggregate"] = flags.aggregate;
   }
   if (flags.dataset !== undefined) {
     // Resolve against the effective query (the just-applied --query flag, or the
     // rule's existing query) so a `transaction(s)` request routes to `spans`
     // with `is_transaction:true` added even when --query is not also passed.
-    const currentQuery = typeof body.query === "string" ? body.query : "";
+    const currentQuery = typeof body["query"] === "string" ? body["query"] : "";
     const resolved = resolveMetricDataset(flags.dataset, currentQuery);
     validateMetricDataset(resolved.dataset);
-    body.dataset = resolved.dataset;
-    body.query = resolved.query;
+    body["dataset"] = resolved.dataset;
+    body["query"] = resolved.query;
     notice = resolved.notice;
   }
   if (flags["time-window"] !== undefined) {
     validateMetricTimeWindow(flags["time-window"]);
-    body.timeWindow = flags["time-window"];
+    body["timeWindow"] = flags["time-window"];
   }
   return notice;
 }
@@ -135,22 +135,22 @@ function applyMetricOptionalFields(
   flags: EditFlags,
 ): Record<string, unknown> {
   if (flags.trigger !== undefined) {
-    body.triggers = parseMetricTriggers(
+    body["triggers"] = parseMetricTriggers(
       parseJsonObjectList(flags.trigger, "trigger"),
     );
   }
   if (flags.project !== undefined) {
-    body.projects = normalizeProjectList(flags.project) ?? [];
+    body["projects"] = normalizeProjectList(flags.project) ?? [];
   }
   if (flags.environment !== undefined) {
-    body.environment =
+    body["environment"] =
       flags.environment.trim() === "" ? null : flags.environment;
   }
   if (flags.owner !== undefined) {
-    body.owner = flags.owner.trim() === "" ? null : flags.owner;
+    body["owner"] = flags.owner.trim() === "" ? null : flags.owner;
   }
   if (flags.workflow !== undefined) {
-    body.workflowIds = parseWorkflowIds(flags.workflow) ?? [];
+    body["workflowIds"] = parseWorkflowIds(flags.workflow) ?? [];
   }
   return body;
 }
@@ -160,17 +160,17 @@ function validateMetricBody(
   flags: EditFlags,
 ): void {
   if (flags.dataset !== undefined) {
-    validateMetricDataset(normalizeMetricDataset(String(body.dataset)));
+    validateMetricDataset(normalizeMetricDataset(String(body["dataset"])));
   }
   if (flags["time-window"] !== undefined) {
-    validateMetricTimeWindow(Number(body.timeWindow));
+    validateMetricTimeWindow(Number(body["timeWindow"]));
   }
-  if (flags.query !== undefined && typeof body.query !== "string") {
+  if (flags.query !== undefined && typeof body["query"] !== "string") {
     throw new ValidationError("query must be a string.", "query");
   }
   if (
     flags.aggregate !== undefined &&
-    (typeof body.aggregate !== "string" || body.aggregate.trim() === "")
+    (typeof body["aggregate"] !== "string" || body["aggregate"].trim() === "")
   ) {
     throw new ValidationError(
       "aggregate must be present and non-empty.",

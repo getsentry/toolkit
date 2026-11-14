@@ -626,7 +626,7 @@ export function logSearchEventsError(
   params: Record<string, unknown>,
   context: ServerContext,
 ): void {
-  const query = params.query;
+  const query = params["query"];
   logWarn(`${toolName} query failed`, {
     loggerScope: ["tools", toolName],
     extra: {
@@ -637,8 +637,8 @@ export function logSearchEventsError(
         error instanceof Error ? error.message : String(error),
       ),
       organizationSlug:
-        (typeof params.organizationSlug === "string"
-          ? params.organizationSlug
+        (typeof params["organizationSlug"] === "string"
+          ? params["organizationSlug"]
           : null) ?? context.constraints.organizationSlug,
       query: typeof query === "string" ? scrubSensitiveText(query) : null,
     },

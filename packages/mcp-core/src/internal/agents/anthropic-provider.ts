@@ -25,7 +25,8 @@ export function setAnthropicBaseUrl(baseUrl: string | undefined): void {
  * - Base URL: Must be set via setAnthropicBaseUrl() - NOT from env vars (security risk)
  */
 export function getAnthropicModel(model?: string): LanguageModel {
-  const defaultModel = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  const defaultModel =
+    process.env["ANTHROPIC_MODEL"] || DEFAULT_ANTHROPIC_MODEL;
 
   const factory = createAnthropic({
     ...(configuredBaseUrl && { baseURL: configuredBaseUrl }),

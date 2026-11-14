@@ -153,10 +153,10 @@ export async function withBenchDb<T>(
   // effects (loads bun:sqlite, @sentry/node via createTracedDatabase).
   const { closeDatabase } = await import("../../../src/lib/db/index.js");
 
-  const saved = process.env.SENTRY_CONFIG_DIR;
+  const saved = process.env["SENTRY_CONFIG_DIR"];
   mkdirSync(join(tmpdir(), "sentry-cli-bench"), { recursive: true });
   const dir = mkdtempSync(join(tmpdir(), "sentry-cli-bench", "cfg-"));
-  process.env.SENTRY_CONFIG_DIR = dir;
+  process.env["SENTRY_CONFIG_DIR"] = dir;
   closeDatabase();
 
   try {
@@ -170,9 +170,15 @@ export async function withBenchDb<T>(
       // either reassignment is fine — preserving the convention by setting to the
       // benchless baseline (empty string) would be wrong, so we just leave `dir`
       // in place. The process exits right after.
-      process.env.SENTRY_CONFIG_DIR = dir;
+      // Follow the test/helpers.ts rule — never `delete process.env.SENTRY_CONFIG_DIR`
+      // because other modules may read it. Set to an unreachable sentinel instead;
+      // tests that care use `useTestConfigDir`. Bench is a one-shot process, so
+      // either reassignment is fine — preserving the convention by setting to the
+      // benchless baseline (empty string) would be wrong, so we just leave `dir`
+      // in place. The process exits right after.
+      process.env["SENTRY_CONFIG_DIR"] = dir;
     } else {
-      process.env.SENTRY_CONFIG_DIR = saved;
+      process.env["SENTRY_CONFIG_DIR"] = saved;
     }
     try {
       rmSync(dir, { recursive: true, force: true });

@@ -110,7 +110,7 @@ describe("server-based selection", () => {
     login("acme-token", ACME, "acme-user");
     const saas = login("saas-token", SAAS, "saas-user");
 
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
 
     expect(getAuthToken()).toBe("acme-token");
     expect(getUserInfo()?.userId).toBe("acme-user");
@@ -120,7 +120,7 @@ describe("server-based selection", () => {
   test("keeps the active account when no stored account is on that server", () => {
     login("saas-token", SAAS, "saas-user");
 
-    process.env.SENTRY_URL = "https://sentry.other.com";
+    process.env["SENTRY_URL"] = "https://sentry.other.com";
 
     expect(getAuthToken()).toBe("saas-token");
   });
@@ -129,7 +129,7 @@ describe("server-based selection", () => {
     login("saas-token", SAAS, "saas-user");
     login("acme-token", ACME, "acme-user");
 
-    process.env.SENTRY_URL = "https://us.sentry.io";
+    process.env["SENTRY_URL"] = "https://us.sentry.io";
 
     expect(getAuthToken()).toBe("saas-token");
   });
@@ -247,11 +247,11 @@ describe("organization-based selection", () => {
     login("saas-token", SAAS, "saas");
     seeOrgList(SAAS, ["saas-org"]);
 
-    process.env.SENTRY_HOST = SAAS;
+    process.env["SENTRY_HOST"] = SAAS;
     selectAccountForOrg("acme-org");
 
     expect(getAuthToken()).toBe("saas-token");
-    expect(process.env.SENTRY_HOST).toBe(SAAS);
+    expect(process.env["SENTRY_HOST"]).toBe(SAAS);
   });
 
   test("the persisted default URL yields to the org's account server", () => {
@@ -259,13 +259,13 @@ describe("organization-based selection", () => {
     seeOrg("saas-org", SAAS);
     login("acme-token", ACME, "acme");
     seeOrgList(ACME, ["acme-org"]);
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
     markPersistedDefaultUrl(ACME);
 
     selectAccountForOrg("saas-org");
 
     expect(getAuthToken()).toBe("saas-token");
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
   });
 
   test("a self-hosted org's account brings its server along", () => {
@@ -277,7 +277,7 @@ describe("organization-based selection", () => {
     selectAccountForOrg("acme-org");
 
     expect(getAuthToken()).toBe("acme-token");
-    expect(process.env.SENTRY_URL).toBe(ACME);
+    expect(process.env["SENTRY_URL"]).toBe(ACME);
   });
 
   test("a forced env token is never overridden", () => {
@@ -285,8 +285,8 @@ describe("organization-based selection", () => {
     seeOrg("work-org", SAAS);
     login("personal-token", SAAS, "personal");
     seeOrgList(SAAS, ["personal-org"]);
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
 
     selectAccountForOrg("work-org");
 
@@ -297,8 +297,8 @@ describe("organization-based selection", () => {
     "SENTRY_FORCE_ENV_TOKEN=%s doesn't force the env token",
     (value) => {
       login("work-token", SAAS, "work");
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
-      process.env.SENTRY_FORCE_ENV_TOKEN = value;
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+      process.env["SENTRY_FORCE_ENV_TOKEN"] = value;
 
       expect(getAuthToken()).toBe("work-token");
     },
@@ -383,7 +383,7 @@ describe("organization-based selection", () => {
     );
     setLastUsed.run(1000, peer);
     setLastUsed.run(2000, other);
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
     expect(getAuthToken()).toBe("other-token");
 
     selectAccountForOrg("acme-org");
@@ -530,7 +530,7 @@ describe("requests whose path names an organization", () => {
     seeOrg("acme-org", ACME);
     login("saas-token", SAAS, "saas");
     seeOrgList(SAAS, ["saas-org"]);
-    process.env.SENTRY_URL = SAAS;
+    process.env["SENTRY_URL"] = SAAS;
 
     await rawApiRequest("organizations/acme-org/");
 
@@ -567,7 +567,7 @@ describe("the env token as an account", () => {
   }
 
   test("is an account on SaaS when no server is configured", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
 
     expect(getEnvAccount()).toEqual({
       envVar: "SENTRY_AUTH_TOKEN",
@@ -577,8 +577,8 @@ describe("the env token as an account", () => {
   });
 
   test("is an account on its org auth token's server", () => {
-    process.env.SENTRY_TOKEN = ACME_ORG_TOKEN;
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_TOKEN"] = ACME_ORG_TOKEN;
+    process.env["SENTRY_URL"] = ACME;
 
     expect(getEnvAccount()?.host).toBe(ACME);
     expect(getEnvAccount()?.envVar).toBe("SENTRY_TOKEN");
@@ -587,15 +587,17 @@ describe("the env token as an account", () => {
   test("is no account on a self-hosted server only the env names", () => {
     // In layered CI, SENTRY_URL can be injected without access to the
     // token: it alone must not make the token an account sent there.
-    process.env.SENTRY_TOKEN = "env-token";
-    process.env.SENTRY_URL = ACME;
+    // In layered CI, SENTRY_URL can be injected without access to the
+    // token: it alone must not make the token an account sent there.
+    process.env["SENTRY_TOKEN"] = "env-token";
+    process.env["SENTRY_URL"] = ACME;
 
     expect(getEnvAccount()).toBeUndefined();
   });
 
   test("is an account on a SaaS server named by the env", () => {
-    process.env.SENTRY_TOKEN = "env-token";
-    process.env.SENTRY_URL = "https://us.sentry.io";
+    process.env["SENTRY_TOKEN"] = "env-token";
+    process.env["SENTRY_URL"] = "https://us.sentry.io";
 
     expect(getEnvAccount()?.host).toBe("https://us.sentry.io");
   });
@@ -604,7 +606,7 @@ describe("the env token as an account", () => {
     login("saas-token", SAAS, "saas");
     // The boot snapshot saw no env token.
     getEnvTokenHost();
-    process.env.SENTRY_AUTH_TOKEN = "rc-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "rc-token";
     envSeesOrg("rc-token", "rc-org", SAAS);
 
     selectAccountForOrg("rc-org");
@@ -614,7 +616,7 @@ describe("the env token as an account", () => {
   });
 
   test("wins over the active account for an org both know", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     const saas = login("saas-token", SAAS, "saas");
     seeOrgList(SAAS, ["shared"]);
     envSeesOrg("env-token", "shared", SAAS);
@@ -627,7 +629,7 @@ describe("the env token as an account", () => {
   });
 
   test("wins over another stored account that knows the org", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("work-token", SAAS, "work");
     seeOrg("env-org", SAAS);
     login("personal-token", SAAS, "personal");
@@ -639,7 +641,7 @@ describe("the env token as an account", () => {
   });
 
   test("matches DSN-style numeric org ids", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
     setOrgRegions([
       {
@@ -658,8 +660,8 @@ describe("the env token as an account", () => {
   });
 
   test("ignores orgs it saw while scoped to another server", () => {
-    process.env.SENTRY_AUTH_TOKEN = ACME_ORG_TOKEN;
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = ACME_ORG_TOKEN;
+    process.env["SENTRY_URL"] = ACME;
     login("acme-token", ACME, "acme");
     seeOrg("shared", ACME);
     // Cached under the same identity on SaaS: ACME's `shared` is a
@@ -673,7 +675,7 @@ describe("the env token as an account", () => {
   });
 
   test("matches orgs it saw on a SaaS region of its SaaS server", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
     envSeesOrg("env-token", "eu-org", "https://de.sentry.io");
 
@@ -683,7 +685,7 @@ describe("the env token as an account", () => {
   });
 
   test("ignores orgs it saw on look-alike SaaS servers", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
     envSeesOrg("env-token", "lookalike", "https://sentry.io.example.com");
     envSeesOrg("env-token", "lookalike", "https://notsentry.io");
@@ -695,7 +697,7 @@ describe("the env token as an account", () => {
   });
 
   test("leaves orgs it doesn't know to the stored login", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
     envSeesOrg("env-token", "env-org", SAAS);
 
@@ -705,14 +707,14 @@ describe("the env token as an account", () => {
   });
 
   test("an explicit server set after boot on another server rules it out", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     // Boot: the env token is scoped to SaaS before `--url` or
     // `.sentryclirc` point the invocation at ACME.
     getEnvTokenHost();
     login("acme-token", ACME, "acme");
     seeOrg("shared", ACME);
     envSeesOrg("env-token", "shared", SAAS);
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
 
     selectAccountForOrg("shared");
 
@@ -720,22 +722,22 @@ describe("the env token as an account", () => {
   });
 
   test("brings its server along when the persisted default URL is another", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     // Boot: the persisted default URL is applied after the snapshot.
     getEnvTokenHost();
     login("acme-token", ACME, "acme");
     envSeesOrg("env-token", "env-org", SAAS);
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
     markPersistedDefaultUrl(ACME);
 
     selectAccountForOrg("env-org");
 
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
     expect(getAuthToken()).toBe("env-token");
   });
 
   test("never mixes with a stored account within one invocation", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS);
     login("personal-token", SAAS, "personal");
@@ -748,7 +750,7 @@ describe("the env token as an account", () => {
   });
 
   test("a login during the invocation takes over from it", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
     envSeesOrg("env-token", "env-org", SAAS);
     selectAccountForOrg("env-org");
@@ -759,24 +761,24 @@ describe("the env token as an account", () => {
   });
 
   test("serves its configured server when no stored account is on it", () => {
-    process.env.SENTRY_AUTH_TOKEN = ACME_ORG_TOKEN;
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = ACME_ORG_TOKEN;
+    process.env["SENTRY_URL"] = ACME;
     login("saas-token", SAAS, "saas");
 
     expect(getAuthToken()).toBe(ACME_ORG_TOKEN);
   });
 
   test("never serves a self-hosted server only the env names", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_URL"] = ACME;
     login("saas-token", SAAS, "saas");
 
     expect(getAuthToken()).not.toBe("env-token");
   });
 
   test("yields its configured server to a stored account on it", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_URL"] = ACME;
     login("acme-token", ACME, "acme");
     login("saas-token", SAAS, "saas");
 
@@ -784,7 +786,7 @@ describe("the env token as an account", () => {
   });
 
   test("still yields to the active stored login by default", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     login("saas-token", SAAS, "saas");
 
     expect(getAuthToken()).toBe("saas-token");
@@ -845,7 +847,7 @@ describe("logging in after an org picked the account", () => {
   test("a configured server never redirects re-authentication to its account", () => {
     const acme = login("acme-token", ACME, "acme");
     const saas = login("saas-token", SAAS, "saas");
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
     expect(getAuthToken()).toBe("acme-token");
 
     // A SaaS login replaces the SaaS account, whatever SENTRY_URL says.
@@ -977,7 +979,7 @@ describe("pasted Sentry URLs", () => {
   test("a SaaS URL selects the SaaS account when self-hosted is active", () => {
     login("saas-token", SAAS, "saas");
     login("acme-token", ACME, "acme");
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
 
     applySentryUrlContext("https://acme-org.sentry.io");
 
@@ -995,7 +997,7 @@ describe("pasted Sentry URLs", () => {
     applySentryUrlContext("https://shared.sentry.io");
     selectAccountForOrg("shared");
 
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
     expect(getAuthToken()).toBe("saas-token");
   });
 
@@ -1005,13 +1007,14 @@ describe("pasted Sentry URLs", () => {
     login("saas-token", SAAS, "saas");
     seeOrgList(SAAS, ["alpha"]);
     // `defaults.url` is SaaS and was applied at startup.
-    process.env.SENTRY_URL = SAAS;
+    // `defaults.url` is SaaS and was applied at startup.
+    process.env["SENTRY_URL"] = SAAS;
     markPersistedDefaultUrl(SAAS);
 
     applySentryUrlContext("https://shared.sentry.io");
     selectAccountForOrg("shared");
 
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
     expect(getAuthToken()).toBe("saas-token");
   });
 
@@ -1026,7 +1029,7 @@ describe("pasted Sentry URLs", () => {
     applySentryUrlContext("https://shared.sentry.io");
     selectAccountForOrg("shared");
 
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
     expect(getAuthToken()).not.toBe("acme-token");
   });
 
@@ -1042,31 +1045,33 @@ describe("pasted Sentry URLs", () => {
 
     // Pinned to SaaS: the self-hosted account that knows the slug is never
     // picked; the active one stays and the SaaS host check refuses it.
-    expect(process.env.SENTRY_URL).toBe(SAAS);
+    expect(process.env["SENTRY_URL"]).toBe(SAAS);
     expect(getAuthToken()).toBe("acme-token");
   });
 
   test("a SaaS URL with a single self-hosted login keeps using that login", () => {
     login("acme-token", ACME, "acme");
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
 
     applySentryUrlContext("https://acme-org.sentry.io");
 
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
     expect(getAuthToken()).toBe("acme-token");
   });
 
   test("a SaaS URL never snapshots an env token's host", () => {
     login("saas-token", SAAS, "saas");
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
+    process.env["SENTRY_URL"] = ACME;
 
     applySentryUrlContext("https://acme-org.sentry.io");
 
     // Had the URL handling read the env token's host after clearing the
     // URL, it would be pinned to SaaS; captured now, it is still ACME.
-    process.env.SENTRY_URL = ACME;
+    // Had the URL handling read the env token's host after clearing the
+    // URL, it would be pinned to SaaS; captured now, it is still ACME.
+    process.env["SENTRY_URL"] = ACME;
     expect(getEnvTokenHost()).toBe(ACME);
   });
 

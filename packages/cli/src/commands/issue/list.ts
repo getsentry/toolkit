@@ -1619,9 +1619,9 @@ function jsonTransformIssueList(
     !Array.isArray(transformed)
   ) {
     const envelope = transformed as Record<string, unknown>;
-    const data = envelope.data;
+    const data = envelope["data"];
     if (Array.isArray(data) && data.length === 0) {
-      envelope._searchSyntax = SEARCH_SYNTAX_REFERENCE;
+      envelope["_searchSyntax"] = SEARCH_SYNTAX_REFERENCE;
     }
   }
   return transformed;

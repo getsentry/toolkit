@@ -155,8 +155,8 @@ describe("getUpdateNotification", () => {
 
   beforeEach(() => {
     // Save and clear the env var to test real implementation
-    savedNoUpdateCheck = process.env.SENTRY_CLI_NO_UPDATE_CHECK;
-    delete process.env.SENTRY_CLI_NO_UPDATE_CHECK;
+    savedNoUpdateCheck = process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
+    delete process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
     // Reset the in-process "already notified" latch so each test starts fresh.
     resetUpdateNotificationState();
     // Default to TTY so the human-facing banner path is exercised. Tests
@@ -167,7 +167,7 @@ describe("getUpdateNotification", () => {
   afterEach(() => {
     // Restore the env var
     if (savedNoUpdateCheck !== undefined) {
-      process.env.SENTRY_CLI_NO_UPDATE_CHECK = savedNoUpdateCheck;
+      process.env["SENTRY_CLI_NO_UPDATE_CHECK"] = savedNoUpdateCheck;
     }
     restoreTTY?.();
     restoreTTY = undefined;
@@ -272,15 +272,15 @@ describe("getErrorUpdateNotification", () => {
   let restoreTTY: (() => void) | undefined;
 
   beforeEach(() => {
-    savedNoUpdateCheck = process.env.SENTRY_CLI_NO_UPDATE_CHECK;
-    delete process.env.SENTRY_CLI_NO_UPDATE_CHECK;
+    savedNoUpdateCheck = process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
+    delete process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
     resetUpdateNotificationState();
     restoreTTY = withStderrTTY(true);
   });
 
   afterEach(() => {
     if (savedNoUpdateCheck !== undefined) {
-      process.env.SENTRY_CLI_NO_UPDATE_CHECK = savedNoUpdateCheck;
+      process.env["SENTRY_CLI_NO_UPDATE_CHECK"] = savedNoUpdateCheck;
     }
     restoreTTY?.();
     restoreTTY = undefined;
@@ -431,8 +431,8 @@ describe("maybeCheckForUpdateInBackground", () => {
 
   beforeEach(() => {
     // Save and clear the env var to test real implementation
-    savedNoUpdateCheck = process.env.SENTRY_CLI_NO_UPDATE_CHECK;
-    delete process.env.SENTRY_CLI_NO_UPDATE_CHECK;
+    savedNoUpdateCheck = process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
+    delete process.env["SENTRY_CLI_NO_UPDATE_CHECK"];
     // Silence background fetch calls to GitHub API that would otherwise
     // hit the preload mock and produce "unexpected fetch" warnings.
     originalFetch = globalThis.fetch;
@@ -450,7 +450,7 @@ describe("maybeCheckForUpdateInBackground", () => {
     globalThis.fetch = originalFetch;
     // Restore the env var
     if (savedNoUpdateCheck !== undefined) {
-      process.env.SENTRY_CLI_NO_UPDATE_CHECK = savedNoUpdateCheck;
+      process.env["SENTRY_CLI_NO_UPDATE_CHECK"] = savedNoUpdateCheck;
     }
     vi.restoreAllMocks();
   });

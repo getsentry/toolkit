@@ -302,12 +302,12 @@ describe("buildServer", () => {
           "https://sentry.io/api/0/organizations/:org/",
           ({ params, request }) => {
             seen.push({
-              org: String(params.org),
+              org: String(params["org"]),
               authorization: request.headers.get("authorization"),
             });
             return HttpResponse.json({
               id: "1",
-              slug: params.org,
+              slug: params["org"],
               name: "Org",
             });
           },
@@ -318,7 +318,7 @@ describe("buildServer", () => {
         tools: {
           org_tool: orgTool(async (params, context) => {
             const org = await apiServiceFromContext(context).getOrganization(
-              String(params.organizationSlug),
+              String(params["organizationSlug"]),
             );
             return org.slug;
           }),
@@ -417,7 +417,7 @@ describe("buildServer", () => {
           return "ok";
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: { ...baseContext, credentialRouter: router },
         tools: registry,
@@ -470,7 +470,7 @@ describe("buildServer", () => {
           },
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({ context: baseContext, tools: registry });
 
       await callRegisteredTool(server, "execute_sentry_tool", {
@@ -506,9 +506,9 @@ describe("buildServer", () => {
       }
     )._registeredTools;
 
-    expect(registeredTools.v2_tool).toBeDefined();
+    expect(registeredTools["v2_tool"]).toBeDefined();
     await expect(
-      registeredTools.v2_tool.handler({ value: "ok" }),
+      registeredTools["v2_tool"].handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -762,7 +762,7 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool.handler({}, {});
+      await registeredTools["example_tool"].handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
@@ -2082,7 +2082,7 @@ describe("buildServer", () => {
           http.post(
             "*/api/0/organizations/:org/issues/:issueId/notes/",
             ({ params }) => {
-              expect(params.org).toBe("sentry-mcp-evals");
+              expect(params["org"]).toBe("sentry-mcp-evals");
               return HttpResponse.json({
                 id: "activity-1",
                 commentId: "comment-1",
@@ -2995,7 +2995,7 @@ describe("buildServer", () => {
         return `${parsed.organizationSlug}:${parsed.filter}:${parsed.nested.limit}`;
       });
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           organizationSlug: z.string(),
           filter: z.string(),
@@ -3003,7 +3003,7 @@ describe("buildServer", () => {
         },
         handler,
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: {
           ...baseContext,
@@ -3052,12 +3052,12 @@ describe("buildServer", () => {
 
     it("marks the catalog tool span as errored when execute_sentry_tool validation fails", async () => {
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           requiredValue: z.string(),
         },
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: baseContext,
         tools: registry,

@@ -112,7 +112,7 @@ describe("serveMcp login fallback", () => {
 
   test("logs in over plain HTTP for SENTRY_HOST with --insecure-http", async () => {
     registerLoginTrustAnchor("http://sentry.internal:9000");
-    process.env.SENTRY_HOST = "sentry.internal:9000";
+    process.env["SENTRY_HOST"] = "sentry.internal:9000";
 
     await serve(["--insecure-http"]);
     expect(state.loginHosts).toEqual(["http://sentry.internal:9000"]);

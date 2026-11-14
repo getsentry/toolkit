@@ -966,7 +966,7 @@ function selectTraceSpanRoots(
   function indexSpan(span: TraceSpan): void {
     // Try to get span_id from additional_attributes, fall back to event_id
     const spanId =
-      normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+      normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
@@ -1097,7 +1097,7 @@ function convertTraceSpanToPerformanceSpan(
 
   // Get span ID from additional_attributes or fall back to event_id
   const spanId =
-    normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+    normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
 
   const performanceSpan: PerformanceSpan = {
     span_id: spanId,
@@ -1818,7 +1818,7 @@ export function formatMetricAlertValue(value: unknown): string | undefined {
   }
 
   if (isPlainObject(value)) {
-    return formatPrimitive(value.value);
+    return formatPrimitive(value["value"]);
   }
 
   return undefined;
@@ -2544,9 +2544,9 @@ export function buildIssueResponseNotes({
 }): string[] {
   const notes: string[] = [];
   const traceId =
-    typeof event.contexts?.trace?.trace_id === "string" &&
-    event.contexts.trace.trace_id.length > 0
-      ? event.contexts.trace.trace_id
+    typeof event.contexts?.["trace"]?.["trace_id"] === "string" &&
+    event.contexts["trace"]["trace_id"].length > 0
+      ? event.contexts["trace"]["trace_id"]
       : undefined;
 
   const commitIssueReference = /^\d+$/.test(issue.shortId)
@@ -2822,10 +2822,10 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
   const replayContextId =
-    typeof replayContext?.replay_id === "string"
-      ? replayContext.replay_id
+    typeof replayContext?.["replay_id"] === "string"
+      ? replayContext["replay_id"]
       : null;
   const replayTagId =
     event.tags?.find((tag) => tag.key === "replayId" || tag.key === "replay.id")
@@ -2867,7 +2867,7 @@ export function stripReplayMetadata(event: Event): Event {
   const tags = event.tags?.filter(
     (tag) => tag.key !== "replay.id" && tag.key !== "replayId",
   );
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
 
   if (!replayContext) {
     return { ...event, tags };

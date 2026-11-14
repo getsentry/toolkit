@@ -85,7 +85,7 @@ function createMcpRequest(
     ...options.headers,
   };
   if (bearerToken) {
-    headers.Authorization = `Bearer ${bearerToken}`;
+    headers["Authorization"] = `Bearer ${bearerToken}`;
   }
 
   return new Request(`http://localhost${path}`, {
@@ -160,11 +160,11 @@ describe("MCP Handler", () => {
         sessionStartedAt: now - 2 * 24 * 60 * 60 * 1000,
         upstreamExpiresAt: now + 3 * 24 * 60 * 60 * 1000,
       });
-      (ctx.props as Record<string, unknown>).grantedScopes = [
+      (ctx.props as Record<string, unknown>)["grantedScopes"] = [
         "org:read",
         "project:read",
       ];
-      (ctx.props as Record<string, unknown>).grantedSkills = undefined;
+      (ctx.props as Record<string, unknown>)["grantedSkills"] = undefined;
 
       const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
 

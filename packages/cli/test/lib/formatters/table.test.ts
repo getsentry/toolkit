@@ -99,20 +99,20 @@ describe("writeTable", () => {
 
 describe("writeTable (TTY mode)", () => {
   const saved = {
-    plain: process.env.SENTRY_PLAIN_OUTPUT,
+    plain: process.env["SENTRY_PLAIN_OUTPUT"],
     columns: process.stdout.columns,
   };
 
   function withTty(fn: () => void): void {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     process.stdout.columns = 120;
     try {
       fn();
     } finally {
       if (saved.plain !== undefined) {
-        process.env.SENTRY_PLAIN_OUTPUT = saved.plain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = saved.plain;
       } else {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       }
       process.stdout.columns = saved.columns;
     }
@@ -219,25 +219,25 @@ describe("writeTable (TTY mode)", () => {
 
 describe("writeTable (plain mode)", () => {
   const saved = {
-    plain: process.env.SENTRY_PLAIN_OUTPUT,
-    noColor: process.env.NO_COLOR,
+    plain: process.env["SENTRY_PLAIN_OUTPUT"],
+    noColor: process.env["NO_COLOR"],
   };
 
   function withPlain(fn: () => void): void {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
-    process.env.NO_COLOR = undefined;
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
+    process.env["NO_COLOR"] = undefined;
     try {
       fn();
     } finally {
       if (saved.plain !== undefined) {
-        process.env.SENTRY_PLAIN_OUTPUT = saved.plain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = saved.plain;
       } else {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       }
       if (saved.noColor !== undefined) {
-        process.env.NO_COLOR = saved.noColor;
+        process.env["NO_COLOR"] = saved.noColor;
       } else {
-        delete process.env.NO_COLOR;
+        delete process.env["NO_COLOR"];
       }
     }
   }

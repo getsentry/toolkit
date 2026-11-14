@@ -64,8 +64,8 @@ describe("callEmbeddedAgent", () => {
         "./provider-factory",
       );
     vi.mocked(getAgentProvider).mockImplementation(actual.getAgentProvider);
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
   });
 
   it("keeps the five-step limit when no finalization condition is supplied", async () => {

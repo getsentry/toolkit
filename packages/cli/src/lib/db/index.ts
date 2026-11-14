@@ -275,7 +275,7 @@ function lazyTelemetry(): typeof import("../telemetry.js") | undefined {
   if (
     (typeof SENTRY_CLI_COMPLETION_BUILD !== "undefined" &&
       SENTRY_CLI_COMPLETION_BUILD) ||
-    getEnv().SENTRY_CLI_NO_TELEMETRY === "1"
+    getEnv()["SENTRY_CLI_NO_TELEMETRY"] === "1"
   ) {
     return;
   }

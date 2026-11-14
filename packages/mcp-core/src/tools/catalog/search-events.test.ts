@@ -131,8 +131,8 @@ describe("search_events", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse("errors"));
     mockValidEventsValidation();
   });
@@ -3219,9 +3219,9 @@ describe("search_events", () => {
   });
 
   it("should search events with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -3967,9 +3967,9 @@ describe("search_events", () => {
   });
 
   it("rejects search immediately when validation fails without an agent provider", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -4057,7 +4057,7 @@ describe("search_events", () => {
     };
 
     beforeEach(() => {
-      process.env.OPENAI_API_KEY = "";
+      process.env["OPENAI_API_KEY"] = "";
     });
 
     it("explains a rejected log timestamp aggregate", async () => {
@@ -4930,9 +4930,9 @@ describe("search_events", () => {
         "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
 
       beforeEach(() => {
-        process.env.OPENAI_API_KEY = "";
-        process.env.ANTHROPIC_API_KEY = "";
-        process.env.OPENROUTER_API_KEY = "";
+        process.env["OPENAI_API_KEY"] = "";
+        process.env["ANTHROPIC_API_KEY"] = "";
+        process.env["OPENROUTER_API_KEY"] = "";
         mswServer.use(
           mockOrganization(["mcp-search-events-seer-translate"]),
           http.get(

@@ -2061,15 +2061,15 @@ export const FlamegraphSchema = z.preprocess(
     // parseable so tools can render the explicit no-profile-data result.
     const body = value as Record<string, unknown>;
     const metadata =
-      body.metadata && typeof body.metadata === "object"
-        ? (body.metadata as Record<string, unknown>)
+      body["metadata"] && typeof body["metadata"] === "object"
+        ? (body["metadata"] as Record<string, unknown>)
         : {};
 
     return {
       ...body,
-      platform: body.platform ?? metadata.platform,
-      projectID: body.projectID ?? metadata.projectID,
-      transactionName: body.transactionName ?? metadata.transactionName,
+      platform: body["platform"] ?? metadata["platform"],
+      projectID: body["projectID"] ?? metadata["projectID"],
+      transactionName: body["transactionName"] ?? metadata["transactionName"],
     };
   },
   z

@@ -111,19 +111,19 @@ function mapUser(value: unknown): IssueEvent["user"] {
   if (!isPlainObject(value)) {
     return null;
   }
-  const geo = isPlainObject(value.geo)
+  const geo = isPlainObject(value["geo"])
     ? {
-        countryCode: readString(value.geo.country_code),
-        city: readString(value.geo.city),
-        region: readString(value.geo.region),
+        countryCode: readString(value["geo"]["country_code"]),
+        city: readString(value["geo"]["city"]),
+        region: readString(value["geo"]["region"]),
       }
     : null;
   const user = {
-    id: readString(value.id),
-    email: readString(value.email),
-    username: readString(value.username),
-    name: readString(value.name),
-    ipAddress: readString(value.ip_address),
+    id: readString(value["id"]),
+    email: readString(value["email"]),
+    username: readString(value["username"]),
+    name: readString(value["name"]),
+    ipAddress: readString(value["ip_address"]),
     geo: geo && !allNull(geo) ? geo : null,
   };
   return allNull(user) ? null : user;
@@ -137,8 +137,8 @@ function mapTags(value: unknown): IssueEvent["tags"] {
     if (!isPlainObject(tag)) {
       return [];
     }
-    const key = readString(tag.key);
-    const tagValue = readString(tag.value);
+    const key = readString(tag["key"]);
+    const tagValue = readString(tag["value"]);
     // Tags with an empty value are dropped on purpose.
     return key && tagValue !== null ? [{ key, value: tagValue }] : [];
   });
@@ -148,22 +148,22 @@ function mapEvent(
   event: Record<string, unknown>,
   issueUrl: string,
 ): IssueEvent | null {
-  const id = readString(event.eventID) ?? readString(event.id);
+  const id = readString(event["eventID"]) ?? readString(event["id"]);
   if (!id) {
     return null;
   }
   return {
     id,
     url: `${issueUrl}/events/${id}/`,
-    eventType: readString(event["event.type"]) ?? readString(event.type),
-    title: readString(event.title),
-    message: readString(event.message),
-    culprit: readString(event.culprit),
-    location: readString(event.location),
-    platform: readString(event.platform),
-    dateCreated: readString(event.dateCreated),
-    user: mapUser(event.user),
-    tags: mapTags(event.tags),
+    eventType: readString(event["event.type"]) ?? readString(event["type"]),
+    title: readString(event["title"]),
+    message: readString(event["message"]),
+    culprit: readString(event["culprit"]),
+    location: readString(event["location"]),
+    platform: readString(event["platform"]),
+    dateCreated: readString(event["dateCreated"]),
+    user: mapUser(event["user"]),
+    tags: mapTags(event["tags"]),
   };
 }
 

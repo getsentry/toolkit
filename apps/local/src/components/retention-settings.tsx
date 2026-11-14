@@ -88,7 +88,7 @@ export function RetentionSettings({
   });
   const error =
     form.formState.errors.maxEnvelopes?.message ??
-    form.formState.errors.root?.server?.message;
+    form.formState.errors.root?.["server"]?.message;
   return (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-muted-foreground">

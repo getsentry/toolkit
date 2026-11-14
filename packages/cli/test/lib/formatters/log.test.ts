@@ -24,14 +24,14 @@ import type {
 function useRenderedMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -40,14 +40,14 @@ function useRenderedMode() {
 function usePlainMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }

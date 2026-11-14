@@ -73,9 +73,9 @@ describe("dashboard sixel integration", () => {
   let savedColumns: number | undefined;
 
   beforeEach(() => {
-    savedPlainOutput = process.env.SENTRY_PLAIN_OUTPUT;
+    savedPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
     savedColumns = process.stdout.columns;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     process.stdout.columns = 40;
     vi.spyOn(sixelModule, "selectGraphicsFormat").mockReturnValue("sixel");
     vi.spyOn(sixelModule, "detectSixelCaps").mockReturnValue({
@@ -91,9 +91,9 @@ describe("dashboard sixel integration", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     if (savedPlainOutput === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlainOutput;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlainOutput;
     }
     process.stdout.columns = savedColumns;
   });

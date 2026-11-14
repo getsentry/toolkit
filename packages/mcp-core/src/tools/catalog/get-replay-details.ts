@@ -595,10 +595,10 @@ function buildReplayUser(
   }
   const { id, username, email, ip, geo } = replay.user;
   const mappedGeo = {
-    city: geo?.city || null,
-    countryCode: geo?.country_code || null,
-    region: geo?.region || null,
-    subdivision: geo?.subdivision || null,
+    city: geo?.["city"] || null,
+    countryCode: geo?.["country_code"] || null,
+    region: geo?.["region"] || null,
+    subdivision: geo?.["subdivision"] || null,
   };
   const user = {
     id: id || null,
@@ -736,19 +736,20 @@ function buildSuggestedActions({
       replayId,
     };
     if (regionUrl) {
-      continueArguments.regionUrl = regionUrl;
+      continueArguments["regionUrl"] = regionUrl;
     }
     if (timelineRequest.categories) {
-      continueArguments.categories = timelineRequest.categories;
+      continueArguments["categories"] = timelineRequest.categories;
     }
     if (timelineRequest.startOffsetSeconds !== null) {
-      continueArguments.startOffsetSeconds = timelineRequest.startOffsetSeconds;
+      continueArguments["startOffsetSeconds"] =
+        timelineRequest.startOffsetSeconds;
     }
     if (timelineRequest.endOffsetSeconds !== null) {
-      continueArguments.endOffsetSeconds = timelineRequest.endOffsetSeconds;
+      continueArguments["endOffsetSeconds"] = timelineRequest.endOffsetSeconds;
     }
-    continueArguments.limit = timelineRequest.limit;
-    continueArguments.skip = timeline.nextSkip;
+    continueArguments["limit"] = timelineRequest.limit;
+    continueArguments["skip"] = timeline.nextSkip;
     candidates.push(
       buildSuggestedToolAction({
         toolName: "get_replay_details",

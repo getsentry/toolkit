@@ -293,10 +293,11 @@ export const createCommand = buildCommand({
     yield new CommandOutput({
       org,
       project,
-      id: stringifyUnknown(created.id ?? ""),
-      name: stringifyUnknown(created.name ?? flags.name),
+      id: stringifyUnknown(created["id"] ?? ""),
+      name: stringifyUnknown(created["name"] ?? flags.name),
       status: stringifyUnknown(
-        created.status ?? (created.enabled === false ? "disabled" : "active"),
+        created["status"] ??
+          (created["enabled"] === false ? "disabled" : "active"),
       ),
     } satisfies IssueAlertCreateOutput);
   },

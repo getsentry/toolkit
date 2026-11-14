@@ -351,7 +351,7 @@ for (const assertion of CONTENT_ASSERTIONS) {
 }
 
 // Emit GitHub Actions annotations for CI visibility
-const isCI = !!process.env.CI;
+const isCI = !!process.env["CI"];
 for (const w of warnings) {
   if (isCI) {
     // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.

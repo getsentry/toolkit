@@ -307,7 +307,7 @@ describe("DashboardWidgetInputSchema", () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect((result.output as Record<string, unknown>).customField).toBe(
+      expect((result.output as Record<string, unknown>)["customField"]).toBe(
         "hello",
       );
     }

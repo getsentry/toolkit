@@ -17,8 +17,8 @@ describe("Code Scanner", () => {
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
   });
 
   describe("extractDsnsFromContent", () => {
@@ -206,7 +206,7 @@ describe("Code Scanner", () => {
     });
 
     test("accepts self-hosted DSNs when SENTRY_URL is set", () => {
-      process.env.SENTRY_URL = "https://sentry.mycompany.com:9000";
+      process.env["SENTRY_URL"] = "https://sentry.mycompany.com:9000";
       const content = `
         const DSN = "https://abc@sentry.mycompany.com:9000/123";
       `;
@@ -215,7 +215,7 @@ describe("Code Scanner", () => {
     });
 
     test("rejects SaaS DSNs when SENTRY_URL is set (self-hosted mode)", () => {
-      process.env.SENTRY_URL = "https://sentry.mycompany.com:9000";
+      process.env["SENTRY_URL"] = "https://sentry.mycompany.com:9000";
       const content = `
         const SAAS_DSN = "https://abc@o123.ingest.sentry.io/456";
         const SELF_HOSTED_DSN = "https://def@sentry.mycompany.com:9000/789";
@@ -228,7 +228,9 @@ describe("Code Scanner", () => {
     test("throws ConfigError when SENTRY_URL is invalid", () => {
       // normalizeUrl prepends https:// to bare strings, so use a value
       // that remains unparseable even after normalization (https://://)
-      process.env.SENTRY_URL = "://";
+      // normalizeUrl prepends https:// to bare strings, so use a value
+      // that remains unparseable even after normalization (https://://)
+      process.env["SENTRY_URL"] = "://";
       const content = `
         const SAAS_DSN = "https://abc@o123.ingest.sentry.io/456";
       `;
@@ -240,7 +242,7 @@ describe("Code Scanner", () => {
     });
 
     test("accepts self-hosted DSNs when SENTRY_HOST is set", () => {
-      process.env.SENTRY_HOST = "https://sentry.mycompany.com:9000";
+      process.env["SENTRY_HOST"] = "https://sentry.mycompany.com:9000";
       const content = `
         const DSN = "https://abc@sentry.mycompany.com:9000/123";
       `;
@@ -249,8 +251,8 @@ describe("Code Scanner", () => {
     });
 
     test("SENTRY_HOST takes precedence over SENTRY_URL for DSN validation", () => {
-      process.env.SENTRY_HOST = "https://sentry.mycompany.com:9000";
-      process.env.SENTRY_URL = "https://sentry.other.com";
+      process.env["SENTRY_HOST"] = "https://sentry.mycompany.com:9000";
+      process.env["SENTRY_URL"] = "https://sentry.other.com";
       const content = `
         const DSN1 = "https://abc@sentry.mycompany.com:9000/123";
         const DSN2 = "https://def@sentry.other.com/456";

@@ -402,7 +402,9 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // Read key://pattern// on every dataset: outside logs it is a literal match,
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
-    const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
+    const key = (
+      match.groups?.["regexKey"] ?? match.groups?.["key"]
+    )?.toLowerCase();
     if (!key) {
       continue;
     }
@@ -607,7 +609,7 @@ function isPrimitive(
 
 function isTagPair(value: unknown): value is { key: string; value: unknown } {
   return (
-    isPlainObject(value) && typeof value.key === "string" && "value" in value
+    isPlainObject(value) && typeof value["key"] === "string" && "value" in value
   );
 }
 
@@ -639,7 +641,7 @@ function hasUserSummaryFields(
 ): boolean {
   return (
     hasUserIdentityFields(value) ||
-    (options.allowId === true && value.id != null)
+    (options.allowId === true && value["id"] != null)
   );
 }
 
@@ -661,7 +663,7 @@ function formatUserSummary(
   const parts = USER_FIELDS.filter((f) => value[f] != null).map(
     (f) => `${f}=${formatSimpleValue(value[f])}`,
   );
-  const geoSummary = formatUserGeoSummary(value.geo);
+  const geoSummary = formatUserGeoSummary(value["geo"]);
   if (includeGeo && geoSummary) {
     parts.push(`geo=${geoSummary}`);
   }

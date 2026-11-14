@@ -334,8 +334,8 @@ describe("uploadDebugFiles", () => {
       string,
       unknown
     >[];
-    expect(entry?.code_id).toBe("d9a5d2fa49f0cf6c");
-    expect(entry?.shader_group).toBe("Global/FSentryTestCS/0");
+    expect(entry?.["code_id"]).toBe("d9a5d2fa49f0cf6c");
+    expect(entry?.["shader_group"]).toBe("Global/FSentryTestCS/0");
 
     await uploadDebugFiles({
       ...SOLE,

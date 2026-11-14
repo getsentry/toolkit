@@ -111,10 +111,10 @@ export function applyScenario(
   const rawFile = join(dir, "served-asset");
   writeFileSync(gzFile, served.gz);
   writeFileSync(rawFile, served.raw);
-  env.SENTRY_TEST_GZ_FILE = gzFile;
-  env.SENTRY_TEST_RAW_FILE = rawFile;
-  env.SENTRY_TEST_LATEST_VERSION = LATEST_VERSION;
-  env.SENTRY_TEST_REGISTRY_STATUS = String(scenario.registry.status);
+  env["SENTRY_TEST_GZ_FILE"] = gzFile;
+  env["SENTRY_TEST_RAW_FILE"] = rawFile;
+  env["SENTRY_TEST_LATEST_VERSION"] = LATEST_VERSION;
+  env["SENTRY_TEST_REGISTRY_STATUS"] = String(scenario.registry.status);
   const body = join(dir, "registry.json");
   writeFileSync(
     body,
@@ -125,17 +125,17 @@ export function applyScenario(
         })
       : "",
   );
-  env.SENTRY_TEST_REGISTRY_BODY = body;
+  env["SENTRY_TEST_REGISTRY_BODY"] = body;
   for (const [index, page] of (scenario.releases ?? []).entries()) {
     const file = join(dir, `releases-${index + 1}.json`);
     writeFileSync(file, JSON.stringify(page, null, 2));
     env[`SENTRY_TEST_RELEASES_PAGE_${index + 1}`] = file;
   }
   if (scenario.gzMissing) {
-    env.SENTRY_TEST_GZ_MISSING = "1";
+    env["SENTRY_TEST_GZ_MISSING"] = "1";
   }
   if (scenario.version !== undefined) {
-    env.SENTRY_VERSION = scenario.version;
+    env["SENTRY_VERSION"] = scenario.version;
   }
 }
 

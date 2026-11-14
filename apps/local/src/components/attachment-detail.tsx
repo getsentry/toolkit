@@ -18,7 +18,7 @@ export function AttachmentDetail({
 }) {
   const [expanded, setExpanded] = useState(!collapsible);
   const [url, setUrl] = useState<string>();
-  const name = text(item.itemHeader?.filename) ?? "Attachment";
+  const name = text(item.itemHeader?.["filename"]) ?? "Attachment";
   const attachment = useMemo(
     () => (expanded ? attachmentBytes(item) : undefined),
     [expanded, item],
@@ -46,7 +46,7 @@ export function AttachmentDetail({
         : undefined,
     [attachment],
   );
-  const headerLength = item.itemHeader?.length;
+  const headerLength = item.itemHeader?.["length"];
   const byteLength =
     attachment?.bytes.byteLength ??
     (typeof headerLength === "number" && Number.isFinite(headerLength)
@@ -86,7 +86,7 @@ export function AttachmentDetail({
       </div>
       <p className="text-xs text-muted-foreground">
         {attachment?.contentType ??
-          text(item.itemHeader?.content_type) ??
+          text(item.itemHeader?.["content_type"]) ??
           "Unknown type"}
         {byteLength === undefined
           ? ""

@@ -27,10 +27,10 @@ function deferred<T>() {
 }
 
 beforeEach(async () => {
-  process.env.SENTRY_CLIENT_ID = "test-client-id";
-  delete process.env.SENTRY_AUTH_TOKEN;
-  delete process.env.SENTRY_TOKEN;
-  delete process.env.SENTRY_FORCE_ENV_TOKEN;
+  process.env["SENTRY_CLIENT_ID"] = "test-client-id";
+  delete process.env["SENTRY_AUTH_TOKEN"];
+  delete process.env["SENTRY_TOKEN"];
+  delete process.env["SENTRY_FORCE_ENV_TOKEN"];
   await clearAuth();
 });
 afterEach(async () => {

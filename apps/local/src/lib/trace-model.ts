@@ -65,8 +65,8 @@ function getTraceContext(payload: unknown): Record<string, unknown> {
   if (!isRecord(payload)) {
     return {};
   }
-  const contexts = isRecord(payload.contexts) ? payload.contexts : {};
-  return isRecord(contexts.trace) ? contexts.trace : {};
+  const contexts = isRecord(payload["contexts"]) ? payload["contexts"] : {};
+  return isRecord(contexts["trace"]) ? contexts["trace"] : {};
 }
 
 function getPayloadSpan(
@@ -75,19 +75,19 @@ function getPayloadSpan(
 ): TraceSpan | undefined {
   const event = isRecord(payload) ? payload : {};
   const trace = getTraceContext(payload);
-  const id = getString(trace.span_id) ?? item.metadata?.spanId;
+  const id = getString(trace["span_id"]) ?? item.metadata?.spanId;
   if (!id) {
     return undefined;
   }
-  const startTimestamp = getTimestamp(event.start_timestamp);
+  const startTimestamp = getTimestamp(event["start_timestamp"]);
   const endTimestamp =
-    getTimestamp(event.timestamp) ??
-    getTimestamp(event.end_timestamp) ??
+    getTimestamp(event["timestamp"]) ??
+    getTimestamp(event["end_timestamp"]) ??
     getTimestamp(item.timestamp);
-  const operation = getString(trace.op) ?? item.metadata?.operation;
+  const operation = getString(trace["op"]) ?? item.metadata?.operation;
   const title = item.metadata?.title?.trim();
   const description =
-    getString(event.transaction) ??
+    getString(event["transaction"]) ??
     (title && title !== item.type ? title : undefined) ??
     item.metadata?.route ??
     operation ??
@@ -96,7 +96,7 @@ function getPayloadSpan(
   return {
     id,
     parentId:
-      getString(trace.parent_span_id) ?? getString(event.parent_span_id),
+      getString(trace["parent_span_id"]) ?? getString(event["parent_span_id"]),
     operation,
     description,
     startTimestamp,
@@ -132,9 +132,9 @@ function mergeSpan(
       description !== span.item.type;
     const payload = isRecord(span.payload) ? span.payload : {};
     const captured = [
-      payload.transaction,
-      payload.description,
-      payload.name,
+      payload["transaction"],
+      payload["description"],
+      payload["name"],
     ].some(
       (value) => typeof value === "string" && value.trim() === description,
     );
@@ -163,12 +163,12 @@ function mergeSpan(
   const leftTrace = getTraceContext(secondary.payload);
   const rightTrace = getTraceContext(primary.payload);
   if (Object.keys(leftTrace).length || Object.keys(rightTrace).length) {
-    const contexts = isRecord(payload.contexts) ? payload.contexts : {};
-    payload.contexts = {
+    const contexts = isRecord(payload["contexts"]) ? payload["contexts"] : {};
+    payload["contexts"] = {
       ...contexts,
       trace: {
         ...merge(leftTrace, rightTrace),
-        data: merge(leftTrace.data, rightTrace.data),
+        data: merge(leftTrace["data"], rightTrace["data"]),
       },
     };
   }
@@ -202,27 +202,27 @@ function mergeSpan(
 
 function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
   const event = isRecord(payload) ? payload : {};
-  if (!Array.isArray(event.spans)) {
+  if (!Array.isArray(event["spans"])) {
     return [];
   }
 
-  return event.spans.flatMap((value) => {
+  return event["spans"].flatMap((value) => {
     if (!isRecord(value)) {
       return [];
     }
-    const id = getString(value.span_id);
+    const id = getString(value["span_id"]);
     if (!id) {
       return [];
     }
-    const startTimestamp = getTimestamp(value.start_timestamp);
-    const endTimestamp = getTimestamp(value.timestamp);
-    const operation = getString(value.op);
+    const startTimestamp = getTimestamp(value["start_timestamp"]);
+    const endTimestamp = getTimestamp(value["timestamp"]);
+    const operation = getString(value["op"]);
     return [
       {
         id,
-        parentId: getString(value.parent_span_id),
+        parentId: getString(value["parent_span_id"]),
         operation,
-        description: getString(value.description) ?? operation ?? id,
+        description: getString(value["description"]) ?? operation ?? id,
         startTimestamp,
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),
@@ -328,7 +328,7 @@ export function buildTraceGroups(
         updates.push(rootSpan);
         trace.spanUpdates.set(rootSpan.id, updates);
         const isSegment =
-          isRecord(item.payload) && item.payload.is_segment === true;
+          isRecord(item.payload) && item.payload["is_segment"] === true;
         if (item.type === "transaction" || isSegment) {
           trace.titleCandidates.add(rootSpan.id);
         }

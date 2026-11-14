@@ -398,7 +398,7 @@ export async function formatErrorForUser(
   if (eventId) {
     parts.push(`**Event ID**: ${eventId}`);
   }
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env["NODE_ENV"] !== "production") {
     const errorMsg = error instanceof Error ? error.message : String(error);
     if (errorMsg) {
       parts.push(errorMsg);

@@ -31,7 +31,7 @@ import { getUrlLoginCommand } from "./app-identity.js";
 export function resolveEffectiveLoginHost(): string {
   const env = getEnv();
   return (
-    normalizeUserInputToOrigin(env.SENTRY_HOST || env.SENTRY_URL) ??
+    normalizeUserInputToOrigin(env["SENTRY_HOST"] || env["SENTRY_URL"]) ??
     DEFAULT_SENTRY_URL
   );
 }

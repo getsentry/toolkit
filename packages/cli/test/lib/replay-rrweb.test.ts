@@ -40,7 +40,7 @@ describe("toRRWebEvents", () => {
       [mouseMove(T0 + 2, 1)],
     ]);
 
-    expect(events.map((event) => event.type)).toEqual([4, 2, 3]);
+    expect(events.map((event) => event["type"])).toEqual([4, 2, 3]);
   });
 
   test("keeps Sentry custom events", () => {
@@ -55,7 +55,7 @@ describe("toRRWebEvents", () => {
       [fullSnapshot(T0), mouseMove(T0 + 100, 1), breadcrumb(T0 + 50)],
     ]);
 
-    expect(events.map((event) => event.type)).toEqual([2, 5, 3]);
+    expect(events.map((event) => event["type"])).toEqual([2, 5, 3]);
   });
 
   test("keeps recorded order for events sharing a timestamp", () => {
@@ -64,9 +64,9 @@ describe("toRRWebEvents", () => {
       [mouseMove(T0, 3)],
     ]);
 
-    expect(events.map((event) => (event.data as any).positions[0].id)).toEqual([
-      1, 2, 3,
-    ]);
+    expect(
+      events.map((event) => (event["data"] as any).positions[0].id),
+    ).toEqual([1, 2, 3]);
   });
 
   test("converts second-resolution timestamps to milliseconds", () => {
@@ -79,12 +79,12 @@ describe("toRRWebEvents", () => {
       [fullSnapshot(T0), mouseMove(T0 + 1000, 1), span],
     ]);
 
-    expect(events.map((event) => event.timestamp)).toEqual([
+    expect(events.map((event) => event["timestamp"])).toEqual([
       T0,
       T0 + 500,
       T0 + 1000,
     ]);
-    expect(events[1]?.data).toEqual(span.data);
+    expect(events[1]?.["data"]).toEqual(span.data);
   });
 
   test("leaves event data untouched", () => {

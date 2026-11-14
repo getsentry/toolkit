@@ -11,9 +11,9 @@ import { attributeFields } from "./inspector-data.ts";
 
 export function EventContext({ payload }: { payload: unknown }) {
   const p = record(payload);
-  const breadcrumbs = Array.isArray(p.breadcrumbs)
-    ? p.breadcrumbs
-    : record(p.breadcrumbs).values;
+  const breadcrumbs = Array.isArray(p["breadcrumbs"])
+    ? p["breadcrumbs"]
+    : record(p["breadcrumbs"])["values"];
 
   return (
     <div className="space-y-3">
@@ -27,24 +27,26 @@ export function EventContext({ payload }: { payload: unknown }) {
                 <li key={index} className="space-y-1 py-2">
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span>
-                      {text(crumb.category) ?? text(crumb.type) ?? "Breadcrumb"}
+                      {text(crumb["category"]) ??
+                        text(crumb["type"]) ??
+                        "Breadcrumb"}
                     </span>
-                    <span>{text(crumb.level)}</span>
+                    <span>{text(crumb["level"])}</span>
                     <time>
-                      {crumb.timestamp === undefined
+                      {crumb["timestamp"] === undefined
                         ? ""
-                        : display(crumb.timestamp)}
+                        : display(crumb["timestamp"])}
                     </time>
                   </div>
-                  {crumb.message !== undefined ? (
+                  {crumb["message"] !== undefined ? (
                     <p className="whitespace-pre-wrap break-words text-sm">
-                      {display(crumb.message)}
+                      {display(crumb["message"])}
                     </p>
                   ) : null}
-                  {Object.keys(record(crumb.data)).length ? (
+                  {Object.keys(record(crumb["data"])).length ? (
                     <DetailFields
                       label={`Breadcrumb ${index + 1} data`}
-                      fields={attributeFields(crumb.data)}
+                      fields={attributeFields(crumb["data"])}
                     />
                   ) : null}
                 </li>
@@ -60,7 +62,7 @@ export function EventContext({ payload }: { payload: unknown }) {
               {key === "extra" ? "Additional data" : key}
             </summary>
             {key === "contexts" ? (
-              Object.entries(record(p.contexts)).map(([name, context]) => (
+              Object.entries(record(p["contexts"])).map(([name, context]) => (
                 <section
                   key={name}
                   className="mt-2 border-l border-border pl-3"
@@ -95,13 +97,13 @@ export function FeedbackInspector({
 }) {
   const feedback = feedbackData(item.payload);
   const associatedId =
-    text(feedback.associated_event_id) ??
-    (item.type === "user_report" ? text(feedback.event_id) : undefined);
+    text(feedback["associated_event_id"]) ??
+    (item.type === "user_report" ? text(feedback["event_id"]) : undefined);
   const associated = associatedId
     ? items.find(
         (candidate) =>
           candidate.type === "event" &&
-          record(candidate.payload).event_id === associatedId,
+          record(candidate.payload)["event_id"] === associatedId,
       )
     : undefined;
   return (
@@ -110,11 +112,11 @@ export function FeedbackInspector({
       <DetailFields
         label="Feedback fields"
         fields={Object.entries({
-          Message: feedback.message ?? feedback.comments,
-          Name: feedback.name,
-          Email: feedback.contact_email ?? feedback.email,
-          Page: feedback.url,
-          Source: feedback.source,
+          Message: feedback["message"] ?? feedback["comments"],
+          Name: feedback["name"],
+          Email: feedback["contact_email"] ?? feedback["email"],
+          Page: feedback["url"],
+          Source: feedback["source"],
           "Associated event ID": associatedId,
         }).flatMap(([label, value]) =>
           value === undefined ? [] : [{ label, value: display(value) }],

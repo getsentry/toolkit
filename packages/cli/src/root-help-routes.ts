@@ -79,7 +79,8 @@ function buildStandIn(name: string): SentryRoutes[string] {
     formatUsageLine: (args) => [...args.prefix, route.usage].join(" "),
   };
   // Read by the branded help, like the `__primaryUsage` `buildCommand` keeps
-  (standIn as unknown as Record<string, unknown>).__primaryUsage =
+  // Read by the branded help, like the `__primaryUsage` `buildCommand` keeps
+  (standIn as unknown as Record<string, unknown>)["__primaryUsage"] =
     route.placeholder;
   return standIn;
 }

@@ -57,7 +57,7 @@ export type CliResult = {
  * issue #1070).
  */
 export function getCliCommand(): string[] {
-  const binaryPath = process.env.SENTRY_CLI_BINARY;
+  const binaryPath = process.env["SENTRY_CLI_BINARY"];
   if (binaryPath) {
     if (/\.[cm]?js$/i.test(binaryPath)) {
       return [process.execPath, binaryPath];

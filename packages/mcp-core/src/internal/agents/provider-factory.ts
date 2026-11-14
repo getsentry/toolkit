@@ -43,9 +43,9 @@ export function setProviderBaseUrls(config: {
 function detectProviderConflict(): boolean {
   return (
     [
-      process.env.ANTHROPIC_API_KEY,
-      process.env.OPENAI_API_KEY,
-      process.env.OPENROUTER_API_KEY,
+      process.env["ANTHROPIC_API_KEY"],
+      process.env["OPENAI_API_KEY"],
+      process.env["OPENROUTER_API_KEY"],
     ].filter(Boolean).length > 1
   );
 }
@@ -56,12 +56,12 @@ function detectProviderConflict(): boolean {
 function hasApiKeyForProvider(type: AgentProviderType): boolean {
   switch (type) {
     case "anthropic":
-      return Boolean(process.env.ANTHROPIC_API_KEY);
+      return Boolean(process.env["ANTHROPIC_API_KEY"]);
     case "openai":
     case "azure-openai":
-      return Boolean(process.env.OPENAI_API_KEY);
+      return Boolean(process.env["OPENAI_API_KEY"]);
     case "openrouter":
-      return Boolean(process.env.OPENROUTER_API_KEY);
+      return Boolean(process.env["OPENROUTER_API_KEY"]);
   }
 }
 
@@ -147,7 +147,7 @@ function resolveProviderType(): AgentProviderType | undefined {
   }
 
   // 2. Environment variable
-  const envProvider = process.env.EMBEDDED_AGENT_PROVIDER?.toLowerCase();
+  const envProvider = process.env["EMBEDDED_AGENT_PROVIDER"]?.toLowerCase();
   if (
     envProvider === "openai" ||
     envProvider === "azure-openai" ||
@@ -163,9 +163,9 @@ function resolveProviderType(): AgentProviderType | undefined {
   }
 
   // 4. Auto-detect
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
+  if (process.env["ANTHROPIC_API_KEY"]) return "anthropic";
+  if (process.env["OPENAI_API_KEY"]) return "openai";
+  if (process.env["OPENROUTER_API_KEY"]) return "openrouter";
 
   return undefined;
 }

@@ -206,12 +206,12 @@ describe("createChunkLoader", () => {
       "chunk-A.cjs": "exports.v = 1;",
     };
     runToExit(chunks, cacheDir);
-    process.env.__CHUNK_LOADER_A = "1";
+    process.env["__CHUNK_LOADER_A"] = "1";
     try {
       expect(runToExit(chunks, cacheDir).wroteCache).toBe(true);
       expect(runToExit(chunks, cacheDir).wroteCache).toBe(false);
     } finally {
-      delete process.env.__CHUNK_LOADER_A;
+      delete process.env["__CHUNK_LOADER_A"];
     }
   });
 

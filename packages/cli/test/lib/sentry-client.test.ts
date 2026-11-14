@@ -351,7 +351,9 @@ describe("non-idempotent requests", () => {
   test("replays a POST Request body after a 401 token refresh", async () => {
     // The server rejected the request before processing it, so the refresh
     // retry applies to every method.
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    // The server rejected the request before processing it, so the refresh
+    // retry applies to every method.
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
     setAuthToken("initial-token", 3600, "test-refresh-token");
     const seen: { auth: string | null; body: string }[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {

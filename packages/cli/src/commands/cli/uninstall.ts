@@ -217,7 +217,7 @@ function findSentryConfigFiles(home: string): string[] {
  */
 function gatherArtifacts(home: string): UninstallArtifact[] {
   const artifacts: UninstallArtifact[] = [];
-  const xdgDataHome = process.env.XDG_DATA_HOME;
+  const xdgDataHome = process.env["XDG_DATA_HOME"];
 
   // 1. Shell completions
   const completionShells: ShellType[] = ["bash", "zsh", "fish"];

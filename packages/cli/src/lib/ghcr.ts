@@ -372,7 +372,7 @@ export async function fetchNightlyManifest(
  * @throws {UpgradeError} When the version annotation is missing
  */
 export function getNightlyVersion(manifest: OciManifest): string {
-  const version = manifest.annotations?.version;
+  const version = manifest.annotations?.["version"];
   if (!version) {
     throw new UpgradeError(
       "network_error",

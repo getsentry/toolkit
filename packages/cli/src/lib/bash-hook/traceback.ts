@@ -237,7 +237,7 @@ export async function buildBashErrorEvent(opts: {
     log.debug("Could not determine username", err);
   }
 
-  const environment = process.env.SENTRY_ENVIRONMENT || undefined;
+  const environment = process.env["SENTRY_ENVIRONMENT"] || undefined;
 
   return {
     event_id: uuid4(),

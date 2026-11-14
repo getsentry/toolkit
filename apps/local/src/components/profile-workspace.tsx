@@ -499,11 +499,12 @@ export function ProfileWorkspace({
                   <span className="block">
                     {item.type === "profile_chunk" ? "Chunk" : "Profile"}{" "}
                     {index + 1} ·{" "}
-                    {text(record(item.payload).platform) ?? "Unknown platform"}
+                    {text(record(item.payload)["platform"]) ??
+                      "Unknown platform"}
                   </span>
                   <code className="block break-all text-xs text-muted-foreground">
-                    {text(record(item.payload).event_id) ??
-                      text(record(item.payload).chunk_id) ??
+                    {text(record(item.payload)["event_id"]) ??
+                      text(record(item.payload)["chunk_id"]) ??
                       item.id}
                   </code>
                 </button>

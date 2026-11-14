@@ -83,7 +83,8 @@ type Completion = {
  */
 export async function runCompletion(args: string[]): Promise<void> {
   // Keeps the database modules from requiring telemetry and `@sentry/node`
-  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
+  // Keeps the database modules from requiring telemetry and `@sentry/node`
+  getEnv()["SENTRY_CLI_NO_TELEMETRY"] = "1";
   // A read-only cli.db must not print a warning on every TAB press
   silenceReadonlyHandling();
   await handleComplete(args);

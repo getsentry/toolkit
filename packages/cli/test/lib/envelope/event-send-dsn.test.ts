@@ -169,7 +169,7 @@ describe("resolveEventSendDsn", () => {
   });
 
   test("positional DSN wins over SENTRY_DSN and project scan", async () => {
-    process.env.SENTRY_DSN = OTHER_DSN;
+    process.env["SENTRY_DSN"] = OTHER_DSN;
     detectSpy.mockResolvedValue(detectedDsn(OTHER_DSN));
 
     const dsn = await resolveEventSendDsn("/tmp", {
@@ -183,7 +183,7 @@ describe("resolveEventSendDsn", () => {
   });
 
   test("project target wins over SENTRY_DSN and project scan", async () => {
-    process.env.SENTRY_DSN = OTHER_DSN;
+    process.env["SENTRY_DSN"] = OTHER_DSN;
     authSpy.mockReturnValue(OAUTH_SESSION);
     keysSpy.mockResolvedValue([ACTIVE_KEY]);
 
@@ -223,7 +223,7 @@ describe("resolveEventSendDsn", () => {
   });
 
   test("project target without login throws ConfigError", async () => {
-    process.env.SENTRY_DSN = OTHER_DSN;
+    process.env["SENTRY_DSN"] = OTHER_DSN;
     await expect(
       resolveEventSendDsn("/tmp", {
         kind: "project",
@@ -281,7 +281,7 @@ describe("resolveEventSendDsn", () => {
   });
 
   test("uses SENTRY_DSN when no positional target is provided", async () => {
-    process.env.SENTRY_DSN = SAAS_DSN;
+    process.env["SENTRY_DSN"] = SAAS_DSN;
     const dsn = await resolveEventSendDsn("/tmp", undefined);
     expect(dsn).toBe(SAAS_DSN);
   });

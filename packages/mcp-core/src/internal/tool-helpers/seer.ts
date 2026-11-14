@@ -103,7 +103,7 @@ const SEER_NO_QUOTA_MESSAGE =
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
   if (
     isPlainObject(responseBody) &&
-    responseBody.code === "seer_out_of_credits"
+    responseBody["code"] === "seer_out_of_credits"
   ) {
     return SEER_START_OUT_OF_CREDITS_MESSAGE;
   }
@@ -124,14 +124,14 @@ export function getSeerSetupRequiredMessage(
 ): string | null {
   if (
     !isPlainObject(responseBody) ||
-    typeof responseBody.code !== "string" ||
-    !SEER_SETUP_REQUIRED_CODES.has(responseBody.code) ||
-    typeof responseBody.detail !== "string"
+    typeof responseBody["code"] !== "string" ||
+    !SEER_SETUP_REQUIRED_CODES.has(responseBody["code"]) ||
+    typeof responseBody["detail"] !== "string"
   ) {
     return null;
   }
   return [
-    responseBody.detail,
+    responseBody["detail"],
     "",
     "Retrying won't help until someone sets this up in Sentry. Investigate without Seer by reading the issue and its events.",
   ].join("\n");
@@ -282,7 +282,7 @@ export function getOutputForAutofixRun(
   const artifacts = getAutofixArtifacts(autofix);
   let output = "";
 
-  const rootCause = formatRootCauseArtifact(artifacts.root_cause);
+  const rootCause = formatRootCauseArtifact(artifacts["root_cause"]);
   if (rootCause) {
     output += wrapSeerAnalysisOutput({
       output: `## Root Cause Analysis\n\n${rootCause}`,
@@ -293,7 +293,7 @@ export function getOutputForAutofixRun(
     output += "\n";
   }
 
-  const solution = formatSolutionArtifact(artifacts.solution);
+  const solution = formatSolutionArtifact(artifacts["solution"]);
   if (solution) {
     output += wrapSeerAnalysisOutput({
       output: `## Proposed Solution\n\n${solution}`,
@@ -323,8 +323,10 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
   solution: string | null;
 } {
   const artifacts = getAutofixArtifacts(autofix);
-  const rootCause = RootCauseArtifactDataSchema.safeParse(artifacts.root_cause);
-  const solution = SolutionArtifactDataSchema.safeParse(artifacts.solution);
+  const rootCause = RootCauseArtifactDataSchema.safeParse(
+    artifacts["root_cause"],
+  );
+  const solution = SolutionArtifactDataSchema.safeParse(artifacts["solution"]);
   return {
     rootCause:
       (rootCause.success &&

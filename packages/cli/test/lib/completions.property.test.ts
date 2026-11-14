@@ -416,7 +416,7 @@ describe(
       );
       env = {
         ...process.env,
-        PATH: `${binDir}:${process.env.PATH}`,
+        PATH: `${binDir}:${process.env["PATH"]}`,
         SENTRY_CONFIG_DIR: join(root, "config"),
       };
     });

@@ -129,7 +129,7 @@ function markUnknownToolCalls(
   }
 
   requestHandlers.set("tools/call", async (request, ctx) => {
-    const name = request.params?.name;
+    const name = request.params?.["name"];
     if (typeof name !== "string" || registeredToolNames.has(name)) {
       return await handleToolsCall(request, ctx);
     }

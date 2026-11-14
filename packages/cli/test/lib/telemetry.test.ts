@@ -1100,7 +1100,7 @@ describe("createTracedDatabase", () => {
 
     // columnNames is bun:sqlite-specific; skip assertion on Node.js
     if ("columnNames" in stmt) {
-      expect(stmt.columnNames).toEqual(["id", "name"]);
+      expect(stmt["columnNames"]).toEqual(["id", "name"]);
     }
     expect(typeof stmt.toString).toBe("function");
 
@@ -1122,8 +1122,8 @@ describe("createTracedDatabase", () => {
     }
 
     // finalize() is bun:sqlite-specific; skip on Node.js
-    if (typeof stmt.finalize === "function") {
-      expect(() => stmt.finalize()).not.toThrow();
+    if (typeof stmt["finalize"] === "function") {
+      expect(() => stmt["finalize"]()).not.toThrow();
     }
 
     db.close();

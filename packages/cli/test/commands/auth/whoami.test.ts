@@ -160,8 +160,8 @@ describe("whoamiCommand.func", () => {
     let savedAuthToken: string | undefined;
 
     beforeEach(() => {
-      savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-      delete process.env.SENTRY_AUTH_TOKEN;
+      savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+      delete process.env["SENTRY_AUTH_TOKEN"];
       getAuthConfigSpy = vi
         .spyOn(dbAuth, "getAuthConfig")
         .mockReturnValue(undefined);
@@ -174,7 +174,7 @@ describe("whoamiCommand.func", () => {
     afterEach(() => {
       getAuthConfigSpy.mockRestore();
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     });
 

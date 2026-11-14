@@ -183,15 +183,15 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const state: ParseState = {
     sizes: [...PRESET_NAMES],
     opFilter: undefined,
-    repo: process.env.BENCH_REPO,
-    runs: Number(process.env.BENCH_RUNS ?? 10),
-    warmup: Number(process.env.BENCH_WARMUP ?? 3),
+    repo: process.env["BENCH_REPO"],
+    runs: Number(process.env["BENCH_RUNS"] ?? 10),
+    warmup: Number(process.env["BENCH_WARMUP"] ?? 3),
     json: false,
     saveBaseline: false,
     compare: false,
     regenFixtures: false,
   };
-  const thresholdPct = Number(process.env.BENCH_THRESHOLD ?? 0.2);
+  const thresholdPct = Number(process.env["BENCH_THRESHOLD"] ?? 0.2);
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -593,7 +593,8 @@ async function main(): Promise<number> {
   }
 
   // Silence CLI telemetry — we don't want bench runs filing Sentry events.
-  process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  // Silence CLI telemetry — we don't want bench runs filing Sentry events.
+  process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
 
   let fixtures: FixtureHandle[];
   let ops: OpEntry[];

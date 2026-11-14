@@ -205,7 +205,7 @@ export function SpanDetail({
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 }) {
   const payload = detailRecord(span.payload);
-  const context = detailRecord(detailRecord(payload.contexts).trace);
+  const context = detailRecord(detailRecord(payload["contexts"])["trace"]);
   const fields: DetailField[] = [
     ...(span.durationMs === undefined
       ? []
@@ -247,9 +247,9 @@ export function SpanDetail({
     { label: "Trace ID", value: trace.id, code: true },
   ];
   const attributes = attributeFields({
-    ...detailRecord(context.data),
-    ...detailRecord(payload.data),
-    ...detailRecord(payload.attributes),
+    ...detailRecord(context["data"]),
+    ...detailRecord(payload["data"]),
+    ...detailRecord(payload["attributes"]),
   });
   return (
     <section

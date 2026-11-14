@@ -47,12 +47,12 @@ export function recordFields(
     level,
   };
   if (record.type !== level) {
-    fields.type = record.type;
+    fields["type"] = record.type;
   }
   if (record.tag) {
-    fields.tag = record.tag;
+    fields["tag"] = record.tag;
   }
-  fields.msg = formatMessage(record.args, { stack: true });
+  fields["msg"] = formatMessage(record.args, { stack: true });
   const { attributes } = record;
   for (const key of Object.keys(attributes)) {
     if (BUILT_IN_FIELDS.has(key)) {

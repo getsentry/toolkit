@@ -709,7 +709,7 @@ async function queryWidgetData(
 
   // Text widgets carry markdown in `description`, no API query needed
   if (widget.displayType === "text") {
-    const description = (widget as Record<string, unknown>).description;
+    const description = (widget as Record<string, unknown>)["description"];
     return {
       type: "text",
       content: typeof description === "string" ? description : "",

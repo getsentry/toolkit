@@ -205,7 +205,7 @@ describe("sentry issue tags", () => {
   });
 
   test("removes terminal controls from human output while preserving JSON values", async () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const value = "\u001b]52;c;dGVzdA==\u0007\u001b[2J1.2.3\u0008\u202e";
     tagResponse = {
       ...TAG,

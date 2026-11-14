@@ -303,8 +303,8 @@ describe("buildCommand telemetry integration", () => {
 
     expect(receivedFlags).not.toBeNull();
     // Critical: must be number 10, not string "10"
-    expect(receivedFlags!.limit).toBe(10);
-    expect(typeof receivedFlags!.limit).toBe("number");
+    expect(receivedFlags!["limit"]).toBe(10);
+    expect(typeof receivedFlags!["limit"]).toBe("number");
   });
 
   test("skips false boolean flags in telemetry", async () => {
@@ -569,8 +569,8 @@ describe("buildCommand", () => {
 
     // Original func receives json flag but NOT verbose/log-level
     expect(calledFlags).toBeDefined();
-    expect(calledFlags!.json).toBe(true);
-    expect(calledFlags!.verbose).toBeUndefined();
+    expect(calledFlags!["json"]).toBe(true);
+    expect(calledFlags!["verbose"]).toBeUndefined();
     expect(calledFlags!["log-level"]).toBeUndefined();
   });
 
@@ -676,9 +676,9 @@ describe("buildCommand", () => {
     );
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.limit).toBe(50);
+    expect(receivedFlags!["limit"]).toBe(50);
     // Logging flags must be stripped
-    expect(receivedFlags!.verbose).toBeUndefined();
+    expect(receivedFlags!["verbose"]).toBeUndefined();
     expect(receivedFlags!["log-level"]).toBeUndefined();
   });
 
@@ -731,8 +731,8 @@ describe("buildCommand", () => {
 
     // Command's own --verbose is passed through (not stripped)
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.verbose).toBe(true);
-    expect(receivedFlags!.silent).toBe(false);
+    expect(receivedFlags!["verbose"]).toBe(true);
+    expect(receivedFlags!["silent"]).toBe(false);
     // --log-level is always stripped (it's ours)
     expect(receivedFlags!["log-level"]).toBeUndefined();
     // --verbose also sets debug-level logging as a side-effect
@@ -854,7 +854,7 @@ describe("buildCommand output config", () => {
     await run(app, ["test", "--json"], ctx as TestContext);
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.json).toBe(true);
+    expect(receivedFlags!["json"]).toBe(true);
   });
 
   test("injects --fields flag when output: 'json'", async () => {
@@ -892,9 +892,9 @@ describe("buildCommand output config", () => {
     );
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.json).toBe(true);
+    expect(receivedFlags!["json"]).toBe(true);
     // --fields is pre-parsed from comma-string to string[]
-    expect(receivedFlags!.fields).toEqual(["id", "title", "status"]);
+    expect(receivedFlags!["fields"]).toEqual(["id", "title", "status"]);
   });
 
   test("pre-parses --fields with whitespace and deduplication", async () => {
@@ -933,7 +933,7 @@ describe("buildCommand output config", () => {
 
     expect(receivedFlags).toBeDefined();
     // Whitespace trimmed, duplicates removed
-    expect(receivedFlags!.fields).toEqual(["id", "title"]);
+    expect(receivedFlags!["fields"]).toEqual(["id", "title"]);
   });
 
   test("fields is undefined when --fields not passed", async () => {
@@ -967,8 +967,8 @@ describe("buildCommand output config", () => {
     await run(app, ["test", "--json"], ctx as TestContext);
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.json).toBe(true);
-    expect(receivedFlags!.fields).toBeUndefined();
+    expect(receivedFlags!["json"]).toBe(true);
+    expect(receivedFlags!["fields"]).toBeUndefined();
   });
 
   test("does not inject --json/--fields without output: 'json'", async () => {
@@ -1041,9 +1041,9 @@ describe("buildCommand output config", () => {
     await run(app, ["test", "--json", "--fields", "id"], ctx as TestContext);
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.json).toBe(true);
+    expect(receivedFlags!["json"]).toBe(true);
     // --fields is still injected and pre-parsed even when command owns --json
-    expect(receivedFlags!.fields).toEqual(["id"]);
+    expect(receivedFlags!["fields"]).toEqual(["id"]);
   });
 
   test("supports dot-notation in --fields", async () => {
@@ -1081,7 +1081,7 @@ describe("buildCommand output config", () => {
     );
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.fields).toEqual([
+    expect(receivedFlags!["fields"]).toEqual([
       "id",
       "metadata.value",
       "contexts.trace.traceId",
@@ -1132,11 +1132,11 @@ describe("buildCommand output config", () => {
     );
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.json).toBe(true);
-    expect(receivedFlags!.fields).toEqual(["id"]);
-    expect(receivedFlags!.limit).toBe(50);
+    expect(receivedFlags!["json"]).toBe(true);
+    expect(receivedFlags!["fields"]).toEqual(["id"]);
+    expect(receivedFlags!["limit"]).toBe(50);
     // --verbose is stripped (we injected it)
-    expect(receivedFlags!.verbose).toBeUndefined();
+    expect(receivedFlags!["verbose"]).toBeUndefined();
   });
 });
 
@@ -1590,79 +1590,79 @@ describe("applyOrgProjectFlags", () => {
   let savedProject: string | undefined;
 
   beforeEach(() => {
-    savedOrg = process.env.SENTRY_ORG;
-    savedProject = process.env.SENTRY_PROJECT;
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    savedOrg = process.env["SENTRY_ORG"];
+    savedProject = process.env["SENTRY_PROJECT"];
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   afterEach(() => {
     if (savedOrg !== undefined) {
-      process.env.SENTRY_ORG = savedOrg;
+      process.env["SENTRY_ORG"] = savedOrg;
     } else {
-      delete process.env.SENTRY_ORG;
+      delete process.env["SENTRY_ORG"];
     }
     if (savedProject !== undefined) {
-      process.env.SENTRY_PROJECT = savedProject;
+      process.env["SENTRY_PROJECT"] = savedProject;
     } else {
-      delete process.env.SENTRY_PROJECT;
+      delete process.env["SENTRY_PROJECT"];
     }
   });
 
   test("sets both env vars when flags provided", () => {
     applyOrgProjectFlags("my-org", "my-proj", false, false);
-    expect(process.env.SENTRY_ORG).toBe("my-org");
-    expect(process.env.SENTRY_PROJECT).toBe("my-proj");
+    expect(process.env["SENTRY_ORG"]).toBe("my-org");
+    expect(process.env["SENTRY_PROJECT"]).toBe("my-proj");
   });
 
   test("skips when command owns the flag", () => {
     applyOrgProjectFlags("my-org", "my-proj", true, true);
-    expect(process.env.SENTRY_ORG).toBeUndefined();
-    expect(process.env.SENTRY_PROJECT).toBeUndefined();
+    expect(process.env["SENTRY_ORG"]).toBeUndefined();
+    expect(process.env["SENTRY_PROJECT"]).toBeUndefined();
   });
 
   test("sets only org when project is undefined", () => {
     applyOrgProjectFlags("my-org", undefined, false, false);
-    expect(process.env.SENTRY_ORG).toBe("my-org");
-    expect(process.env.SENTRY_PROJECT).toBeUndefined();
+    expect(process.env["SENTRY_ORG"]).toBe("my-org");
+    expect(process.env["SENTRY_PROJECT"]).toBeUndefined();
   });
 
   test("sets only project when org is undefined", () => {
     applyOrgProjectFlags(undefined, "my-proj", false, false);
-    expect(process.env.SENTRY_ORG).toBeUndefined();
-    expect(process.env.SENTRY_PROJECT).toBe("my-proj");
+    expect(process.env["SENTRY_ORG"]).toBeUndefined();
+    expect(process.env["SENTRY_PROJECT"]).toBe("my-proj");
   });
 
   test("overwrites existing env var", () => {
-    process.env.SENTRY_ORG = "old";
+    process.env["SENTRY_ORG"] = "old";
     applyOrgProjectFlags("new", undefined, false, false);
-    expect(process.env.SENTRY_ORG).toBe("new");
+    expect(process.env["SENTRY_ORG"]).toBe("new");
   });
 
   test("does nothing when both flags are undefined", () => {
     applyOrgProjectFlags(undefined, undefined, false, false);
-    expect(process.env.SENTRY_ORG).toBeUndefined();
-    expect(process.env.SENTRY_PROJECT).toBeUndefined();
+    expect(process.env["SENTRY_ORG"]).toBeUndefined();
+    expect(process.env["SENTRY_PROJECT"]).toBeUndefined();
   });
 
   test("trims whitespace from flag values before writing", () => {
     applyOrgProjectFlags("  my-org  ", "  my-proj  ", false, false);
-    expect(process.env.SENTRY_ORG).toBe("my-org");
-    expect(process.env.SENTRY_PROJECT).toBe("my-proj");
+    expect(process.env["SENTRY_ORG"]).toBe("my-org");
+    expect(process.env["SENTRY_PROJECT"]).toBe("my-proj");
   });
 
   test("treats empty string as not provided — preserves existing env var", () => {
-    process.env.SENTRY_ORG = "preserved-org";
+    process.env["SENTRY_ORG"] = "preserved-org";
     applyOrgProjectFlags("", undefined, false, false);
     // Empty string must NOT clobber a real pre-existing env var
-    expect(process.env.SENTRY_ORG).toBe("preserved-org");
+    expect(process.env["SENTRY_ORG"]).toBe("preserved-org");
   });
 
   test("treats whitespace-only as not provided — preserves existing env var", () => {
-    process.env.SENTRY_PROJECT = "preserved-proj";
+    process.env["SENTRY_PROJECT"] = "preserved-proj";
     applyOrgProjectFlags(undefined, "   ", false, false);
     // Whitespace-only must NOT clobber a real pre-existing env var
-    expect(process.env.SENTRY_PROJECT).toBe("preserved-proj");
+    expect(process.env["SENTRY_PROJECT"]).toBe("preserved-proj");
   });
 });
 
@@ -1675,22 +1675,22 @@ describe("buildCommand --org/--project compat flags", () => {
   let savedProject: string | undefined;
 
   beforeEach(() => {
-    savedOrg = process.env.SENTRY_ORG;
-    savedProject = process.env.SENTRY_PROJECT;
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    savedOrg = process.env["SENTRY_ORG"];
+    savedProject = process.env["SENTRY_PROJECT"];
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   afterEach(() => {
     if (savedOrg !== undefined) {
-      process.env.SENTRY_ORG = savedOrg;
+      process.env["SENTRY_ORG"] = savedOrg;
     } else {
-      delete process.env.SENTRY_ORG;
+      delete process.env["SENTRY_ORG"];
     }
     if (savedProject !== undefined) {
-      process.env.SENTRY_PROJECT = savedProject;
+      process.env["SENTRY_PROJECT"] = savedProject;
     } else {
-      delete process.env.SENTRY_PROJECT;
+      delete process.env["SENTRY_PROJECT"];
     }
   });
 
@@ -1713,7 +1713,7 @@ describe("buildCommand --org/--project compat flags", () => {
 
     await run(app, ["test", "--org", "my-org"], ctx as TestContext);
 
-    expect(process.env.SENTRY_ORG).toBe("my-org");
+    expect(process.env["SENTRY_ORG"]).toBe("my-org");
   });
 
   test("--project sets SENTRY_PROJECT env var", async () => {
@@ -1735,11 +1735,11 @@ describe("buildCommand --org/--project compat flags", () => {
 
     await run(app, ["test", "--project", "my-project"], ctx as TestContext);
 
-    expect(process.env.SENTRY_PROJECT).toBe("my-project");
+    expect(process.env["SENTRY_PROJECT"]).toBe("my-project");
   });
 
   test("--org overwrites existing SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "original-org";
+    process.env["SENTRY_ORG"] = "original-org";
 
     const command = buildCommand<Record<string, never>, [], TestContext>({
       auth: false,
@@ -1759,7 +1759,7 @@ describe("buildCommand --org/--project compat flags", () => {
 
     await run(app, ["test", "--org", "new-org"], ctx as TestContext);
 
-    expect(process.env.SENTRY_ORG).toBe("new-org");
+    expect(process.env["SENTRY_ORG"]).toBe("new-org");
   });
 
   test("--org and --project are stripped from func flags", async () => {
@@ -1798,12 +1798,12 @@ describe("buildCommand --org/--project compat flags", () => {
     );
 
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.limit).toBe(50);
-    expect(receivedFlags!.org).toBeUndefined();
-    expect(receivedFlags!.project).toBeUndefined();
+    expect(receivedFlags!["limit"]).toBe(50);
+    expect(receivedFlags!["org"]).toBeUndefined();
+    expect(receivedFlags!["project"]).toBeUndefined();
     // Both env vars set
-    expect(process.env.SENTRY_ORG).toBe("sentry");
-    expect(process.env.SENTRY_PROJECT).toBe("cli");
+    expect(process.env["SENTRY_ORG"]).toBe("sentry");
+    expect(process.env["SENTRY_PROJECT"]).toBe("cli");
   });
 
   test("command-owned --project is preserved and NOT written to env", async () => {
@@ -1840,9 +1840,9 @@ describe("buildCommand --org/--project compat flags", () => {
 
     // Command's own --project is passed through (not stripped)
     expect(receivedFlags).toBeDefined();
-    expect(receivedFlags!.project).toBe("my-project");
+    expect(receivedFlags!["project"]).toBe("my-project");
     // Should NOT be written to env (command owns the flag)
-    expect(process.env.SENTRY_PROJECT).toBeUndefined();
+    expect(process.env["SENTRY_PROJECT"]).toBeUndefined();
   });
 
   test("--org=value equals form works", async () => {
@@ -1864,11 +1864,11 @@ describe("buildCommand --org/--project compat flags", () => {
 
     await run(app, ["test", "--org=my-org"], ctx as TestContext);
 
-    expect(process.env.SENTRY_ORG).toBe("my-org");
+    expect(process.env["SENTRY_ORG"]).toBe("my-org");
   });
 
   test("--project overwrites existing SENTRY_PROJECT", async () => {
-    process.env.SENTRY_PROJECT = "original-proj";
+    process.env["SENTRY_PROJECT"] = "original-proj";
 
     const command = buildCommand<Record<string, never>, [], TestContext>({
       auth: false,
@@ -1888,7 +1888,7 @@ describe("buildCommand --org/--project compat flags", () => {
 
     await run(app, ["test", "--project", "new-proj"], ctx as TestContext);
 
-    expect(process.env.SENTRY_PROJECT).toBe("new-proj");
+    expect(process.env["SENTRY_PROJECT"]).toBe("new-proj");
   });
 
   test("--org/--project values flow into resolveOrgAndProject (end-to-end)", async () => {

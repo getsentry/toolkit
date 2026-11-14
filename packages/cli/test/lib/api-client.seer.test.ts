@@ -314,7 +314,7 @@ describe("getAutofixState", () => {
 
     const result = await getAutofixState("test-org", "123456789");
     expect(result?.status).toBe("COMPLETED");
-    expect(result?.blocks).toEqual(blocks);
+    expect(result?.["blocks"]).toEqual(blocks);
   });
 });
 

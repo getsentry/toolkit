@@ -50,7 +50,7 @@ let loggingConfigured = false;
 
 function resolveLowestLevel(): LogLevel {
   const envLevel =
-    typeof process !== "undefined" ? process.env.LOG_LEVEL : undefined;
+    typeof process !== "undefined" ? process.env["LOG_LEVEL"] : undefined;
 
   if (envLevel) {
     try {
@@ -61,7 +61,7 @@ function resolveLowestLevel(): LogLevel {
   }
 
   return typeof process !== "undefined" &&
-    process.env.NODE_ENV === "development"
+    process.env["NODE_ENV"] === "development"
     ? "debug"
     : "info";
 }
@@ -281,7 +281,7 @@ function buildLogProperties(
   };
 
   if (serializedError) {
-    properties.error = serializedError;
+    properties["error"] = serializedError;
   }
 
   if (options.extra) {
@@ -299,7 +299,7 @@ function buildLogProperties(
   }
 
   if (options.contexts) {
-    properties.sentryContexts = options.contexts;
+    properties["sentryContexts"] = options.contexts;
   }
 
   return properties;

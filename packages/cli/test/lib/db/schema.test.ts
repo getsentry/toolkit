@@ -267,7 +267,7 @@ describe("TABLE_SCHEMAS persistence", () => {
 
 describe("EXPECTED_COLUMNS", () => {
   test("dsn_cache includes v4 columns", () => {
-    const dsnCacheColumns = EXPECTED_COLUMNS.dsn_cache;
+    const dsnCacheColumns = EXPECTED_COLUMNS["dsn_cache"];
     const columnNames = dsnCacheColumns?.map((c) => c.name) ?? [];
 
     expect(columnNames).toContain("fingerprint");

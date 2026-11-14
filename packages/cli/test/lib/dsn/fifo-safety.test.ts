@@ -106,7 +106,7 @@ describe("FIFO: env file detection", () => {
   });
 
   afterEach(() => {
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
     try {
       rmSync(testDir, { recursive: true, force: true });
     } catch {
@@ -245,7 +245,7 @@ describe("FIFO: env file detection", () => {
     const fifoPath = join(testDir, ".env.fifo");
     createFifo(fifoPath);
     symlinkSync(fifoPath, envPath);
-    process.env.SENTRY_DSN = fallbackDsn;
+    process.env["SENTRY_DSN"] = fallbackDsn;
 
     const result = await Promise.race([
       detectDsn(testDir),

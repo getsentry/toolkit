@@ -123,7 +123,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     writeFileSync(harnessPath, harness);
 
     env = {
-      PATH: process.env.PATH,
+      PATH: process.env["PATH"],
       HOME: join(testDir, "home"),
       USERPROFILE: join(testDir, "home"),
       TMPDIR: testDir,
@@ -206,7 +206,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   });
 
   test("runs sentry init with the downloaded binary when SENTRY_INIT=1", () => {
-    env.SENTRY_INIT = "1";
+    env["SENTRY_INIT"] = "1";
 
     const result = run();
 
@@ -218,8 +218,8 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   });
 
   test("fails when sentry init fails", () => {
-    env.SENTRY_INIT = "1";
-    env.SENTRY_TEST_POST_EXIT = "7";
+    env["SENTRY_INIT"] = "1";
+    env["SENTRY_TEST_POST_EXIT"] = "7";
 
     const result = run();
 
@@ -231,7 +231,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   });
 
   test("passes --no-modify-path to setup when SENTRY_NO_MODIFY_PATH=1", () => {
-    env.SENTRY_NO_MODIFY_PATH = "1";
+    env["SENTRY_NO_MODIFY_PATH"] = "1";
 
     const result = run();
 
@@ -243,28 +243,28 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     {
       name: "non-Windows hosts",
       setup: () => {
-        delete env.OS;
+        delete env["OS"];
       },
       message: "This installer is for Windows",
     },
     {
       name: "unsupported architectures",
       setup: () => {
-        env.PROCESSOR_ARCHITECTURE = "ARM64";
+        env["PROCESSOR_ARCHITECTURE"] = "ARM64";
       },
       message: "only windows-x64 is supported",
     },
     {
       name: "the nightly channel",
       setup: () => {
-        env.SENTRY_VERSION = "nightly";
+        env["SENTRY_VERSION"] = "nightly";
       },
       message: "sentry cli upgrade nightly",
     },
     {
       name: "a failed setup",
       setup: () => {
-        env.SENTRY_TEST_SETUP_EXIT = "3";
+        env["SENTRY_TEST_SETUP_EXIT"] = "3";
       },
       message: "sentry cli setup failed with exit code 3",
     },

@@ -39,11 +39,11 @@ function tokenCount(
 }
 
 function hasConversation(value: unknown): boolean {
-  const messages = record(value).messages ?? value;
+  const messages = record(value)["messages"] ?? value;
   return (
     Array.isArray(messages) &&
     messages.length > 0 &&
-    messages.every((message) => typeof record(message).role === "string")
+    messages.every((message) => typeof record(message)["role"] === "string")
   );
 }
 
@@ -170,7 +170,7 @@ export function inspectAiInteraction(
   const operation =
     data["gen_ai.operation.name"] ??
     data["vercel.ai.operationId"] ??
-    record(payload).op;
+    record(payload)["op"];
   if (typeof operation === "string" && operation)
     fields.set("Operation", operation);
   const agent = data["gen_ai.agent.name"];

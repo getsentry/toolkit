@@ -299,11 +299,11 @@ function stringifyContent(value: unknown): string | null {
         }
         if (part && typeof part === "object") {
           const record = part as Record<string, unknown>;
-          if (typeof record.text === "string") {
-            return record.text;
+          if (typeof record["text"] === "string") {
+            return record["text"];
           }
-          if (typeof record.content === "string") {
-            return record.content;
+          if (typeof record["content"] === "string") {
+            return record["content"];
           }
         }
         return null;
@@ -313,14 +313,14 @@ function stringifyContent(value: unknown): string | null {
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    if (typeof record.text === "string") {
-      return record.text;
+    if (typeof record["text"] === "string") {
+      return record["text"];
     }
-    if (typeof record.content === "string") {
-      return record.content;
+    if (typeof record["content"] === "string") {
+      return record["content"];
     }
-    if (typeof record.message === "string") {
-      return record.message;
+    if (typeof record["message"] === "string") {
+      return record["message"];
     }
   }
   return value == null ? null : JSON.stringify(value);
@@ -331,8 +331,8 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    Array.isArray((value as Record<string, unknown>).messages)
-      ? (value as Record<string, unknown>).messages
+    Array.isArray((value as Record<string, unknown>)["messages"])
+      ? (value as Record<string, unknown>)["messages"]
       : value;
 
   if (!Array.isArray(source)) {
@@ -349,12 +349,14 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
         return null;
       }
       const record = message as Record<string, unknown>;
-      const content = stringifyContent(record.content ?? record.text ?? record);
+      const content = stringifyContent(
+        record["content"] ?? record["text"] ?? record,
+      );
       if (!content) {
         return null;
       }
       return {
-        role: typeof record.role === "string" ? record.role : undefined,
+        role: typeof record["role"] === "string" ? record["role"] : undefined,
         content,
       };
     })

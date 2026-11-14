@@ -458,7 +458,9 @@ export function resetUpdateNotificationState(): void {
  * Checked at runtime to support test isolation.
  */
 function isUpdateCheckDisabled(): boolean {
-  return getEnv().SENTRY_CLI_NO_UPDATE_CHECK === "1" || isPersistenceDisabled();
+  return (
+    getEnv()["SENTRY_CLI_NO_UPDATE_CHECK"] === "1" || isPersistenceDisabled()
+  );
 }
 
 /**

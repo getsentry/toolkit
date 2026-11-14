@@ -51,7 +51,7 @@ program
   .option(
     "--mcp-host <host>",
     "MCP server host",
-    process.env.MCP_URL || "http://localhost:5173",
+    process.env["MCP_URL"] || "http://localhost:5173",
   )
   .option("--host <host>", "Sentry host for stdio transport")
   .option(
@@ -74,8 +74,8 @@ program
       // Initialize Sentry with CLI-provided DSN if available
       const sentryDsn =
         options.sentryDsn ||
-        process.env.SENTRY_DSN ||
-        process.env.DEFAULT_SENTRY_DSN;
+        process.env["SENTRY_DSN"] ||
+        process.env["DEFAULT_SENTRY_DSN"];
 
       const scopeContext = {
         "gen_ai.agent.name": "sentry-mcp-agent",
@@ -91,7 +91,7 @@ program
           // SDK v11 does not copy scope tags onto streamed spans.
           attributes: scopeContext,
         },
-        release: process.env.SENTRY_RELEASE,
+        release: process.env["SENTRY_RELEASE"],
         integrations: [
           Sentry.consoleIntegration(),
           Sentry.zodErrorsIntegration(),
@@ -101,16 +101,16 @@ program
           }),
         ],
         environment:
-          process.env.SENTRY_ENVIRONMENT ??
-          (process.env.NODE_ENV !== "production"
+          process.env["SENTRY_ENVIRONMENT"] ??
+          (process.env["NODE_ENV"] !== "production"
             ? "development"
             : "production"),
       });
 
       // Check for access token in priority order
       const accessToken =
-        options.accessToken || process.env.SENTRY_ACCESS_TOKEN;
-      const sentryHost = options.host || process.env.SENTRY_HOST;
+        options.accessToken || process.env["SENTRY_ACCESS_TOKEN"];
+      const sentryHost = options.host || process.env["SENTRY_HOST"];
 
       const transport = resolveTransportMode({
         requestedTransport: options.transport,

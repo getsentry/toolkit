@@ -68,12 +68,14 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
   test("token whose claim says A is refused when env routing says B", async () => {
     // Token issued by sentry.firsthost.com (claim).
     // Env says SENTRY_HOST = sentry.secondhost.com (user's shell — trusted).
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    // Token issued by sentry.firsthost.com (claim).
+    // Env says SENTRY_HOST = sentry.secondhost.com (user's shell — trusted).
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://sentry.firsthost.com",
       org: "x",
     });
-    process.env.SENTRY_HOST = "https://sentry.secondhost.com";
+    process.env["SENTRY_HOST"] = "https://sentry.secondhost.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -95,12 +97,12 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
   });
 
   test("token whose claim matches the request proceeds normally", async () => {
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://sentry.acme.com",
       org: "x",
     });
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -123,12 +125,18 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
     // but fan-out goes to regional silos discovered via
     // `/users/me/regions/`. The fix uses `isHostTrustedForClaim` which
     // also consults the region-URL extension.
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    // Regression: previously the claim check used raw `isHostTrusted`,
+    // which only honors exact-origin + SaaS equivalence. For self-hosted
+    // multi-region setups, the claim's url points at the control silo
+    // but fan-out goes to regional silos discovered via
+    // `/users/me/regions/`. The fix uses `isHostTrustedForClaim` which
+    // also consults the region-URL extension.
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://sentry.acme.com",
       org: "x",
     });
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -156,8 +164,10 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
   test("opaque (non-sntrys_) tokens are not affected by claim check", async () => {
     // A `sntryu_` user-auth token has no claim — the claim check is a
     // no-op. The existing host-scoping check is the only enforcement.
-    process.env.SENTRY_AUTH_TOKEN = "sntryu_opaqueusertoken1234567890abcdef";
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    // A `sntryu_` user-auth token has no claim — the claim check is a
+    // no-op. The existing host-scoping check is the only enforcement.
+    process.env["SENTRY_AUTH_TOKEN"] = "sntryu_opaqueusertoken1234567890abcdef";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -187,7 +197,12 @@ describe("UX path: env-token-host falls back to sntrys_ claim url", () => {
     // would default to SaaS and every command would trip the host
     // guard. With the claim fallback, the snapshot picks up the
     // self-hosted url from the token itself.
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    // User pasted a sntrys_ token from their self-hosted UI but didn't
+    // also export SENTRY_HOST. Without the claim fallback, the snapshot
+    // would default to SaaS and every command would trip the host
+    // guard. With the claim fallback, the snapshot picks up the
+    // self-hosted url from the token itself.
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://sentry.selfhosted.example.com",
       org: "x",
@@ -206,12 +221,16 @@ describe("UX path: env-token-host falls back to sntrys_ claim url", () => {
     // SENTRY_HOST is set (legitimately or via CI env injection), the
     // snapshot uses the claim — it's the only value the token's
     // issuing server can vouch for.
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    // The claim is authoritative for sntrys_ tokens. Even when
+    // SENTRY_HOST is set (legitimately or via CI env injection), the
+    // snapshot uses the claim — it's the only value the token's
+    // issuing server can vouch for.
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://sentry.firsthost.com",
       org: "x",
     });
-    process.env.SENTRY_HOST = "https://sentry.secondhost.com";
+    process.env["SENTRY_HOST"] = "https://sentry.secondhost.com";
 
     const { captureEnvTokenHost, getEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
@@ -221,7 +240,7 @@ describe("UX path: env-token-host falls back to sntrys_ claim url", () => {
   });
 
   test("non-sntrys_ token + no SENTRY_HOST → snapshot falls back to SaaS default", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "sntryu_opaque-user-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "sntryu_opaque-user-token";
     // No SENTRY_HOST.
 
     const { captureEnvTokenHost, getEnvTokenHost } =
@@ -238,7 +257,13 @@ describe("UX path: env-token-host falls back to sntrys_ claim url", () => {
     // - For a forged token (user pasted attacker's token), the user
     //   has already authorized the attacker server — out of threat
     //   model.
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    // Documents the trust contract: the snapshot picks up whatever the
+    // claim says, even if forged. This is acceptable because:
+    // - For a legitimate token, the url is authoritative.
+    // - For a forged token (user pasted attacker's token), the user
+    //   has already authorized the attacker server — out of threat
+    //   model.
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1_700_000_000,
       url: "https://evil.com",
       org: "victim",

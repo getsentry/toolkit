@@ -50,12 +50,12 @@ describe("auto-login host guard", () => {
     });
 
     test("reads SENTRY_HOST", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       expect(resolveEffectiveLoginHost()).toBe("https://sentry.example.com");
     });
 
     test("reads SENTRY_URL when SENTRY_HOST is absent", () => {
-      process.env.SENTRY_URL = "https://sentry.example.com/";
+      process.env["SENTRY_URL"] = "https://sentry.example.com/";
       expect(resolveEffectiveLoginHost()).toBe("https://sentry.example.com");
     });
   });

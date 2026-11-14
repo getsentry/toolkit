@@ -40,7 +40,7 @@ type Env = Record<string, string | undefined>;
  * `find_node`: `NODE_BINARY` if set and non-empty, else `node`.
  */
 export function findNode(env: Env): string {
-  const fromEnv = env.NODE_BINARY;
+  const fromEnv = env["NODE_BINARY"];
   return fromEnv && fromEnv.length > 0 ? fromEnv : "node";
 }
 
@@ -49,11 +49,11 @@ export function findNode(env: Env): string {
  * `HERMES_CLI_PATH` if set, else `$PODS_ROOT/hermes-engine/destroot/bin/hermesc`.
  */
 export function findHermesc(env: Env): string {
-  const fromEnv = env.HERMES_CLI_PATH;
+  const fromEnv = env["HERMES_CLI_PATH"];
   if (fromEnv && fromEnv.length > 0) {
     return fromEnv;
   }
-  const podsRoot = env.PODS_ROOT ?? "";
+  const podsRoot = env["PODS_ROOT"] ?? "";
   return `${podsRoot}/hermes-engine/destroot/bin/hermesc`;
 }
 
@@ -117,10 +117,10 @@ export function parseInfoPlistStrings(xml: string): Record<string, string> {
 
 /** Build an {@link InfoPlist} purely from Xcode build-setting env vars. */
 function fromEnvVars(vars: Env): InfoPlist | null {
-  const name = vars.PRODUCT_NAME;
-  const bundleId = vars.PRODUCT_BUNDLE_IDENTIFIER;
-  const version = vars.MARKETING_VERSION;
-  const build = vars.CURRENT_PROJECT_VERSION;
+  const name = vars["PRODUCT_NAME"];
+  const bundleId = vars["PRODUCT_BUNDLE_IDENTIFIER"];
+  const version = vars["MARKETING_VERSION"];
+  const build = vars["CURRENT_PROJECT_VERSION"];
   if (!(name && bundleId && version && build)) {
     return null;
   }
@@ -148,10 +148,10 @@ function runCapture(cmd: string, args: string[]): string | null {
 /** Extract the four CFBundle* fields from a parsed plist string map. */
 function toPartialPlist(raw: Record<string, string>): Partial<InfoPlist> {
   return {
-    name: raw.CFBundleName,
-    bundleId: raw.CFBundleIdentifier,
-    version: raw.CFBundleShortVersionString,
-    build: raw.CFBundleVersion,
+    name: raw["CFBundleName"],
+    bundleId: raw["CFBundleIdentifier"],
+    version: raw["CFBundleShortVersionString"],
+    build: raw["CFBundleVersion"],
   };
 }
 
@@ -165,11 +165,11 @@ function preprocessPlist(
   vars: Env,
 ): Record<string, string> | null {
   const args = ["-xc", "-P", "-E"];
-  const other = vars.INFOPLIST_OTHER_PREPROCESSOR_FLAGS;
+  const other = vars["INFOPLIST_OTHER_PREPROCESSOR_FLAGS"];
   if (other) {
     args.push(...other.split(WHITESPACE).filter(Boolean));
   }
-  const defs = vars.INFOPLIST_PREPROCESSOR_DEFINITIONS;
+  const defs = vars["INFOPLIST_PREPROCESSOR_DEFINITIONS"];
   if (defs) {
     for (const token of defs.split(WHITESPACE).filter(Boolean)) {
       args.push(`-D${token}`);
@@ -194,7 +194,7 @@ async function loadAndProcess(
   allowPreprocessing: boolean,
 ): Promise<InfoPlist | null> {
   const shouldPreprocess =
-    allowPreprocessing && vars.INFOPLIST_PREPROCESS === "YES";
+    allowPreprocessing && vars["INFOPLIST_PREPROCESS"] === "YES";
   let raw: Record<string, string> | null = null;
   if (shouldPreprocess) {
     raw = preprocessPlist(path, vars);
@@ -328,11 +328,11 @@ async function fromProjectInfo(
     return null;
   }
   const vars = getBuildVars(pi.path, target, config);
-  const infoPlistFile = vars.INFOPLIST_FILE;
+  const infoPlistFile = vars["INFOPLIST_FILE"];
   if (!infoPlistFile) {
     return null;
   }
-  const base = vars.PROJECT_DIR ?? dirname(pi.path);
+  const base = vars["PROJECT_DIR"] ?? dirname(pi.path);
   return await loadAndProcess(
     resolve(base, infoPlistFile),
     vars,
@@ -356,12 +356,12 @@ export async function discoverInfoPlist(
   cwd: string,
   allowPreprocessing = false,
 ): Promise<InfoPlist | null> {
-  if (env.XCODE_VERSION_ACTUAL) {
-    const filename = env.INFOPLIST_FILE;
+  if (env["XCODE_VERSION_ACTUAL"]) {
+    const filename = env["INFOPLIST_FILE"];
     if (!filename) {
       return fromEnvVars(env);
     }
-    const path = resolve(cwd, env.PROJECT_DIR ?? ".", filename);
+    const path = resolve(cwd, env["PROJECT_DIR"] ?? ".", filename);
     return await loadAndProcess(path, env, allowPreprocessing);
   }
   const pi = getXcodeProjectInfo(cwd);
@@ -393,8 +393,8 @@ export async function resolveReleaseAndDist(
   noAutoRelease: boolean,
   allowPreprocessing = false,
 ): Promise<ReleaseAndDist> {
-  const distEnv = env.SENTRY_DIST;
-  const releaseEnv = env.SENTRY_RELEASE;
+  const distEnv = env["SENTRY_DIST"];
+  const releaseEnv = env["SENTRY_RELEASE"];
 
   if (!(distEnv || releaseEnv) && noAutoRelease) {
     return {};

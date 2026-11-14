@@ -387,8 +387,8 @@ function parseCodeInfo(info: string | undefined): {
   }
   return {
     language: language || undefined,
-    start: attrs.start,
-    highlight: attrs.highlight,
+    start: attrs["start"],
+    highlight: attrs["highlight"],
   };
 }
 

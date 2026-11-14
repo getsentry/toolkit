@@ -329,7 +329,7 @@ function augmentPathForNode(
   const sep = process.platform === "win32" ? ";" : ":";
   return {
     ...env,
-    PATH: env.PATH ? `${binDir}${sep}${env.PATH}` : binDir,
+    PATH: env["PATH"] ? `${binDir}${sep}${env["PATH"]}` : binDir,
   };
 }
 
@@ -364,8 +364,8 @@ function buildChildEnv(
     ...process.env,
     ...clientSpotlightVars,
     SENTRY_SPOTLIGHT: spotlightUrl,
-    SENTRY_TRACES_SAMPLE_RATE: process.env.SENTRY_TRACES_SAMPLE_RATE ?? "1",
-    SENTRY_RELEASE: process.env.SENTRY_RELEASE ?? "sentry-cli-local",
+    SENTRY_TRACES_SAMPLE_RATE: process.env["SENTRY_TRACES_SAMPLE_RATE"] ?? "1",
+    SENTRY_RELEASE: process.env["SENTRY_RELEASE"] ?? "sentry-cli-local",
   };
   if (isPackageJsonSource(commandSource)) {
     env = augmentPathForNode(env, cwd);

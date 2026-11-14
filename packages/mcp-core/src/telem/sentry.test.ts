@@ -103,7 +103,7 @@ describe("sentry", () => {
       expect(result.breadcrumbs?.[0].message).toBe(
         "API call with [REDACTED_OPENAI_KEY]",
       );
-      expect(result.breadcrumbs?.[0].data?.tokens).toEqual([
+      expect(result.breadcrumbs?.[0].data?.["tokens"]).toEqual([
         "[REDACTED_SENTRY_TOKEN]",
         "[REDACTED_SENTRY_TOKEN]",
       ]);

@@ -140,13 +140,13 @@ function decode(
     const item: unknown = JSON.parse(line().toString("utf8"));
     if (
       !isEnvelopeObject(item) ||
-      (item.type !== undefined && typeof item.type !== "string")
+      (item["type"] !== undefined && typeof item["type"] !== "string")
     )
       return null;
     const itemHeader = item as ItemHeader;
     let bytes: Buffer;
-    if (itemHeader.length !== undefined) {
-      const length = itemHeader.length;
+    if (itemHeader["length"] !== undefined) {
+      const length = itemHeader["length"];
       if (
         typeof length !== "number" ||
         !Number.isSafeInteger(length) ||
@@ -164,13 +164,13 @@ function decode(
     }
     let payload: unknown;
     if (RAW_TYPES.has(itemHeader.type ?? "")) {
-      if (itemHeader.type === "statsd" && !itemHeader.content_type)
-        itemHeader.content_type = "text/plain";
+      if (itemHeader.type === "statsd" && !itemHeader["content_type"])
+        itemHeader["content_type"] = "text/plain";
       payload = {
         data: bytes.toString(
           TEXT_CONTENT_TYPES.has(
-            typeof itemHeader.content_type === "string"
-              ? itemHeader.content_type
+            typeof itemHeader["content_type"] === "string"
+              ? itemHeader["content_type"]
               : "",
           )
             ? "utf8"
@@ -180,13 +180,13 @@ function decode(
     } else {
       payload = JSON.parse(bytes.toString("utf8"));
       if (!isEnvelopeObject(payload)) return null;
-      if (itemHeader.type) payload.type = itemHeader.type;
+      if (itemHeader.type) payload["type"] = itemHeader.type;
     }
     if (!isEnvelopeObject(payload)) return null;
     items.push([itemHeader, payload]);
   }
-  header.__spotlight_envelope_id = id;
-  if (userAgent) header.__spotlight_sender_user_agent = userAgent;
+  header["__spotlight_envelope_id"] = id;
+  if (userAgent) header["__spotlight_sender_user_agent"] = userAgent;
   return [{ ...header, __spotlight_envelope_id: id }, items];
 }
 

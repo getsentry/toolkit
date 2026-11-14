@@ -27,16 +27,16 @@ const getConfigDir = useTestConfigDir("response-cache-");
 let savedNoCache: string | undefined;
 
 beforeEach(() => {
-  savedNoCache = process.env.SENTRY_NO_CACHE;
-  delete process.env.SENTRY_NO_CACHE;
+  savedNoCache = process.env["SENTRY_NO_CACHE"];
+  delete process.env["SENTRY_NO_CACHE"];
   resetCacheState();
 });
 
 afterEach(() => {
   if (savedNoCache !== undefined) {
-    process.env.SENTRY_NO_CACHE = savedNoCache;
+    process.env["SENTRY_NO_CACHE"] = savedNoCache;
   } else {
-    delete process.env.SENTRY_NO_CACHE;
+    delete process.env["SENTRY_NO_CACHE"];
   }
   resetCacheState();
 });
@@ -243,14 +243,14 @@ describe("cache bypass", () => {
       mockResponse(TEST_BODY),
     );
 
-    process.env.SENTRY_NO_CACHE = "1";
+    process.env["SENTRY_NO_CACHE"] = "1";
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
     expect(cached).toBeUndefined();
   });
 
   test("SENTRY_NO_CACHE=1 bypasses cache writes", async () => {
-    process.env.SENTRY_NO_CACHE = "1";
+    process.env["SENTRY_NO_CACHE"] = "1";
 
     await storeCachedResponse(
       TEST_METHOD,
@@ -260,7 +260,7 @@ describe("cache bypass", () => {
     );
 
     // Remove the bypass to verify nothing was written
-    delete process.env.SENTRY_NO_CACHE;
+    delete process.env["SENTRY_NO_CACHE"];
 
     const cached = await getCachedResponse(TEST_METHOD, TEST_URL, {});
     expect(cached).toBeUndefined();

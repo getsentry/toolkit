@@ -76,17 +76,17 @@ export function parseSntrysClaim(
   const obj = parsed as Record<string, unknown>;
 
   // Match server's `parse_token`: rejects payloads without truthy `iat`.
-  if (!obj.iat) {
+  if (!obj["iat"]) {
     return;
   }
 
-  const url = obj.url;
+  const url = obj["url"];
   if (typeof url !== "string" || !url) {
     return;
   }
 
-  const regionUrl = optionalString(obj.region_url);
-  const org = optionalString(obj.org);
+  const regionUrl = optionalString(obj["region_url"]);
+  const org = optionalString(obj["org"]);
 
   return { url, regionUrl, org };
 }

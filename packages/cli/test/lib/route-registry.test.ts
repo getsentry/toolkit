@@ -115,7 +115,7 @@ describe("route registry", () => {
                   return;
                 }
                 // Only our own modules matter; `with { type }` imports are assets.
-                if (!RELATIVE_IMPORT.test(args.path) || args.with.type) {
+                if (!RELATIVE_IMPORT.test(args.path) || args.with["type"]) {
                   return { path: args.path, external: true };
                 }
                 const target = resolve(args.resolveDir, args.path).replace(

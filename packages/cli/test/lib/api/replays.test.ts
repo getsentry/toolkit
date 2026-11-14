@@ -41,7 +41,8 @@ function recordingSegmentsResponse(
   };
 
   if (nextCursor) {
-    headers.Link = `<https://sentry.io/api/0/next/>; rel="next"; results="true"; cursor="${nextCursor}"`;
+    headers["Link"] =
+      `<https://sentry.io/api/0/next/>; rel="next"; results="true"; cursor="${nextCursor}"`;
   }
 
   return new Response(JSON.stringify(body), {

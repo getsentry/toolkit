@@ -107,8 +107,9 @@ const TRACE_ID_SHORT_LEN = 8;
 export function extractTraceId(
   event: Record<string, unknown>,
 ): string | undefined {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as { trace_id?: unknown } | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { trace_id?: unknown } | undefined;
   const traceId = trace?.trace_id;
   if (typeof traceId === "string" && TRACE_ID_RE.test(traceId)) {
     return traceId.toLowerCase();
@@ -181,7 +182,7 @@ const SOURCE_COLORS: Record<string, (s: string) => string> = {
  * Returns a colored, bracketed, padded label like `[SERVER] `.
  */
 export function inferSource(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
+  const sdk = header["sdk"] as { name?: string } | undefined;
   const name = sdk?.name ?? "";
   let source = "server";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
@@ -236,7 +237,7 @@ export function formatErrorItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = event.exception as
+  const exception = event["exception"] as
     | {
         values?: {
           type?: string;
@@ -249,7 +250,7 @@ export function formatErrorItem(
   const first = exception?.values?.at(-1);
   const errorType = sanitize(String(first?.type ?? "Error"));
   const errorValue = sanitize(
-    stringifyUnknown(first?.value ?? event.message ?? "Unknown error"),
+    stringifyUnknown(first?.value ?? event["message"] ?? "Unknown error"),
   );
 
   let msg = `${errorType}: ${errorValue}`;
@@ -261,7 +262,7 @@ export function formatErrorItem(
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
+  const ts = formatTime(event["timestamp"] as number | undefined);
   return `${muted(ts)} ${formatType("error")} ${inferSource(header)} ${msg}`;
 }
 
@@ -280,13 +281,12 @@ export function formatTransactionItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as
-    | { op?: string; status?: string; description?: string }
-    | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { op?: string; status?: string; description?: string } | undefined;
   const txnName =
-    typeof event.transaction === "string"
-      ? event.transaction
+    typeof event["transaction"] === "string"
+      ? event["transaction"]
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
@@ -307,8 +307,8 @@ export function formatTransactionItem(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  const start = event.start_timestamp as number | undefined;
-  const end = event.timestamp as number | undefined;
+  const start = event["start_timestamp"] as number | undefined;
+  const end = event["timestamp"] as number | undefined;
   if (start !== undefined && end !== undefined) {
     const durationMs = Math.round((end - start) * 1000);
     msg += ` ${muted(`[${durationMs}ms]`)}`;
@@ -319,14 +319,14 @@ export function formatTransactionItem(
     msg += ` ${muted(`[${sanitize(status)}]`)}`;
   }
 
-  const spans = event.spans as unknown[] | undefined;
+  const spans = event["spans"] as unknown[] | undefined;
   if (spans?.length) {
     msg += ` ${muted(`[${spans.length} span${spans.length === 1 ? "" : "s"}]`)}`;
   }
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
+  const ts = formatTime(event["timestamp"] as number | undefined);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
 }
 
@@ -545,7 +545,7 @@ export function formatLogItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string[] {
-  const items = event.items as LogEntry[] | undefined;
+  const items = event["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -637,7 +637,7 @@ export function formatSpanItem(
   header: Record<string, unknown>,
   showAttributes = false,
 ): string[] {
-  const items = event.items as StreamedSpan[] | undefined;
+  const items = event["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -660,7 +660,7 @@ export function formatSpanItem(
  * Checks all spans in the container for AI-prefixed attributes.
  */
 function spanItemHasAiActivity(payload: Record<string, unknown>): boolean {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return false;
   }
@@ -774,8 +774,8 @@ function formatJsonObservation(
   return JSON.stringify(
     sanitizeJsonValue({
       schema_version: LOCAL_EVENT_SCHEMA_VERSION,
-      envelope_id: jsonSafeIdentifier(header.__spotlight_envelope_id),
-      event_id: jsonSafe(payload.event_id) ?? jsonSafe(header.event_id),
+      envelope_id: jsonSafeIdentifier(header["__spotlight_envelope_id"]),
+      event_id: jsonSafe(payload["event_id"]) ?? jsonSafe(header["event_id"]),
       ...observation,
     }),
   );
@@ -786,7 +786,7 @@ function formatErrorJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = payload.exception as
+  const exception = payload["exception"] as
     | {
         values?: {
           type?: string;
@@ -802,11 +802,13 @@ function formatErrorJson(
   return formatJsonObservation(
     {
       type: "error",
-      timestamp: payload.timestamp,
+      timestamp: payload["timestamp"],
       trace_id: extractTraceId(payload),
       error_type: jsonSafe(first?.type) ?? "Error",
       message:
-        jsonSafe(first?.value) ?? jsonSafe(payload.message) ?? "Unknown error",
+        jsonSafe(first?.value) ??
+        jsonSafe(payload["message"]) ??
+        "Unknown error",
       filename: jsonSafe(frame?.filename),
       lineno: frame?.lineno,
       colno: frame?.colno,
@@ -853,17 +855,18 @@ function formatTransactionJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string {
-  const trace = (payload.contexts as Record<string, unknown> | undefined)
-    ?.trace as Record<string, unknown> | undefined;
+  const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(
-      payload.transaction ?? trace?.description ?? "Transaction",
+      payload["transaction"] ?? trace?.["description"] ?? "Transaction",
     ),
   );
-  const start = payload.start_timestamp as number | undefined;
-  const end = payload.timestamp as number | undefined;
+  const start = payload["start_timestamp"] as number | undefined;
+  const end = payload["timestamp"] as number | undefined;
   const durationMs =
     start !== undefined && end !== undefined
       ? Math.round((end - start) * 1000)
@@ -871,17 +874,17 @@ function formatTransactionJson(
   return formatJsonObservation(
     {
       type: "transaction",
-      timestamp: payload.timestamp,
+      timestamp: payload["timestamp"],
       trace_id: extractTraceId(payload),
-      op: inferSemanticOp(attrs) ?? trace?.op,
+      op: inferSemanticOp(attrs) ?? trace?.["op"],
       label: stripBidi(semantic.label),
       metadata:
         semantic.metadata.length > 0
           ? semantic.metadata.map(stripBidi)
           : undefined,
       duration_ms: durationMs,
-      status: trace?.status,
-      span_count: (payload.spans as unknown[] | undefined)?.length,
+      status: trace?.["status"],
+      span_count: (payload["spans"] as unknown[] | undefined)?.length,
       attributes: includeAttributes ? buildJsonAttributes(payload) : undefined,
       source: inferSourceName(header),
     },
@@ -895,7 +898,7 @@ function formatLogJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string[] {
-  const items = payload.items as LogEntry[] | undefined;
+  const items = payload["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -937,7 +940,7 @@ function formatSpanJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string[] {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1013,7 +1016,7 @@ export function formatItemJson(
     formatJsonObservation(
       {
         type: itemType ?? "unknown",
-        timestamp: payload.timestamp,
+        timestamp: payload["timestamp"],
       },
       payload,
       header,
@@ -1023,7 +1026,7 @@ export function formatItemJson(
 
 /** Infer the source platform name from the SDK header (for JSON output). */
 function inferSourceName(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
+  const sdk = header["sdk"] as { name?: string } | undefined;
   const name = sdk?.name ?? "";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
     return "mobile";
@@ -1218,16 +1221,16 @@ export function formatLocalControlResult(
   data: Record<string, unknown>,
 ): string {
   const daemon =
-    data.daemon &&
-    typeof data.daemon === "object" &&
-    !Array.isArray(data.daemon)
-      ? (data.daemon as Record<string, unknown>)
+    data["daemon"] &&
+    typeof data["daemon"] === "object" &&
+    !Array.isArray(data["daemon"])
+      ? (data["daemon"] as Record<string, unknown>)
       : data;
   const receiverUrl =
-    typeof data.streamUrl === "string"
-      ? data.streamUrl
-      : typeof daemon.host === "string" && typeof daemon.port === "number"
-        ? formatLocalServerUrl(daemon.host, daemon.port)
+    typeof data["streamUrl"] === "string"
+      ? data["streamUrl"]
+      : typeof daemon["host"] === "string" && typeof daemon["port"] === "number"
+        ? formatLocalServerUrl(daemon["host"], daemon["port"])
         : undefined;
   const hint = receiverUrl ? formatLocalViewerHint(receiverUrl) : undefined;
   return JSON.stringify(data, null, 2) + (hint ? `\n\n${hint}` : "");

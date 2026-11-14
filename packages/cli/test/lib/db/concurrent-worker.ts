@@ -30,7 +30,8 @@ if (!(configDir && workerId && operation)) {
 mkdirSync(configDir, { recursive: true });
 
 // Set env var before importing db modules
-process.env.SENTRY_CONFIG_DIR = configDir;
+// Set env var before importing db modules
+process.env["SENTRY_CONFIG_DIR"] = configDir;
 
 // Now import db modules (they'll use the env var)
 const { setCachedDsn, getCachedDsn } =

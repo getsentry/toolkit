@@ -226,8 +226,8 @@ export function shouldFallbackToDefault(
   options: NodeTransportOptions,
 ): boolean {
   const isHttps = url.protocol === "https:";
-  const httpProxy = process.env.http_proxy ?? process.env.HTTP_PROXY;
-  const httpsProxy = process.env.https_proxy ?? process.env.HTTPS_PROXY;
+  const httpProxy = process.env["http_proxy"] ?? process.env["HTTP_PROXY"];
+  const httpsProxy = process.env["https_proxy"] ?? process.env["HTTPS_PROXY"];
   const envProxy = isHttps ? httpsProxy : httpProxy;
   // SDK precedent: HTTPS falls back to http_proxy as a last resort.
   const proxy = options.proxy || envProxy || httpProxy;
@@ -374,7 +374,7 @@ export function hasZstdSupport(): boolean {
  * @internal Exported for tests.
  */
 export function isNoProxyExempt(urlSegments: URL): boolean {
-  const noProxy = process.env.no_proxy ?? process.env.NO_PROXY;
+  const noProxy = process.env["no_proxy"] ?? process.env["NO_PROXY"];
   if (!noProxy) {
     return false;
   }

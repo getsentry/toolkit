@@ -530,10 +530,10 @@ describe("parseEventViewInput", () => {
     let savedSentryHost: string | undefined;
 
     beforeEach(async () => {
-      savedSentryUrl = process.env.SENTRY_URL;
-      savedSentryHost = process.env.SENTRY_HOST;
-      delete process.env.SENTRY_URL;
-      delete process.env.SENTRY_HOST;
+      savedSentryUrl = process.env["SENTRY_URL"];
+      savedSentryHost = process.env["SENTRY_HOST"];
+      delete process.env["SENTRY_URL"];
+      delete process.env["SENTRY_HOST"];
       const { resetEnvTokenHostForTesting } =
         await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
@@ -541,14 +541,14 @@ describe("parseEventViewInput", () => {
 
     afterEach(async () => {
       if (savedSentryUrl !== undefined) {
-        process.env.SENTRY_URL = savedSentryUrl;
+        process.env["SENTRY_URL"] = savedSentryUrl;
       } else {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       }
       if (savedSentryHost !== undefined) {
-        process.env.SENTRY_HOST = savedSentryHost;
+        process.env["SENTRY_HOST"] = savedSentryHost;
       } else {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       }
       const { resetEnvTokenHostForTesting } =
         await import("../../../src/lib/env-token-host.js");
@@ -564,7 +564,7 @@ describe("parseEventViewInput", () => {
     });
 
     test("self-hosted event URL extracts eventId and org, and returns the server without applying it", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/",
       ]);
@@ -572,17 +572,17 @@ describe("parseEventViewInput", () => {
       expect(result.targetArg).toBe("acme/");
       expect(result.baseUrl).toBe("https://sentry.example.com");
       // Parsing has no side effects; resolving the arguments applies it
-      expect(process.env.SENTRY_URL).toBeUndefined();
+      expect(process.env["SENTRY_URL"]).toBeUndefined();
     });
 
     test("self-hosted issue URL returns the server without applying it", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/",
       ]);
       expect(result.issueId).toBe("999");
       expect(result.baseUrl).toBe("https://sentry.example.com");
-      expect(process.env.SENTRY_URL).toBeUndefined();
+      expect(process.env["SENTRY_URL"]).toBeUndefined();
     });
 
     test("issue URL without event ID returns issueId for latest event fetch", () => {

@@ -11,7 +11,7 @@ import { DetailFields } from "./span-detail.tsx";
 
 function CapturedContent({ value }: { value: unknown }) {
   const rawContent = parsed(value);
-  const content = record(rawContent).messages ?? rawContent;
+  const content = record(rawContent)["messages"] ?? rawContent;
   if (Array.isArray(content))
     return (
       <div className="space-y-2">
@@ -20,10 +20,12 @@ function CapturedContent({ value }: { value: unknown }) {
           return (
             <div key={index} className="border-l-2 border-border pl-3">
               <p className="text-xs font-medium text-muted-foreground">
-                {text(entry.role) ?? text(entry.type) ?? `Part ${index + 1}`}
+                {text(entry["role"]) ??
+                  text(entry["type"]) ??
+                  `Part ${index + 1}`}
               </p>
               <pre className="whitespace-pre-wrap break-words font-mono text-xs">
-                {display(entry.content ?? entry.text ?? message)}
+                {display(entry["content"] ?? entry["text"] ?? message)}
               </pre>
             </div>
           );
@@ -82,24 +84,24 @@ export function AiInspector({
           <h4 className="text-sm font-medium">Tool calls</h4>
           {ai.tools.map((value, index) => {
             const tool = record(value),
-              fn = record(tool.function);
+              fn = record(tool["function"]);
             return (
               <section
                 key={index}
                 className="space-y-2 border border-border p-3"
               >
                 <h5 className="break-words font-mono text-xs font-semibold">
-                  {text(tool.name ?? tool.toolName ?? fn.name) ??
+                  {text(tool["name"] ?? tool["toolName"] ?? fn["name"]) ??
                     `Tool ${index + 1}`}
                 </h5>
                 <DetailFields
                   label={`Tool call ${index + 1}`}
                   fields={Object.entries({
-                    ID: tool.id ?? tool.toolCallId,
+                    ID: tool["id"] ?? tool["toolCallId"],
                     Arguments: parsed(
-                      tool.arguments ?? tool.args ?? fn.arguments,
+                      tool["arguments"] ?? tool["args"] ?? fn["arguments"],
                     ),
-                    Result: parsed(tool.result ?? tool.output),
+                    Result: parsed(tool["result"] ?? tool["output"]),
                   }).flatMap(([label, content]) =>
                     content === undefined
                       ? []

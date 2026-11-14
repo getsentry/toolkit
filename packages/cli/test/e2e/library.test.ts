@@ -42,8 +42,8 @@ async function runNodeScript(
   };
   // Ensure no auth leaks into tests — delete rather than set to undefined
   // because spawn may pass "undefined" as a literal string
-  delete env.SENTRY_AUTH_TOKEN;
-  delete env.SENTRY_TOKEN;
+  delete env["SENTRY_AUTH_TOKEN"];
+  delete env["SENTRY_TOKEN"];
 
   const proc = spawn("node", ["--no-warnings", "-e", script], {
     cwd: ROOT_DIR,

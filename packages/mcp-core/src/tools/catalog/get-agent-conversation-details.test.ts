@@ -151,7 +151,7 @@ describe("get_agent_conversation_details", () => {
     expect(structuredContent).not.toHaveProperty("focusedSpanPresent");
     expect(structuredContent).not.toHaveProperty("messages");
     expect(structuredContent).not.toHaveProperty("spanIds");
-    expect(structuredContent.title).toBe("Checkout worker timeouts");
+    expect(structuredContent["title"]).toBe("Checkout worker timeouts");
     expect(structuredContent.timeline[0].genAi).toMatchObject({
       operationType: "ai_client",
       requestModel: "gpt-5-mini",
@@ -523,8 +523,8 @@ describe("get_agent_conversation_details", () => {
 
     assertStructuredOnlyResult(result);
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.conversationId).toBe("conv-123");
-    expect(structuredContent.timeline).toEqual(
+    expect(structuredContent["conversationId"]).toBe("conv-123");
+    expect(structuredContent["timeline"]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "message",
@@ -679,8 +679,8 @@ describe("get_agent_conversation_details", () => {
     );
 
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.messageCount).toBe(4);
-    expect(structuredContent.timeline).toMatchObject([
+    expect(structuredContent["messageCount"]).toBe(4);
+    expect(structuredContent["timeline"]).toMatchObject([
       { type: "message", role: "user", spanId: "repeat-ai-1" },
       { type: "message", role: "assistant", spanId: "repeat-ai-1" },
       { type: "tool_call", name: "search_events", spanId: "repeat-tool-1" },
@@ -738,7 +738,7 @@ describe("get_agent_conversation_details", () => {
     );
 
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.timeline).toMatchObject([
+    expect(structuredContent["timeline"]).toMatchObject([
       {
         type: "message",
         role: "user",
@@ -812,8 +812,8 @@ describe("get_agent_conversation_details", () => {
     );
 
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.toolCallCount).toBe(1);
-    expect(structuredContent.timeline).toMatchObject([
+    expect(structuredContent["toolCallCount"]).toBe(1);
+    expect(structuredContent["timeline"]).toMatchObject([
       { type: "message", role: "user", spanId: "final-ai-1" },
       { type: "message", role: "assistant", spanId: "final-ai-1" },
       {
@@ -855,13 +855,13 @@ describe("get_agent_conversation_details", () => {
     );
 
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.toolCallCount).toBe(0);
-    expect(structuredContent.timeline).toEqual(
+    expect(structuredContent["toolCallCount"]).toBe(0);
+    expect(structuredContent["timeline"]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "message", spanId: "unnamed-ai-1" }),
       ]),
     );
-    expect(structuredContent.timeline).not.toEqual(
+    expect(structuredContent["timeline"]).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "tool_call",

@@ -29,16 +29,16 @@ function tables(item: LocalFeedItem) {
   const cached = profileTables.get(item);
   if (cached) return cached;
   const profile = profileData(item);
-  const samples = (Array.isArray(profile.samples) ? profile.samples : []).map(
-    record,
-  );
+  const samples = (
+    Array.isArray(profile["samples"]) ? profile["samples"] : []
+  ).map(record);
   const result = {
     profile,
     samples,
-    frames: Array.isArray(profile.frames) ? profile.frames : [],
-    stacks: Array.isArray(profile.stacks) ? profile.stacks : [],
+    frames: Array.isArray(profile["frames"]) ? profile["frames"] : [],
+    stacks: Array.isArray(profile["stacks"]) ? profile["stacks"] : [],
     threads: new Set(
-      samples.map((sample) => profileThreadId(sample.thread_id) ?? "main"),
+      samples.map((sample) => profileThreadId(sample["thread_id"]) ?? "main"),
     ),
   };
   profileTables.set(item, result);
@@ -52,11 +52,11 @@ export function profileSources(
   for (const item of items) {
     if (item.type !== "profile" && item.type !== "profile_chunk") continue;
     const payload = record(item.payload);
-    const profilerId = text(payload.profiler_id);
+    const profilerId = text(payload["profiler_id"]);
     const key =
       item.type === "profile_chunk" && profilerId
         ? `chunk:${profilerId}`
-        : `legacy:${text(payload.event_id) ?? item.id}`;
+        : `legacy:${text(payload["event_id"]) ?? item.id}`;
     const previous = profiles.get(key);
     if (!previous || item.id < previous.id) profiles.set(key, item);
   }
@@ -83,7 +83,7 @@ function samplesForThread(
   if (cached) return cached;
   const selected = samples
     .filter(
-      (sample) => (profileThreadId(sample.thread_id) ?? "main") === thread,
+      (sample) => (profileThreadId(sample["thread_id"]) ?? "main") === thread,
     )
     .flatMap((sample) => {
       const timestamp = time(sample, base);
@@ -241,17 +241,17 @@ function matchingTransaction(
   trace: TraceGroup,
 ): Record<string, unknown> {
   const payload = record(item.payload);
-  const transactions = Array.isArray(payload.transactions)
-    ? payload.transactions.map(record)
-    : [record(payload.transaction)];
+  const transactions = Array.isArray(payload["transactions"])
+    ? payload["transactions"].map(record)
+    : [record(payload["transaction"])];
   return (
     transactions.find(
       (transaction) =>
-        transaction.trace_id === trace.id ||
+        transaction["trace_id"] === trace.id ||
         trace.items.some(
           (entry) =>
-            transaction.id !== undefined &&
-            record(entry.payload).event_id === transaction.id,
+            transaction["id"] !== undefined &&
+            record(entry.payload)["event_id"] === transaction["id"],
         ),
     ) ?? {}
   );
@@ -260,9 +260,9 @@ function time(
   sample: Record<string, unknown>,
   base: number | undefined,
 ): number | undefined {
-  const absolute = finite(sample.timestamp);
+  const absolute = finite(sample["timestamp"]);
   if (absolute !== undefined) return absolute;
-  const ns = number(sample.elapsed_since_start_ns);
+  const ns = number(sample["elapsed_since_start_ns"]);
   return ns === undefined || base === undefined ? undefined : base + ns / 1e9;
 }
 function hash(value: string): string {
@@ -284,13 +284,13 @@ export function addProfileSpans(
   const claimedIds = new Set(trace.spans.map((span) => span.id));
   let count = 0;
   profileLoop: for (const item of linked) {
-    const sourceId = `${item.type}:${text(record(item.payload).profiler_id) ?? text(record(item.payload).event_id) ?? item.id}`;
+    const sourceId = `${item.type}:${text(record(item.payload)["profiler_id"]) ?? text(record(item.payload)["event_id"]) ?? item.id}`;
     const { profile, frames, stacks, samples, threads } = tables(item);
     const payload = record(item.payload),
       transaction = matchingTransaction(item, trace);
     const capturedThread =
-      profileThreadId(profile.active_thread_id) ??
-      profileThreadId(transaction.active_thread_id);
+      profileThreadId(profile["active_thread_id"]) ??
+      profileThreadId(transaction["active_thread_id"]);
     const thread =
       capturedThread === undefined
         ? threads.size === 1
@@ -298,27 +298,27 @@ export function addProfileSpans(
           : undefined
         : capturedThread;
     if (thread === undefined) continue;
-    const relativeStart = number(transaction.relative_start_ns);
+    const relativeStart = number(transaction["relative_start_ns"]);
     const matched = trace.items.find((entry) => {
       const captured = record(entry.payload);
-      const profileContext = record(record(captured.contexts).profile);
+      const profileContext = record(record(captured["contexts"])["profile"]);
       return (
-        (transaction.id !== undefined &&
-          captured.event_id === transaction.id) ||
-        (payload.event_id !== undefined &&
-          profileContext.profile_id === payload.event_id)
+        (transaction["id"] !== undefined &&
+          captured["event_id"] === transaction["id"]) ||
+        (payload["event_id"] !== undefined &&
+          profileContext["profile_id"] === payload["event_id"])
       );
     });
     const transactionStart =
-      number(record(matched?.payload).start_timestamp) ??
-      number(transaction.start_timestamp);
+      number(record(matched?.payload)["start_timestamp"]) ??
+      number(transaction["start_timestamp"]);
     // relative_start_ns is the transaction's offset from profile start.
     // Prefer the captured profile clock; derive it from the matched event only
     // when that clock is absent.
     const base =
       item.type === "profile_chunk"
         ? undefined
-        : (absoluteTimestamp(payload.timestamp) ??
+        : (absoluteTimestamp(payload["timestamp"]) ??
           (transactionStart === undefined
             ? undefined
             : transactionStart - (relativeStart ?? 0) / 1e9));
@@ -346,7 +346,7 @@ export function addProfileSpans(
         observedEnd === undefined ? Infinity : observedEnd / 1000,
       );
       if (end <= current.timestamp) continue;
-      const stackId = finite(current.sample.stack_id),
+      const stackId = finite(current.sample["stack_id"]),
         stack = stackId === undefined ? undefined : stacks[stackId];
       if (!Array.isArray(stack)) continue;
       const path = [...stack]
@@ -402,9 +402,9 @@ export function addProfileSpans(
           }
           const frame = path[depth]!,
             name =
-              text(frame.function) ??
-              text(frame.module) ??
-              text(frame.instruction_addr) ??
+              text(frame["function"]) ??
+              text(frame["module"]) ??
+              text(frame["instruction_addr"]) ??
               "Anonymous";
           const baseId = `profile:${hash(profileValueKey([sourceId, parent.id, start, path.slice(0, depth + 1)]))}`;
           let id = baseId,

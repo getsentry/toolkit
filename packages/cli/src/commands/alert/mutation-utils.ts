@@ -307,11 +307,11 @@ function toTriggerConditions(
     if (!isJsonObject(entry)) {
       return;
     }
-    const type = ISSUE_TRIGGER_TYPES.find((t) => t === entry.type);
+    const type = ISSUE_TRIGGER_TYPES.find((t) => t === entry["type"]);
     const exact =
       Object.keys(entry).every((key) => ISSUE_TRIGGER_KEYS.has(key)) &&
-      (entry.comparison ?? true) === true &&
-      (entry.conditionResult ?? true) === true;
+      (entry["comparison"] ?? true) === true &&
+      (entry["conditionResult"] ?? true) === true;
     if (!(type && exact)) {
       return;
     }

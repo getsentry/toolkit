@@ -160,7 +160,7 @@ export { isLoopbackHost } from "./loopback.js";
  * own `toString()`.
  */
 export function spotlightEnvelopeId(header: Record<string, unknown>): string {
-  const id = header.__spotlight_envelope_id as
+  const id = header["__spotlight_envelope_id"] as
     | { toString(): string }
     | null
     | undefined;

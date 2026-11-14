@@ -30,7 +30,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.period).toEqual({ type: "relative", period: "7d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "7d" });
   });
 
   test("calls parse on string default when flag value is undefined", () => {
@@ -42,7 +42,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({ period: undefined }, flagDefs);
-    expect(result.period).toEqual({ type: "relative", period: "90d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "90d" });
   });
 
   test("preserves caller-provided value over default", () => {
@@ -55,7 +55,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
     };
     const callerValue = { type: "relative", period: "24h" };
     const result = applyFlagDefaults({ period: callerValue }, flagDefs);
-    expect(result.period).toBe(callerValue);
+    expect(result["period"]).toBe(callerValue);
   });
 
   test("handles parse function that returns a number", () => {
@@ -67,7 +67,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.limit).toBe(25);
+    expect(result["limit"]).toBe(25);
   });
 
   test("re-throws if parse function rejects its own default", () => {
@@ -95,8 +95,8 @@ describe("applyFlagDefaults: boolean flags", () => {
       fresh: { kind: "boolean", default: false },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.json).toBe(false);
-    expect(result.fresh).toBe(false);
+    expect(result["json"]).toBe(false);
+    expect(result["fresh"]).toBe(false);
   });
 
   test("preserves caller-provided boolean over default", () => {
@@ -104,7 +104,7 @@ describe("applyFlagDefaults: boolean flags", () => {
       fresh: { kind: "boolean", default: false },
     };
     const result = applyFlagDefaults({ fresh: true }, flagDefs);
-    expect(result.fresh).toBe(true);
+    expect(result["fresh"]).toBe(true);
   });
 });
 
@@ -130,15 +130,15 @@ describe("applyFlagDefaults: variadic flags", () => {
       { field: "title", environment: "prod", dataset: "spans" },
       flagDefs,
     );
-    expect(result.field).toEqual(["title"]);
-    expect(result.environment).toEqual(["prod"]);
-    expect(result.dataset).toBe("spans");
+    expect(result["field"]).toEqual(["title"]);
+    expect(result["environment"]).toEqual(["prod"]);
+    expect(result["dataset"]).toBe("spans");
   });
 
   test("keeps caller arrays unchanged", () => {
     const fields = ["title", "count()"];
     const result = applyFlagDefaults({ field: fields }, flagDefs);
-    expect(result.field).toBe(fields);
+    expect(result["field"]).toBe(fields);
   });
 });
 
@@ -152,7 +152,7 @@ describe("applyFlagDefaults: enum flags", () => {
       sort: { kind: "enum", default: "date" },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.sort).toBe("date");
+    expect(result["sort"]).toBe("date");
   });
 });
 
@@ -182,10 +182,10 @@ describe("applyFlagDefaults: undefined stripping", () => {
       flagDefs,
     );
     expect("a" in result).toBe(false);
-    expect(result.b).toBeNull();
-    expect(result.c).toBe(0);
-    expect(result.d).toBe("");
-    expect(result.e).toBe(false);
+    expect(result["b"]).toBeNull();
+    expect(result["c"]).toBe(0);
+    expect(result["d"]).toBe("");
+    expect(result["e"]).toBe(false);
   });
 });
 
@@ -212,13 +212,13 @@ describe("applyFlagDefaults: combined scenario", () => {
     };
     const result = applyFlagDefaults({ limit: 50, query: undefined }, flagDefs);
     // period: default applied via parse
-    expect(result.period).toEqual({ type: "relative", period: "7d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "7d" });
     // limit: caller value preserved
-    expect(result.limit).toBe(50);
+    expect(result["limit"]).toBe(50);
     // sort: default applied (raw)
-    expect(result.sort).toBe("date");
+    expect(result["sort"]).toBe("date");
     // fresh: default applied (raw)
-    expect(result.fresh).toBe(false);
+    expect(result["fresh"]).toBe(false);
     // query: undefined stripped, no default → absent
     expect("query" in result).toBe(false);
   });

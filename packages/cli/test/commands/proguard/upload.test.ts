@@ -45,11 +45,11 @@ describe("sentry proguard upload", () => {
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "sentry-proguard-upload-"));
     savedEnv = {
-      SENTRY_ORG: process.env.SENTRY_ORG,
-      SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+      SENTRY_ORG: process.env["SENTRY_ORG"],
+      SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
     };
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     func = (await uploadCommand.loader()) as unknown as CmdFunc;
   });
 
@@ -159,8 +159,8 @@ describe("sentry proguard upload", () => {
   });
 
   test("--no-upload: does not require credentials", async () => {
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
 
     const f = join(dir, "mapping.txt");
     writeFileSync(f, "void\n");

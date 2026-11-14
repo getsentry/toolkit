@@ -371,7 +371,7 @@ function normalizeSpanId(value: unknown): string | undefined {
 function getTraceSpanId(span: TraceSpan): string {
   return (
     normalizeSpanId(span.span_id) ||
-    normalizeSpanId(span.additional_attributes?.span_id) ||
+    normalizeSpanId(span.additional_attributes?.["span_id"]) ||
     span.event_id
   );
 }

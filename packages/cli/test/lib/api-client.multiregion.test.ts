@@ -35,10 +35,10 @@ beforeEach(async () => {
   // Isolate from env-var auth tokens so isEnvTokenActive() returns false.
   // Without this, tests for 403 enrichment would flake when CI sets
   // SENTRY_AUTH_TOKEN (the error message changes based on token source).
-  savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-  savedSentryToken = process.env.SENTRY_TOKEN;
-  delete process.env.SENTRY_AUTH_TOKEN;
-  delete process.env.SENTRY_TOKEN;
+  savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+  savedSentryToken = process.env["SENTRY_TOKEN"];
+  delete process.env["SENTRY_AUTH_TOKEN"];
+  delete process.env["SENTRY_TOKEN"];
 
   // Set up auth token (manual token, no refresh)
   setAuthToken("test-token");
@@ -53,10 +53,10 @@ afterEach(() => {
 
   // Restore env vars
   if (savedAuthToken !== undefined) {
-    process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
   }
   if (savedSentryToken !== undefined) {
-    process.env.SENTRY_TOKEN = savedSentryToken;
+    process.env["SENTRY_TOKEN"] = savedSentryToken;
   }
 });
 
@@ -136,8 +136,8 @@ describe("checkTokenAccess", () => {
   });
 
   test("asks the self-hosted server the token belongs to", async () => {
-    const savedUrl = process.env.SENTRY_URL;
-    process.env.SENTRY_URL = "http://localhost:9000";
+    const savedUrl = process.env["SENTRY_URL"];
+    process.env["SENTRY_URL"] = "http://localhost:9000";
     setAuthToken("self-hosted-token", undefined, undefined, {
       host: "http://localhost:9000",
     });
@@ -153,9 +153,9 @@ describe("checkTokenAccess", () => {
       await checkTokenAccess();
     } finally {
       if (savedUrl === undefined) {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       } else {
-        process.env.SENTRY_URL = savedUrl;
+        process.env["SENTRY_URL"] = savedUrl;
       }
     }
 
@@ -616,8 +616,8 @@ describe("findProjectByDsn (multi-region)", () => {
     let savedUrl: string | undefined;
 
     beforeEach(() => {
-      savedUrl = process.env.SENTRY_URL;
-      process.env.SENTRY_URL = "http://localhost:9000";
+      savedUrl = process.env["SENTRY_URL"];
+      process.env["SENTRY_URL"] = "http://localhost:9000";
       setAuthToken("self-hosted-token", undefined, undefined, {
         host: "http://localhost:9000",
       });
@@ -625,9 +625,9 @@ describe("findProjectByDsn (multi-region)", () => {
 
     afterEach(() => {
       if (savedUrl === undefined) {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       } else {
-        process.env.SENTRY_URL = savedUrl;
+        process.env["SENTRY_URL"] = savedUrl;
       }
     });
 

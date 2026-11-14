@@ -43,10 +43,10 @@ export function attachmentBytes(item: LocalFeedItem):
     }
   | undefined {
   const wireType =
-    text(item.itemHeader?.content_type) ?? "application/octet-stream";
+    text(item.itemHeader?.["content_type"]) ?? "application/octet-stream";
   const contentType = wireType.split(";")[0]!.trim().toLowerCase();
   const payload = record(item.payload),
-    raw = payload.data ?? item.payload;
+    raw = payload["data"] ?? item.payload;
   const isText = contentType.startsWith("text/") || TEXT_TYPES.has(contentType);
   if (typeof raw !== "string") return;
   const preview = IMAGE_TYPES.has(contentType)
@@ -78,7 +78,7 @@ export function envelopeAttachments(item: LocalFeedItem): LocalFeedItem[] {
   const envelope = parsed(item.payload);
   if (!Array.isArray(envelope) || !Array.isArray(envelope[1])) return [];
   return envelope[1].flatMap((entry, index): LocalFeedItem[] =>
-    Array.isArray(entry) && record(entry[0]).type === "attachment"
+    Array.isArray(entry) && record(entry[0])["type"] === "attachment"
       ? [
           {
             id: `${item.id}:${index}`,
@@ -101,12 +101,12 @@ export function eventAttachments(
   items: readonly LocalFeedItem[],
 ): LocalFeedItem[] {
   const ids = [
-    text(event.envelopeHeader?.event_id),
-    text(record(event.payload).event_id),
+    text(event.envelopeHeader?.["event_id"]),
+    text(record(event.payload)["event_id"]),
   ].filter((id): id is string => id !== undefined);
   if (!ids.length) return [];
   return items.filter((candidate) => {
-    const id = text(candidate.envelopeHeader?.event_id);
+    const id = text(candidate.envelopeHeader?.["event_id"]);
     return (
       candidate.type === "attachment" && id !== undefined && ids.includes(id)
     );

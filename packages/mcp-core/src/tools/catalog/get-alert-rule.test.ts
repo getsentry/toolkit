@@ -273,7 +273,7 @@ describe("get_alert_rule", () => {
           return HttpResponse.json({ detectorId: "789" });
         }),
         http.get(`${organizationApi}/detectors/:id/`, ({ params }) => {
-          reads.push(`detector:${String(params.id)}`);
+          reads.push(`detector:${String(params["id"])}`);
           return HttpResponse.json(detector);
         }),
       );

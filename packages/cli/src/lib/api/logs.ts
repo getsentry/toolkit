@@ -356,7 +356,7 @@ async function getLogsBatch(
   }
 
   const response = await fetchBatch(batchIds, "NORMAL");
-  if (response.meta?.dataScanned !== "partial") {
+  if (response.meta?.["dataScanned"] !== "partial") {
     return response.data;
   }
 

@@ -146,9 +146,9 @@ export function getFilteredInputSchema(
   ) as Record<string, z.ZodType>;
   if (
     "organizationSlug" in schema &&
-    isOrganizationSlugRequired(schema.organizationSlug)
+    isOrganizationSlugRequired(schema["organizationSlug"])
   ) {
-    schema.organizationSlug = schema.organizationSlug.optional();
+    schema["organizationSlug"] = schema["organizationSlug"].optional();
   }
   return schema;
 }

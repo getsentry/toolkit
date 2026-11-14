@@ -66,7 +66,7 @@ export function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
   return withoutUndefined({
     imageFileName: snapshotString(image.image_file_name),
     displayName: snapshotString(image.display_name),
-    description: snapshotString(image.description),
+    description: snapshotString(image["description"]),
   });
 }
 

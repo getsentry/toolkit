@@ -188,7 +188,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
 
             // Get filename from result - ensure it's a string
             const rawFilename =
-              result.filename || result.attributes?.filename || "";
+              result.filename || result.attributes?.["filename"] || "";
             const filename =
               typeof rawFilename === "string"
                 ? rawFilename

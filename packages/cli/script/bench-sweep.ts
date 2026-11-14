@@ -233,7 +233,8 @@ async function runSweep(args: SweepArgs): Promise<SweepResult[]> {
   const results: SweepResult[] = [];
 
   // Silence CLI telemetry — we don't want Sentry events from bench runs.
-  process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  // Silence CLI telemetry — we don't want Sentry events from bench runs.
+  process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
 
   for (const fx of fixtures) {
     if (!existsSync(fx.rootDir)) {

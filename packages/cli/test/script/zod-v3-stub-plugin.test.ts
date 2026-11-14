@@ -80,12 +80,15 @@ describe("zodV3StubPlugin", () => {
     expect(
       inputs.filter((input) => /[\\/]zod[\\/]v3[\\/]/.test(input)),
     ).toEqual([]);
-    expect(result.jsonSchema).toMatchObject({
+    expect(result["jsonSchema"]).toMatchObject({
       type: "object",
       properties: { name: { type: "string" } },
     });
-    expect(result.validated).toEqual({ success: true, value: { name: "ok" } });
-    expect(result.zod3Error).toBe(
+    expect(result["validated"]).toEqual({
+      success: true,
+      value: { name: "ok" },
+    });
+    expect(result["zod3Error"]).toBe(
       "Zod 3 schemas are not supported in this build (zod/v3 is not bundled).",
     );
   });

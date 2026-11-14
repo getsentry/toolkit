@@ -583,7 +583,7 @@ describe("find_dashboards", () => {
     expect(findDashboardsOutputSchema.parse(structuredContent)).toEqual(
       structuredContent,
     );
-    expect(structuredContent.dashboards).toMatchObject([
+    expect(structuredContent["dashboards"]).toMatchObject([
       { widgetCount: 3, widgetTypes: ["line"] },
     ]);
   });

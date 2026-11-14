@@ -321,7 +321,7 @@ function jsonTransformExplore(
     data.nextCursor !== undefined &&
     data.nextCursor !== ""
   ) {
-    envelope.nextCursor = data.nextCursor;
+    envelope["nextCursor"] = data.nextCursor;
   }
   return envelope;
 }

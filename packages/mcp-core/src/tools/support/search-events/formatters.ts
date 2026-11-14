@@ -165,7 +165,7 @@ function formatUserFieldLines(
   options: { prefix?: string } = {},
 ): string[] {
   const prefix = options.prefix ?? "";
-  const geoSummary = formatUserGeoSummary(value.geo);
+  const geoSummary = formatUserGeoSummary(value["geo"]);
   const userSummary = formatKnownUserValue(value, { includeGeo: false });
   const lines: string[] = [];
 
@@ -418,8 +418,8 @@ export function formatLogResults(params: FormatEventResultsParams): string {
 
       output += `### Log ${i + 1}\n`;
 
-      if (typeof event.id === "string" && event.id) {
-        output += `- **Log URL**: ${apiService.getLogUrl(organizationSlug, event.id)}\n`;
+      if (typeof event["id"] === "string" && event["id"]) {
+        output += `- **Log URL**: ${apiService.getLogUrl(organizationSlug, event["id"])}\n`;
       }
 
       // Display priority fields first

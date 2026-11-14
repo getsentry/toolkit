@@ -425,19 +425,19 @@ function readErrorFields(body: unknown): {
     return {};
   }
   const fields = body as Record<string, unknown>;
-  const code = typeof fields.code === "string" ? fields.code : undefined;
+  const code = typeof fields["code"] === "string" ? fields["code"] : undefined;
   if (
-    typeof fields.function !== "string" ||
-    typeof fields.argument !== "string"
+    typeof fields["function"] !== "string" ||
+    typeof fields["argument"] !== "string"
   ) {
     return { code };
   }
   const functionArgument: FunctionArgument = {
-    function: fields.function,
-    argument: fields.argument,
+    function: fields["function"],
+    argument: fields["argument"],
   };
-  if (typeof fields.hint === "string") {
-    functionArgument.hint = fields.hint;
+  if (typeof fields["hint"] === "string") {
+    functionArgument.hint = fields["hint"];
   }
   return { code, functionArgument };
 }
@@ -494,7 +494,9 @@ function findNetworkCause(
  */
 function describeUrlSource(): string {
   if (getConfiguredSentryUrl()) {
-    const urlVar = getEnv().SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL";
+    const urlVar = getEnv()["SENTRY_HOST"]?.trim()
+      ? "SENTRY_HOST"
+      : "SENTRY_URL";
     return `This URL comes from ${urlVar}. If it is not your Sentry server, set ${urlVar} to the right URL.`;
   }
   return `This URL comes from your login. To use another server, run: ${getUrlLoginCommand()} <url>`;
@@ -741,7 +743,7 @@ export function getOrgSdkConfig(
  */
 export const MAX_PAGINATION_PAGES = Math.max(
   1,
-  Number(getEnv().SENTRY_MAX_PAGINATION_PAGES) || 50,
+  Number(getEnv()["SENTRY_MAX_PAGINATION_PAGES"]) || 50,
 );
 
 /**

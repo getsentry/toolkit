@@ -202,8 +202,8 @@ export function getEventTimestamp(event: Event): Date | null {
 function mapMessage(event: Event): string | null {
   const data = record(findEntry(event, "message")?.data);
   return (
-    nonEmptyString(data?.formatted) ??
-    nonEmptyString(data?.message) ??
+    nonEmptyString(data?.["formatted"]) ??
+    nonEmptyString(data?.["message"]) ??
     nonEmptyString(event.message)
   );
 }
@@ -268,8 +268,8 @@ function mapThreads(event: Event, hasExceptions: boolean) {
 
 function mapRequest(event: Event): IssueEventPayload["request"] {
   const data = record(findEntry(event, "request")?.data);
-  const method = nonEmptyString(data?.method);
-  const url = nonEmptyString(data?.url);
+  const method = nonEmptyString(data?.["method"]);
+  const url = nonEmptyString(data?.["url"]);
   return method || url ? { method, url } : null;
 }
 
@@ -279,14 +279,15 @@ function mapCsp(event: Event): IssueEventPayload["csp"] {
     return null;
   }
   return {
-    blockedUri: nonEmptyString(data.blocked_uri),
-    violatedDirective: nonEmptyString(data.violated_directive),
-    effectiveDirective: nonEmptyString(data.effective_directive),
-    documentUri: nonEmptyString(data.document_uri),
-    sourceFile: nonEmptyString(data.source_file),
-    lineNumber: typeof data.line_number === "number" ? data.line_number : null,
-    disposition: nonEmptyString(data.disposition),
-    originalPolicy: nonEmptyString(data.original_policy),
+    blockedUri: nonEmptyString(data["blocked_uri"]),
+    violatedDirective: nonEmptyString(data["violated_directive"]),
+    effectiveDirective: nonEmptyString(data["effective_directive"]),
+    documentUri: nonEmptyString(data["document_uri"]),
+    sourceFile: nonEmptyString(data["source_file"]),
+    lineNumber:
+      typeof data["line_number"] === "number" ? data["line_number"] : null,
+    disposition: nonEmptyString(data["disposition"]),
+    originalPolicy: nonEmptyString(data["original_policy"]),
   };
 }
 
@@ -300,17 +301,17 @@ function getOccurrence(event: Event): Record<string, unknown> | undefined {
 function mapEvidence(
   occurrence: Record<string, unknown> | undefined,
 ): IssueEventPayload["evidence"] {
-  const display = occurrence?.evidenceDisplay;
+  const display = occurrence?.["evidenceDisplay"];
   if (!Array.isArray(display)) {
     return null;
   }
   // the markdown shows only the items Sentry marks important
   const items = display
     .map(record)
-    .filter((item) => item?.important === true)
+    .filter((item) => item?.["important"] === true)
     .flatMap((item) => {
-      const name = nonEmptyString(item?.name);
-      const value = nonEmptyString(item?.value);
+      const name = nonEmptyString(item?.["name"]);
+      const value = nonEmptyString(item?.["value"]);
       return name && value ? [{ name, value }] : [];
     });
   return items.length > 0 ? items : null;
@@ -351,12 +352,12 @@ function mapPerformance(
     return null;
   }
   const issueType =
-    typeof occurrence.type === "number"
-      ? (OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence.type] ?? null)
-      : (nonEmptyString(occurrence.issueType) ??
-        nonEmptyString(occurrence.type));
+    typeof occurrence["type"] === "number"
+      ? (OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence["type"]] ?? null)
+      : (nonEmptyString(occurrence["issueType"]) ??
+        nonEmptyString(occurrence["type"]));
   const evidenceData: N1EvidenceData | undefined = record(
-    occurrence.evidenceData,
+    occurrence["evidenceData"],
   );
   const isN1 = issueType != null && N1_ISSUE_TYPES.has(issueType);
   const repeatCount =
@@ -429,27 +430,27 @@ function mapUser(event: Event): IssueEventPayload["user"] {
   if (!user) {
     return null;
   }
-  const geo = record(user.geo);
+  const geo = record(user["geo"]);
   const mappedGeo = geo
     ? {
-        countryCode: nonEmptyString(geo.country_code),
-        city: nonEmptyString(geo.city),
-        region: nonEmptyString(geo.region),
+        countryCode: nonEmptyString(geo["country_code"]),
+        city: nonEmptyString(geo["city"]),
+        region: nonEmptyString(geo["region"]),
       }
     : null;
   const mapped = {
-    id: nonEmptyString(user.id),
-    email: nonEmptyString(user.email),
-    username: nonEmptyString(user.username),
+    id: nonEmptyString(user["id"]),
+    email: nonEmptyString(user["email"]),
+    username: nonEmptyString(user["username"]),
     // Sentry's user interface serializes `ip_address` and `name`; some
     // payloads carry the `ip` / `display_name` aliases instead.
-    ipAddress: nonEmptyString(user.ip_address) ?? nonEmptyString(user.ip),
-    name: nonEmptyString(user.name) ?? nonEmptyString(user.display_name),
+    ipAddress: nonEmptyString(user["ip_address"]) ?? nonEmptyString(user["ip"]),
+    name: nonEmptyString(user["name"]) ?? nonEmptyString(user["display_name"]),
     geo:
       mappedGeo && Object.values(mappedGeo).some((value) => value !== null)
         ? mappedGeo
         : null,
-    data: compactMap(user.data),
+    data: compactMap(user["data"]),
   };
   return Object.values(mapped).some((value) => value !== null) ? mapped : null;
 }

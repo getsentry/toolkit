@@ -107,16 +107,16 @@ export async function runAgent(
   const provider = config.provider ?? "openai";
   const model =
     config.model ||
-    process.env.MCP_MODEL ||
+    process.env["MCP_MODEL"] ||
     (provider === "openrouter"
-      ? process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL
-      : process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL);
+      ? process.env["OPENROUTER_MODEL"] || DEFAULT_OPENROUTER_MODEL
+      : process.env["OPENAI_MODEL"] || DEFAULT_OPENAI_MODEL);
   const maxSteps = config.maxSteps || 10;
   const sessionId = connection.sessionId;
   const modelProvider =
     provider === "openrouter"
       ? createOpenAI({
-          apiKey: process.env.OPENROUTER_API_KEY,
+          apiKey: process.env["OPENROUTER_API_KEY"],
           baseURL: OPENROUTER_BASE_URL,
           headers: {
             "HTTP-Referer": "https://github.com/getsentry/sentry-mcp",

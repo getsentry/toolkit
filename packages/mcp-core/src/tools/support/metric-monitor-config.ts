@@ -155,7 +155,7 @@ export function toMetricMonitorUpdate(
   if (config !== undefined || conditionGroup !== undefined) {
     if (
       config?.detectionType !== undefined &&
-      config.detectionType !== current.config.detectionType &&
+      config.detectionType !== current.config["detectionType"] &&
       !conditionGroup
     ) {
       throw new UserInputError(
@@ -188,17 +188,17 @@ export function toMetricDetectionConfig(
   const { comparisonDeltaSeconds, ...changes } = config;
   const result: Detector["config"] = { ...current, ...changes };
   if (comparisonDeltaSeconds !== undefined)
-    result.comparisonDelta = comparisonDeltaSeconds;
-  if (result.detectionType !== "percent") {
+    result["comparisonDelta"] = comparisonDeltaSeconds;
+  if (result["detectionType"] !== "percent") {
     if (comparisonDeltaSeconds != null) {
       throw new UserInputError(
         "comparisonDeltaSeconds is only supported for Percent detection.",
       );
     }
     // A retained delta still enables percentage evaluation in the backend, regardless of detectionType.
-    if (config.detectionType !== undefined) result.comparisonDelta = null;
+    if (config.detectionType !== undefined) result["comparisonDelta"] = null;
   }
-  const dynamic = result.detectionType === "dynamic";
+  const dynamic = result["detectionType"] === "dynamic";
   if (dynamic && conditions.length !== 1) {
     throw new UserInputError(
       "Dynamic detection requires exactly one anomaly_detection condition.",
@@ -214,8 +214,11 @@ export function toMetricDetectionConfig(
     );
   }
   if (
-    result.detectionType === "percent" &&
-    !(typeof result.comparisonDelta === "number" && result.comparisonDelta > 0)
+    result["detectionType"] === "percent" &&
+    !(
+      typeof result["comparisonDelta"] === "number" &&
+      result["comparisonDelta"] > 0
+    )
   ) {
     throw new UserInputError(
       "Percent detection requires comparisonDeltaSeconds.",

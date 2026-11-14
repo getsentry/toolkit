@@ -238,9 +238,9 @@ describe("resolveCommand.func()", () => {
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.resolved_in).toEqual({ inRelease: "0.26.1" });
-    expect(parsed.status).toBe("resolved");
-    expect(parsed.shortId).toBe("CLI-G5");
+    expect(parsed["resolved_in"]).toEqual({ inRelease: "0.26.1" });
+    expect(parsed["status"]).toBe("resolved");
+    expect(parsed["shortId"]).toBe("CLI-G5");
   });
 
   test("JSON output omits resolved_in when immediate", async () => {
@@ -256,8 +256,8 @@ describe("resolveCommand.func()", () => {
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.resolved_in).toBeUndefined();
-    expect(parsed.status).toBe("resolved");
+    expect(parsed["resolved_in"]).toBeUndefined();
+    expect(parsed["status"]).toBe("resolved");
   });
 });
 

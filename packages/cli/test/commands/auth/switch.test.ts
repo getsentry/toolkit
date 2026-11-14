@@ -100,7 +100,7 @@ describe("auth list", () => {
 
     const out = getOutput();
     const parsed = JSON.parse(out) as Array<Record<string, unknown>>;
-    expect(parsed.map((a) => [a.email, a.active])).toEqual([
+    expect(parsed.map((a) => [a["email"], a["active"]])).toEqual([
       ["jane@example.com", false],
       ["jane@corp.example.com", true],
     ]);
@@ -167,7 +167,7 @@ describe("auth list", () => {
     });
 
     test("lists it after the stored accounts, with its user", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
       seedTwoAccounts();
       const func = (await listCommand.loader()) as unknown as ListFunc;
       const { context, getOutput } = createContext();
@@ -190,7 +190,7 @@ describe("auth list", () => {
     });
 
     test("labels it by its variable when the server doesn't say whose it is", async () => {
-      process.env.SENTRY_TOKEN = "other-token";
+      process.env["SENTRY_TOKEN"] = "other-token";
       const func = (await listCommand.loader()) as unknown as ListFunc;
       const { context, getOutput } = createContext();
 
@@ -202,7 +202,7 @@ describe("auth list", () => {
 
     test("leaves out a token set after boot, e.g. from .sentryclirc", async () => {
       getEnvTokenHost();
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
       seedTwoAccounts();
       const func = (await listCommand.loader()) as unknown as ListFunc;
       const { context, getOutput } = createContext();

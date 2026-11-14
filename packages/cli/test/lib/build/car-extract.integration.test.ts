@@ -250,11 +250,11 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
     }, 30_000);
 
     test
-      .runIf(Boolean(process.env.SENTRY_CAR_TEST_BINARY))
+      .runIf(Boolean(process.env["SENTRY_CAR_TEST_BINARY"]))
       .each(CATALOG_IDIOMS)(
       "uploads %s images through the helper embedded in the standalone binary",
       async (idiom) => {
-        const binary = process.env.SENTRY_CAR_TEST_BINARY;
+        const binary = process.env["SENTRY_CAR_TEST_BINARY"];
         if (!binary) {
           throw new Error("Missing native test binary");
         }
@@ -370,7 +370,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
             {
               timeout: 120_000,
               env: {
-                PATH: process.env.PATH,
+                PATH: process.env["PATH"],
                 HOME: home,
                 XDG_CONFIG_HOME: join(home, "config"),
                 SENTRY_CONFIG_DIR: join(home, "sentry"),

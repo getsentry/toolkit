@@ -303,7 +303,7 @@ class SetEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
   check = () => true;
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
-    process.env.SENTRY_AUTH_TOKEN = this.token;
+    process.env["SENTRY_AUTH_TOKEN"] = this.token;
     // Env mutation bypasses setAuthToken's invalidation.
     resetAuthTokenCache();
     resetAuthRowCache();
@@ -320,7 +320,7 @@ class ClearEnvAuthTokenCommand implements AsyncCommand<DbModel, RealDb> {
   check = () => true;
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
-    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
     resetAuthTokenCache();
     resetAuthRowCache();
     resetIdentityFingerprintCache();
@@ -340,7 +340,7 @@ class SetEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
   check = () => true;
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
-    process.env.SENTRY_TOKEN = this.token;
+    process.env["SENTRY_TOKEN"] = this.token;
     resetAuthTokenCache();
     resetAuthRowCache();
     resetIdentityFingerprintCache();
@@ -356,7 +356,7 @@ class ClearEnvSentryTokenCommand implements AsyncCommand<DbModel, RealDb> {
   check = () => true;
 
   async run(model: DbModel, _real: RealDb): Promise<void> {
-    delete process.env.SENTRY_TOKEN;
+    delete process.env["SENTRY_TOKEN"];
     resetAuthTokenCache();
     resetAuthRowCache();
     resetIdentityFingerprintCache();
@@ -799,10 +799,10 @@ describe("model-based: database layer", () => {
       asyncProperty(commands(allCommands, { size: "+1" }), async (cmds) => {
         const cleanup = createIsolatedDbContext();
         // Save env vars so model commands that set them don't leak across runs
-        const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-        const savedSentryToken = process.env.SENTRY_TOKEN;
-        delete process.env.SENTRY_AUTH_TOKEN;
-        delete process.env.SENTRY_TOKEN;
+        const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+        const savedSentryToken = process.env["SENTRY_TOKEN"];
+        delete process.env["SENTRY_AUTH_TOKEN"];
+        delete process.env["SENTRY_TOKEN"];
         resetAuthTokenCache();
         resetAuthRowCache();
         resetIdentityFingerprintCache();
@@ -816,14 +816,14 @@ describe("model-based: database layer", () => {
         } finally {
           // Restore env vars before DB cleanup
           if (savedAuthToken !== undefined) {
-            process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+            process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
           } else {
-            delete process.env.SENTRY_AUTH_TOKEN;
+            delete process.env["SENTRY_AUTH_TOKEN"];
           }
           if (savedSentryToken !== undefined) {
-            process.env.SENTRY_TOKEN = savedSentryToken;
+            process.env["SENTRY_TOKEN"] = savedSentryToken;
           } else {
-            delete process.env.SENTRY_TOKEN;
+            delete process.env["SENTRY_TOKEN"];
           }
           cleanup();
         }
@@ -938,8 +938,8 @@ describe("model-based: database layer", () => {
     fcAssert(
       property(storedTokenArb, (token) => {
         const cleanup = createIsolatedDbContext();
-        const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-        delete process.env.SENTRY_AUTH_TOKEN;
+        const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+        delete process.env["SENTRY_AUTH_TOKEN"];
         resetAuthTokenCache();
         resetAuthRowCache();
         try {
@@ -955,7 +955,7 @@ describe("model-based: database layer", () => {
           expect(config).toBeUndefined();
         } finally {
           if (savedAuthToken !== undefined) {
-            process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+            process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
           }
           cleanup();
         }

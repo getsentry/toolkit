@@ -231,7 +231,7 @@ export async function applyDefaultOrganization({
   context: ServerContext;
 }): Promise<Record<string, unknown>> {
   const organizationSchema = tool.inputSchema.organizationSlug;
-  if (!organizationSchema || !isMissing(params.organizationSlug)) {
+  if (!organizationSchema || !isMissing(params["organizationSlug"])) {
     return params;
   }
   const isRequired = isOrganizationSlugRequired(organizationSchema);
@@ -276,9 +276,9 @@ export async function applyDefaultOrganization({
     if (
       only.regionUrl &&
       "regionUrl" in tool.inputSchema &&
-      isMissing(params.regionUrl)
+      isMissing(params["regionUrl"])
     ) {
-      defaulted.regionUrl = only.regionUrl;
+      defaulted["regionUrl"] = only.regionUrl;
     }
     return defaulted;
   }

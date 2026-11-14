@@ -366,20 +366,20 @@ describe("trailing slashes and Sentry trace URLs (CLI-13F)", () => {
   let savedHost: string | undefined;
 
   beforeEach(() => {
-    savedUrl = process.env.SENTRY_URL;
-    savedHost = process.env.SENTRY_HOST;
+    savedUrl = process.env["SENTRY_URL"];
+    savedHost = process.env["SENTRY_HOST"];
   });
 
   afterEach(() => {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
     if (savedHost === undefined) {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     } else {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     }
   });
 
@@ -473,14 +473,14 @@ describe("parsing without side effects", () => {
   let savedUrl: string | undefined;
 
   beforeEach(() => {
-    savedUrl = process.env.SENTRY_URL;
+    savedUrl = process.env["SENTRY_URL"];
   });
 
   afterEach(() => {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
   });
 
@@ -495,7 +495,7 @@ describe("parsing without side effects", () => {
       mode: "trace",
       trace: { baseUrl: "https://sentry.example.com" },
     });
-    expect(process.env.SENTRY_URL).toBe(savedUrl);
+    expect(process.env["SENTRY_URL"]).toBe(savedUrl);
   });
 
   test("ignored extra arguments are returned as a warning", () => {

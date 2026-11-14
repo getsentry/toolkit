@@ -477,15 +477,15 @@ export function determineInstallDir(
   homeDir: string,
   env: NodeJS.ProcessEnv,
 ): string {
-  const pathDirs = (env.PATH ?? "").split(delimiter);
+  const pathDirs = (env["PATH"] ?? "").split(delimiter);
 
   // 1. Explicit override via environment variable
-  if (env.SENTRY_INSTALL_DIR) {
-    return env.SENTRY_INSTALL_DIR;
+  if (env["SENTRY_INSTALL_DIR"]) {
+    return env["SENTRY_INSTALL_DIR"];
   }
 
   // 2. XDG_BIN_HOME override — honored only when absolute, per the XDG spec
-  const xdgBinHome = env.XDG_BIN_HOME;
+  const xdgBinHome = env["XDG_BIN_HOME"];
   if (xdgBinHome && isAbsolute(xdgBinHome)) {
     return xdgBinHome;
   }

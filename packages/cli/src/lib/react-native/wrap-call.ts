@@ -131,12 +131,12 @@ function copyDebugId(report: SourceMapReport): void {
   if ("debugId" in hermes || "debug_id" in hermes) {
     return;
   }
-  const debugId = pkg.debugId ?? pkg.debug_id;
+  const debugId = pkg["debugId"] ?? pkg["debug_id"];
   if (debugId === undefined) {
     return;
   }
-  hermes.debugId = debugId;
-  hermes.debug_id = debugId;
+  hermes["debugId"] = debugId;
+  hermes["debug_id"] = debugId;
   writeFileSync(hermesPath, JSON.stringify(hermes));
 }
 
@@ -153,8 +153,8 @@ function isComposeCommand(args: string[], env: NodeJS.ProcessEnv): boolean {
   }
   return (
     first.endsWith("compose-source-maps.js") ||
-    (Boolean(env.COMPOSE_SOURCEMAP_PATH) &&
-      first === env.COMPOSE_SOURCEMAP_PATH)
+    (Boolean(env["COMPOSE_SOURCEMAP_PATH"]) &&
+      first === env["COMPOSE_SOURCEMAP_PATH"])
   );
 }
 
@@ -164,7 +164,7 @@ function classifyInvocation(
   env: NodeJS.ProcessEnv,
   report: SourceMapReport,
 ): { executeHermes: boolean; shouldCopyDebugId: boolean } {
-  if (isBundleCommand(args, env.SENTRY_RN_BUNDLE_COMMAND)) {
+  if (isBundleCommand(args, env["SENTRY_RN_BUNDLE_COMMAND"])) {
     handleBundle(args, report);
     return { executeHermes: false, shouldCopyDebugId: false };
   }
@@ -180,13 +180,13 @@ function classifyInvocation(
 }
 
 export function wrapCall(env: NodeJS.ProcessEnv = process.env): number {
-  const reportPath = env.SENTRY_RN_SOURCEMAP_REPORT;
+  const reportPath = env["SENTRY_RN_SOURCEMAP_REPORT"];
   if (!reportPath) {
     throw new Error("SENTRY_RN_SOURCEMAP_REPORT is not set");
   }
   const report = loadReport(reportPath);
   const args = getWrapArgs();
-  const noDebugId = env.SENTRY_RN_NO_DEBUG_ID === "1";
+  const noDebugId = env["SENTRY_RN_NO_DEBUG_ID"] === "1";
 
   const { executeHermes, shouldCopyDebugId } = classifyInvocation(
     args,
@@ -195,8 +195,8 @@ export function wrapCall(env: NodeJS.ProcessEnv = process.env): number {
   );
 
   const executable = executeHermes
-    ? env.SENTRY_RN_REAL_HERMES_CLI_PATH
-    : env.SENTRY_RN_REAL_NODE_BINARY;
+    ? env["SENTRY_RN_REAL_HERMES_CLI_PATH"]
+    : env["SENTRY_RN_REAL_NODE_BINARY"];
   if (!executable) {
     throw new Error(
       "Missing SENTRY_RN_REAL_NODE_BINARY / SENTRY_RN_REAL_HERMES_CLI_PATH",

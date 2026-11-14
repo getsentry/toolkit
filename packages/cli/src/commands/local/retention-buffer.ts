@@ -73,15 +73,15 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function hasStackFilename(payload: unknown, filename: string): boolean {
-  const values = record(record(payload).exception).values;
+  const values = record(record(payload)["exception"])["values"];
   return (
     Array.isArray(values) &&
     values.some((value) => {
-      const frames = record(record(value).stacktrace).frames;
+      const frames = record(record(value)["stacktrace"])["frames"];
       return (
         Array.isArray(frames) &&
         frames.some((frame) => {
-          const candidate = record(frame).filename;
+          const candidate = record(frame)["filename"];
           return typeof candidate === "string" && candidate.endsWith(filename);
         })
       );

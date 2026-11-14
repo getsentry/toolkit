@@ -314,7 +314,7 @@ describe("feedback list", () => {
 
 describe("feedback list: query flag parse", () => {
   const parseQuery = (
-    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+    listCommand.parameters.flags!["query"] as { parse: (v: string) => string }
   ).parse;
 
   test("rewrites is: OR for the issues endpoint", () => {

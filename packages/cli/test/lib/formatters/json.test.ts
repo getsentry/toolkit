@@ -420,8 +420,8 @@ describe("writeJsonList", () => {
       nextCursor: "abc123",
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("abc123");
+    expect(result["hasMore"]).toBe(true);
+    expect(result["nextCursor"]).toBe("abc123");
   });
 
   test("omits nextCursor when null", () => {
@@ -431,14 +431,14 @@ describe("writeJsonList", () => {
       nextCursor: null,
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.nextCursor).toBeUndefined();
+    expect(result["nextCursor"]).toBeUndefined();
   });
 
   test("omits nextCursor when undefined", () => {
     const { writer, parsed } = capture();
     writeJsonList(writer, [{ id: 1 }], { hasMore: false });
     const result = parsed() as Record<string, unknown>;
-    expect(result.nextCursor).toBeUndefined();
+    expect(result["nextCursor"]).toBeUndefined();
   });
 
   test("omits nextCursor when empty string", () => {
@@ -448,7 +448,7 @@ describe("writeJsonList", () => {
       nextCursor: "",
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.nextCursor).toBeUndefined();
+    expect(result["nextCursor"]).toBeUndefined();
   });
 
   test("includes errors when non-empty", () => {
@@ -456,21 +456,21 @@ describe("writeJsonList", () => {
     const errors = [{ message: "org failed" }];
     writeJsonList(writer, [{ id: 1 }], { hasMore: false, errors });
     const result = parsed() as Record<string, unknown>;
-    expect(result.errors).toEqual(errors);
+    expect(result["errors"]).toEqual(errors);
   });
 
   test("omits errors when empty array", () => {
     const { writer, parsed } = capture();
     writeJsonList(writer, [{ id: 1 }], { hasMore: false, errors: [] });
     const result = parsed() as Record<string, unknown>;
-    expect(result.errors).toBeUndefined();
+    expect(result["errors"]).toBeUndefined();
   });
 
   test("omits errors when undefined", () => {
     const { writer, parsed } = capture();
     writeJsonList(writer, [{ id: 1 }], { hasMore: false });
     const result = parsed() as Record<string, unknown>;
-    expect(result.errors).toBeUndefined();
+    expect(result["errors"]).toBeUndefined();
   });
 
   test("handles empty items array", () => {
@@ -490,11 +490,11 @@ describe("writeJsonList", () => {
       fields: ["id", "title"],
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual([
+    expect(result["data"]).toEqual([
       { id: 1, title: "Bug" },
       { id: 2, title: "Feature" },
     ]);
-    expect(result.hasMore).toBe(true);
+    expect(result["hasMore"]).toBe(true);
   });
 
   test("does not filter wrapper metadata keys", () => {
@@ -505,9 +505,9 @@ describe("writeJsonList", () => {
       fields: ["id"],
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual([{ id: 1 }]);
-    expect(result.hasMore).toBe(true);
-    expect(result.nextCursor).toBe("xyz");
+    expect(result["data"]).toEqual([{ id: 1 }]);
+    expect(result["hasMore"]).toBe(true);
+    expect(result["nextCursor"]).toBe("xyz");
   });
 
   test("with empty fields array: outputs full items (no filtering)", () => {
@@ -515,7 +515,7 @@ describe("writeJsonList", () => {
     const items = [{ id: 1, title: "Bug", extra: true }];
     writeJsonList(writer, items, { hasMore: false, fields: [] });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual(items);
+    expect(result["data"]).toEqual(items);
   });
 
   test("with undefined fields: outputs full items (no filtering)", () => {
@@ -523,7 +523,7 @@ describe("writeJsonList", () => {
     const items = [{ id: 1, title: "Bug", extra: true }];
     writeJsonList(writer, items, { hasMore: false, fields: undefined });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual(items);
+    expect(result["data"]).toEqual(items);
   });
 
   test("supports dot-notation field filtering on nested items", () => {
@@ -537,7 +537,7 @@ describe("writeJsonList", () => {
       fields: ["id", "metadata.value"],
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual([
+    expect(result["data"]).toEqual([
       { id: 1, metadata: { value: "ReferenceError" } },
       { id: 2, metadata: { value: "DeprecationWarning" } },
     ]);
@@ -550,8 +550,8 @@ describe("writeJsonList", () => {
       extra: { hint: "sentry project list my-org/ --json" },
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.hint).toBe("sentry project list my-org/ --json");
-    expect(result.hasMore).toBe(true);
+    expect(result["hint"]).toBe("sentry project list my-org/ --json");
+    expect(result["hasMore"]).toBe(true);
   });
 
   test("extra metadata does not interfere with fields filtering", () => {
@@ -562,8 +562,8 @@ describe("writeJsonList", () => {
       extra: { hint: "use --cursor" },
     });
     const result = parsed() as Record<string, unknown>;
-    expect(result.data).toEqual([{ id: 1 }]);
-    expect(result.hint).toBe("use --cursor");
+    expect(result["data"]).toEqual([{ id: 1 }]);
+    expect(result["hint"]).toBe("use --cursor");
   });
 
   test("output ends with newline", () => {

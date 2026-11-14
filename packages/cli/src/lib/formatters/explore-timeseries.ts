@@ -121,8 +121,8 @@ function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
       : {
           ...column,
           value: (row: Record<string, unknown>) =>
-            typeof row.value === "string"
-              ? text(row.value.replace(/\n/g, " "))
+            typeof row["value"] === "string"
+              ? text(row["value"].replace(/\n/g, " "))
               : column.value(row),
         },
   );

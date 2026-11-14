@@ -506,7 +506,9 @@ const eventAdapter: FuzzyLookupAdapter = async (ctx) => {
     sort: "-timestamp",
     statsPeriod: ctx.period ?? SCAN_PERIODS.event,
   });
-  return data.data.map((row) => stringifyUnknown(row.id ?? "")).filter(Boolean);
+  return data.data
+    .map((row) => stringifyUnknown(row["id"] ?? ""))
+    .filter(Boolean);
 };
 
 const traceAdapter: FuzzyLookupAdapter = async (ctx) => {

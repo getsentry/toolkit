@@ -64,12 +64,12 @@ function conditionResult(value: unknown, detector: boolean): string {
 
 function conditionText(value: unknown, detector: boolean): string {
   const condition = asObject(value);
-  if (!condition || typeof condition.type !== "string") {
+  if (!condition || typeof condition["type"] !== "string") {
     return valueText(value);
   }
-  const operator = OPERATORS[condition.type] ?? condition.type;
-  const comparison = valueText(condition.comparison);
-  const result = conditionResult(condition.conditionResult, detector);
+  const operator = OPERATORS[condition["type"]] ?? condition["type"];
+  const comparison = valueText(condition["comparison"]);
+  const result = conditionResult(condition["conditionResult"], detector);
   return `${operator} ${comparison} → ${result}`;
 }
 
@@ -78,8 +78,8 @@ function conditionRows(value: unknown, detector: boolean): Row[] {
   if (!group) {
     return [["Conditions", value === null ? "none" : valueText(value)]];
   }
-  const rows: Row[] = [["Logic", valueText(group.logicType)]];
-  const conditions = group.conditions;
+  const rows: Row[] = [["Logic", valueText(group["logicType"])]];
+  const conditions = group["conditions"];
   if (Array.isArray(conditions) && conditions.length > 0) {
     conditions.forEach((condition, index) => {
       rows.push([`Condition ${index + 1}`, conditionText(condition, detector)]);
@@ -98,24 +98,27 @@ function actionSection(value: unknown, index: number): string {
   if (!action) {
     return table([["Action", valueText(value)]], `Action ${index + 1}`);
   }
-  const config = asObject(action.config);
+  const config = asObject(action["config"]);
   const target =
-    config?.targetDisplay ||
-    config?.targetIdentifier ||
-    (config?.targetType === "issue_owners" ? "Issue owners" : undefined);
+    config?.["targetDisplay"] ||
+    config?.["targetIdentifier"] ||
+    (config?.["targetType"] === "issue_owners" ? "Issue owners" : undefined);
   const rows: Row[] = [
-    ["Provider", valueText(action.type)],
+    ["Provider", valueText(action["type"])],
     ["Target", target ? valueText(target) : "not returned"],
-    ["Status", valueText(action.status)],
+    ["Status", valueText(action["status"])],
   ];
-  if (action.integrationId !== undefined && action.integrationId !== null) {
-    rows.push(["Integration ID", valueText(action.integrationId)]);
+  if (
+    action["integrationId"] !== undefined &&
+    action["integrationId"] !== null
+  ) {
+    rows.push(["Integration ID", valueText(action["integrationId"])]);
   }
-  if (action.config !== undefined) {
-    rows.push(["Config", valueText(action.config)]);
+  if (action["config"] !== undefined) {
+    rows.push(["Config", valueText(action["config"])]);
   }
-  if (action.data !== undefined) {
-    rows.push(["Data", valueText(action.data)]);
+  if (action["data"] !== undefined) {
+    rows.push(["Data", valueText(action["data"])]);
   }
   return table(rows, `Action ${index + 1}`);
 }
@@ -123,7 +126,7 @@ function actionSection(value: unknown, index: number): string {
 function workflowGroupSections(value: unknown, heading: string): string[] {
   const sections = [table(conditionRows(value, false), heading)];
   const group = asObject(value);
-  const actions = group?.actions;
+  const actions = group?.["actions"];
   if (Array.isArray(actions) && actions.length > 0) {
     sections.push(...actions.map(actionSection));
   } else if (group) {

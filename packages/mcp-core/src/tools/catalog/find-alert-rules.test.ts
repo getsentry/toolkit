@@ -207,7 +207,7 @@ describe("find_alert_rules", () => {
       context,
     );
 
-    expect(getStructuredContent(result).pagination).toEqual({
+    expect(getStructuredContent(result)["pagination"]).toEqual({
       issue: { nextCursor: "issue-page-2" },
       metric: null,
     });
@@ -285,7 +285,7 @@ describe("find_alert_rules", () => {
       metricRules: [],
       pagination: { issue: { nextCursor: null }, metric: null },
     });
-    expect(getStructuredContent(result).issueRules).toHaveLength(1);
+    expect(getStructuredContent(result)["issueRules"]).toHaveLength(1);
   });
 
   it("returns next cursors for detector query searches", async () => {

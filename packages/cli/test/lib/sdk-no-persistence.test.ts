@@ -186,15 +186,15 @@ describe("createSentrySDK() without persist", () => {
   });
 
   test("env replaces process.env", async () => {
-    const saved = process.env.SENTRY_HOST;
-    process.env.SENTRY_HOST = "https://ignored.example.com";
+    const saved = process.env["SENTRY_HOST"];
+    process.env["SENTRY_HOST"] = "https://ignored.example.com";
     try {
       await sdk().project.view({ orgProject: "acme/frontend" });
     } finally {
       if (saved === undefined) {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       } else {
-        process.env.SENTRY_HOST = saved;
+        process.env["SENTRY_HOST"] = saved;
       }
     }
 

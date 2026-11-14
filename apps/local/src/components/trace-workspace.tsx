@@ -74,7 +74,7 @@ export function TraceWorkspace({
           inspector.current?.querySelectorAll<HTMLButtonElement>(
             "[data-span-id]",
           ) ?? [],
-        ).find((entry) => entry.dataset.spanId === previous.spanId);
+        ).find((entry) => entry.dataset["spanId"] === previous.spanId);
         button?.focus();
       }
     }

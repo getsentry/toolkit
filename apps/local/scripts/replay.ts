@@ -120,7 +120,7 @@ async function main() {
     throw new Error("Compression must be none, gzip, or br.");
   if (positionals.length > 1)
     throw new Error("Supply at most one fixture directory or file.");
-  const spotlight = process.env.SENTRY_SPOTLIGHT;
+  const spotlight = process.env["SENTRY_SPOTLIGHT"];
   const endpoint =
     values.endpoint ??
     (spotlight && !/^(1|true|yes|on|enabled)$/i.test(spotlight)

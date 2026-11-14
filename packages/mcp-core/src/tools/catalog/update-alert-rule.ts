@@ -42,30 +42,35 @@ function resolveChangedSlackDestinations(
   current: IssueAlertRule,
 ): z.infer<typeof ParamAlertActionFilters> {
   const previousActions = (current.actionFilters ?? []).flatMap((group) =>
-    Array.isArray(group.actions) ? group.actions.filter(isPlainObject) : [],
+    Array.isArray(group["actions"])
+      ? group["actions"].filter(isPlainObject)
+      : [],
   );
   return groups.map((group) => ({
     ...group,
     actions: group.actions.map((action) => {
       const previous = previousActions.find(
         (candidate) =>
-          action.id !== undefined && String(candidate.id) === String(action.id),
+          action.id !== undefined &&
+          String(candidate["id"]) === String(action.id),
       );
       if (
         action.type !== "slack" ||
         !previous ||
-        !isPlainObject(previous.config) ||
-        typeof action.config.targetDisplay !== "string" ||
-        action.config.targetDisplay.length === 0 ||
-        (action.config.targetDisplay === previous.config.targetDisplay &&
-          String(action.integrationId) === String(previous.integrationId)) ||
-        action.config.targetIdentifier !== previous.config.targetIdentifier
+        !isPlainObject(previous["config"]) ||
+        typeof action.config["targetDisplay"] !== "string" ||
+        action.config["targetDisplay"].length === 0 ||
+        (action.config["targetDisplay"] ===
+          previous["config"]["targetDisplay"] &&
+          String(action.integrationId) === String(previous["integrationId"])) ||
+        action.config["targetIdentifier"] !==
+          previous["config"]["targetIdentifier"]
       ) {
         return action;
       }
       // Slack validates a supplied ID against the name and workspace; discard a copied stale ID.
       const config = { ...action.config };
-      delete config.targetIdentifier;
+      delete config["targetIdentifier"];
       return { ...action, config };
     }),
   }));

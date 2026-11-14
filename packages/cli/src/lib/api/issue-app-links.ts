@@ -340,7 +340,7 @@ async function getLinkForm(
   const { schema } = component;
   const form = safeParse(
     LinkFormSchema,
-    schema.type === "issue-link" ? schema.link : undefined,
+    schema["type"] === "issue-link" ? schema.link : undefined,
   );
   if (!form.success) {
     throw new ValidationError(

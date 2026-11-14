@@ -142,7 +142,7 @@ describe.runIf(process.platform === "win32")(
 
     test("treats an equivalent %VAR% entry as already present", async () => {
       await seedPath("%USERPROFILE%\\.local\\bin\\;C:\\Other");
-      const dir = join(process.env.USERPROFILE ?? "", ".local", "BIN");
+      const dir = join(process.env["USERPROFILE"] ?? "", ".local", "BIN");
 
       const result = await addToWindowsUserPath(dir, { key });
 

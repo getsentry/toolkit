@@ -243,18 +243,18 @@ function toWidget(
 function toFilters(
   filters: Record<string, unknown>,
 ): DashboardDetails["filters"] {
-  const globalFilters = Array.isArray(filters.globalFilter)
-    ? filters.globalFilter.filter(isPlainObject).map((filter) => ({
+  const globalFilters = Array.isArray(filters["globalFilter"])
+    ? filters["globalFilter"].filter(isPlainObject).map((filter) => ({
         dataset: readString(filter, "dataset"),
-        tagKey: isPlainObject(filter.tag)
-          ? readString(filter.tag, "key")
+        tagKey: isPlainObject(filter["tag"])
+          ? readString(filter["tag"], "key")
           : null,
         value: readString(filter, "value"),
       }))
     : [];
   return {
-    releases: readStringArray(filters.release),
-    releaseIds: readStringArray(filters.releaseId),
+    releases: readStringArray(filters["release"]),
+    releaseIds: readStringArray(filters["releaseId"]),
     globalFilters,
   };
 }

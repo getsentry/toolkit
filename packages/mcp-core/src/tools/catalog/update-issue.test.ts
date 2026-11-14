@@ -1071,7 +1071,8 @@ describe("update_issue", () => {
           lastRequestBody = (await request.json()) as Record<string, unknown>;
           currentIssue = {
             ...currentIssue,
-            assignedTo: lastRequestBody.assignedTo ?? currentIssue.assignedTo,
+            assignedTo:
+              lastRequestBody["assignedTo"] ?? currentIssue.assignedTo,
           };
           return HttpResponse.json(currentIssue);
         },
@@ -1125,8 +1126,8 @@ describe("update_issue", () => {
             ...currentIssue,
             status: "ignored",
             statusDetails: {
-              ignoreCount: lastRequestBody.ignoreCount,
-              ignoreWindow: lastRequestBody.ignoreWindow,
+              ignoreCount: lastRequestBody["ignoreCount"],
+              ignoreWindow: lastRequestBody["ignoreWindow"],
             },
           };
           return HttpResponse.json(currentIssue);
@@ -1758,7 +1759,7 @@ describe("update_issue", () => {
       },
       context: serverContext,
     });
-    expect(prepared.reason).toBe("Resolvedbecausefix deployed");
+    expect(prepared["reason"]).toBe("Resolvedbecausefix deployed");
   });
 
   it.each(["\0", " \0 \0 "])(

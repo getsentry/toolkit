@@ -87,7 +87,7 @@ function eventIdFrom(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const id = (value as Record<string, unknown>).event_id;
+  const id = (value as Record<string, unknown>)["event_id"];
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
@@ -103,7 +103,7 @@ function eventSummary(parsed: {
     ) {
       return [];
     }
-    const type = (item[0] as Record<string, unknown>).type;
+    const type = (item[0] as Record<string, unknown>)["type"];
     if (type !== "event" && type !== "transaction") {
       return [];
     }

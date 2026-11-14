@@ -81,8 +81,10 @@ describe("resolveCliMcpCredential", () => {
     await clearAuth();
     // Env tokens skip the stored-row normalization, so a pasted newline would
     // otherwise reach the MCP server as a broken Authorization header.
-    process.env.SENTRY_AUTH_TOKEN = "env-token\n";
-    process.env.SENTRY_HOST = "https://sentry.io";
+    // Env tokens skip the stored-row normalization, so a pasted newline would
+    // otherwise reach the MCP server as a broken Authorization header.
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token\n";
+    process.env["SENTRY_HOST"] = "https://sentry.io";
 
     await expect(
       resolveCliMcpAccessToken({
@@ -94,8 +96,8 @@ describe("resolveCliMcpCredential", () => {
 
   test("rejects an env token with embedded invalid characters", async () => {
     await clearAuth();
-    process.env.SENTRY_AUTH_TOKEN = "env token with space";
-    process.env.SENTRY_HOST = "https://sentry.io";
+    process.env["SENTRY_AUTH_TOKEN"] = "env token with space";
+    process.env["SENTRY_HOST"] = "https://sentry.io";
 
     await expect(
       resolveCliMcpAccessToken({
@@ -118,8 +120,8 @@ async function targetFlags(args: string[], sentryUrl?: string) {
 
 describe("withConfiguredTarget", () => {
   test("uses SENTRY_HOST before SENTRY_URL for self-hosted instances", async () => {
-    process.env.SENTRY_HOST = "http://sentry.internal:9000";
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "http://sentry.internal:9000";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
 
     expect(await targetFlags([])).toEqual({
       host: "sentry.internal:9000",
@@ -137,7 +139,7 @@ describe("withConfiguredTarget", () => {
   });
 
   test("translates a secure SENTRY_HOST origin into a host flag", async () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     // A documented `SENTRY_HOST=https://…` export must not reach the MCP
     // config raw (it rejects origins); it becomes a plain --host instead.

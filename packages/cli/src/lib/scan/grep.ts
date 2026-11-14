@@ -304,7 +304,7 @@ async function* grepFilesInternal(
 }
 
 function shouldUseWorkers(): boolean {
-  if (process.env.SENTRY_SCAN_DISABLE_WORKERS === "1") {
+  if (process.env["SENTRY_SCAN_DISABLE_WORKERS"] === "1") {
     return false;
   }
   return isWorkerSupported();

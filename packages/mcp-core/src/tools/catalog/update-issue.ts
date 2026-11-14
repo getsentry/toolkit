@@ -130,7 +130,7 @@ function inferIgnoreMode(params: IgnoreParams): IgnoreMode {
 }
 
 function getIssueStatusDetails(issue: Issue): Record<string, unknown> {
-  const statusDetails = issue.statusDetails;
+  const statusDetails = issue["statusDetails"];
 
   if (
     statusDetails &&
@@ -176,7 +176,7 @@ function getResolvedCommitId(
 ): string | undefined {
   const commit = statusDetails[key];
   if (commit && typeof commit === "object" && !Array.isArray(commit)) {
-    const id = (commit as Record<string, unknown>).id;
+    const id = (commit as Record<string, unknown>)["id"];
     if (typeof id === "string" && id.length > 0) {
       return id;
     }
@@ -198,7 +198,7 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
   const statusDetails = getIssueStatusDetails(issue);
 
   if (issue.status === "resolved") {
-    if (statusDetails.inNextRelease === true) {
+    if (statusDetails["inNextRelease"] === true) {
       return "resolvedInNextRelease";
     }
     if (getStatusDetailString(statusDetails, "inRelease")) {
@@ -415,7 +415,7 @@ function getIgnoreState(
 
   if (
     issue.substatus === "archived_until_escalating" ||
-    statusDetails.ignoreUntilEscalating === true
+    statusDetails["ignoreUntilEscalating"] === true
   ) {
     return {
       family: "untilEscalating",

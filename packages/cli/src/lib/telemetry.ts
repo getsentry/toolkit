@@ -374,7 +374,7 @@ export function isEpipeError(event: Sentry.ErrorEvent): boolean {
   }
 
   // Check Node.js system error context (set by the SDK for system errors)
-  const systemError = event.contexts?.node_system_error as
+  const systemError = event.contexts?.["node_system_error"] as
     | { code?: string }
     | undefined;
   if (systemError?.code === "EPIPE") {
@@ -403,7 +403,7 @@ export function isEbadfError(event: Sentry.ErrorEvent): boolean {
     }
   }
 
-  const systemError = event.contexts?.node_system_error as
+  const systemError = event.contexts?.["node_system_error"] as
     | { code?: string }
     | undefined;
   if (systemError?.code === "EBADF") {
@@ -530,7 +530,7 @@ const hasGetSystemErrorMap = (() => {
   try {
     // Dynamic require to avoid bundler issues — the check only matters at runtime
     const util = _require("node:util") as Record<string, unknown>;
-    return typeof util.getSystemErrorMap === "function";
+    return typeof util["getSystemErrorMap"] === "function";
   } catch {
     return false;
   }
@@ -632,7 +632,7 @@ export function initSentry(
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
   manualHttpTracing =
-    libraryMode || typeof process.versions.bun !== "undefined";
+    libraryMode || typeof process.versions["bun"] !== "undefined";
 
   /**
    * Ensure frame paths are absolute so Sentry's symbolicator can match them.
@@ -835,7 +835,7 @@ export function initSentry(
   }
 
   if (client?.getOptions().enabled) {
-    const isBun = typeof process.versions.bun !== "undefined";
+    const isBun = typeof process.versions["bun"] !== "undefined";
     const runtime = isBun ? "bun" : "node";
 
     // NodeClient defaults runtime to { name: 'node' }. Override it so
@@ -843,7 +843,7 @@ export function initSentry(
     const opts = client.getOptions();
     opts.runtime = {
       name: runtime,
-      version: isBun ? process.versions.bun : process.version,
+      version: isBun ? process.versions["bun"] : process.version,
     };
 
     // Tag whether running under Bun or Node.

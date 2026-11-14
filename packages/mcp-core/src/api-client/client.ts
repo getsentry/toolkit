@@ -692,7 +692,7 @@ export class SentryApiService {
       if (authorization === null) {
         throw new ConfigurationError("Malformed authentication token");
       }
-      headers.Authorization = authorization;
+      headers["Authorization"] = authorization;
     }
     if (this.clientId) {
       headers["X-Sentry-MCP-Client-Id"] = this.clientId;
@@ -2653,7 +2653,7 @@ export class SentryApiService {
     const detector = DetectorSchema.parse(response);
     return {
       detector,
-      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.queryObj),
+      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.["queryObj"]),
     };
   }
 
@@ -3752,21 +3752,23 @@ export class SentryApiService {
     // The API response doesn't match our expected structure at all
     const bodyObj = body as Record<string, unknown>;
     const eventType =
-      typeof bodyObj.type === "string" ? bodyObj.type : String(bodyObj.type);
+      typeof bodyObj["type"] === "string"
+        ? bodyObj["type"]
+        : String(bodyObj["type"]);
 
     logIssue(`Event failed schema validation: ${eventType}`, {
       extra: {
         eventType,
-        eventId: bodyObj.id,
+        eventId: bodyObj["id"],
         validationError: parseResult.error.message,
         validationIssues: parseResult.error.issues,
         // Log the container type, not user-provided extra data.
         contextType:
-          bodyObj.context === null
+          bodyObj["context"] === null
             ? "null"
-            : Array.isArray(bodyObj.context)
+            : Array.isArray(bodyObj["context"])
               ? "array"
-              : typeof bodyObj.context,
+              : typeof bodyObj["context"],
       },
     });
 

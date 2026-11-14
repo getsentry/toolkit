@@ -497,20 +497,20 @@ describe("classifySilenced", () => {
  * `SENTRY_HOST` is cleared for the duration since it takes precedence.
  */
 function withSentryUrl(url: string, fn: () => void): void {
-  const savedUrl = process.env.SENTRY_URL;
-  const savedHost = process.env.SENTRY_HOST;
-  process.env.SENTRY_URL = url;
-  delete process.env.SENTRY_HOST;
+  const savedUrl = process.env["SENTRY_URL"];
+  const savedHost = process.env["SENTRY_HOST"];
+  process.env["SENTRY_URL"] = url;
+  delete process.env["SENTRY_HOST"];
   try {
     fn();
   } finally {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     }
   }
 }

@@ -205,23 +205,23 @@ export type McpMergedArgs = {
  */
 export function parseMcpEnv(env: NodeJS.ProcessEnv): McpEnvArgs {
   const fromEnv: McpEnvArgs = {};
-  if (env.MCP_URL) {
-    fromEnv.mcpUrl = env.MCP_URL;
+  if (env["MCP_URL"]) {
+    fromEnv.mcpUrl = env["MCP_URL"];
   }
-  if (env.OPENAI_MODEL) {
-    fromEnv.openaiModel = env.OPENAI_MODEL;
+  if (env["OPENAI_MODEL"]) {
+    fromEnv.openaiModel = env["OPENAI_MODEL"];
   }
-  if (env.ANTHROPIC_MODEL) {
-    fromEnv.anthropicModel = env.ANTHROPIC_MODEL;
+  if (env["ANTHROPIC_MODEL"]) {
+    fromEnv.anthropicModel = env["ANTHROPIC_MODEL"];
   }
-  if (env.EMBEDDED_AGENT_PROVIDER) {
-    fromEnv.agentProvider = env.EMBEDDED_AGENT_PROVIDER;
+  if (env["EMBEDDED_AGENT_PROVIDER"]) {
+    fromEnv.agentProvider = env["EMBEDDED_AGENT_PROVIDER"];
   }
-  if (env.MCP_SKILLS) {
-    fromEnv.skills = env.MCP_SKILLS;
+  if (env["MCP_SKILLS"]) {
+    fromEnv.skills = env["MCP_SKILLS"];
   }
-  if (env.MCP_DISABLE_SKILLS) {
-    fromEnv.disableSkills = env.MCP_DISABLE_SKILLS;
+  if (env["MCP_DISABLE_SKILLS"]) {
+    fromEnv.disableSkills = env["MCP_DISABLE_SKILLS"];
   }
   return fromEnv;
 }

@@ -172,10 +172,10 @@ describe("parseOrgProjectArg", () => {
     let savedSentryHost: string | undefined;
 
     beforeEach(async () => {
-      savedSentryUrl = process.env.SENTRY_URL;
-      savedSentryHost = process.env.SENTRY_HOST;
-      delete process.env.SENTRY_URL;
-      delete process.env.SENTRY_HOST;
+      savedSentryUrl = process.env["SENTRY_URL"];
+      savedSentryHost = process.env["SENTRY_HOST"];
+      delete process.env["SENTRY_URL"];
+      delete process.env["SENTRY_HOST"];
       const { resetEnvTokenHostForTesting } =
         await import("../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
@@ -183,14 +183,14 @@ describe("parseOrgProjectArg", () => {
 
     afterEach(async () => {
       if (savedSentryUrl !== undefined) {
-        process.env.SENTRY_URL = savedSentryUrl;
+        process.env["SENTRY_URL"] = savedSentryUrl;
       } else {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       }
       if (savedSentryHost !== undefined) {
-        process.env.SENTRY_HOST = savedSentryHost;
+        process.env["SENTRY_HOST"] = savedSentryHost;
       } else {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       }
       const { resetEnvTokenHostForTesting } =
         await import("../../src/lib/env-token-host.js");
@@ -231,7 +231,8 @@ describe("parseOrgProjectArg", () => {
 
     test("self-hosted URL extracts org when token is scoped to that host", () => {
       // Pin env-token to sentry.example.com so the URL-arg's host matches.
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      // Pin env-token to sentry.example.com so the URL-arg's host matches.
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       expect(
         parseOrgProjectArg(
           "https://sentry.example.com/organizations/acme-corp/issues/99/",
@@ -559,22 +560,22 @@ describe("parseIssueArg", () => {
     let savedSentryHost: string | undefined;
 
     beforeEach(() => {
-      savedSentryUrl = process.env.SENTRY_URL;
-      savedSentryHost = process.env.SENTRY_HOST;
-      delete process.env.SENTRY_URL;
-      delete process.env.SENTRY_HOST;
+      savedSentryUrl = process.env["SENTRY_URL"];
+      savedSentryHost = process.env["SENTRY_HOST"];
+      delete process.env["SENTRY_URL"];
+      delete process.env["SENTRY_HOST"];
     });
 
     afterEach(() => {
       if (savedSentryUrl !== undefined) {
-        process.env.SENTRY_URL = savedSentryUrl;
+        process.env["SENTRY_URL"] = savedSentryUrl;
       } else {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       }
       if (savedSentryHost !== undefined) {
-        process.env.SENTRY_HOST = savedSentryHost;
+        process.env["SENTRY_HOST"] = savedSentryHost;
       } else {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       }
     });
 
@@ -613,7 +614,7 @@ describe("parseIssueArg", () => {
     });
 
     test("self-hosted issue URL with query params (requires matching token host)", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       expect(
         parseIssueArg(
           "https://sentry.example.com/organizations/acme/issues/32886/?project=2",
@@ -695,7 +696,7 @@ describe("parseIssueArg", () => {
     });
 
     test("self-hosted share URL returns share type (requires matching token host)", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       expect(
         parseIssueArg(
           "https://sentry.example.com/share/issue/aabbccdd11223344aabbccdd11223344/",

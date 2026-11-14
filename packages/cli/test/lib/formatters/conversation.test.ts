@@ -118,8 +118,8 @@ describe("formatConversationTable", () => {
   });
 
   test("links conversation IDs to Sentry", () => {
-    const previousPlainOutput = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    const previousPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     try {
       const webUrl =
         "https://sentry.io/organizations/test-org/explore/agents/conversations/conv-abc-123/";
@@ -127,9 +127,9 @@ describe("formatConversationTable", () => {
       expect(result).toContain(`]8;;${webUrl}`);
     } finally {
       if (previousPlainOutput === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = previousPlainOutput;
+        process.env["SENTRY_PLAIN_OUTPUT"] = previousPlainOutput;
       }
     }
   });
