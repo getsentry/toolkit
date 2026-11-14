@@ -13,7 +13,6 @@ import {
   type BaseFlags,
   type Command,
   type CommandContext,
-  type CommandFunction,
 } from "@stricli/core";
 import { afterEach, beforeEach, expect } from "vitest";
 import {
@@ -308,7 +307,7 @@ export function installFetchMock(
     const body =
       init?.body && typeof init.body === "string" ? init.body : undefined;
 
-    calls.push({ url, method, body });
+    calls.push(body === undefined ? { url, method } : { url, method, body });
 
     for (const route of routes) {
       // Method filter
@@ -390,27 +389,35 @@ export function parseFailure(error: unknown): Error {
 }
 
 /**
- * A loaded command function as tests call it. Tests pass a context that
- * holds only the fields the command reads, so `this` is a partial context.
+ * The context a test passes to a command: only the fields, and the parts of
+ * them, that the command reads.
  */
+export type TestCommandContext<CONTEXT extends CommandContext> = {
+  readonly [K in keyof CONTEXT]?: Partial<CONTEXT[K]>;
+};
+
+/** A loaded command function as tests call it. */
 export type TestCommandFunction<CONTEXT extends CommandContext> = (
-  this: Partial<CONTEXT>,
+  this: TestCommandContext<CONTEXT>,
   flags: BaseFlags,
   ...args: BaseArgs
-) => ReturnType<CommandFunction<BaseFlags, BaseArgs, CONTEXT>>;
+) => Promise<void | Error>;
 
 /**
  * Load the function behind a lazily loaded command. Stricli's loader
  * resolves to either the function or a module whose default export is the
- * function (`CommandModule`); this returns the function in both cases.
+ * function (`CommandModule`); this returns the function in both cases,
+ * always as an async function.
  */
 export async function loadCommand<CONTEXT extends CommandContext>(
   command: Command<CONTEXT>,
 ): Promise<TestCommandFunction<CONTEXT>> {
   const loaded = await command.loader();
   const func = typeof loaded === "function" ? loaded : loaded.default;
-  // The command reads only some context fields; each test supplies those.
-  return func as TestCommandFunction<CONTEXT>;
+  return async function (this: TestCommandContext<CONTEXT>, flags, ...args) {
+    // The command reads only the context fields each test supplies.
+    return await func.call(this as CONTEXT, flags, ...args);
+  };
 }
 
 /**
