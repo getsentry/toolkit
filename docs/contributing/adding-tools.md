@@ -205,9 +205,6 @@ session. Spend those tokens only on text that changes what the model does.
 
 `tool-descriptions.test.ts` enforces the limits, rejects `<examples>` and
 `<hints>`, and fails when a tool description names one of its input fields.
-`tool-descriptions-baseline.json` lists the few params that still exceed the
-limit. The baseline only shrinks: a listed entry fails when it grows, and a
-stale entry fails until you delete it.
 
 ## Step 2: Implement the Handler
 

@@ -92,7 +92,7 @@ export const MAX_TOOL_DESCRIPTION_LENGTH = 512;
 
 /**
  * Longest allowed param description, in characters. No provider limits it;
- * one or two sentences fit. tool-descriptions-baseline.json lists exceptions.
+ * one or two sentences fit.
  */
 export const MAX_PARAM_DESCRIPTION_LENGTH = 256;
 

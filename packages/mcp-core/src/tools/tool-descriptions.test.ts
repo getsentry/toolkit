@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { zodFieldMapToJsonSchema } from "./catalog-runtime/schema.js";
 import tools from "./index.js";
@@ -13,15 +10,6 @@ import {
 // Enforces the description rules in docs/contributing/adding-tools.md
 // ("Descriptions and Params"). The failure messages are the fix instructions,
 // so they name the fix and the shortcuts that only hide the problem.
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BASELINE_PATH = path.join(__dirname, "tool-descriptions-baseline.json");
-
-// Lengths that may exceed the limit, keyed by `tool` or `tool:param.path`.
-// Shrink-only: an entry fails when the text grows, and fails when it is stale.
-const baseline: Record<string, number> = JSON.parse(
-  fs.readFileSync(BASELINE_PATH, "utf8"),
-);
 
 const FORBIDDEN_TAGS = ["<examples>", "<hints>"];
 
@@ -128,30 +116,12 @@ describe("tool descriptions", () => {
   const measured = measureAll();
 
   test("stay within the length limits", () => {
-    const failures = measured.flatMap(({ key, length, limit }) => {
-      const allowed = Math.max(limit, baseline[key] ?? 0);
-      return length > allowed ? [`${key}: ${length} > ${allowed}`] : [];
-    });
+    const failures = measured.flatMap(({ key, length, limit }) =>
+      length > limit ? [`${key}: ${length} > ${limit}`] : [],
+    );
     expect(
       failures,
-      "Cut the tool description to what the tool does and returns, and move field meaning into describe() on the param. Cut a param description to what the value is and its format or constraint; move cross-field rules into handler validation. Do not raise the baseline or split text into a computed string to pass.",
-    ).toEqual([]);
-  });
-
-  test("baseline has no stale entries", () => {
-    const byKey = new Map(measured.map((m) => [m.key, m]));
-    const stale = Object.entries(baseline).flatMap(([key, recorded]) => {
-      const current = byKey.get(key);
-      if (!current) return [`${key}: no longer exists`];
-      if (current.length <= current.limit) return [`${key}: now within limit`];
-      if (current.length < recorded) {
-        return [`${key}: shrank to ${current.length}, record that length`];
-      }
-      return [];
-    });
-    expect(
-      stale,
-      "Update tool-descriptions-baseline.json: delete entries within the limit and record shrunk lengths.",
+      "Cut the tool description to what the tool does and returns, and move field meaning into describe() on the param. Cut a param description to what the value is and its format or constraint; move cross-field rules into handler validation. Do not split text into a computed string to pass.",
     ).toEqual([]);
   });
 
