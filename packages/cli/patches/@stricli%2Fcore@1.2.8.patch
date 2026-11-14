@@ -211,7 +211,7 @@ index a9afbc1..433eefb 100644
    checkForInvalidVariadicSeparators(flags);
    let loader;
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index 111d1fd..4fdc1d1 100644
+index 111d1fd..bc2bb46 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
 @@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
@@ -280,8 +280,30 @@ index 111d1fd..4fdc1d1 100644
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
+@@ -645,7 +688,9 @@ interface OptionalBooleanFlagParameter extends BaseBooleanFlagParameter {
+      * Optional parameters should not have default values.
+      * This flag should be required if a value will always be provided.
+      */
+-    readonly default?: undefined;
++    // PATCH(getsentry/cli): `never` instead of `undefined`, so this still
++    // extends the base `default?: T` under exactOptionalPropertyTypes (TS2430).
++    readonly default?: never;
+ }
+ type BooleanFlagParameter = RequiredBooleanFlagParameter | OptionalBooleanFlagParameter;
+ interface BaseCounterFlagParameter extends BaseFlagParameter {
+@@ -824,7 +869,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
+      * Optional parameters should not have default values.
+      * This flag should be required if a value will always be provided.
+      */
+-    readonly default?: undefined;
++    // PATCH(getsentry/cli): `never` instead of `undefined`, so this still
++    // extends the base `default?: T` under exactOptionalPropertyTypes (TS2430).
++    readonly default?: never;
+     /**
+      * Parameter does not extend array and cannot be set as variadic.
+      */
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 111d1fd..4fdc1d1 100644
+index 111d1fd..bc2bb46 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
@@ -350,6 +372,28 @@ index 111d1fd..4fdc1d1 100644
  }
  /**
   * Configuration for controlling the behavior of completion proposals.
+@@ -645,7 +688,9 @@ interface OptionalBooleanFlagParameter extends BaseBooleanFlagParameter {
+      * Optional parameters should not have default values.
+      * This flag should be required if a value will always be provided.
+      */
+-    readonly default?: undefined;
++    // PATCH(getsentry/cli): `never` instead of `undefined`, so this still
++    // extends the base `default?: T` under exactOptionalPropertyTypes (TS2430).
++    readonly default?: never;
+ }
+ type BooleanFlagParameter = RequiredBooleanFlagParameter | OptionalBooleanFlagParameter;
+ interface BaseCounterFlagParameter extends BaseFlagParameter {
+@@ -824,7 +869,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
+      * Optional parameters should not have default values.
+      * This flag should be required if a value will always be provided.
+      */
+-    readonly default?: undefined;
++    // PATCH(getsentry/cli): `never` instead of `undefined`, so this still
++    // extends the base `default?: T` under exactOptionalPropertyTypes (TS2430).
++    readonly default?: never;
+     /**
+      * Parameter does not extend array and cannot be set as variadic.
+      */
 diff --git a/dist/index.js b/dist/index.js
 index f766396..63d3a08 100644
 --- a/dist/index.js
