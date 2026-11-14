@@ -8,7 +8,15 @@
  * to control the answer.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Mock isatty so deleteCommand's non-interactive guard passes.
 // Bun's ESM wrapper for CJS built-ins exposes `default` + `ReadStream` +
@@ -142,10 +150,12 @@ function createMockContext() {
 }
 
 describe("project delete", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let deleteProjectSpy: ReturnType<typeof spyOn>;
-  let getOrganizationSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundTargetSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let deleteProjectSpy: MockInstance<(typeof apiClient)["deleteProject"]>;
+  let getOrganizationSpy: MockInstance<(typeof apiClient)["getOrganization"]>;
+  let resolveProjectBoundTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
 
   beforeEach(() => {
     getProjectSpy = vi.spyOn(apiClient, "getProject");
@@ -429,9 +439,11 @@ describe("project delete", () => {
  * returns a controllable value).
  */
 describe("project delete — interactive confirmation", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let deleteProjectSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundTargetSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let deleteProjectSpy: MockInstance<(typeof apiClient)["deleteProject"]>;
+  let resolveProjectBoundTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
 
   function createPromptMockContext() {
     const stdoutWrite = vi.fn(() => true);

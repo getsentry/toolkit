@@ -6,7 +6,15 @@
  * the func() body without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { viewCommand } from "../../../src/commands/log/view.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -94,11 +102,15 @@ function createMockContext() {
 }
 
 describe("viewCommand.func", () => {
-  let getLogsSpy: ReturnType<typeof spyOn>;
-  let getLogItemDetailSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundSlugSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let getLogsSpy: MockInstance<(typeof apiClient)["getLogs"]>;
+  let getLogItemDetailSpy: MockInstance<(typeof apiClient)["getLogItemDetail"]>;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveProjectBoundSlugSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundSlug"]
+  >;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   beforeEach(() => {
     getLogsSpy = vi.spyOn(apiClient, "getLogs");

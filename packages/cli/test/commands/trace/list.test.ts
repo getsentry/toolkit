@@ -8,7 +8,15 @@
  * the func() body without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listCommand, parseSort } from "../../../src/commands/trace/list.js";
 import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 
@@ -121,8 +129,12 @@ describe("parseSort", () => {
 // ============================================================================
 
 describe("resolveProjectBoundFromArg", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   beforeEach(async () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -262,12 +274,20 @@ describe("resolveProjectBoundFromArg", () => {
 // ============================================================================
 
 describe("listCommand.func", () => {
-  let listTransactionsSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listTransactionsSpy: MockInstance<(typeof apiClient)["listTransactions"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   const sampleTraces: TransactionListItem[] = [
     {

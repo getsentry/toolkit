@@ -5,7 +5,15 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { listCommand } from "../../../src/commands/trial/list.js";
 
@@ -122,8 +130,10 @@ const EXPIRED_TRIAL: ProductTrial = {
 // ---------------------------------------------------------------------------
 
 describe("trial list command", () => {
-  let getCustomerTrialInfoSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getCustomerTrialInfoSpy: MockInstance<
+    (typeof apiClient)["getCustomerTrialInfo"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getCustomerTrialInfoSpy = vi.spyOn(apiClient, "getCustomerTrialInfo");

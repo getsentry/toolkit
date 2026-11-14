@@ -8,7 +8,15 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { setCommitsCommand } from "../../../src/commands/release/set-commits.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -78,8 +86,10 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release set-commits --commit", () => {
-  let setCommitsWithRefsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsWithRefsSpy: MockInstance<
+    (typeof apiClient)["setCommitsWithRefs"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     setCommitsWithRefsSpy = vi.spyOn(apiClient, "setCommitsWithRefs");
@@ -301,8 +311,10 @@ describe("release set-commits --commit", () => {
 });
 
 describe("release set-commits --clear", () => {
-  let setCommitsWithRefsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsWithRefsSpy: MockInstance<
+    (typeof apiClient)["setCommitsWithRefs"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     setCommitsWithRefsSpy = vi.spyOn(apiClient, "setCommitsWithRefs");
@@ -341,8 +353,8 @@ describe("release set-commits --clear", () => {
 });
 
 describe("release set-commits --auto", () => {
-  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     setCommitsAutoSpy = vi.spyOn(apiClient, "setCommitsAuto");
@@ -382,9 +394,9 @@ describe("release set-commits --auto", () => {
 });
 
 describe("release set-commits (default mode)", () => {
-  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
-  let setCommitsLocalSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     setCommitsAutoSpy = vi.spyOn(apiClient, "setCommitsAuto");
@@ -506,9 +518,9 @@ describe("release set-commits (default mode)", () => {
 });
 
 describe("release set-commits without a git checkout", () => {
-  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
-  let setCommitsLocalSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
   let noGitDir: string;
 
   beforeEach(() => {
@@ -567,9 +579,9 @@ describe("release set-commits without a git checkout", () => {
 });
 
 describe("release set-commits --path", () => {
-  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
-  let setCommitsLocalSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   // Use the actual repo root as cwd so getCommitLog can read git history
   const repoRoot = new URL("../../..", import.meta.url).pathname.replace(
@@ -708,10 +720,10 @@ describe("release set-commits --path", () => {
 });
 
 describe("release set-commits --from", () => {
-  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
-  let setCommitsLocalSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let getCommitLogSpy: ReturnType<typeof spyOn>;
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let getCommitLogSpy: MockInstance<(typeof gitLib)["getCommitLog"]>;
 
   // Use the actual repo root as cwd so the git remote/shallow helpers resolve.
   const repoRoot = new URL("../../..", import.meta.url).pathname.replace(

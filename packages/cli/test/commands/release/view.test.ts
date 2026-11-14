@@ -5,7 +5,15 @@
  * per-project health/adoption data rendering.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { viewCommand } from "../../../src/commands/release/view.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -144,8 +152,8 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release view", () => {
-  let getReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getReleaseSpy: MockInstance<(typeof apiClient)["getRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getReleaseSpy = vi.spyOn(apiClient, "getRelease");

@@ -7,7 +7,15 @@
 
 import { execFileSync } from "node:child_process";
 import { buildApplication, run } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { exploreCommand } from "../../src/commands/explore.js";
 import { buildContext } from "../../src/context.js";
 import { createSentrySDK } from "../../src/index.js";
@@ -170,15 +178,23 @@ const MOCK_REPLAYS_RESPONSE = [
   },
 ];
 
-let queryEventsSpy: ReturnType<typeof spyOn>;
-let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
-let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
-let listReplaysSpy: ReturnType<typeof spyOn>;
-let resolveTargetSpy: ReturnType<typeof spyOn>;
-let resolveProjectIdSpy: ReturnType<typeof spyOn>;
-let resolveCursorSpy: ReturnType<typeof spyOn>;
-let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+let queryEventsSpy: MockInstance<(typeof apiClient)["queryEvents"]>;
+let queryEventsTimeSeriesSpy: MockInstance<
+  (typeof apiClient)["queryEventsTimeSeries"]
+>;
+let queryMetricsMetaSpy: MockInstance<(typeof apiClient)["queryMetricsMeta"]>;
+let listReplaysSpy: MockInstance<(typeof apiClient)["listReplays"]>;
+let resolveTargetSpy: MockInstance<
+  (typeof resolveTarget)["resolveOrgOptionalTarget"]
+>;
+let resolveProjectIdSpy: MockInstance<
+  (typeof resolveTarget)["resolveLogProjectId"]
+>;
+let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+let advancePaginationStateSpy: MockInstance<
+  (typeof paginationDb)["advancePaginationState"]
+>;
+let hasPreviousPageSpy: MockInstance<(typeof paginationDb)["hasPreviousPage"]>;
 
 const MOCK_METRICS_META = [
   { name: "llm.token_usage", type: "distribution", unit: "none" },

@@ -6,7 +6,15 @@
  */
 
 import type { SentryContext } from "../../../src/context.js";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   archiveCommand,
   parseUntilSpec,
@@ -226,8 +234,8 @@ describe("parseUntilSpec", () => {
 // ── archiveCommand.func() integration tests ────────────────────────
 
 describe("archiveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
   let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {

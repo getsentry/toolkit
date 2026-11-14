@@ -7,7 +7,15 @@
  * Note: Core trace target parsing tests are in test/lib/trace-target.test.ts.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { parseTraceViewInput } from "../../../src/commands/trace/view.js";
 import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 
@@ -82,7 +90,9 @@ describe("parseTraceViewInput", () => {
 
 describe("resolveProjectBoundSlug", () => {
   const HINT = "sentry trace view [<org>/<project>/]<trace-id>";
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");

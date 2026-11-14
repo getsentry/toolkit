@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { startCommand } from "../../../src/commands/trial/start.js";
 
@@ -108,9 +116,11 @@ const MOCK_TRIAL: ProductTrial = {
 // ---------------------------------------------------------------------------
 
 describe("trial start command", () => {
-  let getProductTrialsSpy: ReturnType<typeof spyOn>;
-  let startProductTrialSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getProductTrialsSpy: MockInstance<(typeof apiClient)["getProductTrials"]>;
+  let startProductTrialSpy: MockInstance<
+    (typeof apiClient)["startProductTrial"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getProductTrialsSpy = vi.spyOn(apiClient, "getProductTrials");
@@ -314,10 +324,12 @@ function makeCustomerInfo(
 }
 
 describe("trial start plan", () => {
-  let getCustomerTrialInfoSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let openBrowserSpy: ReturnType<typeof spyOn>;
-  let generateQRCodeSpy: ReturnType<typeof spyOn>;
+  let getCustomerTrialInfoSpy: MockInstance<
+    (typeof apiClient)["getCustomerTrialInfo"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let openBrowserSpy: MockInstance<(typeof browserMod)["openBrowser"]>;
+  let generateQRCodeSpy: MockInstance<(typeof qrcodeMod)["generateQRCode"]>;
 
   beforeEach(() => {
     getCustomerTrialInfoSpy = vi.spyOn(apiClient, "getCustomerTrialInfo");

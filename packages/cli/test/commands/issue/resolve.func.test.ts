@@ -4,7 +4,15 @@
  * Tests for `sentry issue resolve` and `sentry issue unresolve` func() bodies.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { resolveCommand } from "../../../src/commands/issue/resolve.js";
 
 vi.mock(
@@ -90,8 +98,8 @@ function createMockContext() {
 }
 
 describe("resolveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
@@ -263,8 +271,8 @@ describe("resolveCommand.func()", () => {
 });
 
 describe("unresolveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");

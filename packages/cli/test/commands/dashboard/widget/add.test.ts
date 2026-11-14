@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { addCommand } from "../../../../src/commands/dashboard/widget/add.js";
 
@@ -106,9 +114,11 @@ const sampleDashboard: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard widget add", () => {
-  let getDashboardSpy: ReturnType<typeof spyOn>;
-  let updateDashboardSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
+  let getDashboardSpy: MockInstance<(typeof apiClient)["getDashboard"]>;
+  let updateDashboardSpy: MockInstance<(typeof apiClient)["updateDashboard"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
 
   beforeEach(() => {
     getDashboardSpy = vi.spyOn(apiClient, "getDashboard");

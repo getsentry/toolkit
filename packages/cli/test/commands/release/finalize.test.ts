@@ -2,7 +2,15 @@
  * Release Finalize Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { finalizeCommand } from "../../../src/commands/release/finalize.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -68,8 +76,8 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release finalize", () => {
-  let updateReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let updateReleaseSpy: MockInstance<(typeof apiClient)["updateRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     updateReleaseSpy = vi.spyOn(apiClient, "updateRelease");

@@ -7,7 +7,15 @@
  * and pagination DB functions without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { eventsCommand } from "../../../src/commands/issue/events.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
@@ -125,11 +133,15 @@ const sampleEvents: IssueEvent[] = [
 // ============================================================================
 
 describe("eventsCommand.func()", () => {
-  let listIssueEventsSpy: ReturnType<typeof spyOn>;
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listIssueEventsSpy: MockInstance<(typeof apiClient)["listIssueEvents"]>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   function createMockContext() {
     const stdoutWrite = vi.fn(() => true);

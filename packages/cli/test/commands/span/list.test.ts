@@ -8,7 +8,15 @@
  * - listCommand.func (project mode): new project-scoped behavior
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   listCommand,
   parseSort,
@@ -201,11 +209,17 @@ type ListFunc = (
 
 describe("listCommand.func (trace mode)", () => {
   let func: ListFunc;
-  let listSpansSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listSpansSpy: MockInstance<(typeof apiClient)["listSpans"]>;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   function createContext() {
     const stdoutChunks: string[] = [];

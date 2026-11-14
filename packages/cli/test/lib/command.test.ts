@@ -15,7 +15,15 @@ import {
   run,
   text_en,
 } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   applyLoggingFlags,
   applyOrgProjectFlags,
@@ -209,8 +217,8 @@ describe("buildCommand", () => {
 });
 
 describe("buildCommand telemetry integration", () => {
-  let setTagSpy: ReturnType<typeof spyOn>;
-  let setContextSpy: ReturnType<typeof spyOn>;
+  let setTagSpy: MockInstance<(typeof Sentry)["setTag"]>;
+  let setContextSpy: MockInstance<(typeof Sentry)["setContext"]>;
 
   beforeEach(() => {
     setTagSpy = vi.spyOn(Sentry, "setTag");

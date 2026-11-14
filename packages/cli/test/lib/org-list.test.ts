@@ -6,7 +6,15 @@
  * dispatchOrgScopedList (with and without overrides, metadata-only config).
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -118,7 +126,7 @@ import * as resolveTarget from "../../src/lib/resolve-target.js";
  * Bypass the withProgress spinner in all tests — prevents real stderr
  * timers from piling up during full-suite runs and causing 5s timeouts.
  */
-let withProgressSpy: ReturnType<typeof spyOn>;
+let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 beforeEach(() => {
   withProgressSpy = vi
     .spyOn(polling, "withProgress")
@@ -220,7 +228,9 @@ describe("fetchOrgSafe", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchAllOrgs", () => {
-  let listOrganizationsSpy: ReturnType<typeof spyOn>;
+  let listOrganizationsSpy: MockInstance<
+    (typeof apiClient)["listOrganizations"]
+  >;
 
   beforeEach(() => {
     listOrganizationsSpy = vi.spyOn(apiClient, "listOrganizations");
@@ -675,7 +685,9 @@ describe("handleExplicitProject", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleProjectSearch", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -880,12 +892,22 @@ describe("handleProjectSearch", () => {
 // ---------------------------------------------------------------------------
 
 describe("dispatchOrgScopedList", () => {
-  let getDefaultOrganizationSpy: ReturnType<typeof spyOn>;
-  let resolveAllTargetsSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+  let getDefaultOrganizationSpy: MockInstance<
+    (typeof defaults)["getDefaultOrganization"]
+  >;
+  let resolveAllTargetsSpy: MockInstance<
+    (typeof resolveTarget)["resolveAllTargets"]
+  >;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let resolveEffectiveOrgSpy: MockInstance<
+    (typeof region)["resolveEffectiveOrg"]
+  >;
 
   beforeEach(() => {
     getDefaultOrganizationSpy = vi.spyOn(defaults, "getDefaultOrganization");
@@ -1258,7 +1280,9 @@ describe("dispatchOrgScopedList name filter", () => {
     { id: "2", name: "api" },
     { id: "3", name: "web-backend" },
   ];
-  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+  let resolveEffectiveOrgSpy: MockInstance<
+    (typeof region)["resolveEffectiveOrg"]
+  >;
 
   beforeEach(() => {
     resolveEffectiveOrgSpy = vi

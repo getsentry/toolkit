@@ -2,7 +2,15 @@
  * Release Create Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { createCommand } from "../../../src/commands/release/create.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -78,8 +86,8 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release create", () => {
-  let createReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let createReleaseSpy: MockInstance<(typeof apiClient)["createRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     createReleaseSpy = vi.spyOn(apiClient, "createRelease");

@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   parseSpanViewInput,
   viewCommand,
@@ -268,9 +276,11 @@ function makeTraceSpan(spanId: string, children: unknown[] = []): unknown {
 
 describe("viewCommand.func", () => {
   let func: ViewFunc;
-  let getDetailedTraceSpy: ReturnType<typeof spyOn>;
-  let getSpanDetailsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let getDetailedTraceSpy: MockInstance<(typeof apiClient)["getDetailedTrace"]>;
+  let getSpanDetailsSpy: MockInstance<(typeof apiClient)["getSpanDetails"]>;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   function createContext() {
     const stdoutChunks: string[] = [];

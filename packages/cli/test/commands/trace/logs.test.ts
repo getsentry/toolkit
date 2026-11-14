@@ -19,6 +19,7 @@ import {
   type mock,
   test,
   vi,
+  type MockInstance,
 } from "vitest";
 import { ArgumentParseError } from "@stricli/core";
 import { logsCommand } from "../../../src/commands/trace/logs.js";
@@ -153,11 +154,13 @@ function collectMockOutput(
 }
 
 describe("logsCommand.func", () => {
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi.spyOn(apiClient, "listTraceLogs");

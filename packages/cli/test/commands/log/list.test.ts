@@ -19,7 +19,15 @@
  */
 
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listCommand } from "../../../src/commands/log/list.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -325,7 +333,7 @@ const newerLogs: SentryLog[] = [
 // Auth setup — mock getAuthConfig for all tests (auth guard added in #611)
 // ============================================================================
 
-let getAuthConfigSpy: ReturnType<typeof spyOn>;
+let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
 
 beforeEach(() => {
   getAuthConfigSpy = vi.spyOn(dbAuth, "getAuthConfig").mockReturnValue({
@@ -343,9 +351,11 @@ afterEach(() => {
 // ============================================================================
 
 describe("listCommand.func — standard mode", () => {
-  let listLogsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgProjectSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let listLogsSpy: MockInstance<(typeof apiClient)["listLogs"]>;
+  let resolveOrgProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     listLogsSpy = vi.spyOn(apiClient, "listLogs");
@@ -564,10 +574,12 @@ describe("listCommand.func — standard mode", () => {
 // ============================================================================
 
 describe("listCommand.func — trace mode", () => {
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveTraceOrgSpy: ReturnType<typeof spyOn>;
-  let warnIfNormalizedSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveTraceOrgSpy: MockInstance<(typeof traceTarget)["resolveTraceOrg"]>;
+  let warnIfNormalizedSpy: MockInstance<
+    (typeof traceTarget)["warnIfNormalized"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi.spyOn(apiClient, "listTraceLogs");
@@ -746,12 +758,16 @@ describe("listCommand.func — trace mode", () => {
 // ============================================================================
 
 describe("listCommand.func — positional disambiguation", () => {
-  let listLogsSpy: ReturnType<typeof spyOn>;
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgProjectSpy: ReturnType<typeof spyOn>;
-  let resolveTraceOrgSpy: ReturnType<typeof spyOn>;
-  let warnIfNormalizedSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let listLogsSpy: MockInstance<(typeof apiClient)["listLogs"]>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveOrgProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
+  let resolveTraceOrgSpy: MockInstance<(typeof traceTarget)["resolveTraceOrg"]>;
+  let warnIfNormalizedSpy: MockInstance<
+    (typeof traceTarget)["warnIfNormalized"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     listLogsSpy = vi.spyOn(apiClient, "listLogs").mockResolvedValue([]);
@@ -826,10 +842,12 @@ describe("listCommand.func — positional disambiguation", () => {
 // ============================================================================
 
 describe("listCommand.func — period flag", () => {
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveTraceOrgSpy: ReturnType<typeof spyOn>;
-  let warnIfNormalizedSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveTraceOrgSpy: MockInstance<(typeof traceTarget)["resolveTraceOrg"]>;
+  let warnIfNormalizedSpy: MockInstance<
+    (typeof traceTarget)["warnIfNormalized"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi
@@ -896,9 +914,11 @@ describe("listCommand.func — period flag", () => {
 // ============================================================================
 
 describe("listCommand.func — trace mode org resolution failure", () => {
-  let resolveTraceOrgSpy: ReturnType<typeof spyOn>;
-  let warnIfNormalizedSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let resolveTraceOrgSpy: MockInstance<(typeof traceTarget)["resolveTraceOrg"]>;
+  let warnIfNormalizedSpy: MockInstance<
+    (typeof traceTarget)["warnIfNormalized"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     resolveTraceOrgSpy = vi.spyOn(traceTarget, "resolveTraceOrg");
@@ -964,7 +984,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
  * Handles both string and Buffer arguments from the logger.
  */
 function collectProcessStderr(
-  spy: ReturnType<typeof spyOn<typeof process.stderr, "write">>,
+  spy: MockInstance<(typeof process.stderr)["write"]>,
 ): string {
   return spy.mock.calls
     .map((c) => {
@@ -1024,12 +1044,16 @@ describe("listCommand.func — flag validation", () => {
 // ============================================================================
 
 describe("listCommand.func — follow mode (standard)", () => {
-  let listLogsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgProjectSpy: ReturnType<typeof spyOn>;
-  let isPlainSpy: ReturnType<typeof spyOn>;
-  let updateNotifSpy: ReturnType<typeof spyOn>;
+  let listLogsSpy: MockInstance<(typeof apiClient)["listLogs"]>;
+  let resolveOrgProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
+  let isPlainSpy: MockInstance<(typeof formatters)["isPlainOutput"]>;
+  let updateNotifSpy: MockInstance<
+    (typeof versionCheck)["getUpdateNotification"]
+  >;
   let sigint: ReturnType<typeof interceptSigint>;
-  let stderrSpy: ReturnType<typeof spyOn<typeof process.stderr, "write">>;
+  let stderrSpy: MockInstance<(typeof process.stderr)["write"]>;
 
   beforeEach(() => {
     sigint = interceptSigint();
@@ -1334,13 +1358,17 @@ describe("listCommand.func — follow mode (standard)", () => {
 // ============================================================================
 
 describe("listCommand.func — follow mode (trace)", () => {
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveTraceOrgSpy: ReturnType<typeof spyOn>;
-  let warnIfNormalizedSpy: ReturnType<typeof spyOn>;
-  let isPlainSpy: ReturnType<typeof spyOn>;
-  let updateNotifSpy: ReturnType<typeof spyOn>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveTraceOrgSpy: MockInstance<(typeof traceTarget)["resolveTraceOrg"]>;
+  let warnIfNormalizedSpy: MockInstance<
+    (typeof traceTarget)["warnIfNormalized"]
+  >;
+  let isPlainSpy: MockInstance<(typeof formatters)["isPlainOutput"]>;
+  let updateNotifSpy: MockInstance<
+    (typeof versionCheck)["getUpdateNotification"]
+  >;
   let sigint: ReturnType<typeof interceptSigint>;
-  let stderrSpy: ReturnType<typeof spyOn<typeof process.stderr, "write">>;
+  let stderrSpy: MockInstance<(typeof process.stderr)["write"]>;
 
   beforeEach(() => {
     sigint = interceptSigint();

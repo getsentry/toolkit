@@ -5,7 +5,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -110,7 +117,9 @@ function createContext() {
 }
 
 describe("buildOrgListCommand", () => {
-  let dispatchSpy: ReturnType<typeof spyOn>;
+  let dispatchSpy:
+    | MockInstance<(typeof orgListModule)["dispatchOrgScopedList"]>
+    | undefined;
 
   afterEach(() => {
     dispatchSpy?.mockRestore();

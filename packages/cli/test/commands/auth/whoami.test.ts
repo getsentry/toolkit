@@ -6,7 +6,15 @@
  * branches without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { whoamiCommand } from "../../../src/commands/auth/whoami.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -125,11 +133,11 @@ function createContext() {
 }
 
 describe("whoamiCommand.func", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let getAuthTokenSpy: ReturnType<typeof spyOn>;
-  let storedAuthConfigSpy: ReturnType<typeof spyOn>;
-  let getCurrentUserSpy: ReturnType<typeof spyOn>;
-  let setUserInfoSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let getAuthTokenSpy: MockInstance<(typeof dbAuth)["getAuthToken"]>;
+  let storedAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let getCurrentUserSpy: MockInstance<(typeof apiClient)["getCurrentUser"]>;
+  let setUserInfoSpy: MockInstance<(typeof dbUser)["setUserInfo"]>;
   let func: WhoamiFunc;
 
   beforeEach(async () => {
@@ -156,7 +164,7 @@ describe("whoamiCommand.func", () => {
   });
 
   describe("unauthenticated", () => {
-    let getAuthConfigSpy: ReturnType<typeof spyOn>;
+    let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
     let savedAuthToken: string | undefined;
 
     beforeEach(() => {

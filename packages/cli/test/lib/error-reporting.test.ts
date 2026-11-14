@@ -11,7 +11,15 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
 import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
   classifySilenced,
@@ -613,9 +621,9 @@ describe("enrichEventWithGroupingTags", () => {
 // ---------------------------------------------------------------------------
 
 describe("reportCliError integration", () => {
-  let captureSpy: ReturnType<typeof spyOn>;
-  let metricSpy: ReturnType<typeof spyOn>;
-  let withScopeSpy: ReturnType<typeof spyOn>;
+  let captureSpy: MockInstance<(typeof Sentry)["captureException"]>;
+  let metricSpy: MockInstance<(typeof Sentry.metrics)["distribution"]>;
+  let withScopeSpy: MockInstance<(typeof Sentry)["withScope"]>;
 
   beforeEach(() => {
     captureSpy = vi.spyOn(Sentry, "captureException");

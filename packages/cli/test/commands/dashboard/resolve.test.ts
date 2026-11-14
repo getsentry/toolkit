@@ -6,7 +6,15 @@
  * test/lib/dashboard-arguments.test.ts.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   applyGroupLimitAutoDefault,
   autoDefaultGroupLimit,
@@ -74,7 +82,9 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 // ---------------------------------------------------------------------------
 
 describe("resolveDashboardId", () => {
-  let listDashboardsPaginatedSpy: ReturnType<typeof spyOn>;
+  let listDashboardsPaginatedSpy: MockInstance<
+    (typeof apiClient)["listDashboardsPaginated"]
+  >;
 
   beforeEach(() => {
     listDashboardsPaginatedSpy = vi.spyOn(apiClient, "listDashboardsPaginated");
@@ -251,8 +261,12 @@ describe("resolveDashboardId", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgFromTarget", () => {
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
-  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
+  let resolveEffectiveOrgSpy: MockInstance<
+    (typeof region)["resolveEffectiveOrg"]
+  >;
 
   beforeEach(() => {
     resolveOrgOnlyTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOnlyTarget");

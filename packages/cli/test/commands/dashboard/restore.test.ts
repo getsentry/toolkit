@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { restoreCommand } from "../../../src/commands/dashboard/restore.js";
@@ -72,10 +80,16 @@ const RESTORED_DASHBOARD: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard restore command", () => {
-  let restoreDashboardRevisionSpy: ReturnType<typeof spyOn>;
-  let resolveOrgFromTargetSpy: ReturnType<typeof spyOn>;
-  let resolveDashboardIdSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let restoreDashboardRevisionSpy: MockInstance<
+    (typeof apiClient)["restoreDashboardRevision"]
+  >;
+  let resolveOrgFromTargetSpy: MockInstance<
+    (typeof resolve)["resolveOrgFromTarget"]
+  >;
+  let resolveDashboardIdSpy: MockInstance<
+    (typeof resolve)["resolveDashboardId"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     restoreDashboardRevisionSpy = vi.spyOn(

@@ -5,7 +5,15 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { editCommand } from "../../../../src/commands/dashboard/widget/edit.js";
 
@@ -105,9 +113,11 @@ const sampleDashboard: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard widget edit", () => {
-  let getDashboardSpy: ReturnType<typeof spyOn>;
-  let updateDashboardSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
+  let getDashboardSpy: MockInstance<(typeof apiClient)["getDashboard"]>;
+  let updateDashboardSpy: MockInstance<(typeof apiClient)["updateDashboard"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
 
   beforeEach(() => {
     getDashboardSpy = vi.spyOn(apiClient, "getDashboard");

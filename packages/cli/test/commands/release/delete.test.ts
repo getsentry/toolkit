@@ -6,7 +6,15 @@
  * the func() body without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { deleteCommand } from "../../../src/commands/release/delete.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -75,9 +83,9 @@ function createMockContext() {
 }
 
 describe("release delete", () => {
-  let getReleaseSpy: ReturnType<typeof spyOn>;
-  let deleteReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getReleaseSpy: MockInstance<(typeof apiClient)["getRelease"]>;
+  let deleteReleaseSpy: MockInstance<(typeof apiClient)["deleteRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getReleaseSpy = vi.spyOn(apiClient, "getRelease");

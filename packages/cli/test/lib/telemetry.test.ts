@@ -15,6 +15,7 @@ import {
   expect,
   test,
   vi,
+  type MockInstance,
 } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import { Database } from "../../src/lib/db/sqlite.js";
@@ -691,7 +692,7 @@ describe("setOrgProjectContext", () => {
 });
 
 describe("setFlagContext", () => {
-  let setTagSpy: ReturnType<typeof spyOn>;
+  let setTagSpy: MockInstance<(typeof Sentry)["setTag"]>;
 
   beforeEach(() => {
     setTagSpy = vi.spyOn(Sentry, "setTag");
@@ -821,7 +822,7 @@ describe("setFlagContext", () => {
 });
 
 describe("setArgsContext", () => {
-  let setContextSpy: ReturnType<typeof spyOn>;
+  let setContextSpy: MockInstance<(typeof Sentry)["setContext"]>;
 
   beforeEach(() => {
     setContextSpy = vi.spyOn(Sentry, "setContext");

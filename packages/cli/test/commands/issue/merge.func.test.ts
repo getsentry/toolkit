@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { mergeCommand } from "../../../src/commands/issue/merge.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
@@ -92,8 +100,8 @@ function createMockContext() {
 }
 
 describe("mergeCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let mergeSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let mergeSpy: MockInstance<(typeof apiClient)["mergeIssues"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");

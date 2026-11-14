@@ -7,7 +7,15 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   collectEventIds,
   expandNewlineArgs,
@@ -605,9 +613,11 @@ describe("parseEventViewInput", () => {
 
 describe("resolveProjectBoundSlug", () => {
   const HINT = "sentry event view <org>/<project> <event-id>";
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let getProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -868,11 +878,19 @@ describe("resolveProjectBoundSlug", () => {
 });
 
 describe("resolveEventTarget", () => {
-  let resolveEventInOrgSpy: ReturnType<typeof spyOn>;
-  let findEventAcrossOrgsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundSlugSpy: ReturnType<typeof spyOn>;
-  let setTagSpy: ReturnType<typeof spyOn>;
+  let resolveEventInOrgSpy: MockInstance<
+    (typeof apiClient)["resolveEventInOrg"]
+  >;
+  let findEventAcrossOrgsSpy: MockInstance<
+    (typeof apiClient)["findEventAcrossOrgs"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveProjectBoundSlugSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundSlug"]
+  >;
+  let setTagSpy: MockInstance<(typeof Sentry)["setTag"]>;
 
   beforeEach(async () => {
     resolveEventInOrgSpy = vi.spyOn(apiClient, "resolveEventInOrg");
@@ -985,7 +1003,9 @@ describe("resolveEventTarget", () => {
 });
 
 describe("resolveOrgAllTarget", () => {
-  let resolveEventInOrgSpy: ReturnType<typeof spyOn>;
+  let resolveEventInOrgSpy: MockInstance<
+    (typeof apiClient)["resolveEventInOrg"]
+  >;
 
   beforeEach(() => {
     resolveEventInOrgSpy = vi.spyOn(apiClient, "resolveEventInOrg");
@@ -1029,8 +1049,12 @@ describe("resolveOrgAllTarget", () => {
 });
 
 describe("resolveAutoDetectTarget", () => {
-  let findEventAcrossOrgsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findEventAcrossOrgsSpy: MockInstance<
+    (typeof apiClient)["findEventAcrossOrgs"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   beforeEach(() => {
     findEventAcrossOrgsSpy = vi.spyOn(apiClient, "findEventAcrossOrgs");

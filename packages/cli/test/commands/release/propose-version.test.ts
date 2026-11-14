@@ -2,7 +2,15 @@
  * Release Propose-Version Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { proposeVersionCommand } from "../../../src/commands/release/propose-version.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as git from "../../../src/lib/git.js";
@@ -26,7 +34,7 @@ function createMockContext(cwd = "/tmp", env: Record<string, string> = {}) {
 }
 
 describe("release propose-version", () => {
-  let getHeadCommitSpy: ReturnType<typeof spyOn>;
+  let getHeadCommitSpy: MockInstance<(typeof git)["getHeadCommit"]>;
 
   beforeEach(() => {
     getHeadCommitSpy = vi.spyOn(git, "getHeadCommit");

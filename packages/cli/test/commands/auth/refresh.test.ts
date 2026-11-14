@@ -5,7 +5,15 @@
  * Covers the env-token guard and the main refresh flow.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { refreshCommand } from "../../../src/commands/auth/refresh.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
@@ -40,9 +48,9 @@ function createContext() {
 }
 
 describe("refreshCommand.func", () => {
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let refreshTokenSpy: ReturnType<typeof spyOn>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let refreshTokenSpy: MockInstance<(typeof dbAuth)["refreshToken"]>;
   let func: RefreshFunc;
 
   beforeEach(async () => {
@@ -216,10 +224,12 @@ describe("refreshCommand.func", () => {
 });
 
 describe("refreshCommand.func scope re-authentication (--scope / --read-only)", () => {
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let refreshTokenSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let refreshTokenSpy: MockInstance<(typeof dbAuth)["refreshToken"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
   let func: RefreshFunc;
 
   beforeEach(async () => {

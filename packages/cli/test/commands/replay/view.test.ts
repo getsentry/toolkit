@@ -3,7 +3,15 @@
  */
 
 import type { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   parseReplayArguments,
   type ReplayArguments,
@@ -199,13 +207,19 @@ describe("parseReplayArguments", () => {
 });
 
 describe("viewCommand.func", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let resolveReplaySpy: ReturnType<typeof spyOn>;
-  let getReplayRecordingSegmentsSpy: ReturnType<typeof spyOn>;
-  let getTraceMetaSpy: ReturnType<typeof spyOn>;
-  let listIssuesPaginatedSpy: ReturnType<typeof spyOn>;
-  let resolveTargetSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let resolveReplaySpy: MockInstance<(typeof apiClient)["resolveReplay"]>;
+  let getReplayRecordingSegmentsSpy: MockInstance<
+    (typeof apiClient)["getReplayRecordingSegments"]
+  >;
+  let getTraceMetaSpy: MockInstance<(typeof apiClient)["getTraceMeta"]>;
+  let listIssuesPaginatedSpy: MockInstance<
+    (typeof apiClient)["listIssuesPaginated"]
+  >;
+  let resolveTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOptionalTarget"]
+  >;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   function createMockContext() {
     const stdoutWrite = vi.fn(() => true);

@@ -2,7 +2,15 @@
  * Replay List Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listCommand, parseSort } from "../../../src/commands/replay/list.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 
@@ -69,11 +77,17 @@ describe("parseSort", () => {
 });
 
 describe("listCommand.func", () => {
-  let listReplaysSpy: ReturnType<typeof spyOn>;
-  let resolveTargetSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listReplaysSpy: MockInstance<(typeof apiClient)["listReplays"]>;
+  let resolveTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOptionalTarget"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   const sampleReplays: ReplayListItem[] = [
     {

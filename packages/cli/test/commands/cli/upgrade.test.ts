@@ -24,7 +24,15 @@ import { delimiter, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { run } from "@stricli/core";
 import { coerce as semverCoerce, inc as semverInc } from "semver";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Make child_process namespace mutable so vi.spyOn works on ESM exports
 vi.mock("node:child_process", async (importOriginal) => {
@@ -903,7 +911,7 @@ describe("sentry cli upgrade — curl full upgrade path (child_process.spawn spy
 
   let testDir: string;
   let spawnedArgs: Array<{ cmd: string; args: string[] }>;
-  let spawnSpy: ReturnType<typeof spyOn>;
+  let spawnSpy: MockInstance<(typeof child_process)["spawn"]>;
   let restoreStderr: (() => void) | undefined;
 
   /** Redirect curl install paths to temp dir instead of ~/.sentry/bin/ */
@@ -1675,7 +1683,7 @@ describe("sentry cli upgrade — migrateToStandaloneForNightly (child_process.sp
   useTestConfigDir("test-upgrade-migrate-");
 
   let testDir: string;
-  let migrateSpawnSpy: ReturnType<typeof spyOn>;
+  let migrateSpawnSpy: MockInstance<(typeof child_process)["spawn"]>;
   let restoreStderr: (() => void) | undefined;
 
   /** Redirect curl install paths to temp dir instead of ~/.sentry/bin/ */

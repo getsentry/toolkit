@@ -10,7 +10,15 @@
  * output and parse JSON for --json output.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { statusCommand } from "../../../src/commands/auth/status.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
@@ -114,14 +122,20 @@ function createContext() {
 }
 
 describe("statusCommand.func", () => {
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let getAuthTokenSpy: ReturnType<typeof spyOn>;
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let getUserInfoSpy: ReturnType<typeof spyOn>;
-  let getDefaultOrgSpy: ReturnType<typeof spyOn>;
-  let getDefaultProjectSpy: ReturnType<typeof spyOn>;
-  let getDbPathSpy: ReturnType<typeof spyOn>;
-  let listOrgsSpy: ReturnType<typeof spyOn>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let getAuthTokenSpy: MockInstance<(typeof dbAuth)["getAuthToken"]>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let getUserInfoSpy: MockInstance<(typeof dbUser)["getUserInfo"]>;
+  let getDefaultOrgSpy: MockInstance<
+    (typeof dbDefaults)["getDefaultOrganization"]
+  >;
+  let getDefaultProjectSpy: MockInstance<
+    (typeof dbDefaults)["getDefaultProject"]
+  >;
+  let getDbPathSpy: MockInstance<(typeof dbIndex)["getDbPath"]>;
+  let listOrgsSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: StatusFunc;
 
   beforeEach(async () => {

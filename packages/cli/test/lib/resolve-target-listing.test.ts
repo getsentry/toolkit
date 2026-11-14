@@ -6,7 +6,15 @@
  * Uses spyOn to mock dependencies without real HTTP calls.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -81,8 +89,10 @@ import {
 const CWD = "/tmp/test-project";
 
 describe("classifyProjectSearchTarget", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -211,8 +221,12 @@ describe("projectSearchNotFoundSuggestions", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgsForListing", () => {
-  let getDefaultOrganizationSpy: ReturnType<typeof spyOn>;
-  let resolveAllTargetsSpy: ReturnType<typeof spyOn>;
+  let getDefaultOrganizationSpy: MockInstance<
+    (typeof defaults)["getDefaultOrganization"]
+  >;
+  let resolveAllTargetsSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveAllTargets"]
+  >;
 
   beforeEach(() => {
     getDefaultOrganizationSpy = vi.spyOn(defaults, "getDefaultOrganization");
@@ -309,9 +323,15 @@ describe("resolveOrgsForListing", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundTarget", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let listOrganizationsSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveOrgAndProject"]
+  >;
+  let listOrganizationsSpy: MockInstance<
+    (typeof apiClient)["listOrganizations"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -465,8 +485,12 @@ describe("resolveProjectBoundTarget", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundFromArg", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveOrgAndProject"]
+  >;
 
   beforeEach(async () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -532,9 +556,11 @@ describe("resolveProjectBoundFromArg", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundTargets", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   const OPTS = { cwd: CWD, usageHint: "sentry issue list <org>/<project>" };
 
@@ -640,11 +666,17 @@ describe("resolveProjectBoundTargets", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgProjectOrGuide", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let listOrganizationsSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let getDefaultOrgSpy: ReturnType<typeof spyOn>;
-  let getDefaultProjectSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof auth)["isAuthenticated"]>;
+  let listOrganizationsSpy: MockInstance<
+    (typeof apiClient)["listOrganizations"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let getDefaultOrgSpy: MockInstance<
+    (typeof defaults)["getDefaultOrganization"]
+  >;
+  let getDefaultProjectSpy: MockInstance<
+    (typeof defaults)["getDefaultProject"]
+  >;
 
   beforeEach(() => {
     isAuthenticatedSpy = vi.spyOn(auth, "isAuthenticated");
@@ -723,7 +755,9 @@ describe("resolveOrgProjectOrGuide", () => {
 });
 
 describe("resolveOrgOptionalTarget bare org slug", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");

@@ -9,7 +9,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   flattenSpanTree,
   formatTraceView,
@@ -120,16 +128,24 @@ describe("formatTraceView", () => {
 // ============================================================================
 
 describe("viewCommand.func", () => {
-  let getDetailedTraceSpy: ReturnType<typeof spyOn>;
-  let findTraceReplaySpy: ReturnType<typeof spyOn>;
-  let fetchMultiSpanDetailsSpy: ReturnType<typeof spyOn>;
-  let getIssueByShortIdSpy: ReturnType<typeof spyOn>;
-  let getLatestEventSpy: ReturnType<typeof spyOn>;
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let getDetailedTraceSpy: MockInstance<(typeof apiClient)["getDetailedTrace"]>;
+  let findTraceReplaySpy: MockInstance<(typeof apiClient)["findTraceReplay"]>;
+  let fetchMultiSpanDetailsSpy: MockInstance<
+    (typeof apiClient)["fetchMultiSpanDetails"]
+  >;
+  let getIssueByShortIdSpy: MockInstance<
+    (typeof apiClient)["getIssueByShortId"]
+  >;
+  let getLatestEventSpy: MockInstance<(typeof apiClient)["getLatestEvent"]>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   const sampleSpans: TraceSpan[] = [
     {

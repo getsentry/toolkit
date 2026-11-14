@@ -6,7 +6,15 @@
  * (pagination hints say "sentry event list", not "sentry issue events").
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listCommand } from "../../../src/commands/event/list.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
@@ -124,11 +132,15 @@ const sampleEvents: IssueEvent[] = [
 // ============================================================================
 
 describe("event list command func()", () => {
-  let listIssueEventsSpy: ReturnType<typeof spyOn>;
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listIssueEventsSpy: MockInstance<(typeof apiClient)["listIssueEvents"]>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   function createMockContext() {
     const stdoutWrite = vi.fn(() => true);

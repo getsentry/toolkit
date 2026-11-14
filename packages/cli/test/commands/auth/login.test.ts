@@ -11,7 +11,15 @@
  * `prompt()` is controllable).
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Mock isatty to simulate interactive terminal for the re-auth prompt path.
 // Bun's ESM wrapper for CJS built-ins exposes `default` + `ReadStream` +
@@ -236,7 +244,7 @@ function createContext() {
 
 /** Assert setAuthToken was called with the expected token and a host option. */
 function expectTokenStored(
-  spy: ReturnType<typeof spyOn>,
+  spy: MockInstance<(typeof dbAuth)["setAuthToken"]>,
   expectedToken: string,
   newAccount = true,
 ): void {
@@ -254,17 +262,23 @@ function expectTokenStored(
 describe("loginCommand.func --token path", () => {
   useEnvSandbox(["SENTRY_HOST", "SENTRY_URL"]);
 
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let setAuthTokenSpy: ReturnType<typeof spyOn>;
-  let checkTokenAccessSpy: ReturnType<typeof spyOn>;
-  let clearAuthSpy: ReturnType<typeof spyOn>;
-  let removeAccountSpy: ReturnType<typeof spyOn>;
-  let getCurrentUserSpy: ReturnType<typeof spyOn>;
-  let setUserInfoSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let hasStoredAuthCredentialsSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let setAuthTokenSpy: MockInstance<(typeof dbAuth)["setAuthToken"]>;
+  let checkTokenAccessSpy: MockInstance<(typeof apiClient)["checkTokenAccess"]>;
+  let clearAuthSpy: MockInstance<(typeof dbAuth)["clearAuth"]>;
+  let removeAccountSpy: MockInstance<(typeof dbAuth)["removeAccount"]>;
+  let getCurrentUserSpy: MockInstance<(typeof apiClient)["getCurrentUser"]>;
+  let setUserInfoSpy: MockInstance<(typeof dbUser)["setUserInfo"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let hasStoredAuthCredentialsSpy: MockInstance<
+    (typeof dbAuth)["hasStoredAuthCredentials"]
+  >;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   beforeEach(async () => {
@@ -862,12 +876,16 @@ describe("loginCommand.func --token path", () => {
  * true) and the prompt module (so `prompt()` is controllable).
  */
 describe("login re-authentication interactive prompt", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let clearAuthSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let getUserInfoSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let clearAuthSpy: MockInstance<(typeof dbAuth)["clearAuth"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let getUserInfoSpy: MockInstance<(typeof dbUser)["getUserInfo"]>;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   function createPromptContext() {
@@ -1285,11 +1303,17 @@ describe("rcTokenHint", () => {
 });
 
 describe("loginCommand.func scope selection (--read-only / --scope)", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let hasStoredAuthCredentialsSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let hasStoredAuthCredentialsSpy: MockInstance<
+    (typeof dbAuth)["hasStoredAuthCredentials"]
+  >;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   beforeEach(async () => {
