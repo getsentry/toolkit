@@ -4,7 +4,7 @@ import { cn } from "@/client/lib/utils";
 
 interface MarkdownProps {
   children: string;
-  className?: string;
+  className?: string | undefined;
 }
 
 export function Markdown({ children, className }: MarkdownProps) {

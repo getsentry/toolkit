@@ -224,12 +224,13 @@ const MessagePart = memo(function MessagePart({
           : "call";
 
     // Convert AI SDK 6 tool part to our ChatToolInvocation format
+    const result = convertToolOutput((part as any).output);
     const toolInvocation: ChatToolInvocation = {
       toolCallId: part.toolCallId,
       toolName: part.type.replace(/^tool-/, ""),
       args: (part as any).input ?? {},
       state: mappedState,
-      result: convertToolOutput((part as any).output),
+      ...(result && { result }),
     };
     return (
       <ToolPart

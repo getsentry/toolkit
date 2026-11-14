@@ -38,8 +38,8 @@ export default function InstallTabs({
   initialIndex?: number;
   current?: number;
   onChange?: (next: number) => void;
-  selectedTab?: string;
-  onTabChange?: (tabId: string) => void;
+  selectedTab?: string | undefined;
+  onTabChange?: ((tabId: string) => void) | undefined;
   className?: string;
 }) {
   const items = React.Children.toArray(children).filter(

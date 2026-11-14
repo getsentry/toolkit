@@ -13,7 +13,6 @@ import type { UIMessage } from "@ai-sdk/react";
 function processMessages(
   messages: UIMessage[],
   isChatLoading: boolean,
-  isLocalStreaming?: boolean,
   isMessageStreaming?: (messageId: string) => boolean,
 ): ProcessedMessagePart[] {
   const allParts: ProcessedMessagePart[] = [];
@@ -56,7 +55,6 @@ function processMessages(
 export function ChatMessages({
   messages,
   isChatLoading,
-  isLocalStreaming,
   isMessageStreaming,
   error,
   onRetry,
@@ -65,14 +63,8 @@ export function ChatMessages({
   const { handleOAuthLogin } = useAuth();
 
   const processedParts = useMemo(
-    () =>
-      processMessages(
-        messages,
-        isChatLoading,
-        isLocalStreaming,
-        isMessageStreaming,
-      ),
-    [messages, isChatLoading, isLocalStreaming, isMessageStreaming],
+    () => processMessages(messages, isChatLoading, isMessageStreaming),
+    [messages, isChatLoading, isMessageStreaming],
   );
 
   // Simple error handling - just check if it's auth or not

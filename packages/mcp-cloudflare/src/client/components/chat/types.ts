@@ -123,14 +123,15 @@ export interface ChatUIProps {
   onSendPrompt?: (prompt: string) => void;
 }
 
+// Optional props below are forwarded from parent props, so they accept an
+// explicit `undefined` and treat it as absent.
 export interface ChatMessagesProps {
   messages: UIMessage[];
   isChatLoading: boolean;
-  isLocalStreaming?: boolean;
-  isMessageStreaming?: (messageId: string) => boolean;
-  error?: Error | null;
-  onRetry?: () => void;
-  onSlashCommand?: (command: string) => void;
+  isMessageStreaming?: ((messageId: string) => boolean) | undefined;
+  error?: Error | undefined;
+  onRetry?: (() => void) | undefined;
+  onSlashCommand?: ((command: string) => void) | undefined;
 }
 
 export interface ChatInputProps {
@@ -157,18 +158,18 @@ export interface MessagePartProps {
   messageId: string;
   messageRole: string;
   partIndex: number;
-  isStreaming?: boolean;
+  isStreaming?: boolean | undefined;
   messageData?: any;
-  onSlashCommand?: (command: string) => void;
+  onSlashCommand?: ((command: string) => void) | undefined;
 }
 
 export interface TextPartProps {
   text: string;
   role: string;
   messageId: string;
-  isStreaming?: boolean;
+  isStreaming?: boolean | undefined;
   messageData?: any;
-  onSlashCommand?: (command: string) => void;
+  onSlashCommand?: ((command: string) => void) | undefined;
 }
 
 export interface ToolPartProps {

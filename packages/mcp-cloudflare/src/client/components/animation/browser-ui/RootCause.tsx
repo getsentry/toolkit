@@ -12,6 +12,7 @@ export default function RootCause({ step }: { step: number }) {
       const t = setTimeout(() => setStarted(true), 0);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [step]);
 
   const orange = "#ff8904";
