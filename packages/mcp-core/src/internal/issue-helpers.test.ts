@@ -150,6 +150,27 @@ describe("parseIssueParams", () => {
     ).toEqual({ organizationSlug: "sentry", issueId: "123" });
   });
 
+  it("should keep the event ID from an issue-event URL", () => {
+    expect(
+      parseIssueParams({
+        issueUrl:
+          "https://sentry.io/organizations/sentry/issues/123/events/7ca573c0f4814912aaa9bdc77d1a7d51/",
+      }),
+    ).toEqual({
+      organizationSlug: "sentry",
+      issueId: "123",
+      eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+    });
+  });
+
+  it("should not treat an event alias in the URL as an event ID", () => {
+    expect(
+      parseIssueParams({
+        issueUrl: "https://sentry.sentry.io/issues/123/events/latest/",
+      }),
+    ).toEqual({ organizationSlug: "sentry", issueId: "123" });
+  });
+
   it("should parse from issueId and organizationSlug", () => {
     expect(
       parseIssueParams({
