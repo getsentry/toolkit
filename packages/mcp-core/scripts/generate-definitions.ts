@@ -8,6 +8,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { type ZodTypeAny, z } from "zod";
+import type { ToolDescription } from "../src/tools/types.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,13 +69,7 @@ function isNonNull<T>(value: T | null): value is T {
 
 type DefinitionTool = {
   name: string;
-  description:
-    | string
-    | ((context: {
-        experimentalMode: boolean;
-        availableToolNames?: ReadonlySet<string>;
-        directToolNames?: ReadonlySet<string>;
-      }) => string);
+  description: ToolDescription;
   title: string;
   inputSchema: Record<string, ZodTypeAny>;
   outputSchema?: ZodTypeAny;
@@ -386,11 +381,11 @@ function syncAgentFrontmatter(agentPath: string, toolNames: string[]) {
   }
 
   // parts[0] is empty (before first ---), parts[1] is frontmatter, rest is body
-  const frontmatterStr = parts[1];
+  const [, frontmatterStr = ""] = parts;
   const body = parts.slice(2).join("---");
 
   const frontmatter = YAML.parse(frontmatterStr) as Record<string, unknown>;
-  frontmatter.allowedTools = toolNames;
+  frontmatter["allowedTools"] = toolNames;
 
   const updated = `---\n${YAML.stringify(frontmatter)}---${body}`;
   fs.writeFileSync(agentPath, updated);

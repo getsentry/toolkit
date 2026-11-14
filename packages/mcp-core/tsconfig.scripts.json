@@ -1,0 +1,12 @@
+{
+  "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.scripts.tsbuildinfo",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6.0.x dist/index.d.ts). Remove when they check cleanly.
+    "skipLibCheck": true
+  },
+  "include": ["scripts", "vitest.config.ts", "tsdown.config.ts"]
+}
