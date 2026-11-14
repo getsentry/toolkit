@@ -50,8 +50,7 @@ export function AiInspector({
   const children: TraceSpan[] = [];
   const pending = [...steps];
   const seen = new Set<string>();
-  while (pending.length) {
-    const step = pending.shift()!;
+  for (let step = pending.shift(); step; step = pending.shift()) {
     if (seen.has(step.id)) continue;
     seen.add(step.id);
     if (isAiPayload(step.payload)) children.push(step);

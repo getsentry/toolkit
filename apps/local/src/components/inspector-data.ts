@@ -1,3 +1,5 @@
+import { jsonText } from "@/lib/objects.ts";
+
 export type DetailField = { label: string; value: string; code?: boolean };
 
 export function detailRecord(value: unknown): Record<string, unknown> {
@@ -15,7 +17,7 @@ export function attributeFields(value: unknown): DetailField[] {
       value:
         typeof content === "string"
           ? content
-          : (JSON.stringify(content) ?? String(content)),
+          : (jsonText(content) ?? String(content)),
       code: true,
     };
   });

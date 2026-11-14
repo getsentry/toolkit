@@ -1,3 +1,4 @@
+import { jsonText } from "./objects.ts";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
@@ -17,7 +18,7 @@ export function finite(value: unknown): number | undefined {
 export function display(value: unknown): string {
   return typeof value === "string"
     ? value
-    : (JSON.stringify(value, null, 2) ?? String(value));
+    : (jsonText(value, 2) ?? String(value));
 }
 export function parsed(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -169,11 +170,13 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
               call !== null && typeof call === "object" && !Array.isArray(call),
           ),
       ) ?? parsed(pick(...callKeys));
-  const tools = Array.isArray(calls)
-    ? [...calls]
+  const callList: unknown[] = Array.isArray(calls)
+    ? calls
     : calls === undefined
       ? []
       : [calls];
+  // Copy: the list can be the payload's own array, and tool calls get appended.
+  const tools = [...callList];
   const toolName = pick("gen_ai.tool.name", "ai.toolCall.name");
   if (toolName !== undefined)
     tools.push({

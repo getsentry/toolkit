@@ -31,3 +31,11 @@ export function withoutUndefined<T extends object>(
     Object.entries(value).filter(([, entry]) => entry !== undefined),
   ) as WithoutUndefined<T>;
 }
+
+/**
+ * JSON text for `value`, or undefined when JSON cannot represent it (such as
+ * `undefined` or a function). `JSON.stringify`'s declared type omits that case.
+ */
+export function jsonText(value: unknown, space?: number): string | undefined {
+  return JSON.stringify(value, null, space);
+}

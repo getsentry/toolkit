@@ -45,8 +45,11 @@ function boxes(
       depth: 0,
     },
   ];
-  while (pending.length && result.length < 2500) {
-    const box = pending.pop()!;
+  for (
+    let box = pending.pop();
+    box && result.length < 2500;
+    box = pending.pop()
+  ) {
     result.push(box);
     if (box.depth >= 32 || box.node.samples === 0) continue;
     let offset = 0;

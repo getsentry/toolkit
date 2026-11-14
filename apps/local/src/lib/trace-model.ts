@@ -86,7 +86,7 @@ function getPayloadSpan(
     getTimestamp(event["end_timestamp"]) ??
     getTimestamp(item.timestamp);
   const operation = getString(trace["op"]) ?? item.metadata?.operation;
-  const title = item.metadata?.title?.trim();
+  const title = item.metadata?.title.trim();
   const description =
     getString(event["transaction"]) ??
     (title && title !== item.type ? title : undefined) ??
@@ -354,20 +354,17 @@ export function buildTraceGroups(
             (left.endTimestamp ?? -Infinity) -
             (right.endTimestamp ?? -Infinity),
         );
-        trace.spanMap.set(
-          id,
-          updates.reduce<TraceSpan | undefined>(
-            (merged, update) => mergeSpan(merged, update),
-            undefined,
-          )!,
-        );
+        let merged: TraceSpan | undefined;
+        for (const update of updates) merged = mergeSpan(merged, update);
+        if (merged) trace.spanMap.set(id, merged);
       }
       updateTraceTiming(trace);
       // A partial update can turn a former root into a child. Select from final
       // merged spans rather than retaining a priority from an earlier delivery.
       let titlePriority = -1;
       for (const id of trace.titleCandidates) {
-        const span = trace.spanMap.get(id)!;
+        const span = trace.spanMap.get(id);
+        if (!span) continue;
         const named =
           span.description.trim() &&
           span.description !== span.operation &&
@@ -398,8 +395,8 @@ export function buildTraceGroups(
           const position = positions.get(current.id);
           if (position !== undefined) {
             let rootId = current.id;
-            for (let index = position; index < path.length; index++) {
-              if (path[index]! < rootId) rootId = path[index]!;
+            for (const pathId of path.slice(position)) {
+              if (pathId < rootId) rootId = pathId;
             }
             cycleRoots.add(rootId);
             break;

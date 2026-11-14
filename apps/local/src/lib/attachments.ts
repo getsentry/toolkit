@@ -44,7 +44,12 @@ export function attachmentBytes(item: LocalFeedItem):
   | undefined {
   const wireType =
     text(item.itemHeader?.["content_type"]) ?? "application/octet-stream";
-  const contentType = wireType.split(";")[0]!.trim().toLowerCase();
+  const semicolon = wireType.indexOf(";");
+  const contentType = (
+    semicolon === -1 ? wireType : wireType.slice(0, semicolon)
+  )
+    .trim()
+    .toLowerCase();
   const payload = record(item.payload),
     raw = payload["data"] ?? item.payload;
   const isText = contentType.startsWith("text/") || TEXT_TYPES.has(contentType);

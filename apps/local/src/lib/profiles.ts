@@ -86,9 +86,8 @@ export function parseProfile(
     functions = new Map<string, ProfileFunction>();
   const children = new Map<ProfileNode, Map<number, ProfileNode>>();
   let hasTiming = false;
-  for (let index = 0; index < selected.length; index++) {
-    const sample = selected[index]!,
-      stackId = finite(sample["stack_id"]),
+  for (const [index, sample] of selected.entries()) {
+    const stackId = finite(sample["stack_id"]),
       rawStack: unknown = stackId === undefined ? undefined : stacks[stackId];
     const stack = Array.isArray(rawStack)
       ? rawStack
@@ -99,7 +98,8 @@ export function parseProfile(
           .toReversed()
       : [];
     const time = sampleTime(sample),
-      next = selected[index + 1] ? sampleTime(selected[index + 1]!) : undefined;
+      following = selected[index + 1],
+      next = following ? sampleTime(following) : undefined;
     const capturedEnd = profileSampleEndMs(sample);
     const end =
       capturedEnd === undefined

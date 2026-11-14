@@ -22,7 +22,9 @@ function finishReason(value: unknown): string | undefined {
       : undefined;
   if (typeof decoded !== "string") return;
   const reason = decoded.trim();
-  return reason && !["[", "{", '"'].includes(reason[0]!) ? reason : undefined;
+  return reason && !["[", "{", '"'].includes(reason.charAt(0))
+    ? reason
+    : undefined;
 }
 
 function tokenCount(
@@ -72,8 +74,8 @@ export function inspectAiInteraction(
   const nodes = [root];
   const seen = new Set<string>();
   const pending = steps.toReversed().map((span) => ({ span, parent: root }));
-  while (pending.length) {
-    const { span, parent } = pending.pop()!;
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const { span, parent } = next;
     if (seen.has(span.id)) continue;
     seen.add(span.id);
     const node: InteractionNode = {

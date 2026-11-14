@@ -1,5 +1,5 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
-import { withoutUndefined } from "./objects.ts";
+import { jsonText, withoutUndefined } from "./objects.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
@@ -351,7 +351,7 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
         envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
         itemHeader: header,
         timestamp: getItemTimestamp(payload),
-        text: JSON.stringify(payload, null, 2) ?? String(payload),
+        text: jsonText(payload, 2) ?? String(payload),
         payload,
         metadata: {
           ...getEventMetadata(payload, type),

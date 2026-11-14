@@ -5,7 +5,10 @@ import "./index.css";
 import { ThemeProvider } from "./components/theme-provider.tsx";
 import { LocalRouter } from "./router.tsx";
 
-createRoot(document.getElementById("root")!).render(
+const container = document.getElementById("root");
+if (!container) throw new Error("index.html has no #root element");
+
+createRoot(container).render(
   <StrictMode>
     <ThemeProvider
       attribute="class"

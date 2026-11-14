@@ -94,8 +94,11 @@ export function mergeProfileChunks(
   items: readonly LocalFeedItem[],
 ): LocalFeedItem {
   const chunks = profileSessionItems(item, items);
+  // profileSessionItems always returns at least the item itself.
+  const [first] = chunks;
+  if (!first) return item;
   if (chunks.length === 1) {
-    const survivor = chunks[0]!;
+    const survivor = first;
     const cached = mergedSessions.get(survivor);
     if (cached) {
       cached.chunks = chunks;
@@ -103,7 +106,6 @@ export function mergeProfileChunks(
     }
     return survivor;
   }
-  const first = chunks[0]!;
   const cached = chunks
     .map((chunk) => mergedSessions.get(chunk))
     .find((entry) => entry !== undefined);
@@ -184,18 +186,14 @@ export function mergeProfileChunks(
           (profileSampleTimeMs(a) ?? Infinity) -
           (profileSampleTimeMs(b) ?? Infinity),
       );
-      for (let index = 0; index < thread.length; index++) {
-        const sample = thread[index]!,
-          start = profileSampleTimeMs(sample);
+      for (const [index, sample] of thread.entries()) {
+        const start = profileSampleTimeMs(sample);
         if (start === undefined) continue;
-        const next = thread[index + 1]
-          ? profileSampleTimeMs(thread[index + 1]!)
-          : undefined;
+        const following = thread[index + 1];
+        const next = following ? profileSampleTimeMs(following) : undefined;
         const end = next ?? start;
-        if (
-          sampleEnds.get(sample) === undefined ||
-          sampleEnds.get(sample)! < end
-        ) {
+        const previousEnd = sampleEnds.get(sample);
+        if (previousEnd === undefined || previousEnd < end) {
           sampleEnds.set(sample, end);
           sampleSources.set(sample, chunk);
         }

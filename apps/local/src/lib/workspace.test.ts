@@ -4,7 +4,9 @@ import {
   workspaceForItem,
   workspaceFromPath,
   workspacePath,
+  workspaceViews,
 } from "./workspace.ts";
+import { workspaceNavigationFor } from "./workspace-navigation.ts";
 
 describe("workspace routes", () => {
   test("maps retained events to their canonical workspaces", () => {
@@ -74,4 +76,12 @@ describe("AI classification", () => {
       }),
     ).toBe(true),
   );
+});
+
+describe("workspace navigation", () => {
+  test("has an entry for every workspace view", () => {
+    for (const view of workspaceViews) {
+      expect(workspaceNavigationFor(view).id).toBe(view);
+    }
+  });
 });
