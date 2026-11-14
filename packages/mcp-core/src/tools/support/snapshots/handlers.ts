@@ -153,7 +153,7 @@ export async function fetchSnapshotImage(
   imageIdentifier: string,
   imageResolution: SnapshotImageResolution,
   options: {
-    experimentalMode?: boolean | undefined;
+    experimentalMode?: boolean;
     availableToolNames?: ReadonlySet<string> | undefined;
     directToolNames?: ReadonlySet<string> | undefined;
   } = {},

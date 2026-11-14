@@ -127,7 +127,7 @@ export async function listMetricMonitors(
     projectSlug?: string | undefined;
     query?: string | undefined;
     cursor?: string | undefined;
-    limit?: number | undefined;
+    limit?: number;
   },
 ) {
   const project = params.projectSlug

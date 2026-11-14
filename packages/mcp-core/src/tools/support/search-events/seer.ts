@@ -280,7 +280,7 @@ async function runSearchAgent({
   strategy: SearchAgentStrategy;
   query: string;
   // A strategy-specific flag that Sentry also checks before starting the run.
-  requiredFeature?: string | undefined;
+  requiredFeature?: string;
 }): Promise<SearchAgentRun | null> {
   try {
     const organizationFeatures = await getSeerSearchAgentFeatures(

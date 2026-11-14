@@ -54,7 +54,7 @@ export const issueLinkOutputSchema = z.object({
 export async function resolveIssueLinkContext(
   params: {
     organizationSlug?: string | undefined;
-    regionUrl?: string | null | undefined;
+    regionUrl?: string | null;
     issueId?: string | undefined;
     issueUrl?: string | undefined;
   },

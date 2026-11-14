@@ -93,7 +93,7 @@ IMPORTANT:
  * Supports both direct issueId/organizationSlug and issueUrl parsing
  */
 export function parseIssueParams(params: {
-  organizationSlug?: string | null | undefined;
+  organizationSlug?: string | null;
   issueId?: string | undefined;
   issueUrl?: string | undefined;
 }): { organizationSlug: string; issueId: string } {

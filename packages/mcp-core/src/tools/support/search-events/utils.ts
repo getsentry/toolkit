@@ -649,7 +649,7 @@ function formatUserSummary(
   value: Record<string, unknown>,
   options: {
     includeGeo?: boolean | undefined;
-    allowIdOnly?: boolean | undefined;
+    allowIdOnly?: boolean;
   } = {},
 ): string | null {
   const includeGeo = options.includeGeo ?? true;
@@ -830,7 +830,7 @@ export async function fetchCustomAttributes(
     attributeTypes?: TraceItemAttributeType[] | undefined;
     substringMatch?: string | undefined;
     query?: string | undefined;
-    context?: boolean | undefined;
+    context?: boolean;
   } = {},
 ): Promise<{
   attributes: Record<string, Tag | TraceItemAttribute>;
@@ -917,10 +917,10 @@ function formatValidationStatusLine({
   indent = 0,
 }: {
   valid: boolean;
-  name?: string | undefined;
-  type?: string | undefined;
+  name?: string;
+  type?: string;
   error?: string | undefined;
-  indent?: number | undefined;
+  indent?: number;
 }): string {
   const status = valid ? "OK" : "INVALID";
   const label = name ? ` ${name}` : "";
