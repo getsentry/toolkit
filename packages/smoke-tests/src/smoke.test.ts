@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import pkg from "../package.json";
 
-const PREVIEW_URL = process.env.PREVIEW_URL;
-const EXPECTED_VERSION_ID = process.env.EXPECTED_VERSION_ID;
+const PREVIEW_URL = process.env["PREVIEW_URL"];
+const EXPECTED_VERSION_ID = process.env["EXPECTED_VERSION_ID"];
 const ALLOW_LEGACY_VERSION_ENDPOINT =
-  process.env.ALLOW_LEGACY_VERSION_ENDPOINT === "1";
-const CLOUDFLARE_VERSION_OVERRIDE = process.env.CLOUDFLARE_VERSION_OVERRIDE;
-const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_WORKER_NAME;
+  process.env["ALLOW_LEGACY_VERSION_ENDPOINT"] === "1";
+const CLOUDFLARE_VERSION_OVERRIDE = process.env["CLOUDFLARE_VERSION_OVERRIDE"];
+const CLOUDFLARE_WORKER_NAME = process.env["CLOUDFLARE_WORKER_NAME"];
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 if (
@@ -86,7 +86,7 @@ async function safeFetch(
   // Merge any existing signal with our controller
   const signal = fetchOptions.signal || controller.signal;
 
-  let response: Response;
+  let response: Response | undefined;
   let data: any = null;
 
   try {
@@ -125,7 +125,33 @@ async function safeFetch(
     }
   }
 
-  return { response: response!, data };
+  return { response, data };
+}
+
+/**
+ * safeFetch, repeated while the server answers 503 (a Durable Object still
+ * starting) and attempts remain. Returns the last attempt's result.
+ */
+async function safeFetchRetrying503(
+  url: string,
+  options: Parameters<typeof safeFetch>[1],
+  { attempts, delayMs }: { attempts: number; delayMs: number },
+): ReturnType<typeof safeFetch> {
+  for (let attempt = 1; ; attempt++) {
+    const result = await safeFetch(url, options);
+    if (result.response.status !== 503 || attempt >= attempts) {
+      return result;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+}
+
+/** PREVIEW_URL, for code that only runs when the smoke tests are enabled. */
+function previewUrl(): string {
+  if (!PREVIEW_URL) {
+    throw new Error("PREVIEW_URL is not set");
+  }
+  return PREVIEW_URL;
 }
 
 describeIfPreviewUrl(
@@ -136,7 +162,7 @@ describeIfPreviewUrl(
     });
 
     it("should respond on root endpoint", async () => {
-      const { response } = await safeFetch(PREVIEW_URL);
+      const { response } = await safeFetch(previewUrl());
       expect(response.status).toBe(200);
     });
 
@@ -209,52 +235,34 @@ describeIfPreviewUrl(
     });
 
     it("should have MCP endpoint with org constraint (/mcp/sentry)", async () => {
-      // Retry logic for potential Durable Object initialization
-      let response: Response;
-      let retries = 5;
-
-      while (retries > 0) {
-        const { response: fetchResponse, data } = await safeFetch(
-          `${PREVIEW_URL}/mcp/sentry`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              method: "initialize",
-              params: {
-                protocolVersion: "2024-11-05",
-                capabilities: {},
-                clientInfo: {
-                  name: "smoke-test",
-                  version: "1.0.0",
-                },
+      // Retry while a Durable Object may still be initializing (503).
+      const { response, data } = await safeFetchRetrying503(
+        `${PREVIEW_URL}/mcp/sentry`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "initialize",
+            params: {
+              protocolVersion: "2024-11-05",
+              capabilities: {},
+              clientInfo: {
+                name: "smoke-test",
+                version: "1.0.0",
               },
-              id: 1,
-            }),
-          },
-        );
-
-        response = fetchResponse;
-
-        // If we get 503, retry after a delay
-        if (response.status === 503 && retries > 1) {
-          retries--;
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          continue;
-        }
-
-        // Store data for later use
-        (response as any).testData = data;
-        break;
-      }
+            },
+            id: 1,
+          }),
+        },
+        { attempts: 5, delayMs: 2000 },
+      );
 
       expect(response.status).toBe(401);
 
       // Should return auth error, not 404 - this proves the constrained MCP endpoint exists.
       // workers-oauth-provider returns a bare RFC 6750 challenge (no body) when the
       // Authorization header is missing entirely, so only assert body content when present.
-      const data = (response as any).testData;
       if (data && typeof data === "object") {
         expect(data).toHaveProperty("error");
         expect(data.error).toMatch(/invalid_token|unauthorized/i);
@@ -264,52 +272,34 @@ describeIfPreviewUrl(
     });
 
     it("should have MCP endpoint with org and project constraints (/mcp/sentry/mcp-server)", async () => {
-      // Retry logic for Durable Object initialization
-      let response: Response;
-      let retries = 5;
-
-      while (retries > 0) {
-        const { response: fetchResponse, data } = await safeFetch(
-          `${PREVIEW_URL}/mcp/sentry/mcp-server`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              method: "initialize",
-              params: {
-                protocolVersion: "2024-11-05",
-                capabilities: {},
-                clientInfo: {
-                  name: "smoke-test",
-                  version: "1.0.0",
-                },
+      // Retry while a Durable Object initializes (503).
+      const { response, data } = await safeFetchRetrying503(
+        `${PREVIEW_URL}/mcp/sentry/mcp-server`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "initialize",
+            params: {
+              protocolVersion: "2024-11-05",
+              capabilities: {},
+              clientInfo: {
+                name: "smoke-test",
+                version: "1.0.0",
               },
-              id: 1,
-            }),
-          },
-        );
-
-        response = fetchResponse;
-
-        // If we get 503, it's Durable Object initialization - retry
-        if (response.status === 503 && retries > 1) {
-          retries--;
-          await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds for DO to stabilize
-          continue;
-        }
-
-        // Store data for later use
-        (response as any).testData = data;
-        break;
-      }
+            },
+            id: 1,
+          }),
+        },
+        { attempts: 5, delayMs: 2000 },
+      );
 
       expect(response.status).toBe(401);
 
       // Should return auth error, not 404 - this proves the fully constrained MCP endpoint exists.
       // workers-oauth-provider returns a bare RFC 6750 challenge (no body) when the
       // Authorization header is missing entirely, so only assert body content when present.
-      const data = (response as any).testData;
       if (data && typeof data === "object") {
         expect(data).toHaveProperty("error");
         expect(data.error).toMatch(/invalid_token|unauthorized/i);
@@ -320,29 +310,16 @@ describeIfPreviewUrl(
 
     it("should have chat endpoint that accepts POST", async () => {
       // Chat endpoint might return 503 temporarily after DO operations
-      let response: Response;
-      let retries = 3;
-
-      while (retries > 0) {
-        const { response: fetchResponse } = await safeFetch(
-          `${PREVIEW_URL}/api/chat`,
-          {
-            method: "POST",
-            headers: {
-              Origin: PREVIEW_URL, // Required for CSRF check
-            },
+      const { response } = await safeFetchRetrying503(
+        `${PREVIEW_URL}/api/chat`,
+        {
+          method: "POST",
+          headers: {
+            Origin: previewUrl(), // Required for CSRF check
           },
-        );
-        response = fetchResponse;
-
-        // If we get 503, retry after a short delay
-        if (response.status === 503 && retries > 1) {
-          retries--;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          continue;
-        }
-        break;
-      }
+        },
+        { attempts: 3, delayMs: 1000 },
+      );
 
       // Should return 401 (unauthorized), 400 (bad request), or 500 (server error) for POST without auth
       expect([400, 401, 500]).toContain(response.status);
@@ -454,7 +431,7 @@ describeIfPreviewUrl(
 
     it("should respond quickly (under 2 seconds)", async () => {
       const start = Date.now();
-      const { response } = await safeFetch(PREVIEW_URL);
+      const { response } = await safeFetch(previewUrl());
       const duration = Date.now() - start;
 
       expect(response.status).toBe(200);
@@ -462,7 +439,7 @@ describeIfPreviewUrl(
     });
 
     it("should have proper security headers", async () => {
-      const { response } = await safeFetch(PREVIEW_URL);
+      const { response } = await safeFetch(previewUrl());
 
       // Check security headers - some might be set by Cloudflare instead of Hono
       // So we check if they exist rather than exact values
