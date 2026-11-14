@@ -434,16 +434,17 @@ Remember: You're a test assistant, not a general-purpose helper. Stay focused on
           401,
         );
       }
-
-      const eventId = logIssue(error);
-      return c.json(
-        {
-          error: "Internal server error",
-          name: "INTERNAL_ERROR",
-          eventId,
-        },
-        500,
-      );
     }
+
+    // Anything else, including non-Error throwables, is an internal error.
+    const eventId = logIssue(error);
+    return c.json(
+      {
+        error: "Internal server error",
+        name: "INTERNAL_ERROR",
+        eventId,
+      },
+      500,
+    );
   }
 });

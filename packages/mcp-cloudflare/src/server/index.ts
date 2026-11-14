@@ -335,7 +335,6 @@ const wrappedOAuthProvider = {
     // We normalize any CORS headers it returns in the response handling below.
     const oAuthProvider = new OAuthProvider({
       apiRoute: "/mcp",
-      // @ts-expect-error - OAuthProvider types don't support specific Env types
       apiHandler: sentryMcpHandler,
       defaultHandler: app,
       // must match the routes registered in `app.ts`

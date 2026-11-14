@@ -385,14 +385,13 @@ export async function getOAuthErrorTelemetry(
   const headerError = bucketOAuthErrorCode(authenticateParams["error"]);
   if (headerError) {
     telemetry.oauthError = headerError;
-    telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-      authenticateParams["error_description"],
-    );
-    if (!telemetry.oauthErrorReason) {
-      const json = await parseResponseJsonBody(response);
-      telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-        json?.["error_description"],
+    const reason =
+      bucketOAuthErrorDescription(authenticateParams["error_description"]) ||
+      bucketOAuthErrorDescription(
+        (await parseResponseJsonBody(response))?.["error_description"],
       );
+    if (reason) {
+      telemetry.oauthErrorReason = reason;
     }
     return telemetry;
   }
@@ -408,8 +407,9 @@ export async function getOAuthErrorTelemetry(
   }
 
   telemetry.oauthError = bodyError;
-  telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-    json["error_description"],
-  );
+  const reason = bucketOAuthErrorDescription(json["error_description"]);
+  if (reason) {
+    telemetry.oauthErrorReason = reason;
+  }
   return telemetry;
 }
