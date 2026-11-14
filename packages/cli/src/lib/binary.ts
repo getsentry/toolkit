@@ -216,23 +216,24 @@ export function isMusl(): boolean {
     return cachedIsMusl;
   }
 
-  // Heuristic 1: ldd --version output (musl ldd writes "musl libc" to stderr)
-  try {
-    const result = spawnSync("ldd", ["--version"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const output =
-      Buffer.from(result.stdout).toString() +
-      Buffer.from(result.stderr).toString();
-    cachedIsMusl = output.toLowerCase().includes("musl");
-    return cachedIsMusl;
-  } catch {
-    // Heuristic 2: ldd not found or failed — check for the musl dynamic linker.
-    // Only a fallback: glibc systems can have it too when musl is installed.
-    const muslArch = process.arch === "x64" ? "x86_64" : "aarch64";
-    cachedIsMusl = existsSync(`/lib/ld-musl-${muslArch}.so.1`);
+  // Heuristic 1: ldd --version output (musl ldd writes "musl libc" to stderr
+  // and exits non-zero, so only a spawn error means ldd is unavailable)
+  const result = spawnSync("ldd", ["--version"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (!result.error) {
+    cachedIsMusl = `${result.stdout}${result.stderr}`
+      .toLowerCase()
+      .includes("musl");
     return cachedIsMusl;
   }
+
+  // Heuristic 2: no ldd — check for the musl dynamic linker. Only a fallback:
+  // glibc systems can have it too when the musl package is installed.
+  const muslArch = process.arch === "x64" ? "x86_64" : "aarch64";
+  cachedIsMusl = existsSync(`/lib/ld-musl-${muslArch}.so.1`);
+  return cachedIsMusl;
 }
 
 /**
