@@ -178,7 +178,6 @@ export async function getOrRegisterChatClient(
 
 // Exchange authorization code for access token
 async function exchangeCodeForToken(
-  env: Env,
   code: string,
   redirectUri: string,
   clientId: string,
@@ -382,7 +381,6 @@ export default new Hono<{
 
       // Exchange code for access token with our MCP server
       const tokenResponse = await exchangeCodeForToken(
-        c.env,
         code,
         redirectUri,
         clientId,

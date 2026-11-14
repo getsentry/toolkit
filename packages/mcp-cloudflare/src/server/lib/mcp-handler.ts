@@ -61,9 +61,11 @@ type OAuthMcpContext = {
   grantedSkills: Set<Skill>;
   userId: string;
   clientId: string;
-  clientName?: string;
-  tokenConstraintOrganizationSlug?: string | null;
-  tokenConstraintProjectSlug?: string | null;
+  // Copied from the grant props, which may lack these fields; undefined means
+  // absent.
+  clientName?: string | undefined;
+  tokenConstraintOrganizationSlug?: string | null | undefined;
+  tokenConstraintProjectSlug?: string | null | undefined;
   onUpstreamUnauthorized: () => void | Promise<void>;
 };
 
@@ -96,9 +98,9 @@ function escapeAuthenticateHeaderValue(value: string): string {
 export function getRequestGrantId(request: Request): string | null {
   const auth = request.headers.get("Authorization");
   if (!auth) return null;
-  const match = auth.match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const parts = match[1].split(":");
+  const token = auth.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return null;
+  const parts = token.split(":");
   if (parts.length !== 3) return null;
   return parts[1] || null;
 }
@@ -444,21 +446,22 @@ async function handleAuthenticatedMcpRequest(
   }
 
   const serverContext: ServerContext = {
-    userId: auth.kind === "oauth" ? auth.userId : undefined,
-    userIpAddress,
-    clientId: auth.kind === "oauth" ? auth.clientId : undefined,
-    clientName: auth.kind === "oauth" ? auth.clientName : undefined,
+    ...(auth.kind === "oauth" && {
+      userId: auth.userId,
+      clientId: auth.clientId,
+      ...(auth.clientName !== undefined && { clientName: auth.clientName }),
+      onUpstreamUnauthorized: auth.onUpstreamUnauthorized,
+    }),
+    ...(userIpAddress !== undefined && { userIpAddress }),
     clientFamily,
     utmSource,
     accessToken: auth.accessToken,
     grantedSkills: auth.grantedSkills,
     constraints,
     sentryHost,
-    mcpUrl: env.MCP_URL,
+    ...(env.MCP_URL !== undefined && { mcpUrl: env.MCP_URL }),
     experimentalMode: isExperimentalMode,
     transport: "http",
-    onUpstreamUnauthorized:
-      auth.kind === "oauth" ? auth.onUpstreamUnauthorized : undefined,
   };
 
   // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
@@ -497,7 +500,7 @@ async function handleAuthenticatedMcpRequest(
  * 6. Creates and configures MCP server per-request (context captured in closures)
  * 7. Runs MCP handler
  */
-const mcpHandler: ExportedHandler<Env> = {
+const mcpHandler = {
   async fetch(
     request: Request,
     env: Env,
@@ -661,6 +664,6 @@ const mcpHandler: ExportedHandler<Env> = {
       },
     });
   },
-};
+} satisfies ExportedHandler<Env>;
 
 export default mcpHandler;

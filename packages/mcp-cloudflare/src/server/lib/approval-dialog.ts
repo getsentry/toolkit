@@ -122,9 +122,13 @@ async function getSignedCookiePayload(
   const cookieValue = getCookieValue(cookieHeader, cookieName);
   if (!cookieValue) return null;
 
-  const parts = cookieValue.split(".");
+  const [signatureHex, base64Payload, ...extraParts] = cookieValue.split(".");
 
-  if (parts.length !== 2) {
+  if (
+    signatureHex === undefined ||
+    base64Payload === undefined ||
+    extraParts.length > 0
+  ) {
     logWarn("Invalid signed cookie format", {
       loggerScope: ["cloudflare", "approval-dialog"],
       extra: { cookieName },
@@ -132,7 +136,6 @@ async function getSignedCookiePayload(
     return null;
   }
 
-  const [signatureHex, base64Payload] = parts;
   let payload: string;
   try {
     payload = atob(base64Payload);
@@ -382,7 +385,8 @@ export interface ApprovalDialogOptions {
   /**
    * Skill IDs to preselect. When omitted, all approvable skills are selected.
    */
-  defaultSkills?: string[];
+  // Undefined when no remembered skills cookie exists.
+  defaultSkills?: string[] | undefined;
 }
 
 /**
