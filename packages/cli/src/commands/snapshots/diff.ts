@@ -224,6 +224,7 @@ function formatDiffReport(data: DiffReport): string {
 }
 
 export const diffCommand = buildCommand({
+  exposure: "stdio-only",
   // Local-only: reads two image directories, no network access.
   auth: false,
   docs: {

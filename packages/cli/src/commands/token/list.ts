@@ -54,6 +54,10 @@ function formatTokenList(tokens: OrgAuthToken[]): string {
 }
 
 export const listCommand = buildCommand({
+  exposure: "exposed",
+  // The listing is a GET; the POST the analysis finds is the OAuth refresh
+  // that `selectAccountForOrg` can reach
+  permission: "read",
   docs: {
     brief: "List org auth tokens",
     fullDescription:

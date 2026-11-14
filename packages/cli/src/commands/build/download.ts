@@ -51,6 +51,7 @@ function formatDownloadResult(data: BuildDownloadResult): string {
 }
 
 export const downloadCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Download a build artifact",
     fullDescription:

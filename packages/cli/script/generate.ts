@@ -195,7 +195,8 @@ const TREE_STEPS: readonly Step[] = [
   { name: "skill", load: () => import("./generate-skill.js") },
   { name: "sdk", load: () => import("./generate-sdk.js") },
   // Last: its emit waits for the worker `prepare` starts, and no step reads
-  // `command-api.json` back (only `sentry schema` does, at runtime).
+  // `command-api.json` or `command-api-access.json` back (only the CLI does,
+  // at runtime).
   {
     name: "command-api",
     load: () => import("./generate-command-api.js"),

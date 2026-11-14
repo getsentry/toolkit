@@ -112,6 +112,7 @@ function formatInfo(data: InfoStatus): string {
 }
 
 export const infoCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: topLevelBrief("info"),
     fullDescription:

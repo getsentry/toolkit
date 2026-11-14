@@ -310,6 +310,7 @@ async function enrichReplayView(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View a Session Replay",
     fullDescription:

@@ -261,6 +261,7 @@ function parseImportUrl(raw: string): string {
 }
 
 export const importCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

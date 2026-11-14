@@ -451,6 +451,7 @@ function formatLogViewHuman(data: LogViewData): string {
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View details of one or more log entries",
     fullDescription:

@@ -1,10 +1,15 @@
-/** Generate command/API relationships from source calls and the public route tree. */
+/**
+ * Generate command/API relationships from source calls and the public route
+ * tree, and the class of each command's Sentry API requests
+ * (`lib/command-access.ts`).
+ */
 
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { routes } from "../src/app.js";
 import type { ApiReference } from "../src/lib/api-schema.js";
+import { type ApiAccess, apiAccess } from "../src/lib/command-access.js";
 import {
   isCommand,
   publicTargetPaths,
@@ -15,6 +20,7 @@ import { commandApiAnalysis } from "./lib/command-api-analysis.js";
 import { logger } from "../src/lib/logger.js";
 
 const OUTPUT_PATH = "src/generated/command-api.json";
+const ACCESS_OUTPUT_PATH = "src/generated/command-api-access.json";
 
 /** Write which API operations each public command calls. */
 export async function emit(): Promise<void> {
@@ -27,6 +33,7 @@ export async function emit(): Promise<void> {
     string,
     { commands: Set<string>; reason: string }
   >();
+  const apiMethods = new Map<string, (string | undefined)[]>();
 
   for (const { file, name } of analysis.commands) {
     const module = await import(pathToFileURL(resolve(file)).href);
@@ -37,6 +44,10 @@ export async function emit(): Promise<void> {
     const command = `sentry ${path.join(" ")}`;
     const usage = analysis.exports.get(file)?.get(name);
     if (!usage) continue;
+    apiMethods.set(command, [
+      ...(apiMethods.get(command) ?? []),
+      ...usage.apiMethods,
+    ]);
     const entries = (references[command] ??= []);
     for (const operation of usage.operations) {
       const context = Object.entries(operation.query ?? {})
@@ -96,6 +107,17 @@ export async function emit(): Promise<void> {
       ]),
   );
   await writeFile(OUTPUT_PATH, `${JSON.stringify(catalog, null, 2)}\n`);
+  const apiAccessByCommand: Record<string, ApiAccess> = {};
+  for (const [command, methods] of [...apiMethods].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const value = apiAccess(methods);
+    if (value) apiAccessByCommand[command] = value;
+  }
+  await writeFile(
+    ACCESS_OUTPUT_PATH,
+    `${JSON.stringify(apiAccessByCommand, null, 2)}\n`,
+  );
   logger.success(
     `Generated ${OUTPUT_PATH} (${Object.keys(catalog).length} commands; ${unresolved.size} unresolved requests)`,
   );

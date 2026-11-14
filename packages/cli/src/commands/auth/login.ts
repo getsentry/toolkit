@@ -481,6 +481,7 @@ function hasUsablePreviousAccount(
 }
 
 export const loginCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

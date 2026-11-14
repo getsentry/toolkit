@@ -98,6 +98,7 @@ function formatPrintSources(data: PrintSourcesResult): string {
 }
 
 export const printSourcesCommand = buildCommand({
+  exposure: "stdio-only",
   // Local-only: parses + enumerates in-process, no API calls.
   auth: false,
   docs: {

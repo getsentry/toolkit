@@ -85,6 +85,7 @@ function resolveMetricCreateOrg(
 }
 
 export const createCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create a metric alert rule",
     fullDescription:

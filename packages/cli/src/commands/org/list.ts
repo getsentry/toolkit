@@ -382,6 +382,7 @@ function resolveAccounts(selector?: string): AccountSummary[] | undefined {
 }
 
 export const listCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "List organizations",
     fullDescription:

@@ -151,6 +151,7 @@ function enrichDeleteError(error: unknown, scopeMissing: boolean): unknown {
 }
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Remove an installed integration",
     customUsage: [USAGE],

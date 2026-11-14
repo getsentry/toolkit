@@ -159,6 +159,7 @@ function resolveViewTimeRange(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View a dashboard",
     fullDescription:

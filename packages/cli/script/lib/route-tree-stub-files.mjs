@@ -10,6 +10,7 @@
 /** @type {ReadonlyArray<readonly [path: string, stub: string]>} */
 export const ROUTE_TREE_STUBS = [
   ["src/generated/command-api.json", "{}\n"],
+  ["src/generated/command-api-access.json", "{}\n"],
   ["src/generated/top-level-routes.json", "{}\n"],
   [
     "src/generated/skill-content.ts",
