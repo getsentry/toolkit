@@ -227,7 +227,6 @@ describe("resolveOrgAndIssueId", () => {
 
   test("finds a numeric ID by searching the user's orgs", async () => {
     const calls: string[] = [];
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       calls.push(req.url);
@@ -257,7 +256,6 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("throws a not-found error when no org has the numeric ID", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const { pathname } = new URL(new Request(input, init).url);
       if (pathname === "/api/0/organizations/") {
@@ -278,7 +276,6 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("resolves explicit org prefix (org/ISSUE-ID)", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -334,7 +331,6 @@ describe("resolveOrgAndIssueId", () => {
       "",
     );
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -379,7 +375,6 @@ describe("resolveOrgAndIssueId", () => {
   });
 
   test("resolves explicit org prefix with project-suffix (e.g., 'org1/dashboard-4y')", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -430,7 +425,6 @@ describe("resolveOrgAndIssueId", () => {
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -493,7 +487,6 @@ describe("resolveOrgAndIssueId", () => {
       await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -574,7 +567,6 @@ describe("resolveOrgAndIssueId", () => {
       await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -643,7 +635,6 @@ describe("resolveOrgAndIssueId", () => {
 
     setOrgRegion("org2", DEFAULT_SENTRY_URL);
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -719,7 +710,6 @@ describe("resolveOrgAndIssueId", () => {
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Unauthorized" }), {
         status: 401,
@@ -741,7 +731,6 @@ describe("resolveOrgAndIssueId", () => {
     setDefaultOrganization("my-org");
     setDefaultProject("my-project");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Internal Server Error" }), {
         status: 500,
@@ -787,7 +776,6 @@ describe("resolveOrgAndIssueId", () => {
         },
       );
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -837,7 +825,6 @@ describe("resolveOrgAndIssueId", () => {
       await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -885,7 +872,6 @@ describe("resolveOrgAndIssueId", () => {
       await import("../../../src/lib/db/project-aliases.js");
     clearProjectAliases();
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -937,7 +923,6 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
 
     // Track which endpoint is hit — must be org-scoped, not legacy unscoped.
     const calls: string[] = [];
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       calls.push(req.url);
@@ -986,7 +971,6 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     setOrgRegion("stale-org", DEFAULT_SENTRY_URL);
 
     const calls: string[] = [];
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       calls.push(req.url);
@@ -1025,7 +1009,6 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     const { getCachedIssueOrg } =
       await import("../../../src/lib/db/issue-org-cache.js");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const { pathname } = new URL(new Request(input, init).url);
       if (pathname === "/api/0/organizations/") {
@@ -1062,7 +1045,6 @@ describe("resolveOrgAndIssueId: issue-id → org cache (Pattern D)", () => {
     setOrgRegion("still-valid-org", DEFAULT_SENTRY_URL);
 
     let orgSearchStarted = false;
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1103,7 +1085,6 @@ describe("pollAutofixState", () => {
   test("returns immediately when state is COMPLETED", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () => {
       fetchCount += 1;
       return new Response(
@@ -1133,7 +1114,6 @@ describe("pollAutofixState", () => {
   });
 
   test("returns immediately when state is ERROR", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(
         JSON.stringify({
@@ -1160,7 +1140,6 @@ describe("pollAutofixState", () => {
   });
 
   test("stops at WAITING_FOR_USER_RESPONSE when stopOnWaitingForUser is true", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(
         JSON.stringify({
@@ -1190,7 +1169,6 @@ describe("pollAutofixState", () => {
   test("continues polling when PROCESSING", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () => {
       fetchCount += 1;
 
@@ -1256,7 +1234,6 @@ describe("pollAutofixState", () => {
     try {
       // Return PROCESSING first to allow animation interval to fire,
       // then COMPLETED on second call
-      // @ts-expect-error - partial mock
       globalThis.fetch = async () => {
         fetchCount += 1;
 
@@ -1323,7 +1300,6 @@ describe("pollAutofixState", () => {
   });
 
   test("throws timeout error when exceeding timeoutMs", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(
         JSON.stringify({
@@ -1355,7 +1331,6 @@ describe("pollAutofixState", () => {
   test("continues polling when autofix is null", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () => {
       fetchCount += 1;
 
@@ -1399,7 +1374,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("returns immediately when state is COMPLETED", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () => {
       fetchCount += 1;
       return new Response(
@@ -1431,7 +1405,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("returns immediately when state is WAITING_FOR_USER_RESPONSE", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () => {
       fetchCount += 1;
       return new Response(
@@ -1463,7 +1436,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("triggers new analysis when no state exists", async () => {
     let triggerCalled = false;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1521,7 +1493,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("retries when existing analysis has ERROR status", async () => {
     let triggerCalled = false;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1585,7 +1556,6 @@ describe("ensureRootCauseAnalysis", () => {
   });
 
   test("throws out_of_credits when the run stopped for credits", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const body =
@@ -1617,7 +1587,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("polls until complete when state is PROCESSING", async () => {
     let fetchCount = 0;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
 
@@ -1675,7 +1644,6 @@ describe("ensureRootCauseAnalysis", () => {
   test("forces new analysis when force flag is true", async () => {
     let triggerCalled = false;
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1740,7 +1708,6 @@ describe("ensureRootCauseAnalysis", () => {
     };
 
     try {
-      // @ts-expect-error - partial mock
       globalThis.fetch = async (
         input: RequestInfo | URL,
         init?: RequestInit,
@@ -1808,7 +1775,6 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
       await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1858,7 +1824,6 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
       await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1904,7 +1869,6 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
   });
 
   test("resolves org/@latest with explicit org prefix", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1953,7 +1917,6 @@ describe("resolveOrgAndIssueId: magic @ selectors", () => {
       await import("../../../src/lib/db/defaults.js");
     setDefaultOrganization("test-org");
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -2028,7 +1991,6 @@ describe("resolveIssue: numeric 404 error handling", () => {
   });
 
   test("numeric 404 throws ResolutionError with ID and short-ID hint", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Issue not found" }), {
         status: 404,
@@ -2051,7 +2013,6 @@ describe("resolveIssue: numeric 404 error handling", () => {
   });
 
   test("numeric non-404 error propagates unchanged", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Internal Server Error" }), {
         status: 500,
@@ -2068,7 +2029,6 @@ describe("resolveIssue: numeric 404 error handling", () => {
   });
 
   test("explicit-org-numeric 404 throws ResolutionError with org and ID", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Issue not found" }), {
         status: 404,
@@ -2093,7 +2053,6 @@ describe("resolveIssue: numeric 404 error handling", () => {
   });
 
   test("explicit-org-numeric non-404 error propagates unchanged", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Unauthorized" }), {
         status: 401,
@@ -2149,7 +2108,6 @@ describe("resolveIssue: project-search DSN shortcut", () => {
 
     const requests: string[] = [];
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;

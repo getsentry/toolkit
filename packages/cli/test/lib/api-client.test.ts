@@ -838,7 +838,6 @@ describe("findProjectsBySlug", () => {
 
     const requests: string[] = [];
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;

@@ -309,7 +309,6 @@ function mockProjectFetch(
   options: { hasMore?: boolean; nextCursor?: string } = {},
 ): typeof globalThis.fetch {
   const { hasMore = false, nextCursor } = options;
-  // @ts-expect-error - partial mock
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const url = req.url;
@@ -940,7 +939,6 @@ describe("handleOrgAll", () => {
     );
     const perPageValues: number[] = [];
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const parsed = new URL(req.url);
@@ -1017,7 +1015,6 @@ describe("handleProjectSearch", () => {
 
   test("not found throws ResolutionError", async () => {
     // Mock returning orgs but 404 for project lookups
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1049,7 +1046,6 @@ describe("handleProjectSearch", () => {
   });
 
   test("not found with --json returns empty items", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1111,7 +1107,6 @@ describe("handleProjectSearch", () => {
     // listOrganizations returns two orgs; each has a 'frontend' project. The
     // bare-slug lookup fans out across both. With scopedOrg=org-a the result
     // must only contain org-a's project, never org-b's.
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1176,7 +1171,6 @@ describe("handleProjectSearch", () => {
     };
 
     // Mock that returns 2 orgs, each with the same project slug
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1230,7 +1224,6 @@ describe("handleProjectSearch", () => {
       status: "active",
     };
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1362,7 +1355,6 @@ describe("fetchOrgProjectsSafe", () => {
   });
 
   test("returns empty array on non-auth error", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Forbidden" }), {
         status: 403,
@@ -1414,7 +1406,6 @@ describe("fetchAllOrgProjects", () => {
 
   test("skips orgs with access errors", async () => {
     let callCount = 0;
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1661,7 +1652,6 @@ describe("handleAutoDetect", () => {
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
     setDefaultOrganization("test-org");
     // Mock returns 403 for projects endpoint (stale org, no access)
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       if (req.url.includes("/projects/")) {
