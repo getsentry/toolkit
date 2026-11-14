@@ -642,6 +642,9 @@ describe.each(["external", "inline"] as const)(
       // rewrites its string literals to template literals
       // (getsentry/toolkit#2267).
       templateLiterals: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof window<\`u\`?window:typeof global<\`u\`?global:typeof self<\`u\`?self:{};var t=new e.Error().stack;t&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[t]=\`${debugId}\`,e._sentryDebugIdIdentifier=\`sentry-dbid-${debugId}\`)}catch{}})();`,
+      // Turbopack's snippet after the same minification, which also folds
+      // the inline registry initialization into a logical assignment.
+      turbopackLogicalAssignment: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof global<\`u\`?global:typeof window<\`u\`?window:typeof self<\`u\`?self:{},t=new e.Error().stack;t&&((e._debugIds||={})[t]=\`${debugId}\`)}catch{}})();`,
     };
 
     test.each(Object.keys(snippets))(

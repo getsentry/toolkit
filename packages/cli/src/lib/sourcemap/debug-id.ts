@@ -60,11 +60,13 @@ const DEBUGID_REGISTRY = "(?:_sentryDebugIds|_debugIds)";
  * (`e._sentryDebugIds[n]="<id>"`), and Turbopack, which initializes the
  * registry inline: `(e._debugIds|| (e._debugIds={}))[n]="<id>"`.
  *
- * A string may be quoted with backticks as well as quotes: minifiers such as
- * Oxc (Vite 8) rewrite a bundler plugin's `"<id>"` to a template literal.
+ * Minifiers such as Oxc (Vite 8) rewrite these, so two more forms are
+ * accepted: a string quoted with backticks (`"<id>"` becomes a template
+ * literal), and the inline initialization written with a logical assignment,
+ * `(e._debugIds||={})[n]` or `??=`.
  */
 const DEBUGID_REGISTRATION_RE = new RegExp(
-  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["'\`]${DEBUGID_REGISTRY}["'\`]\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'\`])(${DEBUGID_PATTERN})\\1`,
+  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["'\`]${DEBUGID_REGISTRY}["'\`]\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\)|\\s*(?:\\|\\||\\?\\?)=\\s*\\{\\s*\\}\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'\`])(${DEBUGID_PATTERN})\\1`,
   "g",
 );
 
