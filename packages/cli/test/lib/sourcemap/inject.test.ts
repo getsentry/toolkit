@@ -683,6 +683,98 @@ describe.each(["external", "inline"] as const)(
       },
     );
 
+    // What a bundler plugin leaves in its output directory: the snippet, but
+    // neither the comment nor a map ID (getsentry/toolkit#2269).
+    const pluginSnippet = (id: string): string =>
+      `!function(){try{var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{};var n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${id}",e._sentryDebugIdIdentifier="sentry-dbid-${id}");}catch(e){}}();`;
+
+    /** Write `main.js` with no debug ID comment and a map with no ID. */
+    function writeUnstampedBundle(body: string): {
+      jsPath: string;
+      js: string;
+    } {
+      const jsPath = join(dir, "main.js");
+      const mapContent = JSON.stringify({
+        version: 3,
+        sources: ["main.ts"],
+        names: [],
+        mappings: ";AAAA",
+      });
+      const mapUrl =
+        kind === "inline"
+          ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+          : "main.js.map";
+      const js = `${body}\n//# sourceMappingURL=${mapUrl}\n`;
+      writeFileSync(jsPath, js);
+      if (kind === "external") {
+        writeFileSync(`${jsPath}.map`, mapContent);
+      }
+      return { jsPath, js };
+    }
+
+    /** Read back the map that injection wrote, external or inline. */
+    function readInjectedMap(jsPath: string): Record<string, unknown> {
+      if (kind === "external") {
+        return JSON.parse(readFileSync(`${jsPath}.map`, "utf-8"));
+      }
+      const url = readFileSync(jsPath, "utf-8").match(
+        /\/\/# sourceMappingURL=(\S+)/,
+      )?.[1];
+      return tryDecodeInlineSourcemap(url ?? "")?.map as Record<
+        string,
+        unknown
+      >;
+    }
+
+    test("reuses an ID that is only registered at runtime", async () => {
+      const snippet = pluginSnippet(debugId);
+      const { jsPath, js } = writeUnstampedBundle(snippet);
+
+      expect((await injectDirectory(dir, { dryRun: true }))[0]).toMatchObject({
+        debugId,
+        injected: true,
+      });
+      expect(readFileSync(jsPath, "utf-8")).toBe(js);
+
+      expect((await injectDirectory(dir))[0]).toMatchObject({
+        debugId,
+        injected: true,
+      });
+      const after = readFileSync(jsPath, "utf-8");
+      // No second snippet: the bundle still starts with its own.
+      expect(after.startsWith(snippet)).toBe(true);
+      expect(after).toContain(`//# debugId=${debugId}`);
+      expect(readInjectedMap(jsPath)).toMatchObject({
+        debug_id: debugId,
+        debugId,
+        mappings: ";AAAA",
+      });
+      const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+      runInNewContext(after, sandbox, { filename: "main.js" });
+      expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
+
+      // A second run finds the comment and the registration, and does nothing.
+      expect((await injectDirectory(dir))[0]).toMatchObject({
+        debugId,
+        injected: false,
+      });
+      expect(readFileSync(jsPath, "utf-8")).toBe(after);
+    });
+
+    test("mints an ID when two different IDs are registered at runtime", async () => {
+      const otherId = "99999999-8888-5777-9666-555555555555";
+      const { jsPath } = writeUnstampedBundle(
+        `${pluginSnippet(debugId)}\n${pluginSnippet(otherId)}`,
+      );
+
+      const [result] = await injectDirectory(dir);
+      expect(result?.injected).toBe(true);
+      expect([debugId, otherId]).not.toContain(result?.debugId);
+      // Two chunks concatenated into one file do not identify one bundle, so
+      // the file gets its own ID and snippet as before.
+      expect(readFileSync(jsPath, "utf-8").startsWith(";!function")).toBe(true);
+    });
+
     test.each(["comment", "debugId", "debug_id", "comment and map"])(
       "registers an ID from %s exactly once",
       async (source) => {
