@@ -109,7 +109,7 @@ async function issueAccessToken(resource: string) {
   expect(code).toBeTruthy();
 
   const tokenCtx = createExecutionContext();
-  const tokenResponse = await handler.fetch!(
+  const tokenResponse = await handler.fetch(
     createTokenExchangeRequest(client.clientId, code!, codeVerifier),
     workerEnv,
     tokenCtx,
@@ -117,9 +117,9 @@ async function issueAccessToken(resource: string) {
 
   expect(tokenResponse.status).toBe(200);
 
-  const tokens = (await tokenResponse.json()) as {
+  const tokens = await tokenResponse.json<{
     access_token: string;
-  };
+  }>();
 
   return tokens.access_token;
 }
@@ -146,10 +146,10 @@ describe("/api/metadata integration", () => {
     );
 
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as {
+    const payload = await res.json<{
       type: string;
       tools: string[];
-    };
+    }>();
     expect(payload.type).toBe("mcp-metadata");
     expect(Array.isArray(payload.tools)).toBe(true);
   });
@@ -168,10 +168,10 @@ describe("/api/metadata integration", () => {
     );
 
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as {
+    const payload = await res.json<{
       type: string;
       tools: string[];
-    };
+    }>();
     expect(payload.type).toBe("mcp-metadata");
     expect(Array.isArray(payload.tools)).toBe(true);
   });

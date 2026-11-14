@@ -15,7 +15,7 @@ describe("/api/metadata", () => {
     );
 
     expect(res.status).toBe(401);
-    const json = (await res.json()) as { error: string; name: string };
+    const json = await res.json<{ error: string; name: string }>();
     expect(json.error).toBe("Authorization required");
     expect(json.name).toBe("MISSING_AUTH_TOKEN");
   });

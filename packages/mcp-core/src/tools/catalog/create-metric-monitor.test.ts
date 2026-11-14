@@ -58,7 +58,7 @@ function create(changes: Record<string, unknown> = {}) {
 
 function savedMonitor(body: MetricMonitorCreate) {
   const [fixtureSource] = metricMonitor.dataSources;
-  const [bodySource] = body.dataSources ?? [];
+  const [bodySource] = body.dataSources;
   assert(fixtureSource && bodySource, "Expected a data source");
   const source = structuredClone(fixtureSource);
   Object.assign(source.queryObj.snubaQuery, bodySource);
