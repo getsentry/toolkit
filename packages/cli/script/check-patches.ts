@@ -50,7 +50,7 @@ import { logger } from "../src/lib/logger.js";
 /**
  * Read `patchedDependencies` from the workspace configuration.
  *
- * pnpm 11 reads workspace-root settings from `pnpm-workspace.yaml`.
+ * pnpm reads workspace-root settings from `pnpm-workspace.yaml`.
  */
 const WORKSPACE_PATH = "../../pnpm-workspace.yaml";
 const PATCHED_DEPENDENCIES_SECTION = /^patchedDependencies:\n((?: {2}.+\n)*)/m;

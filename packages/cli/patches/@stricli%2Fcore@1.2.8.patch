@@ -68,7 +68,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1300,12 +1341,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1300,12 +1344,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -98,7 +98,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
          }
        }
        if (target) {
-@@ -1357,6 +1414,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1357,6 +1417,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -106,7 +106,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
          prefix,
          rootLevel,
          aliases
-@@ -1410,16 +1468,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1410,16 +1471,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -123,7 +123,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1445,7 +1493,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1445,7 +1496,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -161,7 +161,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1514,6 +1592,9 @@ function withDefaults(config) {
+@@ -1514,6 +1595,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -171,7 +171,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1529,7 +1610,10 @@ function withDefaults(config) {
+@@ -1529,7 +1613,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -183,7 +183,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1881,7 +1965,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1881,7 +1968,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -192,7 +192,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1920,7 +2004,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1920,7 +2007,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -201,7 +201,7 @@ index a9afbc1ab78cad7ba97d53882a80236af62854df..141532779be923b8f3b421b0afc031b5
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2057,7 +2141,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2057,7 +2144,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
@@ -398,7 +398,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1252,12 +1293,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1252,12 +1296,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -428,7 +428,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
          }
        }
        if (target) {
-@@ -1309,6 +1366,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1309,6 +1369,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -436,7 +436,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
          prefix,
          rootLevel,
          aliases
-@@ -1362,16 +1420,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1362,16 +1423,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -453,7 +453,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1397,7 +1445,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1397,7 +1448,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -491,7 +491,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1466,6 +1544,9 @@ function withDefaults(config) {
+@@ -1466,6 +1547,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -501,7 +501,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1481,7 +1562,10 @@ function withDefaults(config) {
+@@ -1481,7 +1565,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -513,7 +513,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1833,7 +1917,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1833,7 +1920,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -522,7 +522,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1872,7 +1956,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1872,7 +1959,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -531,7 +531,7 @@ index f76639637e812453d107bda3e3ec165fc195f4d8..eff534dc79cdbe5bf8ee14839157b6d8
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2009,7 +2093,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2009,7 +2096,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);

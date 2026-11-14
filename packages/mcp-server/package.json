@@ -11,7 +11,7 @@
     ]
   },
   "type": "module",
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=22.15"
   },
