@@ -65,7 +65,6 @@ toolkit/
 │       │   │   ├── dart-symbol-map/# upload
 │       │   │   ├── dashboard/   # add, create, delete, edit, list, restore, revisions, view
 │       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
-│       │   │   ├── docs/        # list, query
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # analytics, list, send, view
 │       │   │   ├── feedback/    # list, resolve, spam, unresolve, view
@@ -91,6 +90,7 @@ toolkit/
 │       │   │   ├── trace/       # list, logs, view
 │       │   │   ├── trial/       # list, start
 │       │   │   ├── api.ts       # Make an authenticated API request
+│       │   │   ├── docs.ts      # Search the Sentry documentation
 │       │   │   ├── explore.ts   # Query aggregate event data (Explore)
 │       │   │   ├── help.ts      # Help command
 │       │   │   ├── info.ts      # Print configuration and verify authentication

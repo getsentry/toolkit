@@ -1,0 +1,118 @@
+{
+  "$comment": "Benchmark for `sentry docs`. Each task is what an agent is asked to do; `query` is how an agent would phrase it to `sentry docs`; `expected` are docs paths that answer it, best first. Run with `pnpm run bench:docs`.",
+  "tasks": [
+    {
+      "task": "Set up tracing in a Next.js app",
+      "query": "nextjs tracing",
+      "expected": ["/platforms/javascript/guides/nextjs/tracing"]
+    },
+    {
+      "task": "Upload source maps for a Next.js app",
+      "query": "nextjs source maps",
+      "expected": ["/platforms/javascript/guides/nextjs/sourcemaps"]
+    },
+    {
+      "task": "Add Sentry with tracing to a TanStack Start app deployed on Cloudflare",
+      "query": "tracing cloudflare tanstack start",
+      "expected": [
+        "/platforms/javascript/guides/cloudflare/frameworks/tanstack-start"
+      ]
+    },
+    {
+      "task": "Manually set up Sentry in a Next.js app without the wizard",
+      "query": "nextjs manual setup",
+      "expected": ["/platforms/javascript/guides/nextjs/manual-setup"]
+    },
+    {
+      "task": "Set up Sentry in a Django app",
+      "query": "django setup",
+      "expected": ["/platforms/python/integrations/django"]
+    },
+    {
+      "task": "Monitor Celery beat tasks with cron monitors",
+      "query": "celery crons",
+      "expected": [
+        "/platforms/python/integrations/celery/crons",
+        "/platforms/python/crons"
+      ]
+    },
+    {
+      "task": "Enable profiling in a FastAPI app",
+      "query": "fastapi profiling",
+      "expected": ["/platforms/python/profiling"]
+    },
+    {
+      "task": "Drop or filter events before they are sent in a Python app",
+      "query": "python filter events before send",
+      "expected": ["/platforms/python/configuration/filtering"]
+    },
+    {
+      "task": "Scrub sensitive data and PII in a Node.js app",
+      "query": "node scrub sensitive data",
+      "expected": [
+        "/platforms/javascript/guides/node/data-management/sensitive-data"
+      ]
+    },
+    {
+      "task": "Configure trace sampling in a Node.js app",
+      "query": "node tracing sampling",
+      "expected": [
+        "/platforms/javascript/guides/node/tracing/configure-sampling",
+        "/platforms/javascript/guides/node/sampling"
+      ]
+    },
+    {
+      "task": "Set up Session Replay in a React app",
+      "query": "react session replay",
+      "expected": ["/platforms/javascript/guides/react/session-replay"]
+    },
+    {
+      "task": "Add the user feedback widget to a Next.js app",
+      "query": "nextjs user feedback widget",
+      "expected": ["/platforms/javascript/guides/nextjs/user-feedback"]
+    },
+    {
+      "task": "Upload debug symbols for a React Native app",
+      "query": "react native debug symbols",
+      "expected": ["/platforms/react-native/upload-debug"]
+    },
+    {
+      "task": "Use OpenTelemetry with Sentry in a Go service",
+      "query": "go opentelemetry",
+      "expected": ["/platforms/go/tracing/instrumentation/opentelemetry"]
+    },
+    {
+      "task": "Set up Sentry in a Ruby on Rails app",
+      "query": "rails",
+      "expected": ["/platforms/ruby/guides/rails"]
+    },
+    {
+      "task": "Send logs from a Python app to Sentry",
+      "query": "python logs",
+      "expected": ["/platforms/python/logs"]
+    },
+    {
+      "task": "Detect ANRs (app not responding) in an Android app",
+      "query": "android anr",
+      "expected": ["/platforms/android/configuration/app-not-respond"]
+    },
+    {
+      "task": "Associate commits with a release",
+      "query": "associate commits release",
+      "expected": ["/product/releases/associate-commits", "/cli/releases"]
+    },
+    {
+      "task": "Create an auth token to call the Sentry API",
+      "query": "api auth token",
+      "expected": ["/api/auth", "/account/auth-tokens"]
+    },
+    {
+      "task": "Create an alert in Sentry",
+      "query": "create alert",
+      "expected": [
+        "/product/monitors-and-alerts/alerts/create-alerts",
+        "/product/monitors-and-alerts/alerts"
+      ]
+    }
+  ]
+}
