@@ -547,6 +547,45 @@ describe("find_dashboards", () => {
     expect(searchParams.get("per_page")).toBe("25");
   });
 
+  it("treats a null dashboard environment as no environments", async () => {
+    const [dashboard] = dashboardListFixture;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
+        () =>
+          HttpResponse.json([
+            dashboard,
+            { ...dashboard, id: "102", environment: null },
+          ]),
+      ),
+    );
+
+    const result = await findDashboards.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        titleQuery: null,
+        sort: "title",
+        cursor: null,
+        limit: 10,
+      },
+      context,
+    );
+
+    const structuredContent = findDashboardsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(
+      structuredContent.dashboards.map(({ id, environments }) => ({
+        id,
+        environments,
+      })),
+    ).toEqual([
+      { id: "101", environments: ["production"] },
+      { id: "102", environments: [] },
+    ]);
+  });
+
   it("leaves null widget display types out of widgetTypes", async () => {
     const [dashboard] = dashboardListFixture;
     mswServer.use(

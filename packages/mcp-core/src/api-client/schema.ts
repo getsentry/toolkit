@@ -211,7 +211,8 @@ export const DashboardListItemSchema = z
     title: z.string(),
     dateCreated: z.string(),
     createdBy: z.unknown().nullable().optional(),
-    environment: z.array(z.string()).default([]),
+    // Sentry returns `null` when a saved dashboard has a null environment filter.
+    environment: z.preprocess((value) => value ?? [], z.array(z.string())),
     filters: DashboardFiltersSchema.default({}),
     lastVisited: z.string().nullable().optional(),
     widgetDisplay: z.array(z.string().nullable()).default([]),
@@ -233,7 +234,7 @@ export const DashboardSchema = z
     createdBy: z.unknown().nullable().optional(),
     widgets: z.array(DashboardWidgetSchema),
     projects: z.array(z.number()).default([]),
-    environment: z.array(z.string()).default([]),
+    environment: z.preprocess((value) => value ?? [], z.array(z.string())),
     filters: DashboardFiltersSchema.default({}),
     permissions: DashboardPermissionsSchema.nullable().optional(),
     isFavorited: z.boolean().optional(),
