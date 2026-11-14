@@ -3504,6 +3504,68 @@ describe("search_events", () => {
     expect(validatedQueries.at(-1)).not.toContain("message:");
   });
 
+  it.each([
+    "environment:production is:unresolved",
+    // Parentheses inside a quoted value are not grouping.
+    'environment:production message:"err (timeout)"',
+  ])(
+    "keeps explicit timestamp bounds the agent moved into an overridden time range: %s",
+    async (filters) => {
+      // The agent moves the bounds into an absolute timeRange, but the explicit
+      // period wins over it, so dropping them would search the whole period.
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          filters,
+          ["count()", "count_unique(issue)"],
+          undefined,
+          "-count()",
+          { start: "2025-01-01T00:00:00Z", end: "2025-01-02T00:00:00Z" },
+        ),
+      );
+      const bounds =
+        "timestamp:>=2025-01-01T00:00:00Z timestamp:<2025-01-02T00:00:00Z";
+      const requests: URLSearchParams[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: `${filters} ${bounds}`,
+          fields: ["count()", "count_unique(issue)"],
+          period: "7d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.get("statsPeriod")).toBe("7d");
+      expect(requests[0]!.get("query")).toBe(`${filters} ${bounds}`);
+    },
+  );
+
   it("rejects partial full-text downgrades when a duplicate structured key remains", async () => {
     // Set-based key comparison would miss this: custom remains present after
     // custom:foo is dropped into message full-text.
