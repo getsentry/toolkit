@@ -8,7 +8,7 @@
  * route tree instead of anyone writing them down.
  */
 
-import type { DocumentationConfig } from "@stricli/core";
+import type { DocumentationConfiguration } from "@stricli/core";
 import type { CliRoutes } from "../../src/lib/route-registry.js";
 import {
   getPositionalString,
@@ -22,7 +22,7 @@ import type { TopLevelRoutes } from "../../src/root-help-routes.js";
 type UsageLineFormatter = {
   formatUsageLine: (args: {
     prefix: readonly string[];
-    config: DocumentationConfig;
+    config: DocumentationConfiguration;
   }) => string;
 };
 
@@ -34,7 +34,7 @@ type UsageLineFormatter = {
  */
 export function describeTopLevelRoutes(
   routes: CliRoutes,
-  config: DocumentationConfig,
+  config: DocumentationConfiguration,
 ): TopLevelRoutes {
   const described: TopLevelRoutes = {};
   for (const entry of (routes as unknown as RouteMap).getAllEntries()) {

@@ -71,13 +71,12 @@ function parsePatchedDependencies(source: string): Record<string, string> {
 
   const patches: Record<string, string> = {};
   for (const line of section.trimEnd().split("\n")) {
-    const entry = line.match(PATCHED_DEPENDENCY_ENTRY);
-    if (!entry) {
+    const [, key, patchPath] = line.match(PATCHED_DEPENDENCY_ENTRY) ?? [];
+    if (key === undefined || patchPath === undefined) {
       throw new Error(
         `Unsupported patchedDependencies entry in ${WORKSPACE_PATH}: ${line}`,
       );
     }
-    const [, key, patchPath] = entry;
     patches[key] = patchPath;
   }
   return patches;
@@ -137,10 +136,8 @@ function resolveMainEntry(pkgName: string): string {
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
 function resolvePackageFile(subpath: string): string | null {
-  const parts = subpath.split("/");
-  const pkgName = subpath.startsWith("@")
-    ? `${parts[0]}/${parts[1]}`
-    : parts[0];
+  const [first = "", second = ""] = subpath.split("/");
+  const pkgName = subpath.startsWith("@") ? `${first}/${second}` : first;
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.

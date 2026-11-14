@@ -133,7 +133,6 @@ function parseArgs(argv: readonly string[]): SweepArgs {
       case "--help": {
         printHelp();
         process.exit(0);
-        break;
       }
       default:
         throw new Error(`Unknown flag: ${arg}`);
@@ -263,10 +262,11 @@ async function sweepFixture(
 ): Promise<void> {
   for (const op of ops) {
     for (const concurrency of args.values) {
+      const setup = op.setup;
       const samples = await measure(() => op.run(fx.rootDir, concurrency), {
         runs: args.runs,
         warmup: args.warmup,
-        beforeEach: op.setup ? () => op.setup?.(fx.rootDir) : undefined,
+        ...(setup && { beforeEach: () => setup(fx.rootDir) }),
       });
       const stats = summarize(samples);
       results.push({
