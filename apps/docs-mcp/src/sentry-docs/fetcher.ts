@@ -8,6 +8,7 @@ const FETCH_TIMEOUT_MS = 15_000; // 15s — .md endpoint is CDN-served, fail fas
 // (lint/performance/useTopLevelRegex) — avoids re-compilation on every call.
 const TRAILING_MD_RE = /\.md$/;
 const TRAILING_SLASHES_RE = /\/+$/;
+const QUERY_OR_FRAGMENT_RE = /[?#].*$/s;
 
 /**
  * Cache TTLs.
@@ -100,11 +101,14 @@ function cachedFetch(url: string, ttlSeconds: number): Promise<string> {
  *   - "platforms/javascript/guides/nextjs"
  *   - "https://docs.sentry.io/platforms/javascript/guides/nextjs/"
  *   - "/platforms/javascript/guides/nextjs/.md" (no-op)
+ *   - any of the above followed by a "?query" and/or "#fragment" (dropped)
  *
  * Returns a path with a single leading slash and no trailing slash.
  */
 export function normalizeDocPath(path: string): string {
-  let p = path.trim();
+  // Drop the query string and fragment first: they are not part of the page
+  // path, and the ".md" suffix has to land on the pathname.
+  let p = path.trim().replace(QUERY_OR_FRAGMENT_RE, "");
   // Strip absolute URL prefix
   if (p === BASE_URL || p.startsWith(`${BASE_URL}/`)) {
     p = p.slice(BASE_URL.length);
