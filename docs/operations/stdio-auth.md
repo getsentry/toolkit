@@ -132,7 +132,9 @@ until the server restarts.
 Routing is off when the credential is a static token (`SENTRY_AUTH_TOKEN`,
 `--access-token`, `SENTRY_ACCESS_TOKEN`): that token is the only account.
 `--organization-slug` (or an `<org>/` target) picks the account that knows the
-organization once, at startup, and every call uses it. To use accounts on
+organization once, at startup, and every call uses it. `--commands` does not
+route calls either: it uses the account that knows its `<org>/` target, else
+the startup account. To use accounts on
 different servers at once (say, sentry.io and a self-hosted server), configure
 one MCP server per host via `SENTRY_HOST`.
 

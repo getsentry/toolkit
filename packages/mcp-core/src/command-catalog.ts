@@ -32,7 +32,8 @@ export type JsonSchema = {
   prefixItems?: JsonSchema[];
   minItems?: number;
   maxItems?: number;
-  properties?: Record<string, JsonSchema>;
+  /** By name; a name the schema does not list is `undefined`. */
+  properties?: Partial<Record<string, JsonSchema>>;
   required?: string[];
   additionalProperties?: false;
 };

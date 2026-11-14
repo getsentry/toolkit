@@ -1,8 +1,8 @@
 /**
  * What a command may do (permission class) and where agents may run it
- * (exposure). `sentry mcp` lists and runs commands by these fields:
- * `execute_sentry_read` runs only read commands, and hosts allowlist by
- * permission class (#1254). `check:command-access` keeps them honest.
+ * (exposure). `sentry mcp` lists and runs commands by these fields: its
+ * command tools carry hints from the permission class, which hosts allowlist
+ * by (#1254). `check:command-access` keeps them honest.
  */
 
 /**

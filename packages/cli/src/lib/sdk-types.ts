@@ -59,6 +59,13 @@ export type SentryOptions = {
   headers?: Record<string, string>;
 
   /**
+   * Set `false` to run commands without the CLI's telemetry. The CLI's
+   * telemetry initializes `@sentry/node` for each call, which replaces a
+   * Sentry client the host application set up (the MCP server's).
+   */
+  telemetry?: boolean;
+
+  /**
    * Environment variables each invocation starts from, before the options
    * above are applied. Defaults to `process.env`. Pass `{}` on a server whose
    * `process.env` holds its own settings (such as a `SENTRY_DSN`) that must not

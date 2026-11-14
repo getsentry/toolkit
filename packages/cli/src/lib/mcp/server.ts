@@ -19,6 +19,7 @@ import { buildServer } from "@sentry/mcp-core/server";
 import { findRetainedSkillTools } from "@sentry/mcp-core/skills";
 import { sentryBeforeSend } from "@sentry/mcp-core/telem/sentry";
 import { startStdio } from "@sentry/mcp-core/transports/stdio";
+import type { ToolRegistry } from "@sentry/mcp-core/command-surface";
 import type { CredentialRouter, ServerContext } from "@sentry/mcp-core/types";
 import tools from "@sentry/mcp-core/tools";
 import { setServerVersion } from "@sentry/mcp-core/version";
@@ -61,6 +62,8 @@ export type McpServeOptions = {
    */
   credentialRouter?: CredentialRouter;
   env: NodeJS.ProcessEnv;
+  /** Tools to serve instead of the tool catalog (`--commands`). */
+  tools?: ToolRegistry;
 };
 
 const SENTRY_FLUSH_TIMEOUT_MS = 5000;
@@ -445,6 +448,7 @@ export async function serveMcpStdio(
   const server = buildServer({
     context,
     experimentalMode: config.experimental,
+    tools: options.tools,
   });
   const connection = await startStdio(server, context).catch(
     (error: unknown) => {

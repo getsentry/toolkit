@@ -231,6 +231,25 @@ describe("serveMcp scope", () => {
     expect(served.calls).toHaveLength(0);
   });
 
+  test("does not serve --commands for a scope Sentry reports as not found", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    scopeChecks.result = new ResolutionError(
+      "Organization 'missing' (MCP server scope 'missing/')",
+      "not found",
+      "Check the <org>/ argument",
+    );
+
+    await expect(serve(["--commands", "missing/"])).rejects.toBe(
+      scopeChecks.result,
+    );
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "missing", accessToken: "cli-session-token" },
+    ]);
+    expect(served.calls).toHaveLength(0);
+  });
+
   test("checks the scope with a static token", async () => {
     process.env.SENTRY_AUTH_TOKEN = "env-token";
 
@@ -573,6 +592,15 @@ describe("serveMcp account routing", () => {
       "b-token-rotated",
     );
     expect(refreshedWith).toEqual(["b-token-refresh"]);
+  });
+
+  test("--commands serves the account that knows the session's org", async () => {
+    loginTwoAccounts();
+    const { options } = await start(["--commands", "b-org/"]);
+
+    expect(options.credentialRouter).toBeUndefined();
+    expect(options.accessToken).toBe("b-token");
+    expect(options.tools).toBeDefined();
   });
 });
 

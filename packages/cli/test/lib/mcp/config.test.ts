@@ -333,4 +333,22 @@ describe("finalizeMcpConfig", () => {
       projectSlug: "web",
     });
   });
+  it("keeps --commands and --read-only", () => {
+    expect(finalize({ commands: true, readOnly: true })).toMatchObject({
+      commands: true,
+      readOnly: true,
+    });
+  });
+
+  it("rejects --read-only without --commands", () => {
+    expect(() => finalize({ readOnly: true })).toThrow(
+      "--read-only works only with --commands",
+    );
+  });
+
+  it("rejects --commands with a project but no organization", () => {
+    expect(() => finalize({ commands: true, projectSlug: "web" })).toThrow(
+      "--commands needs the organization of --project",
+    );
+  });
 });
