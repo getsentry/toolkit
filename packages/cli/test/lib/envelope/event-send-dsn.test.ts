@@ -21,12 +21,8 @@ import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for mocked access

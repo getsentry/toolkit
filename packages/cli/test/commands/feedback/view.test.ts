@@ -11,12 +11,8 @@ vi.mock("../../../src/commands/feedback/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/feedback/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -25,12 +21,8 @@ import * as feedbackUtils from "../../../src/commands/feedback/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -39,12 +31,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking

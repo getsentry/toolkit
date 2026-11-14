@@ -11,12 +11,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 vi.mock("../../src/lib/region.js", async (importOriginal) => {
