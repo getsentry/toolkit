@@ -77,7 +77,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
     }
 
     // Parse and validate request body
-    const body = await c.req.json();
+    const body: unknown = await c.req.json();
     const validationResult = SearchRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
@@ -168,7 +168,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
       // Process search results - handle the actual response format from Cloudflare AI
       const searchData = searchResult;
 
-      if (searchData.data?.length === 0) {
+      if (searchData.data.length === 0) {
         logger.warn(
           logger.fmt`No results found for query: ${query} with guide: ${guide}`,
           {
@@ -181,30 +181,27 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
 
       return c.json({
         query,
-        results:
-          searchData.data?.map((result) => {
-            // Extract text from content array
-            const text = result.content?.[0]?.text || "";
+        results: searchData.data.map((result) => {
+          // Extract text from content array
+          const text = result.content[0]?.text || "";
 
-            // Get filename from result - ensure it's a string
-            const rawFilename =
-              result.filename || result.attributes?.filename || "";
-            const filename =
-              typeof rawFilename === "string"
-                ? rawFilename
-                : String(rawFilename);
+          // Get filename from result - ensure it's a string
+          const rawFilename =
+            result.filename || result.attributes["filename"] || "";
+          const filename =
+            typeof rawFilename === "string" ? rawFilename : String(rawFilename);
 
-            // Build URL from filename - remove .md extension
-            const urlPath = filename.replace(/\.md$/, "");
-            const url = urlPath ? `https://docs.sentry.io/${urlPath}` : "";
+          // Build URL from filename - remove .md extension
+          const urlPath = filename.replace(/\.md$/, "");
+          const url = urlPath ? `https://docs.sentry.io/${urlPath}` : "";
 
-            return {
-              id: filename,
-              url: url,
-              snippet: text,
-              relevance: result.score || 0,
-            };
-          }) || [],
+          return {
+            id: filename,
+            url: url,
+            snippet: text,
+            relevance: result.score || 0,
+          };
+        }),
       });
     } catch (error) {
       const eventId = logIssue(error);

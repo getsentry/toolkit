@@ -1,7 +1,7 @@
 import { createExecutionContext, env } from "cloudflare:test";
 import { getOAuthApi } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCOPES } from "../../constants";
 import { PKCE_CODE_CHALLENGE, PKCE_CODE_VERIFIER } from "../../test-utils/pkce";
 import app from "../app";
@@ -145,7 +145,9 @@ async function approveClient(
 
   expect(response.status).toBe(302);
 
-  return response.headers.get("Set-Cookie")?.split(";")[0];
+  const cookie = response.headers.get("Set-Cookie")?.split(";")[0];
+  assert(cookie, "approval response should set the approval cookie");
+  return cookie;
 }
 
 async function callCallback(
@@ -174,7 +176,7 @@ async function callCallback(
   return await oauthApp.fetch(
     new Request(url, {
       method: "GET",
-      headers: options.cookie ? { Cookie: options.cookie } : undefined,
+      ...(options.cookie ? { headers: { Cookie: options.cookie } } : {}),
     }),
     testEnv,
   );
@@ -304,6 +306,7 @@ describe("oauth callback routes", () => {
       );
       expect(approval.status).toBe(302);
       const cookie = approval.headers.get("Set-Cookie")?.split(";")[0];
+      assert(cookie, "approval response should set the approval cookie");
 
       const now = Date.now();
       const state = await signState(
@@ -557,6 +560,10 @@ describe("oauth callback routes", () => {
       const cookie = await approveClient(oauthApp, testEnv, client.clientId);
       const signedState = await createSignedCallbackState(client.clientId);
       const [signature, payload] = signedState.split(".");
+      assert(
+        signature && payload,
+        "signed state should be <signature>.<payload>",
+      );
       const tamperedDigit = signature.endsWith("a") ? "b" : "a";
       const tamperedState = `${signature.slice(0, -1)}${tamperedDigit}.${payload}`;
 
@@ -632,7 +639,7 @@ describe("oauth callback routes", () => {
       expect(redirectUrl.searchParams.get("iss")).toBe("http://localhost");
 
       const tokenCtx = createExecutionContext();
-      const tokenResponse = await handler.fetch!(
+      const tokenResponse = await handler.fetch(
         createTokenExchangeRequest(client.clientId, authorizationCode!),
         testEnv,
         tokenCtx,
@@ -640,18 +647,18 @@ describe("oauth callback routes", () => {
 
       expect(tokenResponse.status).toBe(200);
 
-      const tokenPayload = (await tokenResponse.json()) as {
+      const tokenPayload = await tokenResponse.json<{
         access_token: string;
         token_type: string;
         resource?: string;
-      };
+      }>();
 
       expect(tokenPayload.access_token).toBeTruthy();
       expect(tokenPayload.token_type).toBe("bearer");
       expect(tokenPayload.resource).toBe("http://localhost/mcp");
 
       const mcpCtx = createExecutionContext();
-      const mcpResponse = await handler.fetch!(
+      const mcpResponse = await handler.fetch(
         createMcpInitializeRequest(tokenPayload.access_token),
         testEnv,
         mcpCtx,
@@ -699,20 +706,19 @@ describe("oauth callback routes", () => {
 
       expect(callbackResponse.status).toBe(302);
       expect(completeAuthorization).toHaveBeenCalledOnce();
-      const props = completeAuthorization.mock.calls[0][0].props as Record<
-        string,
-        unknown
-      >;
+      const call = completeAuthorization.mock.calls[0];
+      assert(call, "completeAuthorization should have been called");
+      const props = call[0].props as Record<string, unknown>;
 
-      expect(props.upstreamScopes).toEqual([
+      expect(props["upstreamScopes"]).toEqual([
         "alerts:write",
         "event:write",
         "org:read",
         "project:write",
         "team:write",
       ]);
-      expect(props.grantedSkills).toEqual(["inspect"]);
-      expect(props.grantedScopes).not.toEqual(props.upstreamScopes);
+      expect(props["grantedSkills"]).toEqual(["inspect"]);
+      expect(props["grantedScopes"]).not.toEqual(props["upstreamScopes"]);
     });
 
     it("omits upstreamScopes when Sentry's token response has no scope", async () => {
@@ -733,11 +739,10 @@ describe("oauth callback routes", () => {
       });
 
       expect(callbackResponse.status).toBe(302);
-      const props = completeAuthorization.mock.calls[0][0].props as Record<
-        string,
-        unknown
-      >;
-      expect(props.upstreamScopes).toBeUndefined();
+      const call = completeAuthorization.mock.calls[0];
+      assert(call, "completeAuthorization should have been called");
+      const props = call[0].props as Record<string, unknown>;
+      expect(props["upstreamScopes"]).toBeUndefined();
     });
 
     it("completes callback for a scoped resource, exchanges the code, and uses the token at the same scoped /mcp path", async () => {
@@ -772,7 +777,7 @@ describe("oauth callback routes", () => {
       expect(redirectUrl.searchParams.get("iss")).toBe("http://localhost");
 
       const tokenCtx = createExecutionContext();
-      const tokenResponse = await handler.fetch!(
+      const tokenResponse = await handler.fetch(
         createTokenExchangeRequest(client.clientId, authorizationCode!),
         testEnv,
         tokenCtx,
@@ -780,15 +785,15 @@ describe("oauth callback routes", () => {
 
       expect(tokenResponse.status).toBe(200);
 
-      const tokenPayload = (await tokenResponse.json()) as {
+      const tokenPayload = await tokenResponse.json<{
         access_token: string;
         resource?: string;
-      };
+      }>();
 
       expect(tokenPayload.resource).toBe(scopedResource);
 
       const mcpCtx = createExecutionContext();
-      const mcpResponse = await handler.fetch!(
+      const mcpResponse = await handler.fetch(
         createMcpInitializeRequest(
           tokenPayload.access_token,
           "/mcp/sentry-mcp-evals/cloudflare-mcp",

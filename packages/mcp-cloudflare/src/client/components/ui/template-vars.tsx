@@ -10,7 +10,7 @@ export default function TemplateVars({
   variables,
   title = "Parameters",
 }: TemplateVarsProps) {
-  const vars = Array.isArray(variables) ? variables : [];
+  const vars = variables ?? [];
   if (vars.length === 0) return null;
 
   return (

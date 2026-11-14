@@ -25,7 +25,7 @@ export function SlashCommandText({
   match = SLASH_COMMAND_REGEX.exec(children);
   while (match !== null) {
     const fullMatch = match[0]; // e.g., "/help"
-    const command = match[1]!; // e.g., "help"
+    const command = match[1] ?? fullMatch.slice(1); // e.g., "help"
     const startIndex = match.index;
 
     // Add text before the command

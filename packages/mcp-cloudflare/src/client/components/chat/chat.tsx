@@ -33,11 +33,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
   } = useMcpMetadata(isAuthenticated);
 
   // Initialize streaming simulation first (without scroll callback)
-  const {
-    isStreaming: isLocalStreaming,
-    startStreaming,
-    isMessageStreaming,
-  } = useStreamingSimulation();
+  const { startStreaming, isMessageStreaming } = useStreamingSimulation();
 
   // Manage input state manually (AI SDK 5+ removed built-in input management)
   const [input, setInput] = useState("");
@@ -108,7 +104,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
     } else if (metadataError) {
       content = `❌ Failed to load tools: ${metadataError}\n\nPlease check your connection and try again.`;
       messageMetadata = { type: "tools-error", error: metadataError };
-    } else if (!metadata || !metadata.tools || !Array.isArray(metadata.tools)) {
+    } else if (!metadata) {
       content =
         "No tools are currently available. The MCP server may not have loaded tools yet.\n\nPlease check your connection and try again.";
       messageMetadata = { type: "tools-empty" };
@@ -391,7 +387,7 @@ Try asking me things like:
             <span className="sr-only">Logout</span>
             <PanelLeftOpen className="size-4" />
           </Button>
-          {isAuthenticated && onLogout ? (
+          {isAuthenticated ? (
             <Button
               variant="secondary"
               onClick={onLogout}
@@ -424,13 +420,16 @@ Try asking me things like:
           input={input}
           error={error}
           isChatLoading={status === "streaming" || status === "submitted"}
-          isLocalStreaming={isLocalStreaming}
           isMessageStreaming={isMessageStreaming}
           isOpen={isOpen}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
-          onStop={stop}
-          onRetry={regenerate}
+          onStop={() => {
+            void stop();
+          }}
+          onRetry={() => {
+            void regenerate();
+          }}
           onSlashCommand={handleSlashCommand}
           onSendPrompt={handleSendPrompt}
         />

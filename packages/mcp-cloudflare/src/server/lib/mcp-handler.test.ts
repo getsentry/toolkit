@@ -40,6 +40,7 @@ interface OAuthProps {
   sessionStartedAt?: number;
   upstreamExpiresAt?: number;
   grantedSkills: string[];
+  grantedScopes?: string[];
   constraintOrganizationSlug?: string | null;
   constraintProjectSlug?: string | null;
 }
@@ -85,7 +86,7 @@ function createMcpRequest(
     ...options.headers,
   };
   if (bearerToken) {
-    headers.Authorization = `Bearer ${bearerToken}`;
+    headers["Authorization"] = `Bearer ${bearerToken}`;
   }
 
   return new Request(`http://localhost${path}`, {
@@ -136,13 +137,14 @@ describe("MCP Handler", () => {
   describe("authentication", () => {
     it("should reject requests without auth context", async () => {
       const request = createMcpRequest("tools/list");
-      const ctx = {
+      const ctx: ExecutionContext = {
         waitUntil: () => {},
         passThroughOnException: () => {},
-      } as ExecutionContext;
+        props: undefined,
+      };
 
       await expect(
-        mcpHandler.fetch!(request, createTestEnv(), ctx),
+        mcpHandler.fetch(request, createTestEnv(), ctx),
       ).rejects.toThrow("No authentication context");
     });
 
@@ -157,16 +159,12 @@ describe("MCP Handler", () => {
       );
       const ctx = createMcpContext({
         grantedSkills: undefined as unknown as string[],
+        grantedScopes: ["org:read", "project:read"],
         sessionStartedAt: now - 2 * 24 * 60 * 60 * 1000,
         upstreamExpiresAt: now + 3 * 24 * 60 * 60 * 1000,
       });
-      (ctx.props as Record<string, unknown>).grantedScopes = [
-        "org:read",
-        "project:read",
-      ];
-      (ctx.props as Record<string, unknown>).grantedSkills = undefined;
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(401);
       expect(await response.text()).toContain("re-authorize");
@@ -202,7 +200,7 @@ describe("MCP Handler", () => {
       });
       const env = createTestEnv();
 
-      const response = await mcpHandler.fetch!(request, env, ctx);
+      const response = await mcpHandler.fetch(request, env, ctx);
 
       expect(response.status).toBe(401);
       expect(await response.text()).toContain("re-authorize");
@@ -252,7 +250,7 @@ describe("MCP Handler", () => {
         ],
       });
 
-      await mcpHandler.fetch!(request, env, ctx);
+      await mcpHandler.fetch(request, env, ctx);
       await (ctx.waitUntil as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 
       expect(env.OAUTH_PROVIDER.revokeGrant).toHaveBeenCalledExactlyOnceWith(
@@ -268,7 +266,7 @@ describe("MCP Handler", () => {
       });
       const env = createTestEnv();
 
-      const response = await mcpHandler.fetch!(request, env, ctx);
+      const response = await mcpHandler.fetch(request, env, ctx);
       await (ctx.waitUntil as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 
       expect(response.status).toBe(401);
@@ -279,7 +277,7 @@ describe("MCP Handler", () => {
       const request = createMcpRequest("tools/list");
       const ctx = createMcpContext({ grantedSkills: [] });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(400);
       expect(await response.text()).toContain("No valid skills");
@@ -289,7 +287,7 @@ describe("MCP Handler", () => {
       const request = createMcpRequest("tools/list");
       const ctx = createMcpContext({ grantedSkills: ["preprod"] });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(200);
       const body = await parseSSEResponse<{
@@ -311,7 +309,7 @@ describe("MCP Handler", () => {
       const env = createTestEnv();
       env.MCP_USER_RATE_LIMITER = mockUserRateLimiter;
 
-      const response = await mcpHandler.fetch!(request, env, ctx);
+      const response = await mcpHandler.fetch(request, env, ctx);
 
       expect(response.status).toBe(200);
       expect(mockUserRateLimiter.limit).toHaveBeenCalledWith({
@@ -325,9 +323,9 @@ describe("MCP Handler", () => {
       const env = createTestEnv();
       env.MCP_USER_RATE_LIMITER = {
         limit: vi.fn().mockResolvedValue({ success: false }),
-      } as unknown as RateLimit;
+      };
 
-      const response = await mcpHandler.fetch!(request, env, ctx);
+      const response = await mcpHandler.fetch(request, env, ctx);
 
       expect(response.status).toBe(429);
       expect(await response.text()).toContain("Rate limit exceeded");
@@ -447,7 +445,7 @@ describe("MCP Handler", () => {
       const env = createTestEnv();
       env.MCP_USER_RATE_LIMITER = {
         limit: vi.fn().mockResolvedValue({ success: false }),
-      } as unknown as RateLimit;
+      };
 
       const response = await handleSentryBearerMcpRequest(
         request,
@@ -582,7 +580,7 @@ describe("MCP Handler", () => {
             : null,
         ),
         put: vi.fn(),
-      };
+      } as Partial<KVNamespace> as KVNamespace;
       const ctx = createMcpContext({
         accessToken: "test-current-user-token",
         grantedSkills: ["inspect"],
@@ -618,7 +616,7 @@ describe("MCP Handler", () => {
         });
 
       try {
-        const response = await mcpHandler.fetch!(request, env, ctx);
+        const response = await mcpHandler.fetch(request, env, ctx);
 
         expect(response.status).toBe(200);
         const body = await parseSSEResponse<{
@@ -656,7 +654,7 @@ describe("MCP Handler", () => {
           await writeReady;
           stored = JSON.parse(value);
         }),
-      };
+      } as Partial<KVNamespace> as KVNamespace;
       const ctx = Object.assign(createExecutionContext(), {
         props: { ...DEFAULT_OAUTH_PROPS },
       });
@@ -671,7 +669,7 @@ describe("MCP Handler", () => {
       );
 
       try {
-        const response = await mcpHandler.fetch!(request, env, ctx);
+        const response = await mcpHandler.fetch(request, env, ctx);
         expect(response.status).toBe(200);
         const body = await parseSSEResponse<{
           result: { protocolVersion: string };
@@ -708,7 +706,7 @@ describe("MCP Handler", () => {
       );
       const ctx = createMcpContext();
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(200);
       const body = await parseSSEResponse<{
@@ -725,7 +723,7 @@ describe("MCP Handler", () => {
       });
       const ctx = createMcpContext();
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(404);
     });
@@ -742,7 +740,7 @@ describe("MCP Handler", () => {
       );
       const ctx = createMcpContext();
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(200);
       const body = await parseSSEResponse<{
@@ -759,7 +757,7 @@ describe("MCP Handler", () => {
       );
       const ctx = createMcpContext();
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(404);
       expect(await response.text()).toContain("not found");
@@ -808,7 +806,7 @@ describe("MCP Handler", () => {
         constraintOrganizationSlug: "my-org",
       });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(403);
       expect(await response.text()).toContain("scoped to an organization");
@@ -829,7 +827,7 @@ describe("MCP Handler", () => {
         constraintProjectSlug: "expected-project",
       });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(403);
       expect(await response.text()).toContain("scoped to a project");
@@ -850,7 +848,7 @@ describe("MCP Handler", () => {
         constraintProjectSlug: "my-project",
       });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(403);
       expect(await response.text()).toContain("scoped to a project");
@@ -862,7 +860,7 @@ describe("MCP Handler", () => {
       const request = createMcpRequest("tools/list");
       const ctx = createMcpContext();
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(200);
       const body = await parseSSEResponse<{
@@ -877,7 +875,7 @@ describe("MCP Handler", () => {
       const request = createMcpRequest("tools/list");
       const ctx = createMcpContext({ grantedSkills: ["docs"] });
 
-      const response = await mcpHandler.fetch!(request, createTestEnv(), ctx);
+      const response = await mcpHandler.fetch(request, createTestEnv(), ctx);
 
       expect(response.status).toBe(200);
       const body = await parseSSEResponse<{

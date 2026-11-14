@@ -316,13 +316,14 @@ describe("app", () => {
       expect(res.status).toBe(200);
 
       const json = await res.json();
-      expect(json.authorization_endpoint).toBe(
-        "https://mcp.sentry.dev/oauth/authorize?resource=https%3A%2F%2Fmcp.sentry.dev%2Fmcp%2Fsentry%2Fmcp-server%3Fexperimental%3D1",
+      expect(json).toMatchObject({
+        authorization_endpoint:
+          "https://mcp.sentry.dev/oauth/authorize?resource=https%3A%2F%2Fmcp.sentry.dev%2Fmcp%2Fsentry%2Fmcp-server%3Fexperimental%3D1",
+        issuer: "https://mcp.sentry.dev/mcp/sentry/mcp-server",
+      });
+      expect(json).not.toHaveProperty(
+        "authorization_response_iss_parameter_supported",
       );
-      expect(json.issuer).toBe("https://mcp.sentry.dev/mcp/sentry/mcp-server");
-      expect(
-        json.authorization_response_iss_parameter_supported,
-      ).toBeUndefined();
     });
 
     // Regression: path-scoped AS metadata is a Claude/compat discovery path.
@@ -337,13 +338,14 @@ describe("app", () => {
       expect(res.status).toBe(200);
 
       const json = await res.json();
-      expect(json.issuer).toBe("https://mcp.sentry.dev/mcp");
-      expect(json.authorization_endpoint).toBe(
-        "https://mcp.sentry.dev/oauth/authorize?resource=https%3A%2F%2Fmcp.sentry.dev%2Fmcp%3Futm_source%3Dplugin",
+      expect(json).toMatchObject({
+        issuer: "https://mcp.sentry.dev/mcp",
+        authorization_endpoint:
+          "https://mcp.sentry.dev/oauth/authorize?resource=https%3A%2F%2Fmcp.sentry.dev%2Fmcp%3Futm_source%3Dplugin",
+      });
+      expect(json).not.toHaveProperty(
+        "authorization_response_iss_parameter_supported",
       );
-      expect(
-        json.authorization_response_iss_parameter_supported,
-      ).toBeUndefined();
     });
   });
 });

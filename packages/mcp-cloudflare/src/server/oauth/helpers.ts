@@ -1,6 +1,7 @@
-import type {
-  TokenExchangeCallbackOptions,
-  TokenExchangeCallbackResult,
+import {
+  GrantType,
+  type TokenExchangeCallbackOptions,
+  type TokenExchangeCallbackResult,
 } from "@cloudflare/workers-oauth-provider";
 import * as Sentry from "@sentry/cloudflare";
 import {
@@ -123,8 +124,9 @@ export function getTokenExchangeFailureDetails({
   oauthError,
   errorDescription,
 }: {
-  oauthError?: string;
-  errorDescription?: string;
+  // Forwarded from parsed upstream responses; undefined means absent.
+  oauthError?: string | undefined;
+  errorDescription?: string | undefined;
 }): OAuthFailureDetails {
   switch (oauthError) {
     case "access_denied":
@@ -182,8 +184,9 @@ export function createOAuthFailureResponse({
   title?: string;
   message: string;
   status: number;
-  oauthError?: string;
-  eventId?: string;
+  // Forwarded from upstream errors and logIssue(); undefined means absent.
+  oauthError?: string | undefined;
+  eventId?: string | undefined;
 }): Response {
   const details = [
     oauthError
@@ -274,11 +277,10 @@ function parseUpstreamOAuthError(
     };
 
     return {
-      error: typeof parsed.error === "string" ? parsed.error : undefined,
-      errorDescription:
-        typeof parsed.error_description === "string"
-          ? parsed.error_description
-          : undefined,
+      ...(typeof parsed.error === "string" && { error: parsed.error }),
+      ...(typeof parsed.error_description === "string" && {
+        errorDescription: parsed.error_description,
+      }),
     };
   } catch {
     return {};
@@ -515,7 +517,8 @@ function buildInvalidGrantTokenExchangeResult(
 
 type ProbeResult = {
   outcome: TokenExchangeOutcome;
-  status?: number;
+  // ApiError.status may be undefined; readers check `typeof status`.
+  status?: number | undefined;
   reason?: "rate_limit" | "server_error" | "unknown";
 };
 
@@ -588,7 +591,7 @@ export async function tokenExchangeCallback(
   request: Request,
   clientFamily: string,
 ): Promise<TokenExchangeCallbackResult | undefined> {
-  if (options.grantType !== "refresh_token") {
+  if (options.grantType !== GrantType.REFRESH_TOKEN) {
     return undefined;
   }
 
@@ -605,17 +608,15 @@ export async function tokenExchangeCallback(
   const { upstreamTokenInvalid: _ignoredUpstreamTokenInvalid, ...baseProps } =
     rawProps;
 
+  // Optional fields (accessTokenExpiresAt, grantedScopes, upstreamScopes,
+  // grantedSkills) come through `baseProps` unchanged.
   const props = {
     ...baseProps,
     id: rawProps.id as string,
     accessToken: rawProps.accessToken as string,
     refreshToken: rawProps.refreshToken,
-    accessTokenExpiresAt: rawProps.accessTokenExpiresAt,
     clientId: rawProps.clientId as string,
     scope: rawProps.scope as string,
-    grantedScopes: rawProps.grantedScopes,
-    upstreamScopes: rawProps.upstreamScopes,
-    grantedSkills: rawProps.grantedSkills,
   } satisfies WorkerProps & Record<string, unknown>;
 
   const expiresAt = props.accessTokenExpiresAt;
