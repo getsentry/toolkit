@@ -25,6 +25,8 @@ import {
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
 import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
 import { resetTipsCache } from "../src/lib/tips.js";
+import type { withProgress } from "../src/lib/polling.js";
+import type { SentryIssue } from "../src/types/index.js";
 
 // re-exporting a single constant, not a barrel
 export { TEST_TMP_DIR } from "./constants.js";
@@ -480,3 +482,37 @@ export function without<T extends object>(
   }
   return copy;
 }
+
+declare global {
+  /** The real `fetch`, saved by test/preload.ts before it stubs the global. */
+  var __originalFetch: typeof fetch | undefined;
+}
+
+/** The real `fetch` saved by test/preload.ts, for tests that need the network stack. */
+export function originalFetch(): typeof fetch {
+  const fetchImpl = globalThis.__originalFetch;
+  if (fetchImpl === undefined) {
+    throw new Error("test/preload.ts did not save the original fetch");
+  }
+  return fetchImpl;
+}
+
+/** The project summary embedded in an issue response. */
+export type IssueProject = NonNullable<SentryIssue["project"]>;
+
+/**
+ * Build the project summary embedded in an issue response, for fixtures that
+ * only care about the slug.
+ */
+export function issueProject(
+  slug: string,
+  overrides: Partial<IssueProject> = {},
+): IssueProject {
+  return { id: "1", name: slug, slug, platform: null, ...overrides };
+}
+
+/** Passthrough for `withProgress` that skips the spinner and runs `fn` directly. */
+export const passthroughWithProgress: typeof withProgress = (_options, fn) =>
+  fn(() => {
+    // Progress messages are not rendered in tests.
+  });
