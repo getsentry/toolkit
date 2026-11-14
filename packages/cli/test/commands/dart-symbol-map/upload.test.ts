@@ -29,9 +29,7 @@ afterEach(async () => {
 /**
  * Run the dart-symbol-map upload command and capture stdout/stderr.
  */
-async function runUpload(
-  args: string[],
-): Promise<{
+async function runUpload(args: string[]): Promise<{
   output: string;
   exitCode: NodeJS.Process["exitCode"];
   error?: string;

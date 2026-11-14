@@ -17,9 +17,7 @@ useTestConfigDir("bash-hook-");
 /**
  * Run bash-hook command and capture stdout.
  */
-async function runBashHook(
-  args: string[],
-): Promise<{
+async function runBashHook(args: string[]): Promise<{
   output: string;
   exitCode: NonNullable<NodeJS.Process["exitCode"]>;
 }> {
