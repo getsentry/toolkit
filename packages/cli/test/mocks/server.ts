@@ -13,13 +13,15 @@ export type MockResponse = {
   headers?: Record<string, string>;
 };
 
+/** JSON body a route returns as-is. */
+export type StaticResponseBody = Record<string, unknown> | readonly unknown[];
+
 export type MockRoute = {
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   /** Path pattern with optional :params (e.g., "/api/0/organizations/:orgSlug/") */
   path: string;
   /** Static response body, or handler function for dynamic responses */
-  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
-  response: unknown | RouteHandler;
+  response: StaticResponseBody | RouteHandler;
   /** HTTP status code (default: 200) */
   status?: number;
 };
@@ -33,8 +35,7 @@ type CompiledRoute = {
   method: string;
   pattern: RegExp;
   paramNames: string[];
-  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- documents the accepted shapes
-  response: unknown | RouteHandler;
+  response: StaticResponseBody | RouteHandler;
   status: number;
 };
 
@@ -66,10 +67,14 @@ function matchRoute(
 
     const match = pathname.match(route.pattern);
     if (match) {
+      const [, ...values] = match;
       const params: Record<string, string> = {};
-      for (let i = 0; i < route.paramNames.length; i += 1) {
-        params[route.paramNames[i]] = match[i + 1];
-      }
+      route.paramNames.forEach((name, i) => {
+        const value = values[i];
+        if (value !== undefined) {
+          params[name] = value;
+        }
+      });
       return { route, params };
     }
   }
@@ -87,11 +92,8 @@ function isAuthorized(req: Request, validTokens: string[]): boolean {
   if (!authHeader) {
     return false;
   }
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return false;
-  }
-  return validTokens.includes(match[1]);
+  const [, token] = authHeader.match(/^Bearer\s+(.+)$/i) ?? [];
+  return token !== undefined && validTokens.includes(token);
 }
 
 /** Convert a Node.js IncomingMessage to a Web API Request. */
@@ -116,7 +118,11 @@ async function toWebRequest(
     }
     body = Buffer.concat(chunks).toString("utf-8");
   }
-  return new Request(url, { method, headers, body });
+  return new Request(url, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body }),
+  });
 }
 
 export function createMockServer(
@@ -165,11 +171,7 @@ export function createMockServer(
             const { route, params } = match;
             let responseData: MockResponse;
             if (typeof route.response === "function") {
-              responseData = await (route.response as RouteHandler)(
-                req,
-                params,
-                serverUrl,
-              );
+              responseData = await route.response(req, params, serverUrl);
             } else {
               responseData = { body: route.response, status: route.status };
             }
@@ -203,4 +205,16 @@ export function createMockServer(
       server = null;
     },
   };
+}
+
+/** A `:name` path param of the matched route; throws if the route has none. */
+export function routeParam(
+  params: Record<string, string>,
+  name: string,
+): string {
+  const value = params[name];
+  if (value === undefined) {
+    throw new Error(`Route has no :${name} param`);
+  }
+  return value;
 }

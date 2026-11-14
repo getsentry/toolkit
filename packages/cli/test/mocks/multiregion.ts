@@ -17,7 +17,7 @@ import usProjectsFixture from "../fixtures/regions/us/projects.json";
 import userFixture from "../fixtures/user.json";
 
 import type { MockRoute, MockServer } from "./server.js";
-import { createMockServer } from "./server.js";
+import { createMockServer, routeParam } from "./server.js";
 
 export const TEST_TOKEN = "test-auth-token-12345";
 
@@ -96,9 +96,9 @@ function createRegionRoutes(
       method: "GET",
       path: "/api/0/organizations/:orgSlug/",
       response: (_req, params) => {
-        if (orgSet.has(params.orgSlug)) {
+        if (orgSet.has(routeParam(params, "orgSlug"))) {
           const org = (organizationsFixture as Array<{ slug: string }>).find(
-            (o) => o.slug === params.orgSlug,
+            (o) => o.slug === routeParam(params, "orgSlug"),
           );
           if (org) {
             return { body: org };
@@ -112,8 +112,9 @@ function createRegionRoutes(
       method: "GET",
       path: "/api/0/organizations/:orgSlug/projects/",
       response: (_req, params) => {
-        if (orgSet.has(params.orgSlug)) {
-          const projects = projectsByOrg.get(params.orgSlug) ?? [];
+        if (orgSet.has(routeParam(params, "orgSlug"))) {
+          const projects =
+            projectsByOrg.get(routeParam(params, "orgSlug")) ?? [];
           return { body: projects };
         }
         return { status: 404, body: notFoundFixture };
@@ -130,10 +131,11 @@ function createRegionRoutes(
       method: "GET",
       path: "/api/0/projects/:orgSlug/:projectSlug/",
       response: (_req, params) => {
-        if (orgSet.has(params.orgSlug)) {
-          const projects = projectsByOrg.get(params.orgSlug) ?? [];
+        if (orgSet.has(routeParam(params, "orgSlug"))) {
+          const projects =
+            projectsByOrg.get(routeParam(params, "orgSlug")) ?? [];
           const project = (projects as Array<{ slug: string }>).find(
-            (p) => p.slug === params.projectSlug,
+            (p) => p.slug === routeParam(params, "projectSlug"),
           );
           if (project) {
             return { body: project };
@@ -148,7 +150,7 @@ function createRegionRoutes(
       method: "GET",
       path: "/api/0/organizations/:orgSlug/issues/",
       response: (req, params) => {
-        if (orgSet.has(params.orgSlug)) {
+        if (orgSet.has(routeParam(params, "orgSlug"))) {
           const url = new URL(req.url);
           const query = url.searchParams.get("query") ?? "";
           const projectMatch = query.match(/project:(\S+)/);
@@ -158,7 +160,8 @@ function createRegionRoutes(
             return { body: issues };
           }
           // No project filter: return all issues for all projects in this org
-          const orgProjects = projectsByOrg.get(params.orgSlug) ?? [];
+          const orgProjects =
+            projectsByOrg.get(routeParam(params, "orgSlug")) ?? [];
           const allIssues = (orgProjects as Array<{ slug: string }>).flatMap(
             (p) => issuesByProject.get(p.slug) ?? [],
           );
@@ -172,8 +175,9 @@ function createRegionRoutes(
       method: "GET",
       path: "/api/0/projects/:orgSlug/:projectSlug/issues/",
       response: (_req, params) => {
-        if (orgSet.has(params.orgSlug)) {
-          const issues = issuesByProject.get(params.projectSlug) ?? [];
+        if (orgSet.has(routeParam(params, "orgSlug"))) {
+          const issues =
+            issuesByProject.get(routeParam(params, "projectSlug")) ?? [];
           return { body: issues };
         }
         return { status: 404, body: notFoundFixture };

@@ -23,7 +23,7 @@ import traceSpansFixture from "../fixtures/trace-spans.json";
 import transactionsFixture from "../fixtures/transactions.json";
 import userFixture from "../fixtures/user.json";
 import type { MockResponse, MockRoute, MockServer } from "./server.js";
-import { createMockServer } from "./server.js";
+import { createMockServer, routeParam } from "./server.js";
 
 export const TEST_ORG = "test-org";
 export const TEST_PROJECT = "test-project";
@@ -137,14 +137,15 @@ function issueIndexResponse(
   serverUrl: string,
 ): MockResponse {
   const supportedOrgs = [TEST_ORG, TEST_FEEDBACK_LATEST_ORG];
-  if (!supportedOrgs.includes(params["orgSlug"])) {
+  const orgSlug = params["orgSlug"];
+  if (orgSlug === undefined || !supportedOrgs.includes(orgSlug)) {
     return { status: 404, body: notFoundFixture };
   }
 
   const url = new URL(req.url);
   const query = url.searchParams.get("query") ?? "";
   if (query.includes("issue.category:feedback")) {
-    return feedbackIssueIndexResponse(url, params["orgSlug"], serverUrl);
+    return feedbackIssueIndexResponse(url, orgSlug, serverUrl);
   }
   return { body: issuesFixture };
 }
@@ -204,7 +205,7 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG) {
+      if (params["orgSlug"] === TEST_ORG) {
         return { body: organizationFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -233,7 +234,7 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/projects/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG) {
+      if (params["orgSlug"] === TEST_ORG) {
         return { body: projectsFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -243,7 +244,10 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/projects/:orgSlug/:projectSlug/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.projectSlug === TEST_PROJECT) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT
+      ) {
         return { body: projectFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -253,7 +257,10 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/projects/:orgSlug/:projectSlug/keys/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.projectSlug === TEST_PROJECT) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT
+      ) {
         return { body: projectKeysFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -271,7 +278,10 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/projects/:orgSlug/:projectSlug/issues/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.projectSlug === TEST_PROJECT) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT
+      ) {
         return { body: issuesFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -281,10 +291,10 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/issues/:issueId/",
     response: (_req, params) => {
-      if (params.issueId === TEST_FEEDBACK_ID) {
+      if (params["issueId"] === TEST_FEEDBACK_ID) {
         return { body: feedbackFixture };
       }
-      if (params.issueId === TEST_ISSUE_ID) {
+      if (params["issueId"] === TEST_ISSUE_ID) {
         return { body: issueFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -294,18 +304,21 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/issues/:shortId/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.shortId === TEST_FEEDBACK_ID) {
-        return { body: feedbackFixture };
-      }
       if (
-        params.orgSlug === TEST_ORG &&
-        params.shortId.toUpperCase() === TEST_FEEDBACK_SHORT_ID
+        params["orgSlug"] === TEST_ORG &&
+        params["shortId"] === TEST_FEEDBACK_ID
       ) {
         return { body: feedbackFixture };
       }
       if (
-        params.orgSlug === TEST_ORG &&
-        params.shortId.toUpperCase() === TEST_ISSUE_SHORT_ID
+        params["orgSlug"] === TEST_ORG &&
+        routeParam(params, "shortId").toUpperCase() === TEST_FEEDBACK_SHORT_ID
+      ) {
+        return { body: feedbackFixture };
+      }
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        routeParam(params, "shortId").toUpperCase() === TEST_ISSUE_SHORT_ID
       ) {
         return { body: issueFixture };
       }
@@ -317,14 +330,14 @@ export const apiRoutes: MockRoute[] = [
     path: "/api/0/organizations/:orgSlug/shortids/:shortId/",
     response: (_req, params) => {
       if (
-        params.orgSlug === TEST_ORG &&
-        params.shortId.toUpperCase() === TEST_FEEDBACK_SHORT_ID
+        params["orgSlug"] === TEST_ORG &&
+        routeParam(params, "shortId").toUpperCase() === TEST_FEEDBACK_SHORT_ID
       ) {
         return { body: { group: feedbackFixture } };
       }
       if (
-        params.orgSlug === TEST_ORG &&
-        params.shortId.toUpperCase() === TEST_ISSUE_SHORT_ID
+        params["orgSlug"] === TEST_ORG &&
+        routeParam(params, "shortId").toUpperCase() === TEST_ISSUE_SHORT_ID
       ) {
         return { body: { group: issueFixture } };
       }
@@ -335,9 +348,11 @@ export const apiRoutes: MockRoute[] = [
     method: "PUT",
     path: "/api/0/organizations/:orgSlug/issues/:issueId/",
     response: async (req, params) => {
+      const orgSlug = params["orgSlug"];
       if (
-        ![TEST_ORG, TEST_FEEDBACK_LATEST_ORG].includes(params.orgSlug) ||
-        params.issueId !== TEST_FEEDBACK_ID
+        orgSlug === undefined ||
+        ![TEST_ORG, TEST_FEEDBACK_LATEST_ORG].includes(orgSlug) ||
+        params["issueId"] !== TEST_FEEDBACK_ID
       ) {
         return { status: 404, body: notFoundFixture };
       }
@@ -360,10 +375,16 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/issues/:issueId/events/latest/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.issueId === TEST_FEEDBACK_ID) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["issueId"] === TEST_FEEDBACK_ID
+      ) {
         return { body: feedbackEventFixture };
       }
-      if (params.orgSlug === TEST_ORG && params.issueId === TEST_ISSUE_ID) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["issueId"] === TEST_ISSUE_ID
+      ) {
         return { body: eventFixture };
       }
       return { status: 404, body: notFoundFixture };
@@ -376,9 +397,9 @@ export const apiRoutes: MockRoute[] = [
     path: "/api/0/projects/:orgSlug/:projectSlug/events/:eventId/",
     response: (_req, params) => {
       if (
-        params.orgSlug === TEST_ORG &&
-        params.projectSlug === TEST_PROJECT &&
-        params.eventId === TEST_EVENT_ID
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT &&
+        params["eventId"] === TEST_EVENT_ID
       ) {
         return { body: eventFixture };
       }
@@ -390,9 +411,9 @@ export const apiRoutes: MockRoute[] = [
     path: "/api/0/projects/:orgSlug/:projectSlug/events/:eventId/attachments/",
     response: (_req, params) => {
       if (
-        params.orgSlug === TEST_ORG &&
-        params.projectSlug === TEST_PROJECT &&
-        params.eventId === TEST_FEEDBACK_EVENT_ID
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT &&
+        params["eventId"] === TEST_FEEDBACK_EVENT_ID
       ) {
         return {
           body: [
@@ -411,9 +432,9 @@ export const apiRoutes: MockRoute[] = [
         };
       }
       if (
-        params.orgSlug === TEST_ORG &&
-        params.projectSlug === TEST_PROJECT &&
-        params.eventId === TEST_EVENT_ID
+        params["orgSlug"] === TEST_ORG &&
+        params["projectSlug"] === TEST_PROJECT &&
+        params["eventId"] === TEST_EVENT_ID
       ) {
         return { body: [] };
       }
@@ -424,7 +445,7 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/replay-count/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG) {
+      if (params["orgSlug"] === TEST_ORG) {
         return {
           body: {
             [TEST_FEEDBACK_ID]: [
@@ -443,7 +464,7 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/events/",
     response: (req, params) => {
-      if (params.orgSlug === TEST_ORG) {
+      if (params["orgSlug"] === TEST_ORG) {
         const url = new URL(req.url);
         const dataset = url.searchParams.get("dataset");
         const query = url.searchParams.get("query");
@@ -464,7 +485,10 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/trace/:traceId/",
     response: (_req, params) => {
-      if (params.orgSlug === TEST_ORG && params.traceId === TEST_TRACE_ID) {
+      if (
+        params["orgSlug"] === TEST_ORG &&
+        params["traceId"] === TEST_TRACE_ID
+      ) {
         return { body: traceSpansFixture };
       }
       // Empty array = no spans found for this trace
@@ -477,7 +501,7 @@ export const apiRoutes: MockRoute[] = [
     method: "GET",
     path: "/api/0/organizations/:orgSlug/trace-logs/",
     response: (req, params) => {
-      if (params.orgSlug !== TEST_ORG) {
+      if (params["orgSlug"] !== TEST_ORG) {
         return { status: 404, body: notFoundFixture };
       }
       const url = new URL(req.url);
