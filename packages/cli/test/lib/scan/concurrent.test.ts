@@ -108,9 +108,8 @@ describe("mapFilesConcurrentStream — streaming variant", () => {
 
   test("null or empty array skips emission", async () => {
     const collected: number[] = [];
-    for await (const item of mapFilesConcurrentStream(
-      emitRange(5),
-      async (i) => (i % 2 === 0 ? [i] : null),
+    for await (const item of mapFilesConcurrentStream(emitRange(5), async (i) =>
+      i % 2 === 0 ? [i] : null,
     )) {
       collected.push(item);
     }

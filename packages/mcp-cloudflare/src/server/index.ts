@@ -300,9 +300,9 @@ const wrappedOAuthProvider = {
     if (request.method === "POST" && url.pathname === "/oauth/register") {
       let hasUserInfoRedirect = false;
       try {
-        const body = (await request.clone().json()) as {
+        const body = await request.clone().json<{
           redirect_uris?: unknown;
-        };
+        }>();
         const redirectUris = Array.isArray(body.redirect_uris)
           ? body.redirect_uris
           : [];

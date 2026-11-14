@@ -40,7 +40,7 @@ export function createLocalAgentServer() {
   );
 
   app.post("/api/agent/run", async (c) => {
-    const { prompt } = (await c.req.json()) as { prompt?: unknown };
+    const { prompt } = await c.req.json<{ prompt?: unknown }>();
     const safePrompt = typeof prompt === "string" ? prompt : "";
 
     return await startSpan(

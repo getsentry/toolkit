@@ -85,9 +85,9 @@ catalog:
   miniflare: 5.20261101.0-beta
   msw: ^2.10.2
   open: ^10.1.2
-  oxfmt: 0.72.0
-  oxlint: 1.87.0
-  oxlint-tsgolint: 7.0.2004
+  oxfmt: 0.78.0
+  oxlint: 1.93.0
+  oxlint-tsgolint: 7.0.2007
   react: ^19.2.8
   react-dom: ^19.2.8
   react-markdown: ^9.1.0
@@ -139,46 +139,6 @@ minimumReleaseAgeExclude:
   - "@sentry/search-syntax@1.0.0"
   - "@sentry/server-runtime-injection@11.12.0"
   - "@sentry/server-utils@11.12.0"
-  - "@oxfmt/binding-android-arm-eabi@0.72.0"
-  - "@oxfmt/binding-android-arm64@0.72.0"
-  - "@oxfmt/binding-darwin-arm64@0.72.0"
-  - "@oxfmt/binding-darwin-x64@0.72.0"
-  - "@oxfmt/binding-freebsd-x64@0.72.0"
-  - "@oxfmt/binding-linux-arm-gnueabihf@0.72.0"
-  - "@oxfmt/binding-linux-arm-musleabihf@0.72.0"
-  - "@oxfmt/binding-linux-arm64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-arm64-musl@0.72.0"
-  - "@oxfmt/binding-linux-ppc64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-riscv64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-riscv64-musl@0.72.0"
-  - "@oxfmt/binding-linux-s390x-gnu@0.72.0"
-  - "@oxfmt/binding-linux-x64-gnu@0.72.0"
-  - "@oxfmt/binding-linux-x64-musl@0.72.0"
-  - "@oxfmt/binding-openharmony-arm64@0.72.0"
-  - "@oxfmt/binding-win32-arm64-msvc@0.72.0"
-  - "@oxfmt/binding-win32-ia32-msvc@0.72.0"
-  - "@oxfmt/binding-win32-x64-msvc@0.72.0"
-  - "@oxlint/binding-android-arm-eabi@1.87.0"
-  - "@oxlint/binding-android-arm64@1.87.0"
-  - "@oxlint/binding-darwin-arm64@1.87.0"
-  - "@oxlint/binding-darwin-x64@1.87.0"
-  - "@oxlint/binding-freebsd-x64@1.87.0"
-  - "@oxlint/binding-linux-arm-gnueabihf@1.87.0"
-  - "@oxlint/binding-linux-arm-musleabihf@1.87.0"
-  - "@oxlint/binding-linux-arm64-gnu@1.87.0"
-  - "@oxlint/binding-linux-arm64-musl@1.87.0"
-  - "@oxlint/binding-linux-ppc64-gnu@1.87.0"
-  - "@oxlint/binding-linux-riscv64-gnu@1.87.0"
-  - "@oxlint/binding-linux-riscv64-musl@1.87.0"
-  - "@oxlint/binding-linux-s390x-gnu@1.87.0"
-  - "@oxlint/binding-linux-x64-gnu@1.87.0"
-  - "@oxlint/binding-linux-x64-musl@1.87.0"
-  - "@oxlint/binding-openharmony-arm64@1.87.0"
-  - "@oxlint/binding-win32-arm64-msvc@1.87.0"
-  - "@oxlint/binding-win32-ia32-msvc@1.87.0"
-  - "@oxlint/binding-win32-x64-msvc@1.87.0"
-  - oxfmt@0.72.0
-  - oxlint@1.87.0
   - "@sentry/api@2.0.0"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1

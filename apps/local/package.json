@@ -52,7 +52,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "eventsource": "^4.1.0",
     "jsdom": "^28.1.0",
-    "oxlint": "^1.79.0",
+    "oxlint": "catalog:",
     "typescript": "catalog:",
     "vite": "^8.3.3",
     "vitest": "catalog:"

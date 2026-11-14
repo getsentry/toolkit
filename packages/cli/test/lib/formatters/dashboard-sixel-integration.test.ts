@@ -152,8 +152,8 @@ describe("dashboard sixel integration", () => {
   });
 
   test("uses a requested sixel renderer instead of an available kitty renderer", () => {
-    vi.mocked(sixelModule.selectGraphicsFormat).mockImplementation(
-      (renderer) => (renderer === "sixel" ? "sixel" : "kitty"),
+    vi.mocked(sixelModule.selectGraphicsFormat).mockImplementation((renderer) =>
+      renderer === "sixel" ? "sixel" : "kitty",
     );
 
     const output = formatDashboardWithData(

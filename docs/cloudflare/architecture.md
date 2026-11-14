@@ -153,9 +153,9 @@ Required for deployment:
 
 ```toml
 [vars]
-COOKIE_SECRET = "..."      # For session encryption
-OPENAI_API_KEY = "..."     # For GPT-4 access
-SENTRY_CLIENT_ID = "..."   # OAuth app ID
+COOKIE_SECRET = "..." # For session encryption
+OPENAI_API_KEY = "..." # For GPT-4 access
+SENTRY_CLIENT_ID = "..." # OAuth app ID
 SENTRY_CLIENT_SECRET = "..." # OAuth app secret
 ```
 

@@ -166,9 +166,9 @@ describe("games leaderboard route", () => {
     fetchMock.mockResolvedValue(jsonResponse(upstreamBody(rows)));
 
     const res = await app.request(PATH, REQ, makeEnv());
-    const body = (await res.json()) as {
+    const body = await res.json<{
       entries: Array<{ rank: number; handle: string; score: number }>;
-    };
+    }>();
     expect(body.entries).toHaveLength(10);
     expect(body.entries[0]).toEqual({
       rank: 1,
