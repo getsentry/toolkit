@@ -65,7 +65,7 @@ catalog:
   "@types/react": ^19.1.8
   "@types/react-dom": ^19.1.6
   "@vitejs/plugin-react": ^4.6.0
-  "@vitest/coverage-v8": ^5.1.0
+  "@vitest/coverage-v8": ~5.0.5
   agents: 0.32.0
   ai: ^6.0.64
   chalk: ^5.4.1
@@ -96,7 +96,6 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.3.3
   tsdown: ^0.23.7
-  tsx: ^4.20.3
   tw-animate-css: ^1.3.4
   typescript: ^7.0.2
   # TypeScript 7 has no JavaScript compiler API. Scripts that parse or print
@@ -104,7 +103,11 @@ catalog:
   "@typescript/typescript6": 6.0.2
   valibot: ^1.4.2
   vite: ^6.4.5
-  vitest: ^5.1.0
+  # Vitest 5.1's mocker calls AsyncLocalStorage.disable(), which workerd does
+  # not implement, so every mcp-cloudflare test that imports
+  # @sentry/cloudflare fails to load under @cloudflare/vitest-plugin 1.4.12.
+  # Plugin 1.7.0 shims it; raise both together.
+  vitest: ~5.0.5
   vitest-evals: ^0.18.0
   workers-mcp: 0.1.0-3
   wrangler: 4.156.1
