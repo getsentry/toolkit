@@ -5,8 +5,27 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ESNext", "WebWorker"],
+    "types": ["node"],
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "jsxImportSource": "hono/jsx",
+    // Exception to the shared skipLibCheck: false policy. Third-party
+    // declarations in this program do not type-check, and no compatible
+    // version or types/lib setting fixes them:
+    // - @mastra/core and @mastra/schema-compat bundle vendored AI SDK v4/v5
+    //   and zod v3 declarations that resolve against zod 4 and other AI SDK
+    //   majors (TS2694, TS2707, TS2304, TS2846, TS2344, TS2307, TS2724).
+    //   @mastra/core 1.83.0 still ships them.
+    // - @openrouter/ai-sdk-provider 1.5.4 fails its own LanguageModelV2
+    //   implementation under exactOptionalPropertyTypes (TS2416).
+    // - @sentry/cloudflare references Workers runtime types (ExecutionContext,
+    //   DurableObjectState, cloudflare:workers) that this WebWorker-lib
+    //   program does not load (TS2304, TS2307). Adding
+    //   @cloudflare/workers-types collides with @types/node (TS2300, TS2451).
+    // - wrangler and miniflare (imported by worker-config.test.ts) reference
+    //   bundled packages they do not ship (TS2307).
+    // Remove once these packages publish declarations that pass with
+    // skipLibCheck: false.
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", ".wrangler"]
