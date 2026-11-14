@@ -1,9 +1,14 @@
 {
   "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
   "compilerOptions": {
+    // Type checking only; nothing consumes JS emitted from these configs.
+    "noEmit": true,
+    // skipLibCheck exception: `wrangler`, `miniflare` and `@cloudflare/vite-plugin` declarations fail TS2307/TS2305/TS2552/TS7016 on packages they bundle but do not ship (@cloudflare/workers-utils, @cloudflare/workers-shared, @cloudflare/config). Remove when they check cleanly.
+    // skipLibCheck exception: `unplugin`, `webpack-virtual-modules`, `vite` and `vitest` declarations fail TS2307 'webpack', TS2305 rollup 'AcornNode'/vite 'ESTree', and TS2430 against the installed rollup. Remove when they check cleanly.
+    "skipLibCheck": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "outDir": "dist",
     "rootDir": ""
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts"]
 }

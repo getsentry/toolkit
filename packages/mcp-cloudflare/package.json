@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc -b"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "catalog:",
