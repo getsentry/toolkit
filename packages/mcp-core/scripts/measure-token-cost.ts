@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { type Tiktoken, encoding_for_model } from "tiktoken";
 import { type ZodTypeAny, z } from "zod";
+import type { ToolDescription } from "../src/tools/types.ts";
 
 // Lazy imports to avoid type bleed
 const toolsModule = await import("../src/tools/index.ts");
@@ -28,7 +29,7 @@ function parseArgs() {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--output" || arg === "-o") {
-      outputFile = args[i + 1];
+      outputFile = args[i + 1] ?? null;
       if (!outputFile) {
         throw new Error("--output requires a file path");
       }
@@ -55,9 +56,9 @@ Examples:
 type ToolDefinition = {
   name: string;
   title: string;
-  description: string | ((context: { experimentalMode: boolean }) => string);
+  description: ToolDescription;
   inputSchema: Record<string, ZodTypeAny>;
-  outputSchema?: ZodTypeAny;
+  outputSchema?: ZodTypeAny | undefined;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
   deprecated?: { replacedBy: readonly string[] };

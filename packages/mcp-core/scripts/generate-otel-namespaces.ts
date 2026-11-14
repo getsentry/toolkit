@@ -234,11 +234,10 @@ function convertYamlToJson(
 
   const otelData = validationResult.data;
 
-  if (otelData.groups.length === 0) {
+  const group = otelData.groups.at(0); // Take the first group
+  if (!group) {
     throw new Error(`No groups found in ${namespace}/registry.yaml`);
   }
-
-  const group = otelData.groups[0]; // Take the first group
   const attributes: Record<string, JsonAttribute> = {};
 
   for (const attr of group.attributes) {
@@ -393,7 +392,7 @@ function generateNamespacesIndex(
         namespaces.push({
           namespace: data.namespace,
           description: data.description,
-          custom: data.custom,
+          ...(data.custom !== undefined && { custom: data.custom }),
         });
       } catch (error) {
         console.warn(`⚠️  Failed to read ${file} for index`);
