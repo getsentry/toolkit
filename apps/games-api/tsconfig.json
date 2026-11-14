@@ -1,15 +1,10 @@
 {
   "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types"],
-    // Exception to the shared skipLibCheck: false policy.
-    // @sentry/cloudflare pulls in @sentry/server-utils, whose declarations
-    // reference Node types (node:async_hooks, node:diagnostics_channel,
-    // Buffer) and fail with TS2591 without @types/node. Adding @types/node
-    // instead collides with @cloudflare/workers-types globals (TS2300,
-    // TS2451). Remove once @sentry/cloudflare's declarations type-check
-    // against Workers types alone, or once @types/node and the Workers
-    // runtime types can share a program.
+    // The Worker runs with nodejs_compat, and @sentry/cloudflare's
+    // declarations (via @sentry/server-utils) need Node types.
+    "types": ["@cloudflare/workers-types", "node"],
+    // skipLibCheck exception: `@cloudflare/workers-types` and `@types/node` declare the same globals (TS2300 DOMException/Blob, TS2451 console/crypto, TS2502 PerformanceEntry). Remove when both can load in one program without conflicts.
     "skipLibCheck": true
   },
   "include": ["src"]
