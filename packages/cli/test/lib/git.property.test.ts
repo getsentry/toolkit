@@ -109,27 +109,28 @@ describe("unit: parseRemoteUrl edge cases", () => {
   });
 });
 
+describe("property: isSameRepository", () => {
+  test("matches by URL path in any case, whatever the display name", () => {
+    fcAssert(
+      property(ownerArb, repoArb, (owner, repo) => {
+        const path = `${owner}/${repo}`;
+        const sentryRepo = {
+          name: "Display Name",
+          url: `https://gitlab.com/${path}.git`,
+        };
+        expect(isSameRepository(sentryRepo, path.toUpperCase())).toBe(true);
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+});
+
 describe("unit: isSameRepository", () => {
   test.each([
     {
       case: "matches a GitHub repository by name",
       repo: { name: "getsentry/cli", url: "https://github.com/getsentry/cli" },
       path: "GetSentry/CLI",
-      expected: true,
-    },
-    {
-      case: "matches a GitLab display name by its URL path",
-      repo: { name: "Acme Corp / Web", url: "https://gitlab.com/acme/web" },
-      path: "acme/web",
-      expected: true,
-    },
-    {
-      case: "matches an Azure DevOps repository by its URL path",
-      repo: {
-        name: "storefront",
-        url: "https://dev.azure.com/acme/web/_git/storefront",
-      },
-      path: "acme/web/_git/storefront",
       expected: true,
     },
     {

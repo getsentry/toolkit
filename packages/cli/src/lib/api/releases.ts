@@ -643,6 +643,19 @@ function readHeadCommit(cwd?: string): string | undefined {
 /** How many similar repository names to suggest when nothing matches. */
 const MAX_REPO_SUGGESTIONS = 3;
 
+/** The distinct names of the first few repositories a search returned. */
+function repositorySuggestions(candidates: SentryRepository[]): string[] {
+  return [...new Set(candidates.map((r) => r.name))].slice(
+    0,
+    MAX_REPO_SUGGESTIONS,
+  );
+}
+
+/** How an org adds a repository it is missing: its repository settings page. */
+function addRepositoryHint(orgSlug: string): string {
+  return `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`;
+}
+
 /**
  * Build the error for an org that has repositories but none matching the
  * local one: names similar repositories and links to the repository settings.
@@ -654,10 +667,7 @@ function noMatchingRepositoryError(
   candidates: SentryRepository[],
   cwd?: string,
 ): ValidationError {
-  const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
-    0,
-    MAX_REPO_SUGGESTIONS,
-  );
+  const suggestions = repositorySuggestions(candidates);
   const commit = checkout.commit ?? readHeadCommit(cwd) ?? "<commit-sha>";
   const target = `${orgSlug}/${version}`;
   const examples = [
@@ -677,7 +687,7 @@ function noMatchingRepositoryError(
     `No Sentry repository matching '${checkout.repository}' (from ${checkout.source}).${didYouMean}`,
     examples,
     "repository",
-    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
+    addRepositoryHint(orgSlug),
   );
 }
 
@@ -719,6 +729,13 @@ function noRepoIntegrationError(
   );
 }
 
+/** A `--commit` ref: repository plus commit or commit range. */
+type CommitRef = {
+  repository: string;
+  commit: string;
+  previousCommit?: string;
+};
+
 /**
  * Set commits on a release using auto-discovery mode.
  *
@@ -727,7 +744,7 @@ function noRepoIntegrationError(
  * sends a refs payload with the HEAD commit SHA. This is the equivalent of
  * the reference sentry-cli's `--auto` mode.
  *
- * Requires a GitHub/GitLab/Bitbucket integration configured in Sentry.
+ * Requires a GitHub, GitLab, Bitbucket, or Azure DevOps integration in Sentry.
  *
  * @param orgSlug - Organization slug
  * @param version - Release version
@@ -756,11 +773,7 @@ export async function setCommitsAuto(
   if (match) {
     const headCommit = checkout.commit ?? getHeadCommit(cwd);
     const previousCommit = await previousCommitPromise;
-    const ref: {
-      repository: string;
-      commit: string;
-      previousCommit?: string;
-    } = { repository: match.name, commit: headCommit };
+    const ref: CommitRef = { repository: match.name, commit: headCommit };
     if (previousCommit) {
       ref.previousCommit = previousCommit;
     }
@@ -769,21 +782,12 @@ export async function setCommitsAuto(
 
   // The name filter returns nothing for an org whose repositories all have
   // other names, so only report a missing integration when the org has none.
-  if (!foundAnyRepos) {
-    if (!(await orgHasRepositories(orgSlug))) {
-      throw noRepoIntegrationError(orgSlug, version, cwd);
-    }
+  if (!(foundAnyRepos || (await orgHasRepositories(orgSlug)))) {
+    throw noRepoIntegrationError(orgSlug, version, cwd);
   }
 
   throw noMatchingRepositoryError(orgSlug, version, checkout, candidates, cwd);
 }
-
-/** A `--commit` ref: repository plus commit or commit range. */
-type CommitRef = {
-  repository: string;
-  commit: string;
-  previousCommit?: string;
-};
 
 /**
  * Set commits on a release using explicit refs (repository + commit range).
@@ -974,10 +978,7 @@ export async function explainSetCommitsError(
       connectIntegrationHint(orgSlug),
     );
   }
-  const suggestions = [...new Set(candidates.map((r) => r.name))].slice(
-    0,
-    MAX_REPO_SUGGESTIONS,
-  );
+  const suggestions = repositorySuggestions(candidates);
   const didYouMean =
     suggestions.length > 0
       ? ` It has similarly named repositories: ${suggestions.join(", ")}.`
@@ -986,7 +987,7 @@ export async function explainSetCommitsError(
     `${headline}${didYouMean}`,
     [...suggestions.map(commitExample), sentry`repo list ${orgSlug}/`],
     COMMIT_REPOSITORY_FIELD,
-    `Add the repository to Sentry through your source code integration: ${buildRepositorySettingsUrl(orgSlug)}`,
+    addRepositoryHint(orgSlug),
   );
 }
 
