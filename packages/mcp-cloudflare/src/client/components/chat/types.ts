@@ -8,20 +8,59 @@ import type { UIMessage } from "@ai-sdk/react";
 // Re-export AI SDK types for convenience - Message renamed to UIMessage in AI SDK 5+
 export type { UIMessage as Message } from "@ai-sdk/react";
 
-// Extended message type that includes our custom metadata
-export interface ExtendedMessage extends UIMessage {
-  data?: {
-    type?: string;
-    prompts?: any[];
-    toolsDetailed?: Array<{ name: string; description: string }>;
-    hasSlashCommands?: boolean;
-    error?: string;
-    // Prompt execution data
-    promptName?: string;
-    parameters?: Record<string, any>;
-    wasExecuted?: boolean;
-    simulateStreaming?: boolean;
-    [key: string]: any;
+// The custom metadata the chat attaches to messages. Messages are persisted
+// in localStorage, so read it with `readChatMessageData`.
+export interface ChatMessageData {
+  type?: string;
+  toolsDetailed?: Array<{ name: string; description: string }>;
+  hasSlashCommands?: boolean;
+  // Prompt execution data
+  promptName?: string;
+  parameters?: Record<string, unknown>;
+  wasExecuted?: boolean;
+  simulateStreaming?: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isToolSummary(
+  value: unknown,
+): value is { name: string; description: string } {
+  return (
+    isRecord(value) &&
+    typeof value["name"] === "string" &&
+    typeof value["description"] === "string"
+  );
+}
+
+/** Reads the fields of `ChatMessageData` that `metadata` holds. */
+export function readChatMessageData(
+  metadata: unknown,
+): ChatMessageData | undefined {
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+  const {
+    type,
+    toolsDetailed,
+    hasSlashCommands,
+    promptName,
+    parameters,
+    wasExecuted,
+    simulateStreaming,
+  } = metadata;
+  return {
+    ...(typeof type === "string" && { type }),
+    ...(Array.isArray(toolsDetailed) && {
+      toolsDetailed: toolsDetailed.filter(isToolSummary),
+    }),
+    ...(typeof hasSlashCommands === "boolean" && { hasSlashCommands }),
+    ...(typeof promptName === "string" && { promptName }),
+    ...(isRecord(parameters) && { parameters }),
+    ...(typeof wasExecuted === "boolean" && { wasExecuted }),
+    ...(typeof simulateStreaming === "boolean" && { simulateStreaming }),
   };
 }
 
@@ -159,7 +198,7 @@ export interface MessagePartProps {
   messageRole: string;
   partIndex: number;
   isStreaming?: boolean | undefined;
-  messageData?: any;
+  messageData?: ChatMessageData | undefined;
   onSlashCommand?: ((command: string) => void) | undefined;
 }
 
@@ -168,7 +207,7 @@ export interface TextPartProps {
   role: string;
   messageId: string;
   isStreaming?: boolean | undefined;
-  messageData?: any;
+  messageData?: ChatMessageData | undefined;
   onSlashCommand?: ((command: string) => void) | undefined;
 }
 

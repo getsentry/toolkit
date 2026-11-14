@@ -82,9 +82,7 @@ export function ChatInput({
 
       // Move cursor after the inserted newline
       setTimeout(() => {
-        if (textarea) {
-          textarea.selectionStart = textarea.selectionEnd = start + 1;
-        }
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
       }, 0);
       return;
     }

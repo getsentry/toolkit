@@ -174,7 +174,8 @@ export function generateHomepageFallbackHtml(
       } else {
         closeList();
         inCodeBlock = true;
-        codeBlockLang = (fence[1] ?? "").trim();
+        // The fence pattern captures everything after the opening ```.
+        codeBlockLang = line.slice(3).trim();
         codeLines = [];
       }
       continue;

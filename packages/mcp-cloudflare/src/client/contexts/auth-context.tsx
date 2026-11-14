@@ -139,7 +139,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const storedResult = localStorage.getItem("oauth_result");
       if (storedResult) {
         try {
-          const result = JSON.parse(storedResult);
+          const result: unknown = JSON.parse(storedResult);
           localStorage.removeItem("oauth_result");
           processOAuthResult(result);
 

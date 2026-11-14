@@ -115,7 +115,7 @@ export async function getOrRegisterChatClient(
       JSON.parse(existingRegistration),
     );
     // Verify the redirect URI matches (in case the deployment URL changed)
-    if (registration.redirect_uris?.includes(redirectUri)) {
+    if (registration.redirect_uris.includes(redirectUri)) {
       return registration.client_id;
     }
     // If redirect URI doesn't match, we need to re-register

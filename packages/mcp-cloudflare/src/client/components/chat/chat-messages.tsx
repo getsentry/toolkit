@@ -3,7 +3,11 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "../ui/button";
 import { MessagePart } from ".";
 import { ToolActions } from "../ui/tool-actions";
-import type { ProcessedMessagePart, ChatMessagesProps } from "./types";
+import {
+  readChatMessageData,
+  type ProcessedMessagePart,
+  type ChatMessagesProps,
+} from "./types";
 import { isAuthError, getErrorMessage } from "../../utils/chat-error-handler";
 import { useAuth } from "../../contexts/auth-context";
 
@@ -24,7 +28,7 @@ function processMessages(
     const isLastMessage = messageIndex === lastMessageIndex;
 
     // Handle messages with parts array
-    if (message.parts && message.parts.length > 0) {
+    if (message.parts.length > 0) {
       const lastPartIndex = message.parts.length - 1;
 
       message.parts.forEach(
@@ -107,11 +111,11 @@ export function ChatMessages({
             const originalMessage = messages.find(
               (m) => m.id === item.messageId,
             );
-            const messageData = originalMessage?.metadata as any;
-            const hasToolActions =
-              messageData?.type === "tools-list" &&
-              messageData?.toolsDetailed &&
-              Array.isArray(messageData.toolsDetailed);
+            const messageData = readChatMessageData(originalMessage?.metadata);
+            const toolActions =
+              messageData?.type === "tools-list"
+                ? messageData.toolsDetailed
+                : undefined;
 
             return (
               <div key={`${item.messageId}-part-${item.partIndex}`}>
@@ -121,15 +125,15 @@ export function ChatMessages({
                   messageRole={item.messageRole}
                   partIndex={item.partIndex}
                   isStreaming={item.isStreaming}
-                  messageData={originalMessage?.metadata}
+                  messageData={messageData}
                   onSlashCommand={onSlashCommand}
                 />
                 {/* Show tool actions list for tools-list messages */}
-                {hasToolActions &&
+                {toolActions &&
                   item.partIndex ===
-                    (originalMessage?.parts?.length ?? 1) - 1 && (
+                    (originalMessage?.parts.length ?? 1) - 1 && (
                     <div className="mr-8 mt-4">
-                      <ToolActions tools={messageData.toolsDetailed} />
+                      <ToolActions tools={toolActions} />
                     </div>
                   )}
               </div>

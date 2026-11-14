@@ -561,6 +561,31 @@ describe("approval-dialog", () => {
         /invalid signature/i,
       );
     });
+
+    it("rejects signed state whose request has no redirect URI", async () => {
+      const now = Date.now();
+      const signedState = await signState(
+        {
+          req: { oauthReqInfo: { clientId: "test-client", scope: ["read"] } },
+          iat: now,
+          exp: now + 10 * 60 * 1000,
+        },
+        TEST_SECRET,
+      );
+
+      const formData = new FormData();
+      formData.append("state", signedState);
+      formData.append("skill", "inspect");
+
+      const request = new Request("https://example.com/oauth/authorize", {
+        method: "POST",
+        body: formData,
+      });
+
+      await expect(parseRedirectApproval(request, TEST_SECRET)).rejects.toThrow(
+        /could not extract clientId/i,
+      );
+    });
   });
 
   describe("XSS prevention for URI fields", () => {

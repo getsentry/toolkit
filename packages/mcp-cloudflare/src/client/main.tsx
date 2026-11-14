@@ -9,6 +9,9 @@ import { AuthProvider } from "./contexts/auth-context";
 import * as Sentry from "@sentry/react";
 
 const container = document.getElementById("root");
+if (!container) {
+  throw new Error("index.html has no #root element");
+}
 
 /**
  * Sentry types its handler with React's `ErrorInfo`, where `componentStack`
@@ -27,7 +30,7 @@ function rootErrorHandler(
     });
 }
 
-const root = createRoot(container!, {
+const root = createRoot(container, {
   // Callback called when an error is thrown and not caught by an ErrorBoundary.
   onUncaughtError: rootErrorHandler((error, errorInfo) => {
     console.warn("Uncaught error", error, errorInfo.componentStack);

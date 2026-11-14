@@ -172,21 +172,19 @@ export default function RootCause({ step }: { step: number }) {
             }}
           >
             <span
-              style={
-                {
-                  color: startColor,
-                  fontWeight: isCenter ? 700 : 400,
-                  display: "inline-block",
-                  transformOrigin: "center center",
-                  animation: animationValue,
-                  "--pulse-color": pulseColor,
-                  "--start-color": startColor,
-                  "--end-color": endColor,
-                  "--flicker-color": flickerBright,
-                  visibility: outsideCircle ? "hidden" : "visible",
-                  lineHeight: 1,
-                } as any
-              }
+              style={{
+                color: startColor,
+                fontWeight: isCenter ? 700 : 400,
+                display: "inline-block",
+                transformOrigin: "center center",
+                animation: animationValue,
+                "--pulse-color": pulseColor,
+                "--start-color": startColor,
+                "--end-color": endColor,
+                "--flicker-color": flickerBright,
+                visibility: outsideCircle ? "hidden" : "visible",
+                lineHeight: 1,
+              }}
             >
               {displayedChar}
             </span>
