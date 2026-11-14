@@ -1489,7 +1489,12 @@ export function createValidateEventsSearchTool(options: {
         .optional()
         .describe("Optional relative time period like 1h, 24h, 7d"),
       start: z.string().optional().describe("Optional ISO 8601 start time"),
-      end: z.string().optional().describe("Optional ISO 8601 end time"),
+      end: z
+        .string()
+        .optional()
+        .describe(
+          "Optional ISO 8601 end time. Omit for open-ended ranges like 'since X'; validation then runs until now.",
+        ),
     }),
     execute: async ({
       dataset,
@@ -1509,7 +1514,8 @@ export function createValidateEventsSearchTool(options: {
         projectId,
         statsPeriod,
         start,
-        end,
+        // Sentry needs both bounds, so a "since X" candidate runs until now.
+        end: start && !end ? new Date().toISOString() : end,
       });
 
       recordEventsSearchValidationTelemetry({

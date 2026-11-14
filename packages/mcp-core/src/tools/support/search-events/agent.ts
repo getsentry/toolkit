@@ -79,12 +79,17 @@ export const searchEventsAgentOutputSchema = z
         }),
         z.object({
           start: z.string().describe("ISO 8601 start time"),
-          end: z.string().describe("ISO 8601 end time"),
+          end: z
+            .string()
+            .optional()
+            .describe(
+              "ISO 8601 end time. Omit for open-ended ranges like 'since X'; the search then runs until now.",
+            ),
         }),
         z.null(),
       ])
       .describe(
-        "Time range for filtering events. Use either statsPeriod for relative time or start/end for absolute time.",
+        "Time range for filtering events. Use either statsPeriod for relative time or start (and optional end) for absolute time.",
       ),
     explanation: z
       .string()

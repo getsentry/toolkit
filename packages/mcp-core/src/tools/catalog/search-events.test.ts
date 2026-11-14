@@ -45,7 +45,7 @@ describe("search_events", () => {
     fields?: string[],
     errorMessage?: string,
     sort?: string,
-    timeRange?: { statsPeriod: string } | { start: string; end: string },
+    timeRange?: { statsPeriod: string } | { start: string; end?: string },
     environment?: string | string[] | null,
   ) => {
     const defaultFields = {
@@ -270,6 +270,70 @@ describe("search_events", () => {
     );
 
     expect(result).toContain("No results found");
+  });
+
+  it("runs an open-ended 'since' range from the agent until now", async () => {
+    // Regression: "since <timestamp>" requests have no end. The agent schema
+    // required both start and end, so search_logs failed with "The AI could
+    // not construct a valid query for this request".
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-02T12:00:00.000Z"));
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse(
+        "logs",
+        "severity:[error,fatal]",
+        ["message", "count()", "max(timestamp)"],
+        undefined,
+        "-count()",
+        { start: "2026-01-01T00:00:00Z" },
+      ),
+    );
+    mockValidEventsValidation();
+
+    let request: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request: req }) => {
+          request = new URL(req.url).searchParams;
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    try {
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          query:
+            "error or fatal logs since 2026-01-01T00:00:00Z, grouped by message with count and latest timestamp",
+          dataset: "logs",
+          fields: null,
+          sort: null,
+          period: "24h",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(request?.get("start")).toBe("2026-01-01T00:00:00Z");
+    expect(request?.get("end")).toBe("2026-01-02T12:00:00.000Z");
+    expect(request?.get("statsPeriod")).toBeNull();
   });
 
   it("renders a timeseries when the agent returns timeSeries (per-hour)", async () => {

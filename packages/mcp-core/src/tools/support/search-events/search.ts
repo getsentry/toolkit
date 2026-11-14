@@ -134,13 +134,13 @@ function parseAgentTimeRange(
   if ("statsPeriod" in timeRange && typeof timeRange.statsPeriod === "string") {
     return { statsPeriod: timeRange.statsPeriod };
   }
-  if (
-    "start" in timeRange &&
-    "end" in timeRange &&
-    typeof timeRange.start === "string" &&
-    typeof timeRange.end === "string"
-  ) {
-    return { start: timeRange.start, end: timeRange.end };
+  if ("start" in timeRange && typeof timeRange.start === "string") {
+    // "since X" ranges have no end; run them until now.
+    const end =
+      "end" in timeRange && typeof timeRange.end === "string"
+        ? timeRange.end
+        : new Date().toISOString();
+    return { start: timeRange.start, end };
   }
 
   return undefined;

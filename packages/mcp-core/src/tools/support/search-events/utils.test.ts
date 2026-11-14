@@ -88,6 +88,60 @@ describe("validateSearch tool contract", () => {
   });
 });
 
+describe("validateSearch open-ended time ranges", () => {
+  it("validates a 'since' candidate with no end until now", async () => {
+    // Regression: Sentry needs both bounds, so a start-only candidate threw
+    // "Both start and end parameters must be provided together" and the
+    // embedded agent gave up without output.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-02T12:00:00.000Z"));
+    const requests: URLSearchParams[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        ({ request }) => {
+          requests.push(new URL(request.url).searchParams);
+          return HttpResponse.json({
+            valid: true,
+            projects: [],
+            dataset: [],
+            environment: [],
+            field: [],
+            query: { valid: true, error: null, fields: [] },
+            orderby: [],
+          });
+        },
+      ),
+    );
+    const tool = createValidateEventsSearchTool({
+      apiService: new SentryApiService({ accessToken: "test-token" }),
+      organizationSlug: "test-org",
+    });
+
+    try {
+      const result = await tool.execute!(
+        {
+          dataset: "logs",
+          query: "severity:error",
+          fields: ["message", "count()"],
+          sort: "-count()",
+          start: "2026-01-01T00:00:00Z",
+        },
+        { toolCallId: "validate-search-test", messages: [] },
+      );
+      expect(result).toEqual({
+        result: { valid: true, message: "Search validation passed." },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].get("start")).toBe("2026-01-01T00:00:00Z");
+    expect(requests[0].get("end")).toBe("2026-01-02T12:00:00.000Z");
+  });
+});
+
 describe("formatEventValue", () => {
   describe("primitives", () => {
     it("should return 'null' for null", () => {
