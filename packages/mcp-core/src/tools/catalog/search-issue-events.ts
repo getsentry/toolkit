@@ -226,9 +226,17 @@ export default defineTool({
       fields =
         requestedFields.length > 0 ? requestedFields : RECOMMENDED_FIELDS;
 
-      timeParams = parsed.timeRange
-        ? { ...parsed.timeRange }
-        : { statsPeriod: "14d" };
+      if (!parsed.timeRange) {
+        timeParams = { statsPeriod: "14d" };
+      } else if ("start" in parsed.timeRange) {
+        // "since X" ranges have no end; run them until now.
+        timeParams = {
+          start: parsed.timeRange.start,
+          end: parsed.timeRange.end ?? new Date().toISOString(),
+        };
+      } else {
+        timeParams = { ...parsed.timeRange };
+      }
     } else {
       // Direct mode: use provided params as-is
       query = params.query ?? "";
