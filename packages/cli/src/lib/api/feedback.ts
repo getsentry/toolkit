@@ -27,9 +27,9 @@ export type ListFeedbackOptions = {
   /** Feedback mailbox to query. */
   status: FeedbackStatus;
   /** Optional user-provided Sentry issue-search expression. */
-  query?: string;
+  query?: string | undefined;
   /** Cursor from a previous page. */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Relative time period such as `14d`. */
   statsPeriod?: string;
   /** Inclusive absolute start time. */
@@ -37,7 +37,7 @@ export type ListFeedbackOptions = {
   /** Inclusive absolute end time. */
   end?: string;
   /** Numeric project ID used for direct project selection. */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 /** A page of feedback items plus the server cursor for the following page. */
@@ -45,7 +45,7 @@ export type FeedbackPage = {
   /** Feedback items returned by the issue index. */
   feedback: SentryFeedback[];
   /** Cursor for the next page, when more results are available. */
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /**

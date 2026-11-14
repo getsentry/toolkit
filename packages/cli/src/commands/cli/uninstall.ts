@@ -565,5 +565,6 @@ export const uninstallCommand = buildDeleteCommand({
         hint: `${result.removed.length} removed, ${result.failed.length} failed. Check permissions.`,
       };
     }
+    return;
   },
 });

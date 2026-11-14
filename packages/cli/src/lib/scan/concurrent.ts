@@ -22,13 +22,13 @@ import { CONCURRENCY_LIMIT } from "./constants.js";
 /** Common options for the two concurrent helpers. */
 export type ConcurrentOptions = {
   /** Max in-flight tasks. Default: `CONCURRENCY_LIMIT` (50). */
-  concurrency?: number;
+  concurrency?: number | undefined;
   /**
    * Abort mid-stream. When aborted, the next `yield` (stream variant)
    * or the `await` inside `mapFilesConcurrent` throws an
    * `AbortError`. In-flight tasks are left to settle on their own.
    */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 };
 
 /**

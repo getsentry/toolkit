@@ -250,7 +250,7 @@ export async function fetchRecentReleases(
           Accept: "application/vnd.github.v3+json",
           "User-Agent": `sentry-cli/${CLI_VERSION}`,
         },
-        signal,
+        ...(signal && { signal }),
       },
     );
     if (!response.ok) {
@@ -275,7 +275,7 @@ export async function downloadStablePatch(
   try {
     const response = await customFetch(url, {
       headers: { "User-Agent": `sentry-cli/${CLI_VERSION}` },
-      signal,
+      ...(signal && { signal }),
     });
     return response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
   } catch (error) {
@@ -576,7 +576,7 @@ function resolveDelta(
     oldPath: oldBinaryPath,
     destPath,
     cache: getPatchCache(),
-    offline,
+    ...(offline !== undefined && { offline }),
     onProgress: makeProgressHandler(setMessage),
     telemetry: tel,
   }).then((result) => ({ result, source: tel._source.current }));

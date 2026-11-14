@@ -84,7 +84,7 @@ function normalizeHost(
 }
 
 function captureClaimHost(token: string | undefined): {
-  host?: string;
+  host?: string | undefined;
   error?: ConfigError;
 } {
   if (!token?.startsWith("sntrys_")) {

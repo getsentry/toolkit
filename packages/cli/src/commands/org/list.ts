@@ -77,7 +77,7 @@ type OrgListEntry = WithOutputFields<
 
 /** One account's fetched orgs plus its slug → region URL cache. */
 type AccountOrgs = {
-  account?: AccountSummary;
+  account?: AccountSummary | undefined;
   orgs: SentryOrganization[];
   regions: Map<string, string>;
 };

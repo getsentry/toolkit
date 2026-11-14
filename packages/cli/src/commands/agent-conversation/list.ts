@@ -83,9 +83,9 @@ type ConversationListResult = {
   conversations: ConversationListItem[];
   hasMore: boolean;
   hasPrev?: boolean;
-  nextCursor?: string;
+  nextCursor?: string | undefined;
   org: string;
-  project?: string;
+  project?: string | undefined;
 };
 
 const PAGINATION_KEY = "agent-conversation-list";

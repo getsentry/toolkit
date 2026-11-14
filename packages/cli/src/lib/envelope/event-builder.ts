@@ -11,6 +11,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { Breadcrumb, Event, SeverityLevel, User } from "@sentry/core";
 import { uuid4 } from "@sentry/core";
 import { ValidationError } from "../errors.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** CLI flags accepted by `sentry event send`. */
 export type SendEventFlags = {
@@ -195,7 +196,7 @@ export async function buildEventFromFlags(
     ...parseKeyValuePairs(flags.extra),
   };
 
-  return {
+  return omitUndefined({
     event_id: uuid4(),
     level: (flags.level ?? "error") as SeverityLevel,
     platform: flags.platform ?? "other",
@@ -222,5 +223,5 @@ export async function buildEventFromFlags(
           flags["with-categories"] ?? false,
         )
       : undefined,
-  };
+  });
 }

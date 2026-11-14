@@ -162,6 +162,7 @@ export function createLocalControlPlane({
     )
       return c.body(null, 403);
     await next();
+    return;
   });
 
   app.get("/health", (c) => {
@@ -184,6 +185,7 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     await next();
+    return;
   });
   const loopbackCors = cors({
     allowHeaders: [

@@ -101,7 +101,7 @@ export type ImportPlan = {
   /** Provenance: which file path contributed each effective field */
   effectiveSources: {
     token?: string;
-    url?: string;
+    url?: string | undefined;
     org?: string;
     project?: string;
   };
@@ -129,7 +129,11 @@ export type ImportResult = {
   /** Whether the token was validated against the API (undefined if skipped) */
   tokenValid?: boolean;
   /** User identity from token validation */
-  user?: { name?: string; email?: string; username?: string };
+  user?: {
+    name?: string | undefined;
+    email?: string | undefined;
+    username?: string | undefined;
+  };
   /** Warnings emitted during import */
   warnings: string[];
 };

@@ -16,10 +16,10 @@ import { getDatabase, withDbSpan } from "./index.js";
 
 export type UserInfo = {
   userId: string;
-  email?: string;
-  username?: string;
+  email?: string | undefined;
+  username?: string | undefined;
   /** Display name (different from username) */
-  name?: string;
+  name?: string | undefined;
 };
 
 /**

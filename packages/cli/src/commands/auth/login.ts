@@ -737,5 +737,6 @@ export const loginCommand = buildCommand({
     }
     // Error already displayed by runInteractiveLogin
     process.exitCode = 1;
+    return;
   },
 });

@@ -178,23 +178,23 @@ export type McpEnvArgs = {
 
 /** Flags merged over environment values, before validation. */
 export type McpMergedArgs = {
-  host?: string;
+  host?: string | undefined;
   insecureHttp: boolean;
-  url?: string;
-  mcpUrl?: string;
-  openaiBaseUrl?: string;
-  openaiModel?: string;
-  anthropicBaseUrl?: string;
-  anthropicModel?: string;
-  agentProvider?: string;
+  url?: string | undefined;
+  mcpUrl?: string | undefined;
+  openaiBaseUrl?: string | undefined;
+  openaiModel?: string | undefined;
+  anthropicBaseUrl?: string | undefined;
+  anthropicModel?: string | undefined;
+  agentProvider?: string | undefined;
   /** Whether `--agent-provider` (not the environment) chose the provider. */
   agentProviderFromFlag: boolean;
-  skills?: string;
+  skills?: string | undefined;
   allSkills: boolean;
-  disableSkills?: string;
+  disableSkills?: string | undefined;
   experimental: boolean;
-  organizationSlug?: string;
-  projectSlug?: string;
+  organizationSlug?: string | undefined;
+  projectSlug?: string | undefined;
 };
 
 /**

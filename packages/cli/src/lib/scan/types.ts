@@ -65,7 +65,7 @@ export type WalkOptions = {
    * When unset, all files are considered — binary classification still
    * runs, callers just see `isBinary: true` entries they can filter.
    */
-  extensions?: ReadonlySet<string>;
+  extensions?: ReadonlySet<string> | undefined;
 
   // --- Skip policy ---
   /**
@@ -75,42 +75,42 @@ export type WalkOptions = {
    * directory named `node_modules` is skipped. Spread
    * `DSN_ADDITIONAL_SKIP_DIRS` for stricter DSN-scanner policy.
    */
-  alwaysSkipDirs?: readonly string[];
+  alwaysSkipDirs?: readonly string[] | undefined;
   /**
    * Include dotfiles (files and dirs whose basename starts with `.`).
    * Defaults to `true`, matching `rg --hidden`. `false` skips them —
    * independent of `.gitignore`, so e.g. `.env` is hidden even if the
    * `.gitignore` doesn't mention it.
    */
-  hidden?: boolean;
+  hidden?: boolean | undefined;
   /** Respect `.gitignore` files found during the walk. Default: true. */
-  respectGitignore?: boolean;
+  respectGitignore?: boolean | undefined;
   /**
    * Load nested `.gitignore` files as the walker descends. When true,
    * child patterns are applied on top of parent patterns with git-like
    * cumulative semantics. When false, only the root `.gitignore` is
    * read. Default: true.
    */
-  nestedGitignore?: boolean;
+  nestedGitignore?: boolean | undefined;
 
   // --- Size / depth ---
   /**
    * Skip files larger than this. Defaults to `MAX_FILE_SIZE` (256 KB) —
    * large files rarely contain relevant config/source content.
    */
-  maxFileSize?: number;
+  maxFileSize?: number | undefined;
   /**
    * Exhaustive must-scan depth. The walker visits every directory at
    * depth ≤ `minDepth` regardless of wall-clock. Default: 0 — no
    * minimum guaranteed depth; `timeBudgetMs` alone controls the walk.
    * DSN callers pass `3`.
    */
-  minDepth?: number;
+  minDepth?: number | undefined;
   /**
    * Hard depth cap. Files at depth > `maxDepth` are never yielded.
    * Default: Infinity.
    */
-  maxDepth?: number;
+  maxDepth?: number | undefined;
   /**
    * Compute the depth of a child directory. The walker calls this
    * when descending into `relPath`, passing the parent's current
@@ -121,7 +121,7 @@ export type WalkOptions = {
    * override with a closure that returns 0 on package-dir matches.
    * The hook is consulted once per descent, so it must be cheap.
    */
-  descentHook?: (relPath: string, currentDepth: number) => number;
+  descentHook?: ((relPath: string, currentDepth: number) => number) | undefined;
 
   // --- Symlinks + cancellation ---
   /**
@@ -129,13 +129,13 @@ export type WalkOptions = {
    * each symlink via `stat` and maintains a visited `dev:ino` set to
    * avoid cycles.
    */
-  followSymlinks?: boolean;
+  followSymlinks?: boolean | undefined;
   /**
    * Abort in-flight walks. When the signal fires, the next `yield`
    * throws a `DOMException` with `name === "AbortError"`. Entries
    * already yielded remain valid.
    */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 
   // --- Parallelism ---
   /**
@@ -165,7 +165,7 @@ export type WalkOptions = {
    * still drain (files at their depth get yielded), but no new dirs
    * at `depth > minDepth` are opened. Default: Infinity.
    */
-  timeBudgetMs?: number;
+  timeBudgetMs?: number | undefined;
   /**
    * Monotonic clock. Defaults to `performance.now`. Tests inject a
    * mock function to deterministically verify time-budget behavior.
@@ -178,7 +178,7 @@ export type WalkOptions = {
    * `mtime` is always 0 — which is fine for grep/search consumers.
    * DSN-style cache invalidation callers pass `true`.
    */
-  recordMtimes?: boolean;
+  recordMtimes?: boolean | undefined;
   /**
    * Classify each yielded file as binary, populating `WalkEntry.isBinary`.
    * Default: `true`.
@@ -204,7 +204,7 @@ export type WalkOptions = {
    * Used by the DSN scanner to populate `dirMtimes` for cache
    * invalidation — the walker stays policy-free.
    */
-  onDirectoryVisit?: (absDir: string, mtimeMs: number) => void;
+  onDirectoryVisit?: ((absDir: string, mtimeMs: number) => void) | undefined;
 };
 
 /**
@@ -291,23 +291,23 @@ export type GrepOptions = {
   path?: string;
 
   // --- WalkOptions pass-through ---
-  extensions?: ReadonlySet<string>;
-  alwaysSkipDirs?: readonly string[];
-  respectGitignore?: boolean;
-  nestedGitignore?: boolean;
-  hidden?: boolean;
-  maxDepth?: number;
-  minDepth?: number;
-  maxFileSize?: number;
+  extensions?: ReadonlySet<string> | undefined;
+  alwaysSkipDirs?: readonly string[] | undefined;
+  respectGitignore?: boolean | undefined;
+  nestedGitignore?: boolean | undefined;
+  hidden?: boolean | undefined;
+  maxDepth?: number | undefined;
+  minDepth?: number | undefined;
+  maxFileSize?: number | undefined;
   descentHook?: WalkOptions["descentHook"];
-  followSymlinks?: boolean;
+  followSymlinks?: boolean | undefined;
   /**
    * When true, each `GrepMatch` includes the source file's floored
    * `mtimeMs`. Used by cache-invalidation layers (e.g., the DSN
    * scanner's `sourceMtimes` map). Forwarded to the walker;
    * incidentally costs an extra stat per file, so it's opt-in.
    */
-  recordMtimes?: boolean;
+  recordMtimes?: boolean | undefined;
   /**
    * Optional hook invoked once per directory visited during the
    * walk with its floored `mtimeMs`. Used for directory-level cache
@@ -361,9 +361,9 @@ export type GrepOptions = {
   concurrency?: number;
 
   // --- Cancellation / budget ---
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Forwarded to `walkFiles` — time budget on the underlying walk. */
-  timeBudgetMs?: number;
+  timeBudgetMs?: number | undefined;
 };
 
 /** Aggregate stats returned alongside matches from `collectGrep`. */

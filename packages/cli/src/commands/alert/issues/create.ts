@@ -300,5 +300,6 @@ export const createCommand = buildCommand({
           (created["enabled"] === false ? "disabled" : "active"),
       ),
     } satisfies IssueAlertCreateOutput);
+    return;
   },
 });

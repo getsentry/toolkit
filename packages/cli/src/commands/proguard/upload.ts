@@ -92,8 +92,8 @@ function validateUuidFormat(uuid: string): void {
  * @returns File content as a Buffer
  * @throws {ValidationError} On ENOENT, EISDIR, or other read failures
  */
-async function readMappingFile(path: string): Promise<Buffer> {
-  let content: Buffer;
+async function readMappingFile(path: string): Promise<Buffer<ArrayBuffer>> {
+  let content: Buffer<ArrayBuffer>;
   try {
     content = await readFile(path);
   } catch (err) {

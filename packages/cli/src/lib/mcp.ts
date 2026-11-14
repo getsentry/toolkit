@@ -173,7 +173,7 @@ function isPinnedCredential(
  */
 export async function resolveCliMcpCredential(
   config: McpTarget,
-  options: { force?: boolean; pin?: McpCredentialPin } = {},
+  options: { force?: boolean | undefined; pin?: McpCredentialPin } = {},
 ): Promise<McpCliCredential> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
   const requested = options.pin ?? startupPin();

@@ -39,7 +39,7 @@ export type ProguardMapping = {
   /** The UUID for this mapping (content-derived or user-forced). */
   uuid: string;
   /** Pre-read content buffer (avoids double-read when UUID was computed). */
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
 };
 
 /** Options for {@link uploadProguardMappings}. */

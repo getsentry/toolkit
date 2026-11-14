@@ -33,22 +33,24 @@ import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import {
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
-  type PaginatedResponse,
   paginate,
+  type PaginatedResponse,
+  paginatedResponse,
   unwrapPaginatedResult,
   validateResponse,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.conversations");
 
 type ConversationListOptions = {
-  query?: string;
+  query?: string | undefined;
   sort?: NonNullable<ListOrganizationAiConversationsData["query"]>["sort"];
-  cursor?: string;
+  cursor?: string | undefined;
   statsPeriod?: string;
   start?: string;
   end?: string;
-  project?: string;
+  project?: string | undefined;
 };
 
 /**
@@ -66,7 +68,7 @@ async function fetchConversationsPage(
   const result = await listOrganizationAiConversations({
     ...getSdkClientConfig(regionUrl),
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       per_page: perPage,
       statsPeriod: options.statsPeriod || undefined,
       start: options.start || undefined,
@@ -75,7 +77,7 @@ async function fetchConversationsPage(
       query: options.query || undefined,
       sort: options.sort,
       project: options.project ? [options.project] : undefined,
-    },
+    }),
   });
   const page = unwrapPaginatedResult<unknown>(
     result,
@@ -87,7 +89,7 @@ async function fetchConversationsPage(
     `/organizations/${orgSlug}/agents/conversations/`,
     page.response?.status ?? 0,
   );
-  return { data, nextCursor: page.nextCursor };
+  return paginatedResponse(data, page.nextCursor);
 }
 
 /**
@@ -120,7 +122,7 @@ export async function getConversationSpans(
   } = {},
 ): Promise<{
   spans: AgentConversationSpan[];
-  stats?: ConversationStats;
+  stats?: ConversationStats | undefined;
   truncated: boolean;
   title: string | null;
 }> {
@@ -139,12 +141,12 @@ export async function getConversationSpans(
         organization_id_or_slug: orgSlug,
         conversation_id: conversationId,
       },
-      query: {
+      query: omitUndefined({
         per_page: options.perPage ?? 1000,
         statsPeriod: options.statsPeriod ?? "30d",
         project: options.project ? [options.project] : undefined,
         cursor,
-      },
+      }),
     });
     const pageResult = unwrapPaginatedResult<unknown>(
       result,

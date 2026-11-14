@@ -94,8 +94,8 @@ export function ingestReceiverEnvelope(
   input: {
     body: Buffer;
     contentType?: string;
-    encoding?: string;
-    userAgent?: string;
+    encoding?: string | undefined;
+    userAgent?: string | undefined;
   },
 ): Promise<204 | 400 | 413 | 415 | 503> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();

@@ -513,7 +513,7 @@ export async function fetchLatestFromGitHubWithSource(
     visitedPages.add(nextPage);
     response = await fetchWithUpgradeError(
       nextPage,
-      { headers: getGitHubHeaders(), signal },
+      { headers: getGitHubHeaders(), ...(signal && { signal }) },
       "GitHub",
     );
     if (!response.ok) {
@@ -885,7 +885,7 @@ export type DownloadResult = {
   /** Path to the lock file held during download (caller must release after child exits) */
   lockPath: string;
   /** Size of delta patch in bytes, when delta upgrade was used instead of full download */
-  patchBytes?: number;
+  patchBytes?: number | undefined;
 };
 
 /**
@@ -916,7 +916,7 @@ function writeChunkSync(fd: number, chunk: Uint8Array): void {
  * this function never closes it.
  */
 async function drainBodyToFd(
-  body: ReadableStream<Uint8Array>,
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
   fd: number,
   onBytes: (n: number) => void,
 ): Promise<{ streamError: unknown; writeError: Error | undefined }> {
@@ -962,7 +962,7 @@ async function drainBodyToFd(
  * @param destPath - File path to write the decompressed output
  */
 async function streamDecompressToFile(
-  body: ReadableStream<Uint8Array>,
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
   destPath: string,
   setMessage?: SetMessage,
 ): Promise<void> {

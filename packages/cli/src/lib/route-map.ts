@@ -61,6 +61,6 @@ export function buildRouteMap<
     aliases: {
       ...autoAliases,
       ...args.aliases,
-    } as RouteMapBuilderArguments<R, CONTEXT>["aliases"],
+    } as NonNullable<RouteMapBuilderArguments<R, CONTEXT>["aliases"]>,
   });
 }

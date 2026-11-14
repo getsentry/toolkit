@@ -18,7 +18,7 @@ import {
 type Subscriber = {
   callback: Parameters<ReceiverBuffer["subscribe"]>[0];
   position: number;
-  scheduled?: NodeJS.Immediate;
+  scheduled?: NodeJS.Immediate | undefined;
 };
 type RetainedEnvelope = {
   item: ReceiverEnvelope;

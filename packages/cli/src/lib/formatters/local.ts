@@ -693,6 +693,7 @@ export function itemTypeToFilterCategory(
   if (itemType === "transaction" || itemType === "span" || itemType === "log") {
     return itemType === "span" ? "transaction" : itemType;
   }
+  return undefined;
 }
 
 /** Produce a fallback one-liner for unparseable or unsupported items. */
@@ -738,6 +739,7 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   } catch {
     log.debug("Could not serialize local envelope identity");
   }
+  return undefined;
 }
 
 /**
@@ -826,8 +828,8 @@ function formatErrorJson(
  * envelope stays compact when `--attributes` isn't requested.
  */
 function buildJsonAttributes(payload: Record<string, unknown>): {
-  user?: Record<string, string>;
-  sdk?: Record<string, string>;
+  user?: Record<string, string> | undefined;
+  sdk?: Record<string, string> | undefined;
 } {
   const merged = collectAllAttributes(payload);
   const user: Record<string, string> = {};

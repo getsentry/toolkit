@@ -11,13 +11,14 @@ import {
   listOrganizationEventsDropped,
 } from "@sentry/api";
 import { getOrgSdkConfig, unwrapResult } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** Options for {@link getDroppedEvents}. */
 export type DroppedEventsOptions = {
   /** API-level dataset name. Callers resolve user-facing aliases first. */
   dataset?: ListOrganizationEventsDroppedData["query"]["dataset"];
   /** Numeric project ID. Omit to span every project the token can read. */
-  projectId?: string;
+  projectId?: string | undefined;
   /** Relative time period (e.g. "24h", "7d"). Mutually exclusive with start/end. */
   statsPeriod?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -40,7 +41,7 @@ export async function getDroppedEvents(
   const result = await listOrganizationEventsDropped({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       dataset: options.dataset ?? "errors",
       project:
         options.projectId === undefined ? undefined : [options.projectId],
@@ -48,7 +49,7 @@ export async function getDroppedEvents(
         options.start || options.end ? undefined : options.statsPeriod,
       start: options.start,
       end: options.end,
-    },
+    }),
   });
   return unwrapResult<ListOrganizationEventsDroppedResponse>(
     result,

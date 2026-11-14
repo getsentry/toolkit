@@ -45,7 +45,7 @@ type InfoStatus = {
   /** Whether a DSN is configured (via `SENTRY_DSN`). */
   have_dsn: boolean;
   /** Identity of the verified user, when available. */
-  user?: { email?: string; name?: string };
+  user?: { email?: string | undefined; name?: string | undefined } | undefined;
 };
 
 /** Flags accepted by `info`. */

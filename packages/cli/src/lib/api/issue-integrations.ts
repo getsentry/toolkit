@@ -2,7 +2,6 @@
 import {
   deleteOrganizationIssueIntegration,
   type ExternalIssueLinkResponse,
-  type IssueIntegrationsResponse,
   listOrganizationIssueIntegrations,
   updateOrganizationIssueIntegration,
 } from "@sentry/api";
@@ -10,7 +9,7 @@ import {
   vExternalIssueLinkResponse,
   vIssueIntegrationsResponse,
 } from "@sentry/api/valibot";
-import { safeParse } from "valibot";
+import { type InferOutput, safeParse } from "valibot";
 import { ApiError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
@@ -21,6 +20,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** An existing reference to a tracker issue, stored by a native integration. */
 export type NativeIssueLink = Pick<
@@ -34,10 +34,11 @@ export type NativeIssueLink = Pick<
   /** Native integration provider key, such as github or jira_server. */
   provider: string;
   /** Issue title, when supplied by the list endpoint. */
-  title?: string;
+  title?: string | undefined;
 };
 
-type NativeIntegration = IssueIntegrationsResponse[number];
+/** An integration as validated by {@link vIssueIntegrationsResponse}. */
+type NativeIntegration = InferOutput<typeof vIssueIntegrationsResponse>[number];
 
 /** Read-only resolution result used for previews and a subsequent link mutation. */
 export type PreparedNativeIssueLink = {
@@ -54,7 +55,7 @@ export type PreparedNativeIssueLink = {
   /** External issue URL submitted to the backend for provider resolution. */
   url: string;
   /** Reference found during preflight, used only to describe a dry run. */
-  existing?: NativeIssueLink;
+  existing?: NativeIssueLink | undefined;
 };
 
 const TRAILING_SLASH = /\/+$/;
@@ -109,6 +110,7 @@ function azureAccount(url: URL): string | undefined {
   if (url.hostname.endsWith(".visualstudio.com")) {
     return url.hostname.slice(0, -".visualstudio.com".length);
   }
+  return undefined;
 }
 
 /** Jira copy links can select the issue in a path or board/backlog query. */
@@ -209,7 +211,7 @@ async function listIntegrations(
       const result = await listOrganizationIssueIntegrations({
         ...config,
         path: { organization_id_or_slug: orgSlug, issue_id: issueId },
-        query: { cursor, per_page: API_MAX_PER_PAGE },
+        query: omitUndefined({ cursor, per_page: API_MAX_PER_PAGE }),
       });
       return unwrapPaginatedResult(result, "Failed to list issue integrations");
     },
@@ -328,7 +330,7 @@ export async function resolveNativeIssueLink(options: {
   orgSlug: string;
   issueId: string;
   url: string;
-  integrationId?: string;
+  integrationId?: string | undefined;
 }): Promise<PreparedNativeIssueLink> {
   const url = parseUrl(options.url);
   const integrations = await listIntegrations(options.orgSlug, options.issueId);

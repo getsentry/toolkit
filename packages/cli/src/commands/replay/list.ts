@@ -79,9 +79,9 @@ type ReplayListResult = {
   replays: ReplayListItem[];
   hasMore: boolean;
   hasPrev: boolean;
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   org: string;
-  project?: string;
+  project?: string | undefined;
 };
 
 type ReplaySortKey = "date" | "oldest" | "duration" | "errors" | "activity";

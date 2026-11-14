@@ -12,7 +12,7 @@ export type SelectOption<T extends string> = {
   /** User-facing option label. */
   label: string;
   /** Optional secondary copy rendered beside the label; omitted by default. */
-  hint?: string;
+  hint?: string | undefined;
 };
 
 /** Args for `selectWithFilter` in `select-prompt.ts`. */
@@ -22,7 +22,7 @@ export type SelectOptions<T extends string> = {
   /** Choices presented to the user in display order. Typing filters them. */
   options: SelectOption<T>[];
   /** Initially highlighted value. Defaults to the first option. */
-  initialValue?: T;
+  initialValue?: T | undefined;
 };
 
 /** The prompt the picker renders, with its completion callback. */

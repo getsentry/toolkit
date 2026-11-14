@@ -242,6 +242,7 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
       return match.slug;
     }
   }
+  return undefined;
 }
 
 /**

@@ -37,9 +37,11 @@ import { ApiError, ValidationError } from "../errors.js";
 import {
   getOrgSdkConfig,
   type PaginatedResponse,
+  paginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 // Types
 
@@ -273,24 +275,24 @@ function filterAttachedIssueAlertRules(
 export async function listIssueAlertsPaginated(
   orgSlug: string,
   projectSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationWorkflows({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       project: [projectSlug],
       sortBy: "-id",
       per_page: options.perPage,
       cursor: options.cursor,
-    },
+    }),
   });
   const { data, nextCursor } = unwrapPaginatedResult<IssueAlertRule[]>(
     result,
     "Failed to list issue alert rules",
   );
-  return { data: filterAttachedIssueAlertRules(data), nextCursor };
+  return paginatedResponse(filterAttachedIssueAlertRules(data), nextCursor);
 }
 
 /**
@@ -414,24 +416,24 @@ const METRIC_DETECTOR_QUERY = "type:metric_issue";
  */
 export async function listMetricAlertsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       query: METRIC_DETECTOR_QUERY,
       sortBy: "-id",
       cursor: options.cursor,
       per_page: options.perPage,
-    },
+    }),
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
     result,
     "Failed to list metric alert rules",
   );
-  return { data: data.map(mapDetectorToMetricAlertRule), nextCursor };
+  return paginatedResponse(data.map(mapDetectorToMetricAlertRule), nextCursor);
 }
 
 /**
@@ -457,9 +459,13 @@ export async function getMetricAlertRule(
   const detector = await getMetricDetector(orgSlug, ruleId);
   return {
     ...mapDetectorToMetricAlertRule(detector),
-    config: detector.config ?? undefined,
-    conditionGroup: detector.conditionGroup,
-    workflowIds: detector.workflowIds,
+    ...(detector.config && { config: detector.config }),
+    ...(detector.conditionGroup !== undefined && {
+      conditionGroup: detector.conditionGroup,
+    }),
+    ...(detector.workflowIds !== undefined && {
+      workflowIds: detector.workflowIds,
+    }),
   };
 }
 

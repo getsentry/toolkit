@@ -22,10 +22,10 @@ const log = logger.withTag("react-native.wrap");
 
 /** Paths discovered while wrapping the RN build tools. */
 export type SourceMapReport = {
-  packager_bundle_path?: string;
-  packager_sourcemap_path?: string;
-  hermes_bundle_path?: string;
-  hermes_sourcemap_path?: string;
+  packager_bundle_path?: string | undefined;
+  packager_sourcemap_path?: string | undefined;
+  hermes_bundle_path?: string | undefined;
+  hermes_sourcemap_path?: string | undefined;
 };
 
 /** Whether this process is a Node Single Executable Application. */

@@ -13,6 +13,7 @@ import type { Breadcrumb, Event, StackFrame } from "@sentry/core";
 import { uuid4 } from "@sentry/core";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("bash-hook.traceback");
 
@@ -64,11 +65,11 @@ function parseFrameLine(line: string): StackFrame | null {
     return null;
   }
 
-  return {
+  return omitUndefined({
     function: funcName || undefined,
     filename: match[2],
     lineno: Number.parseInt(match[3] ?? "0", 10) || undefined,
-  };
+  });
 }
 
 /**
@@ -148,7 +149,10 @@ async function enrichFramesWithSourceContext(
     }
 
     const idx = frame.lineno - 1;
-    frame.context_line = lines[idx];
+    const contextLine = lines[idx];
+    if (contextLine !== undefined) {
+      frame.context_line = contextLine;
+    }
     frame.pre_context = lines.slice(Math.max(0, idx - 5), idx);
     frame.post_context = lines.slice(idx + 1, Math.min(idx + 6, lines.length));
   }
@@ -193,9 +197,9 @@ async function parseLogBreadcrumbs(logPath: string): Promise<Breadcrumb[]> {
  */
 export async function buildBashErrorEvent(opts: {
   tracebackPath: string;
-  logPath?: string;
-  tags?: Record<string, string>;
-  release?: string;
+  logPath?: string | undefined;
+  tags?: Record<string, string> | undefined;
+  release?: string | undefined;
 }): Promise<Event> {
   let tracebackContent: string;
   try {
@@ -239,9 +243,9 @@ export async function buildBashErrorEvent(opts: {
 
   const environment = process.env["SENTRY_ENVIRONMENT"] || undefined;
 
-  return {
+  return omitUndefined({
     event_id: uuid4(),
-    level: "error",
+    level: "error" as const,
     platform: "other",
     timestamp: Date.now() / 1000,
     release: opts.release || undefined,
@@ -262,5 +266,5 @@ export async function buildBashErrorEvent(opts: {
         },
       ],
     },
-  };
+  });
 }

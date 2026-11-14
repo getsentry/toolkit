@@ -238,9 +238,9 @@ export function pickUploadEncoding(
  * with `concurrency=8`, eight uploads truly compress in parallel.
  */
 export async function encodeChunk(
-  buf: Buffer,
+  buf: Buffer<ArrayBuffer>,
   encoding: UploadEncoding | undefined,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   if (encoding === "zstd") {
     // pickUploadEncoding never selects zstd when the runtime lacks it, so this
     // should be unreachable. Fail loudly rather than return raw bytes that the
@@ -295,7 +295,7 @@ export async function uploadChunk(params: {
   const { chunk, tmpZipPath, encoding, fetch: authFetch, url } = params;
 
   const chunkFh = await open(tmpZipPath, "r");
-  let buf: Buffer;
+  let buf: Buffer<ArrayBuffer>;
   try {
     buf = Buffer.alloc(chunk.size);
     await chunkFh.read(buf, 0, chunk.size, chunk.offset);
@@ -369,7 +369,7 @@ export async function hashChunks(
  * @returns Per-chunk metadata and an overall SHA-1 checksum of the entire buffer
  */
 export function hashBuffer(
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   chunkSize: number,
 ): { chunks: ChunkInfo[]; overallChecksum: string } {
   const chunks: ChunkInfo[] = [];
@@ -503,7 +503,7 @@ export async function uploadMissingChunks(params: {
 /** One chunk's bytes, keyed by its checksum, ready to upload. */
 export type ChunkPayload = {
   sha1: string;
-  data: Buffer;
+  data: Buffer<ArrayBuffer>;
 };
 
 /**
@@ -613,7 +613,7 @@ export async function uploadChunkPayloads(params: {
 export async function uploadMissingBufferChunks(params: {
   chunks: ChunkInfo[];
   missingChecksums: Set<string>;
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
   serverOptions: ChunkServerOptions;
   encoding: UploadEncoding | undefined;
   regionUrl: string;

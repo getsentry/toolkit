@@ -296,7 +296,7 @@ export function writeJsonList(
   items: readonly unknown[],
   options: {
     hasMore: boolean;
-    nextCursor?: string | null;
+    nextCursor?: string | null | undefined;
     errors?: unknown[];
     fields?: string[];
     /** Arbitrary extra metadata to include in the wrapper (e.g. `{ hint }`) */

@@ -76,9 +76,9 @@ type XcodeResult = {
   mode: "debug" | "fetch" | "wrap";
   bundle?: string;
   sourcemap?: string;
-  debugId?: string;
-  release?: string;
-  dist?: string[];
+  debugId?: string | undefined;
+  release?: string | undefined;
+  dist?: string[] | undefined;
   uploads: number;
 };
 
@@ -299,8 +299,8 @@ async function uploadPair(
   ctx: SentryContext,
   flags: XcodeFlags,
 ): Promise<{
-  debugId?: string;
-  release?: string;
+  debugId?: string | undefined;
+  release?: string | undefined;
   dist: string[];
   uploads: number;
 }> {

@@ -387,7 +387,11 @@ function formatBigNumberValue(value: number): string {
 // Sort helper: descending by value, "Other" always last
 // ---------------------------------------------------------------------------
 
-type BarItem = { label: string; total: number; unit?: string | null };
+type BarItem = {
+  label: string;
+  total: number;
+  unit?: string | null | undefined;
+};
 
 /** Sort items by value descending, "Other" pinned to end. */
 function sortBarItems(items: BarItem[]): BarItem[] {
@@ -1202,7 +1206,7 @@ type AggregatedTimeseries = {
   values: (number | null)[];
   timestamps: number[];
   label: string;
-  unit?: string | null;
+  unit?: string | null | undefined;
   /** Last measured value, or null when nothing was measured. */
   latest: number | null;
   /** Whether the bucket `latest` comes from is still being ingested. */

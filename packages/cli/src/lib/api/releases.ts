@@ -53,6 +53,7 @@ import {
 } from "./infrastructure.js";
 import { getProject } from "./projects.js";
 import { listRepositoriesPaginated } from "./repositories.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.releases");
 
@@ -69,16 +70,16 @@ const log = logger.withTag("api.releases");
  */
 /** Options for listing releases with pagination. */
 export type ListReleasesOptions = {
-  cursor?: string;
+  cursor?: string | undefined;
   perPage?: number;
-  query?: string;
+  query?: string | undefined;
   sort?: string;
   /** Include per-project health/adoption data in the response. */
   health?: boolean;
   /** Filter by numeric project IDs (repeated query param). */
   project?: number[];
   /** Filter by environment names (repeated query param). */
-  environment?: string[];
+  environment?: string[] | undefined;
   /** Stats period for health data, e.g. "24h", "7d", "90d". */
   statsPeriod?: string;
   /** Filter by release status: "open" (active) or "archived". */
@@ -205,7 +206,7 @@ export async function getRelease(
       organization_id_or_slug: orgSlug,
       version,
     },
-    query: {
+    query: omitUndefined({
       health: options?.health,
       adoptionStages: options?.adoptionStages,
       healthStatsPeriod: options?.healthStatsPeriod as
@@ -219,7 +220,7 @@ export async function getRelease(
         | "48h"
         | "90d"
         | undefined,
-    },
+    }),
   });
 
   return unwrapResult<SentryRelease>(
