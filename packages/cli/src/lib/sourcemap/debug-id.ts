@@ -112,6 +112,33 @@ export function hasDebugIdRegistration(js: string, debugId: string): boolean {
 }
 
 /**
+ * Read the debug ID a runtime snippet already registers, for a file that
+ * carries it nowhere else. A bundler plugin's output is in that state: the
+ * snippet is in the bundle, while the `//# debugId=` comment and the map's ID
+ * are only added to the copies the plugin uploads.
+ *
+ * Reusing it keeps the bundle on one ID. Minting another would add a second
+ * snippet, and the SDK reports the ID registered last, which is the original
+ * one and not the one the sourcemap was uploaded under.
+ *
+ * @param js - JavaScript file content
+ * @returns The canonical ID, or `undefined` when the file registers none, or
+ *   registers more than one and so does not identify a single bundle
+ * @internal
+ */
+export function readRegisteredDebugId(js: string): string | undefined {
+  const ids = new Set<string>();
+  for (const match of js.matchAll(DEBUGID_REGISTRATION_RE)) {
+    const id = normalizeDebugId(match[2]);
+    if (id) {
+      ids.add(id);
+    }
+  }
+  const [only] = ids;
+  return ids.size === 1 ? only : undefined;
+}
+
+/**
  * Read a pre-existing debug ID off a parsed sourcemap.
  *
  * `debug_id` wins over `debugId` when both are present. A value that is not a
@@ -305,25 +332,32 @@ export async function injectDebugId(
   // separator can't occur in JS/JSON text, so the two inputs can't bleed
   // across the boundary. Collisions now require both files to be
   // byte-identical, in which case sharing an ID is correct.
-  const debugId = existingId ?? contentToDebugId(`${jsContent}\0${mapContent}`);
+  //
+  // A file with no ID of its own may still register one at runtime; that ID
+  // is reused, see {@link readRegisteredDebugId}.
+  const registeredId =
+    existingId || skipRuntimeCheck
+      ? undefined
+      : readRegisteredDebugId(jsContent);
+  const debugId =
+    existingId ??
+    registeredId ??
+    contentToDebugId(`${jsContent}\0${mapContent}`);
 
   // --- Mutate JS file ---
-  let newJs: string;
-  if (skipSnippet) {
-    // Metadata-only mode: just append the debugId comment, no IIFE snippet.
-    // Used by the CLI's own build where the debug ID is registered in source.
-    newJs = jsContent;
-  } else {
-    // Full mode: prepend the runtime IIFE snippet (for user-facing injection).
-    newJs = prependDebugIdSnippet(jsContent, getDebugIdSnippet(debugId));
-  }
+  // No IIFE snippet in metadata-only mode (the CLI's own build registers the
+  // ID in source), nor when the bundle already registers this ID.
+  const addSnippet = !skipSnippet && !registeredId;
+  let newJs = addSnippet
+    ? prependDebugIdSnippet(jsContent, getDebugIdSnippet(debugId))
+    : jsContent;
   if (!jsDebugId) {
     newJs += `\n${DEBUGID_COMMENT_PREFIX}${debugId}\n`;
   }
 
   // --- Mutate sourcemap ---
   mutateSourcemap(map, debugId, {
-    snippetLine: skipSnippet ? undefined : countHeaderLines(jsContent),
+    snippetLine: addSnippet ? countHeaderLines(jsContent) : undefined,
   });
 
   // Write both files concurrently
@@ -503,8 +537,16 @@ export async function injectInlineDebugId(
   // byte-identical inline map still get distinct debug IDs
   // (getsentry/sentry-cli#3350). `jsContent` already embeds the inline map,
   // so this is belt-and-suspenders, but keeps the two paths symmetric.
+  //
+  // As on the external path, an ID the bundle already registers is reused.
+  const registeredId =
+    existingId || isLikelyBinary(jsBytes)
+      ? undefined
+      : readRegisteredDebugId(jsContent);
   const debugId =
-    existingId ?? contentToDebugId(`${jsContent}\0${decoded.json}`);
+    existingId ??
+    registeredId ??
+    contentToDebugId(`${jsContent}\0${decoded.json}`);
 
   // Locate the LAST inline directive to rewrite. If it can't be found (the
   // discovery parser and this regex disagree on an edge case), abort WITHOUT
@@ -521,9 +563,10 @@ export async function injectInlineDebugId(
   }
 
   // Mutate the decoded map (IIFE adds one top line — same offset as external).
+  // A reused registration adds no snippet, so no line either.
   const map = decoded.map as SourcemapJson;
   mutateSourcemap(map, debugId, {
-    snippetLine: countHeaderLines(jsContent),
+    snippetLine: registeredId ? undefined : countHeaderLines(jsContent),
   });
   const newDataUrl = encodeInlineSourcemap(map, decoded.dataUrlPrefix);
 
@@ -540,7 +583,9 @@ export async function injectInlineDebugId(
     newDataUrl +
     jsContent.slice(end);
 
-  let newJs = prependDebugIdSnippet(rewritten, getDebugIdSnippet(debugId));
+  let newJs = registeredId
+    ? rewritten
+    : prependDebugIdSnippet(rewritten, getDebugIdSnippet(debugId));
   if (!jsDebugId) {
     newJs += `\n${DEBUGID_COMMENT_PREFIX}${debugId}\n`;
   }
