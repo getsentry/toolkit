@@ -645,6 +645,10 @@ describe.each(["external", "inline"] as const)(
       // Turbopack's snippet after the same minification, which also folds
       // the inline registry initialization into a logical assignment.
       turbopackLogicalAssignment: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof global<\`u\`?global:typeof window<\`u\`?window:typeof self<\`u\`?self:{},t=new e.Error().stack;t&&((e._debugIds||={})[t]=\`${debugId}\`)}catch{}})();`,
+      // No minifier tested emits these two, but the registration check
+      // accepts them, so they pin those branches.
+      nullishAssignment: `(function(){var e=globalThis,t=new e.Error().stack;t&&((e._debugIds??={})[t]=\`${debugId}\`)})();`,
+      bracketTemplateRegistry: `(function(){var e=globalThis,t=new e.Error().stack;e[\`_sentryDebugIds\`]=e[\`_sentryDebugIds\`]||{};e[\`_sentryDebugIds\`][t]=\`${debugId}\`})();`,
     };
 
     test.each(Object.keys(snippets))(
@@ -766,6 +770,51 @@ describe.each(["external", "inline"] as const)(
             injected: false,
           },
         );
+      },
+    );
+
+    // Near misses of the template literal and logical assignment forms that
+    // do not register the ID, so injection must still happen.
+    const nearMisses: Record<string, string> = {
+      interpolatedTemplate: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]=\`\${t}${debugId}\`;`,
+      andAssignment: `var e=globalThis,t="s";try{(e._debugIds&&={})[t]=\`${debugId}\`}catch{}`,
+      comparison: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]==\`${debugId}\`;`,
+    };
+
+    test.each(Object.keys(nearMisses))(
+      "injects despite a %s near miss",
+      async (format) => {
+        const jsPath = join(dir, "main.js");
+        const mapContent = JSON.stringify({
+          version: 3,
+          sources: ["main.ts"],
+          names: [],
+          mappings: "AAAA",
+          debugId,
+        });
+        const mapUrl =
+          kind === "inline"
+            ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+            : "main.js.map";
+        const js = `${nearMisses[format]}\n//# debugId=${debugId}\n//# sourceMappingURL=${mapUrl}\n`;
+        writeFileSync(jsPath, js);
+        if (kind === "external") {
+          writeFileSync(`${jsPath}.map`, mapContent);
+        }
+
+        expect((await injectDirectory(dir))[0]).toMatchObject({
+          debugId,
+          injected: true,
+        });
+        const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+        runInNewContext(readFileSync(jsPath, "utf-8"), sandbox, {
+          filename: "main.js",
+        });
+        expect(
+          Object.values(sandbox._sentryDebugIds ?? {}).filter(
+            (id) => id === debugId,
+          ),
+        ).toHaveLength(1);
       },
     );
   },
