@@ -27,7 +27,7 @@ import {
 type EventDetailProps = {
   item: LocalFeedItem;
   relatedItems?: readonly LocalFeedItem[];
-  trace?: TraceGroup;
+  trace?: TraceGroup | undefined;
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 };
@@ -133,8 +133,8 @@ export function EventDetail({
   const message =
     metadata.message ??
     (item.type === "log"
-      ? typeof payload.body === "string"
-        ? payload.body
+      ? typeof payload["body"] === "string"
+        ? payload["body"]
         : metadata.title
       : undefined);
   const fields: DetailField[] = [
@@ -158,17 +158,17 @@ export function EventDetail({
       : []),
   ];
   const isRequestOrSpan = item.type === "transaction" || item.type === "span";
-  const request = detailRecord(payload.request);
+  const request = detailRecord(payload["request"]);
   const traceData = detailRecord(
-    detailRecord(detailRecord(payload.contexts).trace).data,
+    detailRecord(detailRecord(payload["contexts"])["trace"])["data"],
   );
-  const data = detailRecord(payload.data);
-  const urlAttribute = detailRecord(payload.attributes)["url.full"];
+  const data = detailRecord(payload["data"]);
+  const urlAttribute = detailRecord(payload["attributes"])["url.full"];
   const capturedURL = [
-    request.url,
+    request["url"],
     traceData["http.url"],
     data["http.url"],
-    detailRecord(urlAttribute).value,
+    detailRecord(urlAttribute)["value"],
     urlAttribute,
   ].find(
     (value): value is string => typeof value === "string" && value.length > 0,
@@ -181,7 +181,7 @@ export function EventDetail({
   const detailFields = isRequestOrSpan
     ? fields.filter((field) => field.label === "Message")
     : fields;
-  const attributes = attributeFields(payload.attributes);
+  const attributes = attributeFields(payload["attributes"]);
   return (
     <section
       data-testid="event-detail"

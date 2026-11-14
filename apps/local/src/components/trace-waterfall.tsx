@@ -6,8 +6,8 @@ import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
 type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
-  selectedSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  selectedSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 };
 
 type PositionedSpan = {
@@ -102,8 +102,8 @@ function SpanRow({
   positionedSpan: PositionedSpan;
   trace: TraceGroup;
   index: number;
-  selectedSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  selectedSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 }) {
   const { span, depth, isLastChild } = positionedSpan;
   const position = getSpanPosition(span, trace);

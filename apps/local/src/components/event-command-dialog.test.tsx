@@ -18,6 +18,7 @@ const items = [
     id: "transaction-1",
     type: "transaction",
     text: "{}",
+    payload: {},
     metadata: {
       title: "GET /api/users/42",
       method: "GET",

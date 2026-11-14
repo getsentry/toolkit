@@ -25,20 +25,22 @@ const profileTables = new WeakMap<
     threads: Set<string>;
   }
 >();
+function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function tables(item: LocalFeedItem) {
   const cached = profileTables.get(item);
   if (cached) return cached;
   const profile = profileData(item);
-  const samples = (Array.isArray(profile.samples) ? profile.samples : []).map(
-    record,
-  );
+  const samples = list(profile["samples"]).map(record);
   const result = {
     profile,
     samples,
-    frames: Array.isArray(profile.frames) ? profile.frames : [],
-    stacks: Array.isArray(profile.stacks) ? profile.stacks : [],
+    frames: list(profile["frames"]),
+    stacks: list(profile["stacks"]),
     threads: new Set(
-      samples.map((sample) => profileThreadId(sample.thread_id) ?? "main"),
+      samples.map((sample) => profileThreadId(sample["thread_id"]) ?? "main"),
     ),
   };
   profileTables.set(item, result);
@@ -52,11 +54,11 @@ export function profileSources(
   for (const item of items) {
     if (item.type !== "profile" && item.type !== "profile_chunk") continue;
     const payload = record(item.payload);
-    const profilerId = text(payload.profiler_id);
+    const profilerId = text(payload["profiler_id"]);
     const key =
       item.type === "profile_chunk" && profilerId
         ? `chunk:${profilerId}`
-        : `legacy:${text(payload.event_id) ?? item.id}`;
+        : `legacy:${text(payload["event_id"]) ?? item.id}`;
     const previous = profiles.get(key);
     if (!previous || item.id < previous.id) profiles.set(key, item);
   }
@@ -83,7 +85,7 @@ function samplesForThread(
   if (cached) return cached;
   const selected = samples
     .filter(
-      (sample) => (profileThreadId(sample.thread_id) ?? "main") === thread,
+      (sample) => (profileThreadId(sample["thread_id"]) ?? "main") === thread,
     )
     .flatMap((sample) => {
       const timestamp = time(sample, base);
@@ -96,36 +98,33 @@ function samplesForThread(
 
 /** Disjoint intervals with an unambiguous innermost captured span. */
 function traceIntervals(trace: TraceGroup): Interval[] {
+  type Range = { start: number; end: number };
   const events: {
     time: number;
     span: TraceSpan;
     depth: number;
     entering: boolean;
+    range: Range;
   }[] = [];
   const seen = new Set<string>(),
-    positions = new Map<string, { start: number; end: number }>();
-  const pending = trace.roots.map((span) => ({
-    span,
-    depth: 0,
-    exiting: false,
-  }));
+    positions = new Map<string, Range>();
+  // An entry with a range is the exit of a span whose subtree is done.
+  const pending: { span: TraceSpan; depth: number; exiting?: Range }[] =
+    trace.roots.map((span) => ({ span, depth: 0 }));
   let position = 0;
-  while (pending.length) {
-    const { span, depth, exiting } = pending.pop()!;
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const { span, depth, exiting } = next;
     if (exiting) {
-      positions.get(span.id)!.end = position;
+      exiting.end = position;
       continue;
     }
     if (seen.has(span.id)) continue;
     seen.add(span.id);
-    positions.set(span.id, { start: position++, end: 0 });
-    pending.push({ span, depth, exiting: true });
+    const range = { start: position++, end: 0 };
+    positions.set(span.id, range);
+    pending.push({ span, depth, exiting: range });
     pending.push(
-      ...span.children.map((child) => ({
-        span: child,
-        depth: depth + 1,
-        exiting: false,
-      })),
+      ...span.children.map((child) => ({ span: child, depth: depth + 1 })),
     );
     if (
       span.startTimestamp === undefined ||
@@ -134,8 +133,8 @@ function traceIntervals(trace: TraceGroup): Interval[] {
     )
       continue;
     events.push(
-      { time: span.startTimestamp, span, depth, entering: true },
-      { time: span.endTimestamp, span, depth, entering: false },
+      { time: span.startTimestamp, span, depth, entering: true, range },
+      { time: span.endTimestamp, span, depth, entering: false, range },
     );
   }
   events.sort((a, b) => a.time - b.time);
@@ -147,11 +146,12 @@ function traceIntervals(trace: TraceGroup): Interval[] {
   let activeCount = 0;
   function mark(index: number, delta: number) {
     for (index++; index < ancestry.length; index += index & -index)
-      ancestry[index]! += delta;
+      ancestry[index] = (ancestry[index] ?? 0) + delta;
   }
   function covering(index: number) {
     let count = 0;
-    for (index++; index > 0; index -= index & -index) count += ancestry[index]!;
+    for (index++; index > 0; index -= index & -index)
+      count += ancestry[index] ?? 0;
     return count;
   }
   function addDepth(depth: number) {
@@ -159,53 +159,71 @@ function traceIntervals(trace: TraceGroup): Interval[] {
     let index = heap.length - 1;
     while (index > 0) {
       const parent = Math.floor((index - 1) / 2);
-      if (heap[parent]! >= depth) break;
-      heap[index] = heap[parent]!;
+      const parentDepth = heap[parent];
+      if (parentDepth === undefined || parentDepth >= depth) break;
+      heap[index] = parentDepth;
       index = parent;
     }
     heap[index] = depth;
   }
   function highest(): Set<TraceSpan> | undefined {
-    while (heap.length && !active.get(heap[0]!)?.size) {
-      const last = heap.pop()!;
-      if (!heap.length) break;
+    for (
+      let top = heap[0];
+      top !== undefined && !active.get(top)?.size;
+      top = heap[0]
+    ) {
+      const last = heap.pop();
+      if (last === undefined || !heap.length) break;
       heap[0] = last;
       let index = 0;
-      while (true) {
+      for (;;) {
         const left = index * 2 + 1,
           right = left + 1;
-        if (left >= heap.length) break;
-        const child =
-          right < heap.length && heap[right]! > heap[left]! ? right : left;
-        if (heap[index]! >= heap[child]!) break;
-        [heap[index], heap[child]] = [heap[child]!, heap[index]!];
+        const leftDepth = heap[left],
+          rightDepth = heap[right],
+          current = heap[index];
+        if (leftDepth === undefined || current === undefined) break;
+        const [child, childDepth] =
+          rightDepth !== undefined && rightDepth > leftDepth
+            ? [right, rightDepth]
+            : [left, leftDepth];
+        if (current >= childDepth) break;
+        heap[index] = childDepth;
+        heap[child] = current;
         index = child;
       }
     }
-    return active.get(heap[0]!);
+    const top = heap[0];
+    return top === undefined ? undefined : active.get(top);
   }
   const intervals: Interval[] = [];
   let previous: number | undefined;
-  for (let index = 0; index < events.length;) {
-    const time = events[index]!.time,
+  for (let index = 0, head = events[0]; head; head = events[index]) {
+    const time = head.time,
       candidates = highest();
     // Parallel sibling operations do not identify which one owns a CPU sample.
     const candidate =
       candidates?.size === 1 ? candidates.values().next().value : undefined;
+    const candidateRange = candidate && positions.get(candidate.id);
     if (
       previous !== undefined &&
       time > previous &&
       candidate &&
-      covering(positions.get(candidate.id)!.start) === activeCount
+      candidateRange &&
+      covering(candidateRange.start) === activeCount
     ) {
       const parent = candidate;
       const last = intervals.at(-1);
       if (last?.parent === parent && last.end === previous) last.end = time;
       else intervals.push({ start: previous, end: time, parent });
     }
-    while (index < events.length && events[index]!.time === time) {
-      const event = events[index++]!;
-      const range = positions.get(event.span.id)!;
+    for (
+      let event = events[index];
+      event && event.time === time;
+      event = events[index]
+    ) {
+      index++;
+      const { range } = event;
       const delta = event.entering ? 1 : -1;
       activeCount += delta;
       mark(range.start, delta);
@@ -241,17 +259,17 @@ function matchingTransaction(
   trace: TraceGroup,
 ): Record<string, unknown> {
   const payload = record(item.payload);
-  const transactions = Array.isArray(payload.transactions)
-    ? payload.transactions.map(record)
-    : [record(payload.transaction)];
+  const transactions = Array.isArray(payload["transactions"])
+    ? payload["transactions"].map(record)
+    : [record(payload["transaction"])];
   return (
     transactions.find(
       (transaction) =>
-        transaction.trace_id === trace.id ||
+        transaction["trace_id"] === trace.id ||
         trace.items.some(
           (entry) =>
-            transaction.id !== undefined &&
-            record(entry.payload).event_id === transaction.id,
+            transaction["id"] !== undefined &&
+            record(entry.payload)["event_id"] === transaction["id"],
         ),
     ) ?? {}
   );
@@ -260,9 +278,9 @@ function time(
   sample: Record<string, unknown>,
   base: number | undefined,
 ): number | undefined {
-  const absolute = finite(sample.timestamp);
+  const absolute = finite(sample["timestamp"]);
   if (absolute !== undefined) return absolute;
-  const ns = number(sample.elapsed_since_start_ns);
+  const ns = number(sample["elapsed_since_start_ns"]);
   return ns === undefined || base === undefined ? undefined : base + ns / 1e9;
 }
 function hash(value: string): string {
@@ -280,17 +298,19 @@ export function addProfileSpans(
   const linked = items.filter((item) => profileMatchesTrace(item, trace));
   if (!linked.length) return trace;
   const intervals = traceIntervals(trace);
-  if (!intervals.length) return trace;
+  const firstInterval = intervals[0],
+    lastInterval = intervals.at(-1);
+  if (!firstInterval || !lastInterval) return trace;
   const claimedIds = new Set(trace.spans.map((span) => span.id));
   let count = 0;
   profileLoop: for (const item of linked) {
-    const sourceId = `${item.type}:${text(record(item.payload).profiler_id) ?? text(record(item.payload).event_id) ?? item.id}`;
+    const sourceId = `${item.type}:${text(record(item.payload)["profiler_id"]) ?? text(record(item.payload)["event_id"]) ?? item.id}`;
     const { profile, frames, stacks, samples, threads } = tables(item);
     const payload = record(item.payload),
       transaction = matchingTransaction(item, trace);
     const capturedThread =
-      profileThreadId(profile.active_thread_id) ??
-      profileThreadId(transaction.active_thread_id);
+      profileThreadId(profile["active_thread_id"]) ??
+      profileThreadId(transaction["active_thread_id"]);
     const thread =
       capturedThread === undefined
         ? threads.size === 1
@@ -298,27 +318,27 @@ export function addProfileSpans(
           : undefined
         : capturedThread;
     if (thread === undefined) continue;
-    const relativeStart = number(transaction.relative_start_ns);
+    const relativeStart = number(transaction["relative_start_ns"]);
     const matched = trace.items.find((entry) => {
       const captured = record(entry.payload);
-      const profileContext = record(record(captured.contexts).profile);
+      const profileContext = record(record(captured["contexts"])["profile"]);
       return (
-        (transaction.id !== undefined &&
-          captured.event_id === transaction.id) ||
-        (payload.event_id !== undefined &&
-          profileContext.profile_id === payload.event_id)
+        (transaction["id"] !== undefined &&
+          captured["event_id"] === transaction["id"]) ||
+        (payload["event_id"] !== undefined &&
+          profileContext["profile_id"] === payload["event_id"])
       );
     });
     const transactionStart =
-      number(record(matched?.payload).start_timestamp) ??
-      number(transaction.start_timestamp);
+      number(record(matched?.payload)["start_timestamp"]) ??
+      number(transaction["start_timestamp"]);
     // relative_start_ns is the transaction's offset from profile start.
     // Prefer the captured profile clock; derive it from the matched event only
     // when that clock is absent.
     const base =
       item.type === "profile_chunk"
         ? undefined
-        : (absoluteTimestamp(payload.timestamp) ??
+        : (absoluteTimestamp(payload["timestamp"]) ??
           (transactionStart === undefined
             ? undefined
             : transactionStart - (relativeStart ?? 0) / 1e9));
@@ -328,28 +348,30 @@ export function addProfileSpans(
       high = selected.length;
     while (low < high) {
       const mid = Math.floor((low + high) / 2);
-      if (selected[mid]!.timestamp < intervals[0]!.start) low = mid + 1;
+      const sample = selected[mid];
+      if (sample && sample.timestamp < firstInterval.start) low = mid + 1;
       else high = mid;
     }
     const firstSample = Math.max(0, low - 1);
-    let tail: { key: string; end: number; nodes: TraceSpan[] } | undefined;
-    for (
-      let index = firstSample;
-      index + 1 < selected.length &&
-      selected[index]!.timestamp < intervals.at(-1)!.end;
-      index++
-    ) {
-      const current = selected[index]!;
+    let tail:
+      | { key: string; start: number; end: number; nodes: TraceSpan[] }
+      | undefined;
+    for (let index = firstSample; ; index++) {
+      const current = selected[index],
+        following = selected[index + 1];
+      if (!current || !following || current.timestamp >= lastInterval.end)
+        break;
       const observedEnd = profileSampleEndMs(current.sample);
       const end = Math.min(
-        selected[index + 1]!.timestamp,
+        following.timestamp,
         observedEnd === undefined ? Infinity : observedEnd / 1000,
       );
       if (end <= current.timestamp) continue;
-      const stackId = finite(current.sample.stack_id),
+      const stackId = finite(current.sample["stack_id"]),
         stack = stackId === undefined ? undefined : stacks[stackId];
       if (!Array.isArray(stack)) continue;
-      const path = [...stack]
+      const stackIds: unknown[] = stack;
+      const path = [...stackIds]
         .reverse()
         .slice(0, 256)
         .map((id) =>
@@ -361,18 +383,18 @@ export function addProfileSpans(
         );
       if (!path.length || path.some((frame) => !Object.keys(frame).length))
         continue;
-      while (
-        cursor < intervals.length &&
-        intervals[cursor]!.end <= current.timestamp
+      for (
+        let interval = intervals[cursor];
+        interval && interval.end <= current.timestamp;
+        interval = intervals[cursor]
       )
         cursor++;
       for (
-        let position = cursor;
-        position < intervals.length && intervals[position]!.start < end;
-        position++
+        let position = cursor, interval = intervals[position];
+        interval && interval.start < end;
+        interval = intervals[++position]
       ) {
-        const interval = intervals[position]!,
-          start = Math.max(current.timestamp, interval.start),
+        const start = Math.max(current.timestamp, interval.start),
           stop = Math.min(end, interval.end);
         if (stop <= start) continue;
         const sampleSource = profileSampleSource(current.sample, item);
@@ -385,8 +407,7 @@ export function addProfileSpans(
         if (tail?.key === key && Math.abs(tail.end - start) < 1e-9) {
           for (const node of tail.nodes) {
             node.endTimestamp = stop;
-            node.durationMs =
-              Math.round((stop - node.startTimestamp!) * 100_000) / 100;
+            node.durationMs = Math.round((stop - tail.start) * 100_000) / 100;
             node.payload = { ...record(node.payload), timestamp: stop };
             node.metadata.durationMs = node.durationMs;
           }
@@ -395,17 +416,16 @@ export function addProfileSpans(
         }
         const nodes: TraceSpan[] = [];
         let parent = interval.parent;
-        for (let depth = 0; depth < path.length; depth++) {
+        for (const [depth, frame] of path.entries()) {
           if (count >= MAX_SAMPLED_SPANS) {
             trace.profileSpansTruncated = true;
             break profileLoop;
           }
-          const frame = path[depth]!,
-            name =
-              text(frame.function) ??
-              text(frame.module) ??
-              text(frame.instruction_addr) ??
-              "Anonymous";
+          const name =
+            text(frame["function"]) ??
+            text(frame["module"]) ??
+            text(frame["instruction_addr"]) ??
+            "Anonymous";
           const baseId = `profile:${hash(profileValueKey([sourceId, parent.id, start, path.slice(0, depth + 1)]))}`;
           let id = baseId,
             suffix = 0;
@@ -444,7 +464,7 @@ export function addProfileSpans(
           parent = node;
           count++;
         }
-        tail = { key, end: stop, nodes };
+        tail = { key, start, end: stop, nodes };
       }
     }
   }

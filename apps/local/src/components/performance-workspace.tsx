@@ -217,7 +217,7 @@ export function WebVitalsWorkspace({
   );
   const metric = available.includes(chosenMetric)
     ? chosenMetric
-    : available[0]!;
+    : (available[0] ?? chosenMetric);
   const config = VITALS[metric];
   const max = Math.max(
     config.poor,

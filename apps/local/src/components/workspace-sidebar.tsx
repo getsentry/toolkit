@@ -31,14 +31,14 @@ export type WorkspaceSidebarProps = {
   onClear: () => void;
   onDisconnect: () => void;
   isClearing: boolean;
-  onCloseSession?: () => void;
+  onCloseSession?: (() => void) | undefined;
   onChangeReceiver: (trigger: HTMLButtonElement) => void;
   isClosingSession: boolean;
   onOpenSettings: (trigger: HTMLButtonElement) => void;
   onOpenCommand: (trigger: HTMLButtonElement) => void;
   onSelect: (view: WorkspaceView) => void;
   onToggle: () => void;
-  onDeleteCapturedEvents?: (trigger: HTMLButtonElement) => void;
+  onDeleteCapturedEvents?: ((trigger: HTMLButtonElement) => void) | undefined;
 };
 
 /** The main debugging views stay visible; secondary SDK data is discoverable. */

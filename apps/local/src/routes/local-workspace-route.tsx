@@ -69,7 +69,10 @@ export function LocalWorkspaceRoute({ children }: { children: ReactNode }) {
         navigateToCommandEvent: (view, eventId) =>
           navigateToCommandSelection(view, { event: eventId }),
         navigateToCommandTrace: (view, traceId, spanId) =>
-          navigateToCommandSelection(view, { trace: traceId, span: spanId }),
+          navigateToCommandSelection(view, {
+            trace: traceId,
+            ...(spanId !== undefined && { span: spanId }),
+          }),
       }}
     >
       {children}

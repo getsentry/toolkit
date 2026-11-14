@@ -75,18 +75,16 @@ test("mobile Settings opens the shared modal without its closing popover stealin
   render(<ViewerActions />);
   const trigger = screen.getByRole("button", { name: "Capture actions" });
   fireEvent.click(trigger);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Settings", exact: true }),
-  );
-  await screen.findByRole("dialog", { name: "Settings", exact: true });
+  fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  await screen.findByRole("dialog", { name: "Settings" });
   expect(screen.queryByRole("dialog", { name: "Capture actions" })).toBeNull();
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Light", exact: true }),
+      screen.getByRole("button", { name: "Light" }),
     ),
   );
   expect(screen.queryByRole("button", { name: /Use .* mode/ })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
 
@@ -116,9 +114,7 @@ test("mobile actions prevent empty clears and duplicate close requests", async (
   fireEvent.click(closeButton);
   expect(clear).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Switch receiver", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
   expect(add).toHaveBeenCalledWith(trigger);
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });

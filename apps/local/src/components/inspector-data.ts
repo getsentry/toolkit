@@ -1,3 +1,5 @@
+import { jsonText } from "@/lib/objects.ts";
+
 export type DetailField = { label: string; value: string; code?: boolean };
 
 export function detailRecord(value: unknown): Record<string, unknown> {
@@ -9,13 +11,13 @@ export function detailRecord(value: unknown): Record<string, unknown> {
 export function attributeFields(value: unknown): DetailField[] {
   return Object.entries(detailRecord(value)).map(([label, attribute]) => {
     const record = detailRecord(attribute);
-    const content = "value" in record ? record.value : attribute;
+    const content = "value" in record ? record["value"] : attribute;
     return {
       label,
       value:
         typeof content === "string"
           ? content
-          : (JSON.stringify(content) ?? String(content)),
+          : (jsonText(content) ?? String(content)),
       code: true,
     };
   });
