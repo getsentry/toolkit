@@ -11,8 +11,8 @@ export type AppIssueLinkParams = {
   issueId: string;
   projectId?: string;
   externalIssueUrl: string;
-  appSlug?: string;
-  fields?: FormValues;
+  appSlug?: string | undefined;
+  fields?: FormValues | undefined;
 };
 type AppIssueLinkApi = Pick<
   SentryApiService,
@@ -59,9 +59,11 @@ function isIssueKey(value: string, key: string): boolean {
 }
 
 function choiceLabelKey(label: string | number): string {
-  return String(label)
-    .toUpperCase()
-    .split(/[^A-Z0-9-]+/)[0]!;
+  return (
+    String(label)
+      .toUpperCase()
+      .split(/[^A-Z0-9-]+/)[0] ?? ""
+  );
 }
 
 function parseTarget(raw: string) {
@@ -185,7 +187,11 @@ async function resolveFields(
   while (pending.size > 0) {
     let progressed = false;
     for (const name of pending) {
-      const field = fields.get(name)!;
+      const field = fields.get(name);
+      if (!field)
+        throw new UserInputError(
+          `The App's link form references unknown field '${name}'.`,
+        );
       const dependencies = field.depends_on ?? [];
       if (dependencies.some((dependency) => pending.has(dependency))) continue;
       if (field.multiple)
@@ -215,10 +221,12 @@ async function resolveFields(
             projectId: params.projectId,
             dependentData: dependencies.length
               ? Object.fromEntries(
-                  dependencies.map((dependency) => [
-                    dependency,
-                    values[dependency],
-                  ]),
+                  dependencies.flatMap((dependency) => {
+                    const dependencyValue = values[dependency];
+                    return dependencyValue === undefined
+                      ? []
+                      : [[dependency, dependencyValue] as const];
+                  }),
                 )
               : undefined,
           });
@@ -235,13 +243,14 @@ async function resolveFields(
               choiceLabelKey(label) === key &&
               (value === undefined || String(choiceValue) === String(value))),
         );
-        if (matches.length !== 1) {
+        const [match] = matches;
+        if (matches.length !== 1 || !match) {
           throw new UserInputError(
             `Provide an unambiguous value for App link field '${name}' in fields.`,
           );
         }
         if (targetKey) {
-          const [selectedValue, selectedLabel] = matches[0]!;
+          const [selectedValue, selectedLabel] = match;
           const valueKey = String(selectedValue).toUpperCase();
           const labelKey = choiceLabelKey(selectedLabel);
           const identifiedChoices = choices.filter(
@@ -263,7 +272,7 @@ async function resolveFields(
             );
           }
         }
-        value = matches[0]![0];
+        value = match[0];
       } else {
         value ??= search;
         if (
@@ -317,9 +326,9 @@ export async function linkAppIssue(
     (installation) =>
       installation.app.slug === appSlug && installation.status === "installed",
   );
-  if (installed.length !== 1)
+  const [installation] = installed;
+  if (installed.length !== 1 || !installation)
     throw new UserInputError(`Expected one installed Sentry App '${appSlug}'.`);
-  const installation = installed[0]!;
   const matchingComponents = components.filter(
     (component) =>
       component.type === "issue-link" &&
@@ -329,7 +338,7 @@ export async function linkAppIssue(
   );
   const component =
     matchingComponents.length === 1 ? matchingComponents[0] : undefined;
-  const parsed = LinkFormSchema.safeParse(component?.schema.link);
+  const parsed = LinkFormSchema.safeParse(component?.schema["link"]);
   if (!component || component.error || !parsed.success) {
     throw new UserInputError(
       `Sentry App '${appSlug}' has no usable existing-issue link form.`,

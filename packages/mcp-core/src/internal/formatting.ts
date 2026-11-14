@@ -197,8 +197,8 @@ export function formatFrameHeader(
  * misnames the error text.
  */
 export function isPerformanceIssueType(issue: {
-  issueType?: string | null;
-  issueCategory?: string | null;
+  issueType?: string | null | undefined;
+  issueCategory?: string | null | undefined;
 }): boolean {
   return (
     issue.issueType?.startsWith("performance_") === true ||
@@ -228,14 +228,14 @@ export function isSupportedEventType(event: { type?: unknown }): boolean {
 export function formatEventOutput(
   event: Event,
   options?: {
-    performanceTrace?: Trace;
+    performanceTrace?: Trace | undefined;
     replaySummary?: {
       apiService: SentryApiService;
       organizationSlug: string;
-      relatedReplayIds?: string[];
+      relatedReplayIds?: string[] | undefined;
       experimentalMode?: boolean;
-      availableToolNames?: ReadonlySet<string>;
-      directToolNames?: ReadonlySet<string>;
+      availableToolNames?: ReadonlySet<string> | undefined;
+      directToolNames?: ReadonlySet<string> | undefined;
     };
   },
 ) {
@@ -274,7 +274,6 @@ export function formatEventOutput(
   // Error message (if present)
   if (messageEntry) {
     output += formatMessageInterfaceOutput(
-      eventToRender,
       messageEntry.data as z.infer<typeof MessageEntrySchema>,
     );
   }
@@ -297,14 +296,13 @@ export function formatEventOutput(
   // Request info (if HTTP error)
   if (requestEntry) {
     output += formatRequestInterfaceOutput(
-      eventToRender,
       requestEntry.data as z.infer<typeof RequestEntrySchema>,
     );
   }
 
   // CSP violation details
   if (cspEntry) {
-    output += formatCspInterfaceOutput(eventToRender, cspEntry.data);
+    output += formatCspInterfaceOutput(cspEntry.data);
   }
 
   // Performance issue details (N+1 queries, etc.)
@@ -514,8 +512,8 @@ function getExceptionChainMessage(
   }
 }
 
-function formatCspInterfaceOutput(event: Event, data: any) {
-  if (!data) {
+function formatCspInterfaceOutput(data: unknown) {
+  if (!isPlainObject(data)) {
     return "";
   }
 
@@ -523,37 +521,50 @@ function formatCspInterfaceOutput(event: Event, data: any) {
   parts.push("### CSP Violation");
   parts.push("");
 
-  if (data.blocked_uri) {
-    parts.push(`**Blocked URI**: ${data.blocked_uri}`);
+  const field = (key: string): string | undefined => {
+    const value = data[key];
+    return value ? formatPrimitive(value) : undefined;
+  };
+
+  const blockedUri = field("blocked_uri");
+  if (blockedUri) {
+    parts.push(`**Blocked URI**: ${blockedUri}`);
   }
 
-  if (data.violated_directive) {
-    parts.push(`**Violated Directive**: ${data.violated_directive}`);
+  const violatedDirective = field("violated_directive");
+  if (violatedDirective) {
+    parts.push(`**Violated Directive**: ${violatedDirective}`);
   }
 
-  if (data.effective_directive) {
-    parts.push(`**Effective Directive**: ${data.effective_directive}`);
+  const effectiveDirective = field("effective_directive");
+  if (effectiveDirective) {
+    parts.push(`**Effective Directive**: ${effectiveDirective}`);
   }
 
-  if (data.document_uri) {
-    parts.push(`**Document URI**: ${data.document_uri}`);
+  const documentUri = field("document_uri");
+  if (documentUri) {
+    parts.push(`**Document URI**: ${documentUri}`);
   }
 
-  if (data.source_file) {
-    parts.push(`**Source File**: ${data.source_file}`);
-    if (data.line_number) {
-      parts.push(`**Line Number**: ${data.line_number}`);
+  const sourceFile = field("source_file");
+  if (sourceFile) {
+    parts.push(`**Source File**: ${sourceFile}`);
+    const lineNumber = field("line_number");
+    if (lineNumber) {
+      parts.push(`**Line Number**: ${lineNumber}`);
     }
   }
 
-  if (data.disposition) {
-    parts.push(`**Disposition**: ${data.disposition}`);
+  const disposition = field("disposition");
+  if (disposition) {
+    parts.push(`**Disposition**: ${disposition}`);
   }
 
-  if (data.original_policy) {
+  const originalPolicy = field("original_policy");
+  if (originalPolicy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push(codeBlock(data.original_policy));
+    parts.push(codeBlock(originalPolicy));
   }
 
   parts.push("");
@@ -563,7 +574,6 @@ function formatCspInterfaceOutput(event: Event, data: any) {
 }
 
 function formatRequestInterfaceOutput(
-  event: Event,
   data: z.infer<typeof RequestEntrySchema>,
 ) {
   if (!data.method || !data.url) {
@@ -573,7 +583,6 @@ function formatRequestInterfaceOutput(
 }
 
 function formatMessageInterfaceOutput(
-  event: Event,
   data: z.infer<typeof MessageEntrySchema>,
 ) {
   if (!data.formatted && !data.message) {
@@ -966,7 +975,7 @@ function selectTraceSpanRoots(
   function indexSpan(span: TraceSpan): void {
     // Try to get span_id from additional_attributes, fall back to event_id
     const spanId =
-      normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+      normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
@@ -1097,7 +1106,7 @@ function convertTraceSpanToPerformanceSpan(
 
   // Get span ID from additional_attributes or fall back to event_id
   const spanId =
-    normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+    normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
 
   const performanceSpan: PerformanceSpan = {
     span_id: spanId,
@@ -1418,8 +1427,9 @@ function formatN1QueryEvidence(
     }
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
-    if (repeatingLines.length === 1) {
-      parts.push(codeBlock(repeatingLines[0]!, "sql"));
+    const [onlyRepeatingLine] = repeatingLines;
+    if (repeatingLines.length === 1 && onlyRepeatingLine !== undefined) {
+      parts.push(codeBlock(onlyRepeatingLine, "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1527,26 +1537,36 @@ function formatPerformanceIssueOutput(
   event: Event,
   spansData: unknown,
   options?: {
-    performanceTrace?: Trace;
+    performanceTrace?: Trace | undefined;
   },
 ): string {
   const parts: string[] = [];
 
-  // Check if we have occurrence data
-  const occurrence = (event as any).occurrence;
-  if (!occurrence) {
+  // Check if we have occurrence data. Only transaction and generic events
+  // model it, and its evidence fields vary by issue type, so read it as
+  // untrusted data.
+  const occurrence: unknown =
+    "occurrence" in event ? event.occurrence : undefined;
+  if (!isPlainObject(occurrence)) {
     return "";
   }
 
   // Get issue type - occurrence.type is numeric, issueType may be a string
+  const occurrenceType = occurrence["type"];
   let issueType: string | undefined;
-  if (typeof occurrence.type === "number") {
-    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence.type];
+  if (typeof occurrenceType === "number") {
+    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrenceType];
   } else {
-    issueType = occurrence.issueType || occurrence.type;
+    const rawIssueType = occurrence["issueType"];
+    issueType =
+      (typeof rawIssueType === "string" && rawIssueType) ||
+      (typeof occurrenceType === "string" ? occurrenceType : undefined);
   }
 
-  const evidenceData = occurrence.evidenceData;
+  const rawEvidenceData = occurrence["evidenceData"];
+  const evidenceData = isPlainObject(rawEvidenceData)
+    ? rawEvidenceData
+    : undefined;
 
   // Process evidence data based on known performance issue types
   if (evidenceData) {
@@ -1584,18 +1604,24 @@ function formatPerformanceIssueOutput(
   }
 
   // Show transaction name if available for any performance issue (generic field)
-  if (evidenceData?.transactionName) {
+  const transactionName = evidenceData?.["transactionName"];
+  const formattedTransactionName = transactionName
+    ? formatPrimitive(transactionName)
+    : undefined;
+  if (formattedTransactionName) {
     parts.push("**Transaction:**");
-    parts.push(`${evidenceData.transactionName}`);
+    parts.push(formattedTransactionName);
     parts.push("");
   }
 
   // Always show evidence display if available (this is generic and doesn't require type knowledge)
-  if (occurrence.evidenceDisplay?.length > 0) {
-    for (const display of occurrence.evidenceDisplay) {
-      if (display.important) {
-        parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+  const evidenceDisplay = occurrence["evidenceDisplay"];
+  if (Array.isArray(evidenceDisplay)) {
+    const displays: unknown[] = evidenceDisplay;
+    for (const display of displays) {
+      if (isPlainObject(display) && display["important"]) {
+        parts.push(`**${String(display["name"])}:**`);
+        parts.push(String(display["value"]));
         parts.push("");
       }
     }
@@ -1639,19 +1665,19 @@ function asUnverified<T>(value: unknown): Unverified<T> | undefined {
 }
 
 type MetricAlertQuery = {
-  dataset?: string;
-  aggregate?: string;
-  query?: string;
-  timeWindowSeconds?: number;
-  environment?: string;
+  dataset?: string | undefined;
+  aggregate?: string | undefined;
+  query?: string | undefined;
+  timeWindowSeconds?: number | undefined;
+  environment?: string | undefined;
   eventTypes: string[];
 };
 
 export type MetricAlertContext = {
   evidenceData: Unverified<MetricIssueEvidenceData>;
-  query?: MetricAlertQuery;
-  monitorId?: string;
-  alertRuleId?: string;
+  query?: MetricAlertQuery | undefined;
+  monitorId?: string | undefined;
+  alertRuleId?: string | undefined;
 };
 
 /**
@@ -1816,7 +1842,7 @@ export function formatMetricAlertValue(value: unknown): string | undefined {
   }
 
   if (isPlainObject(value)) {
-    return formatPrimitive(value.value);
+    return formatPrimitive(value["value"]);
   }
 
   return undefined;
@@ -1968,8 +1994,8 @@ function buildMetricAlertResponseNotes({
   event: Event;
   context: MetricAlertContext;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const calls = getMetricAlertFollowUpCalls({
@@ -2287,22 +2313,22 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
-  packageNames?: string[];
+  packageNames?: string[] | undefined;
   organizationSlug: string;
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
+  autofixState?: AutofixRunState | undefined;
+  performanceTrace?: Trace | undefined;
+  externalIssues?: ExternalIssueList | undefined;
+  relatedReplayIds?: string[] | undefined;
   aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  sourceMapDebug?: SourceMapDebug;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  codeLocation?: CodeLocation | undefined;
+  committers?: CommitterList | undefined;
+  sourceMapDebug?: SourceMapDebug | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }) {
   let output = `# Issue ${issue.shortId} in **${organizationSlug}**\n\n`;
 
@@ -2535,16 +2561,16 @@ export function buildIssueResponseNotes({
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  aiConversations?: AIConversationReference[] | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const traceId =
-    typeof event.contexts?.trace?.trace_id === "string" &&
-    event.contexts.trace.trace_id.length > 0
-      ? event.contexts.trace.trace_id
+    typeof event.contexts?.["trace"]?.["trace_id"] === "string" &&
+    event.contexts["trace"]["trace_id"].length > 0
+      ? event.contexts["trace"]["trace_id"]
       : undefined;
 
   const commitIssueReference = /^\d+$/.test(issue.shortId)
@@ -2697,8 +2723,8 @@ function buildAIConversationResponseNotes({
   aiConversations: AIConversationReference[];
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
@@ -2708,8 +2734,8 @@ function buildAIConversationResponseNotes({
     directToolNames,
   });
 
-  if (aiConversations.length === 1) {
-    const conversation = aiConversations[0]!;
+  const [conversation] = aiConversations;
+  if (aiConversations.length === 1 && conversation) {
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
@@ -2742,10 +2768,10 @@ function formatIssueReplayOutput({
   apiService: SentryApiService;
   organizationSlug: string;
   event: Event;
-  relatedReplayIds?: string[];
+  relatedReplayIds?: string[] | undefined;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string {
   const attachedReplayId = getReplayIdFromEvent(event);
   const normalizedRelatedReplayIds = dedupeReplayIds(relatedReplayIds ?? []);
@@ -2820,10 +2846,10 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
   const replayContextId =
-    typeof replayContext?.replay_id === "string"
-      ? replayContext.replay_id
+    typeof replayContext?.["replay_id"] === "string"
+      ? replayContext["replay_id"]
       : null;
   const replayTagId =
     event.tags?.find((tag) => tag.key === "replayId" || tag.key === "replay.id")
@@ -2865,7 +2891,7 @@ export function stripReplayMetadata(event: Event): Event {
   const tags = event.tags?.filter(
     (tag) => tag.key !== "replay.id" && tag.key !== "replayId",
   );
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
 
   if (!replayContext) {
     return { ...event, tags };

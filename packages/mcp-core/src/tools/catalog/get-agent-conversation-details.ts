@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type { AIConversationSpan, SentryApiService } from "../../api-client";
 import { UserInputError } from "../../errors";
+import { omitUndefined } from "../../internal/type-guards";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -87,12 +88,6 @@ type SpanSummary = {
   isTransaction?: boolean;
   genAi?: GenAIAttributes;
 };
-
-function withoutUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined),
-  ) as T;
-}
 
 const genAiAttributesSchema = z.object({
   operationType: z.string().optional(),
@@ -299,11 +294,11 @@ function stringifyContent(value: unknown): string | null {
         }
         if (part && typeof part === "object") {
           const record = part as Record<string, unknown>;
-          if (typeof record.text === "string") {
-            return record.text;
+          if (typeof record["text"] === "string") {
+            return record["text"];
           }
-          if (typeof record.content === "string") {
-            return record.content;
+          if (typeof record["content"] === "string") {
+            return record["content"];
           }
         }
         return null;
@@ -313,14 +308,14 @@ function stringifyContent(value: unknown): string | null {
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    if (typeof record.text === "string") {
-      return record.text;
+    if (typeof record["text"] === "string") {
+      return record["text"];
     }
-    if (typeof record.content === "string") {
-      return record.content;
+    if (typeof record["content"] === "string") {
+      return record["content"];
     }
-    if (typeof record.message === "string") {
-      return record.message;
+    if (typeof record["message"] === "string") {
+      return record["message"];
     }
   }
   return value == null ? null : JSON.stringify(value);
@@ -331,8 +326,8 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    Array.isArray((value as Record<string, unknown>).messages)
-      ? (value as Record<string, unknown>).messages
+    Array.isArray((value as Record<string, unknown>)["messages"])
+      ? (value as Record<string, unknown>)["messages"]
       : value;
 
   if (!Array.isArray(source)) {
@@ -349,12 +344,14 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
         return null;
       }
       const record = message as Record<string, unknown>;
-      const content = stringifyContent(record.content ?? record.text ?? record);
+      const content = stringifyContent(
+        record["content"] ?? record["text"] ?? record,
+      );
       if (!content) {
         return null;
       }
       return {
-        role: typeof record.role === "string" ? record.role : undefined,
+        role: typeof record["role"] === "string" ? record["role"] : undefined,
         content,
       };
     })
@@ -402,7 +399,7 @@ function buildGenAIAttributes(
 ): GenAIAttributes | undefined {
   const truncatedFields: string[] = [];
 
-  const attributes = withoutUndefined({
+  const attributes = omitUndefined({
     operationType: getOperationType(span),
     agentName: span["gen_ai.agent.name"],
     requestModel: span["gen_ai.request.model"],
@@ -463,7 +460,7 @@ function buildGenAIAttributes(
 
 /** Builds the MCP-facing span summary with IDs for raw span follow-up. */
 function buildSpanSummary(span: AIConversationSpan): SpanSummary {
-  return withoutUndefined({
+  return omitUndefined({
     spanId: span.span_id,
     traceId: span.trace,
     parentSpanId: span.parent_span,
@@ -507,7 +504,7 @@ function buildToolCall(span: AIConversationSpan): ToolCall | null {
   }
   const genAi = buildGenAIAttributes(span);
 
-  return withoutUndefined({
+  return omitUndefined({
     type: "tool_call" as const,
     name,
     spanId: span.span_id,
@@ -524,7 +521,7 @@ function buildToolCall(span: AIConversationSpan): ToolCall | null {
 function buildMessageEvents(span: AIConversationSpan): ConversationMessage[] {
   const spanDurationMs = durationMs(span);
   const genAi = buildGenAIAttributes(span);
-  const metadata = withoutUndefined({
+  const metadata = omitUndefined({
     agentName: span["gen_ai.agent.name"],
     model: span["gen_ai.response.model"] ?? span["gen_ai.request.model"],
     totalTokens: numeric(span["gen_ai.usage.total_tokens"]),
@@ -535,7 +532,7 @@ function buildMessageEvents(span: AIConversationSpan): ConversationMessage[] {
   const userContent = extractUserContent(span);
   if (userContent) {
     events.push(
-      withoutUndefined({
+      omitUndefined({
         type: "message" as const,
         role: "user" as const,
         content: userContent,
@@ -551,22 +548,31 @@ function buildMessageEvents(span: AIConversationSpan): ConversationMessage[] {
 
   const assistantContent = extractAssistantContent(span);
   if (assistantContent) {
-    events.push({
-      type: "message",
-      role: "assistant",
-      content: assistantContent,
-      timestamp: timestampMs(span["precise.finish_ts"]),
-      spanId: span.span_id,
-      traceId: span.trace,
-      metadata,
-      genAi,
-    });
-  } else if (events.length > 0) {
-    events[events.length - 1] = {
-      ...events[events.length - 1]!,
-      metadata,
-      genAi,
-    };
+    events.push(
+      omitUndefined({
+        type: "message" as const,
+        role: "assistant" as const,
+        content: assistantContent,
+        timestamp: timestampMs(span["precise.finish_ts"]),
+        spanId: span.span_id,
+        traceId: span.trace,
+        metadata,
+        genAi,
+      }),
+    );
+  } else {
+    const lastEvent = events.at(-1);
+    if (lastEvent) {
+      // Replace, not merge: this span's metadata and genAi supersede the
+      // previous span's values even when they are absent.
+      const updated = { ...lastEvent };
+      delete updated.metadata;
+      delete updated.genAi;
+      events[events.length - 1] = {
+        ...updated,
+        ...omitUndefined({ metadata, genAi }),
+      };
+    }
   }
 
   return events;
@@ -633,7 +639,7 @@ function buildConversationArtifact(
       ? Math.max(...spans.map((span) => span["precise.finish_ts"]))
       : null;
 
-  return withoutUndefined({
+  return omitUndefined({
     conversationId,
     title,
     organizationSlug,

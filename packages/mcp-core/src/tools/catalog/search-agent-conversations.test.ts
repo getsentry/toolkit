@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import searchAIConversations from "./search-agent-conversations";
 import { getServerContext } from "../../test-setup";
@@ -315,7 +315,9 @@ describe("search_agent_conversations", () => {
       getServerContext(),
     );
 
-    const params = new URL(requestUrls[0]!).searchParams;
+    const [requestUrl] = requestUrls;
+    assert(requestUrl, "Expected one request");
+    const params = new URL(requestUrl).searchParams;
     expect(params.get("query")).toBe("failed");
     expect(params.get("sort")).toBe(null);
     expect(params.getAll("project")).toEqual(["4509109107622913"]);

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { assert, describe, expect, it, vi, afterEach } from "vitest";
 
 describe("logging", () => {
   afterEach(() => {
@@ -23,7 +23,9 @@ describe("logging", () => {
     expect(info).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledTimes(1);
 
-    const [payload] = error.mock.calls[0]!;
+    const [call] = error.mock.calls;
+    assert(call, "console.error was not called");
+    const [payload] = call;
     expect(typeof payload).toBe("string");
     expect(JSON.parse(payload as string)).toMatchObject({
       level: "INFO",
@@ -54,7 +56,9 @@ describe("logging", () => {
     });
 
     expect(error).toHaveBeenCalledTimes(1);
-    const [payload] = error.mock.calls[0]!;
+    const [call] = error.mock.calls;
+    assert(call, "console.error was not called");
+    const [payload] = call;
     expect(JSON.parse(payload as string)).toMatchObject({
       level: "ERROR",
       message: "issue failed",

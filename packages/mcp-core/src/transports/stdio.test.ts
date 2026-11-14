@@ -1,6 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { startSpan } from "@sentry/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  assert,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { LIB_VERSION, setServerVersion } from "../version";
 import { startStdio } from "./stdio";
 
@@ -17,7 +25,9 @@ const server = {
 
 async function spanAttributes(context: Parameters<typeof startStdio>[1]) {
   await startStdio(server, context);
-  const [options] = vi.mocked(startSpan).mock.calls[0]!;
+  const [call] = vi.mocked(startSpan).mock.calls;
+  assert(call, "startSpan was not called");
+  const [options] = call;
   return options.attributes;
 }
 

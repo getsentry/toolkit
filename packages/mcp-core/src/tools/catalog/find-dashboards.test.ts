@@ -1,6 +1,6 @@
 import { dashboardListFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -245,9 +245,11 @@ describe("find_dashboards", () => {
     );
 
     expect(requestUrls).toHaveLength(2);
-    expect(new URL(requestUrls[0]!).searchParams.get("per_page")).toBe("2");
-    expect(new URL(requestUrls[1]!).searchParams.get("cursor")).toBe("2:1:0");
-    expect(new URL(requestUrls[1]!).searchParams.get("per_page")).toBe("2");
+    const [firstUrl, secondUrl] = requestUrls;
+    assert(firstUrl && secondUrl, "Expected two dashboard list requests");
+    expect(new URL(firstUrl).searchParams.get("per_page")).toBe("2");
+    expect(new URL(secondUrl).searchParams.get("cursor")).toBe("2:1:0");
+    expect(new URL(secondUrl).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(result);
     const structuredContent = findDashboardsOutputSchema.parse(
       getStructuredContent(result),
@@ -316,8 +318,10 @@ describe("find_dashboards", () => {
 
     const secondResult = await search(first.nextCursor, 1);
 
-    expect(new URL(requestUrls[2]!).searchParams.get("cursor")).toBe("2:1:0");
-    expect(new URL(requestUrls[2]!).searchParams.get("per_page")).toBe("2");
+    const thirdUrl = requestUrls[2];
+    assert(thirdUrl, "Expected a third dashboard list request");
+    expect(new URL(thirdUrl).searchParams.get("cursor")).toBe("2:1:0");
+    expect(new URL(thirdUrl).searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(secondResult);
     expect(getStructuredContent(secondResult)).toMatchObject({
       dashboards: [{ id: "304", title: "Cloudflare Throughput" }],
@@ -438,7 +442,7 @@ describe("find_dashboards", () => {
     expect(findDashboardsOutputSchema.parse(structuredContent)).toEqual(
       structuredContent,
     );
-    expect(structuredContent.dashboards).toMatchObject([
+    expect(structuredContent["dashboards"]).toMatchObject([
       { widgetCount: 3, widgetTypes: ["line"] },
     ]);
   });

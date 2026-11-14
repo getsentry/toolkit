@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { assert, describe, it, expect } from "vitest";
 import type { Flamegraph } from "../../../api-client/types";
 import {
   analyzeHotPathsFromFlamegraph,
@@ -242,11 +242,8 @@ describe("analyzer", () => {
 
       expect(hotspots.length).toBeGreaterThan(0);
       // Should be sorted by weight (highest first)
-      for (let i = 1; i < hotspots.length; i++) {
-        expect(hotspots[i - 1]?.frameInfo.weight).toBeGreaterThanOrEqual(
-          hotspots[i]!.frameInfo.weight,
-        );
-      }
+      const weights = hotspots.map((hotspot) => hotspot.frameInfo.weight);
+      expect(weights).toEqual([...weights].sort((a, b) => b - a));
     });
 
     it("filters to user code when requested", () => {
@@ -338,7 +335,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 30% slower (comparison uses sumDuration)
-      current.shared.frame_infos[0]!.sumDuration = 208000000; // 160ms * 1.3 = 208ms
+      frameInfoAt(current, 0).sumDuration = 208000000; // 160ms * 1.3 = 208ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -356,7 +353,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 15% slower (comparison uses sumDuration)
-      current.shared.frame_infos[1]!.sumDuration = 184000000; // 160ms * 1.15 = 184ms
+      frameInfoAt(current, 1).sumDuration = 184000000; // 160ms * 1.15 = 184ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -373,7 +370,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 20% faster (comparison uses sumDuration)
-      current.shared.frame_infos[0]!.sumDuration = 128000000; // 160ms * 0.8 = 128ms
+      frameInfoAt(current, 0).sumDuration = 128000000; // 160ms * 0.8 = 128ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -390,7 +387,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 5% slower (within no_change threshold, uses sumDuration)
-      current.shared.frame_infos[0]!.sumDuration = 168000000; // 160ms * 1.05 = 168ms
+      frameInfoAt(current, 0).sumDuration = 168000000; // 160ms * 1.05 = 168ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -417,8 +414,8 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Create different severity changes
-      current.shared.frame_infos[0]!.weight = 240; // major regression (+50%)
-      current.shared.frame_infos[1]!.weight = 176; // minor regression (+10%)
+      frameInfoAt(current, 0).weight = 240; // major regression (+50%)
+      frameInfoAt(current, 1).weight = 176; // minor regression (+10%)
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: true,
@@ -472,3 +469,9 @@ describe("analyzer", () => {
     });
   });
 });
+
+function frameInfoAt(flamegraph: Flamegraph, index: number) {
+  const frameInfo = flamegraph.shared.frame_infos[index];
+  assert(frameInfo, `Mock flamegraph has no frame info at index ${index}`);
+  return frameInfo;
+}

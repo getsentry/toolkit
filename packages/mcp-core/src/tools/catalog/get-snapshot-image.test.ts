@@ -2,7 +2,7 @@ import type { ImageContent, TextContent } from "@modelcontextprotocol/server";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { decode as decodePng, encode as encodePng } from "fast-png";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { getServerContext } from "../../test-setup.js";
 import getSnapshotImage from "./get-snapshot-image.js";
 
@@ -221,12 +221,14 @@ describe("get_snapshot_image", () => {
 
     expect(textParts[1]?.text).toBe("### Head (current) — preview");
     expect(imageParts).toHaveLength(1);
-    expect(imageParts[0]?.mimeType).toBe("image/png");
-    expect(imageParts[0]!.data).not.toBe(
+    const [imagePart] = imageParts;
+    assert(imagePart, "Expected one image part");
+    expect(imagePart.mimeType).toBe("image/png");
+    expect(imagePart.data).not.toBe(
       Buffer.from(largeSixteenBitPng).toString("base64"),
     );
 
-    const decoded = decodePng(Buffer.from(imageParts[0]!.data, "base64"));
+    const decoded = decodePng(Buffer.from(imagePart.data, "base64"));
     expect(decoded.width).toBe(1024);
     expect(decoded.height).toBe(512);
     expect(decoded.depth).toBe(8);

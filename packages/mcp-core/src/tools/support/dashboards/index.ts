@@ -49,7 +49,7 @@ export async function resolveDashboardProjectConstraint({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  scopedProjectSlug?: string | null;
+  scopedProjectSlug?: string | null | undefined;
 }): Promise<Project | null> {
   if (!scopedProjectSlug) {
     return null;
@@ -67,7 +67,7 @@ export function filterDashboardsByProjectConstraint({
   projectId,
 }: {
   dashboards: DashboardListItem[];
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
 }): DashboardListItem[] {
   return dashboards.filter((dashboard) =>
     dashboardIncludesProject(dashboard, projectId ?? null),
@@ -81,8 +81,8 @@ export function assertDashboardWithinProjectConstraint({
   projectId,
 }: {
   dashboard: Dashboard;
-  scopedProjectSlug?: string | null;
-  projectId?: string | number | null;
+  scopedProjectSlug?: string | null | undefined;
+  projectId?: string | number | null | undefined;
 }): void {
   if (
     scopedProjectSlug &&
@@ -245,18 +245,18 @@ function toWidget(
 function toFilters(
   filters: Record<string, unknown>,
 ): DashboardDetails["filters"] {
-  const globalFilters = Array.isArray(filters.globalFilter)
-    ? filters.globalFilter.filter(isPlainObject).map((filter) => ({
+  const globalFilters = Array.isArray(filters["globalFilter"])
+    ? filters["globalFilter"].filter(isPlainObject).map((filter) => ({
         dataset: readString(filter, "dataset"),
-        tagKey: isPlainObject(filter.tag)
-          ? readString(filter.tag, "key")
+        tagKey: isPlainObject(filter["tag"])
+          ? readString(filter["tag"], "key")
           : null,
         value: readString(filter, "value"),
       }))
     : [];
   return {
-    releases: readStringArray(filters.release),
-    releaseIds: readStringArray(filters.releaseId),
+    releases: readStringArray(filters["release"]),
+    releaseIds: readStringArray(filters["releaseId"]),
     globalFilters,
   };
 }
@@ -315,7 +315,7 @@ export async function resolveDashboardId({
   apiService: SentryApiService;
   organizationSlug: string;
   dashboardIdOrTitle: string;
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
 }): Promise<string> {
   const ref = dashboardIdOrTitle.trim();
   if (isNumericId(ref)) {
@@ -339,8 +339,9 @@ export async function resolveDashboardId({
     (dashboard) => dashboard.title.toLowerCase() === ref.toLowerCase(),
   );
 
-  if (exactMatches.length === 1) {
-    return String(exactMatches[0]!.id);
+  const [exactMatch] = exactMatches;
+  if (exactMatches.length === 1 && exactMatch) {
+    return String(exactMatch.id);
   }
 
   if (exactMatches.length > 1) {

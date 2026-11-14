@@ -40,19 +40,19 @@ export interface ParsedSentryUrl {
   /** AI conversation ID (for Explore conversation URLs) */
   conversationId?: string;
   /** Span ID (for trace URLs with span focus, from query param) */
-  spanId?: string;
+  spanId?: string | undefined;
   /** Event ID (for event URLs) */
   eventId?: string;
   /** Project slug or numeric ID (for profile, monitor, and AI conversation URLs) */
-  projectSlugOrId?: string;
+  projectSlugOrId?: string | undefined;
   /** Transaction profile ID from profile flamegraph URLs */
-  profileId?: string;
+  profileId?: string | undefined;
   /** Profiler ID (for profile URLs, from query param) */
-  profilerId?: string;
+  profilerId?: string | undefined;
   /** Start timestamp (for profile URLs, from query param) */
-  start?: string;
+  start?: string | undefined;
   /** End timestamp (for profile URLs, from query param) */
-  end?: string;
+  end?: string | undefined;
   /** Replay ID/slug (for replay URLs) */
   replayId?: string;
   /** Monitor slug (for cron monitor URLs) */
@@ -64,7 +64,7 @@ export interface ParsedSentryUrl {
   /** Snapshot ID (for preprod snapshot URLs) */
   snapshotId?: string;
   /** Selected snapshot image name (from ?selectedSnapshot= query param) */
-  selectedSnapshot?: string;
+  selectedSnapshot?: string | undefined;
   /** Dashboard numeric ID (for dashboard URLs) */
   dashboardId?: string;
 }
@@ -174,14 +174,14 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
     "insights",
     "preprod",
   ];
-  const [firstPathPart, secondPathPart] = pathParts;
+  const [firstPart, secondPart] = pathParts;
   if (
-    firstPathPart !== undefined &&
-    secondPathPart !== undefined &&
-    !knownSegments.includes(firstPathPart) &&
-    knownSegments.includes(secondPathPart)
+    firstPart !== undefined &&
+    secondPart !== undefined &&
+    !knownSegments.includes(firstPart) &&
+    knownSegments.includes(secondPart)
   ) {
-    return firstPathPart;
+    return firstPart;
   }
 
   // Check for subdomain (e.g., my-org.sentry.io)
@@ -192,8 +192,8 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
   // Non-region subdomain (e.g., my-org.sentry.io or sentry.mycompany.com)
   const [subdomain] = hostParts;
   if (
-    subdomain !== undefined &&
     hostParts.length >= 2 &&
+    subdomain !== undefined &&
     !regionPrefixes.includes(subdomain)
   ) {
     return subdomain;

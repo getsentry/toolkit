@@ -75,7 +75,7 @@ export async function fetchEventStacktrace({
   organizationSlug: string;
   issueId: string;
   eventId: string;
-  thread?: string | number;
+  thread?: string | number | undefined;
 }): Promise<EventStacktracePayload> {
   const event = await apiService.getEventForIssue({
     organizationSlug,
@@ -138,7 +138,9 @@ function selectThread(
 ): SelectedThread {
   if (selector === undefined) {
     const selected = selectSentryDefaultThread(threads);
-    return { kind: "selected", thread: selected };
+    return selected
+      ? { kind: "selected", thread: selected }
+      : { kind: "not_found", message: "No threads were found." };
   }
 
   if (typeof selector === "number") {
@@ -177,14 +179,14 @@ function selectThread(
 
 // Mirrors Sentry's thread UI default: crashed first, otherwise a thread with a
 // stacktrace, otherwise the first available thread.
-function selectSentryDefaultThread(threads: Thread[]): Thread {
+function selectSentryDefaultThread(threads: Thread[]): Thread | undefined {
   const sortedThreads = [...threads].sort(
     (a, b) => Number(Boolean(b.crashed)) - Number(Boolean(a.crashed)),
   );
   return (
     sortedThreads.find((thread) => thread.crashed) ??
     sortedThreads.find((thread) => hasFrames(thread)) ??
-    sortedThreads[0]!
+    sortedThreads[0]
   );
 }
 
@@ -199,8 +201,9 @@ function selectUnique(
   ambiguousMessage: string,
 ): SelectedThread {
   const matches = threads.filter(predicate);
+  const [match] = matches;
 
-  if (matches.length === 0) {
+  if (!match) {
     return { kind: "not_found", message: notFoundMessage };
   }
 
@@ -208,5 +211,5 @@ function selectUnique(
     return { kind: "ambiguous", message: ambiguousMessage };
   }
 
-  return { kind: "selected", thread: matches[0]! };
+  return { kind: "selected", thread: match };
 }

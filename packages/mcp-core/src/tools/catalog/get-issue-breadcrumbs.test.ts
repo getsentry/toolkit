@@ -1,6 +1,6 @@
 import { eventFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { assert, afterEach, describe, expect, it } from "vitest";
 import { issueBreadcrumbsOutputSchema } from "../../internal/tool-helpers/breadcrumbs.js";
 import {
   assertStructuredOnlyResult,
@@ -15,7 +15,7 @@ type BreadcrumbsOutput = {
 };
 
 const context = {
-  constraints: { organizationSlug: undefined },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -223,7 +223,8 @@ describe("get_issue_breadcrumbs", () => {
     );
 
     const [crumb] = getStructuredContent<BreadcrumbsOutput>(result).breadcrumbs;
-    expect(Object.keys(crumb!).sort()).toEqual([
+    assert(crumb, "Expected a breadcrumb");
+    expect(Object.keys(crumb).sort()).toEqual([
       "category",
       "data",
       "level",
@@ -237,9 +238,9 @@ describe("get_issue_breadcrumbs", () => {
       category: null,
       type: "default",
     });
-    expect(crumb?.message).toMatch(/^line one line two x+\.\.\.$/);
-    expect((crumb!.message as string).length).toBe(123);
-    expect((crumb!.data as string).length).toBe(203);
+    expect(crumb["message"]).toMatch(/^line one line two x+\.\.\.$/);
+    expect((crumb["message"] as string).length).toBe(123);
+    expect((crumb["data"] as string).length).toBe(203);
     expect(JSON.stringify(crumb)).not.toContain("must-not-leak");
   });
 });

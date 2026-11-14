@@ -205,7 +205,7 @@ describe("search_replays structured output", () => {
     const [replay] = structuredContent.replays;
 
     expect(replay?.isArchived).toBe(true);
-    expect(replay!.user).toBeNull();
+    expect(replay?.user).toBeNull();
   });
 
   it("keeps the unknown-environment warning in notes", async () => {

@@ -18,35 +18,35 @@ export type ExploreMode = "aggregate" | "samples";
 export interface TraceMetricIdentifier {
   name: string;
   type: string;
-  unit?: string;
+  unit?: string | undefined;
 }
 
 export interface TraceMetricsExplorerUrlOptions {
   query: string;
-  projectId?: string;
-  statsPeriod?: string;
-  start?: string;
-  end?: string;
-  sort?: string;
-  aggregateFunctions?: string[];
-  groupByFields?: string[];
+  projectId?: string | undefined;
+  statsPeriod?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
+  sort?: string | undefined;
+  aggregateFunctions?: string[] | undefined;
+  groupByFields?: string[] | undefined;
   traceMetrics?: TraceMetricIdentifier[];
 }
 
 export interface ProfilesExplorerUrlOptions {
   query: string;
-  projectId?: string;
-  statsPeriod?: string;
-  start?: string;
-  end?: string;
-  sort?: string;
-  fields?: string[];
-  aggregateFunctions?: string[];
-  groupByFields?: string[];
+  projectId?: string | undefined;
+  statsPeriod?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
+  sort?: string | undefined;
+  fields?: string[] | undefined;
+  aggregateFunctions?: string[] | undefined;
+  groupByFields?: string[] | undefined;
 }
 
 export interface DashboardUrlOptions {
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
   statsPeriod?: string | null;
 }
 
@@ -99,20 +99,17 @@ function extractTraceMetricFromAggregate(
     return null;
   }
 
-  const args = match[1]!
+  const args = (match[1] ?? "")
     .split(",")
     .map((arg) => arg.trim())
     .filter((arg) => arg.length > 0);
 
-  if (args.length < 4) {
+  const [, name, type, unit] = args;
+  if (name === undefined || type === undefined || unit === undefined) {
     return null;
   }
 
-  return normalizeTraceMetric({
-    name: args[1]!,
-    type: args[2]!,
-    unit: args[3]!,
-  });
+  return normalizeTraceMetric({ name, type, unit });
 }
 
 function extractTraceMetricFromQuery(
@@ -517,9 +514,9 @@ export function getReplaysSearchUrl(
   host: string,
   organizationSlug: string,
   options: {
-    query?: string | null;
-    projectSlugOrId?: string;
-    environment?: string | string[] | null;
+    query?: string | null | undefined;
+    projectSlugOrId?: string | undefined;
+    environment?: string | string[] | null | undefined;
     sort?: string | null;
     statsPeriod?: string | null;
     start?: string | null;
@@ -669,13 +666,14 @@ export function extractConversationIdFromSearchQuery(
   }
 
   const pattern = /gen_ai\.conversation\.id:(?:"([^"]+)"|([^\s)]+))/g;
-  const [match, ...otherMatches] = query.matchAll(pattern);
-  if (match === undefined || otherMatches.length > 0) {
+  const matches = [...query.matchAll(pattern)];
+  const [match] = matches;
+  if (matches.length !== 1 || !match) {
     return undefined;
   }
 
-  const conversationId = match[1] ?? match[2]!;
-  if (conversationId.startsWith("[")) {
+  const conversationId = match[1] ?? match[2];
+  if (conversationId === undefined || conversationId.startsWith("[")) {
     return undefined;
   }
 
@@ -689,12 +687,12 @@ export function getAIConversationsUrl(
   host: string,
   organizationSlug: string,
   options: {
-    query?: string;
-    project?: string[];
-    environment?: string | string[];
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    query?: string | undefined;
+    project?: string[] | undefined;
+    environment?: string | string[] | undefined;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
   } = {},
   protocol: SentryProtocol = "https",
 ): string {

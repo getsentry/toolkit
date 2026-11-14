@@ -26,9 +26,7 @@ import getIssueDetails, {
 } from "./get-issue-details.js";
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -212,9 +210,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -981,9 +977,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1206,9 +1200,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1230,9 +1222,7 @@ describe("get_issue_details", () => {
           regionUrl: "https",
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1269,9 +1259,7 @@ describe("get_issue_details", () => {
           regionUrl: null,
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1300,9 +1288,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1500,9 +1486,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1714,9 +1698,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -2015,10 +1997,10 @@ describe("structuredContent", () => {
       .structuredContent;
 
     // the issue level fields the markdown used to assemble
-    expect(payload.issue.shortId).toBe("CLOUDFLARE-MCP-41");
-    expect(payload.issue.url).toContain("CLOUDFLARE-MCP-41");
-    expect(typeof payload.issue.occurrences).toBe("number");
-    expect(typeof payload.issue.usersImpacted).toBe("number");
+    expect(payload["issue"].shortId).toBe("CLOUDFLARE-MCP-41");
+    expect(payload["issue"].url).toContain("CLOUDFLARE-MCP-41");
+    expect(typeof payload["issue"].occurrences).toBe("number");
+    expect(typeof payload["issue"].usersImpacted).toBe("number");
   });
 
   it("produces a payload that satisfies the schema", async () => {
@@ -2268,9 +2250,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event).not.toHaveProperty("body");
-    expect(payload.event.message).toBe("Something went wrong");
-    expect(payload.event.tags).toEqual([
+    expect(payload["event"]).not.toHaveProperty("body");
+    expect(payload["event"].message).toBe("Something went wrong");
+    expect(payload["event"].tags).toEqual([
       { key: "level", value: "error" },
       { key: "environment", value: "production" },
     ]);
@@ -2284,7 +2266,7 @@ describe("structuredContent", () => {
       .structuredContent;
 
     expect(payload).not.toHaveProperty("responseNotes");
-    expect(payload.suggestedActions).toContainEqual(
+    expect(payload["suggestedActions"]).toContainEqual(
       expect.objectContaining({
         toolName: "get_issue_breadcrumbs",
         arguments: {
@@ -2301,7 +2283,7 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
+    expect(payload["event"].message).toBe("TOP-LEVEL-MESSAGE");
   });
 
   it("returns structured content for an unsupported event type", async () => {
@@ -2324,10 +2306,10 @@ describe("structuredContent", () => {
     const payload = getStructuredContent<Record<string, any>>(result);
 
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
-    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
-    expect(payload.event.type).toBe("future_ai_agent_trace");
-    expect(payload.event.exceptions).toBeNull();
-    expect(payload.event.tags).toEqual([{ key: "level", value: "error" }]);
+    expect(payload["issue"].shortId).toBe("FUTURE-TYPE-001");
+    expect(payload["event"].type).toBe("future_ai_agent_trace");
+    expect(payload["event"].exceptions).toBeNull();
+    expect(payload["event"].tags).toEqual([{ key: "level", value: "error" }]);
     // still reported, so support for the type gets added
     expect(logIssueSpy).toHaveBeenCalledWith(
       "Unsupported event type encountered: future_ai_agent_trace",
@@ -2366,8 +2348,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("transaction");
-    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+    expect(payload["event"].type).toBe("transaction");
+    expect(payload["event"].occurredAt).toBe("2025-08-06T18:00:01.250Z");
   });
 
   it("takes occurredAt from dateReceived for a CSP event", async () => {
@@ -2388,8 +2370,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("csp");
-    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+    expect(payload["event"].type).toBe("csp");
+    expect(payload["event"].occurredAt).toBe("2025-11-19T19:24:12.491Z");
   });
 
   it("takes occurredAt from dateReceived for an unknown event type", async () => {
@@ -2410,8 +2392,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("future_ai_agent_trace");
-    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
+    expect(payload["event"].type).toBe("future_ai_agent_trace");
+    expect(payload["event"].occurredAt).toBe("2025-01-01T01:00:00.000Z");
   });
 
   it("maps a transaction's N+1 evidence and its spans", async () => {
@@ -2437,9 +2419,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event.type).toBe("transaction");
+    expect(payload["event"].type).toBe("transaction");
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
-    expect(payload.event.performance).toMatchObject({
+    expect(payload["event"].performance).toMatchObject({
       issueType: "performance_n_plus_one_db_queries",
       transactionName: "/api/users",
       parentOperation: "GET /api/users",
@@ -2449,7 +2431,7 @@ describe("structuredContent", () => {
       ]),
     });
     // the span tree from the fetched trace, parents linked by id
-    expect(payload.event.performance.spans).toEqual([
+    expect(payload["event"].performance.spans).toEqual([
       {
         spanId: "parent123",
         parentSpanId: null,
@@ -2507,12 +2489,14 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays?.attached).toBe("1234567890abcdef1234567890abcdef");
-    // and the attached id is not repeated in the related list
-    expect(payload.replays?.related).not.toContain(
+    expect(payload["replays"]?.attached).toBe(
       "1234567890abcdef1234567890abcdef",
     );
-    expect(JSON.stringify(payload.event)).not.toContain(
+    // and the attached id is not repeated in the related list
+    expect(payload["replays"]?.related).not.toContain(
+      "1234567890abcdef1234567890abcdef",
+    );
+    expect(JSON.stringify(payload["event"])).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
   });
@@ -2524,7 +2508,7 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays).toBeNull();
+    expect(payload["replays"]).toBeNull();
   });
 
   it("maps external issues field by field so upstream extras cannot leak", async () => {
@@ -2594,12 +2578,12 @@ describe("structuredContent", () => {
       "project",
       "url",
     ]) {
-      expect(payload.issue).toHaveProperty(field);
+      expect(payload["issue"]).toHaveProperty(field);
     }
     // and the event identity markdown prints alongside it
-    expect(payload.event.occurredAt).toBe("2026-09-03T12:00:00.000Z");
-    expect(payload.event).toHaveProperty("id");
-    expect(payload.event).toHaveProperty("type");
+    expect(payload["event"].occurredAt).toBe("2026-09-03T12:00:00.000Z");
+    expect(payload["event"]).toHaveProperty("id");
+    expect(payload["event"]).toHaveProperty("type");
   });
 
   it("does not label an error's exception message as a query pattern", async () => {
@@ -2636,10 +2620,10 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.issue.queryPattern).toBeNull();
-    expect(payload.issue.location).toBeNull();
+    expect(payload["issue"].queryPattern).toBeNull();
+    expect(payload["issue"].location).toBeNull();
     // and the top level title wins for an error, not the metadata one
-    expect(payload.issue.title).not.toBe("metadata title");
+    expect(payload["issue"].title).not.toBe("metadata title");
   });
 
   it("uses the metadata fields for a performance issue", async () => {
@@ -2673,9 +2657,11 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.issue.title).toBe("N+1 Query");
-    expect(payload.issue.queryPattern).toBe("SELECT * FROM users WHERE id = ?");
-    expect(payload.issue.location).toBe("/api/checkout");
+    expect(payload["issue"].title).toBe("N+1 Query");
+    expect(payload["issue"].queryPattern).toBe(
+      "SELECT * FROM users WHERE id = ?",
+    );
+    expect(payload["issue"].location).toBe("/api/checkout");
   });
 
   it("caps related replays and reports the full count", async () => {
@@ -2707,9 +2693,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays).not.toBeNull();
-    expect(payload.replays.relatedCount).toBe(51);
-    expect(payload.replays.related).toHaveLength(5);
+    expect(payload["replays"]).not.toBeNull();
+    expect(payload["replays"].relatedCount).toBe(51);
+    expect(payload["replays"].related).toHaveLength(5);
   });
 });
 
