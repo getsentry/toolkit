@@ -455,12 +455,12 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     path: "/api/0/teams/sentry-mcp-evals/the-goats/projects/",
     fetch: async ({ request }) => {
       // TODO: validate payload (only accept 'cloudflare-mcp' for project name)
-      const body = (await request.json()) as any;
+      const body = await readJsonBody(request);
       return HttpResponse.json({
         ...projectFixture,
-        name: body?.name || "cloudflare-mcp",
-        slug: body?.slug || "cloudflare-mcp",
-        platform: body?.platform || "node",
+        name: stringField(body, "name") || "cloudflare-mcp",
+        slug: stringField(body, "slug") || "cloudflare-mcp",
+        platform: stringField(body, "platform") || "node",
       });
     },
   },
@@ -496,12 +496,12 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     method: "put",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/",
     fetch: async ({ request }) => {
-      const body = (await request.json()) as any;
+      const body = await readJsonBody(request);
       return HttpResponse.json({
         ...projectFixture,
-        slug: body?.slug || "cloudflare-mcp",
-        name: body?.name || "cloudflare-mcp",
-        platform: body?.platform || "node",
+        slug: stringField(body, "slug") || "cloudflare-mcp",
+        name: stringField(body, "name") || "cloudflare-mcp",
+        platform: stringField(body, "platform") || "node",
       });
     },
   },
@@ -614,7 +614,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
         }
 
         // TODO: this is not correct, but itll fix test flakiness for now
-        const sortedQuery = query ? query?.split(" ").sort().join(" ") : null;
+        const sortedQuery = query ? query.split(" ").sort().join(" ") : null;
         if (
           ![
             null,
@@ -654,7 +654,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
           return HttpResponse.json(eventsTraceMetricsAggregateFixture);
         }
 
-        const sortedQuery = query ? query?.split(" ").sort().join(" ") : null;
+        const sortedQuery = query ? query.split(" ").sort().join(" ") : null;
         if (
           ![
             null,
@@ -701,7 +701,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
 
       const query = url.searchParams.get("query");
       const queryTokens = query?.split(" ").sort() ?? [];
-      const sortedQuery = queryTokens ? queryTokens.join(" ") : null;
+      const sortedQuery = queryTokens.join(" ");
       if (
         ![
           null,
@@ -751,7 +751,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
 
       const query = url.searchParams.get("query");
       const queryTokens = query?.split(" ").sort() ?? [];
-      const sortedQuery = queryTokens ? queryTokens.join(" ") : null;
+      const sortedQuery = queryTokens.join(" ");
       if (query === "7ca573c0f4814912aaa9bdc77d1a7d51") {
         return HttpResponse.json([issueFixture]);
       }
@@ -1806,7 +1806,7 @@ export const searchHandlers: HttpHandler[] = [
     HttpResponse.text("presigned blob bytes"),
   ),
   http.post("https://mcp.sentry.dev/api/search", async ({ request }) => {
-    const body = (await request.json()) as any;
+    const body = await readJsonBody(request);
 
     // Mock different results based on guide
     let results = [
@@ -1827,8 +1827,8 @@ export const searchHandlers: HttpHandler[] = [
     ];
 
     // If guide is specified, return platform-specific results
-    if (body?.guide) {
-      const guide = body.guide;
+    const guide = stringField(body, "guide");
+    if (guide) {
       if (guide.includes("/")) {
         const [platformName, guideName] = guide.split("/");
         results = [
@@ -1853,7 +1853,7 @@ export const searchHandlers: HttpHandler[] = [
 
     // Return mock search results
     return HttpResponse.json({
-      query: body?.query || "",
+      query: stringField(body, "query") || "",
       results,
     });
   }),
@@ -2138,6 +2138,22 @@ export {
   createUnknownEvent,
   createUnsupportedIssue,
 } from "./fixtures";
+
+/** Reads a mocked request's JSON body, or an empty object when it has none. */
+async function readJsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  const body: unknown = await request.json();
+  return typeof body === "object" && body !== null ? { ...body } : {};
+}
+
+function stringField(
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = body[key];
+  return typeof value === "string" ? value : undefined;
+}
 // Export utilities for creating mock servers
 export { setupMockServer, startMockServer } from "./utils";
 // Export fixtures for use in tests
