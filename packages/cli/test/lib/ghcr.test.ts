@@ -23,6 +23,7 @@ import {
   listTags,
   type OciManifest,
 } from "../../src/lib/ghcr.js";
+import { without } from "../helpers.js";
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
@@ -292,7 +293,7 @@ describe("getNightlyVersion", () => {
   });
 
   test("throws UpgradeError when annotations object is absent", () => {
-    const manifest = makeManifest({ annotations: undefined });
+    const manifest = without(makeManifest(), "annotations");
     expect(() => getNightlyVersion(manifest)).toThrow(UpgradeError);
   });
 

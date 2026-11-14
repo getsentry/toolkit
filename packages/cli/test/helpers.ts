@@ -457,3 +457,23 @@ export async function rejection(promise: Promise<unknown>): Promise<Error> {
   }
   throw new Error("Expected the promise to reject, but it resolved");
 }
+
+/** Keys of `T` whose properties are optional. */
+type OptionalKeys<T> = {
+  [K in keyof T]-?: object extends Pick<T, K> ? K : never;
+}[keyof T];
+
+/**
+ * A copy of `value` without the optional `keys`, for fixtures that need a
+ * field to be absent rather than set to a default.
+ */
+export function without<T extends object>(
+  value: T,
+  ...keys: OptionalKeys<T>[]
+): T {
+  const copy = { ...value };
+  for (const key of keys) {
+    delete copy[key];
+  }
+  return copy;
+}

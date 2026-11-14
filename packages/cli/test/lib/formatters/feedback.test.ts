@@ -12,11 +12,13 @@ import {
   formatSpamFeedback,
 } from "../../../src/lib/formatters/feedback.js";
 import type { SentryFeedback } from "../../../src/types/index.js";
+import { without } from "../../helpers.js";
 
 const originalPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
 
 function feedback(overrides: Partial<SentryFeedback> = {}): SentryFeedback {
   return {
+    platform: null,
     id: "1",
     shortId: "WEB-1",
     title: "User Feedback",
@@ -100,7 +102,7 @@ describe("formatFeedbackList", () => {
 
   test("does not label an absent read state as unread", () => {
     const output = formatFeedbackList({
-      feedback: [feedback({ hasSeen: undefined })],
+      feedback: [without(feedback(), "hasSeen")],
       hasMore: false,
       hasPrev: false,
       org: "test-org",

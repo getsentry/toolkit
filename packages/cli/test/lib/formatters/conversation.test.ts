@@ -10,20 +10,33 @@ import type {
   AgentConversationSpan,
   ConversationListItem,
 } from "../../../src/types/conversation.js";
-import { at } from "../../helpers.js";
+import { at, without } from "../../helpers.js";
 
 function makeListItem(
   overrides: Partial<ConversationListItem> = {},
 ): ConversationListItem {
   return {
     conversationId: "conv-abc-123",
+    flow: [],
     startTimestamp: 1_716_500_000,
+    endTimestamp: 1_716_500_010,
     totalTokens: 500,
     totalCost: 0.01,
+    llmCalls: 1,
     toolCalls: 3,
+    toolNames: [],
+    toolErrors: 0,
     errors: 0,
+    traceCount: 1,
+    traceIds: [],
     firstInput: "Hello world",
-    user: { email: "test@example.com" },
+    lastOutput: null,
+    user: {
+      id: null,
+      email: "test@example.com",
+      username: null,
+      ip_address: null,
+    },
     ...overrides,
   };
 }
@@ -32,9 +45,11 @@ function makeSpan(
   overrides: Partial<AgentConversationSpan> = {},
 ): AgentConversationSpan {
   return {
+    "gen_ai.conversation.id": "conv-abc-123",
     span_id: "aabb112233445566",
     trace: "00112233445566778899aabbccddeeff",
     project: "my-project",
+    "project.id": "1",
     "span.name": "gen_ai.invoke_agent",
     "span.status": "ok",
     "precise.start_ts": 1_716_500_000,
@@ -113,7 +128,7 @@ describe("formatConversationTable", () => {
   });
 
   test("handles missing user and input", () => {
-    const items = [makeListItem({ user: undefined, firstInput: undefined })];
+    const items = [without(makeListItem({ firstInput: null }), "user")];
     const result = formatConversationTable(items);
     expect(result).toContain("—");
   });
