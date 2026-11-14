@@ -13,5 +13,30 @@
     // live regions use role="status". Tests query these roles; swapping the
     // elements for native tags is a markup change, not a lint fix.
     "jsx-a11y/prefer-tag-over-role": "off"
-  }
+  },
+  "overrides": [
+    {
+      // Root override globs resolve from the repository root and so do not
+      // match here; repeat the root non-test TypeScript source rules.
+      "files": ["**/*.{ts,tsx}"],
+      "excludeFiles": [
+        "**/*.test.{ts,tsx}",
+        "**/test-fixtures/**",
+        "**/test-setup.ts",
+        // Build configs typecheck in tsconfig.node.json, which the type-aware
+        // linter does not load, so their Node types do not resolve.
+        "**/*.config.{ts,mts}"
+      ],
+      "rules": {
+        "typescript/no-explicit-any": "error",
+        "typescript/no-non-null-assertion": "error",
+        "typescript/no-unnecessary-condition": "error",
+        "typescript/no-unsafe-assignment": "error",
+        "typescript/no-unsafe-argument": "error",
+        "typescript/no-unsafe-call": "error",
+        "typescript/no-unsafe-member-access": "error",
+        "typescript/no-unsafe-return": "error"
+      }
+    }
+  ]
 }

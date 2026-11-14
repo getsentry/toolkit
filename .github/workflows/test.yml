@@ -79,6 +79,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test:ci-projects
       - run: pnpm run docs:check
+      # Type-aware lint resolves workspace packages through their built types;
+      # without them, imports from these packages read as error-typed values.
+      - run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/logger --if-present run build
       - run: pnpm run lint
       - run: pnpm run check:generated
       - name: Check generated files
