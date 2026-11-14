@@ -3,7 +3,10 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["node"],
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6.0.x dist/index.d.ts). Remove when they check cleanly.
+    "skipLibCheck": true
   },
   "include": ["src"]
 }
