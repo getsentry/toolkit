@@ -236,7 +236,7 @@ export function buildSSEHandler(
       }
       stream
         .writeSSE({
-          id: envelopeId || undefined,
+          ...(envelopeId ? { id: envelopeId } : {}),
           event: `${container.getContentType()}${base64Indicator}`,
           data,
         })
@@ -714,7 +714,7 @@ const SSE_MAX_RETRY_MS = 30_000;
 export type ConsumeSSEOptions = {
   url: string;
   /** A full scoped stream URL, when consuming a daemon-owned session. */
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet?: boolean;
@@ -855,7 +855,7 @@ async function attemptSSEConnection(
 /** Options for a single SSE connection attempt. */
 type ConsumeSSEOnceOptions = {
   url: string;
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet: boolean;

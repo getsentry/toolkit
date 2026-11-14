@@ -15,6 +15,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { promisify } from "node:util";
 import { zstdCompress as zstdCompressCb } from "node:zlib";
 import {
@@ -63,6 +64,7 @@ import {
   unwrapResult,
   unwrapValidatedResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.preprod-artifacts");
 
@@ -191,17 +193,20 @@ export async function downloadBuildArtifact(
   }
 
   // Stream to disk so large (hundreds-of-MB) artifacts never buffer in memory.
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(destPath));
+  // lib DOM's ReadableStream, which programs that also load DOM give
+  // `response.body`, is not node:stream/web's, though Node's fetch returns one.
+  const body = response.body as NodeReadableStream<Uint8Array<ArrayBuffer>>;
+  await pipeline(Readable.fromWeb(body), createWriteStream(destPath));
 }
 
 /** Optional metadata sent with a build assemble request. */
 export type BuildUploadMetadata = {
   /** Build configuration name (e.g. `Release`). */
-  buildConfiguration?: string;
+  buildConfiguration?: string | undefined;
   /** Release notes for the build. */
-  releaseNotes?: string;
+  releaseNotes?: string | undefined;
   /** Install group(s) this build belongs to. */
-  installGroups?: string[];
+  installGroups?: string[] | undefined;
   /**
    * Pre-flattened VCS fields (snake_case, e.g. `head_sha`, `provider`) merged
    * into the assemble body. Built via `vcsInfoToBody` in the build/vcs module.
@@ -407,14 +412,18 @@ function snapshotArchiveEndpoint(org: string, snapshotId: string): string {
 export async function getLatestBaseSnapshot(
   org: string,
   appId: string,
-  opts: { branch?: string; project?: string } = {},
+  opts: { branch?: string | undefined; project?: string | undefined } = {},
 ): Promise<LatestBaseSnapshot | null> {
   const config = getOrgSdkConfig();
   try {
     const result = await getOrganizationPreprodArtifactSnapshotLatestBase({
       ...config,
       path: { organization_id_or_slug: org },
-      query: { app_id: appId, branch: opts.branch, project: opts.project },
+      query: omitUndefined({
+        app_id: appId,
+        branch: opts.branch,
+        project: opts.project,
+      }),
     });
     // The generated type has no null body; the CLI treats one as "no base".
     const data = unwrapValidatedResult(

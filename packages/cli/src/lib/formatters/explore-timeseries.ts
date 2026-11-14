@@ -24,7 +24,7 @@ export type ExploreTimeSeriesData = EventsTimeSeriesResponse & {
   /** Organization slug, omitted from JSON output. */
   org: string;
   /** Optional project slug, omitted from JSON output. */
-  project?: string;
+  project?: string | undefined;
 };
 
 type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];

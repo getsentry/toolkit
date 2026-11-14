@@ -42,11 +42,11 @@ export type ParsedSentryUrl = {
   /** Organization slug from the URL path or subdomain (absent for share URLs without org context) */
   org?: string;
   /** Issue identifier — numeric group ID (e.g., "32886") or short ID (e.g., "CLI-G") */
-  issueId?: string;
+  issueId?: string | undefined;
   /** Event ID from /issues/{id}/events/{eventId}/ paths */
-  eventId?: string;
+  eventId?: string | undefined;
   /** Project slug from /settings/{org}/projects/{project}/ paths */
-  project?: string;
+  project?: string | undefined;
   /** Trace ID from /organizations/{org}/traces/{traceId}/ paths */
   traceId?: string;
   /** Replay ID from replay detail URLs */

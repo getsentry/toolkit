@@ -194,7 +194,7 @@ function decode(
 export function createReceiverEnvelope(input: {
   body: Buffer;
   contentType?: string;
-  userAgent?: string;
+  userAgent?: string | undefined;
 }): ReceiverEnvelope {
   const contentType =
     input.contentType?.split(";")[0]?.trim().toLowerCase() ||

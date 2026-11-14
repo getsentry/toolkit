@@ -28,9 +28,9 @@ function optionalString(value: unknown): string | undefined {
 /** Subset of `sntrys_` payload fields we care about. */
 export type SntrysClaim = {
   url: string;
-  regionUrl?: string;
+  regionUrl?: string | undefined;
   /** Organization slug embedded in the token at issuance time. */
-  org?: string;
+  org?: string | undefined;
 };
 
 /**

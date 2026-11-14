@@ -11,6 +11,7 @@ import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { logger } from "../logger.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("react-native.xcode-env");
 
@@ -147,12 +148,12 @@ function runCapture(cmd: string, args: string[]): string | null {
 
 /** Extract the four CFBundle* fields from a parsed plist string map. */
 function toPartialPlist(raw: Record<string, string>): Partial<InfoPlist> {
-  return {
+  return omitUndefined({
     name: raw["CFBundleName"],
     bundleId: raw["CFBundleIdentifier"],
     version: raw["CFBundleShortVersionString"],
     build: raw["CFBundleVersion"],
-  };
+  });
 }
 
 /**
@@ -373,8 +374,8 @@ export async function discoverInfoPlist(
 
 /** A resolved release + distribution for the sourcemap upload. */
 export type ReleaseAndDist = {
-  release?: string;
-  dist?: string;
+  release?: string | undefined;
+  dist?: string | undefined;
 };
 
 /**

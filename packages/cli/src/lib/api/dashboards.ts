@@ -57,6 +57,7 @@ import {
   unwrapValidatedResult,
   validateResponse,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /**
  * List dashboards in an organization with cursor-based pagination.
@@ -70,14 +71,14 @@ import {
  */
 export async function listDashboardsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
   const config = getOrgSdkConfig();
 
   const result = await listOrganizationDashboards({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: { per_page: options.perPage, cursor: options.cursor },
+    query: omitUndefined({ per_page: options.perPage, cursor: options.cursor }),
   });
 
   return unwrapPaginatedResult<DashboardListItem[]>(
@@ -122,7 +123,11 @@ export async function getDashboard(
  */
 export async function createDashboard(
   orgSlug: string,
-  body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
+  body: {
+    title: string;
+    widgets?: DashboardWidget[];
+    projects?: number[] | undefined;
+  },
 ): Promise<DashboardDetail> {
   const config = getOrgSdkConfig();
 
@@ -152,9 +157,9 @@ export async function updateDashboard(
   body: {
     title: string;
     widgets: DashboardWidget[];
-    projects?: number[];
-    environment?: string[];
-    period?: string | null;
+    projects?: number[] | undefined;
+    environment?: string[] | undefined;
+    period?: string | null | undefined;
   },
 ): Promise<DashboardDetail> {
   const config = getOrgSdkConfig();
@@ -165,9 +170,9 @@ export async function updateDashboard(
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
     },
-    body: body as unknown as Parameters<
-      typeof updateOrganizationDashboard
-    >[0]["body"],
+    body: body as unknown as NonNullable<
+      Parameters<typeof updateOrganizationDashboard>[0]["body"]
+    >,
   });
 
   return unwrapResult<DashboardDetail>(
@@ -191,7 +196,7 @@ export async function updateDashboard(
 export async function listDashboardRevisionsPaginated(
   orgSlug: string,
   dashboardId: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<DashboardRevision[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationDashboardRevisions({
@@ -200,7 +205,7 @@ export async function listDashboardRevisionsPaginated(
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
     },
-    query: { per_page: options.perPage, cursor: options.cursor },
+    query: omitUndefined({ per_page: options.perPage, cursor: options.cursor }),
   });
   const { response, ...page } = unwrapPaginatedResult<unknown>(
     result,
@@ -254,15 +259,15 @@ type WidgetQueryOptions = {
   /** Override the dashboard's time period (e.g., "24h", "7d") */
   period?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with period. */
-  start?: string;
+  start?: string | undefined;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with period. */
-  end?: string;
+  end?: string | undefined;
   /** Pre-computed total seconds for interval computation (for absolute ranges). */
-  periodSeconds?: number;
+  periodSeconds?: number | undefined;
   /** Filter by environment(s) — from dashboard.environment */
-  environment?: string[];
+  environment?: string[] | undefined;
   /** Filter by project ID(s) — from dashboard.projects */
-  project?: number[];
+  project?: number[] | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -521,11 +526,11 @@ function buildTopEventsParams(
 > {
   const { fields, sort } = resolveEventsSort({
     fields: [...columns, ...aggregates],
-    sort: orderby,
+    sort: orderby ?? null,
   });
   const params: ReturnType<typeof buildTopEventsParams> = {
     groupBy: fields,
-    sort,
+    ...(sort !== undefined && { sort }),
     topEvents: widget.limit ?? 5,
   };
   if (aggregates.length !== 1 || (widget.queries?.length ?? 1) !== 1) {
@@ -552,13 +557,13 @@ type WidgetQueryParams = {
   orgSlug: string;
   widget: DashboardWidget;
   /** Relative period (e.g., "24h"). Omit when using absolute start/end. */
-  statsPeriod?: string;
+  statsPeriod?: string | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  start?: string;
+  start?: string | undefined;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  end?: string;
+  end?: string | undefined;
   /** Pre-computed total seconds for interval computation (for absolute ranges). */
-  periodSeconds?: number;
+  periodSeconds?: number | undefined;
   options?: WidgetQueryOptions;
 };
 
@@ -591,7 +596,7 @@ async function queryWidgetTimeseries(
     const result = await listOrganizationEventsTimeseries({
       ...getSdkClientConfig(regionUrl),
       path: { organization_id_or_slug: orgSlug },
-      query: {
+      query: omitUndefined({
         yAxis: aggregates,
         query: query.conditions || undefined,
         dataset,
@@ -604,7 +609,7 @@ async function queryWidgetTimeseries(
         // Group-by columns enable topEvents mode
         ...(columns.length > 0 &&
           buildTopEventsParams(widget, columns, aggregates, query.orderby)),
-      },
+      }),
     });
     const data = unwrapValidatedResult(
       result,
@@ -655,12 +660,15 @@ async function queryWidgetTable(
     ...(query?.columns ?? []),
     ...(query?.aggregates ?? []),
   ];
-  const request = resolveEventsSort({ fields, sort: query?.orderby });
+  const request = resolveEventsSort({
+    fields,
+    sort: query?.orderby ?? null,
+  });
 
   const result = await listOrganizationEvents({
     ...getSdkClientConfig(regionUrl),
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       field: request.fields,
       query: query?.conditions || undefined,
       dataset,
@@ -671,7 +679,7 @@ async function queryWidgetTable(
       per_page: widget.limit ?? 10,
       environment: options.environment,
       project: options.project,
-    },
+    }),
   });
   const data = unwrapValidatedResult(
     result,

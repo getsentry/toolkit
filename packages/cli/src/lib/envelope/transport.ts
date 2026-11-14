@@ -13,6 +13,7 @@
 
 import { getEnvelopeEndpointWithUrlEncodedAuth, makeDsn } from "@sentry/core";
 import { sentry } from "../app-identity.js";
+import { toArrayBufferBytes } from "../bytes.js";
 import { detectDsn } from "../dsn/index.js";
 import { ApiError, ConfigError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -158,7 +159,7 @@ export async function sendEnvelopeRequest(
     new Request(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-sentry-envelope" },
-      body,
+      body: typeof body === "string" ? body : toArrayBufferBytes(body),
     }),
   );
 

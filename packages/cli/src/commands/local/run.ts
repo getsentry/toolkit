@@ -153,7 +153,7 @@ type EventTailOptions = {
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
-  maxEnvelopes?: number;
+  maxEnvelopes?: number | undefined;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */

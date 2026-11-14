@@ -24,6 +24,7 @@ import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseDeployOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseDeployOutputFields } from "../../output-schemas/release.js";
 import { sentry } from "../../lib/app-identity.js";
+import { omitUndefined } from "../../lib/omit-undefined.js";
 
 const usageHint = () =>
   sentry`release deploy [<org>/]<version> <environment> [name]`;
@@ -74,7 +75,7 @@ function formatDeployCreated(deploy: DeployOutput): string {
 function parseDeployArgs(
   environment: string | undefined,
   name?: string,
-): { environment: string; name?: string } {
+): { environment: string; name?: string | undefined } {
   if (!environment) {
     throw new ContextError("Environment", usageHint(), []);
   }
@@ -210,19 +211,22 @@ export const deployCommand = buildCommand({
     }
 
     if (flags["dry-run"]) {
-      yield new CommandOutput({
-        dryRun: true,
-        version,
-        environment,
-        name,
-        url: flags.url,
-        dateStarted: body.dateStarted,
-        dateFinished: body.dateFinished,
-      });
+      yield new CommandOutput(
+        omitUndefined({
+          dryRun: true as const,
+          version,
+          environment,
+          name,
+          url: flags.url,
+          dateStarted: body.dateStarted,
+          dateFinished: body.dateFinished,
+        }),
+      );
       return { hint: "Dry run — no deploy was created." };
     }
 
     const deploy = await createReleaseDeploy(org, version, body);
     yield new CommandOutput(deploy);
+    return;
   },
 });

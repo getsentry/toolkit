@@ -269,5 +269,6 @@ export const createCommand = buildCommand({
       name: stringifyUnknown(created["name"] ?? flags.name),
       status: metricAlertStatusLabel(created["status"]),
     } satisfies MetricAlertCreateOutput);
+    return;
   },
 });

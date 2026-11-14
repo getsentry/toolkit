@@ -71,7 +71,7 @@ export type ResolvedReleaseTarget = {
   /** The resolved organization slug. */
   org: string;
   /** Source description when the org was auto-detected (e.g. from a DSN). */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /** A parsed `[<org>/]<version>` positional, bound to its org resolver. */

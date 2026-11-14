@@ -256,7 +256,7 @@ function queryLabel(resource: string, operation?: string): string {
 function resolvePathQuery(
   resource: string,
   operation?: string,
-): { method?: string; path: string } | undefined {
+): { method?: string | undefined; path: string } | undefined {
   const raw = operation ? `${resource} ${operation}` : resource;
   const parsed = parseEndpointQuery(raw);
   if (parsed.path) {
@@ -278,7 +278,7 @@ function lastConcreteSegment(path: string): string | undefined {
 
 function pathNotFoundError(
   label: string,
-  query: { method?: string; path: string },
+  query: { method?: string | undefined; path: string },
 ): never {
   const samePath = findEndpointsByPath(query.path);
   if (query.method && samePath.length > 0) {
@@ -321,7 +321,7 @@ function pathNotFoundError(
 }
 
 function resolvePathLookup(
-  query: { method?: string; path: string },
+  query: { method?: string | undefined; path: string },
   resource: string,
   operation?: string,
 ): SchemaResult {

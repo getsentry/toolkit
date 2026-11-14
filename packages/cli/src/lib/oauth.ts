@@ -490,12 +490,12 @@ export type StoreTokenOptions = {
    * re-authentication (`sentry auth login --force`, `sentry auth refresh`,
    * automatic login) expects.
    */
-  newAccount?: boolean;
+  newAccount?: boolean | undefined;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for an account picked for the target org).
    */
-  accountId?: string;
+  accountId?: string | undefined;
 };
 
 /**

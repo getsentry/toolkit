@@ -153,7 +153,7 @@ async function validateAndRecoverLogId(
 export type ResolvedLogTarget = {
   org: string;
   project: string;
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /**
@@ -417,9 +417,9 @@ type LogViewData = {
   /** Org slug — needed by human formatter for trace URLs, also useful context in JSON */
   orgSlug: string;
   /** Full attribute sets from the trace-items detail endpoint (index matches logs) */
-  details?: (TraceItemDetail | undefined)[];
+  details?: (TraceItemDetail | undefined)[] | undefined;
   /** --fields filter: limits which custom attributes are shown in human output */
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
 };
 
 /**

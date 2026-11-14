@@ -45,6 +45,7 @@ import {
 import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
 import { reportCliError } from "../error-reporting.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -184,10 +185,12 @@ function configureAgentProvider(
   if (config.agentProvider) {
     setAgentProvider(config.agentProvider);
   }
-  setProviderBaseUrls({
-    openaiBaseUrl: config.openaiBaseUrl,
-    anthropicBaseUrl: config.anthropicBaseUrl,
-  });
+  setProviderBaseUrls(
+    omitUndefined({
+      openaiBaseUrl: config.openaiBaseUrl,
+      anthropicBaseUrl: config.anthropicBaseUrl,
+    }),
+  );
   // The provider factory reads model overrides from the environment.
   if (config.openaiModel) {
     env["OPENAI_MODEL"] = config.openaiModel;
@@ -432,14 +435,20 @@ export async function serveMcpStdio(
     },
     sentryHost: config.sentryHost,
     sentryProtocol: config.sentryProtocol,
-    mcpUrl: config.mcpUrl,
-    openaiBaseUrl: config.openaiBaseUrl,
+    ...(config.mcpUrl !== undefined && { mcpUrl: config.mcpUrl }),
+    ...(config.openaiBaseUrl !== undefined && {
+      openaiBaseUrl: config.openaiBaseUrl,
+    }),
     experimentalMode: config.experimental,
     transport: "stdio",
     // mcp-core uses the returned token for later tool calls, so a
     // long-running server recovers from an expired CLI session.
-    onUpstreamUnauthorized: options.refreshAccessToken,
-    credentialRouter: options.credentialRouter,
+    ...(options.refreshAccessToken && {
+      onUpstreamUnauthorized: options.refreshAccessToken,
+    }),
+    ...(options.credentialRouter && {
+      credentialRouter: options.credentialRouter,
+    }),
   };
 
   const server = buildServer({

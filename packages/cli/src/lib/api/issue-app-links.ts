@@ -44,6 +44,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** A stored Sentry App association; id identifies the link, not the remote ticket. */
 export type AppIssueLink = GroupExternalIssueResponse[number];
@@ -101,9 +102,9 @@ export type ResolveAppIssueLinkOptions = {
   /** Installed app slug selected by the caller. */
   appSlug: string;
   /** Sentry project ID, forwarded to app searches that need project context. */
-  projectId?: string;
+  projectId?: string | undefined;
   /** Additional form values keyed by names from the installed link schema. */
-  fields?: Record<string, string>;
+  fields?: Record<string, string> | undefined;
 };
 
 /** Read-only preflight result. Pass to linkAppIssue to execute the app action. */
@@ -123,7 +124,7 @@ export type PreparedAppIssueLink = {
   /** Validated form fields, sent at the top level of the action request. */
   fields: Record<string, string | number>;
   /** Existing association to the same target, supplying the canonical URL guard. */
-  existing?: AppIssueLink;
+  existing?: AppIssueLink | undefined;
 };
 
 const LINEAR_ISSUE_PATH = /^\/([^/]+)\/issue\/([a-z][a-z0-9]*-\d+)(?:\/|$)/i;
@@ -218,7 +219,7 @@ export async function listAppIssueLinks(
       const result = await listOrganizationIssueExternalIssues({
         ...config,
         path: { organization_id_or_slug: orgSlug, issue_id: issueId },
-        query: { cursor },
+        query: omitUndefined({ cursor }),
       });
       return unwrapPaginatedResult(result, "Failed to list app issue links");
     },
@@ -271,7 +272,7 @@ async function resolveInstallation(
       const result = await listOrganizationSentryAppInstallations({
         ...config,
         path: { organization_id_or_slug: orgSlug },
-        query: { cursor },
+        query: omitUndefined({ cursor }),
       });
       return unwrapPaginatedResult(
         result,
@@ -309,7 +310,7 @@ async function getLinkForm(
       const result = await listOrganizationSentryAppComponents({
         ...config,
         path: { organization_id_or_slug: orgSlug },
-        query: { filter: "issue-link", cursor },
+        query: omitUndefined({ filter: "issue-link", cursor }),
       });
       return unwrapPaginatedResult(result, "Failed to list app components");
     },
@@ -361,9 +362,9 @@ async function getChoices({
 }: {
   installationUuid: string;
   field: Field;
-  query?: string;
+  query?: string | undefined;
   values: Record<string, string | number>;
-  projectId?: string;
+  projectId?: string | undefined;
 }): Promise<InferOutput<typeof ChoicesResponseSchema>> {
   if (!field.uri) {
     return { choices: field.choices ?? field.options ?? [] };
@@ -375,14 +376,14 @@ async function getChoices({
   const result = await getSentryAppInstallationExternalRequestOptions({
     ...getSdkClientConfig(getControlSiloUrl()),
     path: { uuid: installationUuid },
-    query: {
+    query: omitUndefined({
       uri: field.uri,
       query,
       projectId: projectId === undefined ? undefined : Number(projectId),
       dependentData: field.depends_on?.length
         ? JSON.stringify(dependentData)
         : undefined,
-    },
+    }),
   });
   const parsed = safeParse(
     ChoicesResponseSchema,

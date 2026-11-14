@@ -29,6 +29,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 function normalizeOrganizationRegion(
   raw: string | undefined,
@@ -78,7 +79,7 @@ export async function checkTokenAccess(): Promise<void> {
  */
 export async function listOrganizationsPage(
   baseUrl: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string | undefined; perPage?: number | undefined } = {},
   credential = getCredentialContext(),
 ): Promise<PaginatedResponse<SentryOrganization[]>> {
   const config = getSdkClientConfig(baseUrl, {
@@ -88,7 +89,7 @@ export async function listOrganizationsPage(
 
   const result = await sdkListOrganizations({
     ...config,
-    query: { cursor: options.cursor, per_page: options.perPage },
+    query: omitUndefined({ cursor: options.cursor, per_page: options.perPage }),
   });
 
   // 403 enrichment (CLI-89, 24 users) is now handled centrally by

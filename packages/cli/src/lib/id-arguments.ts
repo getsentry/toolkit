@@ -68,7 +68,7 @@ export type IdKind = {
   /** The ID of this kind in a parsed Sentry URL, if it has one */
   readonly fromUrl: (url: ParsedSentryUrl) => string | undefined;
   /** A URL with this kind of ID, suggested when a pasted URL has none */
-  readonly urlExample?: string;
+  readonly urlExample?: string | undefined;
   /**
    * Items of this kind have names, such as a dashboard's title or issue
    * search text: what is not, and may not be, an ID ({@link IdKind.mayBeId})
@@ -307,7 +307,7 @@ export type IdArgumentsOptions = {
    * Whether the command may get no ID, like a list of a project's items or
    * a trace's. Then a lone argument that does not end in an ID is a target.
    */
-  readonly optional?: boolean;
+  readonly optional?: boolean | undefined;
   /**
    * Whether the command needs a project, not just an org. Then `<x>/<id>`
    * names project `<x>` (found in any org), like `<x> <id>` does.
@@ -327,11 +327,11 @@ export type IdArguments = {
    * `undefined` to auto-detect. `<x>/<id>` gives `<x>/` (the org), or `<x>`
    * when the command needs a project.
    */
-  readonly target?: string;
+  readonly target?: string | undefined;
   /** The IDs: normalized, or as typed when not validated */
   readonly ids: readonly string[];
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   /** Warnings to log, such as for ignored or reversed arguments */
   readonly warnings: readonly string[];
   /**

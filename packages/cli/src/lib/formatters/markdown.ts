@@ -374,9 +374,9 @@ const WHITESPACE_RE = /\s+/;
  * into the language and the line-number gutter options.
  */
 function parseCodeInfo(info: string | undefined): {
-  language?: string;
-  start?: number;
-  highlight?: number;
+  language?: string | undefined;
+  start?: number | undefined;
+  highlight?: number | undefined;
 } {
   const [language, ...rest] = (info ?? "").trim().split(WHITESPACE_RE);
   const attrs: Record<string, number> = {};

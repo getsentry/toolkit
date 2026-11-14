@@ -1038,7 +1038,7 @@ export async function resolveIssue(
  */
 export async function resolveOrgAndIssueId(
   options: ResolveIssueOptions,
-): Promise<{ org: string; issueId: string; projectId?: string }> {
+): Promise<{ org: string; issueId: string; projectId?: string | undefined }> {
   const result = await resolveIssue(options);
   return {
     org: result.org,

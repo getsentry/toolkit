@@ -499,7 +499,12 @@ export function decodeTargetCursors(
  */
 export function buildMultiTargetContextKey(
   targets: ResolvedTarget[],
-  filters?: { sort?: string; query?: string; period?: string; limit?: number },
+  filters?: {
+    sort?: string | undefined;
+    query?: string | undefined;
+    period?: string | undefined;
+    limit?: number | undefined;
+  },
 ): string {
   const host = getApiBaseUrl();
   const targetFingerprint = targets

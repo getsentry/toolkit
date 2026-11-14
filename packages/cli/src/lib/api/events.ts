@@ -30,6 +30,7 @@ import {
   unwrapResult,
 } from "./infrastructure.js";
 import { listOrganizations } from "./organizations.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /**
  * Get the latest event for an issue.
@@ -170,7 +171,7 @@ export async function resolveEventInOrg(
 /** Options for {@link findEventAcrossOrgs}. */
 export type FindEventAcrossOrgsOptions = {
   /** Org slugs to skip (already searched by the caller). */
-  excludeOrgs?: string[];
+  excludeOrgs?: string[] | undefined;
 };
 
 /**
@@ -227,11 +228,11 @@ export type ListIssueEventsOptions = {
   /** Max items to return (total across all auto-paginated pages). @default 25 */
   limit?: number;
   /** Search query (Sentry search syntax). */
-  query?: string;
+  query?: string | undefined;
   /** Include full event body (stacktraces, breadcrumbs). */
   full?: boolean;
   /** Pagination cursor from a previous response. */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Relative time period (e.g., "7d", "24h"). Overrides start/end on the API. */
   statsPeriod?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -268,7 +269,7 @@ export async function listIssueEvents(
         organization_id_or_slug: orgSlug,
         issue_id: issueId,
       },
-      query: {
+      query: omitUndefined({
         query: query || undefined,
         full,
         cursor: pageCursor,
@@ -278,7 +279,7 @@ export async function listIssueEvents(
         // `per_page` is accepted at runtime but absent from the generated query
         // type, so widen via cast.
         per_page: perPage,
-      },
+      }),
     });
     return unwrapPaginatedResult<IssueEvent[]>(
       result,

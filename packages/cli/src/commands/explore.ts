@@ -176,17 +176,19 @@ type ExploreFlags = {
 /** Data yielded by the explore command for both JSON and human output */
 type ExploreData = {
   data: Record<string, unknown>[];
-  meta?: {
-    fields?: Record<string, string>;
-    units?: Record<string, string | null>;
-  };
+  meta?:
+    | {
+        fields?: Record<string, string> | undefined;
+        units?: Record<string, string | null> | undefined;
+      }
+    | undefined;
   hasMore: boolean;
   hasPrev: boolean;
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   dataset: string;
   org: string;
   /** Project filter, when target was `org/project` */
-  project?: string;
+  project?: string | undefined;
   /** The fields the user requested, in their original order — drives column order */
   requestedFields: string[];
 };
@@ -470,7 +472,7 @@ type DatasetConfig = {
     timeRange: TimeRange;
   }) => Promise<{
     data: { data: Record<string, unknown>[]; meta?: ExploreData["meta"] };
-    nextCursor?: string;
+    nextCursor?: string | undefined;
   }>;
 };
 
@@ -641,7 +643,7 @@ function resolveDatasetConfig(params: {
   // duplicating and skipping rows (#1519) and makes --limit a top N (#1477).
   const { fields, sort } = resolveEventsSort({
     fields: fieldList,
-    sort: flags.sort,
+    sort: flags.sort ?? null,
   });
 
   const query = resolved.query;

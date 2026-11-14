@@ -454,7 +454,7 @@ const SOURCE_PATTERNS = COMPLETION_SOURCES.map((source) => ({
 }));
 
 /** A source matching a request URL, with the organization its path names. */
-type SourceMatch = { source: CompletionSource; orgSlug?: string };
+type SourceMatch = { source: CompletionSource; orgSlug?: string | undefined };
 
 /**
  * The sources for a URL and the organization each names, if any. One

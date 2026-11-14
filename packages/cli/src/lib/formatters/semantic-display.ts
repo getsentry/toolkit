@@ -669,8 +669,8 @@ function formatHttpLabel({
   target,
   fallbackLabel,
 }: {
-  method?: string;
-  target?: string;
+  method?: string | undefined;
+  target?: string | undefined;
   fallbackLabel: string;
 }): string {
   if (method && target) {

@@ -265,9 +265,9 @@ function abbreviateCount(raw: string): string {
  */
 export type FormatShortIdOptions = {
   /** Project slug to determine the prefix for suffix highlighting */
-  projectSlug?: string;
+  projectSlug?: string | undefined;
   /** Project alias (e.g., "e", "w", "o1:d") for multi-project display */
-  projectAlias?: string;
+  projectAlias?: string | undefined;
   /** Whether in multi-project mode (highlights alias chars in short ID) */
   isMultiProject?: boolean;
 };
@@ -1747,13 +1747,13 @@ export function formatProjectDetails(
  */
 type UserIdentityInput = {
   /** User ID (from token response) */
-  id?: string;
+  id?: string | undefined;
   /** User ID (from stored UserInfo) */
   userId?: string;
-  email?: string;
-  username?: string;
+  email?: string | undefined;
+  username?: string | undefined;
   /** Display name (different from username) */
-  name?: string;
+  name?: string | undefined;
 };
 
 /**
@@ -1784,9 +1784,9 @@ export function formatUserIdentity(user: UserIdentityInput): string {
 /** Data shape yielded by `whoami` for `sntrys_` org auth tokens. */
 export type OrgTokenIdentity = {
   type: "org-auth-token";
-  organization?: string;
+  organization?: string | undefined;
   url: string;
-  regionUrl?: string;
+  regionUrl?: string | undefined;
 };
 
 /**
@@ -2267,7 +2267,7 @@ export type ProjectDeleteResult = {
   /** Sentry web URL for the project */
   url: string;
   /** When true, nothing was actually deleted — output uses tentative wording */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
 };
 
 /**

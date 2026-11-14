@@ -60,51 +60,69 @@ export type AuthStatusData = {
   /** Auth source: "oauth" or "env:SENTRY_AUTH_TOKEN" etc. */
   source: string;
   /** Path to the SQLite config database (only for non-env tokens) */
-  configPath?: string;
+  configPath?: string | undefined;
   /** User identity from cached user info */
-  user?: { name?: string; email?: string; username?: string };
+  user?:
+    | {
+        name?: string | undefined;
+        email?: string | undefined;
+        username?: string | undefined;
+      }
+    | undefined;
   /** Server the active stored account belongs to (only for non-env tokens) */
-  host?: string;
+  host?: string | undefined;
   /** Number of stored accounts (only for non-env tokens) */
-  accounts?: number;
+  accounts?: number | undefined;
   /** Token display and metadata */
-  token?: {
-    /** Masked or full token string depending on --show-token */
-    display: string;
-    /** Expiration timestamp (ms since epoch), if available */
-    expiresAt?: number;
-    /** Whether auto-refresh via refresh token is enabled */
-    refreshEnabled: boolean;
-  };
+  token?:
+    | {
+        /** Masked or full token string depending on --show-token */
+        display: string;
+        /** Expiration timestamp (ms since epoch), if available */
+        expiresAt?: number | undefined;
+        /** Whether auto-refresh via refresh token is enabled */
+        refreshEnabled: boolean;
+      }
+    | undefined;
   /** Default org/project settings */
-  defaults?: {
-    organization?: string;
-    project?: string;
-  };
+  defaults?:
+    | {
+        organization?: string | undefined;
+        project?: string | undefined;
+      }
+    | undefined;
   /** Credential verification results */
-  verification?: {
-    /** Whether the API call succeeded */
-    success: boolean;
-    /** Organizations accessible with the current token */
-    organizations?: Array<{ name: string; slug: string }>;
-    /** Error message if verification failed */
-    error?: string;
-  };
+  verification?:
+    | {
+        /** Whether the API call succeeded */
+        success: boolean;
+        /** Organizations accessible with the current token */
+        organizations?: Array<{ name: string; slug: string }>;
+        /** Error message if verification failed */
+        error?: string;
+      }
+    | undefined;
   /** Environment variable token info (present when SENTRY_AUTH_TOKEN or SENTRY_TOKEN is set) */
-  envToken?: {
-    /** Name of the env var (e.g., "SENTRY_AUTH_TOKEN") */
-    envVar: string;
-    /** Whether the env token is the effective auth source (vs bypassed for OAuth) */
-    active: boolean;
-    /**
-     * Server the token is scoped to, when known from a trusted source. Then
-     * the token also acts as an account of its own: commands targeting an
-     * organization it can access use it even when stored OAuth is in effect.
-     */
-    host?: string;
-    /** The token's user, from `/users/me/` (not for organization auth tokens) */
-    user?: { name?: string; email?: string; username?: string };
-  };
+  envToken?:
+    | {
+        /** Name of the env var (e.g., "SENTRY_AUTH_TOKEN") */
+        envVar: string;
+        /** Whether the env token is the effective auth source (vs bypassed for OAuth) */
+        active: boolean;
+        /**
+         * Server the token is scoped to, when known from a trusted source. Then
+         * the token also acts as an account of its own: commands targeting an
+         * organization it can access use it even when stored OAuth is in effect.
+         */
+        host?: string;
+        /** The token's user, from `/users/me/` (not for organization auth tokens) */
+        user?: {
+          name?: string | undefined;
+          email?: string | undefined;
+          username?: string | undefined;
+        };
+      }
+    | undefined;
 };
 
 /**
@@ -286,5 +304,6 @@ export const statusCommand = buildCommand({
           : `Run \`${sentry`auth whoami`}\` to see which user this token belongs to`,
       };
     }
+    return;
   },
 });

@@ -247,7 +247,7 @@ export type RasterizeOpts = {
   /** Leave the background transparent instead of filling it. */
   backgroundTransparent?: boolean;
   /** Minimum single-series bar height in pixels; nulls stay empty. Default: 0. */
-  minBarHeight?: number;
+  minBarHeight?: number | undefined;
 };
 
 /**

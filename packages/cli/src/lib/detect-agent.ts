@@ -382,6 +382,7 @@ export async function getProcessInfoFromOS(
       log.debug(`Could not query ps for pid ${pid}`, error);
     }
   }
+  return undefined;
 }
 
 /**

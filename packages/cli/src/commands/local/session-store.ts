@@ -23,7 +23,7 @@ export type LocalSessionState = "open" | "retained";
 
 /** Public session metadata, excluding telemetry buffers and secret capabilities. */
 export type LocalSession = {
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   readonly id: string;
   readonly label: string;
   readonly cwd: string;
@@ -43,10 +43,10 @@ type StoredSession = LocalSession & {
 
 /** Session label, working directory, and optional retry idempotency key. */
 export type CreateLocalSessionInput = {
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   readonly label: string;
   readonly cwd: string;
-  readonly maxEnvelopes?: number;
+  readonly maxEnvelopes?: number | undefined;
 };
 
 /** A label matches multiple sessions; callers must select an explicit ID. */

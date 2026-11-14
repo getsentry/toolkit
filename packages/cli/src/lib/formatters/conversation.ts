@@ -149,7 +149,7 @@ export type ToolCall = {
   spanId: string;
   timestamp: number;
   durationMs: number;
-  status?: string | null;
+  status?: string | null | undefined;
 };
 
 export type ConversationTurn = {
@@ -162,10 +162,10 @@ export type ConversationTurn = {
   userContent?: string | null;
   assistantContent?: string | null;
   toolCalls: ToolCall[];
-  model?: string | null;
-  agentName?: string | null;
+  model?: string | null | undefined;
+  agentName?: string | null | undefined;
   totalTokens: number;
-  status?: string | null;
+  status?: string | null | undefined;
 };
 
 function numeric(value: string | number | null | undefined): number {
@@ -523,7 +523,10 @@ export function buildTranscriptResult(
   conversationId: string,
   org: string,
   spans: AgentConversationSpan[],
-  details: { stats?: ConversationStats; title?: string | null } = {},
+  details: {
+    stats?: ConversationStats | undefined;
+    title?: string | null;
+  } = {},
 ): TranscriptResult {
   const { stats, title = null } = details;
   const turns = extractTurns(spans);

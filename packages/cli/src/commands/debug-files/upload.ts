@@ -110,7 +110,7 @@ type UploadedFileSummary = {
   /** Name stamped on the DIF. */
   name: string;
   /** Advisory debug id, if known. */
-  debugId?: string;
+  debugId?: string | undefined;
   /** Assembly state after upload (omitted for `--no-upload`). */
   state?: DebugFileUploadResult["state"];
   /** Server detail/error, if any. */
@@ -458,7 +458,7 @@ async function* doUpload(
     requireAll: boolean;
     oversizedCount: number;
     maxFileSize: number;
-    serverOptions?: ChunkServerOptions;
+    serverOptions?: ChunkServerOptions | undefined;
   },
 ) {
   const results = await uploadDebugFiles(params);

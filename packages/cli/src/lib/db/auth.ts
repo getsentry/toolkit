@@ -271,9 +271,9 @@ export type AuthSource = "env:SENTRY_AUTH_TOKEN" | "env:SENTRY_TOKEN" | "oauth";
 
 export type AuthConfig = {
   token?: string;
-  refreshToken?: string;
-  expiresAt?: number;
-  issuedAt?: number;
+  refreshToken?: string | undefined;
+  expiresAt?: number | undefined;
+  issuedAt?: number | undefined;
   source: AuthSource;
 };
 
@@ -667,8 +667,8 @@ export function resetAccountSelection(): void {
  */
 export type SetAuthTokenOptions = {
   host?: string;
-  newAccount?: boolean;
-  accountId?: string;
+  newAccount?: boolean | undefined;
+  accountId?: string | undefined;
 };
 
 /** Drop all memoized active-credential state after an account mutation. */
@@ -1462,7 +1462,7 @@ export function hasStoredAuthCredentials(): boolean {
 
 export type RefreshTokenOptions = {
   /** Bypass threshold check and always refresh */
-  force?: boolean;
+  force?: boolean | undefined;
   expectedCredential?: Pick<CredentialContext, "host" | "identity">;
 };
 

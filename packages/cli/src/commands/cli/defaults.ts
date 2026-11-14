@@ -225,10 +225,12 @@ export type DefaultsResult = {
   /** Current state of all defaults after the operation */
   defaults: DefaultsState;
   /** Effective telemetry state considering env var overrides (display-only) */
-  telemetryEffective?: {
-    enabled: boolean;
-    source: string;
-  };
+  telemetryEffective?:
+    | {
+        enabled: boolean;
+        source: string;
+      }
+    | undefined;
   /** What was changed (for set/clear actions) */
   changed?: {
     key: string;

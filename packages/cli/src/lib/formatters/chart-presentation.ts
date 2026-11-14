@@ -44,9 +44,9 @@ export type ChartPresentationOptions = {
   /** Value-axis maximum already formatted with the caller's units/precision. */
   maximumLabel: string;
   /** First x-axis label; omitted values leave that label empty. */
-  firstLabel?: string;
+  firstLabel?: string | undefined;
   /** Last x-axis label; omitted values leave that label empty. */
-  lastLabel?: string;
+  lastLabel?: string | undefined;
   /** Minimum single-series bar height in pixels; nulls stay empty. Default: 0. */
   minBarHeight?: number;
   /** Allow the core's numeric bucket averaging to fit the plot. Default: true. */

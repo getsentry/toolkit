@@ -7,7 +7,7 @@ export type LocalSessionEvent = {
   state: "open" | "retained";
   action?: "reset";
   /** Existing retained-session deadline, in epoch milliseconds. */
-  expiresAt?: number;
+  expiresAt?: number | undefined;
 };
 
 const LOCAL_UI_ORIGIN = "https://local.sentry.dev";

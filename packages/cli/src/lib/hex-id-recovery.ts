@@ -125,7 +125,7 @@ export type RecoveryResult =
 export type LookupContext = {
   org: string;
   /** When present, scopes the scan to a single project. */
-  project?: string;
+  project?: string | undefined;
   /** Required for span lookup (spans are unique only within a trace). */
   traceId?: string;
   /** Override for the default scan window (e.g. "90d", "7d"). */

@@ -22,7 +22,7 @@ export type ApiQueryParameter = {
   /** Whether the request must include this parameter. */
   required: boolean;
   /** Allowed scalar values, or item values for an array parameter. */
-  enum?: (string | number | boolean | null)[];
+  enum?: (string | number | boolean | null)[] | undefined;
 };
 
 /** An API used by a command, with context rather than a claim of equivalence. */
@@ -61,9 +61,9 @@ export type ApiEndpoint = {
   /** Human-readable description of the endpoint */
   description: string;
   /** Short endpoint description from OpenAPI. */
-  summary?: string;
+  summary?: string | undefined;
   /** OpenAPI categories available for discovery. */
-  tags?: string[];
+  tags?: string[] | undefined;
   /** Path parameter names extracted from the URL template */
   pathParams: string[];
   /** Query parameter names from the OpenAPI spec */
@@ -98,7 +98,7 @@ const WHITESPACE = /\s/;
 /** Parsed `METHOD /path` or `/api/...` query used by `sentry schema`. */
 export type ParsedEndpointQuery = {
   /** Uppercase HTTP method when the query starts with one */
-  method?: string;
+  method?: string | undefined;
   /** Normalized API path when the query looks like one */
   path?: string;
   /** Remainder after stripping a leading HTTP method */

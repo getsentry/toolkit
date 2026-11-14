@@ -75,7 +75,7 @@ type TraceListResult = {
   /** Whether a previous page exists (for bidirectional hints) */
   hasPrev?: boolean;
   /** Opaque cursor for fetching the next page (null/undefined when no more) */
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   /** Org slug (used by human formatter for display and next-page hint) */
   org: string;
   /** Project slug (used by human formatter for display and next-page hint) */

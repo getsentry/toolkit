@@ -87,7 +87,7 @@ function rethrowExternalAbort(
 
 type RetryOptions = {
   timeout?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 };
 
 /**
@@ -489,7 +489,7 @@ export async function downloadNightlyBlob(
     try {
       redirectResponse = await customFetch(redirectUrl, {
         headers: { "User-Agent": getUserAgent() },
-        signal,
+        ...(signal && { signal }),
       });
     } catch (error) {
       rethrowExternalAbort(error, signal);

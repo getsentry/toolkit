@@ -484,7 +484,7 @@ export type TraceSpan = {
   project_slug?: string;
   event_id?: string;
   /** Nested child spans */
-  children?: TraceSpan[];
+  children?: TraceSpan[] | undefined;
   /** Span name (often same as op) */
   name?: string;
   /** Always "span" for EAP spans */

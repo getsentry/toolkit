@@ -68,7 +68,7 @@ function getCompletionOrganizations() {
  */
 type Completion = {
   value: string;
-  description?: string;
+  description?: string | undefined;
 };
 
 /**
@@ -161,9 +161,9 @@ type CompleterContext = {
    */
   flagValues: Readonly<Record<string, string>>;
   /** The values a `choice` or `choice-list` argument offers. */
-  choices?: readonly string[];
+  choices?: readonly string[] | undefined;
   /** The fields and aggregates a field or aggregate flag completes. */
-  datasets?: DatasetCompletion;
+  datasets?: DatasetCompletion | undefined;
 };
 
 /** What the word being completed is, and the positionals typed before it. */

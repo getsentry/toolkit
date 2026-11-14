@@ -30,21 +30,21 @@ const log = logger.withTag("build.vcs");
 /** Structured VCS metadata for a build upload. */
 export type VcsInfo = {
   /** HEAD commit SHA. */
-  headSha?: string;
+  headSha?: string | undefined;
   /** Base commit SHA (merge-base with the target branch). */
-  baseSha?: string;
+  baseSha?: string | undefined;
   /** VCS provider name (e.g. `github`, `gitlab`). */
-  vcsProvider?: string;
+  vcsProvider?: string | undefined;
   /** Head repository name (`owner/repo`). */
-  headRepoName?: string;
+  headRepoName?: string | undefined;
   /** Base repository name (`owner/repo`), for forks. */
-  baseRepoName?: string;
+  baseRepoName?: string | undefined;
   /** Head branch/reference. */
-  headRef?: string;
+  headRef?: string | undefined;
   /** Base branch/reference. */
-  baseRef?: string;
+  baseRef?: string | undefined;
   /** Pull request number. */
-  prNumber?: number;
+  prNumber?: number | undefined;
 };
 
 /** {@link VcsInfo} as the snake_case fields of build and snapshot request bodies. */

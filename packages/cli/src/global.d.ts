@@ -8,18 +8,25 @@
 // Web Worker API — used by src/lib/scan/worker-pool.ts
 // Node 22+ supports the standard Web Worker API for Blob-URL workers.
 
+// Neither lib ESNext nor @types/node declares a global `ErrorEvent`. These are
+// the fields of the DOM type that the pool reads; runtimes may omit them.
+interface WorkerErrorEvent extends Event {
+  readonly message?: string;
+  readonly error?: unknown;
+}
+
 type WorkerEventMap = {
   message: MessageEvent;
   messageerror: MessageEvent;
-  error: ErrorEvent;
+  error: WorkerErrorEvent;
 };
 
 declare class Worker {
   constructor(url: string | URL, options?: { type?: string });
-  postMessage(message: unknown, transfer?: Transferable[]): void;
+  postMessage(message: unknown): void;
   terminate(): void;
   onmessage: ((event: MessageEvent) => void) | null;
-  onerror: ((event: ErrorEvent) => void) | null;
+  onerror: ((event: WorkerErrorEvent) => void) | null;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (event: WorkerEventMap[K]) => void,
@@ -32,13 +39,6 @@ declare class Worker {
   removeEventListener(type: string, listener: (event: Event) => void): void;
   ref(): void;
   unref(): void;
-}
-
-// RegExp.escape — ES2025 proposal, available in Node 23.6+
-// Used by src/lib/api/projects.ts with a runtime feature-detection guard.
-// interface augmentation requires `interface`, not `type`
-interface RegExpConstructor {
-  escape?(s: string): string;
 }
 
 // Typechecking does not need the generated OpenAPI data; builds generate it.

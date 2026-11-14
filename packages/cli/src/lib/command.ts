@@ -186,7 +186,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED> | undefined;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *

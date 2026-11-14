@@ -20,6 +20,7 @@ import {
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.repositories");
 
@@ -58,18 +59,22 @@ export async function listRepositories(
  */
 export async function listRepositoriesPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number; query?: string } = {},
+  options: {
+    cursor?: string | undefined;
+    perPage?: number | undefined;
+    query?: string | undefined;
+  } = {},
 ): Promise<PaginatedResponse<SentryRepository[]>> {
   const config = getOrgSdkConfig();
 
   const result = await listOrganizationRepos({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
       query: options.query,
-    },
+    }),
   });
 
   const paginated = unwrapPaginatedResult<SentryRepository[]>(

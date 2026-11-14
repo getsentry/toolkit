@@ -25,6 +25,7 @@ import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
 import { ReleaseCreateOutputSchema } from "../../generated/output-schemas/release.js";
 import type { ReleaseCreateOutputFields } from "../../output-schemas/release.js";
+import { omitUndefined } from "../../lib/omit-undefined.js";
 
 const usageHint = () => sentry`release create [<org>/]<version>`;
 
@@ -188,14 +189,14 @@ export const createCommand = buildCommand({
 
     // Dry-run mode: show what would be created without calling the API
     if (flags["dry-run"]) {
-      const preview: ReleaseCreateDryRun = {
-        dryRun: true,
+      const preview: ReleaseCreateDryRun = omitUndefined({
+        dryRun: true as const,
         version,
         projects: (body.projects ?? []).map((slug) => ({ slug })),
         ref: body.ref,
         url: body.url,
         dateReleased: body.dateReleased,
-      };
+      });
       yield new CommandOutput(preview);
       return { hint: "Dry run — no release was created." };
     }

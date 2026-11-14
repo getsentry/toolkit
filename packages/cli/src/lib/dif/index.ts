@@ -22,6 +22,7 @@ import {
   type ObjectFile,
   SourceBundleWriter,
 } from "@sentry/symbolic";
+import { toArrayBufferBytes } from "../bytes.js";
 import { logger } from "../logger.js";
 import { getSeaRawAsset } from "../sea-assets.js";
 
@@ -153,7 +154,7 @@ export type DifObjectFile = {
   /** The object's metadata. */
   object: DifObjectInfo;
   /** The bytes of a file that holds only this object. */
-  data: Uint8Array;
+  data: Uint8Array<ArrayBuffer>;
 };
 
 /**
@@ -169,14 +170,14 @@ export type DifObjectFile = {
  * @returns One entry per object, in archive order.
  * @throws If the buffer cannot be parsed as a known object format.
  */
-export function splitDebugFile(data: Uint8Array): DifObjectFile[] {
+export function splitDebugFile(data: Uint8Array<ArrayBuffer>): DifObjectFile[] {
   ensureInitialized();
   const archive = new Archive(data);
   try {
     const objects = archive.objects();
     return objects.map((o) => ({
       object: toObjectInfo(o),
-      data: objects.length === 1 ? data : o.data(),
+      data: objects.length === 1 ? data : toArrayBufferBytes(o.data()),
     }));
   } finally {
     archive.free();
