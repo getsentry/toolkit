@@ -3,6 +3,7 @@ import {
   analyzeSourceApiUsage,
   type SourceApiOperation,
 } from "../../script/lib/source-api-usage.js";
+import { at } from "../helpers.js";
 
 const operations: SourceApiOperation[] = [
   {
@@ -167,7 +168,7 @@ describe("source API usage", () => {
     const analysis = analyzeSourceApiUsage(sources, [
       ...operations,
       {
-        ...operations[0],
+        ...at(operations, 0),
         functionName: "anotherEvents",
         path: "/organizations/{org}/events/",
       },

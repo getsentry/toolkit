@@ -30,21 +30,21 @@ const log = logger.withTag("build.vcs");
 /** Structured VCS metadata for a build upload. */
 export type VcsInfo = {
   /** HEAD commit SHA. */
-  headSha?: string;
+  headSha?: string | undefined;
   /** Base commit SHA (merge-base with the target branch). */
-  baseSha?: string;
+  baseSha?: string | undefined;
   /** VCS provider name (e.g. `github`, `gitlab`). */
-  vcsProvider?: string;
+  vcsProvider?: string | undefined;
   /** Head repository name (`owner/repo`). */
-  headRepoName?: string;
+  headRepoName?: string | undefined;
   /** Base repository name (`owner/repo`), for forks. */
-  baseRepoName?: string;
+  baseRepoName?: string | undefined;
   /** Head branch/reference. */
-  headRef?: string;
+  headRef?: string | undefined;
   /** Base branch/reference. */
-  baseRef?: string;
+  baseRef?: string | undefined;
   /** Pull request number. */
-  prNumber?: number;
+  prNumber?: number | undefined;
 };
 
 /** {@link VcsInfo} as the snake_case fields of build and snapshot request bodies. */
@@ -105,7 +105,7 @@ function readGithubEventSha(
   kind: "head" | "base",
   env: NodeJS.ProcessEnv,
 ): string | undefined {
-  const eventPath = env.GITHUB_EVENT_PATH;
+  const eventPath = env["GITHUB_EVENT_PATH"];
   if (!eventPath) {
     return undefined;
   }
@@ -158,26 +158,26 @@ function providerFromRemoteUrl(url: string): string | undefined {
 
 /** GitHub Actions head ref: PR source branch, else the pushed branch/tag name. */
 function githubHeadRef(env: NodeJS.ProcessEnv): string | undefined {
-  if (env.GITHUB_EVENT_NAME === "pull_request") {
-    return env.GITHUB_HEAD_REF || undefined;
+  if (env["GITHUB_EVENT_NAME"] === "pull_request") {
+    return env["GITHUB_HEAD_REF"] || undefined;
   }
-  return env.GITHUB_REF_NAME || undefined;
+  return env["GITHUB_REF_NAME"] || undefined;
 }
 
 /** GitHub Actions base ref: PR target branch (pull_request events only). */
 function githubBaseRef(env: NodeJS.ProcessEnv): string | undefined {
-  if (env.GITHUB_EVENT_NAME !== "pull_request") {
+  if (env["GITHUB_EVENT_NAME"] !== "pull_request") {
     return undefined;
   }
-  return env.GITHUB_BASE_REF || undefined;
+  return env["GITHUB_BASE_REF"] || undefined;
 }
 
 /** GitHub Actions PR number, parsed from GITHUB_REF (`refs/pull/N/merge`). */
 function githubPrNumber(env: NodeJS.ProcessEnv): number | undefined {
-  if (env.GITHUB_EVENT_NAME !== "pull_request") {
+  if (env["GITHUB_EVENT_NAME"] !== "pull_request") {
     return undefined;
   }
-  const raw = env.GITHUB_REF?.match(/^refs\/pull\/(\d+)\//)?.[1];
+  const raw = env["GITHUB_REF"]?.match(/^refs\/pull\/(\d+)\//)?.[1];
   if (!raw) {
     return undefined;
   }

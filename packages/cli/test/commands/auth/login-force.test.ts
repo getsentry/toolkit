@@ -9,12 +9,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -32,6 +28,7 @@ import { getDatabase } from "../../../src/lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { ApiError, AuthError } from "../../../src/lib/errors.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type LoginFunc = (
   this: unknown,
@@ -53,8 +50,8 @@ const ACME = "https://sentry.acme.com";
 
 function createContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
@@ -69,7 +66,11 @@ function addAccount(
     host: SAAS,
     newAccount: true,
   });
-  setUserInfo({ userId, email, username });
+  setUserInfo({
+    userId,
+    email,
+    ...(username === undefined ? {} : { username }),
+  });
   return id;
 }
 

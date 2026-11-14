@@ -367,6 +367,7 @@ async function discoverLocalDaemon(
       "The Local daemon is still running but did not respond with a compatible identity. Retry the command; its discovery state has been preserved.",
     );
   }
+  return undefined;
 }
 
 /** Return authenticated discovery, preserving unreachable live owners for retries. */
@@ -416,13 +417,17 @@ async function waitForLocalDaemon(
       if (!isProcessRunning(owner)) throw error;
     }
   }
+  return undefined;
 }
 
 /** Start the daemon child and wait until its authenticated discovery state is available. */
 export async function ensureLocalDaemon({
   host = "localhost",
   port = DEFAULT_PORT,
-}: { host?: string; port?: number } = {}): Promise<LocalDaemonState> {
+}: {
+  host?: string | undefined;
+  port?: number | undefined;
+} = {}): Promise<LocalDaemonState> {
   if (!isLoopbackHost(host))
     throw new Error("The Local control-plane host must be loopback-only.");
   if (port === 0)
@@ -633,7 +638,7 @@ export async function createLocalDaemonSession({
   maxEnvelopes,
 }: {
   readonly clientId?: string;
-  readonly maxEnvelopes?: number;
+  readonly maxEnvelopes?: number | undefined;
   readonly cwd: string;
   readonly host?: string;
   readonly label: string;

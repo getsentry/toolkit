@@ -68,7 +68,7 @@ function getCompletionOrganizations() {
  */
 type Completion = {
   value: string;
-  description?: string;
+  description?: string | undefined;
 };
 
 /**
@@ -83,7 +83,8 @@ type Completion = {
  */
 export async function runCompletion(args: string[]): Promise<void> {
   // Keeps the database modules from requiring telemetry and `@sentry/node`
-  getEnv().SENTRY_CLI_NO_TELEMETRY = "1";
+  // Keeps the database modules from requiring telemetry and `@sentry/node`
+  getEnv()["SENTRY_CLI_NO_TELEMETRY"] = "1";
   // A read-only cli.db must not print a warning on every TAB press
   silenceReadonlyHandling();
   await handleComplete(args);
@@ -160,9 +161,9 @@ type CompleterContext = {
    */
   flagValues: Readonly<Record<string, string>>;
   /** The values a `choice` or `choice-list` argument offers. */
-  choices?: readonly string[];
+  choices?: readonly string[] | undefined;
   /** The fields and aggregates a field or aggregate flag completes. */
-  datasets?: DatasetCompletion;
+  datasets?: DatasetCompletion | undefined;
 };
 
 /** What the word being completed is, and the positionals typed before it. */

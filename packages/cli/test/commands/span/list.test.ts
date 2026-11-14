@@ -8,7 +8,15 @@
  * - listCommand.func (project mode): new project-scoped behavior
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   listCommand,
   parseSort,
@@ -18,12 +26,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -32,12 +36,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -46,12 +46,8 @@ import * as paginationDb from "../../../src/lib/db/pagination.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
@@ -59,11 +55,9 @@ import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import { FlatSpanSchema } from "../../../src/generated/output-schemas/span.js";
+import { at, must } from "../../helpers.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
-
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
 
 // Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
@@ -176,7 +170,7 @@ describe("parseSpanListInput", () => {
   });
 
   test("a pasted URL's server is returned, not applied", () => {
-    const savedUrl = process.env.SENTRY_URL;
+    const savedUrl = process.env["SENTRY_URL"];
     expect(
       parseSpanListInput([
         `https://sentry.example.com/organizations/acme/traces/${VALID_TRACE_ID}/`,
@@ -185,7 +179,7 @@ describe("parseSpanListInput", () => {
       mode: "trace",
       trace: { baseUrl: "https://sentry.example.com" },
     });
-    expect(process.env.SENTRY_URL).toBe(savedUrl);
+    expect(process.env["SENTRY_URL"]).toBe(savedUrl);
   });
 });
 
@@ -201,11 +195,17 @@ type ListFunc = (
 
 describe("listCommand.func (trace mode)", () => {
   let func: ListFunc;
-  let listSpansSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listSpansSpy: MockInstance<(typeof apiClient)["listSpans"]>;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   function createContext() {
     const stdoutChunks: string[] = [];
@@ -232,6 +232,8 @@ describe("listCommand.func (trace mode)", () => {
     listSpansSpy = vi.spyOn(apiClient, "listSpans");
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });
@@ -268,7 +270,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -298,7 +299,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("translates query shorthand when --query is set", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -324,7 +325,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("requests discovered typed attribute keys intact through --fields", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
     const { context } = createContext();
 
     await func.call(
@@ -371,7 +372,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("uses explicit org/project when target is provided", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -409,7 +410,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context } = createContext();
@@ -503,7 +503,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("passes statsPeriod to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -537,7 +537,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -568,7 +567,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -604,7 +602,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -627,7 +624,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("trace mode passes allProjects: true to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -729,7 +726,6 @@ describe("listCommand.func (project mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -743,7 +739,7 @@ describe("listCommand.func (project mode)", () => {
     });
 
     // Should NOT have trace: prefix in the query
-    const callArgs = listSpansSpy.mock.calls[0];
+    const callArgs = at(listSpansSpy.mock.calls, 0);
     const query = callArgs[2]?.query;
     expect(query).toBeUndefined();
 
@@ -752,7 +748,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("uses explicit org/project in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -781,7 +777,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("translates query in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -854,7 +850,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("passes statsPeriod in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -891,7 +887,6 @@ describe("listCommand.func (project mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -950,7 +945,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("shows 'No spans matched' when empty in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context, getStdout } = createContext();
 
@@ -970,7 +965,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("project mode does not pass allProjects to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -985,8 +980,8 @@ describe("listCommand.func (project mode)", () => {
       "my-org/my-project",
     );
 
-    const callArgs = listSpansSpy.mock.calls[0];
-    const options = callArgs[2];
+    const callArgs = at(listSpansSpy.mock.calls, 0);
+    const options = must(callArgs[2]);
     expect(options.allProjects).toBeUndefined();
     expect(options.projectId).toBe(4242);
   });

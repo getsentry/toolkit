@@ -104,7 +104,7 @@ type SingleEventViewData = Pick<EventViewFields, "trace"> &
   Partial<Pick<EventViewFields, "attachments">> & {
     event: SentryEvent;
     /** Pre-formatted span tree lines for human output (not serialized) */
-    spanTreeLines?: string[];
+    spanTreeLines?: string[] | undefined;
     /** Resolved organization, including cross-org fallback results */
     org?: string;
   };
@@ -274,7 +274,7 @@ type EventViewInput = {
   /** More event IDs, as typed, from more arguments or lines */
   extraEventIds?: string[];
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  baseUrl?: string;
+  baseUrl?: string | undefined;
   /** Warnings to log, such as for reversed arguments */
   warnings: readonly string[];
 };
@@ -648,7 +648,7 @@ export type ResolvedEventTarget = {
   project: string;
   orgDisplay: string;
   projectDisplay: string;
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
   /** Pre-fetched event from cross-project resolution — avoids a second API call */
   prefetchedEvent?: ResolvedEvent["event"];
 };
@@ -715,7 +715,7 @@ export async function resolveEventTarget(
       break;
 
     default: {
-      const _exhaustiveCheck: never = parsed;
+      parsed satisfies never;
       target = null;
       break;
     }

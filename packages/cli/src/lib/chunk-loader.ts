@@ -112,7 +112,7 @@ export function canLoadChunks(
 ): boolean {
   const vmConstants = constants as Partial<typeof constants> | undefined;
   return (
-    versions.bun === undefined &&
+    versions["bun"] === undefined &&
     Number.parseInt(versions.node, 10) >= MIN_NODE_MAJOR &&
     vmConstants?.USE_MAIN_CONTEXT_DEFAULT_LOADER !== undefined
   );
@@ -147,7 +147,7 @@ function suppressLoaderWarning(): void {
  * command.
  */
 export function reportCodeCacheError(message: string, error: unknown): void {
-  const level = process.env.SENTRY_LOG_LEVEL;
+  const level = process.env["SENTRY_LOG_LEVEL"];
   if (level === "debug" || level === "trace") {
     process.stderr.write(`[code-cache] ${message}: ${String(error)}\n`);
   }

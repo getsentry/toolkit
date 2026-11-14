@@ -662,6 +662,7 @@ function findLastLayout(
       return layout;
     }
   }
+  return undefined;
 }
 
 /**
@@ -883,9 +884,9 @@ export function stripWidgetServerFields(
 export function prepareDashboardForUpdate(dashboard: DashboardDetail): {
   title: string;
   widgets: DashboardWidget[];
-  projects?: number[];
-  environment?: string[];
-  period?: string | null;
+  projects?: number[] | undefined;
+  environment?: string[] | undefined;
+  period?: string | null | undefined;
 } {
   return {
     title: dashboard.title,

@@ -42,11 +42,11 @@ export type ParsedSentryUrl = {
   /** Organization slug from the URL path or subdomain (absent for share URLs without org context) */
   org?: string;
   /** Issue identifier — numeric group ID (e.g., "32886") or short ID (e.g., "CLI-G") */
-  issueId?: string;
+  issueId?: string | undefined;
   /** Event ID from /issues/{id}/events/{eventId}/ paths */
-  eventId?: string;
+  eventId?: string | undefined;
   /** Project slug from /settings/{org}/projects/{project}/ paths */
-  project?: string;
+  project?: string | undefined;
   /** Trace ID from /organizations/{org}/traces/{traceId}/ paths */
   traceId?: string;
   /** Replay ID from replay detail URLs */
@@ -426,9 +426,9 @@ export function applySentryUrlContext(baseUrl: string): void {
   if (isSaaSTrustOrigin(baseUrl)) {
     // Clear any self-hosted URL so API calls fall back to default SaaS routing.
     // env registry requires delete to truly unset; assignment coerces to string in Node.js
-    delete env.SENTRY_HOST;
+    delete env["SENTRY_HOST"];
     // env registry requires delete to truly unset; assignment coerces to string in Node.js
-    delete env.SENTRY_URL;
+    delete env["SENTRY_URL"];
     // Pin the server to SaaS explicitly when other stored accounts could
     // claim the URL (see `shouldPinSaaSForPastedUrl`): a usable SaaS account
     // is used even when the active one is self-hosted (db/auth `getAuthRow`),
@@ -438,7 +438,7 @@ export function applySentryUrlContext(baseUrl: string): void {
     // Checks stored accounts only: reading the active token host would
     // snapshot an env token's host (as SaaS, now that the URL is cleared).
     if (shouldPinSaaSForPastedUrl()) {
-      env.SENTRY_URL = DEFAULT_SENTRY_URL;
+      env["SENTRY_URL"] = DEFAULT_SENTRY_URL;
       // The pin is the user's choice even when `defaults.url` is already
       // SaaS: otherwise it would still read as the persisted default, which
       // org-based selection lets yield to a self-hosted account.
@@ -458,6 +458,6 @@ export function applySentryUrlContext(baseUrl: string): void {
     throw new HostScopeError("URL argument", baseUrl, tokenHost);
   }
 
-  env.SENTRY_HOST = baseUrl;
-  env.SENTRY_URL = baseUrl;
+  env["SENTRY_HOST"] = baseUrl;
+  env["SENTRY_URL"] = baseUrl;
 }

@@ -19,96 +19,96 @@ useTestConfigDir("region-resolve-");
 
 beforeEach(async () => {
   // Clear any SENTRY_HOST/SENTRY_URL override for most tests
-  delete process.env.SENTRY_HOST;
-  delete process.env.SENTRY_URL;
+  delete process.env["SENTRY_HOST"];
+  delete process.env["SENTRY_URL"];
   // Set up auth token for API tests
   setAuthToken("test-token");
 });
 
 afterEach(() => {
-  delete process.env.SENTRY_HOST;
-  delete process.env.SENTRY_URL;
+  delete process.env["SENTRY_HOST"];
+  delete process.env["SENTRY_URL"];
 });
 
 describe("getSentryBaseUrl", () => {
   test("returns sentry.io by default", () => {
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     expect(getSentryBaseUrl()).toBe("https://sentry.io");
   });
 
   test("respects SENTRY_URL env var", () => {
-    process.env.SENTRY_URL = "https://sentry.mycompany.com";
+    process.env["SENTRY_URL"] = "https://sentry.mycompany.com";
     expect(getSentryBaseUrl()).toBe("https://sentry.mycompany.com");
   });
 
   test("respects SENTRY_HOST env var", () => {
-    process.env.SENTRY_HOST = "https://sentry.mycompany.com";
+    process.env["SENTRY_HOST"] = "https://sentry.mycompany.com";
     expect(getSentryBaseUrl()).toBe("https://sentry.mycompany.com");
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", () => {
-    process.env.SENTRY_HOST = "https://host.example.com";
-    process.env.SENTRY_URL = "https://url.example.com";
+    process.env["SENTRY_HOST"] = "https://host.example.com";
+    process.env["SENTRY_URL"] = "https://url.example.com";
     expect(getSentryBaseUrl()).toBe("https://host.example.com");
   });
 });
 
 describe("isMultiRegionEnabled", () => {
   test("returns true for sentry.io (default)", () => {
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_URL"];
     expect(isMultiRegionEnabled()).toBe(true);
   });
 
   test("returns true for *.sentry.io URLs", () => {
-    process.env.SENTRY_URL = "https://us.sentry.io";
+    process.env["SENTRY_URL"] = "https://us.sentry.io";
     expect(isMultiRegionEnabled()).toBe(true);
   });
 
   test("returns true for de.sentry.io", () => {
-    process.env.SENTRY_URL = "https://de.sentry.io";
+    process.env["SENTRY_URL"] = "https://de.sentry.io";
     expect(isMultiRegionEnabled()).toBe(true);
   });
 
   test("returns false for self-hosted URLs", () => {
-    process.env.SENTRY_URL = "https://sentry.mycompany.com";
+    process.env["SENTRY_URL"] = "https://sentry.mycompany.com";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("returns false for localhost", () => {
-    process.env.SENTRY_URL = "http://localhost:9000";
+    process.env["SENTRY_URL"] = "http://localhost:9000";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   // Security edge cases - ensure proper URL parsing
   test("returns false for URL with sentry.io in path (not hostname)", () => {
-    process.env.SENTRY_URL = "https://evil.com/sentry.io";
+    process.env["SENTRY_URL"] = "https://evil.com/sentry.io";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("returns false for lookalike domain sentry.io.evil.com", () => {
-    process.env.SENTRY_URL = "https://sentry.io.evil.com";
+    process.env["SENTRY_URL"] = "https://sentry.io.evil.com";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("returns false for domain with sentry.io prefix", () => {
-    process.env.SENTRY_URL = "https://sentry.io-fake.com";
+    process.env["SENTRY_URL"] = "https://sentry.io-fake.com";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("returns false for invalid URL", () => {
-    process.env.SENTRY_URL = "not-a-valid-url";
+    process.env["SENTRY_URL"] = "not-a-valid-url";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("respects SENTRY_HOST for self-hosted", () => {
-    process.env.SENTRY_HOST = "https://sentry.mycompany.com";
+    process.env["SENTRY_HOST"] = "https://sentry.mycompany.com";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", () => {
-    process.env.SENTRY_HOST = "https://sentry.mycompany.com";
-    process.env.SENTRY_URL = "https://us.sentry.io";
+    process.env["SENTRY_HOST"] = "https://sentry.mycompany.com";
+    process.env["SENTRY_URL"] = "https://us.sentry.io";
     expect(isMultiRegionEnabled()).toBe(false);
   });
 });
@@ -295,7 +295,10 @@ describe("resolveOrgRegion", () => {
     // The test's beforeEach stored an OAuth row with host = SaaS (since
     // SENTRY_URL was unset at store time). Re-scope the stored token to
     // the self-hosted host so the fetch-layer guard admits the request.
-    process.env.SENTRY_URL = "https://sentry.mycompany.com";
+    // The test's beforeEach stored an OAuth row with host = SaaS (since
+    // SENTRY_URL was unset at store time). Re-scope the stored token to
+    // the self-hosted host so the fetch-layer guard admits the request.
+    process.env["SENTRY_URL"] = "https://sentry.mycompany.com";
     setAuthToken("test-token", undefined, undefined, {
       host: "https://sentry.mycompany.com",
     });

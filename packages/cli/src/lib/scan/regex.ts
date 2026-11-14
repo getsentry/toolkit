@@ -167,7 +167,7 @@ export type CompilePatternOptions = {
    * When false, forces the `i` flag regardless of inline flags.
    * Default: true (case-sensitive, matching `rg`'s default).
    */
-  caseSensitive?: boolean;
+  caseSensitive?: boolean | undefined;
   /** Force the `m` flag. Default: false. */
   multiline?: boolean;
 };

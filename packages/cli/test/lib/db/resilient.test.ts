@@ -25,7 +25,7 @@ describe("getDatabase with telemetry off", () => {
   // getDatabase() used to return the raw connection, so schema errors threw
   // instead of being repaired.
   beforeEach(() => {
-    expect(process.env.SENTRY_CLI_NO_TELEMETRY).toBe("1");
+    expect(process.env["SENTRY_CLI_NO_TELEMETRY"]).toBe("1");
   });
 
   test("repairs a missing table and retries the query", () => {
@@ -117,8 +117,8 @@ describe("createResilientDatabase: readonly database", () => {
 
     // values() is bun:sqlite-specific; skip on Node.js
     const stmt = wrappedDb.query("INSERT INTO test (id, name) VALUES (?, ?)");
-    if (typeof stmt.values === "function") {
-      const valuesResult = stmt.values(3, "Charlie");
+    if (typeof stmt["values"] === "function") {
+      const valuesResult = stmt["values"](3, "Charlie");
       expect(valuesResult).toEqual([]);
     }
 

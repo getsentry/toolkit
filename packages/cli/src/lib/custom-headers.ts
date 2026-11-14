@@ -263,7 +263,7 @@ function isSelfHosted(): boolean {
  * Returns undefined when no headers are configured.
  */
 function resolveRawHeaders(): string | undefined {
-  const envValue = getEnv().SENTRY_CUSTOM_HEADERS;
+  const envValue = getEnv()["SENTRY_CUSTOM_HEADERS"];
   if (envValue?.trim()) {
     return envValue.trim();
   }

@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import { snakeCommand } from "../../../src/commands/games/snake.js";
 import { withEnv } from "../../../src/lib/env.js";
 import { ValidationError } from "../../../src/lib/errors.js";
+import { loadCommand } from "../../helpers.js";
 
 function createContext(isTTY: boolean) {
   return {
@@ -16,7 +17,7 @@ function createContext(isTTY: boolean) {
 }
 
 async function run(isTTY: boolean): Promise<void> {
-  const func = await snakeCommand.loader();
+  const func = await loadCommand(snakeCommand);
   await func.call(createContext(isTTY), {});
 }
 

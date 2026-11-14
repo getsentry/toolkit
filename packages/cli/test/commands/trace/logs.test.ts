@@ -16,9 +16,10 @@ import {
   beforeEach,
   describe,
   expect,
-  type mock,
+  type Mock,
   test,
   vi,
+  type MockInstance,
 } from "vitest";
 import { ArgumentParseError } from "@stricli/core";
 import { logsCommand } from "../../../src/commands/trace/logs.js";
@@ -26,12 +27,8 @@ import { logsCommand } from "../../../src/commands/trace/logs.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -40,12 +37,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -55,12 +48,8 @@ import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/polling.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -69,18 +58,16 @@ import * as polling from "../../../src/lib/polling.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TraceLog } from "../../../src/types/sentry.js";
+import { loadCommand, at } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
@@ -121,7 +108,7 @@ const sampleLogs: TraceLog[] = [
 ];
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -134,9 +121,7 @@ function createMockContext() {
 /**
  * Collect all output written to a mock write function.
  */
-function collectMockOutput(
-  writeMock: ReturnType<typeof mock<() => boolean>>,
-): string {
+function collectMockOutput(writeMock: Mock<Writer["write"]>): string {
   return writeMock.mock.calls
     .map((c) => {
       const arg = c[0];
@@ -152,11 +137,13 @@ function collectMockOutput(
 }
 
 describe("logsCommand.func", () => {
-  let listTraceLogsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let listTraceLogsSpy: MockInstance<(typeof apiClient)["listTraceLogs"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   beforeEach(() => {
     listTraceLogsSpy = vi.spyOn(apiClient, "listTraceLogs");
@@ -191,7 +178,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -220,7 +207,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -245,7 +232,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -268,7 +255,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -290,7 +277,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -314,7 +301,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -333,11 +320,11 @@ describe("logsCommand.func", () => {
     });
 
     test("uses singular 'log' for exactly one result", async () => {
-      listTraceLogsSpy.mockResolvedValue([sampleLogs[0]]);
+      listTraceLogsSpy.mockResolvedValue([at(sampleLogs, 0)]);
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -360,7 +347,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         // limit equals number of returned logs → hasMore = true
@@ -383,7 +370,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -407,7 +394,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -429,7 +416,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -452,7 +439,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue(null);
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
 
       await expect(
         func.call(
@@ -474,7 +461,7 @@ describe("logsCommand.func", () => {
       ["an invalid trace ID", "not-a-trace-id", ValidationError],
     ])("%s fails to parse, before any lookup", async (_, arg, cause) => {
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
 
       const error = await func
         .call(
@@ -502,7 +489,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -529,7 +516,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -556,7 +543,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -583,7 +570,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {
@@ -608,7 +595,7 @@ describe("logsCommand.func", () => {
       resolveOrgSpy.mockResolvedValue({ org: ORG });
 
       const { context } = createMockContext();
-      const func = await logsCommand.loader();
+      const func = await loadCommand(logsCommand);
       await func.call(
         context,
         {

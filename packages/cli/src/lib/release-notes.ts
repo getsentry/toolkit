@@ -423,7 +423,7 @@ function mergeSectionsByCategory(releases: GitHubRelease[]): ChangeSection[] {
 /** Options for source-aware changelog summary construction. */
 type ChangelogBuildOptions = {
   /** Maximum total list items across all sections, or unlimited when omitted. */
-  maxItems?: number;
+  maxItems?: number | undefined;
   /** Selected release source whose tag prefix filters the release list. */
   source?: UpgradeSource;
 };
@@ -741,11 +741,11 @@ export type FetchChangelogOptions = {
   /** Target version */
   toVersion: string;
   /** Maximum list items to include */
-  maxItems?: number;
+  maxItems?: number | undefined;
   /** Pre-fetched releases to avoid redundant API call (stable channel only) */
-  prefetchedReleases?: NormalizedGitHubReleases;
+  prefetchedReleases?: NormalizedGitHubReleases | undefined;
   /** Release source selected during version discovery; defaults to the primary source */
-  source?: UpgradeSource;
+  source?: UpgradeSource | undefined;
 };
 
 /**

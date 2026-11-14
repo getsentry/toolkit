@@ -233,12 +233,12 @@ describe("running `mcp`", () => {
     vi.spyOn(process, "cwd").mockImplementation(() => {
       throw Object.assign(new Error("uv_cwd"), { code: "ENOENT" });
     });
-    const savedPwd = process.env.PWD;
-    process.env.PWD = "/deleted/worktree";
+    const savedPwd = process.env["PWD"];
+    process.env["PWD"] = "/deleted/worktree";
     try {
       await runCli(["mcp", "--host=sentry.example.com"], SENTRY_CLI);
     } finally {
-      process.env.PWD = savedPwd;
+      process.env["PWD"] = savedPwd;
       vi.mocked(process.cwd).mockRestore();
     }
 

@@ -30,7 +30,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.period).toEqual({ type: "relative", period: "7d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "7d" });
   });
 
   test("calls parse on string default when flag value is undefined", () => {
@@ -42,7 +42,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({ period: undefined }, flagDefs);
-    expect(result.period).toEqual({ type: "relative", period: "90d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "90d" });
   });
 
   test("preserves caller-provided value over default", () => {
@@ -55,7 +55,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
     };
     const callerValue = { type: "relative", period: "24h" };
     const result = applyFlagDefaults({ period: callerValue }, flagDefs);
-    expect(result.period).toBe(callerValue);
+    expect(result["period"]).toBe(callerValue);
   });
 
   test("handles parse function that returns a number", () => {
@@ -67,7 +67,7 @@ describe("applyFlagDefaults: parsed flags with defaults", () => {
       },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.limit).toBe(25);
+    expect(result["limit"]).toBe(25);
   });
 
   test("re-throws if parse function rejects its own default", () => {
@@ -95,8 +95,8 @@ describe("applyFlagDefaults: boolean flags", () => {
       fresh: { kind: "boolean", default: false },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.json).toBe(false);
-    expect(result.fresh).toBe(false);
+    expect(result["json"]).toBe(false);
+    expect(result["fresh"]).toBe(false);
   });
 
   test("preserves caller-provided boolean over default", () => {
@@ -104,7 +104,7 @@ describe("applyFlagDefaults: boolean flags", () => {
       fresh: { kind: "boolean", default: false },
     };
     const result = applyFlagDefaults({ fresh: true }, flagDefs);
-    expect(result.fresh).toBe(true);
+    expect(result["fresh"]).toBe(true);
   });
 });
 
@@ -130,15 +130,15 @@ describe("applyFlagDefaults: variadic flags", () => {
       { field: "title", environment: "prod", dataset: "spans" },
       flagDefs,
     );
-    expect(result.field).toEqual(["title"]);
-    expect(result.environment).toEqual(["prod"]);
-    expect(result.dataset).toBe("spans");
+    expect(result["field"]).toEqual(["title"]);
+    expect(result["environment"]).toEqual(["prod"]);
+    expect(result["dataset"]).toBe("spans");
   });
 
   test("keeps caller arrays unchanged", () => {
     const fields = ["title", "count()"];
     const result = applyFlagDefaults({ field: fields }, flagDefs);
-    expect(result.field).toBe(fields);
+    expect(result["field"]).toBe(fields);
   });
 });
 
@@ -152,7 +152,7 @@ describe("applyFlagDefaults: enum flags", () => {
       sort: { kind: "enum", default: "date" },
     };
     const result = applyFlagDefaults({}, flagDefs);
-    expect(result.sort).toBe("date");
+    expect(result["sort"]).toBe("date");
   });
 });
 
@@ -182,10 +182,10 @@ describe("applyFlagDefaults: undefined stripping", () => {
       flagDefs,
     );
     expect("a" in result).toBe(false);
-    expect(result.b).toBeNull();
-    expect(result.c).toBe(0);
-    expect(result.d).toBe("");
-    expect(result.e).toBe(false);
+    expect(result["b"]).toBeNull();
+    expect(result["c"]).toBe(0);
+    expect(result["d"]).toBe("");
+    expect(result["e"]).toBe(false);
   });
 });
 
@@ -212,13 +212,13 @@ describe("applyFlagDefaults: combined scenario", () => {
     };
     const result = applyFlagDefaults({ limit: 50, query: undefined }, flagDefs);
     // period: default applied via parse
-    expect(result.period).toEqual({ type: "relative", period: "7d" });
+    expect(result["period"]).toEqual({ type: "relative", period: "7d" });
     // limit: caller value preserved
-    expect(result.limit).toBe(50);
+    expect(result["limit"]).toBe(50);
     // sort: default applied (raw)
-    expect(result.sort).toBe("date");
+    expect(result["sort"]).toBe("date");
     // fresh: default applied (raw)
-    expect(result.fresh).toBe(false);
+    expect(result["fresh"]).toBe(false);
     // query: undefined stripped, no default → absent
     expect("query" in result).toBe(false);
   });
@@ -228,6 +228,14 @@ describe("applyFlagDefaults: combined scenario", () => {
 // parseOutput — binary vs textual capture
 // ---------------------------------------------------------------------------
 
+/** Narrow parsed output to bytes, failing clearly when it is not binary. */
+function asBytes(value: unknown): Uint8Array {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`Expected Uint8Array output, got ${typeof value}`);
+  }
+  return value;
+}
+
 describe("parseOutput: binary output", () => {
   test("returns raw bytes when a chunk is a Uint8Array (no comma-decimal coercion)", () => {
     // PNG signature — a byte-for-byte round-trip is required so SDK/run()
@@ -235,23 +243,20 @@ describe("parseOutput: binary output", () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
-    const result = parseOutput<Uint8Array>(undefined, [png]);
+    const result = parseOutput(undefined, [png]);
     expect(result).toBeInstanceOf(Uint8Array);
-    expect([...result]).toEqual([
+    expect([...asBytes(result)]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]);
   });
 
   test("concatenates mixed string and binary chunks as bytes", () => {
-    const result = parseOutput<Uint8Array>(undefined, [
-      "AB",
-      new Uint8Array([0x00, 0xff]),
-    ]);
-    expect([...result]).toEqual([0x41, 0x42, 0x00, 0xff]);
+    const result = parseOutput(undefined, ["AB", new Uint8Array([0x00, 0xff])]);
+    expect([...asBytes(result)]).toEqual([0x41, 0x42, 0x00, 0xff]);
   });
 
   test("still JSON-parses textual chunks", () => {
-    const result = parseOutput<{ ok: boolean }>(undefined, ['{"ok":true}']);
+    const result = parseOutput(undefined, ['{"ok":true}']);
     expect(result).toEqual({ ok: true });
   });
 

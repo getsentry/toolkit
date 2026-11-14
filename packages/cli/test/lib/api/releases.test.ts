@@ -68,7 +68,7 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { SentryDeploy, SentryRelease } from "../../../src/types/index.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("api-releases-");
 
@@ -420,8 +420,8 @@ describe("listReleaseDeploys", () => {
     const deploys = await listReleaseDeploys("test-org", "1.0.0");
 
     expect(deploys).toHaveLength(1);
-    expect(deploys[0].environment).toBe("production");
-    expect(deploys[0].id).toBe("42");
+    expect(at(deploys, 0).environment).toBe("production");
+    expect(at(deploys, 0).id).toBe("42");
   });
 });
 
@@ -1430,7 +1430,7 @@ describe("setCommitsLocal", () => {
         commits: Array<{ id: string; message: string }>;
       };
       expect(body.commits).toHaveLength(1);
-      expect(body.commits[0].id).toBe("abc123");
+      expect(at(body.commits, 0).id).toBe("abc123");
       return new Response(JSON.stringify(withCommits), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -1472,7 +1472,7 @@ describe("listReleasesPaginated", () => {
     const result = await listReleasesPaginated("test-org", { perPage: 25 });
 
     expect(result.data).toHaveLength(1);
-    expect(result.data[0].version).toBe("1.0.0");
+    expect(at(result.data, 0).version).toBe("1.0.0");
     expect(result.nextCursor).toBe("abc:0:0");
   });
 

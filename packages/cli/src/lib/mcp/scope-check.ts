@@ -80,7 +80,7 @@ export async function assertMcpScopeExists(
   });
   const { organization, project } = await lookupConstraints(
     api,
-    { organizationSlug, projectSlug },
+    { organizationSlug, projectSlug: projectSlug ?? null },
     {
       projectHost: (regionUrl) =>
         allowedRegionHost(regionUrl, config.sentryHost),

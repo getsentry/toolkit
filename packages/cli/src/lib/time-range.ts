@@ -27,9 +27,9 @@ export type RelativeTimeRange = {
 export type AbsoluteTimeRange = {
   readonly type: "absolute";
   /** ISO-8601 datetime string, or undefined for open-ended start */
-  readonly start?: string;
+  readonly start?: string | undefined;
   /** ISO-8601 datetime string, or undefined for open-ended end */
-  readonly end?: string;
+  readonly end?: string | undefined;
 };
 
 /** Discriminated union for all period flag values */

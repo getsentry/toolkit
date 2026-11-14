@@ -33,7 +33,7 @@ export function formatSavedTransformationLines(
 export function formatDashboardSavedTransformations(
   widgets: readonly {
     title: string;
-    queries?: readonly DashboardWidgetQuery[];
+    queries?: readonly DashboardWidgetQuery[] | undefined;
   }[],
 ): string {
   const sections = widgets.flatMap((widget) => {

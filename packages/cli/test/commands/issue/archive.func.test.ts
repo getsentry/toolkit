@@ -5,7 +5,16 @@
  * construction, validation errors, and human output.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { SentryContext } from "../../../src/context.js";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   archiveCommand,
   parseUntilSpec,
@@ -16,12 +25,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -30,18 +35,16 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand, type TestCommandFunction } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -62,11 +65,11 @@ function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -224,14 +227,14 @@ describe("parseUntilSpec", () => {
 // ── archiveCommand.func() integration tests ────────────────────────
 
 describe("archiveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
-  let func: Awaited<ReturnType<typeof archiveCommand.loader>>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
     updateSpy = vi.spyOn(apiClient, "updateIssueStatus");
-    func = await archiveCommand.loader();
+    func = await loadCommand(archiveCommand);
   });
 
   afterEach(() => {

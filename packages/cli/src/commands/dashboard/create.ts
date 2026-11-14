@@ -43,7 +43,7 @@ type CreateInput = {
   readonly title: string;
   readonly target: ParsedOrgProject;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
 };
 
 /**
@@ -82,7 +82,7 @@ export type DashboardCreateArguments = BoundArguments<
 
 /** Enrich targets that lack a projectId by calling the project API */
 async function enrichTargetProjectIds(
-  targets: { org: string; project: string; projectId?: number }[],
+  targets: { org: string; project: string; projectId?: number | undefined }[],
 ): Promise<number[]> {
   const enriched = await Promise.all(
     targets.map(async (t) => {

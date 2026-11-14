@@ -13,7 +13,7 @@ function command() {
     docs: { brief: "Example command" },
     auth: false,
     async *func() {
-      yield;
+      // no-op
     },
   });
 }

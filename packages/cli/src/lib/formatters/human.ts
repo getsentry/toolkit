@@ -265,9 +265,9 @@ function abbreviateCount(raw: string): string {
  */
 export type FormatShortIdOptions = {
   /** Project slug to determine the prefix for suffix highlighting */
-  projectSlug?: string;
+  projectSlug?: string | undefined;
   /** Project alias (e.g., "e", "w", "o1:d") for multi-project display */
-  projectAlias?: string;
+  projectAlias?: string | undefined;
   /** Whether in multi-project mode (highlights alias chars in short ID) */
   isMultiProject?: boolean;
 };
@@ -1172,15 +1172,15 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     let message = breadcrumb.message ?? "";
     if (!message && breadcrumb.data) {
       const data = breadcrumb.data;
-      if (data.url && data.method) {
-        const status = data.status_code
-          ? ` → ${stringifyUnknown(data.status_code)}`
+      if (data["url"] && data["method"]) {
+        const status = data["status_code"]
+          ? ` → ${stringifyUnknown(data["status_code"])}`
           : "";
-        message = `${stringifyUnknown(data.method)} ${stringifyUnknown(data.url)}${status}`;
-      } else if (data.from && data.to) {
-        message = `${stringifyUnknown(data.from)} → ${stringifyUnknown(data.to)}`;
-      } else if (data.arguments && Array.isArray(data.arguments)) {
-        message = String(data.arguments[0] || "").slice(0, 60);
+        message = `${stringifyUnknown(data["method"])} ${stringifyUnknown(data["url"])}${status}`;
+      } else if (data["from"] && data["to"]) {
+        message = `${stringifyUnknown(data["from"])} → ${stringifyUnknown(data["to"])}`;
+      } else if (data["arguments"] && Array.isArray(data["arguments"])) {
+        message = String(data["arguments"][0] || "").slice(0, 60);
       }
     }
 
@@ -1468,14 +1468,14 @@ function buildUserMarkdown(event: SentryEvent): string {
   if (user.geo) {
     const geo = user.geo;
     const parts: string[] = [];
-    if (geo.city) {
-      parts.push(geo.city);
+    if (geo["city"]) {
+      parts.push(geo["city"]);
     }
-    if (geo.region && geo.region !== geo.city) {
-      parts.push(geo.region);
+    if (geo["region"] && geo["region"] !== geo["city"]) {
+      parts.push(geo["region"]);
     }
-    if (geo.country_code) {
-      parts.push(`(${geo.country_code})`);
+    if (geo["country_code"]) {
+      parts.push(`(${geo["country_code"]})`);
     }
     if (parts.length > 0) {
       kvRows.push(["Location", parts.join(", ")]);
@@ -1665,7 +1665,7 @@ export function formatOrgDetails(org: SentryOrganization): string {
   kvRows.push(["2FA", org.require2FA ? "Required" : "Not required"]);
   kvRows.push(["Early Adopter", org.isEarlyAdopter ? "Yes" : "No"]);
   // orgRole is returned by the detail API but not yet typed in the SDK
-  const orgRole = (org as Record<string, unknown>).orgRole as
+  const orgRole = (org as Record<string, unknown>)["orgRole"] as
     | string
     | undefined;
   if (orgRole) {
@@ -1747,13 +1747,13 @@ export function formatProjectDetails(
  */
 type UserIdentityInput = {
   /** User ID (from token response) */
-  id?: string;
+  id?: string | undefined;
   /** User ID (from stored UserInfo) */
   userId?: string;
-  email?: string;
-  username?: string;
+  email?: string | undefined;
+  username?: string | undefined;
   /** Display name (different from username) */
-  name?: string;
+  name?: string | undefined;
 };
 
 /**
@@ -1784,9 +1784,9 @@ export function formatUserIdentity(user: UserIdentityInput): string {
 /** Data shape yielded by `whoami` for `sntrys_` org auth tokens. */
 export type OrgTokenIdentity = {
   type: "org-auth-token";
-  organization?: string;
+  organization?: string | undefined;
   url: string;
-  regionUrl?: string;
+  regionUrl?: string | undefined;
 };
 
 /**
@@ -2267,7 +2267,7 @@ export type ProjectDeleteResult = {
   /** Sentry web URL for the project */
   url: string;
   /** When true, nothing was actually deleted — output uses tentative wording */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
 };
 
 /**
@@ -2570,7 +2570,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     }
     default: {
       // Exhaustive check — all action types should be handled above
-      const _: never = data.action;
+      data.action satisfies never;
       lines.push("Done");
     }
   }

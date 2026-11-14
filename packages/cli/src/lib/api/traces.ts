@@ -41,13 +41,15 @@ import { isAllDigits } from "../utils.js";
 
 import {
   getOrgSdkConfig,
-  type PaginatedResponse,
   paginate,
+  type PaginatedResponse,
+  paginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
   unwrapValidatedResult,
   validateResponse,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.traces");
 
@@ -115,7 +117,7 @@ export const TRACE_LOOKUP_FALLBACK_STATS_PERIOD = "90d";
 /** Options for {@link getDetailedTrace}. */
 type GetDetailedTraceOptions = {
   /** Extra attribute names to include on each span */
-  additionalAttributes?: string[];
+  additionalAttributes?: string[] | undefined;
   /**
    * Unix timestamp (seconds) of a known event in this trace.
    * The backend then searches ±1.5 days around it and does not widen.
@@ -134,12 +136,12 @@ async function requestTrace(
   const result = await getOrganizationTrace({
     ...getSdkClientConfig(regionUrl),
     path: { organization_id_or_slug: orgSlug, trace_id: traceId },
-    query: {
+    query: omitUndefined({
       timestamp:
         params.timestamp === undefined ? undefined : String(params.timestamp),
       statsPeriod: params.statsPeriod,
       additional_attributes: params.additionalAttributes,
-    },
+    }),
   });
   const data = unwrapResult<TraceSpan[]>(result, "Failed to get trace");
   return data.map(normalizeTraceSpan);
@@ -289,36 +291,36 @@ export type ListTraceItemAttributesOptions = {
   /** Dataset to list attribute keys for */
   dataset: TraceItemAttributeDataset;
   /** Project IDs or slugs to scope to (omit for all accessible projects) */
-  project?: Array<number | string>;
+  project?: Array<number | string> | undefined;
   /** Environment names to scope to */
-  environment?: string[];
+  environment?: string[] | undefined;
   /** Only return attributes of these value types (filtered server-side) */
-  attributeTypes?: TraceItemAttributeValueType[];
+  attributeTypes?: TraceItemAttributeValueType[] | undefined;
   /** Only return attribute names containing this substring (case-sensitive) */
-  substringMatch?: string;
+  substringMatch?: string | undefined;
   /**
    * Sentry search query. The result is limited to keys that co-occur
    * with all of those keys. `has:<key>` filters express this exactly.
    */
-  query?: string;
+  query?: string | undefined;
   /** Relative time window, e.g. "24h" or "14d" (overrides start/end) */
-  statsPeriod?: string;
+  statsPeriod?: string | undefined;
   /** Absolute window start (ISO-8601) */
-  start?: string;
+  start?: string | undefined;
   /** Absolute window end (ISO-8601) */
-  end?: string;
+  end?: string | undefined;
   /**
    * Page size, sent as `per_page` Applied per attribute type, so total
    * results can exceed this value
    */
-  perPage?: number;
+  perPage?: number | undefined;
   /**
    * Include each attribute's `context` metadata (description, examples,
    * deprecation)
    */
-  context?: boolean;
+  context?: boolean | undefined;
   /** Pagination cursor from a previous page's `nextCursor` */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Aborts the request, including its retries */
   signal?: AbortSignal;
 };
@@ -343,27 +345,31 @@ export async function listTraceItemAttributes(
   const config = getOrgSdkConfig();
   // `per_page` is accepted by the endpoint's paginator but missing from the
   // SDK's generated query type, so widen the type rather than cast the call.
-  const query: TraceItemAttributesQuery & { per_page?: number } = {
-    dataset: options.dataset,
-    project: options.project?.length ? options.project : undefined,
-    environment: options.environment?.length ? options.environment : undefined,
-    attributeType: options.attributeTypes?.length
-      ? options.attributeTypes
-      : undefined,
-    substringMatch: options.substringMatch || undefined,
-    query: options.query || undefined,
-    statsPeriod: options.statsPeriod,
-    start: options.start,
-    end: options.end,
-    expand: options.context ? ["context"] : undefined,
-    per_page: options.perPage,
-    cursor: options.cursor,
-  };
+  const query: TraceItemAttributesQuery & { per_page?: number } = omitUndefined(
+    {
+      dataset: options.dataset,
+      project: options.project?.length ? options.project : undefined,
+      environment: options.environment?.length
+        ? options.environment
+        : undefined,
+      attributeType: options.attributeTypes?.length
+        ? options.attributeTypes
+        : undefined,
+      substringMatch: options.substringMatch || undefined,
+      query: options.query || undefined,
+      statsPeriod: options.statsPeriod,
+      start: options.start,
+      end: options.end,
+      expand: options.context ? ["context" as const] : undefined,
+      per_page: options.perPage,
+      cursor: options.cursor,
+    },
+  );
   const result = await listOrganizationTraceItemAttributes({
     ...config,
     path: { organization_id_or_slug: orgSlug },
     query,
-    signal: options.signal,
+    ...(options.signal && { signal: options.signal }),
   });
   return unwrapPaginatedResult<TraceItemAttributeDefinition[]>(
     result,
@@ -431,7 +437,7 @@ export type FetchMultiSpanDetailsOptions = {
   /** The parent trace ID (required by the API) */
   traceId: string;
   /** Callback fired after each successful fetch for progress reporting */
-  onProgress?: (done: number, total: number) => void;
+  onProgress?: ((done: number, total: number) => void) | undefined;
 };
 
 /**
@@ -446,7 +452,7 @@ export type FetchMultiSpanDetailsOptions = {
  * @returns Map of span_id to detail
  */
 export async function fetchMultiSpanDetails(
-  spans: Array<{ span_id: string; project_slug?: string }>,
+  spans: Array<{ span_id: string; project_slug?: string | undefined }>,
   options: FetchMultiSpanDetailsOptions,
 ): Promise<Map<string, TraceItemDetail>> {
   const { org, fallbackProject, traceId, onProgress } = options;
@@ -538,7 +544,7 @@ function resolveNumericProjectId(
 
 type ListTransactionsOptions = {
   /** Search query using Sentry query syntax */
-  query?: string;
+  query?: string | undefined;
   /** Maximum number of transactions to return */
   limit?: number;
   /** Sort order: "date" (newest first) or "duration" (slowest first) */
@@ -546,7 +552,7 @@ type ListTransactionsOptions = {
   /** Time period for transactions (e.g., "7d", "24h") */
   statsPeriod?: string;
   /** Pagination cursor to resume from a previous page */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -556,7 +562,7 @@ type ListTransactionsOptions = {
    * of `project:<slug>` search syntax, avoiding "not actively selected" errors
    * (same class of bug as #1317 / #312).
    */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 /**
@@ -587,23 +593,25 @@ async function fetchTransactionsPage(
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
+      ...omitUndefined({
+        project:
+          numericProjectId === undefined
+            ? undefined
+            : [String(numericProjectId)],
+        statsPeriod:
+          options.start || options.end
+            ? undefined
+            : (options.statsPeriod ?? "7d"),
+        start: options.start,
+        end: options.end,
+        cursor: options.cursor,
+      }),
       dataset: "spans",
       field: TRANSACTION_FIELDS,
-      project:
-        numericProjectId === undefined ? undefined : [String(numericProjectId)],
-      // Convert empty string to undefined so the param is omitted entirely;
-      // sending `query=` causes the Sentry API to behave differently than
-      // omitting the parameter.
-      query: fullQuery || undefined,
+      // Never empty: it always starts with `is_transaction:true`.
+      query: fullQuery,
       per_page: perPage,
-      statsPeriod:
-        options.start || options.end
-          ? undefined
-          : (options.statsPeriod ?? "7d"),
-      start: options.start,
-      end: options.end,
       sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-      cursor: options.cursor,
     },
   });
   const page = unwrapPaginatedResult<unknown>(
@@ -616,7 +624,7 @@ async function fetchTransactionsPage(
     `/organizations/${orgSlug}/events/`,
     page.response?.status ?? 0,
   );
-  return { data: response.data, nextCursor: page.nextCursor };
+  return paginatedResponse(response.data, page.nextCursor);
 }
 
 /**
@@ -671,7 +679,7 @@ export type SpanSortValue = "date" | "duration";
 
 type ListSpansOptions = {
   /** Search query using Sentry query syntax */
-  query?: string;
+  query?: string | undefined;
   /** Maximum number of spans to return */
   limit?: number;
   /** Sort order */
@@ -679,9 +687,9 @@ type ListSpansOptions = {
   /** Time period for spans (e.g., "7d", "24h") */
   statsPeriod?: string;
   /** Pagination cursor to resume from a previous page */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Additional field names to request from the API beyond SPAN_FIELDS */
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -693,7 +701,7 @@ type ListSpansOptions = {
    * `project` query param instead of `project:<slug>` search syntax, avoiding
    * "not actively selected" errors (same class of bug as #1317 / #312).
    */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 /**
@@ -734,19 +742,23 @@ async function fetchSpansPage(
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
     query: {
+      ...omitUndefined({
+        project: projectParam === undefined ? undefined : [projectParam],
+        // Omit an empty query: Sentry treats `query=` differently from no
+        // query parameter.
+        query: fullQuery || undefined,
+        statsPeriod:
+          options.start || options.end
+            ? undefined
+            : (options.statsPeriod ?? "7d"),
+        start: options.start,
+        end: options.end,
+        cursor: options.cursor,
+      }),
       dataset: "spans",
       field: fields,
-      project: projectParam === undefined ? undefined : [projectParam],
-      query: fullQuery || undefined,
       per_page: perPage,
-      statsPeriod:
-        options.start || options.end
-          ? undefined
-          : (options.statsPeriod ?? "7d"),
-      start: options.start,
-      end: options.end,
       sort: options.sort === "duration" ? "-span.duration" : "-timestamp",
-      cursor: options.cursor,
     },
   });
   const page = unwrapPaginatedResult<unknown>(result, "Failed to list spans");
@@ -756,7 +768,7 @@ async function fetchSpansPage(
     `/organizations/${orgSlug}/events/`,
     page.response?.status ?? 0,
   );
-  return { data: response.data, nextCursor: page.nextCursor };
+  return paginatedResponse(response.data, page.nextCursor);
 }
 
 /**

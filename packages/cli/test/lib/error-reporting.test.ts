@@ -11,7 +11,15 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
 import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
   classifySilenced,
@@ -35,6 +43,7 @@ import {
   SeerError,
   ValidationError,
 } from "../../src/lib/errors.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // extractResourceKind
@@ -497,20 +506,20 @@ describe("classifySilenced", () => {
  * `SENTRY_HOST` is cleared for the duration since it takes precedence.
  */
 function withSentryUrl(url: string, fn: () => void): void {
-  const savedUrl = process.env.SENTRY_URL;
-  const savedHost = process.env.SENTRY_HOST;
-  process.env.SENTRY_URL = url;
-  delete process.env.SENTRY_HOST;
+  const savedUrl = process.env["SENTRY_URL"];
+  const savedHost = process.env["SENTRY_HOST"];
+  process.env["SENTRY_URL"] = url;
+  delete process.env["SENTRY_HOST"];
   try {
     fn();
   } finally {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     }
   }
 }
@@ -561,7 +570,7 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind from exception value", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0].value =
+    at(event.exception!.values!, 0).value =
       "Cannot read properties of undefined (reading 'replaceAll')";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Cannot read properties of");
@@ -569,17 +578,17 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind for fetch failed TypeError", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0].value = "fetch failed";
+    at(event.exception!.values!, 0).value = "fetch failed";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("fetch failed");
   });
 
   test("sets cli_error.kind for Error with variable project count", () => {
     const event1 = makeEvent("Error");
-    event1.exception!.values![0].value =
+    at(event1.exception!.values!, 0).value =
       "Failed to fetch issues from 3 project(s): Failed to list issues: 400 Bad Request";
     const event2 = makeEvent("Error");
-    event2.exception!.values![0].value =
+    at(event2.exception!.values!, 0).value =
       "Failed to fetch issues from 1 project(s): Failed to list issues: 400 Bad Request";
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
@@ -602,7 +611,7 @@ describe("enrichEventWithGroupingTags", () => {
       "cli_error.class": "ContextError",
       "cli_error.kind": "Organization",
     });
-    event.exception!.values![0].value = "some different message";
+    at(event.exception!.values!, 0).value = "some different message";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Organization");
   });
@@ -613,46 +622,33 @@ describe("enrichEventWithGroupingTags", () => {
 // ---------------------------------------------------------------------------
 
 describe("reportCliError integration", () => {
-  let captureSpy: ReturnType<typeof spyOn>;
-  let metricSpy: ReturnType<typeof spyOn>;
-  let withScopeSpy: ReturnType<typeof spyOn>;
+  let captureSpy: MockInstance<(typeof Sentry)["captureException"]>;
+  let metricSpy: MockInstance<(typeof Sentry.metrics)["distribution"]>;
 
   beforeEach(() => {
     captureSpy = vi.spyOn(Sentry, "captureException");
     metricSpy = vi.spyOn(Sentry.metrics, "distribution");
-    withScopeSpy = vi.spyOn(Sentry, "withScope");
   });
 
   afterEach(() => {
     captureSpy.mockRestore();
     metricSpy.mockRestore();
-    withScopeSpy.mockRestore();
   });
 
   /**
-   * Capture the tags that `reportCliError` would set on the scope.
-   * Intercepts `Sentry.withScope` and runs the callback with a fake scope
-   * that records `setTag`/`setContext` calls.
+   * Capture the tags and contexts that `reportCliError` sets on its scope.
+   * `captureException` runs inside that scope, so read the current scope's
+   * data when it is called.
    */
   function capturedScopeTags(error: unknown): {
-    tags: Record<string, string>;
+    tags: Record<string, unknown>;
     contexts: Record<string, unknown>;
   } {
-    const tags: Record<string, string> = {};
-    const contexts: Record<string, unknown> = {};
-    const fakeScope = {
-      setTag(k: string, v: string) {
-        tags[k] = v;
-      },
-      setContext(k: string, v: unknown) {
-        contexts[k] = v;
-      },
-      setFingerprint() {
-        /* noop */
-      },
-    };
-    withScopeSpy.mockImplementation((fn: (s: unknown) => void) => {
-      fn(fakeScope);
+    let tags: Record<string, unknown> = {};
+    let contexts: Record<string, unknown> = {};
+    captureSpy.mockImplementation(() => {
+      ({ tags, contexts } = Sentry.getCurrentScope().getScopeData());
+      return "";
     });
     reportCliError(error);
     return { tags, contexts };
@@ -1000,7 +996,8 @@ describe("reportArgumentError", () => {
 
   test("captures one info message with the parser's error class", () => {
     const error = new ArgumentParseError(
-      "period",
+      // Stricli brands flag names; it builds them from the command's flags.
+      "period" as ConstructorParameters<typeof ArgumentParseError>[0],
       "bogus",
       new ValidationError("Invalid period 'bogus'", "period"),
     );

@@ -18,6 +18,7 @@ import { ConfigError, ValidationError } from "../../lib/errors.js";
 import { formatFeedbackResult } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { prompt } from "../../lib/prompt.js";
+import { omitUndefined } from "../../lib/omit-undefined.js";
 
 /** Structured result of the feedback submission */
 export type FeedbackResult = {
@@ -88,11 +89,13 @@ export const feedbackCommand = buildCommand({
 
     const { getUserInfo } = await import("../../lib/db/user.js");
     const user = getUserInfo();
-    Sentry.captureFeedback({
-      message,
-      email: user?.email,
-      name: user?.name ?? user?.username,
-    });
+    Sentry.captureFeedback(
+      omitUndefined({
+        message,
+        email: user?.email,
+        name: user?.name ?? user?.username,
+      }),
+    );
 
     // Flush to ensure feedback is sent before process exits
     const sent = await Sentry.flush(3000);

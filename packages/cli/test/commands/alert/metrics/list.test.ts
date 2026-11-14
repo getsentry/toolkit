@@ -7,7 +7,7 @@ import { setAuthToken } from "../../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../../src/lib/db/regions.js";
 import type { ApiError } from "../../../../src/lib/errors.js";
 import { logger } from "../../../../src/lib/logger.js";
-import { mockFetch, useTestConfigDir } from "../../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../../helpers.js";
 
 const getConfigDir = useTestConfigDir("test-alert-metrics-list-", {
   isolateProjectRoot: true,
@@ -424,7 +424,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        return Response.json([rule(alertMatch[1])]);
+        return Response.json([rule(at(alertMatch, 1))]);
       }
       if (url.pathname === "/api/0/organizations/") {
         return Response.json([
@@ -594,7 +594,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        const org = alertMatch[1];
+        const org = at(alertMatch, 1);
         const perPage = Number(url.searchParams.get("per_page"));
         perPageByOrg.set(org, perPage);
         return new Response(

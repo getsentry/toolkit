@@ -19,7 +19,8 @@ import { initCommand } from "../../src/commands/init.js";
 import type { SentryContext } from "../../src/context.js";
 import { INIT_GUIDE } from "../../src/generated/init-guide.js";
 import { clearSentryCliRcCache } from "../../src/lib/sentryclirc.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 const GUIDE_SOURCE = readFileSync(
   new URL("../../init.md", import.meta.url),
@@ -32,18 +33,18 @@ async function runInit(
   flags: Record<string, unknown> = {},
   cwd = "/tmp",
 ): Promise<{ stdout: string }> {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   const context = {
     process,
     env: process.env,
     stdout: { write: stdoutWrite },
-    stderr: { write: vi.fn(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     stdin: process.stdin,
     cwd,
     homeDir: "/tmp",
     configDir: "/tmp",
   } as unknown as SentryContext;
-  const func = await initCommand.loader();
+  const func = await loadCommand(initCommand);
   await func.call(context, { json: false, ...flags });
   return { stdout: stdoutWrite.mock.calls.map((call) => call[0]).join("") };
 }

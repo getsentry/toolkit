@@ -489,7 +489,7 @@ describe("stringifyUnknown", () => {
 
   test("falls back to String() for circular references", () => {
     const circular: Record<string, unknown> = { name: "loop" };
-    circular.self = circular;
+    circular["self"] = circular;
     // Should not throw — falls back to String() which returns [object Object]
     expect(() => stringifyUnknown(circular)).not.toThrow();
     expect(stringifyUnknown(circular)).toBe("[object Object]");
@@ -887,6 +887,7 @@ describe("withAuthGuard", () => {
   });
 
   test("handles non-Error thrown values", async () => {
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the test covers non-Error rejection values
     const result = await withAuthGuard(() => Promise.reject("string error"));
     expect(result.ok).toBe(false);
     if (!result.ok) {

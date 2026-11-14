@@ -5,7 +5,15 @@
  * and viewCommand func() body in src/commands/log/view.ts
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Mock isatty to simulate an interactive terminal for the --web prompt path.
 // Bun's ESM wrapper for CJS built-ins exposes a `default` re-export plus
@@ -83,12 +91,8 @@ import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -97,12 +101,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -118,6 +118,8 @@ import {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
+import { loadCommand, at } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /** A valid 32-char hex log ID for tests */
 const ID1 = "968c763c740cfda8b6728f27fb9e9b01";
@@ -352,7 +354,9 @@ describe("parsePositionalArgs", () => {
 
 describe("resolveProjectBoundSlug", () => {
   const HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -518,9 +522,11 @@ describe("resolveProjectBoundSlug", () => {
 // ============================================================================
 
 describe("viewCommand.func", () => {
-  let getLogsSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let getLogsSpy: MockInstance<(typeof apiClient)["getLogs"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   const sampleLog: DetailedSentryLog = {
     id: "968c763c740cfda8b6728f27fb9e9b01",
@@ -534,11 +540,11 @@ describe("viewCommand.func", () => {
   } as unknown as DetailedSentryLog;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -567,7 +573,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false },
@@ -590,7 +596,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("acme", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // "frontend" (no slash) → project-search → resolveProjectBoundSlug
     await func.call(
       context,
@@ -614,7 +620,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("cam-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false },
@@ -637,7 +643,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     try {
       await func.call(
         context,
@@ -666,14 +672,14 @@ describe("viewCommand.func", () => {
 describe("log view --web interactive prompt", () => {
   const PROMPT_ID1 = "aaaa1111bbbb2222cccc3333dddd4444";
   const PROMPT_ID2 = "1111222233334444555566667777aaaa";
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   function createPromptMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -696,7 +702,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },
@@ -707,8 +713,8 @@ describe("log view --web interactive prompt", () => {
 
     expect(mockPrompt).toHaveBeenCalled();
     expect(openInBrowserSpy).toHaveBeenCalledTimes(2);
-    const url1 = openInBrowserSpy.mock.calls[0][0] as string;
-    const url2 = openInBrowserSpy.mock.calls[1][0] as string;
+    const url1 = at(openInBrowserSpy.mock.calls, 0)[0] as string;
+    const url2 = at(openInBrowserSpy.mock.calls, 1)[0] as string;
     expect(url1).toContain(PROMPT_ID1);
     expect(url2).toContain(PROMPT_ID2);
   });
@@ -718,7 +724,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },
@@ -739,7 +745,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },

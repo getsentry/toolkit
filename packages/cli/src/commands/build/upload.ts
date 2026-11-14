@@ -127,7 +127,7 @@ async function uploadOne(
     throw new ValidationError(`Path does not exist: ${path}`, "path");
   }
 
-  const plugin = parsePluginFromPipeline(ctx.env.SENTRY_PIPELINE);
+  const plugin = parsePluginFromPipeline(ctx.env["SENTRY_PIPELINE"]);
 
   // Normalize into a wrapper ZIP on disk (streamed, so peak memory does not
   // scale with the build size), then upload it via the file-based chunk path.

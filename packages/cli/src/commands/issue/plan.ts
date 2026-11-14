@@ -156,7 +156,10 @@ function buildPlanData(state: AutofixState): PlanData {
   };
 
   if (!solution) {
-    data.no_solution_context = buildNoSolutionContext(state);
+    const noSolutionContext = buildNoSolutionContext(state);
+    if (noSolutionContext) {
+      data.no_solution_context = noSolutionContext;
+    }
   }
 
   return data;

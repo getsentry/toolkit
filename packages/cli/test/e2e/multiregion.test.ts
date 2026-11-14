@@ -16,7 +16,7 @@ import {
   test,
 } from "vitest";
 import { createE2EContext, type E2EContext } from "../fixture.js";
-import { cleanupTestDir, createTestConfigDir } from "../helpers.js";
+import { cleanupTestDir, createTestConfigDir, must } from "../helpers.js";
 import {
   createMultiRegionMockServer,
   EU_ORGS,
@@ -168,7 +168,7 @@ describe("multi-region", () => {
 
         expect(result.exitCode).toBe(0);
         // Should contain US projects for acme-corp
-        for (const projectSlug of US_PROJECTS["acme-corp"]) {
+        for (const projectSlug of must(US_PROJECTS["acme-corp"])) {
           expect(result.stdout).toContain(projectSlug);
         }
       },
@@ -187,7 +187,7 @@ describe("multi-region", () => {
 
         expect(result.exitCode).toBe(0);
         // Should contain EU projects for euro-gmbh
-        for (const projectSlug of EU_PROJECTS["euro-gmbh"]) {
+        for (const projectSlug of must(EU_PROJECTS["euro-gmbh"])) {
           expect(result.stdout).toContain(projectSlug);
         }
       },
@@ -216,7 +216,7 @@ describe("multi-region", () => {
         expect(Array.isArray(data)).toBe(true);
 
         const slugs = data.map((p: { slug: string }) => p.slug);
-        for (const projectSlug of EU_PROJECTS["berlin-startup"]) {
+        for (const projectSlug of must(EU_PROJECTS["berlin-startup"])) {
           expect(slugs).toContain(projectSlug);
         }
       },

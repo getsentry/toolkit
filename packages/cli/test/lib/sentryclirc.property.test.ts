@@ -29,17 +29,17 @@ let savedConfigDir: string | undefined;
 
 beforeEach(async () => {
   clearSentryCliRcCache();
-  savedConfigDir = process.env.SENTRY_CONFIG_DIR;
+  savedConfigDir = process.env["SENTRY_CONFIG_DIR"];
   testDir = await createTestConfigDir("sentryclirc-prop-", {
     isolateProjectRoot: true,
   });
-  process.env.SENTRY_CONFIG_DIR = testDir;
+  process.env["SENTRY_CONFIG_DIR"] = testDir;
 });
 
 afterEach(async () => {
   clearSentryCliRcCache();
   if (savedConfigDir !== undefined) {
-    process.env.SENTRY_CONFIG_DIR = savedConfigDir;
+    process.env["SENTRY_CONFIG_DIR"] = savedConfigDir;
   }
   await cleanupTestDir(testDir);
 });

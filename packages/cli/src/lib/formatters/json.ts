@@ -296,7 +296,7 @@ export function writeJsonList(
   items: readonly unknown[],
   options: {
     hasMore: boolean;
-    nextCursor?: string | null;
+    nextCursor?: string | null | undefined;
     errors?: unknown[];
     fields?: string[];
     /** Arbitrary extra metadata to include in the wrapper (e.g. `{ hint }`) */
@@ -311,10 +311,10 @@ export function writeJsonList(
 
   const output: Record<string, unknown> = { data: filtered, hasMore };
   if (nextCursor !== null && nextCursor !== undefined && nextCursor !== "") {
-    output.nextCursor = nextCursor;
+    output["nextCursor"] = nextCursor;
   }
   if (errors && errors.length > 0) {
-    output.errors = errors;
+    output["errors"] = errors;
   }
   if (extra) {
     Object.assign(output, extra);

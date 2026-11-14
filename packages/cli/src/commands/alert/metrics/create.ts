@@ -263,9 +263,10 @@ export const createCommand = buildCommand({
     const created = await createMetricAlertRule(orgSlug, body);
     yield new CommandOutput({
       org: orgSlug,
-      id: stringifyUnknown(created.id ?? ""),
-      name: stringifyUnknown(created.name ?? flags.name),
-      status: metricAlertStatusLabel(created.status),
+      id: stringifyUnknown(created["id"] ?? ""),
+      name: stringifyUnknown(created["name"] ?? flags.name),
+      status: metricAlertStatusLabel(created["status"]),
     } satisfies MetricAlertCreateOutput);
+    return;
   },
 });

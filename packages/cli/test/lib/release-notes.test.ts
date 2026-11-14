@@ -25,7 +25,7 @@ import {
   fetchChangelog,
   parseCommitMessages,
 } from "../../src/lib/release-notes.js";
-import { mockFetch } from "../helpers.js";
+import { mockFetch, at } from "../helpers.js";
 
 // ─────────────────────────── Fixtures ──────────────────────────────────────
 
@@ -62,7 +62,7 @@ const SAMPLE_RELEASE_BODY = `### New Features ✨
 - Bump Bun from 1.3.9 to 1.3.11 by @BYK in [#552](https://github.com/getsentry/cli/pull/552)`;
 
 function makeRelease(tagName: string, body?: string): GitHubRelease {
-  return { tag_name: tagName, assets: [], body };
+  return { tag_name: tagName, assets: [], ...(body !== undefined && { body }) };
 }
 
 // ─────────────────────── extractSections ────────────────────────────────────
@@ -109,7 +109,7 @@ describe("extractSections", () => {
       "### Performance\n\n- Optimize query execution\n- Reduce memory usage";
     const sections = extractSections(body);
     expect(sections).toHaveLength(1);
-    expect(sections[0].category).toBe("performance");
+    expect(at(sections, 0).category).toBe("performance");
   });
 });
 
@@ -229,7 +229,7 @@ describe("parseCommitMessages", () => {
     ];
 
     const sections = parseCommitMessages(commits);
-    expect(sections[0].markdown).toContain("add pagination support");
+    expect(at(sections, 0).markdown).toContain("add pagination support");
   });
 
   test("uses only first line of multi-line messages", () => {
@@ -243,8 +243,8 @@ describe("parseCommitMessages", () => {
     ];
 
     const sections = parseCommitMessages(commits);
-    expect(sections[0].markdown).toContain("short summary");
-    expect(sections[0].markdown).not.toContain("Long description");
+    expect(at(sections, 0).markdown).toContain("short summary");
+    expect(at(sections, 0).markdown).not.toContain("Long description");
   });
 
   test("filters #skip-changelog commits", () => {

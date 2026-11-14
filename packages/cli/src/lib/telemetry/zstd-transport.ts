@@ -52,6 +52,16 @@ export type NodeTransportOptions = Parameters<typeof makeNodeTransport>[0];
 
 type HttpModule = NonNullable<NodeTransportOptions["httpModule"]>;
 
+/**
+ * Node's `http` or `https` module as the SDK's `HTTPModule`, which is what
+ * the SDK itself passes at runtime. The declarations differ only under
+ * `exactOptionalPropertyTypes`: Node types `IncomingMessage.statusCode` as
+ * `number | undefined`, the SDK as `statusCode?: number`.
+ */
+function asHttpModule(nativeModule: typeof http | typeof https): HttpModule {
+  return nativeModule as HttpModule;
+}
+
 /** Codec actually applied to a given envelope. */
 type AppliedEncoding = "zstd" | "gzip" | "none";
 
@@ -133,7 +143,7 @@ export function makeNodeTransportWithDeadline(
   return makeNodeTransport({
     ...options,
     httpModule: withRequestDeadline(
-      options.httpModule ?? nativeHttpModule,
+      options.httpModule ?? asHttpModule(nativeHttpModule),
       requestTimeoutMs,
     ),
   });
@@ -162,7 +172,7 @@ export function makeCompressedTransport(
   const isHttps = urlSegments.protocol === "https:";
   const nativeHttpModule = isHttps ? https : http;
   const httpModule = withRequestDeadline(
-    options.httpModule ?? nativeHttpModule,
+    options.httpModule ?? asHttpModule(nativeHttpModule),
     requestTimeoutMs,
   );
 
@@ -226,8 +236,8 @@ export function shouldFallbackToDefault(
   options: NodeTransportOptions,
 ): boolean {
   const isHttps = url.protocol === "https:";
-  const httpProxy = process.env.http_proxy ?? process.env.HTTP_PROXY;
-  const httpsProxy = process.env.https_proxy ?? process.env.HTTPS_PROXY;
+  const httpProxy = process.env["http_proxy"] ?? process.env["HTTP_PROXY"];
+  const httpsProxy = process.env["https_proxy"] ?? process.env["HTTPS_PROXY"];
   const envProxy = isHttps ? httpsProxy : httpProxy;
   // SDK precedent: HTTPS falls back to http_proxy as a last resort.
   const proxy = options.proxy || envProxy || httpProxy;
@@ -283,7 +293,7 @@ async function performRequest(
         const retryAfterHeader = res.headers["retry-after"] ?? null;
         const rateLimitsHeader = res.headers["x-sentry-rate-limits"] ?? null;
         resolve({
-          statusCode: res.statusCode,
+          ...(res.statusCode !== undefined && { statusCode: res.statusCode }),
           headers: {
             "retry-after": Array.isArray(retryAfterHeader)
               ? (retryAfterHeader[0] ?? null)
@@ -374,7 +384,7 @@ export function hasZstdSupport(): boolean {
  * @internal Exported for tests.
  */
 export function isNoProxyExempt(urlSegments: URL): boolean {
-  const noProxy = process.env.no_proxy ?? process.env.NO_PROXY;
+  const noProxy = process.env["no_proxy"] ?? process.env["NO_PROXY"];
   if (!noProxy) {
     return false;
   }

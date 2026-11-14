@@ -16,6 +16,7 @@ import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -38,8 +39,8 @@ type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
@@ -264,11 +265,11 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     dir = await mkdtemp(join(tmpdir(), "sentry-upload-cmd-"));
     // Short-circuit resolveOrgAndProject so tests don't need DSN/config.
     savedEnv = {
-      SENTRY_ORG: process.env.SENTRY_ORG,
-      SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+      SENTRY_ORG: process.env["SENTRY_ORG"],
+      SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
     };
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     func = (await uploadCommand.loader()) as unknown as CmdFunc<UploadFuncArgs>;
   });
 
@@ -307,8 +308,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     // The library-only / conditional-release-skip cases named in the
     // docs may run without DSN/org/project context. With nothing to
     // upload, the command must not insist on resolving them.
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
     const ctx = makeContext();
     await expect(
       func.call(ctx, { "allow-empty": true }, dir),
@@ -326,8 +327,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
 
   test("non-existent directory: throws before resolving org/project", async () => {
     // Cleared so the dir-check has to fire first to produce a useful error.
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
     const missing = join(dir, "does-not-exist");
     const ctx = makeContext();
     try {

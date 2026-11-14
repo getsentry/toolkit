@@ -149,9 +149,9 @@ export type IssueListResult = ListResult<SentryIssue> & {
   /** Whether to use compact (single-line) table rendering */
   compact?: boolean;
   /** "More issues available" hint with actionable flags */
-  moreHint?: string;
+  moreHint?: string | undefined;
   /** DSN detection or multi-project summary footer */
-  footer?: string;
+  footer?: string | undefined;
 };
 
 /** @internal */ export type SortValue =
@@ -398,9 +398,9 @@ function formatListFooter(mode: "single" | "multi" | "none"): string {
   target: ResolvedTarget;
   issues: SentryIssue[];
   /** Whether the project has more issues beyond what was fetched. */
-  hasMore?: boolean;
+  hasMore?: boolean | undefined;
   /** Cursor to resume fetching from this project (for Phase 2 / next page). */
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /**
@@ -489,21 +489,21 @@ type FetchResult = FetchResultOf<IssueListFetchResult>;
 async function fetchIssuesForTarget(
   target: ResolvedTarget,
   options: {
-    query?: string;
+    query?: string | undefined;
     limit: number;
     sort: SortValue;
-    statsPeriod?: string;
+    statsPeriod?: string | undefined;
     /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    start?: string;
+    start?: string | undefined;
     /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-    end?: string;
+    end?: string | undefined;
     /** Resume from this cursor (Phase 2 redistribution or next-page resume). */
-    startCursor?: string;
-    onPage?: (fetched: number, limit: number) => void;
+    startCursor?: string | undefined;
+    onPage?: ((fetched: number, limit: number) => void) | undefined;
     /** Pre-computed API performance options. @see {@link buildListApiOptions} */
-    collapse?: IssueCollapseField[];
+    collapse?: IssueCollapseField[] | undefined;
     /** Stats period resolution — undefined when stats are collapsed. */
-    groupStatsPeriod?: "" | "14d" | "24h" | "auto";
+    groupStatsPeriod?: "" | "14d" | "24h" | "auto" | undefined;
   },
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
@@ -599,7 +599,7 @@ async function runPhase2(
  * Options for {@link fetchWithBudget}.
  */
 type BudgetFetchOptions = {
-  query?: string;
+  query?: string | undefined;
   limit: number;
   sort: SortValue;
   statsPeriod?: string;
@@ -612,7 +612,7 @@ type BudgetFetchOptions = {
   /** Pre-computed collapse fields for API performance. @see {@link buildListApiOptions} */
   collapse?: IssueCollapseField[];
   /** Stats period resolution — undefined when stats are collapsed. */
-  groupStatsPeriod?: "" | "14d" | "24h" | "auto";
+  groupStatsPeriod?: "" | "14d" | "24h" | "auto" | undefined;
 };
 
 /**
@@ -779,10 +779,10 @@ async function fetchOrganizationIssues(
   flags: Pick<ListFlags, "query" | "limit" | "sort" | "json" | "fields">,
   timeRange: TimeRange,
   options: {
-    cursor?: string;
+    cursor?: string | undefined;
     /** Resolved numeric project IDs; omit for an org-wide listing. */
-    projects?: readonly number[];
-    onPage?: (fetched: number, limit: number) => void;
+    projects?: readonly number[] | undefined;
+    onPage?: ((fetched: number, limit: number) => void) | undefined;
   },
 ): Promise<IssuesPage> {
   const apiOpts = buildListApiOptions(flags);
@@ -1004,7 +1004,7 @@ type ResolvedTargetsOptions = {
   flags: ListFlags;
   cwd: string;
   timeRange: TimeRange;
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
 };
 
 /** Default --period value (used to detect user-implicit vs explicit). */
@@ -1097,22 +1097,23 @@ function formatDetailWithSuggestions(
  * Enrich an API error from issue listing with actionable suggestions.
  *
  * Handles both 400 (query/parameter) and 403 (permission) errors.
- * Re-throws non-ApiError and unhandled statuses unchanged.
+ * Returns the error to throw: non-ApiError values and unhandled statuses
+ * come back unchanged.
  */
 function enrichIssueListError(
   error: unknown,
   flags: Pick<ListFlags, "query" | "period" | "sort">,
-): never {
+): unknown {
   // A user-supplied --query the server cannot parse is a user input mistake,
   // not a CLI bug: surface it as a ValidationError. A 400 with no user --query
   // (the CLI built a bad query) falls through and stays a reported ApiError.
   const queryError = toSearchQueryError(error, flags.query);
   if (queryError !== error) {
-    throw queryError;
+    return queryError;
   }
   if (error instanceof ApiError) {
     if (error.status === 400) {
-      throw new ApiError(
+      return new ApiError(
         error.message,
         error.status,
         build400Detail(error.detail, flags),
@@ -1125,12 +1126,12 @@ function enrichIssueListError(
       const detail = error.enriched403
         ? appendProjectMembershipHint(error.detail)
         : build403Detail(error.detail);
-      throw new ApiError(error.message, error.status, detail, error.endpoint, {
+      return new ApiError(error.message, error.status, detail, error.endpoint, {
         enriched403: true,
       });
     }
   }
-  throw error;
+  return error;
 }
 
 /**
@@ -1615,9 +1616,9 @@ function jsonTransformIssueList(
   // query syntax when their search returned nothing.
   if (!Array.isArray(transformed)) {
     const envelope = transformed as Record<string, unknown>;
-    const data = envelope.data;
+    const data = envelope["data"];
     if (Array.isArray(data) && data.length === 0) {
-      envelope._searchSyntax = SEARCH_SYNTAX_REFERENCE;
+      envelope["_searchSyntax"] = SEARCH_SYNTAX_REFERENCE;
     }
   }
   return transformed;

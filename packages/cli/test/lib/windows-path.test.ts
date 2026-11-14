@@ -9,7 +9,15 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  assert,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 import {
   addToWindowsUserPath,
   type PowerShellRunner,
@@ -30,7 +38,11 @@ describe("addToWindowsUserPath", () => {
       message: "Added C:\\Users\\me\\.local\\bin to your user PATH",
       manualCommand: null,
     });
-    const [script, env] = run.mock.calls[0];
+    // Asserted inline: the Windows registry job runs this file without the
+    // CLI's generated files, which ../helpers.js pulls in.
+    const call = run.mock.calls[0];
+    assert(call, "run was not called");
+    const [script, env] = call;
     expect(env).toEqual({
       SENTRY_CLI_PATH_DIR: "C:\\Users\\me\\.local\\bin",
       SENTRY_CLI_PATH_KEY: USER_ENVIRONMENT_KEY,
@@ -142,7 +154,7 @@ describe.runIf(process.platform === "win32")(
 
     test("treats an equivalent %VAR% entry as already present", async () => {
       await seedPath("%USERPROFILE%\\.local\\bin\\;C:\\Other");
-      const dir = join(process.env.USERPROFILE ?? "", ".local", "BIN");
+      const dir = join(process.env["USERPROFILE"] ?? "", ".local", "BIN");
 
       const result = await addToWindowsUserPath(dir, { key });
 

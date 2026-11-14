@@ -58,9 +58,9 @@ async function fetchOrgListHint(fallbackHint: string): Promise<string> {
 /** Options for resolving a team within an organization */
 export type ResolveTeamOptions = {
   /** Explicit team slug from --team flag */
-  team?: string;
+  team?: string | undefined;
   /** Source of the auto-detected org, shown in error messages */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
   /** Usage hint shown in errors (e.g., "sentry project create <org>/<name>:<platform>") */
   usageHint: string;
   /**

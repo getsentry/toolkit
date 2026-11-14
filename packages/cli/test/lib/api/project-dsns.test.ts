@@ -13,7 +13,7 @@ import {
   resetCacheState,
 } from "../../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("project-dsns-api-test-");
 
@@ -121,7 +121,7 @@ describe.each([
     const result = await list();
 
     expect(requests).toHaveLength(1);
-    const request = requests[0];
+    const request = at(requests, 0);
     expect(request.method).toBe("GET");
     expect(request.headers.get("Authorization")).toBe("Bearer test-token");
     const url = new URL(request.url);

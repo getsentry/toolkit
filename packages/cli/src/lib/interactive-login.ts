@@ -24,11 +24,18 @@ export type LoginResult = {
   /** Authentication method used. */
   method: "oauth" | "token";
   /** User identity if available. */
-  user?: { name?: string; email?: string; username?: string; id?: string };
+  user?:
+    | {
+        name?: string | undefined;
+        email?: string | undefined;
+        username?: string | undefined;
+        id?: string | undefined;
+      }
+    | undefined;
   /** Path where credentials are stored. */
   configPath: string;
   /** Token lifetime in seconds, if known. */
-  expiresIn?: number;
+  expiresIn?: number | undefined;
   /** Whether the OAuth access token can be refreshed automatically. */
   refreshEnabled?: boolean;
 };
@@ -41,9 +48,9 @@ export type LoginResult = {
  */
 export function toLoginUser(user: {
   id: string;
-  name?: string | null;
-  email?: string | null;
-  username?: string | null;
+  name?: string | null | undefined;
+  email?: string | null | undefined;
+  username?: string | null | undefined;
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
     Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
@@ -58,7 +65,7 @@ export type InteractiveLoginOptions = {
    * Space-joined OAuth scope string to request. When omitted, the device flow
    * requests the full default scope set. Build via `resolveOAuthScopeString`.
    */
-  scope?: string;
+  scope?: string | undefined;
   /**
    * Store the login as a new account instead of replacing the active
    * account's credentials (see {@link completeOAuthFlow}). Default: false.
@@ -70,7 +77,7 @@ export type InteractiveLoginOptions = {
    * Servers that ignore the hint let the browser's user approve, so the
    * token is checked here too: a mismatching token is discarded, not stored.
    */
-  expectedEmail?: string;
+  expectedEmail?: string | undefined;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for the account an invocation picked for its target

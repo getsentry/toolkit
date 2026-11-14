@@ -17,6 +17,7 @@ import {
   expect,
   test,
   vi,
+  type MockInstance,
 } from "vitest";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../src/lib/browser.js";
@@ -39,14 +40,14 @@ import type { TokenResponse } from "../../src/types/index.js";
 // Force plain output for predictable string matching
 let origPlain: string | undefined;
 beforeAll(() => {
-  origPlain = process.env.SENTRY_PLAIN_OUTPUT;
-  process.env.SENTRY_PLAIN_OUTPUT = "1";
+  origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+  process.env["SENTRY_PLAIN_OUTPUT"] = "1";
 });
 afterAll(() => {
   if (origPlain === undefined) {
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   } else {
-    process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+    process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
   }
 });
 
@@ -113,13 +114,15 @@ describe("buildDeviceFlowDisplay", () => {
 });
 
 describe("runInteractiveLogin", () => {
-  let performDeviceFlowSpy: ReturnType<typeof spyOn>;
-  let completeOAuthFlowSpy: ReturnType<typeof spyOn>;
-  let openBrowserSpy: ReturnType<typeof spyOn>;
-  let generateQRCodeSpy: ReturnType<typeof spyOn>;
-  let setupCopyKeyListenerSpy: ReturnType<typeof spyOn>;
-  let setUserInfoSpy: ReturnType<typeof spyOn>;
-  let getDbPathSpy: ReturnType<typeof spyOn>;
+  let performDeviceFlowSpy: MockInstance<(typeof oauth)["performDeviceFlow"]>;
+  let completeOAuthFlowSpy: MockInstance<(typeof oauth)["completeOAuthFlow"]>;
+  let openBrowserSpy: MockInstance<(typeof browser)["openBrowser"]>;
+  let generateQRCodeSpy: MockInstance<(typeof qrcode)["generateQRCode"]>;
+  let setupCopyKeyListenerSpy: MockInstance<
+    (typeof clipboard)["setupCopyKeyListener"]
+  >;
+  let setUserInfoSpy: MockInstance<(typeof dbUser)["setUserInfo"]>;
+  let getDbPathSpy: MockInstance<(typeof dbInstance)["getDbPath"]>;
 
   /** Helper to build a mock TokenResponse with a user whose fields may be null. */
   function makeTokenResponse(user?: {

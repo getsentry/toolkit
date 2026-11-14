@@ -51,7 +51,7 @@ afterEach(() => {
  */
 async function runUninstall(
   args: string[],
-): Promise<{ output: string; exitCode: number | undefined }> {
+): Promise<{ output: string; exitCode: NodeJS.Process["exitCode"] }> {
   let output = "";
   const mockContext: SentryContext = {
     process: {

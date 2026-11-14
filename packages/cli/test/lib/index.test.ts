@@ -69,8 +69,8 @@ describe("createSentrySDK() library API", () => {
 
   test("sdk.run throws when auth is required but missing", async () => {
     // Clear the preload's test auth token so the auth guard fires.
-    const savedToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
     try {
       // Use cwd:/tmp to prevent DSN scanning of the repo root which finds
       // real DSNs and triggers async project resolution that can outlive the test.
@@ -87,7 +87,7 @@ describe("createSentrySDK() library API", () => {
     } finally {
       // Restore the preload token for other tests
       if (savedToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedToken;
       }
     }
   });
@@ -97,10 +97,12 @@ describe("createSentrySDK() library API", () => {
     const envBefore = { ...process.env };
     await sdk.run("--version");
     // Check that no new SENTRY_OUTPUT_FORMAT key leaked
-    expect(process.env.SENTRY_OUTPUT_FORMAT).toBe(
-      envBefore.SENTRY_OUTPUT_FORMAT,
+    expect(process.env["SENTRY_OUTPUT_FORMAT"]).toBe(
+      envBefore["SENTRY_OUTPUT_FORMAT"],
     );
-    expect(process.env.SENTRY_AUTH_TOKEN).toBe(envBefore.SENTRY_AUTH_TOKEN);
+    expect(process.env["SENTRY_AUTH_TOKEN"]).toBe(
+      envBefore["SENTRY_AUTH_TOKEN"],
+    );
   });
 
   test("process.env is unchanged after failed call", async () => {
@@ -111,8 +113,8 @@ describe("createSentrySDK() library API", () => {
     } catch {
       // expected
     }
-    expect(process.env.SENTRY_OUTPUT_FORMAT).toBe(
-      envBefore.SENTRY_OUTPUT_FORMAT,
+    expect(process.env["SENTRY_OUTPUT_FORMAT"]).toBe(
+      envBefore["SENTRY_OUTPUT_FORMAT"],
     );
   });
 

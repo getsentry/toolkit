@@ -6,19 +6,23 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { startCommand } from "../../../src/commands/trial/start.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -27,12 +31,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -42,12 +42,8 @@ import { ValidationError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/qrcode.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/qrcode.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -56,12 +52,8 @@ import * as qrcodeMod from "../../../src/lib/qrcode.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -70,14 +62,16 @@ import type {
   CustomerTrialInfo,
   ProductTrial,
 } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -107,9 +101,11 @@ const MOCK_TRIAL: ProductTrial = {
 // ---------------------------------------------------------------------------
 
 describe("trial start command", () => {
-  let getProductTrialsSpy: ReturnType<typeof spyOn>;
-  let startProductTrialSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getProductTrialsSpy: MockInstance<(typeof apiClient)["getProductTrials"]>;
+  let startProductTrialSpy: MockInstance<
+    (typeof apiClient)["startProductTrial"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getProductTrialsSpy = vi.spyOn(apiClient, "getProductTrials");
@@ -130,7 +126,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -147,7 +143,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer");
 
     expect(startProductTrialSpy).toHaveBeenCalledWith("test-org", "seerUsers");
@@ -158,7 +154,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "seer");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -171,7 +167,7 @@ describe("trial start command", () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     const error = await func
       .call(context, { json: false }, "unknown-name")
@@ -189,7 +185,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
       ValidationError,
@@ -201,7 +197,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     try {
       await func.call(context, { json: false }, "seer");
@@ -216,7 +212,7 @@ describe("trial start command", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
       "organization",
@@ -228,7 +224,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer", "my-org");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -241,7 +237,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     // Swapped: org first, name second
     await func.call(context, { json: true }, "my-org", "seer");
 
@@ -264,7 +260,7 @@ describe("trial start command", () => {
       });
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     // Swapped: org first, "plan" second
     await func.call(context, { json: true }, "my-org", "plan");
 
@@ -284,7 +280,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([replaysTrial]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "replays");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -313,10 +309,12 @@ function makeCustomerInfo(
 }
 
 describe("trial start plan", () => {
-  let getCustomerTrialInfoSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let openBrowserSpy: ReturnType<typeof spyOn>;
-  let generateQRCodeSpy: ReturnType<typeof spyOn>;
+  let getCustomerTrialInfoSpy: MockInstance<
+    (typeof apiClient)["getCustomerTrialInfo"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let openBrowserSpy: MockInstance<(typeof browserMod)["openBrowser"]>;
+  let generateQRCodeSpy: MockInstance<(typeof qrcodeMod)["generateQRCode"]>;
 
   beforeEach(() => {
     getCustomerTrialInfoSpy = vi.spyOn(apiClient, "getCustomerTrialInfo");
@@ -343,7 +341,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "plan");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -362,7 +360,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     // URL and QR code go through commandOutput → context stdout
@@ -378,7 +376,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     expect(generateQRCodeSpy).toHaveBeenCalled();
@@ -398,7 +396,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     try {
       await func.call(context, { json: false }, "plan");
@@ -417,7 +415,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "plan")).rejects.toThrow(
       ValidationError,
@@ -435,7 +433,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "plan");
 
     expect(startProductTrialSpy).not.toHaveBeenCalled();
@@ -452,7 +450,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     // URL goes through commandOutput → context stdout

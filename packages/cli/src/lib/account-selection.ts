@@ -27,7 +27,7 @@ export type AccountSelectorOptions = {
    * Only consider accounts on this server (`--url`). Disambiguates the same
    * email or username stored for several servers.
    */
-  url?: string;
+  url?: string | undefined;
   /**
    * Use a sole fuzzy match (with a warning) when nothing matches exactly.
    * Off by default; destructive commands like `logout` only suggest.

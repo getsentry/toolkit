@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { runCli } from "../fixture.js";
-import { useTestConfigDir } from "../helpers.js";
+import { at, must, useTestConfigDir } from "../helpers.js";
 
 /** Capability URLs returned explicitly by session creation. */
 type Session = {
@@ -160,7 +160,7 @@ describe("Local daemon E2E", () => {
       }
       expect(text).toContain("event: sentry.local.directory");
       directoryUrl = (
-        JSON.parse(text.match(/data: (.+)/)![1]) as { directoryUrl: string }
+        JSON.parse(at(text.match(/data: (.+)/)!, 1)) as { directoryUrl: string }
       ).directoryUrl;
     } finally {
       await bootstrapReader.cancel();
@@ -204,7 +204,7 @@ describe("Local daemon E2E", () => {
       [web.id, "web-only", "worker-only"],
       [worker.id, "worker-only", "web-only"],
       [web.id, "web-only", "worker-only"],
-    ]) {
+    ] as const) {
       const session = directory.sessions.find((s) => s.id === id)!;
       const stream = await fetch(session.streamUrl, {
         headers: origin,
@@ -656,8 +656,7 @@ describe("Local daemon E2E", () => {
     const { events } = JSON.parse(listed.stdout) as {
       events: { envelopeId: string }[];
     };
-    const envelopeId = events[0]?.envelopeId;
-    expect(envelopeId).toBeDefined();
+    const envelopeId = must(events[0]?.envelopeId, "a listed envelope");
     for (const parts of [["My App"], ["My", "App"]]) {
       const event = await cli("event", "view", ...parts, eventId);
       expect(event.exitCode, event.stderr).toBe(0);

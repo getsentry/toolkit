@@ -337,7 +337,7 @@ export type ResolveUpgradeSourceOptions = {
   /** Fetch implementation used for the probe. Defaults to the CLI CA-aware fetch. */
   readonly fetch?: typeof fetch;
   /** Optional cancellation signal shared by every source probe. */
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   /** Ordered sources to probe. Defaults to all configured upgrade sources. */
   readonly sources?: readonly UpgradeSource[];
 };
@@ -349,7 +349,7 @@ async function fetchUpgradeProbe(
   try {
     return await (options.fetch ?? customFetch)(options.getProbeUrl(source), {
       headers: getGitHubHeaders(),
-      signal: options.signal,
+      ...(options.signal && { signal: options.signal }),
     });
   } catch (error) {
     if (options.signal?.aborted) {
@@ -477,15 +477,15 @@ export function determineInstallDir(
   homeDir: string,
   env: NodeJS.ProcessEnv,
 ): string {
-  const pathDirs = (env.PATH ?? "").split(delimiter);
+  const pathDirs = (env["PATH"] ?? "").split(delimiter);
 
   // 1. Explicit override via environment variable
-  if (env.SENTRY_INSTALL_DIR) {
-    return env.SENTRY_INSTALL_DIR;
+  if (env["SENTRY_INSTALL_DIR"]) {
+    return env["SENTRY_INSTALL_DIR"];
   }
 
   // 2. XDG_BIN_HOME override — honored only when absolute, per the XDG spec
-  const xdgBinHome = env.XDG_BIN_HOME;
+  const xdgBinHome = env["XDG_BIN_HOME"];
   if (xdgBinHome && isAbsolute(xdgBinHome)) {
     return xdgBinHome;
   }

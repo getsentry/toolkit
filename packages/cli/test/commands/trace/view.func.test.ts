@@ -9,7 +9,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   flattenSpanTree,
   formatTraceView,
@@ -19,12 +27,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -33,12 +37,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -55,21 +55,40 @@ import {
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { TraceSpan } from "../../../src/types/sentry.js";
+import { loadCommand, issueProject } from "../../helpers.js";
+import type { ReplayListItem } from "../../../src/types/replay.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // formatTraceView
 // ============================================================================
+
+/** A replay list row; trace view reads only its `id`. */
+function makeReplay(id: string): ReplayListItem {
+  return {
+    id,
+    count_errors: 0,
+    count_segments: 1,
+    duration: 1,
+    error_ids: [],
+    info_ids: [],
+    started_at: "2025-01-30T14:32:15+00:00",
+    tags: {},
+    project_id: "42",
+    trace_ids: [],
+    urls: [],
+    user: { display_name: "Test User" },
+    warning_ids: [],
+    releases: [],
+  };
+}
 
 describe("formatTraceView", () => {
   const mockSummary = {
@@ -95,7 +114,6 @@ describe("formatTraceView", () => {
     const result = formatTraceView({
       summary: mockSummary,
       spans: [],
-      spanTreeLines: undefined,
     });
 
     expect(result).toContain("abc123");
@@ -119,16 +137,24 @@ describe("formatTraceView", () => {
 // ============================================================================
 
 describe("viewCommand.func", () => {
-  let getDetailedTraceSpy: ReturnType<typeof spyOn>;
-  let findTraceReplaySpy: ReturnType<typeof spyOn>;
-  let fetchMultiSpanDetailsSpy: ReturnType<typeof spyOn>;
-  let getIssueByShortIdSpy: ReturnType<typeof spyOn>;
-  let getLatestEventSpy: ReturnType<typeof spyOn>;
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
-  let openInBrowserSpy: ReturnType<typeof spyOn>;
+  let getDetailedTraceSpy: MockInstance<(typeof apiClient)["getDetailedTrace"]>;
+  let findTraceReplaySpy: MockInstance<(typeof apiClient)["findTraceReplay"]>;
+  let fetchMultiSpanDetailsSpy: MockInstance<
+    (typeof apiClient)["fetchMultiSpanDetails"]
+  >;
+  let getIssueByShortIdSpy: MockInstance<
+    (typeof apiClient)["getIssueByShortId"]
+  >;
+  let getLatestEventSpy: MockInstance<(typeof apiClient)["getLatestEvent"]>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   const sampleSpans: TraceSpan[] = [
     {
@@ -188,11 +214,11 @@ describe("viewCommand.func", () => {
   ];
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -205,7 +231,7 @@ describe("viewCommand.func", () => {
   ): Promise<unknown> {
     getDetailedTraceSpy.mockResolvedValue(spans);
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100, fields },
@@ -258,7 +284,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -524,7 +550,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 100 },
@@ -545,7 +571,7 @@ describe("viewCommand.func", () => {
     async function renderHuman(): Promise<string> {
       getDetailedTraceSpy.mockResolvedValue(sampleSpans);
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: false, web: false, spans: 100 },
@@ -556,7 +582,7 @@ describe("viewCommand.func", () => {
     }
 
     test("shows the stored replay ID without a hint", async () => {
-      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+      findTraceReplaySpy.mockResolvedValue(makeReplay(REPLAY_ID));
 
       const output = await renderHuman();
 
@@ -587,7 +613,7 @@ describe("viewCommand.func", () => {
     ): Promise<Record<string, unknown>> {
       getDetailedTraceSpy.mockResolvedValue(sampleSpans);
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: true, web: false, spans: 100, fields },
@@ -614,7 +640,7 @@ describe("viewCommand.func", () => {
     });
 
     test("selects replayId with --fields", async () => {
-      findTraceReplaySpy.mockResolvedValue({ id: REPLAY_ID });
+      findTraceReplaySpy.mockResolvedValue(makeReplay(REPLAY_ID));
 
       expect(await renderJson("replayId")).toEqual({ replayId: REPLAY_ID });
       expect(getDetailedTraceSpy).toHaveBeenCalledWith("test-org", TRACE_ID, {
@@ -627,7 +653,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -643,7 +669,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(
@@ -665,7 +691,7 @@ describe("viewCommand.func", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, spans: 100 },
@@ -682,7 +708,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 0 },
@@ -702,7 +728,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await func.call(
       context,
@@ -727,7 +753,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -740,7 +766,7 @@ describe("viewCommand.func", () => {
 
   test("a missing trace ID fails to parse, before any lookup", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     const error = await func
       .call(context, { json: false, web: false, spans: 100 }, "my-org/web")
@@ -757,7 +783,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -781,7 +807,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -796,7 +822,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Trace ID first (no slash), target second (has slash) → swap detected (line 168-169)
     await func.call(
       context,
@@ -820,7 +846,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("cam-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -839,7 +865,7 @@ describe("viewCommand.func", () => {
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",
-      project: { slug: "test-project" },
+      project: issueProject("test-project"),
     });
     getLatestEventSpy.mockResolvedValue({
       eventID: "event-abc123",
@@ -848,7 +874,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false, spans: 100 }, "CLI-G5");
 
     expect(resolveOrgSpy).toHaveBeenCalled();
@@ -871,7 +897,7 @@ describe("viewCommand.func", () => {
       id: "12345",
       shortId: "CLI-G5",
       title: "Test issue",
-      project: { slug: "test-project" },
+      project: issueProject("test-project"),
     });
     getLatestEventSpy.mockResolvedValue({
       eventID: "event-abc123",
@@ -879,7 +905,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
@@ -890,7 +916,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
@@ -901,7 +927,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -916,7 +942,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, full: true, web: false, spans: 100 },
@@ -931,7 +957,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 100 },
@@ -963,7 +989,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },

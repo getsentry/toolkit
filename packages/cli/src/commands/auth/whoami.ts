@@ -142,9 +142,9 @@ export const whoamiCommand = buildCommand({
  */
 export function formatOtherIdentitiesHint(user: {
   id: string;
-  name?: string | null;
-  email?: string | null;
-  username?: string | null;
+  name?: string | null | undefined;
+  email?: string | null | undefined;
+  username?: string | null | undefined;
 }): string | undefined {
   let others: AccountSummary[];
   try {

@@ -44,20 +44,20 @@ function buildIsolatedEnv(
     env[NO_PERSISTENCE_ENV_VAR] = "1";
   }
   if (options?.token) {
-    env.SENTRY_AUTH_TOKEN = options.token;
-    env.SENTRY_FORCE_ENV_TOKEN = "1";
+    env["SENTRY_AUTH_TOKEN"] = options.token;
+    env["SENTRY_FORCE_ENV_TOKEN"] = "1";
   }
   if (options?.url) {
-    env.SENTRY_HOST = options.url;
+    env["SENTRY_HOST"] = options.url;
   }
   if (options?.org) {
-    env.SENTRY_ORG = options.org;
+    env["SENTRY_ORG"] = options.org;
   }
   if (options?.project) {
-    env.SENTRY_PROJECT = options.project;
+    env["SENTRY_PROJECT"] = options.project;
   }
   if (jsonByDefault && !options?.text) {
-    env.SENTRY_OUTPUT_FORMAT = "json";
+    env["SENTRY_OUTPUT_FORMAT"] = "json";
   }
   return env;
 }

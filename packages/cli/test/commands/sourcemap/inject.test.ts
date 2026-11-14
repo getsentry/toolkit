@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -24,8 +25,8 @@ type CmdFunc = (
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

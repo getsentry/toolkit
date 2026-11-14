@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { restoreCommand } from "../../../src/commands/dashboard/restore.js";
@@ -16,14 +24,16 @@ import * as apiClient from "../../../src/lib/api-client.js";
 import * as polling from "../../../src/lib/polling.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
+import { loadCommand, at } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -71,10 +81,16 @@ const RESTORED_DASHBOARD: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard restore command", () => {
-  let restoreDashboardRevisionSpy: ReturnType<typeof spyOn>;
-  let resolveOrgFromTargetSpy: ReturnType<typeof spyOn>;
-  let resolveDashboardIdSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
+  let restoreDashboardRevisionSpy: MockInstance<
+    (typeof apiClient)["restoreDashboardRevision"]
+  >;
+  let resolveOrgFromTargetSpy: MockInstance<
+    (typeof resolve)["resolveOrgFromTarget"]
+  >;
+  let resolveDashboardIdSpy: MockInstance<
+    (typeof resolve)["resolveDashboardId"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
 
   beforeEach(() => {
     restoreDashboardRevisionSpy = vi.spyOn(
@@ -111,7 +127,7 @@ describe("dashboard restore command", () => {
 
   test("restores dashboard and outputs JSON", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "42" }),
@@ -134,7 +150,7 @@ describe("dashboard restore command", () => {
 
   test("restores dashboard and outputs human-readable format", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, defaultFlags({ revision: "42" }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -145,8 +161,8 @@ describe("dashboard restore command", () => {
 
   test("human output includes dashboard details table", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
-    await func.call(context, defaultFlags({ revision: 1 }), "123");
+    const func = await loadCommand(restoreCommand);
+    await func.call(context, defaultFlags({ revision: "1" }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     expect(output).toContain("ID");
@@ -162,7 +178,7 @@ describe("dashboard restore command", () => {
 
   test("uses dashboard ID from positional argument", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "5" }),
@@ -179,7 +195,7 @@ describe("dashboard restore command", () => {
 
   test("two args parses target + dashboard correctly", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "10" }),
@@ -192,7 +208,7 @@ describe("dashboard restore command", () => {
 
   test("resolves dashboard by title", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -207,7 +223,7 @@ describe("dashboard restore command", () => {
 
   test("joins an unquoted title after a target", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -224,7 +240,7 @@ describe("dashboard restore command", () => {
 
   test("takes the org and dashboard ID from a pasted dashboard URL", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -241,7 +257,7 @@ describe("dashboard restore command", () => {
 
   test("fails to parse a missing dashboard before any request", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     const error = await func
       .call(context, defaultFlags({ revision: "3" }))
@@ -266,7 +282,7 @@ describe("dashboard restore command", () => {
     // what happens when an invalid value is passed. The parse function
     // will throw ValidationError directly.
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     // We can't easily test the flag parsing directly, but we can verify
     // the API is called with the correct revision when valid
@@ -284,7 +300,7 @@ describe("dashboard restore command", () => {
     restoreDashboardRevisionSpy.mockRejectedValue(apiError);
 
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     await expect(
       func.call(context, defaultFlags({ revision: "999" }), "123"),
@@ -297,13 +313,11 @@ describe("dashboard restore command", () => {
 
   test("shows progress message during restore", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, defaultFlags({ revision: "42" }), "123");
 
     expect(withProgressSpy).toHaveBeenCalled();
-    const [opts] = withProgressSpy.mock.calls[0] as [
-      { message: string; json: boolean },
-    ];
+    const [opts] = at(withProgressSpy.mock.calls, 0);
     expect(opts.message).toContain("Restoring revision 42");
   });
 });

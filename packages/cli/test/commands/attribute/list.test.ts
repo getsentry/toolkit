@@ -25,12 +25,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v as (...args: unknown[]) => unknown) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
@@ -39,19 +35,15 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v as (...args: unknown[]) => unknown) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, at, must } from "../../helpers.js";
 
 useTestConfigDir("attribute-list-");
 
@@ -266,7 +258,7 @@ describe("fetchAttributeTypePage", () => {
     listSpy.mockImplementation(async (_org, options) => {
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page;
+      return must(page);
     });
 
     const page = await fetchAttributeTypePage(
@@ -513,7 +505,7 @@ describe("listCommand.func", () => {
       expect(options.perPage).toBe(2);
       const page = pages[options.cursor ?? "first"];
       expect(page).toBeDefined();
-      return page;
+      return must(page);
     });
     const collected: string[] = [];
     for (let index = 0; index < 5; index++) {
@@ -589,7 +581,7 @@ describe("listCommand.func", () => {
     expect(collected).toEqual(data.map((row) => row.key));
     expect(cursorLengths.length).toBeGreaterThan(10);
     // Cursor stops growing once paging reaches a steady state
-    expect(Math.max(...cursorLengths) - cursorLengths[0]).toBeLessThan(64);
+    expect(Math.max(...cursorLengths) - at(cursorLengths, 0)).toBeLessThan(64);
   });
 
   test("continues mixed types past 100 rows without losing partially selected pages", async () => {

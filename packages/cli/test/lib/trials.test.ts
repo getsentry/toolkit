@@ -235,13 +235,13 @@ describe("getTrialStatus", () => {
     const trial = makeTrial({
       isStarted: true,
       startDate: "2025-01-01",
-      endDate: tomorrow.toISOString().split("T")[0],
+      endDate: tomorrow.toISOString().slice(0, 10),
     });
     expect(getTrialStatus(trial)).toBe("active");
   });
 
   test("returns 'active' when started with today as end date", () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString().slice(0, 10);
     const trial = makeTrial({
       isStarted: true,
       startDate: "2025-01-01",
@@ -292,7 +292,7 @@ describe("getDaysRemaining", () => {
     future.setDate(future.getDate() + 10);
     const trial = makeTrial({
       isStarted: true,
-      endDate: future.toISOString().split("T")[0],
+      endDate: future.toISOString().slice(0, 10),
     });
     const days = getDaysRemaining(trial);
     expect(days).not.toBeNull();

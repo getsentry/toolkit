@@ -194,7 +194,7 @@ describe("assemble requests", () => {
       assembleArtifactBundle("my-org", {
         checksum: "abc",
         chunks: [],
-        projects: [],
+        projects: ["my-project"],
       }),
     ).rejects.toThrow("Unexpected response format");
   });

@@ -86,5 +86,6 @@ export const unlinkCommand = buildDeleteCommand({
       dryRun: flags["dry-run"],
     });
     yield new CommandOutput(result);
+    return;
   },
 });

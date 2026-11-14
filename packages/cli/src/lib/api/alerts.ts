@@ -37,9 +37,11 @@ import { ApiError, ValidationError } from "../errors.js";
 import {
   getOrgSdkConfig,
   type PaginatedResponse,
+  paginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 // Types
 
@@ -191,10 +193,10 @@ function resolveThresholdSource(
       ? (value as Record<string, unknown>)
       : undefined;
 
-  const queryObj = asRecord(source.queryObj);
-  const snubaQuery = asRecord(source.snubaQuery);
+  const queryObj = asRecord(source["queryObj"]);
+  const snubaQuery = asRecord(source["snubaQuery"]);
   const candidates = [
-    queryObj && asRecord(queryObj.snubaQuery),
+    queryObj && asRecord(queryObj["snubaQuery"]),
     queryObj,
     snubaQuery,
     source,
@@ -215,21 +217,21 @@ function mapDetectorToMetricAlertRule(
   const nested = resolveThresholdSource(source);
 
   const environment =
-    pickDetectorString(nested.environment) || detector.environment || null;
+    pickDetectorString(nested["environment"]) || detector.environment || null;
 
   // The detector payload exposes timeWindow in seconds, but MetricAlertRule
   // (and every CLI formatter, which appends "m") treats it as whole minutes.
-  const timeWindowSeconds = pickDetectorNumber(nested.timeWindow);
+  const timeWindowSeconds = pickDetectorNumber(nested["timeWindow"]);
 
   return {
     id: String(detector.id),
     name: detector.name,
     status: detector.enabled === false ? 1 : 0,
-    query: pickDetectorString(nested.query),
-    aggregate: pickDetectorString(nested.aggregate),
+    query: pickDetectorString(nested["query"]),
+    aggregate: pickDetectorString(nested["aggregate"]),
     dataset: metricAlertDatasetName(
-      pickDetectorString(nested.dataset),
-      Array.isArray(nested.eventTypes) ? nested.eventTypes : [],
+      pickDetectorString(nested["dataset"]),
+      Array.isArray(nested["eventTypes"]) ? nested["eventTypes"] : [],
     ),
     timeWindow: timeWindowSeconds > 0 ? Math.round(timeWindowSeconds / 60) : 0,
     environment,
@@ -273,24 +275,24 @@ function filterAttachedIssueAlertRules(
 export async function listIssueAlertsPaginated(
   orgSlug: string,
   projectSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<IssueAlertRule[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationWorkflows({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       project: [projectSlug],
       sortBy: "-id",
       per_page: options.perPage,
       cursor: options.cursor,
-    },
+    }),
   });
   const { data, nextCursor } = unwrapPaginatedResult<IssueAlertRule[]>(
     result,
     "Failed to list issue alert rules",
   );
-  return { data: filterAttachedIssueAlertRules(data), nextCursor };
+  return paginatedResponse(filterAttachedIssueAlertRules(data), nextCursor);
 }
 
 /**
@@ -414,24 +416,23 @@ const METRIC_DETECTOR_QUERY = "type:metric_issue";
  */
 export async function listMetricAlertsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<MetricAlertRule[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationDetectors({
     ...config,
     path: { organization_id_or_slug: orgSlug },
     query: {
+      ...omitUndefined({ cursor: options.cursor, per_page: options.perPage }),
       query: METRIC_DETECTOR_QUERY,
       sortBy: "-id",
-      cursor: options.cursor,
-      per_page: options.perPage,
     },
   });
   const { data, nextCursor } = unwrapPaginatedResult<MetricDetector[]>(
     result,
     "Failed to list metric alert rules",
   );
-  return { data: data.map(mapDetectorToMetricAlertRule), nextCursor };
+  return paginatedResponse(data.map(mapDetectorToMetricAlertRule), nextCursor);
 }
 
 /**
@@ -457,9 +458,13 @@ export async function getMetricAlertRule(
   const detector = await getMetricDetector(orgSlug, ruleId);
   return {
     ...mapDetectorToMetricAlertRule(detector),
-    config: detector.config ?? undefined,
-    conditionGroup: detector.conditionGroup,
-    workflowIds: detector.workflowIds,
+    ...(detector.config && { config: detector.config }),
+    ...(detector.conditionGroup !== undefined && {
+      conditionGroup: detector.conditionGroup,
+    }),
+    ...(detector.workflowIds !== undefined && {
+      workflowIds: detector.workflowIds,
+    }),
   };
 }
 
@@ -606,7 +611,7 @@ type DetectorSourceFields = Omit<MetricMonitorSource, "dataset"> & {
 function detectorSourceFields(
   body: Record<string, unknown>,
 ): DetectorSourceFields {
-  const dataset = pickDetectorString(body.dataset);
+  const dataset = pickDetectorString(body["dataset"]);
   const named = metricAlertSource(dataset);
   if (named) {
     return named;
@@ -667,17 +672,17 @@ function buildDetectorDataSource(
 ): Record<string, unknown> {
   const native = detectorSourceFields(body);
   const timeWindowMinutes =
-    typeof body.timeWindow === "number" ? body.timeWindow : 0;
+    typeof body["timeWindow"] === "number" ? body["timeWindow"] : 0;
   const source: Record<string, unknown> = {
-    aggregate: typeof body.aggregate === "string" ? body.aggregate : "",
+    aggregate: typeof body["aggregate"] === "string" ? body["aggregate"] : "",
     dataset: native.dataset,
-    query: typeof body.query === "string" ? body.query : "",
+    query: typeof body["query"] === "string" ? body["query"] : "",
     queryType: native.queryType,
     eventTypes: [...native.eventTypes],
     timeWindow: timeWindowMinutes * 60,
   };
-  if (typeof body.environment === "string" && body.environment !== "") {
-    source.environment = body.environment;
+  if (typeof body["environment"] === "string" && body["environment"] !== "") {
+    source["environment"] = body["environment"];
   }
   return source;
 }
@@ -699,37 +704,37 @@ function buildDetectorBody(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
   // create/edit store triggers already parsed by parseMetricTriggers.
-  const triggers = body.triggers as MetricTriggers | undefined;
+  const triggers = body["triggers"] as MetricTriggers | undefined;
   // Threshold triggers are static thresholds. Otherwise edits carry the stored
   // config so percent and dynamic detectors keep their detection mode, and
   // creates default to static.
   const keepStoredConfig =
-    isDetectorConfig(body.detectorConfig) &&
+    isDetectorConfig(body["detectorConfig"]) &&
     !(triggers && !isDetectorConditionList(triggers));
   const detectorBody: Record<string, unknown> = {
-    name: typeof body.name === "string" ? body.name : "",
+    name: typeof body["name"] === "string" ? body["name"] : "",
     type: "metric_issue",
     dataSources: [buildDetectorDataSource(body)],
     config: keepStoredConfig
-      ? body.detectorConfig
+      ? body["detectorConfig"]
       : { detectionType: "static" },
   };
 
   if (triggers) {
-    detectorBody.conditionGroup = {
+    detectorBody["conditionGroup"] = {
       logicType: "any",
       conditions: buildDetectorConditions(triggers),
     };
   }
-  if (Array.isArray(body.workflowIds)) {
-    detectorBody.workflowIds = body.workflowIds;
+  if (Array.isArray(body["workflowIds"])) {
+    detectorBody["workflowIds"] = body["workflowIds"];
   }
 
-  if (body.status !== undefined) {
-    detectorBody.enabled = Number(body.status) !== 1;
+  if (body["status"] !== undefined) {
+    detectorBody["enabled"] = Number(body["status"]) !== 1;
   }
-  if (body.owner !== undefined) {
-    detectorBody.owner = body.owner;
+  if (body["owner"] !== undefined) {
+    detectorBody["owner"] = body["owner"];
   }
   return detectorBody;
 }
@@ -745,7 +750,7 @@ function buildDetectorBody(
  * @throws {ValidationError} when no project slug is present
  */
 function resolveDetectorProject(body: Record<string, unknown>): string {
-  const projects = Array.isArray(body.projects) ? body.projects : [];
+  const projects = Array.isArray(body["projects"]) ? body["projects"] : [];
   const project = projects.find(
     (value): value is string =>
       typeof value === "string" && value.trim() !== "",
@@ -806,14 +811,14 @@ export async function getMetricAlertRuleDocument(
   const document: Record<string, unknown> = {
     ...mapDetectorToMetricAlertRule(detector),
   };
-  if (Array.isArray(source.eventTypes)) {
-    document.eventTypes = source.eventTypes;
+  if (Array.isArray(source["eventTypes"])) {
+    document["eventTypes"] = source["eventTypes"];
   }
-  if (typeof source.queryType === "number") {
-    document.queryType = source.queryType;
+  if (typeof source["queryType"] === "number") {
+    document["queryType"] = source["queryType"];
   }
   if (isDetectorConfig(detector.config)) {
-    document.detectorConfig = detector.config;
+    document["detectorConfig"] = detector.config;
   }
   return document;
 }

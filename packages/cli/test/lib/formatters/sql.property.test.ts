@@ -28,20 +28,20 @@ let originalPlainOutput: string | undefined;
 let originalNoColor: string | undefined;
 
 beforeEach(() => {
-  originalPlainOutput = process.env.SENTRY_PLAIN_OUTPUT;
-  originalNoColor = process.env.NO_COLOR;
+  originalPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
+  originalNoColor = process.env["NO_COLOR"];
 });
 
 afterEach(() => {
   if (originalPlainOutput !== undefined) {
-    process.env.SENTRY_PLAIN_OUTPUT = originalPlainOutput;
+    process.env["SENTRY_PLAIN_OUTPUT"] = originalPlainOutput;
   } else {
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   }
   if (originalNoColor !== undefined) {
-    process.env.NO_COLOR = originalNoColor;
+    process.env["NO_COLOR"] = originalNoColor;
   } else {
-    delete process.env.NO_COLOR;
+    delete process.env["NO_COLOR"];
   }
 });
 
@@ -127,7 +127,7 @@ describe("property: isDbSpanOp", () => {
 
 describe("property: colorizeSql", () => {
   test("stripping ANSI preserves original text content (case-insensitive)", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     fcAssert(
       property(sqlStringArb, (sql) => {
         const colorized = colorizeSql(sql);
@@ -140,7 +140,7 @@ describe("property: colorizeSql", () => {
   });
 
   test("plain mode returns input unchanged (identity)", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     fcAssert(
       property(sqlStringArb, (sql) => {
         expect(colorizeSql(sql)).toBe(sql);
@@ -150,7 +150,7 @@ describe("property: colorizeSql", () => {
   });
 
   test("is deterministic: same input always gives same output", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     fcAssert(
       property(sqlStringArb, (sql) => {
         expect(colorizeSql(sql)).toBe(colorizeSql(sql));
@@ -160,7 +160,7 @@ describe("property: colorizeSql", () => {
   });
 
   test("idempotent strip: stripAnsi(colorizeSql(x)) == stripAnsi(colorizeSql(stripAnsi(colorizeSql(x))))", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     fcAssert(
       property(sqlStringArb, (sql) => {
         const once = stripAnsi(colorizeSql(sql));
@@ -172,7 +172,7 @@ describe("property: colorizeSql", () => {
   });
 
   test("never returns empty for non-empty input", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     fcAssert(
       property(sqlStringArb, (sql) => {
         if (sql.length > 0) {

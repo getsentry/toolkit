@@ -43,7 +43,7 @@ function genericOffsetPaginator(total: number): FetchPage {
     const data = Array.from({ length: end - offset }, (_, i) => offset + i);
     return Promise.resolve({
       data,
-      nextCursor: end < total ? `0:${end}:0` : undefined,
+      ...(end < total && { nextCursor: `0:${end}:0` }),
     });
   };
 }
@@ -67,7 +67,7 @@ function offsetPaginator(total: number): FetchPage {
     }
     return Promise.resolve({
       data: results.slice(0, limit),
-      nextCursor: results.length > limit ? `${limit}:${page + 1}:0` : undefined,
+      ...(results.length > limit && { nextCursor: `${limit}:${page + 1}:0` }),
     });
   };
 }

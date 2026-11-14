@@ -173,7 +173,7 @@ function isPinnedCredential(
  */
 export async function resolveCliMcpCredential(
   config: McpTarget,
-  options: { force?: boolean; pin?: McpCredentialPin } = {},
+  options: { force?: boolean | undefined; pin?: McpCredentialPin } = {},
 ): Promise<McpCliCredential> {
   const targetUrl = `${config.sentryProtocol}://${config.sentryHost}`;
   const requested = options.pin ?? startupPin();
@@ -277,7 +277,7 @@ function readDeprecatedAccessToken(
   if (flag?.trim()) {
     return { token: flag, source: "--access-token" };
   }
-  const fromEnv = env.SENTRY_ACCESS_TOKEN;
+  const fromEnv = env["SENTRY_ACCESS_TOKEN"];
   if (fromEnv?.trim()) {
     return { token: fromEnv, source: "SENTRY_ACCESS_TOKEN" };
   }
@@ -314,7 +314,7 @@ function withTargetEnv(
     ...env,
     SENTRY_URL: `${target.sentryProtocol}://${target.sentryHost}`,
   };
-  delete targeted.SENTRY_HOST;
+  delete targeted["SENTRY_HOST"];
   return targeted;
 }
 
@@ -363,16 +363,16 @@ function clientTokenEnv(
 ): NodeJS.ProcessEnv {
   if (
     !deprecatedToken &&
-    (!(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
+    (!(env["SENTRY_AUTH_TOKEN"]?.trim() || env["SENTRY_TOKEN"]?.trim()) ||
       getRcInjectedTokenSource())
   ) {
     return env;
   }
   const forced: NodeJS.ProcessEnv = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
   if (deprecatedToken) {
-    delete forced.SENTRY_ACCESS_TOKEN;
-    delete forced.SENTRY_TOKEN;
-    forced.SENTRY_AUTH_TOKEN = deprecatedToken;
+    delete forced["SENTRY_ACCESS_TOKEN"];
+    delete forced["SENTRY_TOKEN"];
+    forced["SENTRY_AUTH_TOKEN"] = deprecatedToken;
   }
   if (keepStartupHost) {
     scopeEnvTokenToBootHost(forced);

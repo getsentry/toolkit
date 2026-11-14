@@ -2,18 +2,22 @@
  * Release Finalize Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { finalizeCommand } from "../../../src/commands/release/finalize.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -22,18 +26,15 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-finalize-");
 
@@ -54,8 +55,8 @@ const finalizedRelease: SentryRelease = {
 };
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -68,8 +69,8 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release finalize", () => {
-  let updateReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let updateReleaseSpy: MockInstance<(typeof apiClient)["updateRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     updateReleaseSpy = vi.spyOn(apiClient, "updateRelease");
@@ -86,7 +87,7 @@ describe("release finalize", () => {
     updateReleaseSpy.mockResolvedValue(finalizedRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
     await func.call(context, { json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).toHaveBeenCalledWith(
@@ -101,7 +102,7 @@ describe("release finalize", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Release version",
@@ -112,7 +113,7 @@ describe("release finalize", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
       "organization",

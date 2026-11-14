@@ -10,7 +10,6 @@ import {
   boolean,
   constantFrom,
   assert as fcAssert,
-  oneof,
   property,
   record,
   string,
@@ -30,6 +29,7 @@ import {
   resolveCommandPath,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { must } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Arbitraries
@@ -121,7 +121,7 @@ describe("property: extractFlags", () => {
         for (const flag of result) {
           if (
             flag.kind === "boolean" &&
-            flags[flag.name].optional === undefined
+            must(flags[flag.name]).optional === undefined
           ) {
             expect(flag.optional).toBe(true);
           }
@@ -136,9 +136,7 @@ describe("property: getPositionalString", () => {
   test("tuple always produces angle-bracket placeholders", () => {
     fcAssert(
       property(
-        array(
-          record({ placeholder: oneof(string(), constantFrom(undefined)) }),
-        ),
+        array(record({ placeholder: string() }, { requiredKeys: [] })),
         (params) => {
           const result = getPositionalString({
             kind: "tuple",
@@ -159,7 +157,7 @@ describe("property: getPositionalString", () => {
       property(string(), (placeholder) => {
         const result = getPositionalString({
           kind: "array",
-          parameter: { placeholder: placeholder || undefined },
+          parameter: placeholder ? { placeholder } : {},
         });
         expect(result).toContain("...");
       }),

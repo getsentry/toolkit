@@ -8,17 +8,24 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { getChunkUploadOptions } from "../../../src/lib/api/chunk-upload.js";
+import {
+  type assembleDebugFiles,
+  getChunkUploadOptions,
+  type uploadChunkPayloads,
+} from "../../../src/lib/api/chunk-upload.js";
 import {
   ASSEMBLE_BATCH_SIZE,
   type DebugFileUpload,
   uploadDebugFiles,
 } from "../../../src/lib/api/debug-files.js";
 import { ApiError } from "../../../src/lib/errors.js";
+import { must, at } from "../../helpers.js";
 
 const { assembleMock, uploadChunkPayloadsMock } = vi.hoisted(() => ({
-  assembleMock: vi.fn(),
-  uploadChunkPayloadsMock: vi.fn(() => Promise.resolve()),
+  assembleMock: vi.fn<typeof assembleDebugFiles>(),
+  uploadChunkPayloadsMock: vi.fn<typeof uploadChunkPayloads>(() =>
+    Promise.resolve(),
+  ),
 }));
 
 vi.mock("../../../src/lib/region.js", () => ({
@@ -46,6 +53,8 @@ vi.mock("../../../src/lib/api/chunk-upload.js", async (importOriginal) => {
   };
 });
 
+type AssembleResponse = Awaited<ReturnType<typeof assembleDebugFiles>>;
+
 /** Build a single debug-file upload payload. */
 function makeDif(
   name: string,
@@ -56,13 +65,8 @@ function makeDif(
 }
 
 /** The single checksum key from the most recent assemble body. */
-function lastAssembleBody(): Record<
-  string,
-  { name: string; debug_id?: string; chunks: string[] }
-> {
-  const calls = assembleMock.mock.calls;
-  const lastCall = calls.at(-1);
-  return lastCall?.[2];
+function lastAssembleBody(): Parameters<typeof assembleDebugFiles>[2] {
+  return must(assembleMock.mock.calls.at(-1), "assemble was not called")[2];
 }
 
 const SOLE = {
@@ -117,9 +121,9 @@ describe("uploadDebugFiles", () => {
     // echo its keys back as "ok" — server already holds the file, so no-wait
     // completes on the first assemble.
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const data: AssembleResponse = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
@@ -138,7 +142,7 @@ describe("uploadDebugFiles", () => {
     const keys = Object.keys(body);
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^[0-9a-f]{40}$/);
-    const entry = body[keys[0]];
+    const entry = body[at(keys, 0)];
     expect(entry?.name).toBe("libfoo.so");
     expect(entry?.debug_id).toBe("abc123-def");
     expect(Array.isArray(entry?.chunks)).toBe(true);
@@ -151,9 +155,9 @@ describe("uploadDebugFiles", () => {
 
   test("omits debug_id from the body when not provided", async () => {
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const data: AssembleResponse = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
@@ -179,17 +183,17 @@ describe("uploadDebugFiles", () => {
 
     // First assemble: server is missing the chunk. Second: held (created).
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, { chunks: string[] }>;
-        const key = Object.keys(body)[0];
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const key = at(Object.keys(body), 0);
         return {
           [key]: { state: "not_found", missingChunks: body[key]?.chunks },
         };
       },
     );
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "created" } };
       },
     );
@@ -213,14 +217,14 @@ describe("uploadDebugFiles", () => {
     const dif = makeDif("libbaz.so", "debug bytes", "id-2");
 
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "assembling" } };
       },
     );
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "ok" } };
       },
     );
@@ -241,8 +245,8 @@ describe("uploadDebugFiles", () => {
   test("wait mode collects an 'error' state without throwing", async () => {
     const dif = makeDif("broken.so", "debug bytes", "id-3");
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "error", detail: "corrupt object" } };
       },
     );
@@ -261,12 +265,10 @@ describe("uploadDebugFiles", () => {
   test("wait mode throws ApiError when assembly does not finish in time", async () => {
     const dif = makeDif("slow.so", "debug bytes", "id-4");
     // Always "assembling" → never terminal. maxWaitMs=0 trips the deadline.
-    assembleMock.mockImplementation(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
-        return { [key]: { state: "assembling" } };
-      },
-    );
+    assembleMock.mockImplementation(async (_org, _project, assembleBody) => {
+      const key = at(Object.keys(assembleBody), 0);
+      return { [key]: { state: "assembling" } };
+    });
 
     await expect(
       uploadDebugFiles({
@@ -280,9 +282,9 @@ describe("uploadDebugFiles", () => {
 
   test("batches multiple files into one assemble request", async () => {
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const data: AssembleResponse = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
@@ -303,16 +305,14 @@ describe("uploadDebugFiles", () => {
   });
 
   test("includes code_id and shader_group only when provided", async () => {
-    assembleMock.mockImplementation(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
-        for (const key of Object.keys(body)) {
-          data[key] = { state: "ok" };
-        }
-        return data;
-      },
-    );
+    assembleMock.mockImplementation(async (_org, _project, assembleBody) => {
+      const body = assembleBody;
+      const data: AssembleResponse = {};
+      for (const key of Object.keys(body)) {
+        data[key] = { state: "ok" };
+      }
+      return data;
+    });
 
     await uploadDebugFiles({
       ...SOLE,
@@ -334,8 +334,8 @@ describe("uploadDebugFiles", () => {
       string,
       unknown
     >[];
-    expect(entry?.code_id).toBe("d9a5d2fa49f0cf6c");
-    expect(entry?.shader_group).toBe("Global/FSentryTestCS/0");
+    expect(entry?.["code_id"]).toBe("d9a5d2fa49f0cf6c");
+    expect(entry?.["shader_group"]).toBe("Global/FSentryTestCS/0");
 
     await uploadDebugFiles({
       ...SOLE,
@@ -352,16 +352,14 @@ describe("uploadDebugFiles", () => {
   });
 
   test("splits the assemble request into batches and merges the responses", async () => {
-    assembleMock.mockImplementation(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
-        for (const key of Object.keys(body)) {
-          data[key] = { state: "ok" };
-        }
-        return data;
-      },
-    );
+    assembleMock.mockImplementation(async (_org, _project, assembleBody) => {
+      const body = assembleBody;
+      const data: AssembleResponse = {};
+      for (const key of Object.keys(body)) {
+        data[key] = { state: "ok" };
+      }
+      return data;
+    });
     const difs = Array.from({ length: ASSEMBLE_BATCH_SIZE + 1 }, (_, i) =>
       makeDif(`f${i}.so`, `bytes ${i}`, `id-${i}`),
     );
@@ -375,7 +373,7 @@ describe("uploadDebugFiles", () => {
 
     expect(assembleMock).toHaveBeenCalledTimes(2);
     const sizes = assembleMock.mock.calls.map(
-      (call) => Object.keys(call[2] as object).length,
+      (call) => Object.keys(call[2]).length,
     );
     expect(sizes).toEqual([ASSEMBLE_BATCH_SIZE, 1]);
     expect(results).toHaveLength(ASSEMBLE_BATCH_SIZE + 1);
@@ -388,9 +386,9 @@ describe("uploadDebugFiles", () => {
     // call after the chunks are re-uploaded.
     assembleMock.mockImplementationOnce(async () => ({}));
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const data: AssembleResponse = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
@@ -418,14 +416,14 @@ describe("uploadDebugFiles", () => {
     // client must still upload all chunks for that file, otherwise the loop
     // would poll forever without sending anything.
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "not_found" } };
       },
     );
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "ok" } };
       },
     );
@@ -446,9 +444,9 @@ describe("uploadDebugFiles", () => {
   test("does not assemble oversized files but reports them as failures", async () => {
     setServerOptions({ maxFileSize: 5 });
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const body = assembleBody as Record<string, unknown>;
-        const data: Record<string, { state: string }> = {};
+      async (_org, _project, assembleBody) => {
+        const body = assembleBody;
+        const data: AssembleResponse = {};
         for (const key of Object.keys(body)) {
           data[key] = { state: "ok" };
         }
@@ -501,12 +499,10 @@ describe("uploadDebugFiles", () => {
     vi.useFakeTimers();
     // Always "assembling" → never terminal. The clamped 1s deadline trips
     // well before the requested 60s.
-    assembleMock.mockImplementation(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
-        return { [key]: { state: "assembling" } };
-      },
-    );
+    assembleMock.mockImplementation(async (_org, _project, assembleBody) => {
+      const key = at(Object.keys(assembleBody), 0);
+      return { [key]: { state: "assembling" } };
+    });
 
     const promise = uploadDebugFiles({
       ...SOLE,
@@ -525,8 +521,8 @@ describe("uploadDebugFiles", () => {
     setServerOptions({ maxWait: 0 });
     const dif = makeDif("ok.so", "debug bytes", "id-ok");
     assembleMock.mockImplementationOnce(
-      async (_org: string, _project: string, assembleBody: object) => {
-        const key = Object.keys(assembleBody)[0];
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
         return { [key]: { state: "ok" } };
       },
     );

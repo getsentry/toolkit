@@ -132,7 +132,7 @@ export function isRootHelpRequest(
     !scanned ||
     scanned.version ||
     scanned.json ||
-    env.SENTRY_OUTPUT_FORMAT === "json"
+    env["SENTRY_OUTPUT_FORMAT"] === "json"
   ) {
     return false;
   }

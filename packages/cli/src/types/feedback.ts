@@ -64,11 +64,11 @@ export type FeedbackListResult = {
   /** Whether a previous page is available. */
   hasPrev: boolean;
   /** Server cursor for the following page. */
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   /** Resolved organization slug. */
   org: string;
   /** Resolved project slug, absent for organization-wide queries. */
-  project?: string;
+  project?: string | undefined;
 };
 
 /** Data yielded by `feedback view` before JSON flattening. */

@@ -111,5 +111,6 @@ export const listCommand = buildCommand({
         hint: `Create one with: ${sentry`token create ${resolved.org}/<name>`}`,
       };
     }
+    return;
   },
 });

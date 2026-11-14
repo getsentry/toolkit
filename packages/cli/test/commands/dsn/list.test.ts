@@ -20,7 +20,12 @@ import {
 } from "../../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { mockProcess } from "../../fixture.js";
-import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  mockFetch,
+  useEnvSandbox,
+  useTestConfigDir,
+  loadCommand,
+} from "../../helpers.js";
 
 useEnvSandbox([
   "SENTRY_ORG",
@@ -209,7 +214,7 @@ async function invoke(
   } = {},
 ) {
   const ctx = createContext();
-  const func = await listCommand.loader();
+  const func = await loadCommand(listCommand);
   await func.call(
     ctx.context,
     {

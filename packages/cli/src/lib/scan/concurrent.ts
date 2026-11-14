@@ -22,13 +22,13 @@ import { CONCURRENCY_LIMIT } from "./constants.js";
 /** Common options for the two concurrent helpers. */
 export type ConcurrentOptions = {
   /** Max in-flight tasks. Default: `CONCURRENCY_LIMIT` (50). */
-  concurrency?: number;
+  concurrency?: number | undefined;
   /**
    * Abort mid-stream. When aborted, the next `yield` (stream variant)
    * or the `await` inside `mapFilesConcurrent` throws an
    * `AbortError`. In-flight tasks are left to settle on their own.
    */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 };
 
 /**
@@ -205,7 +205,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     // the post-try body), so an error thrown outside this block
     // would be silently lost on the break path.
     if (producerError) {
-      // oxlint-disable-next-line no-unsafe-finally -- intentional — this is the only path to surface producer errors on the break path
+      // oxlint-disable-next-line no-unsafe-finally, typescript/only-throw-error -- intentional — this is the only path to surface producer errors on the break path; rethrows the caught value unchanged
       throw producerError;
     }
   }

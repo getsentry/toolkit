@@ -157,5 +157,6 @@ export const switchCommand = buildCommand({
         hint: `${getActiveEnvVarName()} is set and overrides stored accounts.`,
       };
     }
+    return;
   },
 });

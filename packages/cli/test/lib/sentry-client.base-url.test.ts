@@ -36,14 +36,14 @@ describe("API base URL for org-auth credentials", () => {
   });
 
   test("uses the active org-auth claim host when no URL is configured", () => {
-    process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = orgAuthToken;
 
     expect(getApiBaseUrl()).toBe(claimHost);
     expect(getControlSiloUrl()).toBe(claimHost);
   });
 
   test("discovers the org region through the claim host", async () => {
-    process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = orgAuthToken;
     const originalFetch = globalThis.fetch;
     const requests: Request[] = [];
     globalThis.fetch = mockFetch(async (input, init) => {
@@ -77,18 +77,18 @@ describe("API base URL for org-auth credentials", () => {
   });
 
   test("prefers an explicit URL to the claim host", () => {
-    process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
-    process.env.SENTRY_URL = "https://configured.example.com";
+    process.env["SENTRY_AUTH_TOKEN"] = orgAuthToken;
+    process.env["SENTRY_URL"] = "https://configured.example.com";
 
     expect(getApiBaseUrl()).toBe("https://configured.example.com");
     expect(getControlSiloUrl()).toBe("https://configured.example.com");
 
-    process.env.SENTRY_HOST = "https://host.example.com";
+    process.env["SENTRY_HOST"] = "https://host.example.com";
     expect(getApiBaseUrl()).toBe("https://host.example.com");
   });
 
   test("uses the stored login host when an inactive env token has a claim", () => {
-    process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = orgAuthToken;
     setAuthToken("stored-token", undefined, undefined, {
       host: "https://stored.example.com",
     });
@@ -96,12 +96,12 @@ describe("API base URL for org-auth credentials", () => {
     expect(getApiBaseUrl()).toBe("https://stored.example.com");
     expect(getControlSiloUrl()).toBe("https://stored.example.com");
 
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     expect(getApiBaseUrl()).toBe(claimHost);
   });
 
   test("does not migrate a legacy stored login to an inactive token's claim", () => {
-    process.env.SENTRY_AUTH_TOKEN = orgAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = orgAuthToken;
     const db = getDatabase();
     db.query(
       "INSERT INTO accounts (account_id, token, refresh_token, host, is_active, updated_at) VALUES ('legacy', 'stored-token', 'refresh-token', NULL, 1, ?)",
@@ -118,7 +118,7 @@ describe("API base URL for org-auth credentials", () => {
   });
 
   test("rejects an invalid active org-auth URL claim instead of sending it to SaaS", () => {
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "ftp://invalid.example.com",
     });
@@ -128,7 +128,7 @@ describe("API base URL for org-auth credentials", () => {
   });
 
   test("does not validate an inactive environment claim during stored login migration", () => {
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "ftp://invalid.example.com",
     });
@@ -150,7 +150,7 @@ describe("API base URL for org-auth credentials", () => {
   test("keeps SaaS as the fallback without an active custom host", () => {
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
 
-    process.env.SENTRY_AUTH_TOKEN = "non-org-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "non-org-token";
     expect(getApiBaseUrl()).toBe(DEFAULT_SENTRY_URL);
     expect(getControlSiloUrl()).toBe(DEFAULT_SENTRY_URL);
   });

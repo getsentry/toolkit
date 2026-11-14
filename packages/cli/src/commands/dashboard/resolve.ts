@@ -46,7 +46,7 @@ import {
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
   readonly display?: string;
-  readonly dataset?: string;
+  readonly dataset?: string | undefined;
   readonly query?: string[];
   readonly where?: string;
   readonly "group-by"?: string[];
@@ -389,12 +389,12 @@ function warnUnknownAggregateFields(
 export function buildWidgetFromFlags(opts: {
   title: string;
   display: string;
-  dataset?: string;
-  query?: string[];
-  where?: string;
-  groupBy?: string[];
-  sort?: string;
-  limit?: number;
+  dataset?: string | undefined;
+  query?: string[] | undefined;
+  where?: string | undefined;
+  groupBy?: string[] | undefined;
+  sort?: string | undefined;
+  limit?: number | undefined;
 }): DashboardWidget {
   const aggregates = (opts.query ?? ["count"]).map(parseAggregate);
   validateAggregateNames(aggregates, opts.dataset);

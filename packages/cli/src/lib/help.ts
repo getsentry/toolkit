@@ -308,7 +308,7 @@ type CustomHelpOptions = {
    * command list. Used for bare `sentry`; ignored when an AI agent is
    * detected so agents always get the full list.
    */
-  overview?: boolean;
+  overview?: boolean | undefined;
 };
 
 /**
@@ -404,9 +404,9 @@ export type HelpEnvVarInfo = {
   /** Full markdown description from the env-var registry. */
   description: string;
   /** Example value (when provided in the registry). */
-  example?: string;
+  example?: string | undefined;
   /** Default value (when provided in the registry). */
-  defaultValue?: string;
+  defaultValue?: string | undefined;
 };
 
 /**
@@ -416,7 +416,7 @@ export type HelpFlagInfo = {
   /** Long flag name including `--` prefix (e.g. `"--json"`). */
   long: string;
   /** Short alias including `-` prefix (e.g. `"-f"`), or undefined if none. */
-  short?: string;
+  short?: string | undefined;
   /** One-line description. */
   description: string;
 };
@@ -495,7 +495,10 @@ export function introspectAllCommands(): {
  */
 export function introspectCommand(
   commandPath: string[],
-): CommandInfo | RouteInfo | { error: string; suggestions?: string[] } {
+):
+  | CommandInfo
+  | RouteInfo
+  | { error: string; suggestions?: string[] | undefined } {
   const routeMap = getRoutes() as unknown as RouteMap;
   const resolved = resolveCommandPath(routeMap, commandPath);
   if (!resolved) {

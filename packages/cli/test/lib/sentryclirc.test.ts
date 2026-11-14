@@ -44,7 +44,8 @@ beforeEach(async () => {
     isolateProjectRoot: true,
   });
   // Point config dir at the test dir so getConfigDir() returns a predictable path
-  process.env.SENTRY_CONFIG_DIR = testDir;
+  // Point config dir at the test dir so getConfigDir() returns a predictable path
+  process.env["SENTRY_CONFIG_DIR"] = testDir;
   resetEnvTokenHostForTesting();
 });
 
@@ -245,8 +246,8 @@ token = sntrys_test
 
 describe("applySentryCliRcEnvShim", () => {
   test("sets SENTRY_AUTH_TOKEN when not already set", async () => {
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_TOKEN"];
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -254,8 +255,8 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("records the rc file as the injected token source", async () => {
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_TOKEN"];
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -263,7 +264,7 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not record an injected source when a real env token is set", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "existing-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "existing-token";
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -271,7 +272,7 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not override existing SENTRY_AUTH_TOKEN", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "existing-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "existing-token";
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -279,7 +280,7 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not override non-empty whitespace SENTRY_AUTH_TOKEN", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "  real-token  ";
+    process.env["SENTRY_AUTH_TOKEN"] = "  real-token  ";
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -287,7 +288,7 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("overrides empty/whitespace-only SENTRY_AUTH_TOKEN", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "   ";
+    process.env["SENTRY_AUTH_TOKEN"] = "   ";
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -295,8 +296,8 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not override existing SENTRY_TOKEN (fallback env var)", async () => {
-    delete process.env.SENTRY_AUTH_TOKEN;
-    process.env.SENTRY_TOKEN = "env-fallback-token";
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    process.env["SENTRY_TOKEN"] = "env-fallback-token";
     writeRcFile(testDir, "[auth]\ntoken = rc-token\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -306,8 +307,8 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("sets SENTRY_URL for SaaS rc url (no credential risk, no scoping check)", async () => {
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     writeRcFile(testDir, "[defaults]\nurl = https://sentry.io\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -319,8 +320,8 @@ describe("applySentryCliRcEnvShim", () => {
     // `new URL(...)` deep in the SaaS check. The shim now normalizes
     // the rc url through `normalizeUrl` first so bare hostnames are
     // accepted as the equivalent `https://sentry.io`.
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     writeRcFile(testDir, "[defaults]\nurl = sentry.io\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -334,8 +335,8 @@ describe("applySentryCliRcEnvShim", () => {
     // token to an attacker host. The shim itself applies the URL
     // unconditionally; the trust check lives in assertRcUrlTrusted, called
     // by buildCommand's wrapper.
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     // Capture env-token host BEFORE shim mutates env (mirrors boot order).
     captureEnvTokenHost();
     writeRcFile(testDir, "[defaults]\nurl = https://evil.example.com\n");
@@ -349,8 +350,8 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not set SENTRY_URL when SENTRY_HOST is set", async () => {
-    process.env.SENTRY_HOST = "sentry.other.com";
-    delete process.env.SENTRY_URL;
+    process.env["SENTRY_HOST"] = "sentry.other.com";
+    delete process.env["SENTRY_URL"];
     writeRcFile(testDir, "[defaults]\nurl = https://sentry.example.com\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -358,8 +359,8 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does not set SENTRY_URL when SENTRY_URL is already set", async () => {
-    delete process.env.SENTRY_HOST;
-    process.env.SENTRY_URL = "https://existing.sentry.io";
+    delete process.env["SENTRY_HOST"];
+    process.env["SENTRY_URL"] = "https://existing.sentry.io";
     writeRcFile(testDir, "[defaults]\nurl = https://sentry.example.com\n");
 
     await applySentryCliRcEnvShim(testDir);
@@ -367,9 +368,9 @@ describe("applySentryCliRcEnvShim", () => {
   });
 
   test("does nothing when no .sentryclirc exists", async () => {
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
 
     await applySentryCliRcEnvShim(testDir);
     expect(readEnv("SENTRY_AUTH_TOKEN")).toBeUndefined();

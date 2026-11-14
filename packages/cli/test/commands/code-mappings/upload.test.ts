@@ -5,13 +5,19 @@
  * Upload tests are limited to validation since actual uploads require API access.
  */
 
+import type { SentryContext } from "../../../src/context.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { uploadCommand } from "../../../src/commands/code-mappings/upload.js";
 import { ValidationError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+} from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("code-mappings-");
 
@@ -27,17 +33,17 @@ afterEach(async () => {
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: tempDir,
   };
 }
 
 describe("code-mappings upload validation", () => {
-  let func: Awaited<ReturnType<typeof uploadCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
-    func = await uploadCommand.loader();
+    func = await loadCommand(uploadCommand);
   });
 
   test("rejects nonexistent file", async () => {
@@ -129,8 +135,8 @@ describe("extractRepoName", () => {
 
     // The command will pass validation but fail at org/project resolution
     // since we don't have real credentials. That's expected.
-    let func: Awaited<ReturnType<typeof uploadCommand.loader>>;
-    func = await uploadCommand.loader();
+    let func: TestCommandFunction<SentryContext>;
+    func = await loadCommand(uploadCommand);
     const ctx = makeContext();
 
     // Should fail at org/project resolution, NOT at validation

@@ -9,7 +9,15 @@ import { createLocalControlPlane } from "../../../src/commands/local/control-pla
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import {
   buildApp,
   consumeSSE,
@@ -24,6 +32,7 @@ import {
 import { openBrowser } from "../../../src/lib/browser.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
+import { at } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -234,7 +243,7 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
-  let info: ReturnType<typeof vi.spyOn>;
+  let info: MockInstance<(typeof logger)["info"]>;
   beforeEach(() => {
     info = vi.spyOn(logger, "info").mockImplementation(() => {});
   });
@@ -294,7 +303,7 @@ describe("sentry local serve --open", () => {
       signal.trigger();
       await command;
       expectViewerHint();
-      const url = new URL(opener.mock.calls[0][0]);
+      const url = new URL(at(opener.mock.calls, 0)[0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
       );

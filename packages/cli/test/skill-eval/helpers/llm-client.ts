@@ -36,11 +36,11 @@ export type LLMClient = {
  * @param provider - Resolved provider (OpenRouter or Anthropic direct)
  */
 export function createClient(provider: EvalProvider): LLMClient {
-  const agentModels = process.env.EVAL_AGENT_MODELS
-    ? process.env.EVAL_AGENT_MODELS.split(",").map((m) => m.trim())
+  const agentModels = process.env["EVAL_AGENT_MODELS"]
+    ? process.env["EVAL_AGENT_MODELS"].split(",").map((m) => m.trim())
     : DEFAULT_AGENT_MODELS;
 
-  const judgeModel = process.env.EVAL_JUDGE_MODEL ?? DEFAULT_JUDGE_MODEL;
+  const judgeModel = process.env["EVAL_JUDGE_MODEL"] ?? DEFAULT_JUDGE_MODEL;
 
   return { provider, agentModels, judgeModel };
 }

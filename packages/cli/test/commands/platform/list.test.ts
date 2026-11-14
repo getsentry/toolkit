@@ -11,18 +11,20 @@ import { listCommand } from "../../../src/commands/platform/list.js";
 import type { SentryContext } from "../../../src/context.js";
 import { EXIT, OutputError } from "../../../src/lib/errors.js";
 import { VALID_PLATFORMS } from "../../../src/lib/platforms.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function createMockContext(): {
   context: SentryContext;
   stdoutWrite: ReturnType<typeof vi.fn>;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       process,
       env: process.env,
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       stdin: process.stdin,
       cwd: "/tmp",
       homeDir: "/tmp",
@@ -35,7 +37,7 @@ function createMockContext(): {
 describe("platform list", () => {
   test("lists all valid platforms by default", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -47,7 +49,7 @@ describe("platform list", () => {
 
   test("--json outputs the full platform list as a JSON array", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -58,7 +60,7 @@ describe("platform list", () => {
 
   test("--search filters to matching platforms only", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false, search: "node" });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -69,7 +71,7 @@ describe("platform list", () => {
 
   test("--search --json filters the JSON array too", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true, search: "go-" });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -80,7 +82,7 @@ describe("platform list", () => {
 
   test("--search with no matches exits non-zero with empty results, not a broken table", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const err = await func
       .call(context, { json: false, search: "nonexistent-xyz-platform" })

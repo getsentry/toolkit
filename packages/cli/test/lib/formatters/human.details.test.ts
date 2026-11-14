@@ -21,7 +21,7 @@ import type {
   SentryOrganization,
   SentryProject,
 } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, without } from "../../helpers.js";
 
 // Isolated per-test config dir so `resolveOrgDisplayName`'s cached-org lookup
 // (via `getCachedOrganizations`) starts empty. Without this, an earlier test
@@ -133,7 +133,7 @@ describe("formatOrgDetails", () => {
   });
 
   test("handles missing dateCreated", () => {
-    const org = createMockOrg({ dateCreated: undefined });
+    const org = without(createMockOrg(), "dateCreated");
     // Should not throw
     const result = stripAnsi(formatOrgDetails(org));
     expect(result).not.toContain("Created");
@@ -234,7 +234,7 @@ describe("formatProjectDetails", () => {
   });
 
   test("handles missing firstEvent", () => {
-    const project = createMockProject({ firstEvent: undefined });
+    const project = without(createMockProject(), "firstEvent");
     const result = stripAnsi(formatProjectDetails(project));
     expect(result).toContain("No events yet");
   });
@@ -302,7 +302,12 @@ describe("formatIssueDetails", () => {
 
   test("includes project info when present", () => {
     const issue = createMockIssue({
-      project: { slug: "frontend", name: "Frontend App" },
+      project: {
+        id: "1",
+        slug: "frontend",
+        name: "Frontend App",
+        platform: null,
+      },
     });
 
     const result = stripAnsi(formatIssueDetails(issue));
@@ -312,8 +317,8 @@ describe("formatIssueDetails", () => {
 
   test("formats single release correctly", () => {
     const issue = createMockIssue({
-      firstRelease: { shortVersion: "1.0.0" },
-      lastRelease: { shortVersion: "1.0.0" },
+      firstRelease: { version: "1.0.0", shortVersion: "1.0.0" },
+      lastRelease: { version: "1.0.0", shortVersion: "1.0.0" },
     });
 
     const result = stripAnsi(formatIssueDetails(issue));
@@ -323,8 +328,8 @@ describe("formatIssueDetails", () => {
 
   test("formats release range when different", () => {
     const issue = createMockIssue({
-      firstRelease: { shortVersion: "1.0.0" },
-      lastRelease: { shortVersion: "2.0.0" },
+      firstRelease: { version: "1.0.0", shortVersion: "1.0.0" },
+      lastRelease: { version: "2.0.0", shortVersion: "2.0.0" },
     });
 
     const result = stripAnsi(formatIssueDetails(issue));
@@ -346,7 +351,7 @@ describe("formatIssueDetails", () => {
 
   test("includes assignee name", () => {
     const issue = createMockIssue({
-      assignedTo: { name: "John Doe" },
+      assignedTo: { type: "user", id: "1", name: "John Doe" },
     });
 
     const result = stripAnsi(formatIssueDetails(issue));
@@ -354,7 +359,7 @@ describe("formatIssueDetails", () => {
   });
 
   test("shows Unassigned when no assignee", () => {
-    const issue = createMockIssue({ assignedTo: undefined });
+    const issue = without(createMockIssue(), "assignedTo");
     const result = stripAnsi(formatIssueDetails(issue));
     expect(result).toContain("Unassigned");
   });
@@ -395,18 +400,19 @@ describe("formatIssueDetails", () => {
   });
 
   test("handles missing optional fields gracefully", () => {
-    const issue = createMockIssue({
-      platform: undefined,
-      type: undefined,
-      priority: undefined,
-      substatus: undefined,
-      isUnhandled: undefined,
-      project: undefined,
-      firstRelease: undefined,
-      lastRelease: undefined,
-      culprit: undefined,
-      metadata: undefined,
-    });
+    const issue = without(
+      createMockIssue(),
+      "platform",
+      "type",
+      "priority",
+      "substatus",
+      "isUnhandled",
+      "project",
+      "firstRelease",
+      "lastRelease",
+      "culprit",
+      "metadata",
+    );
 
     // Should not throw
     const result = stripAnsi(formatIssueDetails(issue));
@@ -431,7 +437,7 @@ describe("formatIssueDetails", () => {
   });
 
   test("omits fixability when seerFixabilityScore is undefined", () => {
-    const issue = createMockIssue({ seerFixabilityScore: undefined });
+    const issue = without(createMockIssue(), "seerFixabilityScore");
     const result = stripAnsi(formatIssueDetails(issue));
     expect(result).not.toContain("Fixability");
   });
@@ -930,7 +936,7 @@ describe("formatEventDetails", () => {
 
   test("handles minimal event", () => {
     const result = formatEventDetails(
-      createMockEvent({ dateReceived: undefined }),
+      without(createMockEvent(), "dateReceived"),
     );
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);

@@ -18,6 +18,7 @@ import { proposeCompletions } from "@stricli/core";
 import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
+import { buildContext } from "../../src/context.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
 import {
   COMPLETION_VALUES,
@@ -37,6 +38,7 @@ import {
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 // -- Arbitraries --
 
@@ -63,7 +65,8 @@ const completionContext = {
     },
     stdin: process.stdin,
   },
-  forCommand: () => ({}),
+  // Route completion never runs a command; the real builder only types it.
+  forCommand: buildContext(process).forCommand,
 };
 
 // -- Tests --
@@ -250,7 +253,7 @@ describe("proposeCompletions: Stricli integration", () => {
         continue;
       }
       // Pick the first subcommand's first character as prefix
-      const prefix = group.subcommands[0].name[0];
+      const prefix = at(group.subcommands, 0).name.charAt(0);
       const completions = await proposeCompletions(
         app,
         [group.name, prefix],
@@ -416,7 +419,7 @@ describe(
       );
       env = {
         ...process.env,
-        PATH: `${binDir}:${process.env.PATH}`,
+        PATH: `${binDir}:${process.env["PATH"]}`,
         SENTRY_CONFIG_DIR: join(root, "config"),
       };
     });

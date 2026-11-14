@@ -23,6 +23,7 @@ import {
   startStalledIngest,
   startStalledProxy,
 } from "./ingest-servers.js";
+import { at } from "../../helpers.js";
 
 describe("makeCompressedTransport (e2e)", () => {
   afterEach(closeIngestServers);
@@ -53,7 +54,7 @@ describe("makeCompressedTransport (e2e)", () => {
     expect(captures).toHaveLength(1);
     expect(captures[0]?.headers["content-encoding"]).toBe("zstd");
 
-    const decompressed = await promisify(zstdDecompress)(captures[0].body);
+    const decompressed = await promisify(zstdDecompress)(at(captures, 0).body);
     const text = Buffer.from(
       decompressed.buffer,
       decompressed.byteOffset,
@@ -108,8 +109,8 @@ describe("makeCompressedTransport (e2e)", () => {
 
   test("aborts a request stalled behind a proxy", async () => {
     const proxy = await startStalledProxy();
-    const savedProxy = process.env.http_proxy;
-    process.env.http_proxy = proxy.url;
+    const savedProxy = process.env["http_proxy"];
+    process.env["http_proxy"] = proxy.url;
     try {
       const transport = makeCompressedTransport(
         { url: "http://127.0.0.1:9/api/0/envelope/", recordDroppedEvent: noop },
@@ -123,9 +124,9 @@ describe("makeCompressedTransport (e2e)", () => {
       await proxy.closed;
     } finally {
       if (savedProxy === undefined) {
-        delete process.env.http_proxy;
+        delete process.env["http_proxy"];
       } else {
-        process.env.http_proxy = savedProxy;
+        process.env["http_proxy"] = savedProxy;
       }
     }
   });

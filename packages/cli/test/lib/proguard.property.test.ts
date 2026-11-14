@@ -13,6 +13,7 @@ import {
   PROGUARD_NAMESPACE,
 } from "../../src/lib/proguard.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 /** Lowercase hyphenated UUID shape (8-4-4-4-12 hex). */
 const UUID_RE =
@@ -72,7 +73,7 @@ describe("proguard: computeProguardUuid", () => {
         const original = Buffer.from(bytes);
         const mutated = Buffer.from(bytes);
         // Flip the first byte to guarantee different content.
-        mutated[0] = (mutated[0] + 1) % 256;
+        mutated[0] = (at(mutated, 0) + 1) % 256;
         expect(computeProguardUuid(original)).not.toBe(
           computeProguardUuid(mutated),
         );

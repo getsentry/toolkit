@@ -11,7 +11,7 @@ import {
 import { setOrgRegion } from "../../../../src/lib/db/regions.js";
 import type { ApiError } from "../../../../src/lib/errors.js";
 import { logger } from "../../../../src/lib/logger.js";
-import { mockFetch, useTestConfigDir } from "../../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../../helpers.js";
 
 const getConfigDir = useTestConfigDir("test-alert-issues-list-", {
   isolateProjectRoot: true,
@@ -444,7 +444,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
-        return Response.json([rule(ruleMatch[1])]);
+        return Response.json([rule(at(ruleMatch, 1))]);
       }
       if (url.pathname === "/api/0/organizations/") {
         return Response.json([
@@ -641,7 +641,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
-        const org = ruleMatch[1];
+        const org = at(ruleMatch, 1);
         const perPage = Number(url.searchParams.get("per_page"));
         perPageByOrg.set(org, perPage);
         return new Response(

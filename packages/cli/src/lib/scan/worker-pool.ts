@@ -173,7 +173,7 @@ export function getWorkerPool(): WorkerPool {
     });
     w.addEventListener("error", (err) => {
       pw.alive = false;
-      const errMsg = err.message ?? String(err);
+      const errMsg = err.message ?? String(err.error);
       let slot = pw.pending.shift();
       while (slot !== undefined) {
         slot.reject(new Error(`worker error: ${errMsg}`));
@@ -315,8 +315,9 @@ export function decodeWorkerMatches(
       lineNum,
       line,
     };
-    if (mtimes !== null) {
-      match.mtime = mtimes[pathIdx];
+    const mtime = mtimes?.[pathIdx];
+    if (mtime !== undefined) {
+      match.mtime = mtime;
     }
     matches.push(match);
   }

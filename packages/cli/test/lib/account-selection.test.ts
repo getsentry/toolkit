@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const { selectWithFilter, isatty } = vi.hoisted(() => ({
   selectWithFilter: vi.fn(),
-  isatty: vi.fn(() => true),
+  isatty: vi.fn((_fd: number) => true),
 }));
 vi.mock("../../src/lib/select-ui/terminal.js", () => ({ selectWithFilter }));
 vi.mock("node:tty", async (importOriginal) => ({

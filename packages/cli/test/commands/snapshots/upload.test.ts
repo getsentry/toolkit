@@ -10,7 +10,15 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import { uploadCommand } from "../../../src/commands/snapshots/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
@@ -19,6 +27,7 @@ import { ValidationError } from "../../../src/lib/errors.js";
 import * as objectstore from "../../../src/lib/objectstore.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand, must } from "../../helpers.js";
 
 let tmpDir: string;
 
@@ -67,13 +76,15 @@ const UPLOAD_OPTIONS = {
 
 describe("snapshots upload", () => {
   let existsSpy: ReturnType<typeof vi.spyOn>;
-  let putSpy: ReturnType<typeof vi.spyOn>;
+  let putSpy: MockInstance<(typeof objectstore)["putObjects"]>;
   let createSpy: ReturnType<typeof vi.spyOn>;
   let uploadOptionsSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "snap-up-"));
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });
@@ -99,7 +110,7 @@ describe("snapshots upload", () => {
   /** Object keys passed to `putObjects` across all calls. */
   function uploadedKeys(): string[] {
     return putSpy.mock.calls.flatMap(([, uploads]) =>
-      (uploads as objectstore.ObjectUpload[]).map((u) => u.key),
+      uploads.map((u) => u.key),
     );
   }
 
@@ -120,7 +131,7 @@ describe("snapshots upload", () => {
       uploadOptionsSpy.mockResolvedValue({ objectstore: config });
       const dir = await writeShots();
       const harness = createContext();
-      const func = await uploadCommand.loader();
+      const func = await loadCommand(uploadCommand);
 
       await func.call(harness.context, { "app-id": "com.example.app" }, dir);
 
@@ -134,21 +145,24 @@ describe("snapshots upload", () => {
         string,
         Record<string, unknown>,
       ];
-      expect(manifest.app_id).toBe("com.example.app");
-      const images = manifest.images as Record<string, Record<string, unknown>>;
+      expect(manifest["app_id"]).toBe("com.example.app");
+      const images = manifest["images"] as Record<
+        string,
+        Record<string, unknown>
+      >;
       expect(Object.keys(images).sort()).toEqual(["a.png", "sub/b.png"]);
       expect(images["a.png"]).toMatchObject({
         width: 4,
         height: 3,
         note: "hi",
       });
-      expect(images["a.png"].content_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(must(images["a.png"])["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
       // selective omitted when not requested.
-      expect(manifest.selective).toBeUndefined();
+      expect(manifest["selective"]).toBeUndefined();
       expect(harness.output()).toContain("snap-1");
 
       // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
-      const hash = images["a.png"].content_hash as string;
+      const hash = must(images["a.png"])["content_hash"] as string;
       const key = uploadedKeys().find((k) => k.endsWith(hash)) as string;
       expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
       expect(existsSpy).toHaveBeenCalledTimes(1);
@@ -179,7 +193,7 @@ describe("snapshots upload", () => {
       }),
     );
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, { "app-id": "app" }, dir);
 
@@ -188,18 +202,18 @@ describe("snapshots upload", () => {
       string,
       Record<string, unknown>,
     ];
-    const entry = (manifest.images as Record<string, Record<string, unknown>>)[
-      "a.png"
-    ];
-    expect(entry.width).toBe(4);
-    expect(entry.height).toBe(3);
-    expect(entry.content_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(entry.keep).toBe(1);
+    const entry = must(
+      (manifest["images"] as Record<string, Record<string, unknown>>)["a.png"],
+    );
+    expect(entry["width"]).toBe(4);
+    expect(entry["height"]).toBe(3);
+    expect(entry["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(entry["keep"]).toBe(1);
   });
 
   test("rejects --pr-number without a resolvable base SHA", async () => {
     const dir = await writeShots();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
     await expect(
       func.call(
         createContext().context,
@@ -212,7 +226,7 @@ describe("snapshots upload", () => {
   test("resolves a relative folder path against the command cwd", async () => {
     await writeShots(); // creates <cwd>/shots
     const harness = createContext(); // cwd === tmpDir
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, { "app-id": "app" }, "shots");
 
@@ -227,7 +241,7 @@ describe("snapshots upload", () => {
       async (_config: unknown, requested: string[]) => new Set([requested[0]]),
     );
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, { "app-id": "app" }, dir);
 
@@ -239,7 +253,7 @@ describe("snapshots upload", () => {
     const dir = join(tmpDir, "empty");
     await mkdir(dir);
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, { "app-id": "app" }, dir);
 
@@ -257,7 +271,7 @@ describe("snapshots upload", () => {
       snapshotUrl: "https://sentry.io/snap-empty",
     });
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(
       harness.context,
@@ -292,7 +306,7 @@ describe("snapshots upload", () => {
       imageCount: 0,
       snapshotUrl: null,
     });
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(
       createContext().context,
@@ -314,7 +328,7 @@ describe("snapshots upload", () => {
     const dir = join(tmpDir, "empty");
     await mkdir(dir);
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, { "app-id": "app", selective: true }, dir);
 
@@ -326,7 +340,7 @@ describe("snapshots upload", () => {
   test("rejects an unreadable image-name file for an empty upload", async () => {
     const dir = join(tmpDir, "empty");
     await mkdir(dir);
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await expect(
       func.call(
@@ -346,7 +360,7 @@ describe("snapshots upload", () => {
     const namesFile = join(tmpDir, "all-images.txt");
     await mkdir(dir);
     await writeFile(namesFile, " \n\n");
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await expect(
       func.call(
@@ -364,7 +378,7 @@ describe("snapshots upload", () => {
   ])("rejects an explicitly empty image-name flag", async (flag) => {
     const dir = join(tmpDir, "empty");
     await mkdir(dir);
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await expect(
       func.call(createContext().context, { "app-id": "app", ...flag }, dir),
@@ -375,7 +389,7 @@ describe("snapshots upload", () => {
   test("rejects a path that is not a directory", async () => {
     const file = join(tmpDir, "a.png");
     await writeFile(file, pngBytes(1, 1));
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
     await expect(
       func.call(createContext().context, { "app-id": "app" }, file),
     ).rejects.toThrow(ValidationError);
@@ -383,7 +397,7 @@ describe("snapshots upload", () => {
 
   test("marks selective + rejects images missing from --all-image-file-names", async () => {
     const dir = await writeShots();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
     await expect(
       func.call(
         createContext().context,
@@ -396,7 +410,7 @@ describe("snapshots upload", () => {
   test("passes diff-threshold and selective into the manifest", async () => {
     const dir = await writeShots();
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(
       harness.context,
@@ -409,7 +423,7 @@ describe("snapshots upload", () => {
       string,
       Record<string, unknown>,
     ];
-    expect(manifest.diff_threshold).toBe(0.05);
-    expect(manifest.selective).toBe(true);
+    expect(manifest["diff_threshold"]).toBe(0.05);
+    expect(manifest["selective"]).toBe(true);
   });
 });
