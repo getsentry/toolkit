@@ -85,6 +85,9 @@ export async function runCli(
 ): Promise<CliResult> {
   const cliDir = join(import.meta.dirname, "..");
   const [cmdBin, ...cmdArgs] = getCliCommand();
+  if (cmdBin === undefined) {
+    throw new Error("getCliCommand() returned an empty command");
+  }
 
   const proc = spawn(cmdBin, [...cmdArgs, ...args], {
     cwd: options?.cwd ?? cliDir,

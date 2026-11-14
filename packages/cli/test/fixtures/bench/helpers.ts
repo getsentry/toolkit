@@ -112,8 +112,8 @@ export function summarize(samples: readonly number[]): BenchStats {
   }
   const sorted = [...samples].sort((a, b) => a - b);
   const n = sorted.length;
-  const min = sorted[0];
-  const max = sorted[n - 1];
+  const min = sampleAt(sorted, 0);
+  const max = sampleAt(sorted, n - 1);
   const mean = sorted.reduce((acc, x) => acc + x, 0) / n;
   // Population stddev — we're measuring the full sample, not inferring a population.
   const variance = sorted.reduce((acc, x) => acc + (x - mean) ** 2, 0) / n;
@@ -135,7 +135,16 @@ function percentile(sorted: readonly number[], p: number): number {
     sorted.length - 1,
     Math.max(0, Math.ceil(p * sorted.length) - 1),
   );
-  return sorted[idx];
+  return sampleAt(sorted, idx);
+}
+
+/** The sample at `index`; throws when the index is out of range. */
+function sampleAt(sorted: readonly number[], index: number): number {
+  const value = sorted[index];
+  if (value === undefined) {
+    throw new Error(`No sample at index ${index} of ${sorted.length}`);
+  }
+  return value;
 }
 
 /**
@@ -296,20 +305,20 @@ export function compareReports(
   for (const key of [...keys].sort()) {
     const b = index.get(`b:${key}`);
     const c = index.get(`c:${key}`);
-    const [fixture, operation] = key.split("||");
+    const { fixture, operation } = parseBenchKey(key);
     if (!b) {
       rows.push({
-        fixture: fixture,
-        operation: operation,
-        current: c?.stats,
+        fixture,
+        operation,
+        ...(c === undefined ? {} : { current: c.stats }),
         verdict: "missing-baseline",
       });
       continue;
     }
     if (!c) {
       rows.push({
-        fixture: fixture,
-        operation: operation,
+        fixture,
+        operation,
         baseline: b.stats,
         verdict: "missing-current",
       });
@@ -321,8 +330,8 @@ export function compareReports(
     if (deltaPct > thresholdPct) verdict = "regressed";
     else if (deltaPct < -thresholdPct) verdict = "improved";
     rows.push({
-      fixture: fixture,
-      operation: operation,
+      fixture,
+      operation,
       baseline: b.stats,
       current: c.stats,
       deltaMs,
@@ -333,8 +342,22 @@ export function compareReports(
   return rows;
 }
 
+const KEY_SEPARATOR = "||";
+
 function benchKey(e: BenchEntry): string {
-  return `${e.fixture}||${e.operation}`;
+  return `${e.fixture}${KEY_SEPARATOR}${e.operation}`;
+}
+
+/** Split a {@link benchKey} back into its fixture and operation. */
+function parseBenchKey(key: string): { fixture: string; operation: string } {
+  const separator = key.indexOf(KEY_SEPARATOR);
+  if (separator === -1) {
+    throw new Error(`Malformed bench key: ${key}`);
+  }
+  return {
+    fixture: key.slice(0, separator),
+    operation: key.slice(separator + KEY_SEPARATOR.length),
+  };
 }
 
 /** Single-character status icon per verdict. */

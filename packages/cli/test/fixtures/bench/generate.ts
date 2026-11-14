@@ -106,7 +106,11 @@ class XorShift32 {
 
   /** Pick one element from `arr`. */
   pick<T>(arr: readonly T[]): T {
-    return arr[this.int(arr.length)];
+    const value = arr[this.int(arr.length)];
+    if (value === undefined) {
+      throw new Error("pick() needs a non-empty array");
+    }
+    return value;
   }
 
   /** Boolean true with probability `p`. */

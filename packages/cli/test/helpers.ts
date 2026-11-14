@@ -31,6 +31,9 @@ export { TEST_TMP_DIR } from "./constants.js";
 
 import { TEST_TMP_DIR } from "./constants.js";
 
+/** First parameter of `fetch`, without relying on the DOM `RequestInfo` type. */
+type FetchInput = Parameters<typeof fetch>[0];
+
 mkdirSync(TEST_TMP_DIR, { recursive: true });
 
 type TestConfigDirOptions = {
@@ -82,7 +85,7 @@ export async function cleanupTestDir(dir: string): Promise<void> {
  * Supports both full signature and simpler forms for tests that don't need input/init.
  */
 type FetchMockFn =
-  | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
+  | ((input: FetchInput, init?: RequestInit) => Promise<Response>)
   | (() => Promise<Response>);
 
 /**
@@ -229,7 +232,7 @@ export function mintSntrysToken(payload: Record<string, unknown>): string {
  * Used by tests that intercept `globalThis.fetch` and assert on the
  * destination URLs of captured calls.
  */
-export function extractFetchUrl(input: RequestInfo | URL): string {
+export function extractFetchUrl(input: FetchInput): string {
   if (typeof input === "string") {
     return input;
   }
@@ -298,7 +301,7 @@ export function installFetchMock(
   const fallbackBody = fallback?.body ?? { detail: "Not found" };
 
   globalThis.fetch = async (
-    input: RequestInfo | URL,
+    input: FetchInput,
     init?: RequestInit,
     // test mock router requires branching for method/URL/body matching
   ): Promise<Response> => {

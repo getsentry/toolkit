@@ -159,7 +159,7 @@ async function anthropicChat({
   const response = await client.messages.create({
     model: anthropicModel,
     max_tokens: maxTokens,
-    system,
+    ...(system === undefined ? {} : { system }),
     messages: userMsgs,
   });
 
