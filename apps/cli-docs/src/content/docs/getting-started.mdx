@@ -61,6 +61,18 @@ Set `SENTRY_INIT=1` to run [`sentry init`](../commands/init/) right after instal
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 ```
 
+To log in without a browser, for example on a headless machine, set
+`SENTRY_SETUP_CODE` to a setup code from Sentry. The install script redeems it
+when no login is stored yet:
+
+```bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_SETUP_CODE=... bash
+```
+
+With the CLI already installed, run `SENTRY_SETUP_CODE=... sentry auth bootstrap`.
+Each code is short-lived and works once. See
+[Setup codes](../commands/auth/#setup-codes) for details.
+
 The installer reports its own errors to Sentry. Set `SENTRY_CLI_NO_TELEMETRY=1`
 to turn this off; the CLI honors the same variable.
 

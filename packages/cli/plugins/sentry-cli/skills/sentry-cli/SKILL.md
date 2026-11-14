@@ -379,6 +379,7 @@ curl https://cli.sentry.dev/install -fsS | bash -s -- --no-completions
 curl https://cli.sentry.dev/install -fsS | bash -s -- --no-agent-skills
 curl https://cli.sentry.dev/install -fsS | SENTRY_INSTALL_DIR="$HOME/.local/bin" bash
 curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
+curl https://cli.sentry.dev/install -fsS | SENTRY_SETUP_CODE=... bash
 curl -fsSL https://cli.sentry.dev/install -o install
 curl -fsSL https://release-registry.services.sentry.io/apps/sentry/latest -o release.json
 expected=$(jq -er '.files.install.checksums["sha256-hex"]' release.json)
