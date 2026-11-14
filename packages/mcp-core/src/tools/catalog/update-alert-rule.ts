@@ -191,12 +191,13 @@ export default defineTool({
           "The alert name cannot be resolved unambiguously. Retry with the numeric workflow ID from get_alert_rule.",
         );
       }
-      if (matches.length === 0) {
+      const [match] = matches;
+      if (!match) {
         throw new UserInputError(
           `Alert rule "${ruleId}" was not found${projectSlug ? ` in project ${projectSlug}` : ""}.`,
         );
       }
-      ruleId = String(matches[0].id);
+      ruleId = String(match.id);
     }
     const current = await apiService.getIssueAlertRule({
       organizationSlug,

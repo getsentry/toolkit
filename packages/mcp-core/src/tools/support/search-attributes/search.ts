@@ -15,11 +15,11 @@ export type SearchAttributesDataset =
 export interface SearchAttributesParams {
   organizationSlug: string;
   projectSlug: string | null;
-  query?: string;
-  period?: string;
+  query?: string | undefined;
+  period?: string | undefined;
   regionUrl: string | null;
-  limit?: number;
-  dataset?: SearchAttributesDataset;
+  limit?: number | undefined;
+  dataset?: SearchAttributesDataset | undefined;
 }
 
 const DEFAULT_PERIOD = "14d";

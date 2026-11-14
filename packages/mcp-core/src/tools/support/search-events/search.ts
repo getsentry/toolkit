@@ -111,8 +111,8 @@ function resolveEventFields({
   trustExplicitFields,
 }: {
   dataset: PublicEventsDataset;
-  explicitFields?: string[] | null;
-  agentFields?: string[];
+  explicitFields?: string[] | null | undefined;
+  agentFields?: string[] | undefined;
   trustExplicitFields: boolean;
 }): string[] {
   if (trustExplicitFields && explicitFields && explicitFields.length > 0) {
@@ -185,11 +185,12 @@ function formatEnvironmentFilter(
   }
 
   const environments = Array.isArray(environment) ? environment : [environment];
-  if (environments.length === 0) {
+  const [first, ...rest] = environments;
+  if (first === undefined) {
     return undefined;
   }
-  if (environments.length === 1) {
-    return `environment:${formatSearchValue(environments[0])}`;
+  if (rest.length === 0) {
+    return `environment:${formatSearchValue(first)}`;
   }
   return `environment:[${environments.map(formatSearchValue).join(",")}]`;
 }
@@ -226,11 +227,11 @@ export function collectRequestedEnvironments(
   // inside quoted text (e.g. a message value) aren't mistaken for a filter.
   const tokens = tokenizeSearchQuery(query);
   for (let i = 0; i < tokens.length; i++) {
-    const match = /^environment:(.*)$/is.exec(tokens[i]);
+    const match = /^environment:(.*)$/is.exec(tokens[i] ?? "");
     if (!match) {
       continue;
     }
-    let value = match[1];
+    let value = match[1] ?? "";
     // An IN-list (`environment:[a, b]`) can be split across tokens on its
     // internal spaces; rejoin following tokens until the list is closed.
     while (
@@ -287,7 +288,7 @@ function tokenizeSearchQuery(query: string): string[] {
   let escaped = false;
 
   for (let i = 0; i < query.length; i += 1) {
-    const char = query[i];
+    const char = query.charAt(i);
     if (escaped) {
       currentToken += char;
       escaped = false;
@@ -352,8 +353,8 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
 
 function choosePreservingRepairedQuery(params: {
   originalQuery: string;
-  repairedQuery?: string | null;
-  filter?: string;
+  repairedQuery?: string | null | undefined;
+  filter?: string | undefined;
   dataset: PublicEventsDataset | "replays";
 }): string {
   const originalQuery = params.originalQuery.trim();
@@ -374,13 +375,13 @@ function choosePreservingRepairedQuery(params: {
 }
 
 function buildAgentPrompt(params: {
-  query?: string;
+  query?: string | undefined;
   dataset: PublicEventsDataset | "replays";
-  lockDataset?: boolean;
-  fields?: string[] | null;
-  sort?: string | null;
-  statsPeriod?: string;
-  environment?: string | string[] | null;
+  lockDataset?: boolean | undefined;
+  fields?: string[] | null | undefined;
+  sort?: string | null | undefined;
+  statsPeriod?: string | undefined;
+  environment?: string | string[] | null | undefined;
 }): string {
   return [
     "Translate this Sentry event search request.",
@@ -415,13 +416,13 @@ export type SearchEventsDataset = (typeof SEARCH_EVENTS_DATASETS)[number];
 
 export interface SearchEventsParams {
   organizationSlug: string;
-  dataset?: SearchEventsDataset;
-  query?: string;
-  fields?: string[] | null;
-  sort?: string | null;
+  dataset?: SearchEventsDataset | undefined;
+  query?: string | undefined;
+  fields?: string[] | null | undefined;
+  sort?: string | null | undefined;
   projectSlug: string | null;
-  environment?: string | string[];
-  period?: string;
+  environment?: string | string[] | undefined;
+  period?: string | undefined;
   regionUrl: string | null;
   limit: number;
   includeExplanation: boolean;
@@ -772,7 +773,6 @@ async function executeSearchEvents(
   const hasExplicitDataset = params.dataset !== undefined;
   const hasExplicitFields = hasFields(params.fields);
   const hasExplicitSort = explicitSort !== undefined;
-  const hasExplicitPeriod = params.period !== undefined;
   const hasExplicitTraceItemDataset =
     hasExplicitDataset && isTraceItemDataset(inputDataset);
   const shouldTrustStructuredTraceSearch =
@@ -849,9 +849,10 @@ async function executeSearchEvents(
     fields = seerTranslation.fields;
     sortParam = seerTranslation.sort;
     // Seer never sees `period`, so an explicit one wins over its time range.
-    timeParams = hasExplicitPeriod
-      ? { statsPeriod: params.period }
-      : seerTranslation.timeParams;
+    timeParams =
+      params.period !== undefined
+        ? { statsPeriod: params.period }
+        : seerTranslation.timeParams;
     explanation = seerTranslation.explanation;
     timeSeries = seerTranslation.timeSeries;
   } else if (willRunAgent) {
@@ -938,7 +939,7 @@ async function executeSearchEvents(
     environment = params.environment ?? parsed.environment;
 
     timeParams =
-      shouldTrustExplicitSearchParams && hasExplicitPeriod
+      shouldTrustExplicitSearchParams && params.period !== undefined
         ? { statsPeriod: params.period }
         : (parseAgentTimeRange(parsed.timeRange) ?? { statsPeriod: "14d" });
 

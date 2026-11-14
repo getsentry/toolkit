@@ -475,8 +475,8 @@ export function buildIssueEventPayload({
   packageNames,
 }: {
   event: Event;
-  performanceTrace?: Trace;
-  packageNames?: string[];
+  performanceTrace?: Trace | undefined;
+  packageNames?: string[] | undefined;
 }): IssueEventPayload {
   // replays are reported beside the event, not inside its contexts and tags
   const stripped = stripReplayMetadata(event);

@@ -54,9 +54,9 @@ type IgnoreUpdate = {
     | "archived_until_condition_met";
   ignoreDuration?: number;
   ignoreCount?: number;
-  ignoreWindow?: number;
+  ignoreWindow?: number | undefined;
   ignoreUserCount?: number;
-  ignoreUserWindow?: number;
+  ignoreUserWindow?: number | undefined;
   behavior: string;
   message: string;
 };
@@ -79,13 +79,13 @@ type IssueStatusDisplay =
   | (string & {});
 
 type IgnoreParams = {
-  status?: string;
-  ignoreMode?: IgnoreMode;
-  ignoreDurationMinutes?: number;
-  ignoreCount?: number;
-  ignoreWindowMinutes?: number;
-  ignoreUserCount?: number;
-  ignoreUserWindowMinutes?: number;
+  status?: string | undefined;
+  ignoreMode?: IgnoreMode | undefined;
+  ignoreDurationMinutes?: number | undefined;
+  ignoreCount?: number | undefined;
+  ignoreWindowMinutes?: number | undefined;
+  ignoreUserCount?: number | undefined;
+  ignoreUserWindowMinutes?: number | undefined;
 };
 
 function pluralize(value: number, noun: string): string {
@@ -213,10 +213,10 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
 }
 
 type ResolutionParams = {
-  status?: string;
-  inRelease?: string;
-  inCommit?: string;
-  inCommitRepository?: string;
+  status?: string | undefined;
+  inRelease?: string | undefined;
+  inCommit?: string | undefined;
+  inCommitRepository?: string | undefined;
 };
 
 function buildResolution(
@@ -782,9 +782,9 @@ function buildIgnoreUpdate(
             ? `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "more user")}`
             : `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "user")} in ${pluralize(params.ignoreUserWindowMinutes, "minute")}`,
       };
+    default:
+      throw new UserInputError("Unsupported ignore mode");
   }
-
-  throw new UserInputError("Unsupported ignore mode");
 }
 
 type ReasonCommentResult =

@@ -64,7 +64,8 @@ function findRepositoryMatch(
           candidate.name.endsWith(`/${repository}`),
         );
 
-  if (matches.length === 0) {
+  const [match] = matches;
+  if (!match) {
     throw new UserInputError(
       `Could not find repository "${repository}" in the organization. Make sure it is connected through a VCS integration before creating the project.`,
     );
@@ -76,7 +77,7 @@ function findRepositoryMatch(
     );
   }
 
-  return matches[0];
+  return match;
 }
 
 function getRepositoryProvider(repository: RepositoryMatch): string | null {

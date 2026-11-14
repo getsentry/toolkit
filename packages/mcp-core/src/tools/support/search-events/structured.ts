@@ -109,8 +109,8 @@ interface StructuredSearchSession {
   apiService: SentryApiService;
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 type RowLinkShape = Record<string, z.ZodType<string | null>>;
@@ -389,7 +389,7 @@ export function buildStructuredEventsResult(params: {
   eventData: FlexibleEventData[];
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   explorerUrl: string;
   sentryQuery: string;
   fields: string[];
@@ -450,7 +450,7 @@ export function buildStructuredTimeSeriesResult(params: {
   interval: string | null;
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   query: string;
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   url: string;

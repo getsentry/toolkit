@@ -67,7 +67,9 @@ export const ParamUptimeHeaders = z
 export function toUptimeHeaderPairs(
   headers: string[][],
 ): Array<[string, string]> {
-  return headers.map(([name, value]) => [name, value]);
+  return headers.flatMap(([name, value]) =>
+    name === undefined || value === undefined ? [] : [[name, value]],
+  );
 }
 
 /** Owner actor for create/update. Empty/whitespace rejected. */

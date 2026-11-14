@@ -91,10 +91,10 @@ export interface BuildIssueEventResultsParams {
   query: string;
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   sort: string;
-  explanation?: string;
+  explanation?: string | undefined;
   experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 function readString(value: unknown): string | null {

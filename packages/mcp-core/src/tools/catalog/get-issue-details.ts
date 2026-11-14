@@ -346,7 +346,7 @@ function buildIssueSuggestedActions({
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
+  aiConversations?: AIConversationReference[] | undefined;
   session: ToolSession;
 }): SuggestedToolAction[] {
   const candidates: Array<SuggestedToolAction | null> = [];

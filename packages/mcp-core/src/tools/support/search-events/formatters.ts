@@ -153,11 +153,11 @@ export interface FormatEventResultsParams {
   explorerUrl: string;
   sentryQuery: string;
   fields: string[];
-  explanation?: string;
+  explanation?: string | undefined;
   executedSearch?: ExecutedSearch;
   experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 function formatUserFieldLines(
@@ -413,9 +413,7 @@ export function formatLogResults(params: FormatEventResultsParams): string {
       "sentry.item_id",
     ];
 
-    for (let i = 0; i < eventData.length; i++) {
-      const event = eventData[i];
-
+    for (const [i, event] of eventData.entries()) {
       output += `### Log ${i + 1}\n`;
 
       if (typeof event["id"] === "string" && event["id"]) {
@@ -1087,10 +1085,10 @@ export function formatTimeSeriesResults(params: {
   yAxis: string;
   interval: string | null;
   inputQuery: string;
-  includeExplanation?: boolean;
-  explanation?: string;
-  timeRange?: SearchTimeRange;
-  url?: string;
+  includeExplanation?: boolean | undefined;
+  explanation?: string | undefined;
+  timeRange?: SearchTimeRange | undefined;
+  url?: string | undefined;
 }): string {
   const {
     series,

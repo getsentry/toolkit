@@ -57,8 +57,8 @@ function fullResolutionHint({
   snapshotId: string;
   imageIdentifier: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string {
   return `- **Full Resolution**: ${formatToolCallInstruction({
     toolName: "get_snapshot_image",
@@ -153,9 +153,9 @@ export async function fetchSnapshotImage(
   imageIdentifier: string,
   imageResolution: SnapshotImageResolution,
   options: {
-    experimentalMode?: boolean;
-    availableToolNames?: ReadonlySet<string>;
-    directToolNames?: ReadonlySet<string>;
+    experimentalMode?: boolean | undefined;
+    availableToolNames?: ReadonlySet<string> | undefined;
+    directToolNames?: ReadonlySet<string> | undefined;
   } = {},
 ): Promise<(TextContent | ImageContent)[]> {
   const detail = (await apiService.getSnapshotImageDetail({

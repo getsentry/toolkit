@@ -59,7 +59,7 @@ export interface ResolvedResourceParams {
   type: ResolvedResourceType;
   organizationSlug: string;
   // Issue/Event params
-  issueId?: string;
+  issueId?: string | undefined;
   eventId?: string;
   // Trace/Span params
   traceId?: string;
@@ -67,11 +67,11 @@ export interface ResolvedResourceParams {
   // agent conversation params
   conversationId?: string;
   // Profile params
-  projectSlugOrId?: string;
-  profileId?: string;
-  profilerId?: string;
-  start?: string;
-  end?: string;
+  projectSlugOrId?: string | undefined;
+  profileId?: string | undefined;
+  profilerId?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
   // Replay params
   replayId?: string;
   // Monitor params
@@ -80,7 +80,7 @@ export interface ResolvedResourceParams {
   releaseVersion?: string;
   // Snapshot params
   snapshotId?: string;
-  selectedSnapshot?: string;
+  selectedSnapshot?: string | undefined;
   // Dashboard params
   dashboardIdOrTitle?: string;
 }
@@ -126,11 +126,11 @@ function getUnsupportedUrlGuidance(url: string): string | undefined {
 }
 
 export function resolveResourceParams(params: {
-  url?: string | null;
-  resourceType?: string | null;
-  resourceId?: string | null;
-  organizationSlug?: string | null;
-  projectSlug?: string | null;
+  url?: string | null | undefined;
+  resourceType?: string | null | undefined;
+  resourceId?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  projectSlug?: string | null | undefined;
 }): ResolvedResourceParams {
   if (params.url) {
     const parsed = parseSentryUrl(params.url);
@@ -239,9 +239,9 @@ function resolveFromParsedUrl(
   parsed: ParsedSentryUrl,
   params: {
     url: string;
-    resourceType?: string | null;
-    organizationSlug?: string | null;
-    projectSlug?: string | null;
+    resourceType?: string | null | undefined;
+    organizationSlug?: string | null | undefined;
+    projectSlug?: string | null | undefined;
   },
 ): ResolvedResourceParams {
   const detectedType: ResolvedResourceType | "unknown" =
