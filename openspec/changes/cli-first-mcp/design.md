@@ -1,0 +1,466 @@
+# Design
+
+## Context
+
+- The CLI's command tree is introspectable at runtime (`lib/introspect.ts`,
+  `sentry help --json`) and at build time (`generate-skill.ts`,
+  `generate-command-api.ts`). `src/generated/command-api.json` records which
+  API operations each command calls, and commands declare `destructive`
+  (`lib/command.ts`).
+- `createSentrySDK()` (`src/index.ts`, `lib/sdk-invoke.ts`) calls command
+  handlers directly with typed flags and returns their data, buffering
+  commands that yield more than once. It takes a token, URL, org, project,
+  and `cwd` per instance, and scopes the environment per call with
+  `AsyncLocalStorage` (`lib/env.ts`).
+- The CLI's local state goes through one synchronous SQLite adapter
+  (`lib/db/sqlite.ts`: `node:sqlite` `DatabaseSync`, or a WASM fallback),
+  opened as a module-level singleton by `getDatabase()` in 23 files. A
+  `detached` mode already uses an in-memory database.
+- In `commands/` and `lib/`, 156 files import `node:` modules. The most
+  common are `path`, `fs`, `fs/promises`, `os`, `child_process` (23 files),
+  `tty` (14), and `crypto`.
+- `sentry schema` (`commands/schema.ts`, `lib/api-schema.ts`) searches the
+  published API index from `@sentry/api`, and `sentry api` sends any
+  request.
+- Shell completion is declared for every positional and flag (#1751, #1759)
+  and completes dataset fields and aggregates (#1782). Completers read the
+  SQLite completion cache, warmed at login (#1788, #1789).
+- HTTP Code Mode (#1670, evals in #1675) runs agent JavaScript in a
+  Cloudflare Dynamic Worker with no token and no network. A broker in the
+  parent Worker checks each request against the shipped operation list and
+  the connection's API Read or API Write grant.
+- The hosted MCP runs on Cloudflare Workers (`compatibility_date`
+  2025-03-21, with KV and no Durable Objects or D1 today). CLI command
+  handlers do not run there yet.
+
+## Goals / Non-Goals
+
+Goals:
+
+- One product surface: CLI commands. The MCP adds no Sentry logic of its own.
+- Agents can do anything a command can, plus any published API operation.
+- The same discovery, completion, and permission rules on stdio and hosted.
+
+Non-goals:
+
+- Running commands that need the user's machine on Workers: local files,
+  child processes, the terminal.
+- Changing the hosted MCP's OAuth flow or moving it off Workers.
+- A code-execution sandbox. Code Mode (#1670) can come later as an extra
+  tool over the same SDK.
+- Keeping the catalog's agent-tuned output formats. Commands return data,
+  and can return their own markdown rendering where that helps.
+
+## Decisions
+
+### Commands are the only product surface
+
+A capability an agent needs is a CLI command, built on `@sentry/api`. The
+MCP gets no new hand-written tools; pending tool PRs (for example #1846,
+#1837, #1517) become commands. Fixes to existing catalog tools are fine until
+the cutover, since they ship to users now.
+
+### CLI parity inventory
+
+From a listing of `mcp-core/src/tools/catalog/` against
+`cli/src/commands/` (by name and brief, not by behavior; each row is checked
+when its command lands):
+
+| MCP catalog tools                                                                                    | CLI today                                                          | Gap                                                            |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `whoami`, `find_organizations`, `find_projects`, `find_teams`, `find_dsns`                           | `auth whoami`, `org list`, `project list`, `team list`, `dsn list` | none                                                           |
+| `create_project`                                                                                     | `project create`                                                   | none                                                           |
+| `update_project`                                                                                     | none                                                               | `project edit`                                                 |
+| `create_team`, `add_team_to_project`, `remove_team_from_project`                                     | none                                                               | `team create`, `project team add/remove`                       |
+| `create_dsn`, `update_dsn`                                                                           | none                                                               | `dsn create`, `dsn edit`                                       |
+| `search_issues`, `get_issue_details`, `search_issue_events`, `get_issue_tag_values`                  | `issue list/view/events/tags`                                      | none                                                           |
+| `update_issue`                                                                                       | `issue resolve/unresolve/archive`                                  | assignment: `issue assign`                                     |
+| `add_issue_note`, `get_issue_activity`                                                               | none                                                               | `issue comment`, `issue activity`                              |
+| `get_issue_breadcrumbs`, `get_issue_user_reports`                                                    | partly in `event view`, `feedback list`                            | check, then flags or commands                                  |
+| `link_issue`, `unlink_issue`, `analyze_issue_with_seer`                                              | `issue link/unlink/explain/plan`                                   | none                                                           |
+| `get_event_stacktrace`                                                                               | `event view`                                                       | none                                                           |
+| `get_event_attachment`                                                                               | none                                                               | `event attachment list/download`                               |
+| `search_events`, `search_errors`, `search_logs`, `search_traces`, `search_metrics`, `search_replays` | `event list`, `explore`, `log list`, `trace list`, `replay list`   | metrics dataset to check; no natural-language mode (see below) |
+| `get_trace_details`, `get_span_details`, `get_replay_details`                                        | `trace view`, `span view`, `replay view`                           | none                                                           |
+| `search_profiles`, `get_profile`, `get_profile_details`                                              | none                                                               | `profile list/view`                                            |
+| `search_attributes`                                                                                  | `attribute list`                                                   | none                                                           |
+| `search_agent_conversations`, `get_agent_conversation_details`                                       | `agent-conversation list/view`                                     | none                                                           |
+| `find_dashboards`, `get_dashboard_details`                                                           | `dashboard list/view`                                              | none                                                           |
+| `find_releases`, `get_release_details`                                                               | `release list/view`                                                | none                                                           |
+| alert rule and metric monitor CRUD, `get_alert_options`                                              | `alert issues ...`, `alert metrics ...`                            | `get_alert_options` to check                                   |
+| `find_monitors`, `get_monitor_details`, `delete_monitor_environment`                                 | `monitor list`                                                     | `monitor view`, `monitor env delete`                           |
+| uptime monitor CRUD (5 tools)                                                                        | none                                                               | `monitor uptime list/view/create/edit/delete`                  |
+| `find_dropped_events`                                                                                | none                                                               | `event dropped` or similar (#1812 open)                        |
+| `get_snapshot`, `get_latest_base_snapshot`, `get_snapshot_image`                                     | `snapshots download/diff`                                          | read commands to check                                         |
+| `get_sentry_resource`                                                                                | URL positionals on most commands                                   | a generic `sentry open <url>` resolver                         |
+| `search_docs`, `get_doc`, `submit_feedback_to_sentry_team`                                           | `docs list/query`, `cli feedback`                                  | none                                                           |
+| `get_sentry_mcp_info`, `onboarding_status_update`                                                    | MCP-specific                                                       | keep as host functions or drop                                 |
+
+About 20 tools have no command yet, and a few more are partial. Each gap
+is a command PR, grouped by domain.
+
+### One tool per command
+
+Each exposed command is its own MCP tool, named from its path
+(`sentry issue list` → `sentry_issue_list`). Its description is the
+command's brief and examples, and its input schema is the catalog's
+`{ positional, flags }` JSON Schema. There is no `search_sentry` and no
+`execute_*` meta-tool: the CLI has well over 100 leaf commands, and the
+harnesses we target search large tool lists themselves (deferred loading,
+native tool search; see `docs/mcp/harnesses.md`). A search tool of our own
+would duplicate that search and put a dispatch hop in front of every call.
+
+Each tool:
+
+1. validates its arguments against the command's schema; an invalid slug,
+   enum value, flag, or query key fails with the allowed values or
+   completion candidates in the error;
+2. checks the session's constraints and, for `sentry api`, the permission
+   class of the call;
+3. calls the command through `createSentrySDK()` and returns its JSON data,
+   size-capped (still valid JSON when cut), with the next cursor for
+   paginated commands. A `format: "markdown"` argument can return the
+   command's plain markdown output instead, for commands whose terminal
+   rendering already summarizes well, such as `issue view` or
+   `trace view` (#1892).
+
+Commands that yield more than once are buffered into one result, as the
+SDK does today. Streaming flags (`--follow`, tail) are rejected, and so are
+flags that take a local path and `--web`.
+
+**Annotations come from the permission class.** MCP hosts allowlist and
+render approvals by tool name (#1254), so per-command tools give hosts the
+finest grain there is: read commands carry `readOnlyHint: true`, write and
+destructive commands carry `destructiveHint: true`, and a host can auto-run
+`sentry_issue_list` and ask before `sentry_project_delete`. `sentry api`
+takes its class from each call's `--method`, and no per-call hint exists, so
+it is one tool marked destructive; splitting it into GET and non-GET tools
+would add a tool without changing what a host can allowlist. A read-only
+connection (`--read-only`, hosted API Read) lists no write tools, and marks
+`sentry api` read-only while refusing every method but GET, HEAD, and
+OPTIONS.
+
+The schema is listed as is: the tools attach it as metadata to permissive
+Zod types, so `tools/list` shows the catalog's JSON Schema, the MCP SDK
+fills in no defaults, and the tool's own validator returns the errors.
+
+#### How this differs from Code Mode
+
+Code Mode (Cloudflare's term, and #1670) hides tools behind search and
+execute, and its execute tool takes a program: the model writes JavaScript
+that calls several operations, loops, and filters, and only the program's
+result goes back into context. That code is arbitrary, so it needs a sandbox.
+
+The command tools run one known command per call. The agent cannot
+run anything that is not a command, and the parameters are validated data,
+so there is nothing to sandbox. The cost is that multi-step work takes one
+model turn per call, and intermediate results pass through context. Command
+flags (`--limit`, `--fields`, queries) and `format` keep results small.
+If evals show multi-step tasks need it, Code Mode can be added later as a
+tool whose `sentry` object calls the same execution path, permission checks
+included.
+
+### What is exposed
+
+Every command declares how agents may use it, and a lint check fails when a
+command has no declaration:
+
+- **exposed**: available on stdio and hosted, once the hosted SDK build can
+  run it.
+- **stdio-only**: needs the user's machine: local files (uploads,
+  `sourcemap inject`, `debug-files`, `init`), DSN detection from the `cwd`,
+  or the terminal.
+- **hidden**: never exposed: session management (`auth login`,
+  `auth logout`), CLI maintenance (`cli upgrade`, `cli setup`,
+  `cli uninstall`), `local`, and `monitor run`, which runs an arbitrary
+  child process.
+
+### The CLI SDK on Workers, without persistence
+
+The hosted MCP runs commands through `createSentrySDK()` too, rather than
+through a second, portable copy of each command. The hosted MCP's Hono app
+creates one SDK instance per request, with the token from the OAuth grant
+and the org and project from the session constraints.
+
+**No persistence.** Everything the CLI persists is for a long-lived,
+single-user install: stored accounts and tokens, defaults, release channel
+and version checks, pagination cursor stacks, and caches (projects, DSNs,
+aliases, regions, repos, issue orgs, completion values, project roots, the
+response cache). A server needs none of it. The SDK already takes a token
+(`createSentrySDK({ token })` sets `SENTRY_AUTH_TOKEN` and
+`SENTRY_FORCE_ENV_TOKEN` for that invocation), and with an env token the
+auth code never reads the `accounts` table. So hosted runs the SDK with
+persistence off:
+
+- `getDatabase()` callers (23 files, 20 of them in `lib/db/`) get a null
+  store: reads miss and writes do nothing. An in-memory SQLite database is
+  not an option, since workerd has no SQLite driver for the CLI's adapter.
+- The response cache, `.sentryclirc` and config-directory reads, custom CA
+  and header files, version checks, and telemetry state are off.
+- Pagination is stateless. List commands already return `nextCursor` in
+  their JSON envelope and accept a raw cursor, so hosted rejects the
+  `next`/`prev` keywords, which need the stored cursor stack, and the
+  agent passes the cursor it got back.
+- Org-to-region lookups happen on every call that needs them. If that
+  latency matters, an in-memory cache keyed by token fingerprint comes
+  later, measured first.
+
+D1, R2, and Durable Object storage are not needed. Commands that read or
+write local files are stdio-only.
+
+**Per-request state.** One SDK instance per request isolates what lives in
+the instance and in `withEnv()`'s `AsyncLocalStorage`, but not module
+scope: a Workers isolate reuses its modules across concurrent requests. The
+auth path is already per invocation (token memos are keyed by the
+invocation's env, and env tokens skip stored accounts). Some module-level
+state is not, for example `regionCache` in `lib/region.ts` (keyed by org
+slug only), `loginTrustAnchor` in `lib/token-host.ts`, and the cached
+headers in `lib/custom-headers.ts`. With persistence off, the work is to
+audit module-level state on the exposed commands' import graph and either
+scope each item to the invocation or turn it off on hosted. The
+sequential token reuse in #1391 is already fixed on `main` (token memos
+are keyed by the invocation's env); #1427 gives the remaining state
+invocation, request, and session lifetimes and is the starting point. A test runs
+two identities concurrently in one isolate and checks that neither sees
+the other's credentials, constraints, or results.
+
+**Node built-ins.** `nodejs_compat` provides `path`, `crypto`, `util`,
+`zlib`, `async_hooks`, and timers. It does not provide `child_process`,
+`tty`, or an HTTP server, and its `fs` is an in-memory file system that
+needs a newer compatibility date than the hosted MCP uses (see the spike
+results below). What matters is
+what the exposed commands import transitively, which only a build answers.
+So the first task is a spike: bundle the SDK for workerd with the exposed
+commands, and list what fails to bundle or run, and the bundle size against
+the Workers script limit.
+
+Commands whose imports cannot be made Workers-safe are marked stdio-only
+until fixed. If a whole domain is blocked, that domain's commands split into
+input resolution and a portable operation (the old
+`unify-sentry-api-layer` 11.1), for that domain only.
+
+#### Spike results (#1882)
+
+A throwaway worker imported `createSentrySDK()` and ran 12 command calls
+against a mocked Sentry API with a synthetic token, under `wrangler dev`
+(wrangler 4.151.3, workerd 1.20261019.1, `nodejs_compat` and
+`nodejs_compat_populate_process_env`). SQLite was swapped for a null store
+at bundle time. The same harness passes every call on Node.
+
+**It runs.** With the small fixes in the table, `org list`, `project list`,
+`issue list`, `issue view`, `event view`, `trace view`, `api`, `schema`,
+`issue resolve`, and `run("issue", "list")` all pass, on a fresh isolate
+and on a warm one.
+
+**Bundling.** wrangler alone fails on one module: `lib/init/ui/ink-ui.ts`
+imports the Ink sidecar `with { type: "file" }`, which esbuild rejects.
+`ROUTE_LOADERS` imports every command, so `init` is in the graph even when
+only `issue list` is called. Bundling first with the CLI's esbuild plugins
+(text imports, `_require` aliasing, zod stubs) and then with wrangler works.
+The result is the whole CLI.
+
+**Size.** 6,971 KiB raw, 1,989 KiB gzip (`wrangler deploy --dry-run
+--minify`). The hosted MCP today is 5,092 KiB raw, 975 KiB gzip. The
+Workers limit is 64 MiB uncompressed, with no compressed limit, so size is
+not a blocker. Code hosted never runs is about half the bundle:
+highlight.js and parse5 (~1.2 MB), `sentry mcp`'s server stack (~1.2 MB,
+partly shared with the hosted worker), `init` (Mastra, AI SDK, Clack,
+~0.75 MB), and `@sentry/node` with its dependencies (~0.5 MB).
+
+**Startup.** `wrangler check startup` measured about 65 ms of startup CPU
+locally, mostly parse and compile; the limit is 1 s. Modules initialize on
+first use, so the first call in a fresh isolate took 155-215 ms against the
+mock, and the same calls warm took 6-28 ms.
+
+**Compatibility date.** Every call fails on 2025-03-21 (hosted today) and on
+every date tried up to 2026-01-01: pngjs, reached from `lib/sixel-image.ts`
+through the chart formatters, calls `util.inherits` on a `stream` class the
+older polyfills lack. Calls pass from 2026-01-28 on. Hosted moves to a 2026
+compatibility date, or the image code loads lazily.
+
+| Failure                                                                             | Where                                                                                                 | Hit by                                     | Fix                                                              | Size  |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------- | ----- |
+| `createRequire(import.meta.url)` throws; workerd leaves `import.meta.url` undefined | 11 modules at load (`db/*`, `telemetry`, `custom-ca`, `formatters/*`, `dif`, `sea-assets`, `init/ui`) | every call                                 | define `import.meta.url` at build                                | small |
+| `Dynamic require of "util" is not supported`                                        | CommonJS dependencies in the ESM output                                                               | every call                                 | a `createRequire` banner, as the npm ESM bundle has              | small |
+| top-level `readFileSync` of `assets/spleen-8x16.bin`                                | `formatters/spleen-font.ts`                                                                           | every call                                 | load the glyphs on first use, or embed them                      | small |
+| a null store whose reads return `null` breaks schema setup (`row.count`)            | `db/schema.ts` through `getDatabase()`                                                                | calls that open the database (`api` first) | no-persistence mode skips database setup, not only reads (#1897) | small |
+| `superCtor.prototype` must be an object                                             | pngjs on dates before 2026                                                                            | every call                                 | 2026 compatibility date, or lazy image code                      | small |
+
+**Other findings.**
+
+- `withEnv()`'s `AsyncLocalStorage` works on workerd. Two tokens, three
+  concurrent `issue list` calls each, in one isolate: every request
+  carried only its own token.
+- Environment inheritance is a correctness bug on hosted.
+  `buildIsolatedEnv()` copies `process.env`, which on Workers holds the
+  worker's vars and secrets (`SENTRY_DSN`, `SENTRY_CLIENT_SECRET`,
+  `COOKIE_SECRET`, provider keys). With the worker's `SENTRY_DSN` set,
+  `issue list` with no target resolved to that DSN's org and project. The
+  SDK needs an option to start from an empty env; small.
+- Library-mode telemetry initializes `@sentry/node` and posts envelopes to
+  the CLI's own DSN (18 for 12 calls). Hosted turns it off; small.
+- `node:fs` is workerd's virtual file system. `homedir()` and `tmpdir()`
+  are `/tmp`, which lasts one request, so config-directory writes succeed
+  and vanish. The current directory is `/bundle`, the worker's own code:
+  `api --input /bundle/<script> --dry-run` returns the bundle as the
+  request body. Hosted rejects path-taking flags.
+- `node:sqlite` exists, but `DatabaseSync` is not constructible, so there
+  is no SQLite on workerd. `child_process` throws
+  `ERR_METHOD_NOT_IMPLEMENTED`; `tty.isatty()` returns `false`.
+- `issue resolve --in @commit` fails cleanly (it runs `git`); the explicit
+  `@commit:<repo>@<sha>` form does not need it.
+- `trace view` fetches span details one request per span (853 for the
+  largest fixture, on Node). That stays under the 10,000-subrequest limit,
+  but with 6 connections per request, large traces are slow on hosted.
+
+**Stdio-only, from the spike.** In addition to the list in "What is
+exposed": `react-native xcode` (it spawns processes), the `api --input`
+flag, and the bare `--in @commit` value of `issue
+resolve`. Commands that fall back to DSN detection need an explicit org
+and project on hosted, from the session constraints.
+
+**What is left, ranked.**
+
+- Small: the five fixes in the table, an SDK option for an empty env,
+  telemetry off on hosted, rejecting path-taking flags, and the
+  compatibility date bump (check the rest of the hosted worker on it).
+- Structural: a hosted entry point whose route loaders cover only exposed
+  commands, which drops the Ink import (so wrangler bundles it directly)
+  and about half the bundle; the no-persistence mode (#1897); and the
+  module-level state audit (#1427), of which the spike checked only the
+  token.
+
+### One introspection source
+
+The build generates the route tree's metadata (`lib/introspect.ts`) as JSON
+(`command-catalog.json`: commands, JSON Schema for parameters, completion
+kinds, examples, output fields, the API operations from `command-api.json`,
+the permission class, and the exposure). Both `sentry mcp` and the hosted
+MCP build their tools from it, so `sentry mcp` never loads the whole command
+tree to list tools (#1918). A test fails when the catalog and the route
+tree differ.
+
+### API routes through `sentry api` and `sentry schema`
+
+`sentry schema` and `sentry api` are exposed commands, so agents search the
+published API with `sentry_schema` and call any published operation with
+`sentry_api`. The permission class of a
+`sentry api` call comes from its method, and hosted checks the path against
+the published operation list with #1807's shared matcher, as #1670's broker
+does. `sentry schema`'s index moves onto `@sentry/api`'s operation catalog
+(`@sentry/api/operations`). Endpoints missing from the published schema
+are the main gap, and `unify-sentry-api-layer` 8.8 handles them.
+
+### Completion for agents
+
+Completers in `lib/complete.ts` read the SQLite completion cache. They are
+split into completers over a data source:
+
+- **stdio:** the SQLite cache, as for the shell, with a live API fallback.
+- **hosted:** the live API, uncached.
+
+There is no completion tool. Completion reaches agents two ways:
+
+- **Schema `examples`.** The catalog puts static suggestions (sort orders,
+  datasets, cursor keywords) in each parameter's JSON Schema `examples`,
+  which every tool lists.
+- **Validation errors.** A call with an invalid value fails with candidates
+  for the parameter in question: the allowed values or flags today, and,
+  once the completers are wired in (#1895), slugs, issue IDs, dataset fields
+  and aggregates, and search query keys and values, with descriptions.
+
+This is how agents build valid queries without the catalog's embedded
+search agents.
+
+### Embedded natural-language search agents are dropped
+
+`search_events`, `search_issues`, and `search_issue_events` translate
+natural language with a second model call. Under this plan the calling agent
+writes the query itself, using the query syntax in the command tool's
+description and completion for keys and values. Dropping them
+removes the MCP's OpenAI and Anthropic provider configuration (#1754 becomes
+moot).
+
+### Permissions are command metadata
+
+Each command gets a permission class from its API operations in
+`command-api.json`: **read** if it calls only GET, HEAD, or OPTIONS;
+otherwise **write**; and **destructive** if it declares `destructive`. A
+lint check fails when the class is missing or disagrees with the operations.
+
+- Hosted consent keeps #1670's API Read and API Write grants. API Read
+  allows read commands; API Write allows write and destructive commands.
+  The existing skill checkboxes (Triage Issues, Manage Projects & Teams, and
+  so on) map to command groups until consent is simplified.
+- Organization and project constraints from the session (`sentry mcp
+  <org>/[<project>]`, hosted URL constraints) fill and pin command
+  parameters; a call for another organization is refused.
+- stdio adds `--read-only`, matching hosted API Read.
+
+### `@sentry/mcp-server` needs the exposed commands
+
+The slim bundle (#1731) bans command handlers and has a 3.75 MB budget.
+Under this plan it must carry the exposed command handlers, since that is
+what its tools run. It bundles them with the SDK and keeps banning the
+stdio-only and hidden commands, Ink, the terminal markdown renderer, and
+SQLite WASM. The budget is re-measured. The package stays; whether installs
+move to `npx sentry mcp` later is out of scope here.
+
+### Eval-gated cutover
+
+The command surface ships next to the catalog:
+
+1. Extend #1675's harness to run the full `mcp-server-evals` suite on the
+   catalog and the command tools.
+2. Make the command surface the default when it matches or beats the
+   catalog on task success, and record token cost and turn count next to
+   it. Run more than one client and model.
+3. Keep the catalog behind a flag (`--catalog`, a hosted skill) for one
+   release.
+4. Delete the catalog tools, their `SentryApiService` endpoint wrappers,
+   the search agents, and the provider configuration from `mcp-core`.
+
+## Risks / Trade-offs
+
+- **More turns than Code Mode** for multi-step tasks. The evals record turn
+  count; Code Mode stays available as a later addition.
+- **Output quality.** Catalog tools format stack traces, traces, and issue
+  summaries for agents. `format: "markdown"` reuses the CLI's renderers; the
+  evals check the gap.
+- **Cross-user leaks on hosted.** With persistence off, the remaining risk
+  is module-level state shared by concurrent requests in one isolate. The
+  concurrent two-identity test is required before hosted serves any
+  command.
+- **Extra round trips on hosted.** Without caches, region and slug
+  resolution hit the API on every call. Measure before adding a cache.
+- **Workers compatibility.** Unknown until the spike. Commands that fail
+  stay stdio-only, so hosted coverage can lag stdio.
+- **Harnesses without tool search.** Every exposed command is listed:
+  81 tools and about 35,500 tokens of definitions today (#1890), against
+  about 46,900 for the catalog's 73 tools. Harnesses that load every tool
+  pay that up front; `--read-only` cuts it to 49 tools.
+- **Tool descriptions come from CLI help text.** Weak help text makes weak
+  tools. Improving it improves both the CLI and the MCP.
+- **Unpublished endpoints.** Commands and `sentry api` can only reach what
+  `@sentry/api` covers. See `unify-sentry-api-layer`.
+
+## Migration Plan
+
+0. Move the shared client into `@sentry/api` and switch toolkit to it
+   (`unify-sentry-api-layer` 8.5, 8.6), then release (8.10).
+1. Command metadata (permission class, exposure, generated catalog) and the
+   parity commands, by domain.
+2. Command tools on stdio over `createSentrySDK()`, behind a flag, with
+   completion through validation errors.
+3. The Workers spike, then a no-persistence mode and the module-state
+   audit, then hosted on the SDK.
+4. Eval gate, default flip, catalog deletion.
+
+**Rollback:** until the catalog is deleted, the flag switches back. After
+that, a revert of the deletion PR restores it.
+
+## Open Questions
+
+- Whether `get_sentry_mcp_info` and `onboarding_status_update` survive.
+- When to simplify hosted consent from skill checkboxes to API Read, API
+  Write, and destructive.
