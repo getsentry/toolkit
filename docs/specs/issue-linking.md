@@ -47,14 +47,26 @@ Results contain the Sentry issue ID and URL, the external reference, and a statu
 - `not_linked`: the association is absent after unlink. This does not claim
   which concurrent request removed it.
 
-App requests include `expectedExternalIssueUrl` as a query parameter. The URL
-must exactly match the canonical `webUrl` returned by the App. Copy the URL from
-the provider; a different title suffix or URL alias is not necessarily accepted.
-An existing equivalent reference uses its stored URL for the guard. A different
-App association must be explicitly unlinked first; no direct-registration or
-unguarded fallback is used. HTTP 409 errors propagate without automatic retries.
-If an App callback returns a conflicting URL, its external effects cannot be
-rolled back, even though Sentry rejects the association.
+App requests include `expectedExternalIssueUrl` as a query parameter. Sentry
+compares it exactly with the `webUrl` the App callback returns, after the
+callback has run (`IssueLinkCreator._verify_expected_url`). Linear returns its
+canonical URL with the current title path, so a bare key URL or another title
+path for the same issue gets HTTP 409. Pass the URL exactly as the provider
+returns it. An existing equivalent reference uses its stored URL for the guard.
+
+Sentry stores nothing on any of these 409s. When the 409 says a different
+external issue would be linked, the client reads the issue's associations once.
+If the only association for the App is the requested issue (same workspace and
+key), it returns `already_linked` with the stored URL. That only happens when
+the App itself or a concurrent request wrote the association (Sentry's
+"legacy writers can race the callback"). Another stored URL must be explicitly
+unlinked first. With nothing stored, or when the read fails, the error asks for
+the issue's current URL from the provider. A 409 for a link operation already
+in progress (the backend lock) asks for a retry instead. No unguarded retry or
+direct-registration fallback is used. If an App callback returns a conflicting
+URL, its external effects cannot be rolled back, even though Sentry rejects the
+association. Accepting a bare key or another title path for a new link needs
+Sentry to compare App issue identity instead of the exact URL.
 
 Unlink first finds the association by URL, then deletes using its internal Sentry
 ID. It never deletes the external ticket or the Sentry issue. Repeating unlink
