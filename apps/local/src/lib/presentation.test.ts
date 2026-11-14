@@ -6,7 +6,7 @@ import {
   getWorkspaceEmptyState,
   pluralize,
 } from "./presentation.ts";
-import { workspaceViews } from "./workspace.ts";
+import { workspaceViews, type WorkspaceView } from "./workspace.ts";
 
 describe("getConnectionPresentation", () => {
   test("describes an active local receiver as connected", () => {
@@ -67,7 +67,7 @@ describe("getWorkspaceEmptyState", () => {
   });
 
   test("capturing views offer a relevant telemetry trigger", () => {
-    const triggers = {
+    const triggers: Record<WorkspaceView, RegExp> = {
       live: /send.*event/i,
       traces: /instrumented.*request|operation/i,
       errors: /error.*failed request/i,
@@ -77,6 +77,10 @@ describe("getWorkspaceEmptyState", () => {
       sdks: /session.*client report/i,
       feedback: /submit.*feedback/i,
       profiles: /profiling/i,
+      queries: /instrumented database query/i,
+      resources: /instrumented browser resources/i,
+      "web-vitals": /performance measurements/i,
+      attachments: /file attachment/i,
     };
     for (const view of workspaceViews) {
       expect(

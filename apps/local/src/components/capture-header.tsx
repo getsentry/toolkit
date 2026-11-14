@@ -10,9 +10,9 @@ export type CaptureHeaderProps = {
   streamUrl: string | null;
   connection: ConnectionState;
   isClosed: boolean;
-  expiresAt?: number;
-  session?: ViewerSession;
-  latestEventTime?: number;
+  expiresAt?: number | undefined;
+  session?: ViewerSession | undefined;
+  latestEventTime?: number | undefined;
   sessionPicker?: ReactNode;
   onReload: () => void;
   isReloading: boolean;

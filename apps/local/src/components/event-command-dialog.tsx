@@ -97,7 +97,7 @@ export function EventCommandDialog({
       }}
     >
       <CommandInput
-        // oxlint-disable-next-line jsx-a11y/no-autofocus -- the command palette opens straight into its search field
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- the command dialog opens on request and focuses its search input.
         autoFocus
         aria-label="Search this session"
         placeholder="Search events and views"

@@ -17,13 +17,13 @@ type ReceiverControlsProps = {
   connection: ConnectionPresentation;
   retainedItemCount: number;
   onClear: () => void;
-  onDeleteCapturedEvents?: (trigger: HTMLButtonElement) => void;
+  onDeleteCapturedEvents?: ((trigger: HTMLButtonElement) => void) | undefined;
   onDisconnect?: () => void;
   isClearing?: boolean;
-  onOpenSettings?: (trigger: HTMLButtonElement) => void;
-  onCloseSession?: () => void;
+  onOpenSettings?: ((trigger: HTMLButtonElement) => void) | undefined;
+  onCloseSession?: (() => void) | undefined;
   isClosingSession?: boolean;
-  onAddReceiver?: (trigger: HTMLButtonElement) => void;
+  onAddReceiver?: ((trigger: HTMLButtonElement) => void) | undefined;
   showStatusRole?: boolean;
 };
 type ReceiverAction = {

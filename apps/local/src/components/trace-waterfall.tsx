@@ -11,10 +11,10 @@ import { pluralize } from "@/lib/presentation.ts";
 type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
-  selectedSpanId?: string;
+  selectedSpanId?: string | undefined;
   /** A span whose sampled rows start shown, such as the last one inspected. */
-  revealSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  revealSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 };
 
 /** Tree cell geometry, in rem: `px-3` padding, `size-3` expand control. */
@@ -134,8 +134,8 @@ function SpanRow({
   positionedSpan: PositionedSpan;
   trace: TraceGroup;
   index: number;
-  selectedSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  selectedSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 }) {
   const { span, depth, isLastChild } = positionedSpan;
   const position = getSpanPosition(span, trace);

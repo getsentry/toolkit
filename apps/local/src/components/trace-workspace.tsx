@@ -10,8 +10,8 @@ import { pluralize } from "../lib/presentation";
 type TraceWorkspaceProps = {
   emptyState?: { title: string; description: string };
   onSelect: (traceId: string) => void;
-  selectedTraceId?: string;
-  selectedSpanId?: string;
+  selectedTraceId?: string | undefined;
+  selectedSpanId?: string | undefined;
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onClearSpan?: () => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
@@ -85,7 +85,7 @@ export function TraceWorkspace({
           ...(inspector.current?.querySelectorAll<HTMLButtonElement>(
             "[data-span-id]",
           ) ?? []),
-        ].find((entry) => entry.dataset.spanId === previous.spanId);
+        ].find((entry) => entry.dataset["spanId"] === previous.spanId);
         button?.focus();
       }
     }

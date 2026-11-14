@@ -37,8 +37,10 @@ class ControllableEventSource extends EventTarget {
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   closed = false;
-  constructor(readonly url: string) {
+  readonly url: string;
+  constructor(url: string) {
     super();
+    this.url = url;
     ControllableEventSource.instances.push(this);
   }
   close() {
@@ -76,13 +78,11 @@ async function openLatestReceiver() {
 }
 
 async function switchReceiver(streamUrl: string) {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Switch receiver", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
   fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
     target: { value: streamUrl },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Connect", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   return await openLatestReceiver();
 }
 
@@ -135,24 +135,21 @@ async function sendItems(
 }
 
 function captureAction(name: string): HTMLButtonElement {
-  let action = screen.queryByRole("button", { name, exact: true });
+  let action = screen.queryByRole("button", { name });
   if (!action) {
     fireEvent.click(
       screen.getAllByRole("button", {
         name: "Capture actions",
-        exact: true,
       })[0]!,
     );
-    action = screen.getByRole("button", { name, exact: true });
+    action = screen.getByRole("button", { name });
   }
   return action as HTMLButtonElement;
 }
 
 function openSettings() {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Settings", exact: true }),
-  );
-  return screen.getByRole("dialog", { name: "Settings", exact: true });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  return screen.getByRole("dialog", { name: "Settings" });
 }
 
 beforeEach(() => {
@@ -262,17 +259,14 @@ test("switching captures clears the old label and deadline before new metadata",
   const first = await openSource();
   await waitFor(() =>
     expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
+      screen.getByRole("combobox", { name: "Session" }).textContent,
     ).toContain("Web checkout"),
   );
   await sessionMetadata(first, { state: "retained", expiresAt: EXPIRES_AT });
   expect(
     screen.getByRole("banner", { name: "Capture context" }).textContent,
   ).toContain("Saved until");
-  fireEvent.click(
-    screen.getByRole("combobox", { name: "Session", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
   fireEvent.click(
     await screen.findByRole("option", { name: /^Worker jobs ·/ }),
   );
@@ -330,9 +324,7 @@ test("deletion cancellation sends no HTTP and confirmation mutates only the scop
     confirmation,
   );
   expect(request).not.toHaveBeenCalled();
-  fireEvent.click(
-    within(confirmation).getByRole("button", { name: "Cancel", exact: true }),
-  );
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(request).not.toHaveBeenCalled();
   expect(source.closed).toBe(false);
@@ -343,7 +335,7 @@ test("deletion cancellation sends no HTTP and confirmation mutates only the scop
   fireEvent.click(
     within(
       screen.getByRole("dialog", { name: "Delete captured events?" }),
-    ).getByRole("button", { name: "Delete captured events", exact: true }),
+    ).getByRole("button", { name: "Delete captured events" }),
   );
   await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
   const [url, options] = request.mock.calls[0]!;
@@ -385,13 +377,12 @@ test("pending deletion disables Reload capture and ignores queued events until c
   fireEvent.click(
     within(
       screen.getByRole("dialog", { name: "Delete captured events?" }),
-    ).getByRole("button", { name: "Delete captured events", exact: true }),
+    ).getByRole("button", { name: "Delete captured events" }),
   );
   expect(request).toHaveBeenCalledTimes(1);
-  const reload = screen.getByRole("button", {
+  const reload = screen.getByRole<HTMLButtonElement>("button", {
     name: "Reload capture",
-    exact: true,
-  }) as HTMLButtonElement;
+  });
   expect(reload.disabled).toBe(true);
   fireEvent.click(reload);
   expect(ControllableEventSource.instances).toHaveLength(1);
@@ -414,7 +405,6 @@ test("pending deletion disables Reload capture and ignores queued events until c
   expect(
     screen.getByRole<HTMLButtonElement>("button", {
       name: "Reload capture",
-      exact: true,
     }).disabled,
   ).toBe(false);
   expect(request).toHaveBeenCalledTimes(1);
@@ -477,9 +467,7 @@ test.each(["capturing", "saved"] as const)(
       screen.getByRole("heading", { name: "No traces displayed" }),
     ).not.toBeNull();
     expect(screen.getByText(/Clear view only affects this tab/)).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload capture", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload capture" }));
     const replay = await openSource();
     expect(replay).not.toBe(initial);
     await sendEvent(replay, "saved event without traces", "reload-event");
@@ -517,11 +505,10 @@ test("session command search leaves the active view filter unchanged until Filte
   fireEvent.click(
     screen.getAllByRole("button", {
       name: "Search this session",
-      exact: true,
     })[0]!,
   );
   fireEvent.change(
-    screen.getByRole("combobox", { name: "Search this session", exact: true }),
+    screen.getByRole("combobox", { name: "Search this session" }),
     {
       target: { value: "beta" },
     },
@@ -545,9 +532,7 @@ test("session command search leaves the active view filter unchanged until Filte
     ),
   );
   expect(new URLSearchParams(window.location.search).get("q")).toBe("beta");
-  fireEvent.click(
-    screen.getByRole("button", { name: "Clear filter", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
   await waitFor(() =>
     expect(
       screen.getAllByRole("button", { name: /^View event:/ }),
