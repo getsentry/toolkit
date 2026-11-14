@@ -3,11 +3,18 @@
   "compilerOptions": {
     "lib": ["ESNext"],
     "target": "ESNext",
+    "module": "ESNext",
     "allowJs": true,
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": true,
-    "noEmit": true
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes and TS2304 on DOM names (HeadersInit, RequestCredentials, FileList) in this Node program (ai@6 dist/index.d.ts, loaded through @sentry/mcp-core types). Remove when they check cleanly.
+    // skipLibCheck exception: `@ai-sdk/provider-utils` declarations fail TS2304 on the DOM name HeadersInit in this Node program. Remove when they check cleanly without lib DOM.
+    // skipLibCheck exception: `@sentry/symbolic` declarations fail TS2304/TS2552/TS2503/TS2694 on DOM and WebAssembly names (BufferSource, RequestInfo, WebAssembly.Memory) that @types/node 22 lacks. Remove when they check cleanly in a Node program.
+    // skipLibCheck exception: `hono` declarations (hono/ws, loaded by @hono/node-server) fail TS2304/TS2315 on DOM names (CloseEvent, BinaryType, generic MessageEvent) in this Node program. Remove when they check cleanly without lib DOM.
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

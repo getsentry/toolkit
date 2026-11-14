@@ -1,0 +1,11 @@
+{
+  // A bundled app resolves the package's "import" condition without Node's
+  // module rules.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "noEmit": true
+  },
+  "include": ["esm.ts"]
+}

@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2022",
     "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    "declaration": true,
+    "isolatedDeclarations": true
   },
-  "include": ["src/**/*.ts", "test/*.ts"]
+  "include": ["src/**/*.ts", "test/*.ts", "tsdown.config.ts"]
 }

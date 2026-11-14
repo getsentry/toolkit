@@ -1,15 +1,22 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "ES2024.String"],
     "allowJs": true,
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
     "incremental": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": ".",
+    // The AI SDK and MCP SDK declarations use Fetch DOM types (HeadersInit,
+    // RequestCredentials, FileList) that @types/node does not declare.
+    "lib": ["ES2023", "ES2024.String", "DOM"],
+    "types": ["node"],
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6.0.x dist/index.d.ts). Remove when they check cleanly.
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  // Tests and the Vite/tsdown configs are checked with the source; tsdown
+  // bundles only src/index.ts.
+  "include": ["src", "vitest.config.ts", "tsdown.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

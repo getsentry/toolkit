@@ -1,0 +1,16 @@
+{
+  // vitest.config.ts runs in Node and sits outside tsconfig.json's rootDir.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "ES2024.String"],
+    "allowJs": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["vitest.config.ts"]
+}

@@ -5,7 +5,7 @@ Required checks before completing any code changes.
 ## Required Commands
 
 ```bash
-pnpm run tsc && pnpm run lint && pnpm run test
+pnpm run typecheck && pnpm run lint && pnpm run test
 ```
 
 Do not proceed if any check fails.
@@ -32,7 +32,7 @@ happy-path inline snapshot test. Review tool output snapshots against
 
 ## Pre-Commit Checklist
 
-- [ ] Quality checks pass (`pnpm run tsc && pnpm run lint && pnpm run test`)
+- [ ] Quality checks pass (`pnpm run typecheck && pnpm run lint && pnpm run test`)
 - [ ] Tool count within limits
 - [ ] New tools have tests with inline snapshots
 - [ ] Tool/skill definitions regenerated if tools changed (`pnpm run --filter @sentry/mcp-core generate-definitions`)

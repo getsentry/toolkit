@@ -4,6 +4,9 @@
     "moduleResolution": "NodeNext",
     "target": "ES2022",
     "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": false,
     "outDir": "out",
     "types": ["node"]
   },

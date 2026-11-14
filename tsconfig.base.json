@@ -1,19 +1,35 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  // The shared base for every first-party TypeScript project.
+  //
+  // The checking policy (from `strict` down) applies everywhere: do not weaken
+  // it in a project; scripts/tsconfig-policy.test.mjs fails when a project
+  // does. Projects set their own runtime on top: module resolution, lib,
+  // ambient types, JSX, and emit. The runtime defaults here suit bundled ESM.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "moduleDetection": "force",
-    "isolatedModules": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+
     "strict": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
-    "noUncheckedSideEffectImports": true
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedSideEffectImports": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "skipLibCheck": false
   }
 }
