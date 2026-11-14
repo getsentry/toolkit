@@ -13,7 +13,9 @@
     ]
   },
   "include": [
-    "src/server"
+    "src/server",
+    "src/constants.ts",
+    "src/homepage-content.ts"
   ],
   "exclude": [
     "src/**/*.test.ts",

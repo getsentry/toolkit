@@ -15,5 +15,7 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/client"]
+  // src/constants.ts and src/homepage-content.ts are shared with the Worker,
+  // so both programs list them and check them under each environment.
+  "include": ["src/client", "src/constants.ts", "src/homepage-content.ts"]
 }
