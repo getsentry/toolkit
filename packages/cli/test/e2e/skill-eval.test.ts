@@ -23,8 +23,8 @@ const SKILL_PATH = "plugins/sentry-cli/skills/sentry-cli/SKILL.md";
 const DEFAULT_THRESHOLD = 0.75;
 
 /** Models under test — env-overridable, defaults to sonnet-5 + gpt-5.6-luna. */
-const AGENT_MODELS = process.env.EVAL_AGENT_MODELS
-  ? process.env.EVAL_AGENT_MODELS.split(",").map((m) => m.trim())
+const AGENT_MODELS = process.env["EVAL_AGENT_MODELS"]
+  ? process.env["EVAL_AGENT_MODELS"].split(",").map((m) => m.trim())
   : ["anthropic/claude-sonnet-5", "openai/gpt-5.6-luna"];
 
 const provider = resolveEvalProvider();
@@ -50,8 +50,8 @@ describe.skipIf(!provider)("skill eval", () => {
     globalThis.fetch = savedFetch;
   });
   const testCases = cases as unknown as TestCase[];
-  const threshold = process.env.EVAL_THRESHOLD
-    ? Number.parseFloat(process.env.EVAL_THRESHOLD)
+  const threshold = process.env["EVAL_THRESHOLD"]
+    ? Number.parseFloat(process.env["EVAL_THRESHOLD"])
     : DEFAULT_THRESHOLD;
 
   /**

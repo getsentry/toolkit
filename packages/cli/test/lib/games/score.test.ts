@@ -1,4 +1,5 @@
-import { type Client, getCurrentScope, metrics } from "@sentry/node";
+import type { Client } from "@sentry/core";
+import { getCurrentScope, metrics } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
 import {

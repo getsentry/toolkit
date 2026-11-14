@@ -68,7 +68,9 @@ vi.mock("../../src/lib/mcp/scope-check.js", () => ({
   assertMcpScopeExists: vi.fn(
     async (config: { organizationSlug?: string }, accessToken: string) => {
       scopeChecks.calls.push({
-        organizationSlug: config.organizationSlug,
+        ...(config.organizationSlug !== undefined && {
+          organizationSlug: config.organizationSlug,
+        }),
         accessToken,
       });
       if (scopeChecks.result) {
@@ -166,7 +168,7 @@ describe("serveMcp credential wiring", () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
     });
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("env-token");
@@ -174,14 +176,14 @@ describe("serveMcp credential wiring", () => {
     expect(options.credentialRouter).toBeUndefined();
     // Refreshes stay on the env token, and the process env is left alone.
     await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
-    expect(process.env.SENTRY_FORCE_ENV_TOKEN).toBeUndefined();
+    expect(process.env["SENTRY_FORCE_ENV_TOKEN"]).toBeUndefined();
   });
 
   test("serves the legacy SENTRY_TOKEN over a stored login", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
     });
-    process.env.SENTRY_TOKEN = "legacy-env-token";
+    process.env["SENTRY_TOKEN"] = "legacy-env-token";
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("legacy-env-token");
@@ -232,7 +234,7 @@ describe("serveMcp scope", () => {
   });
 
   test("checks the scope with a static token", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
 
     await start(["--org", "acme"]);
     expect(scopeChecks.calls).toEqual([
@@ -269,7 +271,7 @@ describe("serveMcp account pinning", () => {
   beforeEach(async () => {
     await clearAuth();
     refreshedWith.length = 0;
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
     // Each refresh rotates the access token of whichever refresh token it got.
     globalThis.fetch = async (input, init) => {
       expect(new Request(input).url).toBe("https://sentry.io/oauth/token/");
@@ -385,7 +387,9 @@ describe("serveMcp account pinning", () => {
 
     // Removed after the pin check but before the credential read, so the
     // CLI's account selection falls back to the remaining account.
-    refreshHooks.before = () => removeAccount(a, { promoteNext: true });
+    refreshHooks.before = async () => {
+      await removeAccount(a, { promoteNext: true });
+    };
 
     await expect(refreshStartupCredential(options)).rejects.toThrow(
       "The account this MCP server started with is no longer available",
@@ -393,8 +397,8 @@ describe("serveMcp account pinning", () => {
   });
 
   test("keeps an env token after a stored login appears", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_HOST = "https://sentry.io";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_HOST"] = "https://sentry.io";
     const { options } = await start([]);
     expect(options.accessToken).toBe("env-token");
 
@@ -456,7 +460,7 @@ describe("serveMcp account routing", () => {
   beforeEach(async () => {
     await clearAuth();
     refreshedWith.length = 0;
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
     globalThis.fetch = async (input, init) => {
       expect(new Request(input).url).toBe("https://sentry.io/oauth/token/");
       const body = init?.body;
@@ -604,20 +608,20 @@ describe("serveMcp deprecated --access-token", () => {
     // The env-token path: a refresh re-reads the same env token.
     await expect(options.refreshAccessToken?.()).resolves.toBe("static-token");
     // Mapped in an env copy; the process environment is left alone.
-    expect(process.env.SENTRY_AUTH_TOKEN).toBeUndefined();
-    expect(process.env.SENTRY_FORCE_ENV_TOKEN).toBeUndefined();
+    expect(process.env["SENTRY_AUTH_TOKEN"]).toBeUndefined();
+    expect(process.env["SENTRY_FORCE_ENV_TOKEN"]).toBeUndefined();
   });
 
   test("serves the same as SENTRY_AUTH_TOKEN with SENTRY_FORCE_ENV_TOKEN=1", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.io",
     });
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     const fromEnv = await start([]);
     const refreshedFromEnv = await fromEnv.options.refreshAccessToken?.();
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_FORCE_ENV_TOKEN"];
 
     served.calls = [];
     const fromFlag = await start(["--access-token=env-token"]);
@@ -630,14 +634,14 @@ describe("serveMcp deprecated --access-token", () => {
 
   test("uses SENTRY_ACCESS_TOKEN without a CLI session", async () => {
     await clearAuth();
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("env-static-token");
   });
 
   test("prefers --access-token over SENTRY_ACCESS_TOKEN", async () => {
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
 
     const { options } = await start(["--access-token", "flag-token"]);
     expect(options.accessToken).toBe("flag-token");
@@ -658,8 +662,8 @@ describe("serveMcp deprecated --access-token", () => {
   });
 
   test("overrides SENTRY_AUTH_TOKEN and SENTRY_TOKEN", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-auth-token";
-    process.env.SENTRY_TOKEN = "env-legacy-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-auth-token";
+    process.env["SENTRY_TOKEN"] = "env-legacy-token";
 
     const { options } = await start(["--access-token=flag-token"]);
     expect(options.accessToken).toBe("flag-token");
@@ -679,7 +683,7 @@ describe("serveMcp deprecated --access-token", () => {
   });
 
   test("names SENTRY_ACCESS_TOKEN in its hint when that is the source", async () => {
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
     await start([]);
 
     expect(output.stdout).toEqual([]);
@@ -702,7 +706,7 @@ describe("serveMcp deprecated --access-token", () => {
   });
 
   test("warns about deprecated target flags and still serves them", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     const { config } = await start([
       "--host=sentry.internal:9000",
       "--insecure-http",
@@ -771,8 +775,8 @@ describe("serveMcp deprecated --access-token", () => {
   });
 
   test("routes SENTRY_HOST to the static token target", async () => {
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     const { config } = await start([]);
     expect(config.sentryHost).toBe("sentry.example.com");
@@ -840,7 +844,7 @@ describe("serveMcp .sentryclirc URLs", () => {
 
   test("refuses to send a static token to a self-hosted URL from a repo .sentryclirc", async () => {
     await inRcDir("https://evil.example.com");
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
 
     await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
     await expect(serve(["--access-token=static-token"])).rejects.toBeInstanceOf(
@@ -878,7 +882,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     expect(fromFlag.options.accessToken).toBe(token);
 
     served.calls = [];
-    process.env.SENTRY_ACCESS_TOKEN = token;
+    process.env["SENTRY_ACCESS_TOKEN"] = token;
     const fromEnv = await start([]);
     expect(fromEnv.options.accessToken).toBe(token);
   });
@@ -917,8 +921,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("serves the env token on the self-hosted rc URL it is configured for", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
-      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+      process.env["SENTRY_URL"] = "https://sentry.example.com";
       captureEnvTokenHost();
       await inRcDir("https://sentry.example.com");
 
@@ -930,8 +934,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("serves the env token over http with --insecure-http on its startup SENTRY_HOST", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
-      process.env.SENTRY_HOST = "sentry.internal:9000";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+      process.env["SENTRY_HOST"] = "sentry.internal:9000";
       captureEnvTokenHost();
 
       const { config, options } = await start(["--insecure-http"]);
@@ -941,7 +945,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("scopes the env token to an explicit --host over the rc URL", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
       captureEnvTokenHost();
       await inRcDir("https://evil.example.com");
 
@@ -951,8 +955,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("serves the env token over a token in the same .sentryclirc", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
-      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+      process.env["SENTRY_URL"] = "https://sentry.example.com";
       captureEnvTokenHost();
       await inRcDir("https://sentry.example.com", "rc-token");
 
@@ -966,7 +970,7 @@ describe("serveMcp .sentryclirc URLs", () => {
         url: "https://sentry.example.com",
         org: "acme",
       });
-      process.env.SENTRY_AUTH_TOKEN = token;
+      process.env["SENTRY_AUTH_TOKEN"] = token;
       captureEnvTokenHost();
       await inRcDir("https://sentry.example.com");
 
@@ -975,7 +979,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("refuses to send an env token with no host claim to the rc URL", async () => {
-      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env["SENTRY_AUTH_TOKEN"] = "env-token";
       captureEnvTokenHost();
       await inRcDir("https://evil.example.com");
 
@@ -984,7 +988,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     });
 
     test("refuses an env org token whose claim does not match the rc URL", async () => {
-      process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+      process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
         iat: 1,
         url: "https://sentry.example.com",
         org: "acme",
@@ -1009,7 +1013,7 @@ describe("serveMcp .sentryclirc URLs", () => {
         host: "https://sentry.io",
       });
       await inRcDir("https://sentry.io", "rc-token");
-      expect(process.env.SENTRY_AUTH_TOKEN).toBe("rc-token");
+      expect(process.env["SENTRY_AUTH_TOKEN"]).toBe("rc-token");
 
       const { options } = await start([]);
       expect(options.accessToken).toBe("cli-session-token");
@@ -1048,7 +1052,7 @@ describe("serveMcp .sentryclirc URLs", () => {
   });
 
   test("refuses to send an env token with no host claim to an rc URL without a stored login", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     captureEnvTokenHost();
     await inRcDir("https://evil.example.com");
 
@@ -1062,7 +1066,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.example.com",
     });
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     captureEnvTokenHost();
     await inRcDir("https://sentry.example.com");
 
@@ -1090,7 +1094,7 @@ describe("serveMcp .sentryclirc URLs", () => {
     await expect(
       serve(["--access-token=static-token", "--insecure-http"]),
     ).rejects.toBeInstanceOf(HostScopeError);
-    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    process.env["SENTRY_ACCESS_TOKEN"] = "env-static-token";
     await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
     expect(served.calls).toHaveLength(0);
 
@@ -1104,7 +1108,7 @@ describe("serveMcp .sentryclirc URLs", () => {
   });
 
   test("serves a static token on the rc URL its startup SENTRY_URL names", async () => {
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
     captureEnvTokenHost();
     await inRcDir("https://sentry.example.com");
 

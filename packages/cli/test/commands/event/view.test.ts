@@ -7,7 +7,15 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   collectEventIds,
   expandNewlineArgs,
@@ -26,12 +34,8 @@ import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
@@ -41,12 +45,8 @@ import { ProjectSpecificationType } from "../../../src/lib/arg-parsing.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -64,12 +64,8 @@ import {
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -79,17 +75,15 @@ import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/span-tree.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 describe("parseEventViewInput", () => {
   describe("single argument (event ID only)", () => {
@@ -530,10 +524,10 @@ describe("parseEventViewInput", () => {
     let savedSentryHost: string | undefined;
 
     beforeEach(async () => {
-      savedSentryUrl = process.env.SENTRY_URL;
-      savedSentryHost = process.env.SENTRY_HOST;
-      delete process.env.SENTRY_URL;
-      delete process.env.SENTRY_HOST;
+      savedSentryUrl = process.env["SENTRY_URL"];
+      savedSentryHost = process.env["SENTRY_HOST"];
+      delete process.env["SENTRY_URL"];
+      delete process.env["SENTRY_HOST"];
       const { resetEnvTokenHostForTesting } =
         await import("../../../src/lib/env-token-host.js");
       resetEnvTokenHostForTesting();
@@ -541,14 +535,14 @@ describe("parseEventViewInput", () => {
 
     afterEach(async () => {
       if (savedSentryUrl !== undefined) {
-        process.env.SENTRY_URL = savedSentryUrl;
+        process.env["SENTRY_URL"] = savedSentryUrl;
       } else {
-        delete process.env.SENTRY_URL;
+        delete process.env["SENTRY_URL"];
       }
       if (savedSentryHost !== undefined) {
-        process.env.SENTRY_HOST = savedSentryHost;
+        process.env["SENTRY_HOST"] = savedSentryHost;
       } else {
-        delete process.env.SENTRY_HOST;
+        delete process.env["SENTRY_HOST"];
       }
       const { resetEnvTokenHostForTesting } =
         await import("../../../src/lib/env-token-host.js");
@@ -564,7 +558,7 @@ describe("parseEventViewInput", () => {
     });
 
     test("self-hosted event URL extracts eventId and org, and returns the server without applying it", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/events/deadbeef/",
       ]);
@@ -572,17 +566,17 @@ describe("parseEventViewInput", () => {
       expect(result.targetArg).toBe("acme/");
       expect(result.baseUrl).toBe("https://sentry.example.com");
       // Parsing has no side effects; resolving the arguments applies it
-      expect(process.env.SENTRY_URL).toBeUndefined();
+      expect(process.env["SENTRY_URL"]).toBeUndefined();
     });
 
     test("self-hosted issue URL returns the server without applying it", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
       const result = parseEventViewInput([
         "https://sentry.example.com/organizations/acme/issues/999/",
       ]);
       expect(result.issueId).toBe("999");
       expect(result.baseUrl).toBe("https://sentry.example.com");
-      expect(process.env.SENTRY_URL).toBeUndefined();
+      expect(process.env["SENTRY_URL"]).toBeUndefined();
     });
 
     test("issue URL without event ID returns issueId for latest event fetch", () => {
@@ -604,9 +598,11 @@ describe("parseEventViewInput", () => {
 
 describe("resolveProjectBoundSlug", () => {
   const HINT = "sentry event view <org>/<project> <event-id>";
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let getProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -652,7 +648,7 @@ describe("resolveProjectBoundSlug", () => {
   test("throws ResolutionError with org hint when slug matches an organization", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "1", slug: "acme-corp", name: "Acme Corp" }],
     });
 
     try {
@@ -669,7 +665,7 @@ describe("resolveProjectBoundSlug", () => {
   test("org hint replaces <org>/<project> placeholder, not slug in command name", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "sentry", name: "Sentry" }],
+      orgs: [{ id: "2", slug: "sentry", name: "Sentry" }],
     });
 
     try {
@@ -688,7 +684,7 @@ describe("resolveProjectBoundSlug", () => {
   test("fetches full project data after fuzzy recovery", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme", name: "Acme" }],
+      orgs: [{ id: "3", slug: "acme", name: "Acme" }],
     });
     listProjectsSpy.mockResolvedValue([
       { id: "1", slug: "app-frontend", name: "App Frontend" },
@@ -867,11 +863,19 @@ describe("resolveProjectBoundSlug", () => {
 });
 
 describe("resolveEventTarget", () => {
-  let resolveEventInOrgSpy: ReturnType<typeof spyOn>;
-  let findEventAcrossOrgsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundSlugSpy: ReturnType<typeof spyOn>;
-  let setTagSpy: ReturnType<typeof spyOn>;
+  let resolveEventInOrgSpy: MockInstance<
+    (typeof apiClient)["resolveEventInOrg"]
+  >;
+  let findEventAcrossOrgsSpy: MockInstance<
+    (typeof apiClient)["findEventAcrossOrgs"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveProjectBoundSlugSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundSlug"]
+  >;
+  let setTagSpy: MockInstance<(typeof Sentry)["setTag"]>;
 
   beforeEach(async () => {
     resolveEventInOrgSpy = vi.spyOn(apiClient, "resolveEventInOrg");
@@ -916,6 +920,7 @@ describe("resolveEventTarget", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { id: "1", slug: "frontend", name: "Frontend" },
     });
 
     const result = await resolveEventTarget({
@@ -984,7 +989,9 @@ describe("resolveEventTarget", () => {
 });
 
 describe("resolveOrgAllTarget", () => {
-  let resolveEventInOrgSpy: ReturnType<typeof spyOn>;
+  let resolveEventInOrgSpy: MockInstance<
+    (typeof apiClient)["resolveEventInOrg"]
+  >;
 
   beforeEach(() => {
     resolveEventInOrgSpy = vi.spyOn(apiClient, "resolveEventInOrg");
@@ -1028,8 +1035,12 @@ describe("resolveOrgAllTarget", () => {
 });
 
 describe("resolveAutoDetectTarget", () => {
-  let findEventAcrossOrgsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findEventAcrossOrgsSpy: MockInstance<
+    (typeof apiClient)["findEventAcrossOrgs"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   beforeEach(() => {
     findEventAcrossOrgsSpy = vi.spyOn(apiClient, "findEventAcrossOrgs");
@@ -1130,11 +1141,11 @@ describe("viewCommand.func", () => {
   const attachmentDownloadUrl = `https://sentry.io/sentry/api/0/projects/test-org/test-proj/events/${VALID_EVENT_ID}/attachments/attachment-1/?download=1`;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -1178,7 +1189,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Valid 32-char hex has no slash, "test-org/test-proj" has slash → swap detected
     await func.call(
       context,
@@ -1201,7 +1212,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     const result = await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1209,7 +1220,7 @@ describe("viewCommand.func", () => {
       VALID_EVENT_ID,
     );
 
-    expect(result?.hint).toBeUndefined();
+    expect(result).toBeUndefined();
   });
 
   test("includes attachment metadata and download URLs in JSON", async () => {
@@ -1223,7 +1234,7 @@ describe("viewCommand.func", () => {
     listEventAttachmentsSpy.mockResolvedValue([attachment]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1261,7 +1272,7 @@ describe("viewCommand.func", () => {
     ]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 0 },
@@ -1290,7 +1301,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1326,7 +1337,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false, spans: 0 }, "17370");
 
     expect(resolveOrgSpy).toHaveBeenCalled();
@@ -1356,7 +1367,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1386,7 +1397,7 @@ describe("viewCommand.func", () => {
       .mockResolvedValue(sampleEvent);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1441,7 +1452,7 @@ describe("viewCommand.func", () => {
       .mockResolvedValue(sampleEvent);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1468,7 +1479,7 @@ describe("viewCommand.func", () => {
     const getLatestEventSpy = vi.spyOn(apiClient, "getLatestEvent");
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await expect(
       func.call(context, { json: true, web: false, spans: 0 }, "test-org/"),
     ).rejects.toThrow(ResolutionError);
@@ -1499,7 +1510,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1530,7 +1541,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test_org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Underscores in the slug trigger normalized warning
     await func.call(
       context,
@@ -1552,7 +1563,7 @@ describe("viewCommand.func", () => {
     // The behavior under test is "a malformed ID still produces an error",
     // not the exact class — that's covered by hex-id unit tests.
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 0 }, "--h"),
@@ -1561,7 +1572,7 @@ describe("viewCommand.func", () => {
 
   test("parses the arguments before any API call", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -1577,7 +1588,7 @@ describe("viewCommand.func", () => {
 
   test("throws error for non-hex event ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id"),

@@ -45,8 +45,11 @@ function boxes(
       depth: 0,
     },
   ];
-  while (pending.length && result.length < 2500) {
-    const box = pending.pop()!;
+  for (
+    let box = pending.pop();
+    box && result.length < 2500;
+    box = pending.pop()
+  ) {
     result.push(box);
     if (box.depth >= 32 || box.node.samples === 0) continue;
     let offset = 0;
@@ -249,7 +252,11 @@ function ProfileInspector({
       ? focused.node
       : undefined;
   const setFocus = (node?: ProfileNode) =>
-    setFocused(node ? { source, thread, node } : undefined);
+    setFocused(
+      node
+        ? { source, ...(thread !== undefined && { thread }), node }
+        : undefined,
+    );
   const linked = traces.filter((trace) => profileMatchesTrace(source, trace));
   const functions = profile.functions
     .filter((fn) =>
@@ -462,7 +469,7 @@ export function ProfileWorkspace({
   items: readonly LocalFeedItem[];
   traces: readonly TraceGroup[];
   query: string;
-  selectedId?: string;
+  selectedId?: string | undefined;
   onSelect: (id: string) => void;
   onSelectTrace: (id: string) => void;
 }) {
@@ -501,11 +508,12 @@ export function ProfileWorkspace({
                   <span className="block">
                     {item.type === "profile_chunk" ? "Chunk" : "Profile"}{" "}
                     {index + 1} ·{" "}
-                    {text(record(item.payload).platform) ?? "Unknown platform"}
+                    {text(record(item.payload)["platform"]) ??
+                      "Unknown platform"}
                   </span>
                   <code className="block break-all text-xs text-muted-foreground">
-                    {text(record(item.payload).event_id) ??
-                      text(record(item.payload).chunk_id) ??
+                    {text(record(item.payload)["event_id"]) ??
+                      text(record(item.payload)["chunk_id"]) ??
                       item.id}
                   </code>
                 </button>

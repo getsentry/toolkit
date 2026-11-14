@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b tsconfig.app.json tsconfig.node.json && vite build",
     "lint": "pnpm -w exec oxlint --report-unused-disable-directives apps/local",
     "preview": "vite preview",
     "test": "pnpm --filter sentry exec node script/ensure-generated.mjs schema grammar && vitest run",
     "test:integration": "pnpm run test src/App.integration.test.tsx",
-    "typecheck": "tsc -b",
+    "typecheck": "pnpm --filter sentry exec node script/ensure-generated.mjs && tsc -b",
     "sample": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/replay.ts"
   },
   "engines": {
@@ -45,14 +45,16 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
+    "@rolldown/plugin-babel": "^0.3.1",
     "@testing-library/react": "^16.3.2",
+    "@types/convert-source-map": "^2.0.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@vitejs/plugin-react": "^6.3.0",
     "eventsource": "^4.1.0",
     "jsdom": "^28.1.0",
-    "oxlint": "^1.79.0",
+    "oxlint": "catalog:",
     "typescript": "catalog:",
     "vite": "^8.3.3",
     "vitest": "catalog:"

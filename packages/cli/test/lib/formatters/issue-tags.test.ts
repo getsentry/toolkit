@@ -1,6 +1,7 @@
 import type { GetOrganizationIssueTagResponse } from "@sentry/api";
 import { describe, expect, test } from "vitest";
 import { formatIssueTags } from "../../../src/lib/formatters/issue-tags.js";
+import { must, without } from "../../helpers.js";
 
 /** A distribution with undisplayed events, rather than an exhaustive list. */
 function distribution(
@@ -34,7 +35,11 @@ describe("formatIssueTags", () => {
   test.each([undefined, null, 0])(
     "does not divide by an unknown or zero total (%s)",
     (total) => {
-      const output = formatIssueTags({ ...distribution(), totalValues: total });
+      const output = formatIssueTags(
+        total === undefined
+          ? without(distribution(), "totalValues")
+          : { ...distribution(), totalValues: total },
+      );
       expect(output).not.toContain("%");
       expect(output).not.toContain("NaN");
       expect(output).not.toContain("Infinity");
@@ -43,7 +48,7 @@ describe("formatIssueTags", () => {
 
   test("distinguishes empty values from unknown values and preserves literal tag text", () => {
     const tag = distribution();
-    const value = tag.topValues![0];
+    const value = must(tag.topValues?.[0], "a top value");
     tag.topValues = [
       { ...value, value: "" },
       { ...value, value: null },

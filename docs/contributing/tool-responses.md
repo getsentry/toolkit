@@ -96,6 +96,16 @@ guidance, but it should not act like a system prompt. See "Response Formatting"
 in [common-patterns.md](common-patterns.md) for examples of acceptable response
 notes.
 
+## Side Quests
+
+Side quests are things that might help but may not matter for the current
+task, such as configuration issues or follow-ups. Source maps that failed to
+apply are one. List each once, at the end under `## Concerns Identified`, as a
+short tip that names the problem and its fix. When one changes how to read the
+current data, say so in the tip: "Source maps weren't applied, so frames may be
+minified." Raise one only when Sentry's own data shows it unambiguously. Build
+them with `buildSideQuests` in `packages/mcp-core/src/internal/side-quests.ts`.
+
 ## Formatting Upstream Data
 
 Translate upstream API shapes into user-facing terms:

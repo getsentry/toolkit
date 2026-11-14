@@ -53,9 +53,49 @@
     "typescript/no-unnecessary-type-parameters": "error",
     "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
-    "unicorn/prefer-spread": "error"
+    "unicorn/prefer-spread": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true
+      }
+    ],
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": [
+      "error",
+      { "allowThrowingUnknown": true }
+    ],
+    "typescript/no-base-to-string": "error",
+    "typescript/no-unsafe-enum-comparison": "error"
   },
   "overrides": [
+    {
+      "files": [
+        "apps/{docs-mcp,games-api,local}/**/*.{ts,tsx}",
+        "packages/{codemod-cli3to4,logger,mcp-cloudflare,mcp-core,mcp-server,mcp-server-evals,mcp-server-mocks,mcp-test-client,smoke-tests,toolkit-core}/**/*.{ts,tsx}"
+      ],
+      "excludeFiles": [
+        "**/*.test.{ts,tsx}",
+        "**/test/**",
+        "**/tests/**",
+        "**/test-utils/**",
+        "**/test-setup.ts",
+        "**/test-fixtures/**",
+        "**/test-fixtures.ts",
+        "**/*.config.{ts,mts}"
+      ],
+      "rules": {
+        "typescript/no-explicit-any": "error",
+        "typescript/no-non-null-assertion": "error",
+        "typescript/no-unnecessary-condition": "error",
+        "typescript/no-unsafe-assignment": "error",
+        "typescript/no-unsafe-argument": "error",
+        "typescript/no-unsafe-call": "error",
+        "typescript/no-unsafe-member-access": "error",
+        "typescript/no-unsafe-return": "error"
+      }
+    },
     {
       "files": ["**/*.test.{ts,tsx,mjs}", "**/test/**/*.{ts,tsx}"],
       "rules": {
@@ -100,6 +140,12 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "files": ["packages/cli/test/**/*.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {
@@ -163,7 +209,8 @@
     {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
-        "sentry-cli/no-regex-markdown-parsing": "error"
+        "sentry-cli/no-regex-markdown-parsing": "error",
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {

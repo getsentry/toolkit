@@ -23,9 +23,11 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "tsdown -w"
+    "dev": "tsdown -w",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "tsdown": "catalog:"
   },
   "dependencies": {

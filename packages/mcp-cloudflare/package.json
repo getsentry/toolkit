@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "catalog:",
@@ -39,6 +39,7 @@
     "@sentry/vite-plugin": "catalog:",
     "@tailwindcss/typography": "catalog:",
     "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/react-scroll-to-bottom": "^4.2.5",

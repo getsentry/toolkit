@@ -12,7 +12,12 @@
  * and verify help output is shown when resolution fails.
  */
 
-import { generateHelpTextForAllCommands, run } from "@stricli/core";
+import {
+  type Application,
+  type CommandContext,
+  generateHelpTextForAllCommands,
+  run,
+} from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { app } from "../../src/app.js";
 import type { SentryContext } from "../../src/context.js";
@@ -269,9 +274,11 @@ describe("help command unchanged", () => {
   });
 
   test("project create --help shows the required paired syntax", () => {
-    const help = generateHelpTextForAllCommands(app).find(
-      ([route]) => route === "sentry project create",
-    )?.[1];
+    // Stricli types help generation for CommandContext apps only, though it
+    // never runs a command. Narrow cast until its declaration is generic.
+    const help = generateHelpTextForAllCommands(
+      app as Application<CommandContext>,
+    ).find(([route]) => route === "sentry project create")?.[1];
 
     expect(help).toContain(
       "sentry project create [<org>/]<name>:<platform>...",

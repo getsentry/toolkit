@@ -8,6 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { showCommand } from "../../../src/commands/status/show.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type ShowFlags = {
   readonly json: boolean;
@@ -38,7 +39,7 @@ function createContext() {
           stdoutChunks.push(s);
         }),
       },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     getOutput: () => stdoutChunks.join(""),

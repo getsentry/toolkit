@@ -402,7 +402,9 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // Read key://pattern// on every dataset: outside logs it is a literal match,
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
-    const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
+    const key = (
+      match.groups?.["regexKey"] ?? match.groups?.["key"]
+    )?.toLowerCase();
     if (!key) {
       continue;
     }
@@ -607,7 +609,7 @@ function isPrimitive(
 
 function isTagPair(value: unknown): value is { key: string; value: unknown } {
   return (
-    isPlainObject(value) && typeof value.key === "string" && "value" in value
+    isPlainObject(value) && typeof value["key"] === "string" && "value" in value
   );
 }
 
@@ -639,14 +641,14 @@ function hasUserSummaryFields(
 ): boolean {
   return (
     hasUserIdentityFields(value) ||
-    (options.allowId === true && value.id != null)
+    (options.allowId === true && value["id"] != null)
   );
 }
 
 function formatUserSummary(
   value: Record<string, unknown>,
   options: {
-    includeGeo?: boolean;
+    includeGeo?: boolean | undefined;
     allowIdOnly?: boolean;
   } = {},
 ): string | null {
@@ -661,7 +663,7 @@ function formatUserSummary(
   const parts = USER_FIELDS.filter((f) => value[f] != null).map(
     (f) => `${f}=${formatSimpleValue(value[f])}`,
   );
-  const geoSummary = formatUserGeoSummary(value.geo);
+  const geoSummary = formatUserGeoSummary(value["geo"]);
   if (includeGeo && geoSummary) {
     parts.push(`geo=${geoSummary}`);
   }
@@ -697,7 +699,7 @@ function truncateString(value: string, maxLength: number): string {
 
 function safeJsonStringify(value: unknown): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(value, (_key, currentValue) => {
+  return JSON.stringify(value, (_key, currentValue: unknown) => {
     if (typeof currentValue === "bigint") {
       return currentValue.toString();
     }
@@ -825,9 +827,9 @@ export async function fetchCustomAttributes(
   projectId?: string,
   timeParams?: { statsPeriod?: string; start?: string; end?: string },
   options: {
-    attributeTypes?: TraceItemAttributeType[];
-    substringMatch?: string;
-    query?: string;
+    attributeTypes?: TraceItemAttributeType[] | undefined;
+    substringMatch?: string | undefined;
+    query?: string | undefined;
     context?: boolean;
   } = {},
 ): Promise<{
@@ -917,7 +919,7 @@ function formatValidationStatusLine({
   valid: boolean;
   name?: string;
   type?: string;
-  error?: string;
+  error?: string | undefined;
   indent?: number;
 }): string {
   const status = valid ? "OK" : "INVALID";
@@ -1106,11 +1108,11 @@ export async function validateEventsSearch(
     fields: string[];
     query: string;
     sort: string;
-    projectId?: string;
-    environment?: string | string[];
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    projectId?: string | undefined;
+    environment?: string | string[] | undefined;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
   },
 ): Promise<EventsValidationResult> {
   return await apiService.validateEvents({
@@ -1225,7 +1227,10 @@ function resolveAvailableFields(
       const replacementAttribute = { ...field, key: replacementKey };
       available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-      fieldTypes[replacementKey] = fieldTypes[key]!;
+      const fieldType = fieldTypes[key];
+      if (fieldType !== undefined) {
+        fieldTypes[replacementKey] = fieldType;
+      }
       delete fieldTypes[key];
     } else if (!attributeDeprecated && !available.has(key)) {
       available.set(key, field);
@@ -1257,7 +1262,7 @@ function describeField(field: AttributeDescriptor): string {
 export function createDatasetAttributesTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
   const traceItemAttributeTypeSchema = z.enum([
@@ -1463,7 +1468,7 @@ Use these examples as patterns for constructing your query.`;
 export function createValidateEventsSearchTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
 

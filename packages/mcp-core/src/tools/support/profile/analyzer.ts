@@ -356,7 +356,10 @@ export function compareFrameStats(
       continue; // Frame only in one dataset
     }
 
-    const currentFrame = currentFrames[indices.currentIdx]!;
+    const currentFrame = currentFrames[indices.currentIdx];
+    if (!currentFrame) {
+      continue;
+    }
     const baselineInfo =
       baselineInfos[indices.baselineIdx] || DEFAULT_FRAME_INFO;
     const currentInfo = currentInfos[indices.currentIdx] || DEFAULT_FRAME_INFO;

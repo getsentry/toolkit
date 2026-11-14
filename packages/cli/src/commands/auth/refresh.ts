@@ -40,8 +40,8 @@ type RefreshOutput = {
   success: boolean;
   refreshed: boolean;
   message: string;
-  expiresIn?: number;
-  expiresAt?: string;
+  expiresIn?: number | undefined;
+  expiresAt?: string | undefined;
 };
 
 /** Whether the user asked for a scope change (--scope or --read-only). */

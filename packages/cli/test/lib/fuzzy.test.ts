@@ -14,6 +14,7 @@ import {
   levenshtein,
 } from "../../src/lib/fuzzy.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 // Short strings to keep Levenshtein computation fast in property tests
 const shortStringArb = string({ minLength: 0, maxLength: 20 });
@@ -321,7 +322,7 @@ describe("property: fuzzyMatch", () => {
     fcAssert(
       property(candidatesArb, (candidates) => {
         // Pick the first candidate as partial
-        const partial = candidates[0];
+        const partial = at(candidates, 0);
         const result = fuzzyMatch(partial, candidates);
         expect(result).toContain(partial);
       }),

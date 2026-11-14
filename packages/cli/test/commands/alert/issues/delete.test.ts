@@ -6,7 +6,8 @@ import * as apiClient from "../../../../src/lib/api-client.js";
 import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
-import { useTestConfigDir } from "../../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../../helpers.js";
+import type { Writer } from "../../../../src/types/index.js";
 
 const getConfigDir = useTestConfigDir("test-alert-issues-delete-", {
   isolateProjectRoot: true,
@@ -41,11 +42,11 @@ const defaultFlags = {
 };
 
 function createContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: getConfigDir(),
     },
     stdoutWrite,
@@ -75,7 +76,7 @@ describe("alert issues delete", () => {
 
   test("dry-run resolves the rule without deleting it", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await func.call(
       context,
@@ -104,7 +105,7 @@ describe("alert issues delete", () => {
 
   test("dry-run JSON returns the preview contract", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await func.call(
       context,
@@ -126,7 +127,7 @@ describe("alert issues delete", () => {
 
   test("--fields filters the JSON output", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await func.call(
       context,
@@ -141,7 +142,7 @@ describe("alert issues delete", () => {
 
   test("--yes deletes the resolved rule", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await func.call(
       context,
@@ -163,7 +164,7 @@ describe("alert issues delete", () => {
     "rejects bare rule id with %s before resolving target",
     async (_, flags) => {
       const { context } = createContext();
-      const func = await deleteCommand.loader();
+      const func = await loadCommand(deleteCommand);
 
       await expect(func.call(context, flags, "42")).rejects.toThrow(
         "Auto-detection is disabled for destructive operations",
@@ -182,7 +183,7 @@ describe("alert issues delete", () => {
     "rejects org-all issue alert rule target with %s before resolving target",
     async (_, flags) => {
       const { context } = createContext();
-      const func = await deleteCommand.loader();
+      const func = await loadCommand(deleteCommand);
 
       await expect(func.call(context, flags, "test-org//42")).rejects.toThrow(
         "requires an explicit <org>/<project>/<rule-id-or-name>",

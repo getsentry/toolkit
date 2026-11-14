@@ -937,6 +937,7 @@ export const ExceptionInterface = z
     value: z.string().nullable(),
     module: z.string().nullable(),
     stacktrace: StacktraceSchema.nullable(),
+    rawStacktrace: StacktraceSchema.nullable(),
   })
   .partial();
 
@@ -1015,7 +1016,8 @@ const EventTagsSchema = z.preprocess((value) => {
 
   // Sentry can occasionally return malformed tag entries (e.g. null keys).
   // Drop invalid tags so event parsing can still succeed.
-  return value.filter((tag) => {
+  const tags: unknown[] = value;
+  return tags.filter((tag) => {
     if (typeof tag !== "object" || tag === null) {
       return false;
     }
@@ -1028,6 +1030,28 @@ const EventTagsSchema = z.preprocess((value) => {
     return hasValidKey && hasValidValue;
   });
 }, z.array(EventTagSchema));
+
+const EventProcessingErrorSchema = z.object({
+  type: z.string(),
+  message: z.string().nullish(),
+  data: z.record(z.string(), z.unknown()).nullish(),
+});
+
+/**
+ * Problems Sentry hit while processing the event, such as `js_no_source` when a
+ * source map is missing (`EventError` in getsentry/sentry
+ * `src/sentry/models/eventerror.py`). Entries without a string `type` are
+ * dropped so one malformed entry cannot fail the whole event.
+ */
+const EventProcessingErrorsSchema = z.preprocess(
+  (value) =>
+    Array.isArray(value)
+      ? value.filter(
+          (error) => EventProcessingErrorSchema.safeParse(error).success,
+        )
+      : value,
+  z.array(EventProcessingErrorSchema),
+);
 
 const BaseEventSchema = z.object({
   id: z.string(),
@@ -1112,6 +1136,7 @@ const BaseEventSchema = z.object({
     .nullable()
     .optional(),
   tags: EventTagsSchema.optional(),
+  errors: EventProcessingErrorsSchema.nullish(),
   user: z
     .object({
       display_name: z.string().nullable().optional(),
@@ -1258,6 +1283,52 @@ export const StacktraceLinkSchema = z
     sourceUrl: z.string().nullable().optional(),
   })
   .passthrough();
+
+// Response of /projects/{org}/{project}/events/{event_id}/source-map-debug/, per
+// getsentry/sentry src/sentry/api/endpoints/source_map_debug.py. Exceptions and
+// their frames line up with the event's exception values and raw stacktrace
+// frames. Enum-like fields stay strings so new values don't fail parsing.
+const SourceMapScrapingAttemptSchema = z
+  .object({
+    status: z.string(),
+    url: z.string().nullish(),
+    reason: z.string().nullish(),
+  })
+  .nullish();
+
+const SourceMapDebugFrameSchema = z.object({
+  debug_id_process: z.object({
+    debug_id: z.string().nullable(),
+    uploaded_source_file_with_correct_debug_id: z.boolean(),
+    uploaded_source_map_with_correct_debug_id: z.boolean(),
+  }),
+  release_process: z
+    .object({
+      abs_path: z.string(),
+      matching_source_file_names: z.array(z.string()),
+      source_map_reference: z.string().nullable(),
+      source_file_lookup_result: z.string(),
+      source_map_lookup_result: z.string(),
+    })
+    .nullable(),
+  scraping_process: z
+    .object({
+      source_file: SourceMapScrapingAttemptSchema,
+      source_map: SourceMapScrapingAttemptSchema,
+    })
+    .nullish(),
+});
+
+export const SourceMapDebugSchema = z.object({
+  dist: z.string().nullable(),
+  release: z.string().nullable(),
+  exceptions: z.array(z.object({ frames: z.array(SourceMapDebugFrameSchema) })),
+  sdk_version: z.string().nullable(),
+  release_has_some_artifact: z.boolean(),
+  has_uploaded_some_artifact_with_a_debug_id: z.boolean(),
+  sdk_debug_id_support: z.string(),
+  min_debug_id_sdk_version: z.string().nullish(),
+});
 
 export const EventsResponseSchema = z.object({
   data: z.array(z.unknown()),
@@ -1991,15 +2062,15 @@ export const FlamegraphSchema = z.preprocess(
     // parseable so tools can render the explicit no-profile-data result.
     const body = value as Record<string, unknown>;
     const metadata =
-      body.metadata && typeof body.metadata === "object"
-        ? (body.metadata as Record<string, unknown>)
+      body["metadata"] && typeof body["metadata"] === "object"
+        ? (body["metadata"] as Record<string, unknown>)
         : {};
 
     return {
       ...body,
-      platform: body.platform ?? metadata.platform,
-      projectID: body.projectID ?? metadata.projectID,
-      transactionName: body.transactionName ?? metadata.transactionName,
+      platform: body["platform"] ?? metadata["platform"],
+      projectID: body["projectID"] ?? metadata["projectID"],
+      transactionName: body["transactionName"] ?? metadata["transactionName"],
     };
   },
   z

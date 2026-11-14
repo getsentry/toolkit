@@ -36,8 +36,13 @@ import {
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
+  at,
 } from "../helpers.js";
-import { createMockServer, type MockServer } from "../mocks/server.js";
+import {
+  createMockServer,
+  type MockServer,
+  routeParam,
+} from "../mocks/server.js";
 
 const TOKEN = "context-recovery-test-token";
 const QUERY = `is:unresolved message:"can't read 'name'"`;
@@ -76,34 +81,32 @@ beforeAll(async () => {
       {
         method: "GET",
         path: "/api/0/organizations/:orgSlug/projects/",
-        response: (
-          _request: Request,
-          { orgSlug }: Record<string, string>,
-          serverUrl: string,
-        ) => {
+        response: (_request, params, serverUrl) => {
+          const orgSlug = routeParam(params, "orgSlug");
           if (failedOrgs.has(orgSlug)) {
             return { status: 403, body: { detail: "Not permitted" } };
           }
+          const body = projectsByOrg.get(orgSlug) ?? [];
+          if (!paginatedOrgs.has(orgSlug)) {
+            return { body };
+          }
           return {
-            body: projectsByOrg.get(orgSlug) ?? [],
-            headers: paginatedOrgs.has(orgSlug)
-              ? {
-                  Link: `<${serverUrl}/api/0/organizations/${orgSlug}/projects/>; rel="next"; results="true"; cursor="next-page"`,
-                }
-              : undefined,
+            body,
+            headers: {
+              Link: `<${serverUrl}/api/0/organizations/${orgSlug}/projects/>; rel="next"; results="true"; cursor="next-page"`,
+            },
           };
         },
       },
       {
         method: "GET",
         path: "/api/0/projects/:orgSlug/:projectSlug/",
-        response: (
-          _request: Request,
-          { orgSlug, projectSlug }: Record<string, string>,
-        ) => ({
+        response: (_request, params) => ({
           body: projectsByOrg
-            .get(orgSlug)
-            ?.find((project) => project.slug === projectSlug),
+            .get(routeParam(params, "orgSlug"))
+            ?.find(
+              (project) => project.slug === routeParam(params, "projectSlug"),
+            ),
         }),
       },
       {
@@ -133,8 +136,8 @@ beforeEach(async () => {
   failedOrgs = new Set();
   paginatedOrgs = new Set();
   requests = [];
-  process.env.SENTRY_URL = server.url;
-  process.env.SENTRY_NO_CACHE = "1";
+  process.env["SENTRY_URL"] = server.url;
+  process.env["SENTRY_NO_CACHE"] = "1";
   setAuthToken(TOKEN, undefined, undefined, { host: server.url });
 
   const realFetch = (globalThis as { __originalFetch?: typeof fetch })
@@ -326,7 +329,9 @@ describe.skipIf(process.platform === "win32")(
         const retry = await runCommand(args);
         expect(retry.exitCode, retry.stderr).toBe(0);
         expect(JSON.parse(retry.stdout)).toEqual({
-          data: [{ id: issuesFixture[0].id, title: issuesFixture[0].title }],
+          data: [
+            { id: at(issuesFixture, 0).id, title: at(issuesFixture, 0).title },
+          ],
           hasMore: false,
           hasPrev: false,
         });
@@ -334,9 +339,11 @@ describe.skipIf(process.platform === "win32")(
           url.pathname.endsWith("/issues/"),
         );
         expect(issueRequests).toHaveLength(1);
-        const request = issueRequests[0];
+        const request = at(issueRequests, 0);
         expect(request.pathname).toBe("/api/0/organizations/test-org/issues/");
-        expect(request.searchParams.get("project")).toBe(projectsFixture[0].id);
+        expect(request.searchParams.get("project")).toBe(
+          at(projectsFixture, 0).id,
+        );
         expect(request.searchParams.get("query")).toBe(query || null);
         expect(request.searchParams.get("limit")).toBe("7");
         expect(request.searchParams.get("sort")).toBe("freq");
@@ -359,7 +366,7 @@ describe("bounded target guidance", () => {
     "keeps candidates within the %s organization without changing defaults",
     async (source) => {
       if (source === "environment") {
-        process.env.SENTRY_ORG = "test-org-2";
+        process.env["SENTRY_ORG"] = "test-org-2";
       } else {
         setDefaultOrganization("test-org-2");
       }
@@ -391,7 +398,7 @@ describe("bounded target guidance", () => {
 
   test("bounds discovery and still suggests accessible projects when one org fails", async () => {
     organizations = Array.from({ length: 4 }, (_, index) => ({
-      ...organizationsFixture[0],
+      ...at(organizationsFixture, 0),
       id: String(100_010 + index),
       slug: `candidate-org-${index}`,
     }));
@@ -399,7 +406,7 @@ describe("bounded target guidance", () => {
       organizations.map((org) => [
         org.slug,
         Array.from({ length: 5 }, (_, index) => ({
-          ...projectsFixture[0],
+          ...at(projectsFixture, 0),
           id: String(300_010 + index),
           slug: `candidate-project-${index}`,
         })),
@@ -452,7 +459,7 @@ describe("bounded target guidance", () => {
   test("shows one retry without an empty alternatives list for a single project", async () => {
     organizations = organizationsFixture.slice(0, 1);
     projectsByOrg = new Map([
-      [organizations[0].slug, projectsFixture.slice(0, 1)],
+      [at(organizations, 0).slug, projectsFixture.slice(0, 1)],
     ]);
 
     const error = await failure(guide());
@@ -523,7 +530,7 @@ describe.skipIf(process.platform === "win32")(
       ]);
       expect(result.exitCode, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).data).toEqual([
-        { id: issuesFixture[0].id },
+        { id: at(issuesFixture, 0).id },
       ]);
       const issueRequests = requests.filter((url) =>
         url.pathname.endsWith("/issues/"),

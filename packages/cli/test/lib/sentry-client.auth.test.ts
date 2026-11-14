@@ -282,8 +282,8 @@ describe("authenticated fetch bearer validation", () => {
   );
 
   test("rejects forced malformed env credentials instead of using stored OAuth", async () => {
-    process.env.SENTRY_AUTH_TOKEN = MALFORMED_TOKEN;
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = MALFORMED_TOKEN;
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     setAuthToken("stored-token");
     await expect(request()).rejects.toMatchObject({
       reason: "invalid",
@@ -324,7 +324,7 @@ describe("authenticated fetch bearer validation", () => {
     " \nrefreshed-token\r\t",
     "\x1f\nrefreshed-token\r\x7f",
   ])("retries with a normalized valid refreshed bearer %#", async (token) => {
-    process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "synthetic-client-id";
     setAuthToken("stored-token", 3600, "synthetic-refresh-token");
     globalThis.fetch = mockResponses((url, authorization) => {
       if (url.endsWith("/oauth/token/")) {
@@ -357,7 +357,7 @@ describe("authenticated fetch bearer validation", () => {
   ])(
     "rejects malformed refreshed credentials without retrying the request %#",
     async (token) => {
-      process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+      process.env["SENTRY_CLIENT_ID"] = "synthetic-client-id";
       setAuthToken("stored-token", 3600, "synthetic-refresh-token");
       globalThis.fetch = mockResponses((url) => {
         if (url.endsWith("/oauth/token/")) {
@@ -398,7 +398,7 @@ describe("authenticated fetch bearer validation", () => {
   test.each(["none", ...ENV_TOKEN_KEYS])(
     "normalizes a proactive refresh with malformed env source %s",
     async (source) => {
-      process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+      process.env["SENTRY_CLIENT_ID"] = "synthetic-client-id";
       if (source !== "none") {
         process.env[source] = MALFORMED_TOKEN;
       }
@@ -427,7 +427,7 @@ describe("authenticated fetch bearer validation", () => {
   );
 
   test("rejects malformed proactive refresh before storing or using the token", async () => {
-    process.env.SENTRY_CLIENT_ID = "synthetic-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "synthetic-client-id";
     setAuthToken("expired-token", -1, "synthetic-refresh-token");
     globalThis.fetch = mockResponses(() =>
       Response.json({

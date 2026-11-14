@@ -322,14 +322,14 @@ export async function addToGitHubPath(
   directory: string,
   env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-  if (env.GITHUB_ACTIONS !== "true" || !env.GITHUB_PATH) {
+  if (env["GITHUB_ACTIONS"] !== "true" || !env["GITHUB_PATH"]) {
     return false;
   }
 
   try {
     let content = "";
     try {
-      content = await readFile(env.GITHUB_PATH, "utf-8");
+      content = await readFile(env["GITHUB_PATH"], "utf-8");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
@@ -343,7 +343,7 @@ export async function addToGitHubPath(
       const newContent = content.endsWith("\n")
         ? `${content}${directory}\n`
         : `${content}\n${directory}\n`;
-      await writeFile(env.GITHUB_PATH, newContent, "utf-8");
+      await writeFile(env["GITHUB_PATH"], newContent, "utf-8");
     }
     return true;
   } catch (error) {

@@ -15,7 +15,12 @@ export function parseResourceMcpConstraints(
       .split("/")
       .filter(Boolean);
 
-    if (root !== "mcp" || !organizationSlug || extraSegments.length > 0) {
+    // Accept only /mcp/:org and /mcp/:org/:project.
+    if (
+      root !== "mcp" ||
+      organizationSlug === undefined ||
+      extraSegments.length > 0
+    ) {
       return null;
     }
 

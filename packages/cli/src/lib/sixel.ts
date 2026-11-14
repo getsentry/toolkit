@@ -231,7 +231,7 @@ export function parseTmuxInfo(output: string): TmuxInfo {
  * reported as no passthrough and no sixel.
  */
 function detectTmux(): TmuxInfo | undefined {
-  if (!getEnv().TMUX) {
+  if (!getEnv()["TMUX"]) {
     return;
   }
   try {
@@ -394,10 +394,10 @@ export function optedOut(): boolean {
     !(process.stdout.isTTY && process.stdin.isTTY) ||
     process.platform === "win32" || // MVP: probe is unix-only
     isPlainOutput() ||
-    !env.TERM ||
-    env.TERM === "dumb" ||
-    isTruthyEnv(env.SENTRY_NO_GRAPHICS ?? "") ||
-    isTruthyEnv(env.SENTRY_NO_SIXEL ?? "")
+    !env["TERM"] ||
+    env["TERM"] === "dumb" ||
+    isTruthyEnv(env["SENTRY_NO_GRAPHICS"] ?? "") ||
+    isTruthyEnv(env["SENTRY_NO_SIXEL"] ?? "")
   );
 }
 

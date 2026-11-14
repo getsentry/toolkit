@@ -114,9 +114,10 @@ for (const file of files) {
   const content = await readFile(file, "utf-8");
   fileContents.set(file, content);
   for (const match of content.matchAll(ENV_CONST_RE)) {
-    const value = match[2] || match[3];
-    if (value && isUserFacing(value)) {
-      constMap.set(match[1], value);
+    const [, name] = match;
+    const value = match.at(2) ?? match.at(3);
+    if (name && value && isUserFacing(value)) {
+      constMap.set(name, value);
     }
   }
 }
@@ -134,12 +135,15 @@ function record(name: string, file: string, content: string, index: number) {
 
 for (const [file, content] of fileContents) {
   for (const match of content.matchAll(ENV_MEMBER_RE)) {
-    record(match[1], file, content, match.index);
+    const [, name] = match;
+    if (name) {
+      record(name, file, content, match.index);
+    }
   }
   for (const match of content.matchAll(ENV_BRACKET_RE)) {
     const ident = match[3];
     const name =
-      match[1] || match[2] || (ident ? constMap.get(ident) : undefined);
+      match.at(1) ?? match.at(2) ?? (ident ? constMap.get(ident) : undefined);
     if (name) {
       record(name, file, content, match.index);
     }

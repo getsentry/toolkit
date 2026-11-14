@@ -80,7 +80,7 @@ function fileSource(): ChunkSource {
 const entry =
   CHUNK_BUILD.entries[
     process.argv[2] === "__complete" &&
-    process.env.__SENTRY_RN_WRAP_XCODE_CALL !== "1"
+    process.env["__SENTRY_RN_WRAP_XCODE_CALL"] !== "1"
       ? "complete"
       : "cli"
   ];

@@ -102,7 +102,7 @@ describe("e2e: legacy ~/.sentry migration", () => {
 
       const result = await runCli(setupArgs, {
         env: homeEnv({
-          PATH: `${xdgBinDir}:${process.env.PATH ?? ""}`,
+          PATH: `${xdgBinDir}:${process.env["PATH"] ?? ""}`,
         }),
       });
       expect(result.exitCode).toBe(0);

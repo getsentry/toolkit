@@ -4,7 +4,15 @@
  * Tests for `sentry issue resolve` and `sentry issue unresolve` func() bodies.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { resolveCommand } from "../../../src/commands/issue/resolve.js";
 
 vi.mock(
@@ -14,12 +22,8 @@ vi.mock(
       await importOriginal<
         typeof import("../../../src/commands/issue/resolve-commit-spec.js")
       >();
-    return Object.fromEntries(
-      Object.entries(actual).map(([k, v]) => [
-        k,
-        typeof v === "function" ? vi.fn(v) : v,
-      ]),
-    );
+    const { mockFunctionExports } = await import("../../mock-exports.js");
+    return mockFunctionExports(actual);
   },
 );
 
@@ -32,12 +36,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -46,17 +46,15 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -77,11 +75,11 @@ function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -89,8 +87,8 @@ function createMockContext() {
 }
 
 describe("resolveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
@@ -110,7 +108,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue({ status: "resolved" }));
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -127,7 +125,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false, in: "0.26.1" }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -144,7 +142,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false, in: "@next" }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -168,7 +166,7 @@ describe("resolveCommand.func()", () => {
 
     try {
       const { context } = createMockContext();
-      const func = await resolveCommand.loader();
+      const func = await loadCommand(resolveCommand);
       await func.call(context, { json: false, in: "@commit" }, "CLI-G5");
 
       expect(commitSpy).toHaveBeenCalledWith(
@@ -202,7 +200,7 @@ describe("resolveCommand.func()", () => {
 
     try {
       const { context } = createMockContext();
-      const func = await resolveCommand.loader();
+      const func = await loadCommand(resolveCommand);
       await func.call(
         context,
         { json: false, in: "@commit:getsentry/cli@abc123" },
@@ -233,14 +231,14 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: true, in: "0.26.1" }, "CLI-G5");
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.resolved_in).toEqual({ inRelease: "0.26.1" });
-    expect(parsed.status).toBe("resolved");
-    expect(parsed.shortId).toBe("CLI-G5");
+    expect(parsed["resolved_in"]).toEqual({ inRelease: "0.26.1" });
+    expect(parsed["status"]).toBe("resolved");
+    expect(parsed["shortId"]).toBe("CLI-G5");
   });
 
   test("JSON output omits resolved_in when immediate", async () => {
@@ -251,19 +249,19 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: true }, "CLI-G5");
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
     const parsed = JSON.parse(output) as Record<string, unknown>;
-    expect(parsed.resolved_in).toBeUndefined();
-    expect(parsed.status).toBe("resolved");
+    expect(parsed["resolved_in"]).toBeUndefined();
+    expect(parsed["status"]).toBe("resolved");
   });
 });
 
 describe("unresolveCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let updateSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let updateSpy: MockInstance<(typeof apiClient)["updateIssueStatus"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
@@ -283,7 +281,7 @@ describe("unresolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue({ status: "unresolved" }));
 
     const { context } = createMockContext();
-    const func = await unresolveCommand.loader();
+    const func = await loadCommand(unresolveCommand);
     await func.call(context, { json: false }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "unresolved", {

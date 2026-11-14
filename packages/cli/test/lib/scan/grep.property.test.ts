@@ -20,6 +20,7 @@ import {
 import { afterAll, describe, expect, test } from "vitest";
 import { collectGrep } from "../../../src/lib/scan/grep.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
+import { at } from "../../helpers.js";
 
 const ROOT = mkdtempSync(join(tmpdir(), "scan-grep-prop-"));
 
@@ -81,7 +82,7 @@ function naiveGrep(
   for (const [path, content] of layout) {
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i];
+      const line = at(lines, i);
       if (regex.test(line)) {
         out.push({ path, lineNum: i + 1, line });
       }

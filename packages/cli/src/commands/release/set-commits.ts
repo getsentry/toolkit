@@ -64,7 +64,7 @@ function setCommitsFromLocal(
   org: string,
   version: string,
   cwd: string,
-  options: { depth?: number; paths?: string[]; from?: string },
+  options: { depth?: number; paths?: string[]; from?: string | undefined },
 ): Promise<SentryRelease> {
   const { depth, paths, from } = options;
   if (!isInsideGitWorkTree(cwd)) {
@@ -108,7 +108,7 @@ function setCommitsFromLocal(
   const repoName = getRepositoryName(cwd);
   const commitsWithRepo = commits.map((c) => ({
     ...c,
-    repository: repoName,
+    ...(repoName !== undefined && { repository: repoName }),
   }));
 
   return setCommitsLocal(org, version, commitsWithRepo);
@@ -282,7 +282,7 @@ function parseLocalScope(flags: {
   commit?: string;
   path?: string;
   from?: string;
-}): { paths: string[]; from?: string } {
+}): { paths: string[]; from?: string | undefined } {
   const serverExpanded = flags.auto || Boolean(flags.commit);
 
   const paths =

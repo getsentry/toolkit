@@ -169,13 +169,13 @@ export type TraceViewData = {
   summary: ReturnType<typeof computeTraceSummary>;
   spans: unknown[];
   /** Pre-formatted span tree lines for human output (not serialized) */
-  spanTreeLines?: string[];
+  spanTreeLines?: string[] | undefined;
   /** Per-span attribute details from trace-items endpoint (when --full or --json) */
-  details?: Map<string, TraceItemDetail>;
+  details?: Map<string, TraceItemDetail> | undefined;
   /** Shared interpretation used by the request and JSON projection. */
-  fieldSelection?: TraceFieldSelection;
+  fieldSelection?: TraceFieldSelection | undefined;
   /** Newest stored replay linked to the trace, or null if there's none */
-  replayId?: string | null;
+  replayId?: string | null | undefined;
 };
 
 /**
@@ -388,9 +388,9 @@ function jsonTransformTraceView(
 type ResolvedTrace = {
   traceId: string;
   org: string;
-  project?: string;
+  project?: string | undefined;
   /** Project slug when user explicitly provided org/project/trace-id */
-  projectFilter?: string;
+  projectFilter?: string | undefined;
 };
 
 /**

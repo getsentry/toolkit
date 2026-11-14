@@ -143,8 +143,8 @@ describe("generateFixture", () => {
 describe("hashSpec", () => {
   test("is stable regardless of extension ordering", () => {
     const base = PRESETS.small;
-    const a = hashSpec({ ...base, fileExtensions: [".ts", ".js"] });
-    const b = hashSpec({ ...base, fileExtensions: [".js", ".ts"] });
+    const a = hashSpec({ ...base, seed: 1, fileExtensions: [".ts", ".js"] });
+    const b = hashSpec({ ...base, seed: 1, fileExtensions: [".js", ".ts"] });
     expect(a).toBe(b);
   });
 });

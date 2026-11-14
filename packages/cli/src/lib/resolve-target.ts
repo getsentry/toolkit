@@ -121,15 +121,15 @@ export type ResolvedTarget = {
   /** Project slug for API calls */
   project: string;
   /** Numeric project ID for API query params (avoids "not actively selected" errors) */
-  projectId?: number;
+  projectId?: number | undefined;
   /** Human-readable org name (falls back to slug) */
   orgDisplay: string;
   /** Human-readable project name (falls back to slug) */
   projectDisplay: string;
   /** Source description if auto-detected (e.g., ".env.local", "src/index.ts") */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
   /** Package path in monorepo (e.g., "packages/frontend") */
-  packagePath?: string;
+  packagePath?: string | undefined;
   /** Full project data when already fetched (avoids redundant getProject re-fetch) */
   projectData?: SentryProject;
 };
@@ -223,9 +223,9 @@ export type ResolvedTargets = {
   /** All resolved targets */
   targets: ResolvedTarget[];
   /** Footer message to display if multiple projects detected */
-  footer?: string;
+  footer?: string | undefined;
   /** Number of self-hosted DSNs that were detected but couldn't be resolved */
-  skippedSelfHosted?: number;
+  skippedSelfHosted?: number | undefined;
   /** All detected DSNs (for fingerprinting in alias cache) */
   detectedDsns?: DetectedDsn[];
 };
@@ -237,7 +237,7 @@ export type ResolvedOrg = {
   /** Organization slug for API calls */
   org: string;
   /** Source description if auto-detected */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /**
@@ -245,15 +245,15 @@ export type ResolvedOrg = {
  */
 export type ResolveOptions = {
   /** Organization slug */
-  org?: string;
+  org?: string | undefined;
   /** Project slug */
-  project?: string;
+  project?: string | undefined;
   /** Current working directory for DSN detection */
   cwd: string;
   /** Usage hint shown when only one of org/project is provided */
   usageHint?: string;
   /** Format a retry command for an explicit org/project candidate after detection fails. */
-  formatRecoveryCommand?: (target: string) => string;
+  formatRecoveryCommand?: ((target: string) => string) | undefined;
   /**
    * Whether an interactive org/project picker may be shown when auto-detection
    * fails. Only consulted by {@link resolveOrgProjectOrGuide}. When omitted, it
@@ -268,7 +268,7 @@ export type ResolveOptions = {
  */
 export type ResolveOrgOptions = {
   /** Organization slug */
-  org?: string;
+  org?: string | undefined;
   /** Current working directory for DSN detection */
   cwd: string;
 };
@@ -669,18 +669,19 @@ async function inferFromDirectoryName(cwd: string): Promise<ResolvedTargets> {
   // Cache all matches for faster subsequent lookups
   const [primary] = matches;
   if (primary) {
-    const allResolved = matches.map((m) => ({
+    const toResolvedInfo = (m: (typeof matches)[number]) => ({
       orgSlug: m.orgSlug,
       orgName: m.organization?.name ?? m.orgSlug,
       projectSlug: m.slug,
       projectName: m.name,
-    }));
+    });
+    const allResolved = matches.map(toResolvedInfo);
 
     setCachedDsn(projectRoot, {
       dsn: "", // No DSN for inferred
       projectId: primary.id,
       source: "inferred",
-      resolved: allResolved[0], // Primary for backwards compatibility
+      resolved: toResolvedInfo(primary), // Primary for backwards compatibility
       allResolved,
     });
   }
@@ -723,7 +724,7 @@ function resolveFromEnvVars(): {
   project?: string;
   detectedFrom: string;
 } | null {
-  const rawProject = getEnv().SENTRY_PROJECT?.trim();
+  const rawProject = getEnv()["SENTRY_PROJECT"]?.trim();
 
   // SENTRY_PROJECT=org/project combo takes priority.
   // If the value contains a slash it is always treated as combo notation;
@@ -737,11 +738,11 @@ function resolveFromEnvVars(): {
       return { org, project, detectedFrom: "SENTRY_PROJECT env var" };
     }
     // Malformed combo — fall through without using rawProject as a slug
-    const envOrg = getEnv().SENTRY_ORG?.trim();
+    const envOrg = getEnv()["SENTRY_ORG"]?.trim();
     return envOrg ? { org: envOrg, detectedFrom: "SENTRY_ORG env var" } : null;
   }
 
-  const envOrg = getEnv().SENTRY_ORG?.trim();
+  const envOrg = getEnv()["SENTRY_ORG"]?.trim();
 
   if (envOrg && rawProject) {
     return {
@@ -1982,7 +1983,7 @@ type ContextProjectCandidates = {
   /** Explicit org/project values that the caller may choose. */
   targets: string[];
   /** Explains incomplete discovery without claiming the shown targets are exhaustive. */
-  note?: string;
+  note?: string | undefined;
 };
 
 /** Fetch one page of project candidates without turning discovery failures into command failures. */
@@ -2364,9 +2365,9 @@ export type OrgListResolution = {
   /** Organization slugs to list from */
   orgs: string[];
   /** Optional multi-org footer to display after listing */
-  footer?: string;
+  footer?: string | undefined;
   /** Number of self-hosted DSNs that could not be resolved */
-  skippedSelfHosted?: number;
+  skippedSelfHosted?: number | undefined;
 };
 
 /**
@@ -2595,8 +2596,8 @@ export function resolveProjectBoundFromArg(
  */
 export type MultiTargetResolutionResult = {
   targets: ResolvedTarget[];
-  footer?: string;
-  skippedSelfHosted?: number;
+  footer?: string | undefined;
+  skippedSelfHosted?: number | undefined;
   detectedDsns?: DetectedDsn[];
   /** Set instead of `targets` when `orgWideFallback` applied. */
   soleOrg?: string;
@@ -2611,7 +2612,7 @@ export type ResolveProjectBoundTargetsOptions = {
   /** Format a retry command for an explicit org/project candidate after detection fails. */
   formatRecoveryCommand?: (target: string) => string;
   /** Request-scoped project-search classification from a dispatcher. */
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
   /**
    * Auto-detect mode only: enrich targets that lack a numeric `projectId` by
    * fetching from the project API. Useful when env-var / config-default paths

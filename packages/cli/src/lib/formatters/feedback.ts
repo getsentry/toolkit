@@ -256,12 +256,12 @@ function isFeedbackContext(value: unknown): value is Record<string, unknown> {
 function feedbackContext(
   event: SentryEvent | null,
 ): Record<string, unknown> | undefined {
-  const context = event?.contexts?.feedback;
+  const context = event?.contexts?.["feedback"];
   return isFeedbackContext(context) ? context : undefined;
 }
 
 function feedbackUrl(event: SentryEvent | null): string | undefined {
-  const contextUrl = feedbackContext(event)?.url;
+  const contextUrl = feedbackContext(event)?.["url"];
   if (typeof contextUrl === "string" && contextUrl) {
     return contextUrl;
   }
@@ -269,7 +269,7 @@ function feedbackUrl(event: SentryEvent | null): string | undefined {
 }
 
 function linkedEventId(data: FeedbackViewResult): string | undefined {
-  const contextId = feedbackContext(data.event)?.associated_event_id;
+  const contextId = feedbackContext(data.event)?.["associated_event_id"];
   if (typeof contextId === "string" && contextId) {
     return contextId;
   }

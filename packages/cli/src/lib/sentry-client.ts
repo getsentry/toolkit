@@ -52,6 +52,7 @@ import {
   TimeoutError,
 } from "./errors.js";
 import { extractInputUrl } from "./fetch-input.js";
+import type { Http1Dispatcher, NodeRequestInit } from "./http1-dispatcher.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
 import { isSentrySaasUrl } from "./sentry-urls.js";
@@ -260,7 +261,7 @@ function buildTimeoutHint(idempotent: boolean): string {
 async function fetchWithCustomTls(
   input: Request | string | URL,
   init: RequestInit | undefined,
-  dispatcher: RequestInit["dispatcher"],
+  dispatcher: Http1Dispatcher | undefined,
 ): Promise<Response> {
   // On Bun, this passes `tls: { ca }` to fetch(); on Node, the extra
   // property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
@@ -268,11 +269,12 @@ async function fetchWithCustomTls(
   if (customTls) {
     warnIfSaasWithEnvCa(extractInputUrl(input));
   }
-  return await fetch(input, {
+  const requestInit: NodeRequestInit = {
     ...init,
     ...customTls,
     ...(dispatcher && { dispatcher }),
-  });
+  };
+  return await fetch(input, requestInit);
 }
 
 /** Best-effort `detail` from a Sentry error body. */
@@ -439,8 +441,8 @@ function createCliTransport({
  * @returns A fetch-compatible function for use with @sentry/api SDK functions
  */
 type AuthenticatedFetchOptions = {
-  credential?: CredentialContext;
-  validatedRedirects?: boolean;
+  credential?: CredentialContext | undefined;
+  validatedRedirects?: boolean | undefined;
   /** Complete successful GET bodies inside the retry/timeout budget. */
   bufferResponseBody?: boolean;
   /**
@@ -449,7 +451,7 @@ type AuthenticatedFetchOptions = {
    * without this; set it for writes the server dedupes that the catalog
    * cannot match, such as chunk uploads to the server-provided URL.
    */
-  idempotent?: boolean;
+  idempotent?: boolean | undefined;
   /**
    * Per-attempt timeout for every request through this fetch, replacing
    * {@link resolveTimeoutMs}. For callers whose URL comes from the server,
@@ -457,7 +459,7 @@ type AuthenticatedFetchOptions = {
    */
   timeoutMs?: number;
   /** undici dispatcher for every request, such as one from `createHttp1Dispatcher`. */
-  dispatcher?: RequestInit["dispatcher"];
+  dispatcher?: Http1Dispatcher | undefined;
 };
 
 function createAuthenticatedFetch(

@@ -1,3 +1,8 @@
 {
-  "extends": ["../../tsconfig.base.json", "astro/tsconfigs/strict"]
+  // Astro's runtime options, then the shared checking policy. The root base's
+  // runtime default `target` would replace Astro's, so restate it here.
+  "extends": ["astro/tsconfigs/strict", "../../tsconfig.base.json"],
+  "compilerOptions": {
+    "target": "ESNext"
+  }
 }

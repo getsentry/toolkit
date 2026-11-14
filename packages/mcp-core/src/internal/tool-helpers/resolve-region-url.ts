@@ -51,7 +51,7 @@ export async function resolveRegionUrlForOrganization({
 }: {
   context: ServerContext;
   organizationSlug: string;
-  regionUrl?: string | null;
+  regionUrl?: string | null | undefined;
 }): Promise<string | null> {
   if (typeof regionUrl === "string") {
     const trimmed = regionUrl.trim();

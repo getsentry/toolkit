@@ -12,7 +12,8 @@
     "dev": "tsc -w",
     "start": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs src/bin/start-mock-stdio.ts",
     "eval": "vitest --config=vitest.config.ts",
-    "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml"
+    "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",

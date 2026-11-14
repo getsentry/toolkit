@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { mergeCommand } from "../../../src/commands/issue/merge.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
@@ -14,12 +22,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -28,12 +32,8 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -45,6 +45,8 @@ import {
 } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand, rejection } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -79,11 +81,11 @@ function byText<T>(
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -91,8 +93,8 @@ function createMockContext() {
 }
 
 describe("mergeCommand.func()", () => {
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let mergeSpy: ReturnType<typeof spyOn>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let mergeSpy: MockInstance<(typeof apiClient)["mergeIssues"]>;
 
   beforeEach(() => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
@@ -106,10 +108,8 @@ describe("mergeCommand.func()", () => {
 
   test("rejects when fewer than 2 issues are provided (0 positionals, no --into)", async () => {
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false })
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(func.call(context, { json: false }));
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -118,10 +118,8 @@ describe("mergeCommand.func()", () => {
 
   test("rejects when 1 positional is given without --into (shows --into hint)", async () => {
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false }, "CLI-A")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(func.call(context, { json: false }, "CLI-A"));
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -131,10 +129,10 @@ describe("mergeCommand.func()", () => {
 
   test("a malformed issue fails to parse, before any issue is resolved", async () => {
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "my-org/")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "my-org/"),
+    );
 
     expect(err).toBeInstanceOf(ArgumentParseError);
     expect(resolveIssueSpy).not.toHaveBeenCalled();
@@ -156,7 +154,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: true }, "CLI-A\nCLI-B");
 
     expect(mergeSpy).toHaveBeenCalledWith("my-org", ["10A", "10B"]);
@@ -164,10 +162,10 @@ describe("mergeCommand.func()", () => {
 
   test("rejects when 0 positionals + --into (still needs at least 1 positional)", async () => {
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false, into: "CLI-B" })
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-B" }),
+    );
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -190,7 +188,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     // The user's actual pattern that triggered CLI-1AE:
     //   sentry issue merge CLI-A --into CLI-B
     await func.call(context, { json: false, into: "CLI-B" }, "CLI-A");
@@ -213,10 +211,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false, into: "CLI-A" }, "CLI-A")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-A" }, "CLI-A"),
+    );
 
     expect(err.message).toContain("at least 2 distinct issues");
     expect(mergeSpy).not.toHaveBeenCalled();
@@ -233,10 +231,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "CLI-B"),
+    );
 
     expect(err.message).toContain("Cannot merge issues across organizations");
     expect(mergeSpy).not.toHaveBeenCalled();
@@ -257,7 +255,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B", "10C"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: false }, "CLI-A", "CLI-B", "CLI-C");
 
     expect(mergeSpy).toHaveBeenCalledWith("test-org", ["10A", "10B", "10C"]);
@@ -278,7 +276,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     // Pass A, B, C but pin B as parent — ordered list sent to API starts with B
     await func.call(
       context,
@@ -325,7 +323,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: false, into: "f-g" }, "CLI-A", "CLI-B");
 
     const callArgs = mergeSpy.mock.calls[0] as [string, string[]];
@@ -351,7 +349,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A", "10C"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     // User passes org-qualified form to --into; should still match.
     await func.call(
       context,
@@ -383,7 +381,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10C", children: ["10A", "10B"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: false, into: "CLI-C" }, "CLI-A", "CLI-B");
 
     expect(mergeSpy).toHaveBeenCalledTimes(1);
@@ -409,7 +407,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10A", children: ["10B"] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: true }, "CLI-A", "CLI-B");
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
@@ -447,7 +445,7 @@ describe("mergeCommand.func()", () => {
     const stderrSpy = vi.spyOn(process.stderr, "write");
     try {
       const { context } = createMockContext();
-      const func = await mergeCommand.loader();
+      const func = await loadCommand(mergeCommand);
       await func.call(
         context,
         { json: false, into: "CLI-B" },
@@ -481,7 +479,7 @@ describe("mergeCommand.func()", () => {
     const stderrSpy = vi.spyOn(process.stderr, "write");
     try {
       const { context } = createMockContext();
-      const func = await mergeCommand.loader();
+      const func = await loadCommand(mergeCommand);
       await func.call(
         context,
         { json: false, into: "CLI-B" },
@@ -508,10 +506,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "100")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "100"),
+    );
 
     expect(err.message).toContain("at least 2 distinct issues");
     expect(err.message).toContain("CLI-A");
@@ -543,10 +541,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     // AuthError bubbles up (not masked as a not-found error)
     expect(err).toBeInstanceOf(AuthError);
@@ -572,10 +570,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(500);
@@ -607,10 +605,10 @@ describe("mergeCommand.func()", () => {
     );
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
-    const err = await func
-      .call(context, { json: false, into: "XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const func = await loadCommand(mergeCommand);
+    const err = await rejection(
+      func.call(context, { json: false, into: "XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     expect(err).toBeInstanceOf(ResolutionError);
     expect(err.message).toContain("Issue 'XYZ'");
@@ -636,7 +634,7 @@ describe("mergeCommand.func()", () => {
     mergeSpy.mockResolvedValue({ parent: "10B", children: ["10A"] });
 
     const { context } = createMockContext();
-    const func = await mergeCommand.loader();
+    const func = await loadCommand(mergeCommand);
     await func.call(context, { json: false, into: "cli-b" }, "CLI-A", "CLI-B");
 
     expect(mergeSpy).toHaveBeenCalledTimes(1);

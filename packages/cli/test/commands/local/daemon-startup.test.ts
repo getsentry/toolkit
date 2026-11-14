@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, originalFetch } from "../../helpers.js";
 import {
   ensureLocalDaemon,
   writeLocalDaemonState,
@@ -27,10 +27,7 @@ afterEach(() => {
 test.each(["before startup", "after spawn"])(
   "joins live foreground ownership appearing %s without surfacing the losing child's exit",
   async (stage) => {
-    vi.stubGlobal(
-      "fetch",
-      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
-    );
+    vi.stubGlobal("fetch", originalFetch());
     const server = createServer((request, response) => {
       response.statusCode =
         request.url === "/_local/v1/sessions" &&

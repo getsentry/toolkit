@@ -119,17 +119,17 @@ describe("logger", () => {
     let savedCi: string | undefined;
 
     beforeEach(() => {
-      savedCi = process.env.CI;
-      process.env.CI = "true";
+      savedCi = process.env["CI"];
+      process.env["CI"] = "true";
       stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     });
 
     afterEach(() => {
       stderr.mockRestore();
       if (savedCi === undefined) {
-        delete process.env.CI;
+        delete process.env["CI"];
       } else {
-        process.env.CI = savedCi;
+        process.env["CI"] = savedCi;
       }
     });
 
@@ -172,13 +172,14 @@ describe("fancyReporter", () => {
     env: Record<string, string>,
     options: { columns?: number; formatTime?: (date: Date) => string } = {},
   ) {
-    const stream = memoryStream({ columns: options.columns });
+    const { columns, formatTime } = options;
+    const stream = memoryStream(columns === undefined ? {} : { columns });
     const logger = createLogger({
       reporters: [
         fancyReporter({
           stream,
           env: () => env,
-          formatTime: options.formatTime,
+          ...(formatTime && { formatTime }),
         }),
       ],
     });
@@ -388,7 +389,7 @@ describe("nested attributes", () => {
 
   test("objects nested more than five levels deep are cut off", () => {
     const cycle: Record<string, unknown> = { ok: true };
-    cycle.self = cycle;
+    cycle["self"] = cycle;
     const stream = memoryStream();
     logfmtReporter({ stream }).log(
       record({

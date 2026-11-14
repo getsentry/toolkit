@@ -144,7 +144,7 @@ const SKIP_ROUTES = new Set(["help"]);
 function isStandaloneCommand(route: RouteInfo): boolean {
   return (
     route.commands.length === 1 &&
-    route.commands[0].path === `sentry ${route.name}`
+    route.commands[0]?.path === `sentry ${route.name}`
   );
 }
 
@@ -210,13 +210,15 @@ function generateProjectStructure(allRoutes: RouteInfo[]): string {
   // for doc generation but still exists in the filesystem).
   // Add help before sorting so it lands in correct alphabetical position.
   const allStandaloneEntries: { name: string; brief: string }[] =
-    standalones.map((r) => ({ name: r.name, brief: r.commands[0].brief }));
+    standalones.map((r) => ({
+      name: r.name,
+      brief: r.commands[0]?.brief ?? "",
+    }));
   allStandaloneEntries.push({ name: "help", brief: "Help command" });
   allStandaloneEntries.sort((a, b) => a.name.localeCompare(b.name));
 
   // Render standalone command files
-  for (let i = 0; i < allStandaloneEntries.length; i += 1) {
-    const entry = allStandaloneEntries[i];
+  for (const [i, entry] of allStandaloneEntries.entries()) {
     const isLast = i === allStandaloneEntries.length - 1;
     const prefix = isLast ? "└──" : "├──";
     lines.push(
@@ -255,7 +257,7 @@ function groupScopesByResource(
 ): Map<string, string[]> {
   const groups = new Map<string, string[]>();
   for (const scope of scopes) {
-    const resource = scope.split(":")[0];
+    const [resource = scope] = scope.split(":");
     const existing = groups.get(resource);
     if (existing) {
       existing.push(scope);
@@ -303,14 +305,14 @@ const SEMVER_RE = /(\d+\.\d+)/;
  */
 function extractPnpmVersion(): string {
   const pm: string = workspace.packageManager ?? "";
-  const match = pm.match(PNPM_VERSION_RE);
-  if (!match) {
+  const [, captured] = pm.match(PNPM_VERSION_RE) ?? [];
+  if (captured === undefined) {
     throw new Error(
       `Cannot extract pnpm version from packageManager: "${pm}". ` +
         "Expected format: pnpm@X.Y.Z",
     );
   }
-  return match[1];
+  return captured;
 }
 
 /**
@@ -324,14 +326,14 @@ function extractNodeVersion(): string {
   if (!constraint) {
     throw new Error("Missing engines.node in package.json");
   }
-  const match = constraint.match(SEMVER_RE);
-  if (!match) {
+  const [, captured] = constraint.match(SEMVER_RE) ?? [];
+  if (captured === undefined) {
     throw new Error(
       `Cannot extract Node.js version from engines.node: "${constraint}". ` +
         "Expected a semver-like version (e.g., >=22.15)",
     );
   }
-  return match[1];
+  return captured;
 }
 
 /**
@@ -349,14 +351,14 @@ function extractDevNodeVersion(): string {
   if (!constraint) {
     throw new Error("Missing devEngines.runtime.version and engines.node");
   }
-  const match = constraint.match(SEMVER_RE);
-  if (!match) {
+  const [, captured] = constraint.match(SEMVER_RE) ?? [];
+  if (captured === undefined) {
     throw new Error(
       `Cannot extract dev Node.js version from "${constraint}". ` +
         "Expected a semver-like version (e.g., >=22.15)",
     );
   }
-  return match[1];
+  return captured;
 }
 
 /** Generate dev prerequisite line for README.md. */
@@ -635,8 +637,8 @@ function readGrammarAnnotations(lines: string[]): GrammarAnnotation[] {
       annotations.push({
         start: index + 1,
         end: index + 1,
-        kind: annotation[1],
-        text: annotation[2],
+        kind: annotation.at(1) ?? "",
+        text: annotation.at(2) ?? "",
       });
     } else if (continuation && previous?.end === index) {
       previous.text += ` ${continuation[1]}`;
@@ -658,7 +660,10 @@ function generateTargetSyntax(): string {
   const annotations = readGrammarAnnotations(lines);
 
   const target = peggy.parser
-    .parse(targetGrammar, { grammarSource: TARGET_GRAMMAR })
+    .parse(targetGrammar, {
+      grammarSource: TARGET_GRAMMAR,
+      reservedWords: peggy.RESERVED_WORDS,
+    })
     .rules.find((rule) => rule.name === "target");
   if (target?.expression.type !== "choice") {
     throw new Error(

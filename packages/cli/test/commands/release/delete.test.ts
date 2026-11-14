@@ -6,18 +6,22 @@
  * the func() body without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { deleteCommand } from "../../../src/commands/release/delete.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -27,19 +31,17 @@ import { ApiError, ContextError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
+import type { SentryRelease, Writer } from "../../../src/types/index.js";
 
 /** Minimal release shape returned by getRelease */
-const sampleRelease = {
+const sampleRelease: SentryRelease = {
   id: 1,
   version: "1.0.0",
   shortVersion: "1.0.0",
@@ -60,8 +62,8 @@ const defaultFlags = {
 };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -74,9 +76,9 @@ function createMockContext() {
 }
 
 describe("release delete", () => {
-  let getReleaseSpy: ReturnType<typeof spyOn>;
-  let deleteReleaseSpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let getReleaseSpy: MockInstance<(typeof apiClient)["getRelease"]>;
+  let deleteReleaseSpy: MockInstance<(typeof apiClient)["deleteRelease"]>;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     getReleaseSpy = vi.spyOn(apiClient, "getRelease");
@@ -97,7 +99,7 @@ describe("release delete", () => {
 
   test("deletes release with explicit org/version and --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "my-org/1.0.0");
 
     expect(getReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0");
@@ -110,7 +112,7 @@ describe("release delete", () => {
 
   test("throws ContextError when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
       ContextError,
@@ -120,7 +122,7 @@ describe("release delete", () => {
 
   test("dry-run shows what would be deleted without calling deleteRelease", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
@@ -141,7 +143,7 @@ describe("release delete", () => {
     );
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(
       func.call(context, defaultFlags, "my-org/1.0.0"),
@@ -162,7 +164,7 @@ describe("release delete", () => {
     );
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -189,7 +191,7 @@ describe("release delete", () => {
     deleteReleaseSpy.mockRejectedValue(originalError);
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -205,7 +207,7 @@ describe("release delete", () => {
     deleteReleaseSpy.mockRejectedValue(originalError);
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -217,7 +219,7 @@ describe("release delete", () => {
 
   test("verifies release exists before attempting delete", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "my-org/1.0.0");
 
     // getRelease must be called before deleteRelease

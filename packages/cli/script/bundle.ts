@@ -31,7 +31,7 @@ import { logger } from "../src/lib/logger.js";
 
 const VERSION = pkg.version;
 /** Optional OAuth client ID override; unset uses the default in src/lib/oauth.ts. */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
+const SENTRY_CLIENT_ID = process.env["SENTRY_CLIENT_ID"];
 
 logger.start(`Bundling sentry v${VERSION} for npm`);
 
@@ -108,7 +108,7 @@ const plugins: Plugin[] = [
   requireAliasPlugin,
 ];
 
-if (process.env.SENTRY_AUTH_TOKEN) {
+if (process.env["SENTRY_AUTH_TOKEN"]) {
   logger.info("Sentry auth token found, source maps will be uploaded");
 } else {
   logger.info(
@@ -225,7 +225,7 @@ const jsFiles = [...cjsFiles, ...esm.files];
 // Always inject debug IDs (even without auth token); upload needs a token.
 const injected = await injectDebugIds(jsFiles);
 logger.log(`  Debug IDs injected into ${injected.length} files`);
-if (process.env.SENTRY_AUTH_TOKEN && injected.length > 0) {
+if (process.env["SENTRY_AUTH_TOKEN"] && injected.length > 0) {
   // Only delete .map files after a successful upload — preserving them on
   // failure allows retrying without a full rebuild.
   if (

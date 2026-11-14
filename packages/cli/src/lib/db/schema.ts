@@ -899,7 +899,7 @@ function backfillOrgRegionAccounts(db: Database): void {
 }
 
 function migrateSingleAuthToAccounts(db: Database): void {
-  db.exec(EXPECTED_TABLES.accounts as string);
+  db.exec(EXPECTED_TABLES["accounts"] as string);
 
   const auth = tableExists(db, "auth")
     ? (db
@@ -1040,8 +1040,8 @@ export function runMigrations(db: Database): void {
   // `user_info` table this step also created was folded into `accounts` in v18.
   if (currentVersion < 2) {
     db.exec(`
-      ${EXPECTED_TABLES.org_regions};
-      ${EXPECTED_TABLES.instance_info};
+      ${EXPECTED_TABLES["org_regions"]};
+      ${EXPECTED_TABLES["instance_info"]};
     `);
   }
 
@@ -1059,12 +1059,12 @@ export function runMigrations(db: Database): void {
     addColumnIfMissing(db, "dsn_cache", "root_dir_mtime", "INTEGER");
     addColumnIfMissing(db, "dsn_cache", "ttl_expires_at", "INTEGER");
 
-    db.exec(EXPECTED_TABLES.project_root_cache as string);
+    db.exec(EXPECTED_TABLES["project_root_cache"] as string);
   }
 
   // Migration 4 -> 5: Add pagination_cursors table for --cursor last support
   if (currentVersion < 5) {
-    db.exec(EXPECTED_TABLES.pagination_cursors as string);
+    db.exec(EXPECTED_TABLES["pagination_cursors"] as string);
   }
 
   // Migration 5 -> 6: Repair pagination_cursors if created with wrong PK (CLI-72)
@@ -1077,7 +1077,7 @@ export function runMigrations(db: Database): void {
     !hasPrimaryKey(db, "pagination_cursors", ["command_key", "context"])
   ) {
     db.exec("DROP TABLE pagination_cursors");
-    db.exec(EXPECTED_TABLES.pagination_cursors as string);
+    db.exec(EXPECTED_TABLES["pagination_cursors"] as string);
   }
 
   // Migration 6 -> 7: Add project_id column to project_cache for numeric project filtering
@@ -1102,7 +1102,7 @@ export function runMigrations(db: Database): void {
 
   // Migration 10 -> 11: Add completion_telemetry_queue table
   if (currentVersion < 11) {
-    db.exec(EXPECTED_TABLES.completion_telemetry_queue as string);
+    db.exec(EXPECTED_TABLES["completion_telemetry_queue"] as string);
   }
 
   // Migration 11 -> 12: Replace pagination_cursors with cursor-stack schema.
@@ -1113,7 +1113,7 @@ export function runMigrations(db: Database): void {
     if (tableExists(db, "pagination_cursors")) {
       db.exec("DROP TABLE pagination_cursors");
     }
-    db.exec(EXPECTED_TABLES.pagination_cursors as string);
+    db.exec(EXPECTED_TABLES["pagination_cursors"] as string);
   }
 
   // Migration 12 -> 13: Consolidate defaults into metadata KV table.
@@ -1142,14 +1142,14 @@ export function runMigrations(db: Database): void {
   // lookups (used by `issue resolve --in @commit` to match git origin →
   // Sentry-registered repo without an extra API round trip).
   if (currentVersion < 14) {
-    db.exec(EXPECTED_TABLES.repo_cache as string);
+    db.exec(EXPECTED_TABLES["repo_cache"] as string);
   }
 
   // Migration 14 -> 15: Add issue_org_cache table for numeric-id → org
   // mappings used by `issue view <numeric-id>` to skip the legacy unscoped
   // `/api/0/issues/{id}/` endpoint on repeat runs.
   if (currentVersion < 15) {
-    db.exec(EXPECTED_TABLES.issue_org_cache as string);
+    db.exec(EXPECTED_TABLES["issue_org_cache"] as string);
   }
 
   // Migration 15 -> 16: Add host column to auth table for host-scoped tokens.
@@ -1165,7 +1165,7 @@ export function runMigrations(db: Database): void {
   if (currentVersion < 17) {
     db.transaction(() => {
       db.exec("DROP TABLE IF EXISTS org_regions");
-      db.exec(EXPECTED_TABLES.org_regions as string);
+      db.exec(EXPECTED_TABLES["org_regions"] as string);
     })();
   }
 
@@ -1187,13 +1187,13 @@ export function runMigrations(db: Database): void {
   // Migration 19 -> 20: Add completion_cache for issue and dashboard shell
   // completion from entities seen during normal CLI usage.
   if (currentVersion < 20) {
-    db.exec(EXPECTED_TABLES.completion_cache as string);
+    db.exec(EXPECTED_TABLES["completion_cache"] as string);
   }
 
   // Migration 20 -> 21: Add telemetry_envelope_queue for telemetry envelopes
   // that failed to send, retried by the next run.
   if (currentVersion < 21) {
-    db.exec(EXPECTED_TABLES.telemetry_envelope_queue as string);
+    db.exec(EXPECTED_TABLES["telemetry_envelope_queue"] as string);
   }
 
   if (currentVersion < CURRENT_SCHEMA_VERSION) {

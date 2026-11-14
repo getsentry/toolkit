@@ -38,6 +38,7 @@ import {
   type TableResult,
   type TextResult,
   TIMESERIES_DISPLAY_TYPES,
+  type TimeseriesIngestion,
   type TimeseriesResult,
   type WidgetDataResult,
 } from "../../types/dashboard.js";
@@ -56,6 +57,7 @@ import {
   unwrapValidatedResult,
   validateResponse,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /**
  * List dashboards in an organization with cursor-based pagination.
@@ -69,14 +71,14 @@ import {
  */
 export async function listDashboardsPaginated(
   orgSlug: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<DashboardListItem[]>> {
   const config = getOrgSdkConfig();
 
   const result = await listOrganizationDashboards({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: { per_page: options.perPage, cursor: options.cursor },
+    query: omitUndefined({ per_page: options.perPage, cursor: options.cursor }),
   });
 
   return unwrapPaginatedResult<DashboardListItem[]>(
@@ -121,7 +123,11 @@ export async function getDashboard(
  */
 export async function createDashboard(
   orgSlug: string,
-  body: { title: string; widgets?: DashboardWidget[]; projects?: number[] },
+  body: {
+    title: string;
+    widgets?: DashboardWidget[];
+    projects?: number[] | undefined;
+  },
 ): Promise<DashboardDetail> {
   const config = getOrgSdkConfig();
 
@@ -151,9 +157,9 @@ export async function updateDashboard(
   body: {
     title: string;
     widgets: DashboardWidget[];
-    projects?: number[];
-    environment?: string[];
-    period?: string | null;
+    projects?: number[] | undefined;
+    environment?: string[] | undefined;
+    period?: string | null | undefined;
   },
 ): Promise<DashboardDetail> {
   const config = getOrgSdkConfig();
@@ -164,9 +170,9 @@ export async function updateDashboard(
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
     },
-    body: body as unknown as Parameters<
-      typeof updateOrganizationDashboard
-    >[0]["body"],
+    body: body as unknown as NonNullable<
+      Parameters<typeof updateOrganizationDashboard>[0]["body"]
+    >,
   });
 
   return unwrapResult<DashboardDetail>(
@@ -190,7 +196,7 @@ export async function updateDashboard(
 export async function listDashboardRevisionsPaginated(
   orgSlug: string,
   dashboardId: string,
-  options: { perPage?: number; cursor?: string } = {},
+  options: { perPage?: number | undefined; cursor?: string | undefined } = {},
 ): Promise<PaginatedResponse<DashboardRevision[]>> {
   const config = getOrgSdkConfig();
   const result = await listOrganizationDashboardRevisions({
@@ -199,7 +205,7 @@ export async function listDashboardRevisionsPaginated(
       organization_id_or_slug: orgSlug,
       dashboard_id: dashboardId as unknown as number,
     },
-    query: { per_page: options.perPage, cursor: options.cursor },
+    query: omitUndefined({ per_page: options.perPage, cursor: options.cursor }),
   });
   const { response, ...page } = unwrapPaginatedResult<unknown>(
     result,
@@ -253,15 +259,15 @@ type WidgetQueryOptions = {
   /** Override the dashboard's time period (e.g., "24h", "7d") */
   period?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with period. */
-  start?: string;
+  start?: string | undefined;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with period. */
-  end?: string;
+  end?: string | undefined;
   /** Pre-computed total seconds for interval computation (for absolute ranges). */
-  periodSeconds?: number;
+  periodSeconds?: number | undefined;
   /** Filter by environment(s) — from dashboard.environment */
-  environment?: string[];
+  environment?: string[] | undefined;
   /** Filter by project ID(s) — from dashboard.projects */
-  project?: number[];
+  project?: number[] | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -428,12 +434,46 @@ function seriesSortKey(series: EventsTimeseriesSeries): number {
 }
 
 /**
+ * Normalize the ingestion status attached to an events-timeseries response.
+ *
+ * `completeThrough` arrives in epoch milliseconds and is converted to seconds
+ * to match the bucket timestamps in the result.
+ */
+function parseIngestion(
+  ingestion: NonNullable<EventsTimeseriesResponse["meta"]>["ingestion"],
+): TimeseriesIngestion | undefined {
+  if (!ingestion) {
+    return;
+  }
+  const result: TimeseriesIngestion = { status: ingestion.status };
+  if (ingestion.delaySeconds !== undefined) {
+    result.delaySeconds = ingestion.delaySeconds;
+  }
+  if (ingestion.completeThrough !== undefined) {
+    result.completeThrough = Math.floor(ingestion.completeThrough / 1000);
+  }
+  return result;
+}
+
+/** Keep whichever ingestion status reports the larger delay. */
+function slowerIngestion(
+  a: TimeseriesIngestion | undefined,
+  b: TimeseriesIngestion | undefined,
+): TimeseriesIngestion | undefined {
+  if (!a || !b) {
+    return a ?? b;
+  }
+  return (b.delaySeconds ?? 0) > (a.delaySeconds ?? 0) ? b : a;
+}
+
+/**
  * Parse an events-timeseries response into a normalized timeseries result.
  *
  * The response is `{ timeSeries: [...] }` with one entry per y-axis (and per
  * group when `topEvents` is set). Timestamps are converted from epoch
  * milliseconds to seconds, string buckets become numbers, and buckets without
- * a measurement stay null.
+ * a measurement stay null. Buckets Sentry marks `incomplete` keep that flag,
+ * and the response's ingestion status is carried along.
  *
  * @param response - Validated events-timeseries response
  * @param yAxis - The aggregate function name(s) that were requested
@@ -448,17 +488,23 @@ function parseEventsTimeseriesResponse(
     (a, b) => seriesSortKey(a) - seriesSortKey(b),
   );
 
-  return {
+  const result: TimeseriesResult = {
     type: "timeseries",
     series: ordered.map((s) => ({
       label: timeseriesLabel(s, multipleAxes),
-      values: s.values.map(({ timestamp, value }) => ({
+      values: s.values.map(({ timestamp, value, incomplete }) => ({
         timestamp: Math.floor(timestamp / 1000),
         value: measuredValue(value),
+        ...(incomplete ? { incomplete: true } : {}),
       })),
       unit: s.meta.valueUnit ?? null,
     })),
   };
+  const ingestion = parseIngestion(response.meta?.ingestion);
+  if (ingestion) {
+    result.ingestion = ingestion;
+  }
+  return result;
 }
 
 /**
@@ -480,11 +526,11 @@ function buildTopEventsParams(
 > {
   const { fields, sort } = resolveEventsSort({
     fields: [...columns, ...aggregates],
-    sort: orderby,
+    sort: orderby ?? null,
   });
   const params: ReturnType<typeof buildTopEventsParams> = {
     groupBy: fields,
-    sort,
+    ...(sort !== undefined && { sort }),
     topEvents: widget.limit ?? 5,
   };
   if (aggregates.length !== 1 || (widget.queries?.length ?? 1) !== 1) {
@@ -511,13 +557,13 @@ type WidgetQueryParams = {
   orgSlug: string;
   widget: DashboardWidget;
   /** Relative period (e.g., "24h"). Omit when using absolute start/end. */
-  statsPeriod?: string;
+  statsPeriod?: string | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  start?: string;
+  start?: string | undefined;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  end?: string;
+  end?: string | undefined;
   /** Pre-computed total seconds for interval computation (for absolute ranges). */
-  periodSeconds?: number;
+  periodSeconds?: number | undefined;
   options?: WidgetQueryOptions;
 };
 
@@ -541,6 +587,7 @@ async function queryWidgetTimeseries(
     options = {},
   } = params;
   const allSeries: TimeseriesResult["series"] = [];
+  let ingestion: TimeseriesIngestion | undefined;
 
   for (const query of widget.queries ?? []) {
     const aggregates = query.aggregates ?? [];
@@ -549,7 +596,7 @@ async function queryWidgetTimeseries(
     const result = await listOrganizationEventsTimeseries({
       ...getSdkClientConfig(regionUrl),
       path: { organization_id_or_slug: orgSlug },
-      query: {
+      query: omitUndefined({
         yAxis: aggregates,
         query: query.conditions || undefined,
         dataset,
@@ -562,7 +609,7 @@ async function queryWidgetTimeseries(
         // Group-by columns enable topEvents mode
         ...(columns.length > 0 &&
           buildTopEventsParams(widget, columns, aggregates, query.orderby)),
-      },
+      }),
     });
     const data = unwrapValidatedResult(
       result,
@@ -573,9 +620,14 @@ async function queryWidgetTimeseries(
 
     const parsed = parseEventsTimeseriesResponse(data, aggregates);
     allSeries.push(...parsed.series);
+    ingestion = slowerIngestion(ingestion, parsed.ingestion);
   }
 
-  return { type: "timeseries", series: allSeries };
+  const result: TimeseriesResult = { type: "timeseries", series: allSeries };
+  if (ingestion) {
+    result.ingestion = ingestion;
+  }
+  return result;
 }
 
 /**
@@ -608,12 +660,15 @@ async function queryWidgetTable(
     ...(query?.columns ?? []),
     ...(query?.aggregates ?? []),
   ];
-  const request = resolveEventsSort({ fields, sort: query?.orderby });
+  const request = resolveEventsSort({
+    fields,
+    sort: query?.orderby ?? null,
+  });
 
   const result = await listOrganizationEvents({
     ...getSdkClientConfig(regionUrl),
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       field: request.fields,
       query: query?.conditions || undefined,
       dataset,
@@ -624,7 +679,7 @@ async function queryWidgetTable(
       per_page: widget.limit ?? 10,
       environment: options.environment,
       project: options.project,
-    },
+    }),
   });
   const data = unwrapValidatedResult(
     result,
@@ -662,7 +717,7 @@ async function queryWidgetData(
 
   // Text widgets carry markdown in `description`, no API query needed
   if (widget.displayType === "text") {
-    const description = (widget as Record<string, unknown>).description;
+    const description = (widget as Record<string, unknown>)["description"];
     return {
       type: "text",
       content: typeof description === "string" ? description : "",

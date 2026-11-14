@@ -153,11 +153,11 @@ export interface FormatEventResultsParams {
   explorerUrl: string;
   sentryQuery: string;
   fields: string[];
-  explanation?: string;
+  explanation?: string | undefined;
   executedSearch?: ExecutedSearch;
   experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 function formatUserFieldLines(
@@ -165,7 +165,7 @@ function formatUserFieldLines(
   options: { prefix?: string } = {},
 ): string[] {
   const prefix = options.prefix ?? "";
-  const geoSummary = formatUserGeoSummary(value.geo);
+  const geoSummary = formatUserGeoSummary(value["geo"]);
   const userSummary = formatKnownUserValue(value, { includeGeo: false });
   const lines: string[] = [];
 
@@ -416,8 +416,8 @@ export function formatLogResults(params: FormatEventResultsParams): string {
     for (const [i, event] of eventData.entries()) {
       output += `### Log ${i + 1}\n`;
 
-      if (typeof event.id === "string" && event.id) {
-        output += `- **Log URL**: ${apiService.getLogUrl(organizationSlug, event.id)}\n`;
+      if (typeof event["id"] === "string" && event["id"]) {
+        output += `- **Log URL**: ${apiService.getLogUrl(organizationSlug, event["id"])}\n`;
       }
 
       // Display priority fields first
@@ -1086,7 +1086,7 @@ export function formatTimeSeriesResults(params: {
   interval: string | null;
   inputQuery: string;
   includeExplanation?: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   timeRange?: SearchTimeRange;
   url?: string;
 }): string {

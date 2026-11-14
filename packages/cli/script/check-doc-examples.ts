@@ -32,7 +32,7 @@
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { exampleSteps } from "../src/lib/command-example.js";
 import type {
   Command,
@@ -153,7 +153,7 @@ function resolve(
   let target: RouteTarget = routes as unknown as RouteMap;
   let i = 0;
   while (isRouteMap(target)) {
-    const word = tokens[i] as string | undefined;
+    const word = tokens.at(i);
     if (word === undefined || word.startsWith("-")) {
       const fallback = target.getDefaultCommand?.();
       if (fallback && isCommand(fallback)) {

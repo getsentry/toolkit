@@ -47,12 +47,12 @@ export function recordFields(
     level,
   };
   if (record.type !== level) {
-    fields.type = record.type;
+    fields["type"] = record.type;
   }
   if (record.tag) {
-    fields.tag = record.tag;
+    fields["tag"] = record.tag;
   }
-  fields.msg = formatMessage(record.args, { stack: true });
+  fields["msg"] = formatMessage(record.args, { stack: true });
   const { attributes } = record;
   for (const key of Object.keys(attributes)) {
     if (BUILT_IN_FIELDS.has(key)) {
@@ -98,6 +98,7 @@ export function flattenAttribute(
   value: LogAttributeValue,
   depth = 1,
 ): void {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- JavaScript callers of this published package can pass null, and Object.keys(null) throws.
   if (typeof value !== "object" || value === null) {
     setField(target, key, value);
   } else if (depth > MAX_ATTRIBUTE_DEPTH) {

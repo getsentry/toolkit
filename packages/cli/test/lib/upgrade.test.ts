@@ -95,9 +95,9 @@ function fakeErrorProcess(message: string): FakeProc {
 // vi.mock() can capture the reference; tests mutate `.fn` to swap behavior.
 const { spawnImpl } = vi.hoisted(() => ({
   spawnImpl: {
-    fn: (() => {
-      // placeholder — replaced per-test
-    }) as (cmd: string, args: string[], opts: object) => FakeProc,
+    fn: (_cmd: string, _args: string[], _opts: object): FakeProc => {
+      throw new Error("spawnImpl.fn is replaced before use");
+    },
   },
 }));
 // Initialize with the real default now that fakeProcess is defined
@@ -147,7 +147,7 @@ const {
   versionExists,
 } = await import("../../src/lib/upgrade.js");
 
-import { TEST_TMP_DIR, useTestConfigDir } from "../helpers.js";
+import { TEST_TMP_DIR, useTestConfigDir, at } from "../helpers.js";
 
 // Store original fetch for restoration
 let originalFetch: typeof globalThis.fetch;
@@ -289,6 +289,7 @@ describe("fetchLatestFromGitHub", () => {
         });
       }
       controller.abort(reason);
+      // oxlint-disable-next-line typescript/only-throw-error -- the test rethrows the abort reason unchanged
       throw reason;
     });
 
@@ -1458,7 +1459,7 @@ describe("detectPackageManagerFromPath", () => {
   });
 
   test("returns null when argv[1] is undefined", () => {
-    process.argv = [process.argv[0]];
+    process.argv = [at(process.argv, 0)];
     expect(detectPackageManagerFromPath()).toBeNull();
   });
 

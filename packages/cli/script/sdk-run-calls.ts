@@ -7,7 +7,7 @@
  * and multi-line calls are handled the way TypeScript sees them.
  */
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { markdownCodeBlocks } from "./markdown.js";
 
 /** Markdown fence languages parsed as TypeScript. */
@@ -41,8 +41,9 @@ export function sdkRunCalls(code: string): string[][] {
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && isSdkRun(node)) {
       const args = node.arguments;
-      if (args.every(ts.isStringLiteralLike)) {
-        calls.push(args.map((arg) => arg.text));
+      const literals = args.filter(ts.isStringLiteralLike);
+      if (literals.length === args.length) {
+        calls.push(literals.map((arg) => arg.text));
       }
     }
     ts.forEachChild(node, visit);
@@ -62,7 +63,7 @@ function exampleTagBodies(comment: string): string[] {
     true,
     ts.ScriptKind.TS,
   );
-  const statement = source.statements[0] as ts.Statement | undefined;
+  const statement = source.statements.at(0);
   if (!statement) {
     return [];
   }

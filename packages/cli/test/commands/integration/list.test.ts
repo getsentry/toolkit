@@ -11,12 +11,8 @@ import { listCommand } from "../../../src/commands/integration/list.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
@@ -26,18 +22,16 @@ import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import type { SentryIntegration } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleIntegrations: SentryIntegration[] = [
   {
@@ -61,8 +55,8 @@ const sampleIntegrations: SentryIntegration[] = [
 ];
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -97,7 +91,7 @@ describe("integration list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
@@ -114,11 +108,10 @@ describe("integration list", () => {
   test("human output shows provider, ID, and per-org status", async () => {
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -132,11 +125,10 @@ describe("integration list", () => {
     listSpy.mockResolvedValue(sampleIntegrations);
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // No integration is named like `my-project`, so it reads as a project.
     await func.call(context, { limit: 30, json: true }, "my-org/my-project");
 
@@ -146,11 +138,10 @@ describe("integration list", () => {
   test("<org>/<name> keeps integrations named like it, fuzzily", async () => {
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "my-org/sentri");
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
@@ -164,11 +155,10 @@ describe("integration list", () => {
     async (target) => {
       listPaginatedSpy.mockResolvedValue({
         data: sampleIntegrations,
-        nextCursor: undefined,
       });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await listCommand.loader();
+      const func = await loadCommand(listCommand);
       await func.call(context, { limit: 30, json: true }, target);
 
       const parsed = JSON.parse(

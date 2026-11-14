@@ -20,12 +20,8 @@ import { viewCommand } from "../../../src/commands/agent-conversation/view.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -34,12 +30,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/auth.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -48,12 +40,8 @@ import * as dbAuth from "../../../src/lib/db/auth.js";
 vi.mock("../../../src/lib/polling.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/polling.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -62,18 +50,16 @@ import * as polling from "../../../src/lib/polling.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
+import { loadCommand, passthroughWithProgress } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // Helpers
@@ -83,8 +69,8 @@ const ORG = "test-org";
 const CONVERSATION_ID = "conv-abc-123";
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -94,19 +80,6 @@ function createMockContext() {
     stdoutWrite,
     stderrWrite,
   };
-}
-
-/** No-op setMessage callback for withProgress mock */
-function noop() {
-  // no-op for test
-}
-
-/** Passthrough mock for `withProgress` — bypasses spinner, calls fn directly */
-function mockWithProgress(
-  _opts: unknown,
-  fn: (setMessage: () => void) => unknown,
-) {
-  return fn(noop);
 }
 
 function makeSpan(
@@ -183,7 +156,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue({ org: ORG });
     withProgressSpy = vi
       .spyOn(polling, "withProgress")
-      .mockImplementation(mockWithProgress);
+      .mockImplementation(passthroughWithProgress);
   });
 
   afterEach(() => {
@@ -201,7 +174,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     // resolveOrg is called with the explicit org from the arg
@@ -225,7 +198,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Only conversation ID provided — org should be auto-resolved
     await func.call(context, JSON_FLAGS, CONVERSATION_ID);
 
@@ -246,7 +219,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, ORG, CONVERSATION_ID);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -257,7 +230,7 @@ describe("viewCommand.func", () => {
 
   test("rejects more arguments than an org and a conversation ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     const error = await func
       .call(context, HUMAN_FLAGS, ORG, CONVERSATION_ID, "extra")
       .catch((caught: unknown) => caught);
@@ -286,7 +259,7 @@ describe("viewCommand.func", () => {
     "rejects malformed target %s before resolution or API access",
     async (target) => {
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       const error = await func
         .call(context, HUMAN_FLAGS, target)
         .catch((caught: unknown) => caught);
@@ -301,7 +274,7 @@ describe("viewCommand.func", () => {
 
   test("no args fail to parse, mentioning the Conversation ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     const error = await func
       .call(context, HUMAN_FLAGS)
@@ -316,7 +289,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, HUMAN_FLAGS, CONVERSATION_ID),
@@ -327,7 +300,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(context, HUMAN_FLAGS, CONVERSATION_ID);
@@ -354,7 +327,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -383,7 +356,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -399,7 +372,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -415,7 +388,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -433,7 +406,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -448,7 +421,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

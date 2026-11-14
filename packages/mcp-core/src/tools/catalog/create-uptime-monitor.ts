@@ -21,6 +21,7 @@ import {
   toUptimeMonitorSummary,
   uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
+import { omitUndefined } from "../../internal/type-guards";
 
 export const createUptimeMonitorOutputSchema = z.object({
   monitor: uptimeMonitorSummarySchema,
@@ -115,24 +116,26 @@ export default defineTool({
       project: { slug: params.projectSlug },
     });
 
-    const monitor = await apiService.createUptimeMonitor({
-      organizationSlug,
-      projectSlug: params.projectSlug,
-      name: params.name,
-      url: params.url,
-      intervalSeconds: params.intervalSeconds,
-      timeoutMs: params.timeoutMs,
-      method: params.method,
-      headers: params.headers && toUptimeHeaderPairs(params.headers),
-      body: params.body,
-      status: params.status,
-      owner: params.owner,
-      environment: params.environment,
-      traceSampling: params.traceSampling,
-      responseCaptureEnabled: params.responseCaptureEnabled,
-      recoveryThreshold: params.recoveryThreshold,
-      downtimeThreshold: params.downtimeThreshold,
-    });
+    const monitor = await apiService.createUptimeMonitor(
+      omitUndefined({
+        organizationSlug,
+        projectSlug: params.projectSlug,
+        name: params.name,
+        url: params.url,
+        intervalSeconds: params.intervalSeconds,
+        timeoutMs: params.timeoutMs,
+        method: params.method,
+        headers: params.headers && toUptimeHeaderPairs(params.headers),
+        body: params.body,
+        status: params.status,
+        owner: params.owner,
+        environment: params.environment,
+        traceSampling: params.traceSampling,
+        responseCaptureEnabled: params.responseCaptureEnabled,
+        recoveryThreshold: params.recoveryThreshold,
+        downtimeThreshold: params.downtimeThreshold,
+      }),
+    );
 
     return structuredResult({
       monitor: toUptimeMonitorSummary(

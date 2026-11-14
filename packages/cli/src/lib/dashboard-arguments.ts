@@ -27,9 +27,9 @@ export type DashboardArgs = {
   /** The numeric ID or title, as typed */
   readonly dashboardRef: string;
   /** The org/project target; `undefined` to auto-detect */
-  readonly targetArg?: string;
+  readonly targetArg?: string | undefined;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   /** Warnings to log, such as for an ID taken from a URL */
   readonly warnings: readonly string[];
   /**

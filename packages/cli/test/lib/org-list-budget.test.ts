@@ -19,7 +19,11 @@ type Page = {
 function page(items: string[], nextCursor?: string): FetchResult<Page> {
   return {
     success: true,
-    data: { items, hasMore: !!nextCursor, nextCursor },
+    data: {
+      items,
+      hasMore: !!nextCursor,
+      ...(nextCursor !== undefined && { nextCursor }),
+    },
   };
 }
 

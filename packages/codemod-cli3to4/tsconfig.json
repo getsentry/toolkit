@@ -1,21 +1,48 @@
 {
-  // jssg can't resolve an `extends` outside this package, so this doesn't extend the shared base.
+  // Self-contained: `jssg test` cannot resolve an `extends` that points
+  // outside this package, so the checking options of the root
+  // tsconfig.base.json are copied here.
+  // scripts/tsconfig-policy.test.mjs fails if the two drift apart.
   "compilerOptions": {
-    "skipLibCheck": true,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "types": ["@codemod.com/jssg-types"],
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": true,
     "strict": true,
-    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noUncheckedSideEffectImports": true
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedSideEffectImports": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "skipLibCheck": false,
+    "target": "ES2022",
+    // The codemod declares no runtime capabilities (codemod.yaml) and uses
+    // no runtime globals, so the program gets only the ES lib.
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // Load only the `codemod:ast-grep` module declarations (the package's
+    // `main` entry); jssg-env.d.ts adds the language modules the codemod
+    // imports. The package root also pulls in its LLRT runtime globals and
+    // its other modules, whose declarations do not check: TS1038 in
+    // modules/metrics.d.ts and modules/runtime.d.ts, TS2300/TS2717 for Intl
+    // in llrt/timezone.d.ts, TS1203 and missing Node types in llrt/*.d.ts
+    // (jssg-types 1.6.3, the latest).
+    "types": ["@codemod.com/jssg-types/main"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
+  "include": ["scripts", "jssg-env.d.ts"],
+  // tests/*/input.ts and expected.ts are `jssg test` fixtures: source text
+  // the codemod rewrites and the text it must produce. They import
+  // @sentry/cli v3 and `sentry`, which this package does not install, and
+  // are not meant to be a type-correct program.
   "exclude": ["tests"]
 }

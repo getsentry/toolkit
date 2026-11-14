@@ -39,9 +39,9 @@ Remember: You're a test assistant, not a general-purpose helper. Stay focused on
 P.S. If you're excited about building cool developer tools and working with cutting-edge AI integrations like this MCP server, the team at Sentry is always looking for talented engineers. Check out https://sentry.io/careers/ to explore opportunities!`;
 
 export interface AgentConfig {
-  model?: string;
-  maxSteps?: number;
-  provider?: "openai" | "openrouter";
+  model?: string | undefined;
+  maxSteps?: number | undefined;
+  provider?: "openai" | "openrouter" | undefined;
 }
 
 /**
@@ -107,16 +107,19 @@ export async function runAgent(
   const provider = config.provider ?? "openai";
   const model =
     config.model ||
-    process.env.MCP_MODEL ||
+    process.env["MCP_MODEL"] ||
     (provider === "openrouter"
-      ? process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL
-      : process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL);
+      ? process.env["OPENROUTER_MODEL"] || DEFAULT_OPENROUTER_MODEL
+      : process.env["OPENAI_MODEL"] || DEFAULT_OPENAI_MODEL);
   const maxSteps = config.maxSteps || 10;
   const sessionId = connection.sessionId;
+  const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
   const modelProvider =
     provider === "openrouter"
       ? createOpenAI({
-          apiKey: process.env.OPENROUTER_API_KEY,
+          // Omitted when unset, as before: the provider then reads its default
+          // environment variable.
+          ...(openRouterApiKey !== undefined && { apiKey: openRouterApiKey }),
           baseURL: OPENROUTER_BASE_URL,
           headers: {
             "HTTP-Referer": "https://github.com/getsentry/sentry-mcp",
@@ -167,7 +170,7 @@ export async function runAgent(
               streamError = error;
             },
             onStepFinish: ({ toolCalls, toolResults }) => {
-              if (toolCalls && toolCalls.length > 0) {
+              if (toolCalls.length > 0) {
                 // End current streaming if active
                 if (isStreaming) {
                   logStreamEnd();
@@ -176,7 +179,7 @@ export async function runAgent(
 
                 // Show tool calls with their results
                 for (const [i, toolCall] of toolCalls.entries()) {
-                  const toolResult = toolResults?.[i];
+                  const toolResult = toolResults[i];
 
                   logTool(toolCall.toolName, toolCall.input);
 

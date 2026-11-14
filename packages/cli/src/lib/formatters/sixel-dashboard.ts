@@ -65,7 +65,7 @@ export type SixelDashboardWidget = {
   /** Sentry display type, used to distinguish categorical bars. */
   displayType: string | null;
   /** Grid position when supplied by the dashboard API. */
-  layout?: SixelWidgetLayout;
+  layout?: SixelWidgetLayout | undefined;
   /** Fully resolved query result. */
   data: WidgetDataResult;
 };
@@ -94,7 +94,7 @@ export type RenderSixelDashboardOptions = {
    * Encode the finished RGBA canvas to a terminal graphics escape string.
    * Defaults to sixel; callers pass a kitty encoder on kitty-capable terminals.
    */
-  encodeImage?: (image: DecodedImage) => string | undefined;
+  encodeImage?: ((image: DecodedImage) => string | undefined) | undefined;
 };
 
 /** A widget paired with the layout used for the final composite. */

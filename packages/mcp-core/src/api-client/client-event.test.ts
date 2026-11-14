@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { assert, afterEach, describe, expect, it, vi } from "vitest";
 import { testEvents } from "../internal/test-fixtures";
 import { SentryApiService } from "./client";
 import { ApiValidationError } from "@sentry/api/client";
@@ -56,7 +56,9 @@ describe("getEventForIssue context validation", () => {
       );
 
       expect(log).toHaveBeenCalledTimes(1);
-      const output = String(log.mock.calls[0]![0]);
+      const [call] = log.mock.calls;
+      assert(call, "Expected one log call");
+      const output = String(call[0]);
       const record = JSON.parse(output);
       expect(record.message).toBe("Event failed schema validation: error");
       expect(record.properties.contextType).toBe(contextType);

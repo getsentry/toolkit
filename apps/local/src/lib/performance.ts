@@ -88,18 +88,20 @@ export function webVitalPages(items: readonly LocalFeedItem[]): VitalPage[] {
   const pages = new Map<string, VitalPage>();
   for (const item of items) {
     const p = record(item.payload),
-      measurements = record(p.measurements);
+      measurements = record(p["measurements"]);
     if (item.type !== "transaction" || !Object.keys(measurements).length)
       continue;
     const metrics: VitalVisit["metrics"] = {};
     for (const name of Object.keys(VITALS) as VitalName[]) {
       const metric = record(measurements[name]),
-        value = finite(metric.value);
+        value = finite(metric["value"]);
       if (value === undefined || value < 0) continue;
       const config = VITALS[name];
       // SDK measurements normally use milliseconds; honor seconds when explicitly supplied.
       const normalized =
-        config.unit === "ms" && metric.unit === "second" ? value * 1000 : value;
+        config.unit === "ms" && metric["unit"] === "second"
+          ? value * 1000
+          : value;
       metrics[name] = {
         value: normalized,
         rating:
@@ -111,7 +113,8 @@ export function webVitalPages(items: readonly LocalFeedItem[]): VitalPage[] {
       };
     }
     if (!Object.keys(metrics).length) continue;
-    const name = text(p.transaction) ?? item.metadata?.route ?? "Unknown page";
+    const name =
+      text(p["transaction"]) ?? item.metadata?.route ?? "Unknown page";
     const page = pages.get(name) ?? { name, visits: [] };
     page.visits.push({ item, metrics });
     pages.set(name, page);

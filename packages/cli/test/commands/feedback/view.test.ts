@@ -11,12 +11,8 @@ vi.mock("../../../src/commands/feedback/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/feedback/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -25,12 +21,8 @@ import * as feedbackUtils from "../../../src/commands/feedback/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -39,16 +31,14 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const EXTRA_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
@@ -65,7 +55,12 @@ function feedback(): SentryFeedback {
     firstSeen: "2026-07-16T12:00:00Z",
     permalink:
       "https://sentry.io/organizations/test-org/feedback/?feedbackSlug=test-project%3A5146636313",
-    project: { id: "42", slug: "test-project", name: "Test Project" },
+    project: {
+      id: "42",
+      slug: "test-project",
+      name: "Test Project",
+      platform: null,
+    },
     metadata: {
       message: "Checkout is broken\nPlease help",
       name: "Ada",
@@ -91,11 +86,11 @@ function event(): SentryEvent {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -144,7 +139,7 @@ describe("feedback view", () => {
 
   test("flattens feedback and enrichment data in JSON", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -172,7 +167,7 @@ describe("feedback view", () => {
 
   test("renders message, linked error, replay, and attachment context", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -197,7 +192,7 @@ describe("feedback view", () => {
     listReplayIdsSpy.mockRejectedValue(new Error("replays unavailable"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -222,7 +217,7 @@ describe("feedback view", () => {
     listAttachmentsSpy.mockRejectedValue(new Error("attachments unavailable"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -243,7 +238,7 @@ describe("feedback view", () => {
 
   test("opens the feedback permalink without enrichment calls", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {

@@ -29,7 +29,7 @@ export default function SpeedDisplay({
       className={`absolute top-6 right-4 sm:top-8 sm:right-10 z-20 flex items-center font-bold text-xl sm:text-3xl opacity-50 ${
         animate ? "speed-animate" : ""
       } ${className}`}
-      style={{ ["--speed-pop-dur" as any]: `${durationMs}ms` }}
+      style={{ "--speed-pop-dur": `${durationMs}ms` }}
     >
       <div className="absolute right-0 top-0 -translate-y-full font-mono text-xs opacity-50 text-nowrap">
         sped up

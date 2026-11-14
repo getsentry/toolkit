@@ -130,8 +130,8 @@ describe("search_issue_events", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
   });
 
@@ -515,7 +515,7 @@ describe("search_issue_events", () => {
     );
 
     const [emptyUser, emptyGeo] = sc(result).events;
-    expect(emptyUser!.user).toBeNull();
+    expect(emptyUser?.user).toBeNull();
     expect(emptyGeo?.user).toEqual({
       id: "user-1",
       email: null,
@@ -770,6 +770,102 @@ describe("search_issue_events", () => {
     );
   });
 
+  it("runs open-ended 'since' ranges until now", async () => {
+    // Regression: "since <timestamp>" and timestamp:>= queries have no end.
+    // The agent schema required both start and end, so these requests
+    // failed with "The AI was unable to process your query".
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-13T19:00:00.000Z"));
+
+    const output = {
+      query: "",
+      fields: ["id", "timestamp", "title"],
+      sort: "-timestamp",
+      timeRange: { start: "2026-11-12T06:39:00Z" },
+      explanation: "",
+    };
+    mockGenerateText.mockResolvedValue({
+      ...mockAIResponse(),
+      text: JSON.stringify(output),
+      experimental_output: output,
+    });
+
+    let requestUrl: URL | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/*/events/",
+        ({ request }) => {
+          requestUrl = new URL(request.url);
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    try {
+      await searchIssueEvents.handler(
+        {
+          organizationSlug: "test-org",
+          issueId: "MCP-41",
+          query: "timestamp:>=2026-11-12T06:39:00Z",
+          sort: "-timestamp",
+          projectSlug: null,
+          regionUrl: null,
+          limit: 50,
+          includeExplanation: false,
+        },
+        mockContext,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(requestUrl?.searchParams.get("start")).toBe("2026-11-12T06:39:00Z");
+    expect(requestUrl?.searchParams.get("end")).toBe(
+      "2026-11-13T19:00:00.000Z",
+    );
+    expect(requestUrl?.searchParams.get("statsPeriod")).toBeNull();
+  });
+
+  it("uses the default 14d window when the agent omits timeRange", async () => {
+    const output = {
+      query: "",
+      fields: ["id", "timestamp"],
+      sort: "-timestamp",
+    };
+    mockGenerateText.mockResolvedValue({
+      ...mockAIResponse(),
+      text: JSON.stringify(output),
+      experimental_output: output,
+    });
+
+    let requestUrl: URL | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/*/events/",
+        ({ request }) => {
+          requestUrl = new URL(request.url);
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    await searchIssueEvents.handler(
+      {
+        organizationSlug: "test-org",
+        issueId: "MCP-41",
+        query: "all events",
+        sort: "-timestamp",
+        projectSlug: null,
+        regionUrl: null,
+        limit: 50,
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(requestUrl?.searchParams.get("statsPeriod")).toBe("14d");
+  });
+
   it("should validate sort field is included in fields array", async () => {
     // Agent returns sort field not in fields array (validation should fail)
     mockGenerateText.mockResolvedValue(
@@ -1022,9 +1118,9 @@ describe("search_issue_events", () => {
   });
 
   it("should search events with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(

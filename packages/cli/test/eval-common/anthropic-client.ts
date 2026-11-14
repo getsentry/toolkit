@@ -50,11 +50,11 @@ export type EvalProvider = {
 export function resolveEvalProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): EvalProvider | null {
-  const openRouterKey = env.OPENROUTER_API_KEY?.trim();
-  const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
+  const openRouterKey = env["OPENROUTER_API_KEY"]?.trim();
+  const anthropicKey = env["ANTHROPIC_API_KEY"]?.trim();
 
   if (openRouterKey) {
-    const baseURL = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_BASE_URL;
+    const baseURL = env["OPENROUTER_BASE_URL"]?.trim() || OPENROUTER_BASE_URL;
     return {
       provider: "openrouter",
       chat: (model, messages, maxTokens) =>
@@ -69,7 +69,7 @@ export function resolveEvalProvider(
   }
 
   if (anthropicKey) {
-    const baseURL = env.ANTHROPIC_BASE_URL?.trim() || undefined;
+    const baseURL = env["ANTHROPIC_BASE_URL"]?.trim() || undefined;
     return {
       provider: "anthropic",
       chat: (model, messages, maxTokens) =>
@@ -159,7 +159,7 @@ async function anthropicChat({
   const response = await client.messages.create({
     model: anthropicModel,
     max_tokens: maxTokens,
-    system,
+    ...(system === undefined ? {} : { system }),
     messages: userMsgs,
   });
 

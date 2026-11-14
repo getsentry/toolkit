@@ -35,7 +35,7 @@ function cachedFetch(url: string, ttlSeconds: number): Promise<string> {
 
       let cache: Cache | undefined;
       try {
-        cache = (caches as CacheStorage & { default?: Cache })?.default;
+        cache = (caches as CacheStorage & { default?: Cache }).default;
       } catch {
         // Cache API not available (local dev / non-CF runtime)
       }

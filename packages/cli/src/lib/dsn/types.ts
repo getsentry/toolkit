@@ -29,7 +29,7 @@ export type ParsedDsn = {
   host: string;
   projectId: string;
   /** Extracted from oXXX.ingest... pattern in host (SaaS only) */
-  orgId?: string;
+  orgId?: string | undefined;
 };
 
 /**
@@ -46,11 +46,11 @@ export type DetectedDsn = ParsedDsn & {
    * - For `"env_file"`, `"config"`, `"code"`: file path relative to cwd
    * - For `"inferred"`: undefined
    */
-  sourcePath?: string;
+  sourcePath?: string | undefined;
   /** Package/app directory path for monorepo grouping (e.g., "packages/frontend", "apps/web") */
-  packagePath?: string;
+  packagePath?: string | undefined;
   /** Cached resolution info if available */
-  resolved?: ResolvedProjectInfo;
+  resolved?: ResolvedProjectInfo | undefined;
 };
 
 /** Resolved project information from Sentry API */
@@ -79,15 +79,15 @@ export type CachedDsnEntry = {
   /** Project ID extracted from DSN */
   projectId: string;
   /** Org ID extracted from DSN (SaaS only) */
-  orgId?: string;
+  orgId?: string | undefined;
   /** Where the DSN was found */
   source: DsnSource;
   /** Source identifier: env var name for `"env"`, relative file path for file-based sources */
-  sourcePath?: string;
+  sourcePath?: string | undefined;
   /** Resolved project info (avoids API call on cache hit) */
   resolved?: ResolvedProjectInfo;
   /** All resolved targets (for inferred source with multiple matches) */
-  allResolved?: ResolvedProjectInfo[];
+  allResolved?: ResolvedProjectInfo[] | undefined;
   /** Timestamp when this entry was cached */
   cachedAt: number;
 };

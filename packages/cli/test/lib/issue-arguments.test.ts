@@ -111,8 +111,8 @@ describe("parseIssueArgument", () => {
       parsed: { type: "explicit-org-numeric", org: "acme", numericId: "123" },
       baseUrl: "https://sentry.example.com",
     });
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("reads short IDs from issue URLs", () => {
@@ -190,8 +190,8 @@ describe("parseIssueArguments", () => {
       { usageHint },
     );
     expect(issue?.baseUrl).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test.each([[[]], [["  \n "]]])("requires an issue: %j", (args) => {

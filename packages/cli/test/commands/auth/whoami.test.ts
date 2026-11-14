@@ -6,18 +6,22 @@
  * branches without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { whoamiCommand } from "../../../src/commands/auth/whoami.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -26,12 +30,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/auth.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -40,12 +40,8 @@ import * as dbAuth from "../../../src/lib/db/auth.js";
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/user.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -125,11 +121,11 @@ function createContext() {
 }
 
 describe("whoamiCommand.func", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let getAuthTokenSpy: ReturnType<typeof spyOn>;
-  let storedAuthConfigSpy: ReturnType<typeof spyOn>;
-  let getCurrentUserSpy: ReturnType<typeof spyOn>;
-  let setUserInfoSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let getAuthTokenSpy: MockInstance<(typeof dbAuth)["getAuthToken"]>;
+  let storedAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let getCurrentUserSpy: MockInstance<(typeof apiClient)["getCurrentUser"]>;
+  let setUserInfoSpy: MockInstance<(typeof dbUser)["setUserInfo"]>;
   let func: WhoamiFunc;
 
   beforeEach(async () => {
@@ -156,12 +152,12 @@ describe("whoamiCommand.func", () => {
   });
 
   describe("unauthenticated", () => {
-    let getAuthConfigSpy: ReturnType<typeof spyOn>;
+    let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
     let savedAuthToken: string | undefined;
 
     beforeEach(() => {
-      savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-      delete process.env.SENTRY_AUTH_TOKEN;
+      savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+      delete process.env["SENTRY_AUTH_TOKEN"];
       getAuthConfigSpy = vi
         .spyOn(dbAuth, "getAuthConfig")
         .mockReturnValue(undefined);
@@ -174,7 +170,7 @@ describe("whoamiCommand.func", () => {
     afterEach(() => {
       getAuthConfigSpy.mockRestore();
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     });
 

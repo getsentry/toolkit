@@ -16,7 +16,7 @@ describe("/api/auth", () => {
       );
 
       expect(res.status).toBe(401);
-      const json = (await res.json()) as { authenticated: boolean };
+      const json = await res.json<{ authenticated: boolean }>();
       expect(json.authenticated).toBe(false);
     });
 
@@ -33,7 +33,7 @@ describe("/api/auth", () => {
       );
 
       expect(res.status).toBe(401);
-      const json = (await res.json()) as { authenticated: boolean };
+      const json = await res.json<{ authenticated: boolean }>();
       expect(json.authenticated).toBe(false);
     });
 
@@ -57,7 +57,7 @@ describe("/api/auth", () => {
       );
 
       expect(res.status).toBe(401);
-      const json = (await res.json()) as { authenticated: boolean };
+      const json = await res.json<{ authenticated: boolean }>();
       expect(json.authenticated).toBe(false);
     });
 
@@ -81,7 +81,7 @@ describe("/api/auth", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as { authenticated: boolean };
+      const json = await res.json<{ authenticated: boolean }>();
       expect(json.authenticated).toBe(true);
     });
   });
@@ -101,7 +101,7 @@ describe("/api/auth", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as { success: boolean };
+      const json = await res.json<{ success: boolean }>();
       expect(json.success).toBe(true);
     });
 

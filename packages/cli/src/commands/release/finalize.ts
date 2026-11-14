@@ -128,7 +128,7 @@ export const finalizeCommand = buildCommand({
       dateReleased: flags.released || new Date().toISOString(),
     };
     if (flags.url) {
-      body.url = flags.url;
+      body["url"] = flags.url;
     }
     const release = await updateRelease(org, version, body);
     yield new CommandOutput(release);

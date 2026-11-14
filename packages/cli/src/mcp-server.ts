@@ -24,7 +24,9 @@ setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
 
 // The update check announces CLI releases and `sentry cli upgrade`, which do
 // not apply to this package; npm installs its updates.
-getEnv().SENTRY_CLI_NO_UPDATE_CHECK = "1";
+// The update check announces CLI releases and `sentry cli upgrade`, which do
+// not apply to this package; npm installs its updates.
+getEnv()["SENTRY_CLI_NO_UPDATE_CHECK"] = "1";
 
 // MCP clients and install checks run a bare `--version`; answer it without
 // loading the application and the CLI telemetry it brings. A lone `-v` keeps

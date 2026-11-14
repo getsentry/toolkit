@@ -27,11 +27,13 @@ import {
   API_MAX_PER_PAGE,
   getOrgSdkConfig,
   paginate,
+  paginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
   validateResponse,
 } from "./infrastructure.js";
 import { getTraceItemDetail } from "./traces.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** Sort direction for log queries: newest-first or oldest-first. */
 export type LogSortDirection = "newest" | "oldest";
@@ -119,7 +121,7 @@ function safeParseResponse<T>(
 
 type ListLogsOptions = {
   /** Search query using Sentry query syntax */
-  query?: string;
+  query?: string | undefined;
   /** Maximum number of log entries to return */
   limit?: number;
   /**
@@ -131,7 +133,7 @@ type ListLogsOptions = {
   /** Sort direction: "newest" (default) or "oldest" */
   sort?: LogSortDirection;
   /** Only return logs after this timestamp_precise value (for streaming) */
-  afterTimestamp?: number;
+  afterTimestamp?: number | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
   start?: string;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -142,7 +144,7 @@ type ListLogsOptions = {
    * and returned in the API response alongside standard fields.
    * Used by `--fields` to surface custom structured log attributes.
    */
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
   /**
    * Numeric project ID. When provided, the request scopes to the project via
    * the `project` query param instead of `project:<slug>` search syntax.
@@ -152,7 +154,7 @@ type ListLogsOptions = {
    * the project has logs. Passing the numeric ID selects the project directly
    * and avoids that gap. Mirrors {@link listIssuesPaginated}.
    */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 /**
@@ -204,20 +206,22 @@ export async function listLogs(
         ...config,
         path: { organization_id_or_slug: orgSlug },
         query: {
+          ...omitUndefined({
+            project:
+              numericProjectId === undefined ? undefined : [numericProjectId],
+            query: fullQuery || undefined,
+            cursor,
+            statsPeriod:
+              options.start || options.end
+                ? undefined
+                : (options.statsPeriod ?? "30d"),
+            start: options.start,
+            end: options.end,
+            sort: toApiSort(options.sort),
+          }),
           dataset: "logs",
           field: fields,
-          project:
-            numericProjectId === undefined ? undefined : [numericProjectId],
-          query: fullQuery || undefined,
           per_page: perPage,
-          cursor,
-          statsPeriod:
-            options.start || options.end
-              ? undefined
-              : (options.statsPeriod ?? "30d"),
-          start: options.start,
-          end: options.end,
-          sort: toApiSort(options.sort),
         },
       });
 
@@ -230,7 +234,7 @@ export async function listLogs(
         raw,
         "Failed to list logs",
       );
-      return { data: logsResponse.data, nextCursor };
+      return paginatedResponse(logsResponse.data, nextCursor);
     },
     API_MAX_PER_PAGE,
   );
@@ -303,9 +307,9 @@ function getLogLookupWindow(
  */
 type GetLogsBatchOptions = {
   config: ReturnType<typeof getOrgSdkConfig>;
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
   /** Numeric project ID for direct project selection. @see {@link ListLogsOptions.projectId} */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 async function getLogsBatch(
@@ -336,7 +340,7 @@ async function getLogsBatch(
     const queryParams = {
       dataset: "logs" as const,
       field: fields,
-      project: numericProjectId === undefined ? undefined : [numericProjectId],
+      ...(numericProjectId !== undefined && { project: [numericProjectId] }),
       query: `${projectFilter}sentry.item_id:[${ids.join(",")}]`,
       per_page: ids.length,
       sampling,
@@ -356,7 +360,7 @@ async function getLogsBatch(
   }
 
   const response = await fetchBatch(batchIds, "NORMAL");
-  if (response.meta?.dataScanned !== "partial") {
+  if (response.meta?.["dataScanned"] !== "partial") {
     return response.data;
   }
 
@@ -380,12 +384,12 @@ async function getLogsBatch(
 /** Options for {@link getLogs}. */
 type GetLogsOptions = {
   /** Additional fields to request beyond {@link DETAILED_LOG_FIELDS}. */
-  extraFields?: string[];
+  extraFields?: string[] | undefined;
   /**
    * Numeric project ID for direct project selection via the `project` query
    * param. @see {@link ListLogsOptions.projectId}
    */
-  projectId?: number;
+  projectId?: number | undefined;
 };
 
 /**
@@ -438,7 +442,7 @@ export async function getLogs(
 
 type ListTraceLogsOptions = {
   /** Additional search query to filter results (Sentry query syntax) */
-  query?: string;
+  query?: string | undefined;
   /** Maximum number of log entries to return (max 9999) */
   limit?: number;
   /**
@@ -484,7 +488,7 @@ export async function listTraceLogs(
       const result = await listOrganizationTraceLogs({
         ...config,
         path: { organization_id_or_slug: orgSlug },
-        query: {
+        query: omitUndefined({
           traceId: [traceId],
           statsPeriod:
             options.start || options.end
@@ -496,7 +500,7 @@ export async function listTraceLogs(
           cursor,
           query: options.query,
           sort: [toApiSort(options.sort)],
-        },
+        }),
       });
 
       const page = unwrapPaginatedResult<unknown>(
@@ -509,7 +513,7 @@ export async function listTraceLogs(
         `/organizations/${orgSlug}/trace-logs/`,
         page.response?.status ?? 0,
       );
-      return { data: response.data, nextCursor: page.nextCursor };
+      return paginatedResponse(response.data, page.nextCursor);
     },
     API_MAX_PER_PAGE,
   );

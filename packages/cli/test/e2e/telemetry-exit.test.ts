@@ -40,7 +40,7 @@ describe("telemetry exit timing", () => {
     // Test: telemetry enabled (with patched Sentry)
     // Remove SENTRY_CLI_NO_TELEMETRY to enable telemetry
     const envWithTelemetry = { ...process.env };
-    delete envWithTelemetry.SENTRY_CLI_NO_TELEMETRY;
+    delete envWithTelemetry["SENTRY_CLI_NO_TELEMETRY"];
 
     const enabledStart = performance.now();
     const enabledProc = spawn(cmdBin, [...cmdArgs, "--version"], {

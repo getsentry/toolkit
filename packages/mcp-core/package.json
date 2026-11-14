@@ -3,7 +3,7 @@
   "version": "0.42.0",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=22.13"
   },
@@ -101,10 +101,6 @@
       "types": "./dist/tools/search-issue-events/agent.d.ts",
       "default": "./dist/tools/search-issue-events/agent.js"
     },
-    "./tools/agent-tools": {
-      "types": "./dist/tools/agent-tools.d.ts",
-      "default": "./dist/tools/agent-tools.js"
-    },
     "./internal/agents/callEmbeddedAgent": {
       "types": "./dist/internal/agents/callEmbeddedAgent.d.ts",
       "default": "./dist/internal/agents/callEmbeddedAgent.js"
@@ -158,7 +154,7 @@
     "test": "pnpm run validate-skills && vitest run",
     "test:ci": "pnpm run generate-definitions && pnpm run validate-skills && vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "pnpm run generate-definitions && vitest",
-    "tsc": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "generate-definitions": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-definitions.ts && oxfmt --write src/toolDefinitions.json src/skillDefinitions.json",
     "generate-otel-namespaces": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-otel-namespaces.ts",
     "measure-tokens": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/measure-token-cost.ts",

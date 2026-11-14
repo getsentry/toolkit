@@ -14,7 +14,7 @@ const issueId = String(issueFixture.id);
 const eventId = eventsFixture.id;
 const issueUrl = `https://${organizationSlug}.sentry.io/issues/${issueId}/`;
 const context = {
-  constraints: { organizationSlug: undefined },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };

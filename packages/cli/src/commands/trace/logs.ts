@@ -62,8 +62,8 @@ type LogsFlags = {
 /** Minimal log shape shared with the formatters. */
 type LogLike = {
   timestamp: string;
-  severity?: string | null;
-  message?: string | null;
+  severity?: string | null | undefined;
+  message?: string | null | undefined;
   trace?: string | null;
 };
 
@@ -108,7 +108,7 @@ function parseLimit(value: string): number {
 /** `trace logs` arguments, resolved. */
 type TraceLogsTarget = ResolvedTraceOrg & {
   /** Project the user named, to filter the trace's logs by */
-  readonly projectFilter?: string;
+  readonly projectFilter?: string | undefined;
 };
 
 /** The arguments of `trace logs`. */

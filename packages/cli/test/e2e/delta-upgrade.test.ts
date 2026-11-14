@@ -25,7 +25,7 @@ const realFetch = (globalThis as { __originalFetch?: typeof fetch })
 const savedFetch = globalThis.fetch;
 
 /** Path to zig-bsdiff binary */
-const BSDIFF_PATH = process.env.ZIG_BSDIFF_PATH ?? "/tmp/bsdiff";
+const BSDIFF_PATH = process.env["ZIG_BSDIFF_PATH"] ?? "/tmp/bsdiff";
 
 /** Two consecutive releases to test patching between */
 const OLD_VERSION = "0.12.0";

@@ -2,8 +2,14 @@ import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "../packages/cli/lint-rules/cli-oxlint-plugin.js";
 
-RuleTester.describe = describe;
-RuleTester.it = it;
+// node:test tracks the promises its suite functions return; RuleTester only
+// needs void callbacks.
+RuleTester.describe = (text, fn) => {
+  void describe(text, fn);
+};
+RuleTester.it = (text, fn) => {
+  void it(text, fn);
+};
 
 const tester = new RuleTester({
   languageOptions: { parserOptions: { lang: "ts" } },

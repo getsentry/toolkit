@@ -113,7 +113,7 @@ describe("update_dsn", () => {
         ({ params }) =>
           HttpResponse.json(
             {
-              id: String(params.keyId),
+              id: String(params["keyId"]),
               name: "Default",
               dsn: {
                 public:

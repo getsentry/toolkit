@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    // The tests call fetch and build Headers from HeadersInit, which only
+    // the DOM lib declares.
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  // Type-check only: the tests need a deployed server and credentials.
+  "include": ["src", "vitest.config.ts"]
+}

@@ -62,6 +62,14 @@ const AGENT_DEFAULT_OPTIONS = {
   },
 };
 
+/**
+ * Mastra types `object` as always present, but a run that errors or trips a
+ * guardrail can finish without one.
+ */
+function readStructuredObject<T>(result: { object: T }): T | undefined {
+  return result.object;
+}
+
 function getUsedModelId(result: {
   steps?: Array<{ response?: { modelId?: string } }>;
   response?: { modelId?: string };
@@ -208,9 +216,9 @@ Return the canonical feature slugs available for this platform.`;
           structuredOutput: { schema: featuresOutputSchema },
         });
 
-        const inputTokens = result.totalUsage?.inputTokens ?? 0;
-        const outputTokens = result.totalUsage?.outputTokens ?? 0;
-        const stepCount = result.steps?.length ?? 0;
+        const inputTokens = result.totalUsage.inputTokens ?? 0;
+        const outputTokens = result.totalUsage.outputTokens ?? 0;
+        const stepCount = result.steps.length;
         const usedModelId = getUsedModelId(result);
 
         span.setAttribute("agent.model", usedModelId);
@@ -222,7 +230,7 @@ Return the canonical feature slugs available for this platform.`;
         trackAgentSteps(stepCount);
         trackAgentCall(true);
 
-        const rawFeatures = result.object?.features ?? [];
+        const rawFeatures = readStructuredObject(result)?.features ?? [];
         const features = sanitizeFeatures(rawFeatures);
 
         span.setAttribute("agent.feature_count", features.length);

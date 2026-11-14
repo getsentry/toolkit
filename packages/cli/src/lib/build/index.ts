@@ -221,7 +221,7 @@ export function parsePluginFromPipeline(
 /** Build the `.sentry-cli-metadata.txt` contents. */
 function buildMetadataFile(plugin: PipelinePlugin | null): string {
   const version =
-    process.env.SENTRY_CLI_INTEGRATION_TEST_VERSION_OVERRIDE ?? CLI_VERSION;
+    process.env["SENTRY_CLI_INTEGRATION_TEST_VERSION_OVERRIDE"] ?? CLI_VERSION;
   let out = `sentry-cli-version: ${version}\n`;
   if (plugin) {
     out += `${plugin.name}: ${plugin.version}\n`;

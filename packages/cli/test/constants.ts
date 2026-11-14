@@ -20,7 +20,7 @@ import { join } from "node:path";
  * `upgrade-lock-test`) still get a unique path per worker because the
  * parent is already worker-scoped.
  */
-const WORKER_ID = process.env.VITEST_POOL_ID;
+const WORKER_ID = process.env["VITEST_POOL_ID"];
 export const TEST_TMP_DIR = WORKER_ID
   ? join(tmpdir(), `sentry-cli-test-w${WORKER_ID}`)
   : join(tmpdir(), "sentry-cli-test");

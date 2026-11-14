@@ -53,6 +53,7 @@ import {
 } from "./constants.js";
 import { IgnoreStack } from "./ignore.js";
 import type { IgnoreMatcher, WalkEntry, WalkOptions } from "./types.js";
+import { rethrow } from "../rethrow.js";
 
 const log = logger.withTag("scan-walk");
 
@@ -516,7 +517,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
         continue;
       }
       if (producerError !== null) {
-        throw producerError;
+        rethrow(producerError);
       }
       if (stack.length === 0 && activeWorkers === 0) {
         break;

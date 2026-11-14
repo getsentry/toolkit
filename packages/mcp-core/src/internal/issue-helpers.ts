@@ -127,9 +127,9 @@ export function parseIssueParams({
   issueId,
   organizationSlug,
 }: {
-  issueUrl?: string | null;
-  issueId?: string | null;
-  organizationSlug?: string | null;
+  issueUrl?: string | null | undefined;
+  issueId?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
 }): {
   organizationSlug: string;
   issueId: string;

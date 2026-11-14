@@ -101,15 +101,15 @@ export type ListResult<T> = {
   /** Whether a previous page exists (for bidirectional hint generation) */
   hasPrev?: boolean;
   /** Cursor for fetching the next page (only in paginated modes) */
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   /** Human-readable hint lines (tips, warnings, notes). Suppressed in JSON mode. */
-  hint?: string;
+  hint?: string | undefined;
   /** Header/title text shown above the table in human mode */
-  header?: string;
+  header?: string | undefined;
   /** Fetch errors from partial failures (included in JSON output as `errors` key) */
-  errors?: unknown[];
+  errors?: unknown[] | undefined;
   /** Extra metadata to include in the JSON envelope */
-  jsonExtra?: Record<string, unknown>;
+  jsonExtra?: Record<string, unknown> | undefined;
 };
 
 /**
@@ -231,9 +231,9 @@ export function distributeFetchBudget(
 /** Cursor metadata required by the shared multi-group fetcher. */
 export type ListFetchPage = {
   /** Whether the group has additional items. */
-  hasMore?: boolean;
+  hasMore?: boolean | undefined;
   /** Server cursor, absent when the group is exhausted. */
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** A group's item budget and optional position within that group's results. */
@@ -241,7 +241,7 @@ export type GroupFetchOptions = {
   /** Maximum items to fetch for this group. */
   limit: number;
   /** Resume cursor; undefined starts at the group's first page. */
-  startCursor?: string;
+  startCursor?: string | undefined;
 };
 
 /** Domain adapters for fetching pages within one global item budget. */
@@ -452,7 +452,11 @@ export type OrgListConfig<
    */
   listPaginated: (
     orgSlug: string,
-    opts: { cursor?: string; perPage: number; query?: string },
+    opts: {
+      cursor?: string | undefined;
+      perPage: number;
+      query?: string | undefined;
+    },
   ) => Promise<PaginatedResponse<TEntity[]>>;
 
   /**
@@ -546,13 +550,13 @@ export type HandlerContext<
    *
    * Present only when project-search mode continues to a handler.
    */
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
   /**
    * Name filter (glob or fuzzy text) from the command line, if any. Handlers
    * must apply it to the whole result set before `--limit`; the dispatcher
    * already rejects it with `--cursor`.
    */
-  filter?: string;
+  filter?: string | undefined;
 };
 
 /**
@@ -1007,16 +1011,18 @@ export async function handleProjectSearch<TEntity, TWithOrg>(
     flags: BaseListFlags;
     orgAllFallback?: (orgSlug: string) => Promise<ListResult<TWithOrg>>;
     /** Original user input before normalization — for clearer messages. */
-    originalSlug?: string;
+    originalSlug?: string | undefined;
     /** Organization slug to scope the search to (e.g. from "org/My Project"). */
-    org?: string;
+    org?: string | undefined;
     /** Classification supplied by the dispatcher after its target pre-check. */
-    projectSearchResolution?: ProjectSearchTargetResolution;
+    projectSearchResolution?: ProjectSearchTargetResolution | undefined;
     /**
      * Tried when no project matches: entities named like the slug, or
      * `undefined` to report the missing project as before.
      */
-    notFoundFallback?: () => Promise<ListResult<TWithOrg> | undefined>;
+    notFoundFallback?:
+      | (() => Promise<ListResult<TWithOrg> | undefined>)
+      | undefined;
   },
 ): Promise<ListResult<TWithOrg>> {
   const {
@@ -1446,7 +1452,7 @@ export type DispatchOptions<TEntity = unknown, TWithOrg = unknown> = {
    * handlers apply it with the config's `namesOf`; overrides receive it as
    * `ctx.filter`. Rejected together with `--cursor`.
    */
-  filter?: string;
+  filter?: string | undefined;
 };
 
 type OrgSlugMatchResult = {

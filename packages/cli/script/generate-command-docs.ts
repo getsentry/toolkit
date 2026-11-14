@@ -182,7 +182,7 @@ function generateCommandSection(cmd: CommandInfo): string {
 function isStandaloneCommand(route: RouteInfo): boolean {
   return (
     route.commands.length === 1 &&
-    route.commands[0].path === `sentry ${route.name}`
+    route.commands[0]?.path === `sentry ${route.name}`
   );
 }
 

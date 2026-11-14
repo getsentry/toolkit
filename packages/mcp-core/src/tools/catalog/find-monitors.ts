@@ -71,7 +71,8 @@ function parseSchedule(value: unknown): {
     return { type: null, value: value.trim() || null };
   }
   if (Array.isArray(value)) {
-    const [first, second, third] = value;
+    const entries: unknown[] = value;
+    const [first, second, third] = entries;
     if (first === "crontab" && typeof second === "string") {
       return { type: "crontab", value: second };
     }
@@ -94,17 +95,17 @@ function parseSchedule(value: unknown): {
     return { type: null, value: null };
   }
   const schedule = value as Record<string, unknown>;
-  const type = typeof schedule.type === "string" ? schedule.type : null;
-  if (type === "crontab" && typeof schedule.value === "string") {
-    return { type, value: schedule.value };
+  const type = typeof schedule["type"] === "string" ? schedule["type"] : null;
+  if (type === "crontab" && typeof schedule["value"] === "string") {
+    return { type, value: schedule["value"] };
   }
   if (
     type === "interval" &&
-    (typeof schedule.value === "number" ||
-      typeof schedule.value === "string") &&
-    typeof schedule.unit === "string"
+    (typeof schedule["value"] === "number" ||
+      typeof schedule["value"] === "string") &&
+    typeof schedule["unit"] === "string"
   ) {
-    return { type, value: `${schedule.value} ${schedule.unit}` };
+    return { type, value: `${schedule["value"]} ${schedule["unit"]}` };
   }
   return { type, value: null };
 }
@@ -114,16 +115,18 @@ function getSchedule(monitor: Monitor) {
   if (!config) {
     return null;
   }
-  const parsedSchedule = parseSchedule(config.schedule);
+  const parsedSchedule = parseSchedule(config["schedule"]);
   const type =
-    typeof config.schedule_type === "string"
-      ? config.schedule_type
+    typeof config["schedule_type"] === "string"
+      ? config["schedule_type"]
       : parsedSchedule.type;
   const value = parsedSchedule.value;
   const checkInMargin =
-    typeof config.checkin_margin === "number" ? config.checkin_margin : null;
+    typeof config["checkin_margin"] === "number"
+      ? config["checkin_margin"]
+      : null;
   const maxRuntime =
-    typeof config.max_runtime === "number" ? config.max_runtime : null;
+    typeof config["max_runtime"] === "number" ? config["max_runtime"] : null;
   if (
     type === null &&
     value === null &&

@@ -11,12 +11,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -26,12 +22,8 @@ import { ApiError, ResolutionError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -45,6 +37,8 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const tokens = [
   {
@@ -60,11 +54,11 @@ const tokens = [
 const yesFlags = { yes: true, force: false, "dry-run": false, json: false };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -150,7 +144,7 @@ describe("token delete", () => {
 
   test("revokes the token with --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, yesFlags, "my-org/7");
 
     expect(ensureScopesSpy).toHaveBeenCalledWith(
@@ -164,7 +158,7 @@ describe("token delete", () => {
 
   test("JSON output reports the revoked token", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { ...yesFlags, json: true }, "my-org/7");
 
     expect(JSON.parse(output(stdoutWrite))).toEqual({
@@ -177,7 +171,7 @@ describe("token delete", () => {
 
   test("dry-run does not delete", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { ...yesFlags, "dry-run": true }, "my-org/7");
 
     expect(deleteSpy).not.toHaveBeenCalled();
@@ -188,7 +182,7 @@ describe("token delete", () => {
     ensureScopesSpy.mockResolvedValue("unavailable");
     listSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const error = await func
       .call(context, { ...yesFlags, "dry-run": true }, "my-org/7")
@@ -200,7 +194,7 @@ describe("token delete", () => {
 
   test("revokes a token by name", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, yesFlags, "my-org/github-actions");
 
     expect(deleteSpy).toHaveBeenCalledWith("my-org", "7");
@@ -210,7 +204,7 @@ describe("token delete", () => {
   test("refuses a name several tokens share", async () => {
     listSpy.mockResolvedValue([...tokens, { ...tokens[0], id: "8" }]);
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(
       func.call(context, yesFlags, "my-org/github-actions"),
@@ -220,7 +214,7 @@ describe("token delete", () => {
 
   test("fails before deleting when no token has the name", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(
       func.call(context, yesFlags, "my-org/no-such-token"),
@@ -230,7 +224,7 @@ describe("token delete", () => {
 
   test("fails before deleting when the token doesn't exist", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(func.call(context, yesFlags, "my-org/99")).rejects.toThrow(
       ResolutionError,
@@ -241,7 +235,7 @@ describe("token delete", () => {
   test("explains a 403 from the delete", async () => {
     deleteSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const error = await func
       .call(context, yesFlags, "my-org/7")

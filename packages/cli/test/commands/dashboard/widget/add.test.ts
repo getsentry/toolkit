@@ -6,19 +6,23 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { addCommand } from "../../../../src/commands/dashboard/widget/add.js";
 
 vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -30,28 +34,26 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../../src/lib/resolve-target.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
+import { loadCommand, at, must, rejection } from "../../../helpers.js";
+import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd,
     },
     stdoutWrite,
@@ -105,9 +107,11 @@ const sampleDashboard: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard widget add", () => {
-  let getDashboardSpy: ReturnType<typeof spyOn>;
-  let updateDashboardSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
+  let getDashboardSpy: MockInstance<(typeof apiClient)["getDashboard"]>;
+  let updateDashboardSpy: MockInstance<(typeof apiClient)["updateDashboard"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
 
   beforeEach(() => {
     getDashboardSpy = vi.spyOn(apiClient, "getDashboard");
@@ -131,7 +135,7 @@ describe("dashboard widget add", () => {
 
   test("adds widget with correct API args (getDashboard then updateDashboard)", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", query: ["count"] },
@@ -151,7 +155,7 @@ describe("dashboard widget add", () => {
       }),
     );
     // Original widgets should be preserved plus the new one
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(3);
   });
 
@@ -167,9 +171,9 @@ describe("dashboard widget add", () => {
       resolveOrgOnlyTargetSpy.mockResolvedValue("my-org");
       const listDashboardsSpy = vi
         .spyOn(apiClient, "listDashboardsPaginated")
-        .mockResolvedValue({ data: [], nextCursor: undefined });
+        .mockResolvedValue({ data: [] });
       const { context, stdoutWrite } = createMockContext();
-      const func = await addCommand.loader();
+      const func = await loadCommand(addCommand);
 
       try {
         await func.call(
@@ -209,7 +213,7 @@ describe("dashboard widget add", () => {
 
   test("JSON output contains dashboard, widget, and url", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: true, display: "big_number", query: ["count"] },
@@ -227,7 +231,7 @@ describe("dashboard widget add", () => {
 
   test("human output contains 'Added widget' and title", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", query: ["count"] },
@@ -242,11 +246,11 @@ describe("dashboard widget add", () => {
 
   test("fails to parse the arguments when the title is missing (less than 2 positional args)", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(context, { json: false, display: "line" }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, display: "line" }, "123"),
+    );
     expect(err).toBeInstanceOf(ArgumentParseError);
     const { exception } = err as ArgumentParseError;
     expect(exception).toBeInstanceOf(ValidationError);
@@ -258,39 +262,39 @@ describe("dashboard widget add", () => {
 
   test("throws ValidationError for invalid display type", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "invalid_type" },
         "123",
         "Bad Widget",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Invalid --display");
   });
 
   test("throws ValidationError for invalid aggregate function", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["not_a_function"] },
         "123",
         "Bad Widget",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Unknown aggregate function");
   });
 
   test("issue line dataset does not default columns", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", dataset: "issue" },
@@ -298,14 +302,14 @@ describe("dashboard widget add", () => {
       "Issues Over Time",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual([]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(must(addedWidget.queries), 0).columns).toEqual([]);
   });
 
   test("issue dataset defaults columns to ['issue'] and orderby to -count()", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "table", dataset: "issue" },
@@ -313,16 +317,16 @@ describe("dashboard widget add", () => {
       "Top Issues",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual(["issue"]);
-    expect(addedWidget.queries[0].fields).toContain("issue");
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["issue"]);
+    expect(at(must(addedWidget.queries), 0).fields).toContain("issue");
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("resolves dataset alias 'errors' to 'error-events' in PUT body", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -335,14 +339,14 @@ describe("dashboard widget add", () => {
       "Error Count",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
   });
 
   test("resolves dataset alias 'metricsEnhanced' to 'tracemetrics'", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -355,8 +359,8 @@ describe("dashboard widget add", () => {
       "Latency",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("tracemetrics");
   });
 
@@ -365,7 +369,7 @@ describe("dashboard widget add", () => {
     // "errors", dataset-aware validation must see "error-events" (canonical)
     // before deciding whether to accept the aggregate.
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -378,15 +382,17 @@ describe("dashboard widget add", () => {
       "Last Seen",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
-    expect(addedWidget.queries[0].aggregates).toEqual(["last_seen()"]);
+    expect(at(must(addedWidget.queries), 0).aggregates).toEqual([
+      "last_seen()",
+    ]);
   });
 
   test("case-insensitive dataset values are accepted", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -399,17 +405,17 @@ describe("dashboard widget add", () => {
       "Errors",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
   });
 
   test("rejects unknown --dataset with canonical list", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         {
           json: false,
@@ -419,8 +425,8 @@ describe("dashboard widget add", () => {
         },
         "123",
         "Bad",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
 
     expect(err).toBeInstanceOf(ValidationError);
     // Error message surfaces the normalized (lowercased) value.
@@ -430,7 +436,7 @@ describe("dashboard widget add", () => {
 
   test("issue dataset respects explicit --group-by over default", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -444,9 +450,9 @@ describe("dashboard widget add", () => {
       "Issues by Project",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual(["project"]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["project"]);
   });
 
   // -------------------------------------------------------------------------
@@ -455,7 +461,7 @@ describe("dashboard widget add", () => {
 
   test("uses explicit layout when --col --row --width --height provided", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -471,17 +477,17 @@ describe("dashboard widget add", () => {
       "Full Width Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(5);
-    expect(addedWidget.layout.w).toBe(6);
-    expect(addedWidget.layout.h).toBe(3);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(5);
+    expect(must(addedWidget.layout).w).toBe(6);
+    expect(must(addedWidget.layout).h).toBe(3);
   });
 
   test("partial layout flags override auto-layout defaults", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -494,25 +500,25 @@ describe("dashboard widget add", () => {
       "Positioned Counter",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // x overridden, other values from auto-layout defaults for big_number (w:2, h:1)
-    expect(addedWidget.layout.x).toBe(4);
-    expect(addedWidget.layout.w).toBe(2);
-    expect(addedWidget.layout.h).toBe(1);
+    expect(must(addedWidget.layout).x).toBe(4);
+    expect(must(addedWidget.layout).w).toBe(2);
+    expect(must(addedWidget.layout).h).toBe(1);
   });
 
   test("throws ValidationError for width > 6", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
-    const err = await func
-      .call(
+    const func = await loadCommand(addCommand);
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["count"], width: 7 },
         "123",
         "Too Wide",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--width");
   });
@@ -520,37 +526,37 @@ describe("dashboard widget add", () => {
   test("throws ValidationError when --col overflows with auto-layout default width", async () => {
     // table display defaults to w=6, so --col 1 would produce x=1 + w=6 = 7 > 6
     const { context } = createMockContext();
-    const func = await addCommand.loader();
-    const err = await func
-      .call(
+    const func = await loadCommand(addCommand);
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "table", query: ["count"], col: 1 },
         "123",
         "Wide Table",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("overflows the grid");
   });
 
   test("throws ValidationError for negative row", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
-    const err = await func
-      .call(
+    const func = await loadCommand(addCommand);
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["count"], row: -1 },
         "123",
         "Bad Y",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--row");
   });
 
   test("auto-defaults orderby when group-by + limit provided", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -564,14 +570,14 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("auto-defaults --limit to 5 when --group-by is used without --limit", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -584,16 +590,16 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBe(5);
-    expect(addedWidget.queries[0].columns).toEqual(["browser.name"]);
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    expect(at(must(addedWidget.queries), 0).columns).toEqual(["browser.name"]);
+    expect(at(must(addedWidget.queries), 0).orderby).toBe("-count()");
   });
 
   test("explicit --limit wins over auto-default for grouped widgets", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -607,14 +613,14 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBe(10);
   });
 
   test("ungrouped widget does not get an auto-default limit", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "big_number", query: ["count"] },
@@ -622,8 +628,8 @@ describe("dashboard widget add", () => {
       "Total Count",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBeUndefined();
   });
 
@@ -632,7 +638,7 @@ describe("dashboard widget add", () => {
     // ["issue"] but should not auto-default a limit — existing widgets of
     // this shape may legitimately have no limit.
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "table", dataset: "issue" },
@@ -640,8 +646,8 @@ describe("dashboard widget add", () => {
       "Top Issues",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBeUndefined();
   });
 
@@ -649,7 +655,7 @@ describe("dashboard widget add", () => {
 
   test("--layout dense passes dense mode to auto-placer", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "big_number", query: ["count"], layout: "dense" },
@@ -657,17 +663,17 @@ describe("dashboard widget add", () => {
       "Dense Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // Existing widgets: big_number at (0,0,2,1) and table at (2,0,4,2).
     // Dense mode finds the first gap. The gap at (0,1) fits a 2x1 big_number.
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(1);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(1);
   });
 
   test("--layout sequential (default) uses sequential placement", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -680,19 +686,19 @@ describe("dashboard widget add", () => {
       "Sequential Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // Existing widgets: big_number at (0,0,2,1) and table at (2,0,4,2).
     // Last widget is table at x=2,w=4 → cursor=(6,0) → 6+2=8 > 6 → wrap to (0,2).
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(2);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(2);
   });
 
   test("--layout invalid rejects with ValidationError", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
-    const err = await func
-      .call(
+    const func = await loadCommand(addCommand);
+    const err = await rejection(
+      func.call(
         context,
         {
           json: false,
@@ -702,8 +708,8 @@ describe("dashboard widget add", () => {
         },
         "123",
         "Bad Layout",
-      )
-      .catch((e: unknown) => e);
+      ),
+    );
 
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).message).toContain("--layout");

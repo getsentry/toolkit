@@ -486,7 +486,10 @@ describe.each(ID_COMMANDS)("$name", (entry) => {
 });
 
 /** Commands that take one issue, through `issuePositional` or alike. */
-const ISSUE_COMMANDS: readonly (readonly [string, unknown])[] = [
+const ISSUE_COMMANDS: readonly [
+  readonly [string, unknown],
+  ...(readonly [string, unknown])[],
+] = [
   ["issue resolve", issueResolveCommand],
   ["issue unresolve", issueUnresolveCommand],
   ["issue archive", archiveCommand],
@@ -682,7 +685,7 @@ function parseDashboard(
   return {
     ...input,
     // Warnings name the command's own usage
-    warnings: (input.warnings as readonly string[]).map((warning) =>
+    warnings: (input["warnings"] as readonly string[]).map((warning) =>
       warning.replace(/ Expected: .*$/s, ""),
     ),
   };

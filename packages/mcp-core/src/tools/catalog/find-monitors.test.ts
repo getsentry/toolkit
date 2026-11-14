@@ -344,7 +344,7 @@ describe("find_monitors", () => {
 
     assertStructuredOnlyResult(result);
     const structuredContent = getStructuredContent(result);
-    expect(structuredContent.hasMore).toBe(true);
-    expect(structuredContent.monitors).toHaveLength(10);
+    expect(structuredContent["hasMore"]).toBe(true);
+    expect(structuredContent["monitors"]).toHaveLength(10);
   });
 });

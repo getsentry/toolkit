@@ -45,7 +45,11 @@ import traceMixedFixture from "./fixtures/trace-mixed.json" with { type: "json" 
 import traceFixture from "./fixtures/trace.json" with { type: "json" };
 import userFixture from "./fixtures/user.json" with { type: "json" };
 
-const issueFixture2 = {
+// Numeric `id` and `count`: the API client accepts either form.
+const issueFixture2: Omit<typeof issueFixture, "id" | "count"> & {
+  id: number;
+  count: number;
+} = {
   ...issueFixture,
   id: 6507376926,
   shortId: "CLOUDFLARE-MCP-42",

@@ -52,13 +52,16 @@ export async function prompt(
     // The `else` lets esbuild drop this import from the completion bundle.
     const clack = await import("@clack/prompts");
     if (opts.type === "confirm") {
-      return await clack.confirm({ message, initialValue: opts.initial });
+      return await clack.confirm({
+        message,
+        ...(opts.initial !== undefined && { initialValue: opts.initial }),
+      });
     }
     return await clack.text({
       message,
-      placeholder: opts.placeholder,
-      initialValue: opts.initial,
-      defaultValue: opts.default,
+      ...(opts.placeholder !== undefined && { placeholder: opts.placeholder }),
+      ...(opts.initial !== undefined && { initialValue: opts.initial }),
+      ...(opts.default !== undefined && { defaultValue: opts.default }),
     });
   }
 }

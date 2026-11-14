@@ -37,7 +37,7 @@ export function setOpenAIBaseUrl(baseUrl: string | undefined): void {
  * provider so generic OpenAI-compatible endpoints keep predictable behavior.
  */
 export function getOpenAIModel(model?: string): LanguageModel {
-  const defaultModel = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+  const defaultModel = process.env["OPENAI_MODEL"] || DEFAULT_OPENAI_MODEL;
 
   const factory = createOpenAI({
     ...(configuredBaseUrl && { baseURL: configuredBaseUrl }),

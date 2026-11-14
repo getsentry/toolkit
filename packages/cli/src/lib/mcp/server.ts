@@ -45,6 +45,7 @@ import {
 import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
 import { reportCliError } from "../error-reporting.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** Credential wiring supplied by the CLI host. */
 export type McpServeOptions = {
@@ -74,9 +75,9 @@ function findProviderMismatch(
   env: NodeJS.ProcessEnv,
 ): ProviderMismatch | undefined {
   const keys = {
-    openai: Boolean(env.OPENAI_API_KEY),
-    anthropic: Boolean(env.ANTHROPIC_API_KEY),
-    openrouter: Boolean(env.OPENROUTER_API_KEY),
+    openai: Boolean(env["OPENAI_API_KEY"]),
+    anthropic: Boolean(env["ANTHROPIC_API_KEY"]),
+    openrouter: Boolean(env["OPENROUTER_API_KEY"]),
   };
   if (configured === "openai" || configured === "azure-openai") {
     if (!keys.openai && (keys.anthropic || keys.openrouter)) {
@@ -117,11 +118,11 @@ function expectedProviderKey(provider: string): string {
 /** Explain why AI-powered search tools are unavailable. */
 function warnNoProvider(config: McpServerConfig, env: NodeJS.ProcessEnv): void {
   const configured =
-    config.agentProvider ?? env.EMBEDDED_AGENT_PROVIDER?.toLowerCase();
+    config.agentProvider ?? env["EMBEDDED_AGENT_PROVIDER"]?.toLowerCase();
   const providerKeyCount = [
-    env.ANTHROPIC_API_KEY,
-    env.OPENAI_API_KEY,
-    env.OPENROUTER_API_KEY,
+    env["ANTHROPIC_API_KEY"],
+    env["OPENAI_API_KEY"],
+    env["OPENROUTER_API_KEY"],
   ].filter(Boolean).length;
   const mismatch = findProviderMismatch(configured, env);
 
@@ -184,16 +185,18 @@ function configureAgentProvider(
   if (config.agentProvider) {
     setAgentProvider(config.agentProvider);
   }
-  setProviderBaseUrls({
-    openaiBaseUrl: config.openaiBaseUrl,
-    anthropicBaseUrl: config.anthropicBaseUrl,
-  });
+  setProviderBaseUrls(
+    omitUndefined({
+      openaiBaseUrl: config.openaiBaseUrl,
+      anthropicBaseUrl: config.anthropicBaseUrl,
+    }),
+  );
   // The provider factory reads model overrides from the environment.
   if (config.openaiModel) {
-    env.OPENAI_MODEL = config.openaiModel;
+    env["OPENAI_MODEL"] = config.openaiModel;
   }
   if (config.anthropicModel) {
-    env.ANTHROPIC_MODEL = config.anthropicModel;
+    env["ANTHROPIC_MODEL"] = config.anthropicModel;
   }
 
   const resolvedProvider = getResolvedProviderType();
@@ -205,7 +208,7 @@ function configureAgentProvider(
   let providerSource = "auto-detected";
   if (config.agentProviderFromFlag) {
     providerSource = "explicitly configured";
-  } else if (env.EMBEDDED_AGENT_PROVIDER) {
+  } else if (env["EMBEDDED_AGENT_PROVIDER"]) {
     providerSource = "from EMBEDDED_AGENT_PROVIDER";
   }
   logger.info(
@@ -432,14 +435,20 @@ export async function serveMcpStdio(
     },
     sentryHost: config.sentryHost,
     sentryProtocol: config.sentryProtocol,
-    mcpUrl: config.mcpUrl,
-    openaiBaseUrl: config.openaiBaseUrl,
+    ...(config.mcpUrl !== undefined && { mcpUrl: config.mcpUrl }),
+    ...(config.openaiBaseUrl !== undefined && {
+      openaiBaseUrl: config.openaiBaseUrl,
+    }),
     experimentalMode: config.experimental,
     transport: "stdio",
     // mcp-core uses the returned token for later tool calls, so a
     // long-running server recovers from an expired CLI session.
-    onUpstreamUnauthorized: options.refreshAccessToken,
-    credentialRouter: options.credentialRouter,
+    ...(options.refreshAccessToken && {
+      onUpstreamUnauthorized: options.refreshAccessToken,
+    }),
+    ...(options.credentialRouter && {
+      credentialRouter: options.credentialRouter,
+    }),
   };
 
   const server = buildServer({

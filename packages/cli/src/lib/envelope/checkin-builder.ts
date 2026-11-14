@@ -102,7 +102,7 @@ export type BuildCheckInOptions = {
   /** Duration in seconds — only meaningful for `ok`/`error` (close) check-ins. */
   duration?: number;
   /** Monitor upsert config — only attached to the opening `in_progress` check-in. */
-  monitorConfig?: MonitorConfig;
+  monitorConfig?: MonitorConfig | undefined;
 };
 
 /**

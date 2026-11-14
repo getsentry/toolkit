@@ -16,7 +16,7 @@ export async function findExactIssueAlertRuleMatches(
   apiService: SentryApiService,
   params: {
     organizationSlug: string;
-    projectSlug?: string;
+    projectSlug?: string | undefined;
     ruleName: string;
   },
 ): Promise<IssueAlertRule[]> {
@@ -40,7 +40,7 @@ export async function resolveIssueAlertRule(
   apiService: SentryApiService,
   params: {
     organizationSlug: string;
-    projectSlug?: string;
+    projectSlug?: string | undefined;
     ruleIdOrName: string;
   },
 ): Promise<IssueAlertRule> {
@@ -64,11 +64,12 @@ export async function resolveIssueAlertRule(
     ruleName: params.ruleIdOrName,
   });
 
-  if (matches.length === 1) {
+  const [match] = matches;
+  if (matches.length === 1 && match) {
     return await apiService.getIssueAlertRule({
       organizationSlug: params.organizationSlug,
       projectSlug: params.projectSlug,
-      ruleId: matches[0]!.id,
+      ruleId: match.id,
     });
   }
   if (matches.length > 1) {
@@ -86,7 +87,7 @@ export async function resolveMetricAlertRule(
   apiService: SentryApiService,
   params: {
     organizationSlug: string;
-    projectSlug?: string;
+    projectSlug?: string | undefined;
     ruleIdOrName: string;
   },
 ): Promise<Detector> {
@@ -117,14 +118,15 @@ export async function resolveMetricAlertRule(
       projectSlug,
       name: ruleIdOrName,
     });
-    if (matches.length !== 1) {
+    const [match] = matches;
+    if (matches.length !== 1 || !match) {
       throw new UserInputError(
         matches.length > 1
           ? `Multiple metric monitors named "${ruleIdOrName}" were found. Use find_metric_monitors and get_metric_monitor_details with a monitor ID.`
           : `Metric monitor "${ruleIdOrName}" was not found. Use find_metric_monitors to find its monitor ID.`,
       );
     }
-    monitorId = matches[0]!.id;
+    monitorId = match.id;
   }
   return await getMetricMonitor(apiService, {
     organizationSlug,

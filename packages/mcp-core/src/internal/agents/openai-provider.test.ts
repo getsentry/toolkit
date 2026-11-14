@@ -4,41 +4,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getOpenAIModel, setOpenAIBaseUrl } from "./openai-provider.js";
 
 describe("openai-provider", () => {
-  const originalModel = process.env.OPENAI_MODEL;
-  const originalApiKey = process.env.OPENAI_API_KEY;
-  const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-  const originalApiVersion = process.env.OPENAI_API_VERSION;
+  const originalModel = process.env["OPENAI_MODEL"];
+  const originalApiKey = process.env["OPENAI_API_KEY"];
+  const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+  const originalApiVersion = process.env["OPENAI_API_VERSION"];
 
   beforeEach(() => {
     setOpenAIBaseUrl(undefined);
-    delete process.env.OPENAI_MODEL;
-    delete process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENAI_API_VERSION;
+    delete process.env["OPENAI_MODEL"];
+    delete process.env["OPENROUTER_API_KEY"];
+    delete process.env["OPENAI_API_VERSION"];
   });
 
   afterEach(() => {
     if (originalModel === undefined) {
-      delete process.env.OPENAI_MODEL;
+      delete process.env["OPENAI_MODEL"];
     } else {
-      process.env.OPENAI_MODEL = originalModel;
+      process.env["OPENAI_MODEL"] = originalModel;
     }
 
     if (originalApiKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env["OPENAI_API_KEY"];
     } else {
-      process.env.OPENAI_API_KEY = originalApiKey;
+      process.env["OPENAI_API_KEY"] = originalApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env["OPENROUTER_API_KEY"];
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalApiVersion === undefined) {
-      delete process.env.OPENAI_API_VERSION;
+      delete process.env["OPENAI_API_VERSION"];
     } else {
-      process.env.OPENAI_API_VERSION = originalApiVersion;
+      process.env["OPENAI_API_VERSION"] = originalApiVersion;
     }
 
     vi.unstubAllGlobals();
@@ -62,7 +62,7 @@ describe("openai-provider", () => {
     });
 
     it("uses responses API for generic custom base URL requests", async () => {
-      process.env.OPENAI_API_KEY = "test-key";
+      process.env["OPENAI_API_KEY"] = "test-key";
       setOpenAIBaseUrl("https://proxy.example.com/v1");
       let requestUrl: string | undefined;
 
@@ -105,7 +105,7 @@ describe("openai-provider", () => {
     });
 
     it("keeps responses API for deployment-style URLs in generic openai mode", async () => {
-      process.env.OPENAI_API_KEY = "test-key";
+      process.env["OPENAI_API_KEY"] = "test-key";
       setOpenAIBaseUrl(
         "https://proxy.example.com/openai/deployments/test-model",
       );
@@ -152,8 +152,8 @@ describe("openai-provider", () => {
     });
 
     it("ignores OPENAI_API_VERSION for generic openai provider requests", async () => {
-      process.env.OPENAI_API_KEY = "test-key";
-      process.env.OPENAI_API_VERSION = "2024-02-15-preview";
+      process.env["OPENAI_API_KEY"] = "test-key";
+      process.env["OPENAI_API_VERSION"] = "2024-02-15-preview";
       setOpenAIBaseUrl("https://proxy.example.com/v1");
       let requestUrl: string | undefined;
 
@@ -211,7 +211,7 @@ describe("openai-provider", () => {
     });
 
     it("uses OPENAI_MODEL env var when set", () => {
-      process.env.OPENAI_MODEL = "gpt-4-turbo";
+      process.env["OPENAI_MODEL"] = "gpt-4-turbo";
 
       const model = getOpenAIModel() as LanguageModelV3;
 

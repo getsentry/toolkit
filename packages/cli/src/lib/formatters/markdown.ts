@@ -233,7 +233,7 @@ function renderHtmlToken(raw: string): string {
 function flattenInline(token: Token): Token[] {
   if (
     "tokens" in token &&
-    token.tokens &&
+    Array.isArray(token.tokens) &&
     token.type !== "strong" &&
     token.type !== "em" &&
     token.type !== "link"
@@ -371,9 +371,9 @@ const WHITESPACE_RE = /\s+/;
  * into the language and the line-number gutter options.
  */
 function parseCodeInfo(info: string | undefined): {
-  language?: string;
-  start?: number;
-  highlight?: number;
+  language?: string | undefined;
+  start?: number | undefined;
+  highlight?: number | undefined;
 } {
   const [language, ...rest] = (info ?? "").trim().split(WHITESPACE_RE);
   const attrs: Record<string, number> = {};
@@ -384,8 +384,8 @@ function parseCodeInfo(info: string | undefined): {
   }
   return {
     language: language || undefined,
-    start: attrs.start,
-    highlight: attrs.highlight,
+    start: attrs["start"],
+    highlight: attrs["highlight"],
   };
 }
 

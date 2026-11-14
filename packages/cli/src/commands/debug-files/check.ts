@@ -189,5 +189,6 @@ export const checkCommand = buildCommand({
         hint: `No usable debug information found. Try: ${usageHint()}`,
       };
     }
+    return;
   },
 });

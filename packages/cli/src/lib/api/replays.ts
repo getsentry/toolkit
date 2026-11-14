@@ -32,12 +32,14 @@ import {
   apiRequestToRegion,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
-  type PaginatedResponse,
   paginate,
+  type PaginatedResponse,
+  paginatedResponse,
   parseLinkHeader,
   unwrapPaginatedResult,
   unwrapValidatedResult,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 const log = logger.withTag("api.replays");
 
@@ -92,19 +94,19 @@ export type ListReplaysOptions = {
   /** Limit total rows returned across auto-paginated pages. */
   limit?: number;
   /** Structured replay query using Sentry search syntax. */
-  query?: string;
+  query?: string | undefined;
   /** Optional environment filter(s). */
-  environment?: string[];
+  environment?: string[] | undefined;
   /** Response fields to request from the replay endpoint. */
   fields?: string[];
   /** Project slugs to filter by. */
-  projectSlugs?: string[];
+  projectSlugs?: string[] | undefined;
   /** Numeric project IDs. `"-1"` searches all projects. */
-  project?: string;
+  project?: string | undefined;
   /** Sort expression for the replay index endpoint. */
   sort?: ReplaySortValue;
   /** Pagination cursor from a previous response. */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Relative time period (e.g. "7d", "24h"). Overrides start/end on the API. */
   statsPeriod?: string;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
@@ -116,14 +118,14 @@ export type ListReplaysOptions = {
 type FetchReplayPageOptions = {
   options: ListReplaysOptions;
   perPage: number;
-  cursor?: string;
+  cursor?: string | undefined;
 };
 
 type FetchReplayRecordingSegmentsPageOptions = {
   orgSlug: string;
   projectSlugOrId: string;
   replayId: string;
-  cursor?: string;
+  cursor?: string | undefined;
 };
 
 /**
@@ -157,7 +159,7 @@ export type GetReplayRecordingSegmentsOptions = {
    *
    * Omit (or pass null/undefined) to fetch all pages up to MAX_PAGINATION_PAGES.
    */
-  expectedSegments?: number | null;
+  expectedSegments?: number | null | undefined;
 };
 
 /**
@@ -167,7 +169,7 @@ export type GetReplayRecordingSegmentsOptions = {
  * schemas normalize it to a string for uniform comparisons and display.
  */
 function normalizeReplayProjectId<
-  T extends { project_id?: string | number | null },
+  T extends { project_id?: string | number | null | undefined },
 >(replay: T): T & ReplayStringProjectId {
   if (
     replay.project_id === null ||
@@ -225,10 +227,7 @@ async function fetchReplayPage(
   );
 
   const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return {
-    data: data.data.map(normalizeReplayProjectId),
-    nextCursor,
-  };
+  return paginatedResponse(data.data.map(normalizeReplayProjectId), nextCursor);
 }
 
 /**
@@ -386,10 +385,10 @@ async function fetchReplayRecordingSegmentsPage(
     // No `download=true`: the endpoint always streams the event payloads
     // (`on_results=download_segments`) and never reads that parameter. The
     // web UI sends it, but the backend ignores it.
-    query: {
+    query: omitUndefined({
       cursor,
       per_page: API_MAX_PER_PAGE,
-    },
+    }),
     responseValidator: validateReplayRecordingSegmentsResponse,
   });
 

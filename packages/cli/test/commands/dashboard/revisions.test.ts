@@ -5,7 +5,15 @@
  * Uses spyOn pattern to mock API client, pagination DB, resolve, and polling modules.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolve from "../../../src/commands/dashboard/resolve.js";
 import { revisionsCommand } from "../../../src/commands/dashboard/revisions.js";
@@ -16,14 +24,16 @@ import * as paginationDb from "../../../src/lib/db/pagination.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 import type { DashboardRevision } from "../../../src/types/dashboard.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -95,13 +105,23 @@ const REVISION_C: DashboardRevision = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard revisions command", () => {
-  let listDashboardRevisionsPaginatedSpy: ReturnType<typeof spyOn>;
-  let resolveOrgFromTargetSpy: ReturnType<typeof spyOn>;
-  let resolveDashboardIdSpy: ReturnType<typeof spyOn>;
-  let withProgressSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
+  let listDashboardRevisionsPaginatedSpy: MockInstance<
+    (typeof apiClient)["listDashboardRevisionsPaginated"]
+  >;
+  let resolveOrgFromTargetSpy: MockInstance<
+    (typeof resolve)["resolveOrgFromTarget"]
+  >;
+  let resolveDashboardIdSpy: MockInstance<
+    (typeof resolve)["resolveDashboardId"]
+  >;
+  let withProgressSpy: MockInstance<(typeof polling)["withProgress"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
 
   beforeEach(() => {
     listDashboardRevisionsPaginatedSpy = vi.spyOn(
@@ -151,11 +171,10 @@ describe("dashboard revisions command", () => {
   test("outputs JSON envelope with { data, hasMore, hasPrev } when --json", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A, REVISION_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -172,11 +191,10 @@ describe("dashboard revisions command", () => {
   test("outputs { data: [], hasMore: false } when no revisions exist", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -191,11 +209,10 @@ describe("dashboard revisions command", () => {
   test("outputs human-readable table with column headers", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A, REVISION_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags(), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -208,11 +225,10 @@ describe("dashboard revisions command", () => {
   test("shows empty state message when no revisions exist", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags(), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -230,7 +246,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true, limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -246,7 +262,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -257,11 +273,10 @@ describe("dashboard revisions command", () => {
     hasPreviousPageSpy.mockReturnValue(true);
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_B, REVISION_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -275,7 +290,7 @@ describe("dashboard revisions command", () => {
       .mockResolvedValueOnce({ data: page, nextCursor: "100:2:0" });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true, limit: 200 }), "123");
 
     // The revisions endpoint uses OffsetPaginator, whose cursor encodes the
@@ -299,11 +314,10 @@ describe("dashboard revisions command", () => {
   test("uses dashboard ID from positional argument", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "456");
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "456");
@@ -317,11 +331,10 @@ describe("dashboard revisions command", () => {
   test("two args parses target + dashboard correctly", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "my-org/", "789");
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "789");
@@ -330,11 +343,10 @@ describe("dashboard revisions command", () => {
   test("resolves dashboard by title", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(
       context,
       defaultFlags({ json: true }),

@@ -9,12 +9,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { explainCommand } from "../../../src/commands/issue/explain.js";
@@ -23,6 +19,8 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 import { ApiError, ContextError, EXIT } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const EXPLAIN_FLAGS = {
   json: true,
@@ -54,7 +52,7 @@ function createMockContext() {
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -80,7 +78,7 @@ describe("issue explain multiple IDs", () => {
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Single cause")));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1");
 
     expect(JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "")).toEqual([
@@ -100,7 +98,7 @@ describe("issue explain multiple IDs", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1", "IOS-2");
 
     expect(JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "")).toEqual([
@@ -128,7 +126,7 @@ describe("issue explain multiple IDs", () => {
     );
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Cause")));
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(
       createMockContext().context,
       { json: false, force: false, fresh: false },
@@ -154,7 +152,7 @@ describe("issue explain multiple IDs", () => {
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Cause")));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1", "MISSING");
 
     const output = JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "");
@@ -166,7 +164,7 @@ describe("issue explain multiple IDs", () => {
     const error = new Error("analysis failed");
     resolveSpy.mockRejectedValue(error);
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1", "IOS-2"),
     ).rejects.toBe(error);
@@ -184,7 +182,7 @@ describe("issue explain multiple IDs", () => {
       ),
     );
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
     ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
@@ -202,7 +200,7 @@ describe("issue explain multiple IDs", () => {
       ),
     );
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
     ).rejects.toMatchObject({
@@ -213,7 +211,7 @@ describe("issue explain multiple IDs", () => {
   });
 
   test("fails to parse when no issue ID is provided", async () => {
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS),
     ).rejects.toMatchObject({ exception: expect.any(ContextError) });

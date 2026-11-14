@@ -109,8 +109,8 @@ interface StructuredSearchSession {
   apiService: SentryApiService;
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 type RowLinkShape = Record<string, z.ZodType<string | null>>;
@@ -161,7 +161,7 @@ function firstTraceAction(
   reason: string,
 ): SuggestedToolAction[] {
   const traceId = results
-    .map((row) => row.values.trace)
+    .map((row) => row.values["trace"])
     .find((trace): trace is string => typeof trace === "string" && !!trace);
   const action = traceId
     ? buildSuggestedToolAction({
@@ -186,13 +186,13 @@ const STRUCTURED_DATASETS = {
     links: { issueUrl: z.string().nullable() },
     rowLinks: (event, { apiService, organizationSlug }) => ({
       issueUrl:
-        typeof event.issue === "string" && event.issue
-          ? apiService.getIssueUrl(organizationSlug, event.issue)
+        typeof event["issue"] === "string" && event["issue"]
+          ? apiService.getIssueUrl(organizationSlug, event["issue"])
           : null,
     }),
     suggestedActions(results, session) {
       const issueId = results
-        .map((row) => row.values.issue)
+        .map((row) => row.values["issue"])
         .find((issue): issue is string => typeof issue === "string" && !!issue);
       const action = issueId
         ? buildSuggestedToolAction({
@@ -277,8 +277,9 @@ const STRUCTURED_DATASETS = {
       traceUrl: traceUrlFor(event, session),
     }),
     suggestedActions(results, session) {
-      const profileUrl = results.find((row) => row.links.profileUrl)?.links
-        .profileUrl;
+      const profileUrl = results.find((row) => row.links["profileUrl"])?.links[
+        "profileUrl"
+      ];
       const reason = "Analyze the flamegraph for the first matching profile.";
       // Experimental sessions route profile URLs through get_sentry_resource.
       const profileAction = profileUrl
@@ -388,7 +389,7 @@ export function buildStructuredEventsResult(params: {
   eventData: FlexibleEventData[];
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   explorerUrl: string;
   sentryQuery: string;
   fields: string[];
@@ -449,7 +450,7 @@ export function buildStructuredTimeSeriesResult(params: {
   interval: string | null;
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   query: string;
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   url: string;

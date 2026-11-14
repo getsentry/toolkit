@@ -24,6 +24,7 @@ import {
   resolveOAuthScopeString,
 } from "../../src/lib/oauth.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 const knownScopeArb = constantFrom(...SENTRY_SCOPES);
 
@@ -228,20 +229,26 @@ describe("setup-code exchange", () => {
       expires_in: 3600,
       refresh_token: "refresh-token",
     };
-    const fetch = vi.fn().mockResolvedValue(Response.json(token));
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json(token));
     vi.stubGlobal("fetch", fetch);
     expect(
       await exchangeSetupCode("private-code", "https://sentry.example.com"),
     ).toEqual(token);
     expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = fetch.mock.calls[0];
+    const [url, init] = at(fetch.mock.calls, 0);
     expect(url).toBe("https://sentry.example.com/oauth/token/");
-    expect(init.redirect).toBe("error");
-    expect(init.body.get("grant_type")).toBe(
+    expect(init?.redirect).toBe("error");
+    const body = init?.body;
+    if (!(body instanceof URLSearchParams)) {
+      throw new Error("Expected a form-encoded token request body");
+    }
+    expect(body.get("grant_type")).toBe(
       "urn:sentry:params:oauth:grant-type:setup_code",
     );
-    expect(init.body.get("setup_code")).toBe("private-code");
-    expect(init.body.get("client_id")).toBeTruthy();
+    expect(body.get("setup_code")).toBe("private-code");
+    expect(body.get("client_id")).toBeTruthy();
   });
 
   test.each([

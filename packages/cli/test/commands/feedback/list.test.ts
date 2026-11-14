@@ -11,12 +11,8 @@ import type { SentryFeedback } from "../../../src/types/index.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -25,12 +21,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -39,16 +31,14 @@ import * as paginationDb from "../../../src/lib/db/pagination.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function sampleFeedback(
   overrides: Partial<SentryFeedback> = {},
@@ -64,7 +54,12 @@ function sampleFeedback(
     firstSeen: "2026-07-16T12:00:00Z",
     permalink:
       "https://sentry.io/organizations/test-org/feedback/?feedbackSlug=test-project%3A5146636313",
-    project: { id: "42", slug: "test-project", name: "Test Project" },
+    project: {
+      id: "42",
+      slug: "test-project",
+      name: "Test Project",
+      platform: null,
+    },
     metadata: {
       message: "The checkout button does not work",
       name: "Ada",
@@ -75,11 +70,11 @@ function sampleFeedback(
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
       commandPrefix: ["sentry", "feedback", "list"],
     },
@@ -131,7 +126,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -173,7 +168,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -218,7 +213,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, {
       status: "all",
       limit: 25,
@@ -246,7 +241,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -277,7 +272,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, {
       status: "unresolved",
       limit: 25,
@@ -298,7 +293,7 @@ describe("feedback list", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, {
         status: "unresolved",
@@ -314,7 +309,7 @@ describe("feedback list", () => {
 
 describe("feedback list: query flag parse", () => {
   const parseQuery = (
-    listCommand.parameters.flags!.query as { parse: (v: string) => string }
+    listCommand.parameters.flags!["query"] as { parse: (v: string) => string }
   ).parse;
 
   test("rewrites is: OR for the issues endpoint", () => {

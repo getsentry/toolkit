@@ -8,19 +8,23 @@
  * the func() body without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listCommand, parseSort } from "../../../src/commands/trace/list.js";
 import type { ProjectWithOrg } from "../../../src/lib/api-client.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -31,12 +35,8 @@ import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -47,21 +47,16 @@ import { ContextError, ResolutionError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
-
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
+import { loadCommand, at, must } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // validateLimit (shared utility from arg-parsing.ts)
@@ -120,8 +115,12 @@ describe("parseSort", () => {
 // ============================================================================
 
 describe("resolveProjectBoundFromArg", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   beforeEach(async () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -226,6 +225,8 @@ describe("resolveProjectBoundFromArg", () => {
   // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("uses auto-detect when no target provided", async () => {
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "detected-org",
+      projectDisplay: "detected-project",
       org: "detected-org",
       project: "detected-project",
     });
@@ -261,12 +262,20 @@ describe("resolveProjectBoundFromArg", () => {
 // ============================================================================
 
 describe("listCommand.func", () => {
-  let listTransactionsSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listTransactionsSpy: MockInstance<(typeof apiClient)["listTransactions"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   const sampleTraces: TransactionListItem[] = [
     {
@@ -288,11 +297,11 @@ describe("listCommand.func", () => {
   ];
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
         commandPrefix: ["sentry", "trace", "list"],
       },
@@ -330,7 +339,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -350,7 +359,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -369,7 +378,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -384,7 +393,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -406,7 +415,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 2, sort: "date", json: false, period: parsePeriod("7d") },
@@ -422,7 +431,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 100, sort: "date", json: false, period: parsePeriod("7d") },
@@ -435,10 +444,10 @@ describe("listCommand.func", () => {
   });
 
   test("uses singular 'trace' for single result", async () => {
-    listTransactionsSpy.mockResolvedValue({ data: [sampleTraces[0]] });
+    listTransactionsSpy.mockResolvedValue({ data: [at(sampleTraces, 0)] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -454,7 +463,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -488,7 +497,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -511,7 +520,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "duration", json: false, period: parsePeriod("7d") },
@@ -528,15 +537,15 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
       "test-org/test-project",
     );
 
-    const callArgs = listTransactionsSpy.mock.calls[0];
-    expect(callArgs[2].cursor).toBeUndefined();
+    const callArgs = at(listTransactionsSpy.mock.calls, 0);
+    expect(must(callArgs[2]).cursor).toBeUndefined();
   });
 
   test("shows 'try next page' hint when no traces on page but hasMore", async () => {
@@ -546,7 +555,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("7d") },
@@ -565,7 +574,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -587,7 +596,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: sampleTraces });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: true, period: parsePeriod("7d") },
@@ -605,7 +614,7 @@ describe("listCommand.func", () => {
     listTransactionsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("24h") },
@@ -628,7 +637,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 20, sort: "date", json: false, period: parsePeriod("30d") },

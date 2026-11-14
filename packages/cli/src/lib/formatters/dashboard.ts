@@ -37,7 +37,7 @@ import type { HumanRenderer } from "./output.js";
 import { isPlainOutput } from "./plain-detect.js";
 import { formatDashboardSavedTransformations } from "./saved-transformations.js";
 import { renderDashboardAsSixel } from "./sixel-dashboard.js";
-import { downsample, sparkline } from "./sparkline.js";
+import { downsample, downsampleFlags, sparkline } from "./sparkline.js";
 
 // ---------------------------------------------------------------------------
 // Data type yielded by dashboard view command
@@ -387,7 +387,11 @@ function formatBigNumberValue(value: number): string {
 // Sort helper: descending by value, "Other" always last
 // ---------------------------------------------------------------------------
 
-type BarItem = { label: string; total: number; unit?: string | null };
+type BarItem = {
+  label: string;
+  total: number;
+  unit?: string | null | undefined;
+};
 
 /** Sort items by value descending, "Other" pinned to end. */
 function sortBarItems(items: BarItem[]): BarItem[] {
@@ -499,6 +503,16 @@ function latestMeasured(values: (number | null)[]): number | null {
   return values.findLast((v) => v !== null) ?? null;
 }
 
+/** Index of the last measured value, or -1 when nothing was measured. */
+function latestMeasuredIndex(values: (number | null)[]): number {
+  return values.findLastIndex((v) => v !== null);
+}
+
+/** Whether any series flags the bucket at `index` as still being ingested. */
+function bucketIncomplete(data: TimeseriesResult, index: number): boolean {
+  return data.series.some((s) => s.values[index]?.incomplete === true);
+}
+
 /** Format a value with its unit, or a dash when nothing was measured. */
 function formatMeasured(value: number | null, unit?: string | null): string {
   return value === null ? "—" : formatWithUnit(value, unit);
@@ -525,20 +539,89 @@ function renderTimeseriesContent(
     const values = s.values.map((v) => v.value);
     const graph = sparkline(values, sparkWidth);
     const formatted = formatMeasured(latestMeasured(values), s.unit);
+    const incomplete = downsampleFlags(
+      s.values.map((v) => v.incomplete === true),
+      sparkWidth,
+    );
+    // Read the flag from the bucket the displayed value comes from: a null
+    // incomplete tail must not mark the earlier, complete reading.
+    const latestIncomplete =
+      s.values[latestMeasuredIndex(values)]?.incomplete === true;
     const label =
       s.label.length > maxLabelLen
         ? `${s.label.slice(0, maxLabelLen - 1)}…`
         : s.label.padEnd(maxLabelLen);
 
     if (isPlainOutput()) {
-      lines.push(`${label} ${graph} ${formatted}`);
+      const suffix = latestIncomplete ? ` ${INCOMPLETE_SUFFIX}` : "";
+      const tail = ` ${formatted}${suffix}`;
+      // The suffix is the only incomplete marker in plain mode. When the row
+      // is too wide, shrink the graph and then the label so it is not clipped.
+      const rowWidth = label.length + 1 + graph.length + tail.length;
+      const over = suffix ? Math.max(0, rowWidth - innerWidth) : 0;
+      const graphWidth = Math.max(1, graph.length - over);
+      const labelCut = over - (graph.length - graphWidth);
+      const fittedLabel = label.slice(0, Math.max(0, label.length - labelCut));
+      const fittedGraph = over > 0 ? sparkline(values, graphWidth) : graph;
+      lines.push(`${fittedLabel} ${fittedGraph}${tail}`);
     } else {
-      lines.push(
-        `${chalk.hex(COLORS.cyan)(label)} ${chalk.hex(COLORS.magenta)(graph)} ${chalk.bold(formatted)}`,
-      );
+      const coloredGraph = colorizeByFlags(graph, incomplete, {
+        normal: (text) => chalk.hex(COLORS.magenta)(text),
+        flagged: (text) => muted(text),
+      });
+      const value = latestIncomplete ? muted(formatted) : chalk.bold(formatted);
+      lines.push(`${chalk.hex(COLORS.cyan)(label)} ${coloredGraph} ${value}`);
     }
   }
   return lines;
+}
+
+/** Plain-mode marker for a latest value whose bucket is still being ingested. */
+const INCOMPLETE_SUFFIX = "(incomplete)";
+
+/**
+ * Color runs of a string by a parallel flag array.
+ *
+ * Adjacent characters with the same flag share one escape sequence, so a
+ * sparkline with an incomplete tail becomes two styled segments rather than
+ * one escape per character.
+ */
+function colorizeByFlags(
+  text: string,
+  flags: boolean[],
+  style: { normal: (s: string) => string; flagged: (s: string) => string },
+): string {
+  // Sparkline glyphs are single UTF-16 code units, so indexing is safe.
+  let out = "";
+  let run = "";
+  let runFlag = flags[0] ?? false;
+  for (let i = 0; i < text.length; i += 1) {
+    const flag = flags[i] ?? false;
+    if (flag !== runFlag) {
+      out += runFlag ? style.flagged(run) : style.normal(run);
+      run = "";
+      runFlag = flag;
+    }
+    run += text[i] ?? "";
+  }
+  if (run) {
+    out += runFlag ? style.flagged(run) : style.normal(run);
+  }
+  return out;
+}
+
+/**
+ * Per-bucket incomplete flags across every series, downsampled to the
+ * number of rendered columns. A column is flagged when any series has an
+ * incomplete bucket inside it.
+ */
+function incompleteColumns(data: TimeseriesResult, columns: number): boolean[] {
+  const bucketCount = data.series[0]?.values.length ?? 0;
+  const flags: boolean[] = [];
+  for (let i = 0; i < bucketCount; i += 1) {
+    flags.push(bucketIncomplete(data, i));
+  }
+  return downsampleFlags(flags, columns);
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,14 +1116,16 @@ function renderTimeseriesBarsContent(
     return [noDataLine()];
   }
 
-  const { values, timestamps, label, unit, latest, maxVal } = aggregated;
+  const { values, timestamps, label, unit, latest, latestIncomplete, maxVal } =
+    aggregated;
 
   // Header: series label + latest value
   const headerLabel = label.length > 20 ? `${label.slice(0, 18)}…` : label;
   const valStr = formatMeasured(latest, unit);
+  const plainSuffix = latestIncomplete ? ` ${INCOMPLETE_SUFFIX}` : "";
   const headerLine = isPlainOutput()
-    ? `${headerLabel}  ${valStr}`
-    : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${chalk.bold(valStr)}`;
+    ? `${headerLabel}  ${valStr}${plainSuffix}`
+    : `${chalk.hex(COLORS.cyan)(headerLabel)}  ${latestIncomplete ? muted(valStr) : chalk.bold(valStr)}`;
 
   const lines: string[] = [headerLine];
 
@@ -1053,6 +1138,7 @@ function renderTimeseriesBarsContent(
   const barHeight = Math.max(3, contentHeight - reservedLines);
   const maxBars = Math.max(1, chartWidth);
   const sampledTs = downsampleTimestamps(timestamps, maxBars);
+  const incomplete = incompleteColumns(data, maxBars);
 
   if (isMulti) {
     // Stacked multi-color bars: downsample each series independently. An
@@ -1071,6 +1157,7 @@ function renderTimeseriesBarsContent(
         barHeight,
         gutterWidth: gutterW,
         chartWidth,
+        incomplete,
       }),
     );
   } else {
@@ -1081,16 +1168,19 @@ function renderTimeseriesBarsContent(
         barHeight,
         gutterWidth: gutterW,
         chartWidth,
+        incomplete,
       }),
     );
   }
 
-  // Bottom axis with tick marks + time labels
+  // Bottom axis with tick marks + time labels; incomplete columns get a
+  // dashed axis segment so they stand out even without color.
   lines.push(
     ...buildTimeAxis({
       timestamps: sampledTs,
       chartWidth,
       gutterWidth: gutterW,
+      incomplete,
     }),
   );
 
@@ -1116,9 +1206,11 @@ type AggregatedTimeseries = {
   values: (number | null)[];
   timestamps: number[];
   label: string;
-  unit?: string | null;
+  unit?: string | null | undefined;
   /** Last measured value, or null when nothing was measured. */
   latest: number | null;
+  /** Whether the bucket `latest` comes from is still being ingested. */
+  latestIncomplete: boolean;
   maxVal: number;
 };
 
@@ -1127,7 +1219,14 @@ function aggregateTimeseriesValues(
 ): AggregatedTimeseries {
   const first = data.series[0];
   if (!first || first.values.length === 0) {
-    return { values: [], timestamps: [], label: "", latest: null, maxVal: 1 };
+    return {
+      values: [],
+      timestamps: [],
+      label: "",
+      latest: null,
+      latestIncomplete: false,
+      maxVal: 1,
+    };
   }
 
   const timestamps = first.values.map((v) => v.timestamp);
@@ -1141,6 +1240,7 @@ function aggregateTimeseriesValues(
       label: first.label,
       unit: first.unit,
       latest: latestMeasured(values),
+      latestIncomplete: bucketIncomplete(data, latestMeasuredIndex(values)),
       maxVal: Math.max(...values.filter((v) => v !== null), 1),
     };
   }
@@ -1165,6 +1265,7 @@ function aggregateTimeseriesValues(
     label,
     unit: first.unit,
     latest: latestMeasured(summed),
+    latestIncomplete: bucketIncomplete(data, latestMeasuredIndex(summed)),
     maxVal: Math.max(...summed.filter((v) => v !== null), 1),
   };
 }
@@ -1206,13 +1307,16 @@ function renderTimeBarRows(
     barHeight: number;
     gutterWidth: number;
     chartWidth: number;
+    /** Per-column flag for buckets still being ingested (drawn dimmed). */
+    incomplete?: boolean[];
   },
 ): string[] {
-  const { maxVal, barHeight, gutterWidth, chartWidth } = opts;
+  const { maxVal, barHeight, gutterWidth, chartWidth, incomplete } = opts;
   const plain = isPlainOutput();
   const colorFn = plain
     ? (s: string) => s
     : (s: string) => chalk.hex(COLORS.magenta)(s);
+  const dimFn = plain ? (s: string) => s : (s: string) => chalk.dim(s);
   const rows: string[] = [];
 
   // Scale bar width so bars fill the full chart area.
@@ -1237,7 +1341,8 @@ function renderTimeBarRows(
     });
     const parts = heights.map((h, col) => {
       const w = barWidth + (col < barRemainder ? 1 : 0);
-      return colorFn(buildTimeseriesBarColumn(h, row).repeat(w));
+      const column = colorFn(buildTimeseriesBarColumn(h, row).repeat(w));
+      return incomplete?.[col] ? dimFn(column) : column;
     });
     rows.push(`${yAxis}${parts.join("")}`);
   }
@@ -1289,9 +1394,11 @@ function renderStackedTimeBarRows(
     barHeight: number;
     gutterWidth: number;
     chartWidth: number;
+    /** Per-column flag for buckets still being ingested (drawn dimmed). */
+    incomplete?: boolean[];
   },
 ): string[] {
-  const { maxVal, barHeight, gutterWidth, chartWidth } = opts;
+  const { maxVal, barHeight, gutterWidth, chartWidth, incomplete } = opts;
   const plain = isPlainOutput();
   const numBuckets = stackedSeries[0]?.values.length ?? 0;
 
@@ -1339,7 +1446,7 @@ function renderStackedTimeBarRows(
     for (let col = 0; col < numBuckets; col += 1) {
       const w = barWidth + (col < barRemainder ? 1 : 0);
       const ch = buildStackedColumn(stackedHeights[col] ?? [], row, plain, w);
-      parts.push(ch);
+      parts.push(!plain && incomplete?.[col] ? chalk.dim(ch) : ch);
     }
     rows.push(`${yAxis}${parts.join("")}`);
   }
@@ -1483,12 +1590,14 @@ function buildTimeAxis(opts: {
   timestamps: number[];
   chartWidth: number;
   gutterWidth: number;
+  /** Per-column flag for buckets still being ingested (dashed axis). */
+  incomplete?: boolean[];
 }): string[] {
-  const { timestamps, chartWidth, gutterWidth } = opts;
+  const { timestamps, chartWidth, gutterWidth, incomplete } = opts;
   const plain = isPlainOutput();
 
   if (timestamps.length < 2) {
-    const axis = `${" ".repeat(gutterWidth - 1)}└${"─".repeat(chartWidth)}`;
+    const axis = `${" ".repeat(gutterWidth - 1)}└${buildAxisChars(chartWidth, incomplete).join("")}`;
     return [plain ? axis : muted(axis)];
   }
 
@@ -1513,10 +1622,15 @@ function buildTimeAxis(opts: {
 
   // Build axis line with ┬ at tick positions
   const tickPositions = new Set(labels.map((l) => l.pos));
-  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
-  const axisChars = new Array(chartWidth).fill("─");
+  const axisChars = buildAxisChars(chartWidth, incomplete);
   for (const pos of tickPositions) {
-    if (pos >= 0 && pos < chartWidth) {
+    // Keep the dashed marker when a tick lands on an incomplete column; a
+    // one-character column would otherwise lose its only marker.
+    if (
+      pos >= 0 &&
+      pos < chartWidth &&
+      axisChars[pos] !== INCOMPLETE_AXIS_CHAR
+    ) {
       axisChars[pos] = "┬";
     }
   }
@@ -1524,6 +1638,37 @@ function buildTimeAxis(opts: {
   const labelStr = `${" ".repeat(gutterWidth)}${placeLabelsOnLine(labels, chartWidth)}`;
 
   return [plain ? axisStr : muted(axisStr), plain ? labelStr : muted(labelStr)];
+}
+
+/** Axis glyph under columns whose bucket is still being ingested. */
+const INCOMPLETE_AXIS_CHAR = "┄";
+
+/**
+ * Build the horizontal axis characters, one per chart column.
+ *
+ * Columns map to the same bar widths the bar renderers use, so an incomplete
+ * bucket's dashed segment sits exactly under its bars.
+ */
+function buildAxisChars(chartWidth: number, incomplete?: boolean[]): string[] {
+  // oxlint-disable-next-line unicorn/no-new-array -- This explicitly allocates a fixed-length array.
+  const axisChars = new Array<string>(chartWidth).fill("─");
+  if (!incomplete || incomplete.length === 0) {
+    return axisChars;
+  }
+  const columns = incomplete.length;
+  const barWidth = Math.max(1, Math.floor(chartWidth / columns));
+  const barRemainder = chartWidth - barWidth * columns;
+  let pos = 0;
+  for (let col = 0; col < columns; col += 1) {
+    const w = barWidth + (col < barRemainder ? 1 : 0);
+    if (incomplete[col]) {
+      for (let i = pos; i < Math.min(pos + w, chartWidth); i += 1) {
+        axisChars[i] = INCOMPLETE_AXIS_CHAR;
+      }
+    }
+    pos += w;
+  }
+  return axisChars;
 }
 
 /**
@@ -1991,12 +2136,16 @@ function renderGrid(
 function renderHeader(data: DashboardViewData, termWidth: number): string[] {
   const lines: string[] = [];
   const plain = isPlainOutput();
+  const ingestionNote = describeIngestion(data);
 
   if (plain) {
     lines.push(data.title);
     let meta = `Period: ${data.period}`;
     if (data.environment?.length) {
       meta += `  Env: ${data.environment.join(", ")}`;
+    }
+    if (ingestionNote) {
+      meta += `  ${ingestionNote}`;
     }
     lines.push(meta);
     lines.push(data.url);
@@ -2007,12 +2156,56 @@ function renderHeader(data: DashboardViewData, termWidth: number): string[] {
     const env = data.environment?.length
       ? chalk.green(`env: ${data.environment.join(", ")}`)
       : "";
-    lines.push(`${title}  ${period}${env ? `  ${env}` : ""}`);
+    const note = ingestionNote ? `  ${muted(ingestionNote)}` : "";
+    lines.push(`${title}  ${period}${env ? `  ${env}` : ""}${note}`);
     lines.push(muted("─".repeat(termWidth)));
   }
 
   lines.push("");
   return lines;
+}
+
+/**
+ * One-line ingestion note for the dashboard header.
+ *
+ * Reports the largest ingestion delay any timeseries widget carries, or a
+ * generic note when buckets are flagged incomplete without a delay figure.
+ * Returns undefined when every bucket is complete.
+ */
+function describeIngestion(data: DashboardViewData): string | undefined {
+  let delay: number | undefined;
+  let anyIncomplete = false;
+  for (const widget of data.widgets) {
+    if (widget.data.type !== "timeseries") {
+      continue;
+    }
+    const reported = widget.data.ingestion?.delaySeconds;
+    if (reported !== undefined && (delay === undefined || reported > delay)) {
+      delay = reported;
+    }
+    if (widget.data.series.some((s) => s.values.some((v) => v.incomplete))) {
+      anyIncomplete = true;
+    }
+  }
+  const hint = `${INCOMPLETE_AXIS_CHAR} buckets may still be filling`;
+  if (delay !== undefined && delay > 0) {
+    return `Ingestion delay: ~${formatDelay(delay)} (${hint})`;
+  }
+  if (anyIncomplete) {
+    return `Ingestion delay (${hint})`;
+  }
+  return;
+}
+
+/** Format an ingestion delay as a short duration ("90s", "3m", "2h"). */
+function formatDelay(seconds: number): string {
+  if (seconds < 120) {
+    return `${Math.round(seconds)}s`;
+  }
+  if (seconds < 7200) {
+    return `${Math.round(seconds / 60)}m`;
+  }
+  return `${Math.round(seconds / 3600)}h`;
 }
 
 // ---------------------------------------------------------------------------

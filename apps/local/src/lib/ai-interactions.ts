@@ -22,7 +22,9 @@ function finishReason(value: unknown): string | undefined {
       : undefined;
   if (typeof decoded !== "string") return;
   const reason = decoded.trim();
-  return reason && !["[", "{", '"'].includes(reason[0]!) ? reason : undefined;
+  return reason && !["[", "{", '"'].includes(reason.charAt(0))
+    ? reason
+    : undefined;
 }
 
 function tokenCount(
@@ -36,14 +38,15 @@ function tokenCount(
     if (typeof number === "number" && Number.isFinite(number) && number >= 0)
       return number;
   }
+  return undefined;
 }
 
 function hasConversation(value: unknown): boolean {
-  const messages = record(value).messages ?? value;
+  const messages = record(value)["messages"] ?? value;
   return (
     Array.isArray(messages) &&
     messages.length > 0 &&
-    messages.every((message) => typeof record(message).role === "string")
+    messages.every((message) => typeof record(message)["role"] === "string")
   );
 }
 
@@ -71,14 +74,14 @@ export function inspectAiInteraction(
   const nodes = [root];
   const seen = new Set<string>();
   const pending = steps.toReversed().map((span) => ({ span, parent: root }));
-  while (pending.length) {
-    const { span, parent } = pending.pop()!;
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const { span, parent } = next;
     if (seen.has(span.id)) continue;
     seen.add(span.id);
     const node: InteractionNode = {
       payload: span.payload,
       children: [],
-      start: span.startTimestamp,
+      ...(span.startTimestamp !== undefined && { start: span.startTimestamp }),
     };
     parent.children.push(node);
     nodes.push(node);
@@ -170,7 +173,7 @@ export function inspectAiInteraction(
   const operation =
     data["gen_ai.operation.name"] ??
     data["vercel.ai.operationId"] ??
-    record(payload).op;
+    record(payload)["op"];
   if (typeof operation === "string" && operation)
     fields.set("Operation", operation);
   const agent = data["gen_ai.agent.name"];

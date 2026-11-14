@@ -10,10 +10,10 @@ import {
 import { getTextContent } from "../../test-utils/structured-content";
 import getTraceDetails from "./get-trace-details.js";
 
-const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
-const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+const originalOpenAIApiKey = process.env["OPENAI_API_KEY"];
+const originalAnthropicApiKey = process.env["ANTHROPIC_API_KEY"];
+const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+const originalEmbeddedAgentProvider = process.env["EMBEDDED_AGENT_PROVIDER"];
 
 /** Register the same handler on sentry.io and us.sentry.io (org fixture resolves region). */
 function httpGetRegional(
@@ -106,7 +106,7 @@ function buildTraceSpanNode({
 
 describe("get_trace_details", () => {
   beforeEach(() => {
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env["OPENAI_API_KEY"] = "test-key";
     Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
     Reflect.deleteProperty(process.env, "EMBEDDED_AGENT_PROVIDER");
@@ -116,25 +116,25 @@ describe("get_trace_details", () => {
     if (originalOpenAIApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     } else {
-      process.env.OPENAI_API_KEY = originalOpenAIApiKey;
+      process.env["OPENAI_API_KEY"] = originalOpenAIApiKey;
     }
 
     if (originalAnthropicApiKey === undefined) {
       Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     } else {
-      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+      process.env["ANTHROPIC_API_KEY"] = originalAnthropicApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalEmbeddedAgentProvider === undefined) {
       Reflect.deleteProperty(process.env, "EMBEDDED_AGENT_PROVIDER");
     } else {
-      process.env.EMBEDDED_AGENT_PROVIDER = originalEmbeddedAgentProvider;
+      process.env["EMBEDDED_AGENT_PROVIDER"] = originalEmbeddedAgentProvider;
     }
   });
 

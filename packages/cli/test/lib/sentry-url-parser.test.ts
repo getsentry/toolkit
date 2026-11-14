@@ -654,10 +654,10 @@ describe("applySentryUrlContext", () => {
   let originalSentryHost: string | undefined;
 
   beforeEach(async () => {
-    originalSentryUrl = process.env.SENTRY_URL;
-    originalSentryHost = process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
+    originalSentryUrl = process.env["SENTRY_URL"];
+    originalSentryHost = process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
     // Reset env-token-host capture so each test can re-pin based on the
     // SENTRY_HOST they set (or leave unset → SaaS default).
     const { resetEnvTokenHostForTesting } =
@@ -667,14 +667,14 @@ describe("applySentryUrlContext", () => {
 
   afterEach(async () => {
     if (originalSentryUrl !== undefined) {
-      process.env.SENTRY_URL = originalSentryUrl;
+      process.env["SENTRY_URL"] = originalSentryUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
     if (originalSentryHost !== undefined) {
-      process.env.SENTRY_HOST = originalSentryHost;
+      process.env["SENTRY_HOST"] = originalSentryHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     const { resetEnvTokenHostForTesting } =
       await import("../../src/lib/env-token-host.js");
@@ -684,10 +684,12 @@ describe("applySentryUrlContext", () => {
   test("writes env when non-SaaS URL matches token-scoped host", () => {
     // Pin env-token to the self-hosted instance via SENTRY_HOST before
     // calling captureEnvTokenHost() (implicit on first getEnvTokenHost call).
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    // Pin env-token to the self-hosted instance via SENTRY_HOST before
+    // calling captureEnvTokenHost() (implicit on first getEnvTokenHost call).
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     applySentryUrlContext("https://sentry.example.com");
-    expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_HOST"]).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_URL"]).toBe("https://sentry.example.com");
   });
 
   test("throws CliError for non-SaaS URL that does not match token host", () => {
@@ -696,56 +698,61 @@ describe("applySentryUrlContext", () => {
     expect(() => applySentryUrlContext("https://sentry.example.com")).toThrow(
       /does not match|sentry auth login --url/,
     );
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("does not set SENTRY_HOST or SENTRY_URL for SaaS (sentry.io)", () => {
     applySentryUrlContext("https://sentry.io");
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("does not set SENTRY_HOST or SENTRY_URL for SaaS subdomain (us.sentry.io)", () => {
     applySentryUrlContext("https://us.sentry.io");
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("throws on mismatch even when SENTRY_HOST is pre-set to a different host", () => {
     // Token scoped to existing.example.com; URL-arg points at sentry.other.com.
     // Primary guard refuses to re-scope by writing the new host — only
     // `sentry auth login --url` may change scope.
-    process.env.SENTRY_HOST = "https://existing.example.com";
-    process.env.SENTRY_URL = "https://existing.example.com";
+    // Token scoped to existing.example.com; URL-arg points at sentry.other.com.
+    // Primary guard refuses to re-scope by writing the new host — only
+    // `sentry auth login --url` may change scope.
+    process.env["SENTRY_HOST"] = "https://existing.example.com";
+    process.env["SENTRY_URL"] = "https://existing.example.com";
     expect(() => applySentryUrlContext("https://sentry.other.com")).toThrow(
       /does not match|sentry auth login --url/,
     );
     // Existing env left intact — throw happens before any write.
-    expect(process.env.SENTRY_HOST).toBe("https://existing.example.com");
-    expect(process.env.SENTRY_URL).toBe("https://existing.example.com");
+    expect(process.env["SENTRY_HOST"]).toBe("https://existing.example.com");
+    expect(process.env["SENTRY_URL"]).toBe("https://existing.example.com");
   });
 
   test("writes env for self-hosted URL with port when it matches token host", () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.internal:9000";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.internal:9000";
     applySentryUrlContext("https://sentry.acme.internal:9000");
-    expect(process.env.SENTRY_HOST).toBe("https://sentry.acme.internal:9000");
-    expect(process.env.SENTRY_URL).toBe("https://sentry.acme.internal:9000");
+    expect(process.env["SENTRY_HOST"]).toBe(
+      "https://sentry.acme.internal:9000",
+    );
+    expect(process.env["SENTRY_URL"]).toBe("https://sentry.acme.internal:9000");
   });
 
   test("clears both env vars when SaaS URL is detected", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
     applySentryUrlContext("https://sentry.io");
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 
   test("clears both env vars when SaaS subdomain is detected", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
     applySentryUrlContext("https://us.sentry.io");
-    expect(process.env.SENTRY_HOST).toBeUndefined();
-    expect(process.env.SENTRY_URL).toBeUndefined();
+    expect(process.env["SENTRY_HOST"]).toBeUndefined();
+    expect(process.env["SENTRY_URL"]).toBeUndefined();
   });
 });

@@ -48,7 +48,7 @@ const KNOWN_DEBUG_ID = "0f13a5da-412a-fbf7-c866-2048f3294f3d";
 /** Run `debug-files bundle-sources` and capture stdout + exit code. */
 async function runBundleSources(
   args: string[],
-): Promise<{ output: string; exitCode: number | undefined }> {
+): Promise<{ output: string; exitCode: NodeJS.Process["exitCode"] }> {
   let output = "";
   const mockContext: SentryContext = {
     process: { ...process, exitCode: undefined },

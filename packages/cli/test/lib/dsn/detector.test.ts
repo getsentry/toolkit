@@ -30,11 +30,11 @@ describe("DSN Detector (New Module)", () => {
     // Clear any cached DSN for the test directory
     clearDsnCache(testDir);
     // Clear SENTRY_DSN env var
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
   });
 
   afterEach(() => {
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
   });
 
   describe("detectDsn with caching", () => {
@@ -104,7 +104,8 @@ describe("DSN Detector (New Module)", () => {
       const codeDsn = "https://code@o222.ingest.sentry.io/222";
 
       // Set env var
-      process.env.SENTRY_DSN = envVarDsn;
+      // Set env var
+      process.env["SENTRY_DSN"] = envVarDsn;
 
       // Set up code file
       mkdirSync(join(testDir, "src"), { recursive: true });
@@ -124,7 +125,8 @@ describe("DSN Detector (New Module)", () => {
       const envFileDsn = "https://file@o222.ingest.sentry.io/222";
 
       // Set env var
-      process.env.SENTRY_DSN = envVarDsn;
+      // Set env var
+      process.env["SENTRY_DSN"] = envVarDsn;
 
       // Set up env file
       writeFileSync(join(testDir, ".env"), `SENTRY_DSN=${envFileDsn}`);
@@ -139,7 +141,8 @@ describe("DSN Detector (New Module)", () => {
       const envVarDsn = "https://var@o111.ingest.sentry.io/111";
 
       // Only set env var
-      process.env.SENTRY_DSN = envVarDsn;
+      // Only set env var
+      process.env["SENTRY_DSN"] = envVarDsn;
 
       // Should return env var DSN (lowest priority, but only one available)
       const result = await detectDsn(testDir);
@@ -152,7 +155,8 @@ describe("DSN Detector (New Module)", () => {
       const changedDsn = "https://changed@o222.ingest.sentry.io/222";
 
       // Only set env var
-      process.env.SENTRY_DSN = envVarDsn;
+      // Only set env var
+      process.env["SENTRY_DSN"] = envVarDsn;
 
       // First detection - should detect and cache
       const result1 = await detectDsn(testDir);
@@ -170,7 +174,8 @@ describe("DSN Detector (New Module)", () => {
       expect(result2?.source).toBe("env");
 
       // Change env var - should detect the change
-      process.env.SENTRY_DSN = changedDsn;
+      // Change env var - should detect the change
+      process.env["SENTRY_DSN"] = changedDsn;
       const result3 = await detectDsn(testDir);
       expect(result3?.raw).toBe(changedDsn);
       expect(result3?.source).toBe("env");
@@ -185,7 +190,8 @@ describe("DSN Detector (New Module)", () => {
       const codeDsn = "https://code@o222.ingest.sentry.io/222";
 
       // First, detect with only env var
-      process.env.SENTRY_DSN = envVarDsn;
+      // First, detect with only env var
+      process.env["SENTRY_DSN"] = envVarDsn;
       const result1 = await detectDsn(testDir);
       expect(result1?.raw).toBe(envVarDsn);
       expect(result1?.source).toBe("env");
@@ -302,7 +308,7 @@ describe("DSN Detector (New Module)", () => {
       const envVarDsn = "https://var@o111.ingest.sentry.io/111";
       const envFileDsn = "https://file@o222.ingest.sentry.io/222";
 
-      process.env.SENTRY_DSN = envVarDsn;
+      process.env["SENTRY_DSN"] = envVarDsn;
       writeFileSync(join(testDir, ".env"), `SENTRY_DSN=${envFileDsn}`);
 
       const result = await detectAllDsns(testDir);

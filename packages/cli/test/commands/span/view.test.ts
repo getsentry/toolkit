@@ -6,7 +6,15 @@
  */
 
 import { ArgumentParseError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   parseSpanViewInput,
   viewCommand,
@@ -15,12 +23,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -37,17 +41,14 @@ import { validateSpanId } from "../../../src/lib/hex-id.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parseTraceArgumentsInput } from "../../../src/lib/trace-target.js";
+import type { TraceSpan } from "../../../src/types/index.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 const VALID_SPAN_ID = "a1b2c3d4e5f67890";
@@ -251,7 +252,7 @@ type ViewFunc = (
 ) => Promise<void>;
 
 /** Minimal trace span tree for testing */
-function makeTraceSpan(spanId: string, children: unknown[] = []): unknown {
+function makeTraceSpan(spanId: string, children: TraceSpan[] = []): TraceSpan {
   return {
     span_id: spanId,
     parent_span_id: null,
@@ -268,9 +269,11 @@ function makeTraceSpan(spanId: string, children: unknown[] = []): unknown {
 
 describe("viewCommand.func", () => {
   let func: ViewFunc;
-  let getDetailedTraceSpy: ReturnType<typeof spyOn>;
-  let getSpanDetailsSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let getDetailedTraceSpy: MockInstance<(typeof apiClient)["getDetailedTrace"]>;
+  let getSpanDetailsSpy: MockInstance<(typeof apiClient)["getSpanDetails"]>;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgAndProject"]
+  >;
 
   function createContext() {
     const stdoutChunks: string[] = [];
@@ -299,11 +302,13 @@ describe("viewCommand.func", () => {
       .spyOn(apiClient, "getSpanDetails")
       .mockResolvedValue({
         itemId: "mock-span",
-        itemType: "span",
+        timestamp: "2023-11-14T22:13:20.000Z",
         attributes: [],
       });
     resolveOrgAndProjectSpy = vi.spyOn(resolveTarget, "resolveOrgAndProject");
     resolveOrgAndProjectSpy.mockResolvedValue({
+      orgDisplay: "test-org",
+      projectDisplay: "test-project",
       org: "test-org",
       project: "test-project",
     });

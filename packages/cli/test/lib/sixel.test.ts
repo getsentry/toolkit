@@ -194,23 +194,23 @@ describe("graphicsBanner", () => {
     const saved = {
       stdout: process.stdout.isTTY,
       stdin: process.stdin.isTTY,
-      noSixel: process.env.SENTRY_NO_SIXEL,
+      noSixel: process.env["SENTRY_NO_SIXEL"],
     };
     try {
       // TTY on both ends, but SENTRY_NO_SIXEL forces opt-out: the emit-path
       // guard must return undefined without emitting (and without probing).
       process.stdout.isTTY = true;
       process.stdin.isTTY = true;
-      process.env.SENTRY_NO_SIXEL = "1";
+      process.env["SENTRY_NO_SIXEL"] = "1";
       __resetSixelCache();
       expect(graphicsBanner(200)).toBeUndefined();
     } finally {
       process.stdout.isTTY = saved.stdout;
       process.stdin.isTTY = saved.stdin;
       if (saved.noSixel === undefined) {
-        delete process.env.SENTRY_NO_SIXEL;
+        delete process.env["SENTRY_NO_SIXEL"];
       } else {
-        process.env.SENTRY_NO_SIXEL = saved.noSixel;
+        process.env["SENTRY_NO_SIXEL"] = saved.noSixel;
       }
       __resetSixelCache();
     }
@@ -370,12 +370,12 @@ describe("optedOut", () => {
   const saved = {
     stdout: process.stdout.isTTY,
     stdin: process.stdin.isTTY,
-    TERM: process.env.TERM,
-    SENTRY_NO_SIXEL: process.env.SENTRY_NO_SIXEL,
-    SENTRY_NO_GRAPHICS: process.env.SENTRY_NO_GRAPHICS,
-    NO_COLOR: process.env.NO_COLOR,
-    SENTRY_PLAIN_OUTPUT: process.env.SENTRY_PLAIN_OUTPUT,
-    FORCE_COLOR: process.env.FORCE_COLOR,
+    TERM: process.env["TERM"],
+    SENTRY_NO_SIXEL: process.env["SENTRY_NO_SIXEL"],
+    SENTRY_NO_GRAPHICS: process.env["SENTRY_NO_GRAPHICS"],
+    NO_COLOR: process.env["NO_COLOR"],
+    SENTRY_PLAIN_OUTPUT: process.env["SENTRY_PLAIN_OUTPUT"],
+    FORCE_COLOR: process.env["FORCE_COLOR"],
   };
 
   const setEnv = (key: string, value: string | undefined): void => {

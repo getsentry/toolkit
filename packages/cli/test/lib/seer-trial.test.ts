@@ -5,7 +5,15 @@
  * isTrialEligible tests can simulate an interactive terminal.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 vi.mock("../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
 vi.mock("node:tty", async (importOriginal) => ({
@@ -83,10 +91,12 @@ describe("isTrialEligible", () => {
 });
 
 describe("promptAndStartTrial", () => {
-  let getProductTrialsSpy: ReturnType<typeof spyOn>;
-  let startProductTrialSpy: ReturnType<typeof spyOn>;
+  let getProductTrialsSpy: MockInstance<(typeof apiClient)["getProductTrials"]>;
+  let startProductTrialSpy: MockInstance<
+    (typeof apiClient)["startProductTrial"]
+  >;
   let promptSpy: ReturnType<typeof vi.fn>;
-  let loggerWithTagSpy: ReturnType<typeof spyOn>;
+  let loggerWithTagSpy: MockInstance<(typeof loggerModule.logger)["withTag"]>;
   let logDebugCalls: string[];
   let logInfoCalls: string[];
   let logWarnCalls: string[];

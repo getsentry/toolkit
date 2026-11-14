@@ -27,8 +27,14 @@ export function getErrorMessage(error: Error): string {
     // Try to parse JSON error response
     const jsonMatch = error.message.match(/\{.*\}/);
     if (jsonMatch) {
-      const data = JSON.parse(jsonMatch[0]);
-      if (data.error) {
+      const data: unknown = JSON.parse(jsonMatch[0]);
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "error" in data &&
+        typeof data.error === "string" &&
+        data.error
+      ) {
         return data.error;
       }
     }

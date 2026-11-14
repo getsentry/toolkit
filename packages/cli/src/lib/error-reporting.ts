@@ -229,19 +229,19 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
     reason,
   };
   if (error instanceof ApiError) {
-    attributes.api_status = error.status;
+    attributes["api_status"] = error.status;
     if (error.denialReason) {
-      attributes.api_denial_reason = error.denialReason;
+      attributes["api_denial_reason"] = error.denialReason;
     }
   }
   if (error instanceof AuthError) {
-    attributes.auth_reason = error.reason;
+    attributes["auth_reason"] = error.reason;
   }
   if (error instanceof SeerError) {
-    attributes.seer_reason = error.reason;
+    attributes["seer_reason"] = error.reason;
   }
   if (error instanceof ValidationError && error.field) {
-    attributes.validation_field = error.field;
+    attributes["validation_field"] = error.field;
   }
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.

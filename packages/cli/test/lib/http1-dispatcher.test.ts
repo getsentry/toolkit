@@ -64,11 +64,15 @@ describe("createHttp1Dispatcher", () => {
 
 describe("destroyHttp1Dispatcher", () => {
   test("destroys the dispatcher", async () => {
-    const dispatcher = new FakeAgent();
+    const agent = new FakeAgent();
+    global[GLOBAL_DISPATCHER_V2] = agent;
+    const dispatcher = createHttp1Dispatcher();
+    expect(dispatcher).toBeInstanceOf(FakeAgent);
 
     await destroyHttp1Dispatcher(dispatcher);
 
-    expect(dispatcher.destroyed).toBe(true);
+    expect(dispatcher).toHaveProperty("destroyed", true);
+    expect(agent.destroyed).toBe(false);
   });
 
   test("resolves for no dispatcher", async () => {

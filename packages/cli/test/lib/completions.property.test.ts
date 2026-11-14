@@ -18,6 +18,7 @@ import { proposeCompletions } from "@stricli/core";
 import { constantFrom, assert as fcAssert, property } from "fast-check";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { app, routes } from "../../src/app.js";
+import { buildContext } from "../../src/context.js";
 import generatedTargets from "../../src/generated/completion-targets.json";
 import {
   COMPLETION_VALUES,
@@ -32,14 +33,12 @@ import {
   generateZshCompletion,
 } from "../../src/lib/completions.js";
 import {
-  type CommandCompletions,
   extractCommandCompletions,
   extractRouteGroups,
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
-
-const generatedCommands: CommandCompletions = generatedTargets.commands;
+import { at } from "../helpers.js";
 
 // -- Arbitraries --
 
@@ -66,7 +65,8 @@ const completionContext = {
     },
     stdin: process.stdin,
   },
-  forCommand: () => ({}),
+  // Route completion never runs a command; the real builder only types it.
+  forCommand: buildContext(process).forCommand,
 };
 
 // -- Tests --
@@ -253,7 +253,7 @@ describe("proposeCompletions: Stricli integration", () => {
         continue;
       }
       // Pick the first subcommand's first character as prefix
-      const prefix = group.subcommands[0].name[0];
+      const prefix = at(group.subcommands, 0).name.charAt(0);
       const completions = await proposeCompletions(
         app,
         [group.name, prefix],
@@ -278,9 +278,9 @@ describe("proposeCompletions: Stricli integration", () => {
 
 describe("property: flag names", () => {
   test("hidden flags are excluded", () => {
-    for (const command of Object.values(generatedCommands)) {
+    for (const command of Object.values(generatedTargets.commands)) {
       // The global --log-level is hidden; the parser still accepts it
-      expect(command.flagNames ?? {}).not.toHaveProperty("--log-level");
+      expect(command.flagNames).not.toHaveProperty("--log-level");
     }
   });
 });
@@ -419,7 +419,7 @@ describe(
       );
       env = {
         ...process.env,
-        PATH: `${binDir}:${process.env.PATH}`,
+        PATH: `${binDir}:${process.env["PATH"]}`,
         SENTRY_CONFIG_DIR: join(root, "config"),
       };
     });
@@ -545,7 +545,7 @@ describe("complete.ts: generated completion targets", () => {
   });
 
   test("project create completes name:platform specs", () => {
-    expect(generatedCommands["project create"]?.positionals).toEqual([
+    expect(generatedTargets.commands["project create"].positionals).toEqual([
       PROJECT_SPEC_TARGET,
     ]);
   });

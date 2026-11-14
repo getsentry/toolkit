@@ -108,10 +108,11 @@ export async function patchRootAuthorizationServerMetadata(
   }
 
   try {
-    const metadata = (await response.clone().json()) as Record<string, unknown>;
+    const metadata = await response.clone().json<Record<string, unknown>>();
     const patched = {
       ...metadata,
       prompt_values_supported: SUPPORTED_PROMPT_VALUES,
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- deliberate compile-time toggle; see the TODO on the constant.
       ...(ADVERTISE_AUTHORIZATION_RESPONSE_ISS_PARAMETER_SUPPORTED
         ? { authorization_response_iss_parameter_supported: true }
         : {}),

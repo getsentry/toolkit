@@ -137,7 +137,7 @@ function isMissing(value: unknown): boolean {
 
 /** Whether `value` is what the tool's schema fills in for an omitted `key`. */
 function isDefaultValue(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   key: string,
   value: unknown,
 ): boolean {
@@ -154,7 +154,7 @@ function isDefaultValue(
  * equal to a default are left out to keep the retry short.
  */
 function formatRetry(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   rawParams: Record<string, unknown>,
   organizationSlug: string,
   context: ServerContext,
@@ -178,7 +178,7 @@ function formatRetry(
 }
 
 function formatMultipleOrganizationsError(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   rawParams: Record<string, unknown>,
   reachable: ReachableOrganizations,
   context: ServerContext,
@@ -225,13 +225,13 @@ export async function applyDefaultOrganization({
   rawParams,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   params: Record<string, unknown>;
   rawParams: Record<string, unknown>;
   context: ServerContext;
 }): Promise<Record<string, unknown>> {
-  const organizationSchema = tool.inputSchema.organizationSlug;
-  if (!organizationSchema || !isMissing(params.organizationSlug)) {
+  const organizationSchema = tool.inputSchema["organizationSlug"];
+  if (!organizationSchema || !isMissing(params["organizationSlug"])) {
     return params;
   }
   const isRequired = isOrganizationSlugRequired(organizationSchema);
@@ -276,9 +276,9 @@ export async function applyDefaultOrganization({
     if (
       only.regionUrl &&
       "regionUrl" in tool.inputSchema &&
-      isMissing(params.regionUrl)
+      isMissing(params["regionUrl"])
     ) {
-      defaulted.regionUrl = only.regionUrl;
+      defaulted["regionUrl"] = only.regionUrl;
     }
     return defaulted;
   }

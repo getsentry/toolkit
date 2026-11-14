@@ -50,10 +50,10 @@ const LOG_TABLE_COLS = ["ID", "Timestamp", "Level", "Message"] as const;
  */
 export type LogLike = {
   timestamp: string;
-  severity?: string | null;
-  message?: string | null;
+  severity?: string | null | undefined;
+  message?: string | null | undefined;
   /** Present on Explore/Events logs; absent on trace-logs (all rows share one trace). */
-  trace?: string | null;
+  trace?: string | null | undefined;
   /** Unique log entry ID from Explore/Events API (`sentry.item_id`). */
   "sentry.item_id"?: string;
   /** Unique log entry ID from trace-logs endpoint. */

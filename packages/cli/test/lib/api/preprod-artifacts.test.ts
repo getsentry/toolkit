@@ -177,7 +177,7 @@ describe("downloadBuildArtifact", () => {
     const init = customFetchMock.mock.calls.at(-1)?.[1] as {
       headers: Record<string, string>;
     };
-    expect(init.headers.Authorization).toBe("Bearer secret-token");
+    expect(init.headers["Authorization"]).toBe("Bearer secret-token");
   });
 
   test("rejects a malformed bearer before downloading a build or snapshot", async () => {
@@ -213,7 +213,7 @@ describe("downloadBuildArtifact", () => {
     const init = customFetchMock.mock.calls.at(-1)?.[1] as {
       headers: Record<string, string>;
     };
-    expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers["Authorization"]).toBeUndefined();
   });
 
   test("omits auth when no token is available", async () => {
@@ -229,7 +229,7 @@ describe("downloadBuildArtifact", () => {
     const init = customFetchMock.mock.calls.at(-1)?.[1] as {
       headers: Record<string, string>;
     };
-    expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers["Authorization"]).toBeUndefined();
   });
 
   test("throws ApiError on a non-2xx response", async () => {
@@ -304,11 +304,11 @@ describe("uploadBuild", () => {
       "https://us.sentry.io/api/0/projects/my-org/my-project/files/preprodartifacts/assemble/",
     );
     const body = await lastSdkRequestBody();
-    expect(body.checksum).toEqual(expect.any(String));
-    expect(Array.isArray(body.chunks)).toBe(true);
-    expect(body.build_configuration).toBe("Release");
-    expect(body.release_notes).toBe("notes");
-    expect(body.install_groups).toEqual(["qa", "beta"]);
+    expect(body["checksum"]).toEqual(expect.any(String));
+    expect(Array.isArray(body["chunks"])).toBe(true);
+    expect(body["build_configuration"]).toBe("Release");
+    expect(body["release_notes"]).toBe("notes");
+    expect(body["install_groups"]).toEqual(["qa", "beta"]);
     // Opted into transport retries: the poll loop re-sends the same body anyway.
     expect(getOrgSdkConfig).toHaveBeenCalledWith({ idempotent: true });
     // No missing chunks on the first (and only) response.
@@ -358,9 +358,9 @@ describe("uploadBuild", () => {
 
     const body = await lastSdkRequestBody();
     // Flattened alongside checksum/chunks — not nested under a "vcs" key.
-    expect(body.head_sha).toBe("abc");
-    expect(body.provider).toBe("github");
-    expect(body.pr_number).toBe(3);
+    expect(body["head_sha"]).toBe("abc");
+    expect(body["provider"]).toBe("github");
+    expect(body["pr_number"]).toBe(3);
     expect(body).not.toHaveProperty("vcs");
   });
 

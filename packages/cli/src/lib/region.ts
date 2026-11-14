@@ -27,6 +27,7 @@ import {
   normalizeHttpOrigin,
   normalizeRegionBaseUrl,
 } from "./sentry-urls.js";
+import { rethrow } from "./rethrow.js";
 
 /**
  * Promise cache for org region resolution, keyed by orgSlug.
@@ -153,7 +154,7 @@ async function resolveOrgRegionUncached(
     // Throw SDK errors so withAuthGuard can discriminate:
     // AuthError propagates, others fall back to default URL
     if (response.error !== undefined) {
-      throw response.error;
+      rethrow(response.error);
     }
 
     // Self-hosted instances may return a relative regionUrl (e.g. "/") which
@@ -244,6 +245,7 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
       return match.slug;
     }
   }
+  return undefined;
 }
 
 /**

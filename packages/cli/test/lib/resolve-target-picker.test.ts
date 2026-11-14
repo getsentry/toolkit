@@ -84,7 +84,7 @@ beforeEach(() => {
       "Test preload did not preserve the real fetch implementation",
     );
   }
-  process.env.SENTRY_URL = server.url;
+  process.env["SENTRY_URL"] = server.url;
   setAuthToken("test-picker-token");
   globalThis.fetch = realFetch;
 });

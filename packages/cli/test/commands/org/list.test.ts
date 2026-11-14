@@ -29,6 +29,7 @@ import {
   useEnvSandbox,
   useTestConfigDir,
 } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type ListFunc = (
   this: unknown,
@@ -123,7 +124,7 @@ function createContext() {
   return {
     context: {
       stdout: { write: vi.fn((s: string) => chunks.push(s)) },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     getOutput: () => chunks.join(""),
@@ -158,8 +159,8 @@ async function runListHuman(filter?: string): Promise<string> {
 
 function slugsWithAccount(entries: Record<string, unknown>[]): string[][] {
   return entries.map((e) => [
-    e.slug as string,
-    (e.account as { email?: string } | undefined)?.email ?? "",
+    e["slug"] as string,
+    (e["account"] as { email?: string } | undefined)?.email ?? "",
   ]);
 }
 
@@ -170,8 +171,8 @@ describe("org list with one stored account", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["alpha", "beta"]);
-    expect(entries.every((e) => e.account === undefined)).toBe(true);
+    expect(entries.map((e) => e["slug"])).toEqual(["alpha", "beta"]);
+    expect(entries.every((e) => e["account"] === undefined)).toBe(true);
     expect(requests).toEqual([`${SAAS} saas-token`]);
   });
 });
@@ -189,7 +190,7 @@ describe("org list across stored accounts", () => {
       ["alpha", "jane@example.com"],
       ["acme-internal", "jane@acme.com"],
     ]);
-    expect(entries[1]?.account).toEqual({
+    expect(entries[1]?.["account"]).toEqual({
       name: "jane@acme.com:sentry.acme.com",
       id: expect.any(String),
       email: "jane@acme.com",
@@ -299,11 +300,11 @@ describe("org list across stored accounts", () => {
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["saas-token"] = [org("alpha")];
     orgsByToken["acme-token"] = [org("acme-internal", ACME)];
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 
@@ -317,7 +318,7 @@ describe("org list across stored accounts", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["alpha"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["alpha"]);
     expect(requests).toEqual([`${SAAS} saas-token`]);
   });
 
@@ -331,7 +332,7 @@ describe("org list across stored accounts", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests).toEqual([`${ACME} acme-token`]);
     expect(getActiveAccountId()).toBe(saas);
   });
@@ -344,7 +345,7 @@ describe("org list across stored accounts", () => {
 
     const entries = await runList({ limit: 2 });
 
-    expect(entries.map((e) => e.slug)).toEqual(["alpha", "beta"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["alpha", "beta"]);
   });
 
   test("human output adds an ACCOUNT column", async () => {
@@ -377,7 +378,7 @@ describe("org list filter", () => {
     filter: string,
     flags: { limit?: number } = {},
   ): Promise<string[]> {
-    return (await runList(flags, filter)).map((e) => e.slug as string);
+    return (await runList(flags, filter)).map((e) => e["slug"] as string);
   }
 
   test("matches the slug or name, ignoring case", async () => {
@@ -436,22 +437,22 @@ describe("org list --account", () => {
 
     const entries = await runList({ account: "jane@acme.com" });
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
-    expect(entries[0]?.account).toBeUndefined();
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
+    expect(entries[0]?.["account"]).toBeUndefined();
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 
   test("uses the account's own token even when an env token is forced", async () => {
     addAccount("acme-token", ACME, "jane@acme.com");
     addAccount("saas-token", SAAS, "jane@example.com");
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     orgsByToken["acme-token"] = [org("acme-internal", ACME)];
     orgsByToken["env-token"] = [org("env-org")];
 
     const entries = await runList({ account: "jane@acme.com" });
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 
@@ -468,7 +469,7 @@ describe("org list --account", () => {
       account: "jane@example.com:sentry.acme.com",
     });
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests).toEqual([`${ACME} acme-token`]);
   });
 
@@ -523,7 +524,7 @@ describe("org list --account", () => {
 
 describe("org list with an env token", () => {
   test("lists it as one more account, first, fetched only on its own server", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     addAccount("acme-token", ACME, "jane@acme.com");
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["env-token"] = [org("ci-org")];
@@ -537,12 +538,12 @@ describe("org list with an env token", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual([
+    expect(entries.map((e) => e["slug"])).toEqual([
       "ci-org",
       "alpha",
       "acme-internal",
     ]);
-    expect(entries[0]?.account).toEqual({
+    expect(entries[0]?.["account"]).toEqual({
       name: "env:SENTRY_AUTH_TOKEN",
       id: "env:SENTRY_AUTH_TOKEN",
       email: "ci@example.com",
@@ -560,7 +561,7 @@ describe("org list with an env token", () => {
   });
 
   test("an org it shares with a login is listed under it, and commands then use it", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["env-token"] = [org("shared")];
     orgsByToken["saas-token"] = [org("shared"), org("alpha")];
@@ -573,14 +574,14 @@ describe("org list with an env token", () => {
       ["shared", ""],
       ["alpha", "jane@example.com"],
     ]);
-    expect(entries[0]?.account).toMatchObject({
+    expect(entries[0]?.["account"]).toMatchObject({
       name: "env:SENTRY_AUTH_TOKEN",
     });
     expect(getAuthToken()).toBe("env-token");
   });
 
   test("is labeled by its variable when the server doesn't say whose it is", async () => {
-    process.env.SENTRY_TOKEN = "env-token";
+    process.env["SENTRY_TOKEN"] = "env-token";
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["env-token"] = [org("ci-org")];
     orgsByToken["saas-token"] = [org("alpha")];
@@ -592,85 +593,85 @@ describe("org list with an env token", () => {
 
   test("uses its org auth token's server", async () => {
     const token = mintSntrysToken({ iat: 1, url: ACME, org: "ci-org" });
-    process.env.SENTRY_AUTH_TOKEN = token;
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = token;
+    process.env["SENTRY_URL"] = ACME;
     addAccount("acme-token", ACME, "jane@acme.com");
     orgsByToken[token] = [org("ci-org", ACME)];
     orgsByToken["acme-token"] = [org("acme-internal", ACME)];
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["ci-org", "acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["ci-org", "acme-internal"]);
     expect(requests).toContain(`${ACME} ${token}`);
     expect(requests.some((r) => r.startsWith(`${SAAS} `))).toBe(false);
   });
 
   test("leaves out a token on a self-hosted server only the env names", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_URL"] = ACME;
     addAccount("acme-token", ACME, "jane@acme.com");
     orgsByToken["env-token"] = [org("ci-org", ACME)];
     orgsByToken["acme-token"] = [org("acme-internal", ACME)];
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests.some((r) => r.includes("env-token"))).toBe(false);
   });
 
   test("an explicit server set after boot on another server leaves it out", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     getEnvTokenHost();
     addAccount("acme-token", ACME, "jane@acme.com");
     addAccount("saas-token", SAAS, "jane@example.com");
-    process.env.SENTRY_URL = ACME;
+    process.env["SENTRY_URL"] = ACME;
     orgsByToken["env-token"] = [org("ci-org")];
     orgsByToken["acme-token"] = [org("acme-internal", ACME)];
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["acme-internal"]);
     expect(requests.some((r) => r.includes("env-token"))).toBe(false);
   });
 
   test("alone, keeps the single-account output", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     orgsByToken["env-token"] = [org("ci-org")];
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
-    expect(entries[0]?.account).toBeUndefined();
+    expect(entries.map((e) => e["slug"])).toEqual(["ci-org"]);
+    expect(entries[0]?.["account"]).toBeUndefined();
   });
 
   test("forced, it is the only account listed", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["env-token"] = [org("ci-org")];
     orgsByToken["saas-token"] = [org("alpha")];
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["ci-org"]);
     expect(requests).toEqual([`${SAAS} env-token`]);
   });
 
   test("--account env:SENTRY_AUTH_TOKEN lists only its orgs", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env-token";
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["env-token"] = [org("ci-org")];
     orgsByToken["saas-token"] = [org("alpha")];
 
     const entries = await runList({ account: "env:SENTRY_AUTH_TOKEN" });
 
-    expect(entries.map((e) => e.slug)).toEqual(["ci-org"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["ci-org"]);
     expect(requests.some((r) => r.includes("saas-token"))).toBe(false);
   });
 
   test("is not an account when it came from .sentryclirc after boot", async () => {
     getEnvTokenHost();
-    process.env.SENTRY_AUTH_TOKEN = "rc-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "rc-token";
     addAccount("acme-token", ACME, "jane@acme.com");
     addAccount("saas-token", SAAS, "jane@example.com");
     orgsByToken["rc-token"] = [org("rc-org")];
@@ -679,7 +680,7 @@ describe("org list with an env token", () => {
 
     const entries = await runList();
 
-    expect(entries.map((e) => e.slug)).toEqual(["alpha", "acme-internal"]);
+    expect(entries.map((e) => e["slug"])).toEqual(["alpha", "acme-internal"]);
     expect(requests.some((r) => r.includes("rc-token"))).toBe(false);
   });
 });

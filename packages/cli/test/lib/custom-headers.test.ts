@@ -187,30 +187,30 @@ describe("getCustomHeaders", () => {
   let savedUrl: string | undefined;
 
   beforeEach(() => {
-    savedHeaders = process.env.SENTRY_CUSTOM_HEADERS;
-    savedHost = process.env.SENTRY_HOST;
-    savedUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_CUSTOM_HEADERS;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    savedHeaders = process.env["SENTRY_CUSTOM_HEADERS"];
+    savedHost = process.env["SENTRY_HOST"];
+    savedUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_CUSTOM_HEADERS"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     _resetCustomHeadersCache();
   });
 
   afterEach(() => {
     if (savedHeaders !== undefined) {
-      process.env.SENTRY_CUSTOM_HEADERS = savedHeaders;
+      process.env["SENTRY_CUSTOM_HEADERS"] = savedHeaders;
     } else {
-      delete process.env.SENTRY_CUSTOM_HEADERS;
+      delete process.env["SENTRY_CUSTOM_HEADERS"];
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (savedUrl !== undefined) {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
     _resetCustomHeadersCache();
   });
@@ -220,41 +220,41 @@ describe("getCustomHeaders", () => {
   });
 
   test("returns empty array when headers set but no SENTRY_HOST (SaaS mode)", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Test: value";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: value";
     expect(getCustomHeaders()).toEqual([]);
   });
 
   test("returns empty array when SENTRY_HOST is sentry.io", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Test: value";
-    process.env.SENTRY_HOST = "sentry.io";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: value";
+    process.env["SENTRY_HOST"] = "sentry.io";
     expect(getCustomHeaders()).toEqual([]);
   });
 
   test("returns empty array when SENTRY_HOST is subdomain of sentry.io", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Test: value";
-    process.env.SENTRY_HOST = "us.sentry.io";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: value";
+    process.env["SENTRY_HOST"] = "us.sentry.io";
     expect(getCustomHeaders()).toEqual([]);
   });
 
   test("returns parsed headers when SENTRY_HOST is self-hosted", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: abc123";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: abc123";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     expect(getCustomHeaders()).toEqual([["X-IAP-Token", "abc123"]]);
   });
 
   test("returns parsed headers when SENTRY_URL is self-hosted", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: abc123";
-    process.env.SENTRY_URL = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: abc123";
+    process.env["SENTRY_URL"] = "https://sentry.example.com";
     expect(getCustomHeaders()).toEqual([["X-IAP-Token", "abc123"]]);
   });
 
   test("sends custom headers to a claim-routed self-hosted instance", () => {
-    const previousToken = process.env.SENTRY_AUTH_TOKEN;
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    const previousToken = process.env["SENTRY_AUTH_TOKEN"];
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "https://sentry.example.com",
     });
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: scoped-value";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: scoped-value";
     resetEnvTokenHostForTesting();
     try {
       const trusted = new Headers();
@@ -266,30 +266,30 @@ describe("getCustomHeaders", () => {
       expect(other.get("X-IAP-Token")).toBeNull();
     } finally {
       if (previousToken === undefined) {
-        delete process.env.SENTRY_AUTH_TOKEN;
+        delete process.env["SENTRY_AUTH_TOKEN"];
       } else {
-        process.env.SENTRY_AUTH_TOKEN = previousToken;
+        process.env["SENTRY_AUTH_TOKEN"] = previousToken;
       }
       resetEnvTokenHostForTesting();
     }
   });
 
   test("env var takes priority over SQLite defaults", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Env: from-env";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Env: from-env";
     setDefaultHeaders("X-Db: from-db");
     expect(getCustomHeaders()).toEqual([["X-Env", "from-env"]]);
   });
 
   test("falls back to SQLite defaults when env var not set", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     setDefaultHeaders("X-Db: from-db");
     expect(getCustomHeaders()).toEqual([["X-Db", "from-db"]]);
   });
 
   test("caches parsed result across calls", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Cache: test";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Cache: test";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     const first = getCustomHeaders();
     const second = getCustomHeaders();
     // Same reference (cached)
@@ -310,23 +310,23 @@ describe("setCustomHeadersOverride", () => {
   let savedHost: string | undefined;
 
   beforeEach(() => {
-    savedHeaders = process.env.SENTRY_CUSTOM_HEADERS;
-    savedHost = process.env.SENTRY_HOST;
-    delete process.env.SENTRY_CUSTOM_HEADERS;
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    savedHeaders = process.env["SENTRY_CUSTOM_HEADERS"];
+    savedHost = process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_CUSTOM_HEADERS"];
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     _resetCustomHeadersCache();
   });
 
   afterEach(() => {
     if (savedHeaders !== undefined) {
-      process.env.SENTRY_CUSTOM_HEADERS = savedHeaders;
+      process.env["SENTRY_CUSTOM_HEADERS"] = savedHeaders;
     } else {
-      delete process.env.SENTRY_CUSTOM_HEADERS;
+      delete process.env["SENTRY_CUSTOM_HEADERS"];
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     _resetCustomHeadersCache();
   });
@@ -343,26 +343,26 @@ describe("setCustomHeadersOverride", () => {
   });
 
   test("takes precedence over SENTRY_CUSTOM_HEADERS", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Env: from-env";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Env: from-env";
     setCustomHeadersOverride({ "X-Option": "from-option" });
     expect(getCustomHeaders()).toEqual([["X-Option", "from-option"]]);
   });
 
   test("an empty map disables inherited env headers", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Env: from-env";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Env: from-env";
     setCustomHeadersOverride({});
     expect(getCustomHeaders()).toEqual([]);
   });
 
   test("clearing falls back to SENTRY_CUSTOM_HEADERS", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Env: from-env";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Env: from-env";
     setCustomHeadersOverride({ "X-Option": "from-option" });
     setCustomHeadersOverride(undefined);
     expect(getCustomHeaders()).toEqual([["X-Env", "from-env"]]);
   });
 
   test("is ignored when targeting SaaS", () => {
-    delete process.env.SENTRY_HOST;
+    delete process.env["SENTRY_HOST"];
     setCustomHeadersOverride({ "X-IAP-Token": "abc123" });
     expect(getCustomHeaders()).toEqual([]);
   });
@@ -410,31 +410,32 @@ describe("applyCustomHeaders", () => {
   let savedHost: string | undefined;
 
   beforeEach(async () => {
-    savedHeaders = process.env.SENTRY_CUSTOM_HEADERS;
-    savedHost = process.env.SENTRY_HOST;
+    savedHeaders = process.env["SENTRY_CUSTOM_HEADERS"];
+    savedHost = process.env["SENTRY_HOST"];
     _resetCustomHeadersCache();
     resetEnvTokenHostForTesting();
   });
 
   afterEach(async () => {
     if (savedHeaders !== undefined) {
-      process.env.SENTRY_CUSTOM_HEADERS = savedHeaders;
+      process.env["SENTRY_CUSTOM_HEADERS"] = savedHeaders;
     } else {
-      delete process.env.SENTRY_CUSTOM_HEADERS;
+      delete process.env["SENTRY_CUSTOM_HEADERS"];
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     _resetCustomHeadersCache();
     resetEnvTokenHostForTesting();
   });
 
   test("applies custom headers to Headers instance when request host matches", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Test: hello; X-Other: world";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: hello; X-Other: world";
     // Pin env-token scope to the self-hosted instance so headers apply.
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    // Pin env-token scope to the self-hosted instance so headers apply.
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
@@ -447,8 +448,8 @@ describe("applyCustomHeaders", () => {
   });
 
   test("does not clobber unrelated existing headers", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Test: hello";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Test: hello";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(
@@ -461,8 +462,8 @@ describe("applyCustomHeaders", () => {
   });
 
   test("no-op when no custom headers configured", () => {
-    delete process.env.SENTRY_CUSTOM_HEADERS;
-    delete process.env.SENTRY_HOST;
+    delete process.env["SENTRY_CUSTOM_HEADERS"];
+    delete process.env["SENTRY_HOST"];
 
     const headers = new Headers({ Accept: "application/json" });
     applyCustomHeaders(headers, "https://sentry.io/api/0/");
@@ -474,8 +475,9 @@ describe("applyCustomHeaders", () => {
 
   test("skips custom headers when request URL host does not match trusted host (CVE defense)", () => {
     // Self-hosted user has IAP token configured for their proxy:
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: secret";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    // Self-hosted user has IAP token configured for their proxy:
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     // A share URL from an attacker resolves to evil.example.com. Even though
     // applyCustomHeaders is on a non-SaaS codepath (isSelfHosted()==true for

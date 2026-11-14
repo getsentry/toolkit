@@ -12,6 +12,7 @@ import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { collectDsymEntries } from "../../../src/lib/build/dsyms.js";
 import { ValidationError } from "../../../src/lib/errors.js";
+import { at } from "../../helpers.js";
 
 const SYMBOL_PATH = "Contents/Resources/DWARF/MyApp";
 const ZIP_SYMBOL_PATH = `MyApp.app.dSYM/${SYMBOL_PATH}`;
@@ -60,7 +61,7 @@ describe("collectDsymEntries", () => {
   test("collects a direct bundle's files for streaming", async () => {
     const entries = await collect([await bundle()]);
     expect(entries.map((entry) => entry.relPath)).toEqual([ZIP_SYMBOL_PATH]);
-    expect(await readFile(entries[0].sourcePath, "utf8")).toBe("symbols");
+    expect(await readFile(at(entries, 0).sourcePath, "utf8")).toBe("symbols");
   });
 
   test("recognizes a direct bundle with trailing slashes", async () => {
@@ -96,7 +97,9 @@ describe("collectDsymEntries", () => {
       );
       const entries = await collect([path]);
       expect(entries.map((entry) => entry.relPath)).toEqual([ZIP_SYMBOL_PATH]);
-      expect(await readFile(entries[0].sourcePath, "utf8")).toBe("zip symbols");
+      expect(await readFile(at(entries, 0).sourcePath, "utf8")).toBe(
+        "zip symbols",
+      );
     },
   );
 
@@ -143,7 +146,7 @@ describe("collectDsymEntries", () => {
         zipSync({ [ZIP_SYMBOL_PATH]: symbols }, { level }),
       );
       const entries = await collect([path]);
-      expect(await readFile(entries[0].sourcePath)).toEqual(
+      expect(await readFile(at(entries, 0).sourcePath)).toEqual(
         Buffer.from(symbols),
       );
     },

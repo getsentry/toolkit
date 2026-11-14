@@ -110,55 +110,55 @@ describe("getConfiguredSentryUrl", () => {
   let originalUrl: string | undefined;
 
   beforeEach(() => {
-    originalHost = process.env.SENTRY_HOST;
-    originalUrl = process.env.SENTRY_URL;
+    originalHost = process.env["SENTRY_HOST"];
+    originalUrl = process.env["SENTRY_URL"];
   });
 
   afterEach(() => {
     // Restore original values (set or delete)
     if (originalHost !== undefined) {
-      process.env.SENTRY_HOST = originalHost;
+      process.env["SENTRY_HOST"] = originalHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (originalUrl !== undefined) {
-      process.env.SENTRY_URL = originalUrl;
+      process.env["SENTRY_URL"] = originalUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
   });
 
   test("returns undefined when no env vars set", () => {
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     expect(getConfiguredSentryUrl()).toBeUndefined();
   });
 
   test("normalizes bare SENTRY_HOST", () => {
-    process.env.SENTRY_HOST = "sentry.example.com";
-    delete process.env.SENTRY_URL;
+    process.env["SENTRY_HOST"] = "sentry.example.com";
+    delete process.env["SENTRY_URL"];
     expect(getConfiguredSentryUrl()).toBe("https://sentry.example.com");
   });
 
   test("normalizes bare SENTRY_URL", () => {
-    delete process.env.SENTRY_HOST;
-    process.env.SENTRY_URL = "sentry.example.com";
+    delete process.env["SENTRY_HOST"];
+    process.env["SENTRY_URL"] = "sentry.example.com";
     expect(getConfiguredSentryUrl()).toBe("https://sentry.example.com");
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", () => {
-    process.env.SENTRY_HOST = "host.example.com";
-    process.env.SENTRY_URL = "url.example.com";
+    process.env["SENTRY_HOST"] = "host.example.com";
+    process.env["SENTRY_URL"] = "url.example.com";
     expect(getConfiguredSentryUrl()).toBe("https://host.example.com");
   });
 
   test("preserves protocol when already present", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     expect(getConfiguredSentryUrl()).toBe("https://sentry.example.com");
   });
 
   test("preserves http:// for local development", () => {
-    process.env.SENTRY_HOST = "http://localhost:8000";
+    process.env["SENTRY_HOST"] = "http://localhost:8000";
     expect(getConfiguredSentryUrl()).toBe("http://localhost:8000");
   });
 });
