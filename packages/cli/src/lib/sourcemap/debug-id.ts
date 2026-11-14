@@ -59,9 +59,12 @@ const DEBUGID_REGISTRY = "(?:_sentryDebugIds|_debugIds)";
  * Indexed registry writes emitted by Sentry's bundler plugins, the legacy CLI
  * (`e._sentryDebugIds[n]="<id>"`), and Turbopack, which initializes the
  * registry inline: `(e._debugIds|| (e._debugIds={}))[n]="<id>"`.
+ *
+ * A string may be quoted with backticks as well as quotes: minifiers such as
+ * Oxc (Vite 8) rewrite a bundler plugin's `"<id>"` to a template literal.
  */
 const DEBUGID_REGISTRATION_RE = new RegExp(
-  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["']${DEBUGID_REGISTRY}["']\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'])(${DEBUGID_PATTERN})\\1`,
+  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["'\`]${DEBUGID_REGISTRY}["'\`]\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'\`])(${DEBUGID_PATTERN})\\1`,
   "g",
 );
 

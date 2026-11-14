@@ -638,6 +638,10 @@ describe.each(["external", "inline"] as const)(
 })();`,
       // Emitted by Next.js 16 with `turbopack.debugIds` (getsentry/toolkit#2189).
       turbopack: `;!function(){try { var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof global?global:"undefined"!=typeof window?window:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&((e._debugIds|| (e._debugIds={}))[n]="${debugId}")}catch(e){}}();`,
+      // A bundler plugin's snippet after Oxc minification in Vite 8, which
+      // rewrites its string literals to template literals
+      // (getsentry/toolkit#2267).
+      templateLiterals: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof window<\`u\`?window:typeof global<\`u\`?global:typeof self<\`u\`?self:{};var t=new e.Error().stack;t&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[t]=\`${debugId}\`,e._sentryDebugIdIdentifier=\`sentry-dbid-${debugId}\`)}catch{}})();`,
     };
 
     test.each(Object.keys(snippets))(
