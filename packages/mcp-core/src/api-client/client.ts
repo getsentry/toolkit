@@ -37,7 +37,6 @@ import {
   createClientKey,
   createProject,
   createTeam,
-  createUptimeMonitor,
   deleteMonitorEnvironment,
   deleteUptimeMonitor,
   getAuthenticatedUser,
@@ -2834,8 +2833,18 @@ export class SentryApiService {
   }
 
   /**
-   * Body fields verified from UptimeMonitorValidator (camelCase via
-   * CamelSnakeSerializer).
+   * Create an uptime monitor.
+   *
+   * POST /organizations/{org}/projects/{project}/detectors/
+   * Source: src/sentry/uptime/endpoints/validators.py (UptimeDomainCheckFailureValidator)
+   *
+   * Uses the detectors endpoint, the same one the Sentry UI uses, so Sentry
+   * records the acting user as the monitor's creator. The legacy
+   * POST /projects/{org}/{project}/uptime/ endpoint does not.
+   *
+   * The detector validator always enables new uptime detectors, so a
+   * `disabled` status is applied with a follow-up update. The monitor is then
+   * returned in the uptime monitor shape the other uptime tools use.
    */
   async createUptimeMonitor(
     params: {
@@ -2848,10 +2857,81 @@ export class SentryApiService {
     } & UptimeMonitorFields,
     opts?: RequestOptions,
   ): Promise<UptimeMonitor> {
-    return await createUptimeMonitor(
-      this.target(opts?.host),
-      params,
-      UptimeMonitorSchema,
+    const {
+      organizationSlug,
+      projectSlug,
+      name,
+      url,
+      intervalSeconds,
+      timeoutMs,
+      method,
+      headers,
+      body,
+      assertion,
+      status,
+      owner,
+      environment,
+      traceSampling,
+      responseCaptureEnabled,
+      recoveryThreshold,
+      downtimeThreshold,
+    } = params;
+    const dataSource: Record<string, unknown> = {
+      url,
+      intervalSeconds,
+      timeoutMs,
+    };
+    if (method !== undefined) dataSource.method = method;
+    if (headers !== undefined) dataSource.headers = headers;
+    if (body !== undefined) dataSource.body = body;
+    if (assertion !== undefined) dataSource.assertion = assertion;
+    if (traceSampling !== undefined) dataSource.traceSampling = traceSampling;
+    if (responseCaptureEnabled !== undefined) {
+      dataSource.responseCaptureEnabled = responseCaptureEnabled;
+    }
+
+    const config: Record<string, unknown> = {};
+    if (environment !== undefined) config.environment = environment;
+    if (recoveryThreshold !== undefined) {
+      config.recoveryThreshold = recoveryThreshold;
+    }
+    if (downtimeThreshold !== undefined) {
+      config.downtimeThreshold = downtimeThreshold;
+    }
+
+    const payload: Record<string, unknown> = {
+      type: "uptime_domain_failure",
+      name,
+      dataSources: [dataSource],
+      config,
+    };
+    if (owner !== undefined) payload.owner = owner;
+
+    const responseBody = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/projects/${projectSlug}/detectors/`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      opts,
+    );
+    const detector = DetectorSchema.parse(responseBody);
+
+    if (status === "disabled") {
+      return await this.updateUptimeMonitor(
+        {
+          organizationSlug,
+          projectSlug,
+          uptimeMonitorId: detector.id,
+          status,
+        },
+        opts,
+      );
+    }
+
+    return await this.getUptimeMonitorDetails(
+      { organizationSlug, projectSlug, uptimeMonitorId: detector.id },
+      opts,
     );
   }
 
