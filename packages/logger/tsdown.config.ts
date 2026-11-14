@@ -1,6 +1,8 @@
-import { defineConfig } from "tsdown";
+import { defineConfig, type UserConfig } from "tsdown";
 
-export default defineConfig({
+// tsconfig.json checks this file with `isolatedDeclarations`, which needs an
+// explicit type on the default export.
+const config: UserConfig = defineConfig({
   entry: ["src/index.ts"],
   format: ["cjs", "esm"],
   target: "node18",
@@ -13,3 +15,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
 });
+
+export default config;
