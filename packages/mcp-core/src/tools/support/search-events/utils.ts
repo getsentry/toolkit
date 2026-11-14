@@ -225,6 +225,42 @@ export function looksLikeSentrySearchSyntax(
   return false;
 }
 
+function unquotedFreeTextWordCount(
+  tokens: readonly ParseResultToken[],
+): number {
+  let count = 0;
+  for (const token of tokens) {
+    if (token.type === Token.FREE_TEXT && !token.quoted) {
+      count += token.text
+        .split(/\s+/)
+        .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+    } else if (token.type === Token.LOGIC_GROUP) {
+      count += unquotedFreeTextWordCount(token.inner);
+    }
+  }
+  return count;
+}
+
+/**
+ * Whether a query with Sentry filters is really a natural-language request,
+ * like `environment:production, count grouped by span.op`. Two or more
+ * unquoted free-text words count as prose; a single term such as
+ * `span.op:db SELECT` stays a literal search.
+ */
+export function mixesSearchSyntaxWithProse(
+  query?: string,
+  dataset?: SearchSyntaxDataset,
+): boolean {
+  const trimmedQuery = query?.trim().replace(LINE_BREAK_PATTERN, " ");
+  if (!trimmedQuery || !looksLikeSentrySearchSyntax(trimmedQuery, dataset)) {
+    return false;
+  }
+  const tokens = parseSearch(trimmedQuery, {
+    config: { allowRegex: dataset === "logs" },
+  });
+  return tokens ? unquotedFreeTextWordCount(tokens) >= 2 : false;
+}
+
 /**
  * Note for an untranslated query that ran as literal text and matched nothing.
  *
