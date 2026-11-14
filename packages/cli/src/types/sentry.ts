@@ -746,7 +746,7 @@ export type DetailedLogsResponse = InferOutput<
  * Mirrors Sentry's TraceItemResponseAttribute:
  * https://github.com/getsentry/sentry/blob/8a4f150b21b/static/app/views/explore/hooks/useTraceItemDetails.tsx#L85-L89
  *
- * The endpoint is EXPERIMENTAL and not yet in @sentry/api (getsentry/sentry-api-schema).
+ * The endpoint is EXPERIMENTAL and not yet in @sentry/api (getsentry/sentry static/packages/api).
  */
 export const TraceItemAttributeSchema = variant("type", [
   object({ name: string(), type: literal("str"), value: string() }),

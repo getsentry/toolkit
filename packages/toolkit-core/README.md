@@ -18,7 +18,7 @@ user-facing errors.
 The shared Sentry API client (request core, transport, retry policy,
 pagination, response cache policy, errors, and endpoint wrappers) is
 `@sentry/api/client` and `@sentry/api/client/endpoints`, published from
-[getsentry/sentry-api-schema](https://github.com/getsentry/sentry-api-schema#shared-client),
+[getsentry/sentry `static/packages/api`](https://github.com/getsentry/sentry/tree/master/static/packages/api#shared-client),
 so the CLI, the MCP, and other hosts share one copy. That includes bearer token
 validation, API URL assembly, and path identifier encoding.
 

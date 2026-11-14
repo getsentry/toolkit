@@ -50,7 +50,7 @@ tools.
 ### Where Endpoint Code Lives
 
 Endpoint wrappers live in the shared client, `@sentry/api/client/endpoints`
-([source](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/endpoints)),
+([source](https://github.com/getsentry/sentry/tree/master/static/packages/api/lib/api-client/endpoints)),
 so the CLI and the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
 core and the region origin), its parameters, and a response schema from the
 host, and returns what the schema parses:
@@ -284,7 +284,7 @@ helper and maps them to its own exit-coded `ApiError`. Endpoints that have
 moved to the shared client live in `@sentry/api/client/endpoints`;
 `SentryApiService` calls them with its Zod schemas, and a malformed response
 throws `ApiResponseValidationError`. See the
-[`@sentry/api` README](https://github.com/getsentry/sentry-api-schema#shared-client).
+[`@sentry/api` README](https://github.com/getsentry/sentry/tree/master/static/packages/api#shared-client).
 
 ### Automatic Retries
 
@@ -296,13 +296,13 @@ describes the behavior; the values live only in code, so read them there
 instead of copying them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`retry.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/retry.ts). In short, a
+  [`retry.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
 - Which writes count as idempotent: the ones the installed `@sentry/api`
   catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
   The matcher is in
-  [`idempotent-operations.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/idempotent-operations.ts);
+  [`idempotent-operations.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/idempotent-operations.ts);
   bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
