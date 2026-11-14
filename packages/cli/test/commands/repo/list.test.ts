@@ -226,7 +226,6 @@ describe("listCommand.func — explicit org/project (org-scoped with note)", () 
     // `<org>/<name>` tries repository names first; none is like `my-project`.
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: sampleRepos,
-      nextCursor: undefined,
     });
   });
 
@@ -443,7 +442,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("returns paginated JSON with hasMore=false when no nextCursor", async () => {
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: sampleRepos,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -497,7 +495,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output shows count without next-page hint when no more", async () => {
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: sampleRepos,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -512,7 +509,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output 'No repositories found' when empty and no cursor", async () => {
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -530,7 +526,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: sampleRepos,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -554,7 +549,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: sampleRepos,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -603,7 +597,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("passes perPage from limit to paginated call", async () => {
     listRepositoriesPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();

@@ -217,7 +217,6 @@ describe("listCommand.func", () => {
     resolveTargetSpy.mockResolvedValue({ org: "test-org", project: "cli" });
     listReplaysSpy.mockResolvedValue({
       data: sampleReplays,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();

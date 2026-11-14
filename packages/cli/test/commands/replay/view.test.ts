@@ -332,7 +332,7 @@ describe("viewCommand.func", () => {
   });
 
   test("opens the replay URL target from a replay URL with --web", async () => {
-    resolveTargetSpy.mockResolvedValue({ org: "test-org", project: undefined });
+    resolveTargetSpy.mockResolvedValue({ org: "test-org" });
     resolveReplaySpy.mockResolvedValue(sampleReplay());
 
     const { context } = createMockContext();

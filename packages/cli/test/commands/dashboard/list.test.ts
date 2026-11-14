@@ -187,7 +187,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -208,7 +207,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -228,7 +226,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -247,7 +244,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -281,7 +277,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -337,7 +332,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -361,7 +355,6 @@ describe("dashboard list command", () => {
       })
       .mockResolvedValueOnce({
         data: [DASHBOARD_C],
-        nextCursor: undefined,
       });
 
     const { context, stdoutWrite } = createMockContext();
@@ -386,7 +379,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B, DASHBOARD_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -405,7 +397,6 @@ describe("dashboard list command", () => {
     // directly (explicit/org-all mode), no resolveOrg call needed
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B, DASHBOARD_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -441,7 +432,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B, DASHBOARD_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -459,7 +449,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B, DASHBOARD_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -474,7 +463,6 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A, DASHBOARD_B, DASHBOARD_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -496,7 +484,6 @@ describe("dashboard list command", () => {
     // directly without calling resolveOrg
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [DASHBOARD_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -533,7 +520,6 @@ describe("dashboard list command", () => {
         { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
         DASHBOARD_B,
       ],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -551,7 +537,6 @@ describe("dashboard list command", () => {
       data: [
         { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
       ],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -570,7 +555,6 @@ describe("dashboard list command", () => {
         { id: "1", title: undefined as unknown as string, widgetDisplay: [] },
         DASHBOARD_B,
       ],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();

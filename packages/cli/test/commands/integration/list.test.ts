@@ -108,7 +108,6 @@ describe("integration list", () => {
   test("human output shows provider, ID, and per-org status", async () => {
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -126,7 +125,6 @@ describe("integration list", () => {
     listSpy.mockResolvedValue(sampleIntegrations);
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -140,7 +138,6 @@ describe("integration list", () => {
   test("<org>/<name> keeps integrations named like it, fuzzily", async () => {
     listPaginatedSpy.mockResolvedValue({
       data: sampleIntegrations,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -158,7 +155,6 @@ describe("integration list", () => {
     async (target) => {
       listPaginatedSpy.mockResolvedValue({
         data: sampleIntegrations,
-        nextCursor: undefined,
       });
 
       const { context, stdoutWrite } = createMockContext();

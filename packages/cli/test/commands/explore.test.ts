@@ -195,7 +195,6 @@ beforeEach(async () => {
   queryEventsSpy = vi.spyOn(apiClient, "queryEvents");
   queryEventsSpy.mockResolvedValue({
     data: MOCK_EVENTS_RESPONSE,
-    nextCursor: undefined,
   });
   queryEventsTimeSeriesSpy = vi.spyOn(apiClient, "queryEventsTimeSeries");
   queryEventsTimeSeriesSpy.mockResolvedValue(MOCK_TIME_SERIES_RESPONSE);
@@ -1840,7 +1839,6 @@ describe("sentry explore", () => {
             },
           },
         },
-        nextCursor: undefined,
       });
       const { context, getStdout } = createContext();
 
@@ -1911,7 +1909,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: { data: [], meta: { fields: {} } },
-        nextCursor: undefined,
       });
       const { context, getStdout } = createContext();
 
@@ -2073,7 +2070,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: MOCK_EVENTS_RESPONSE,
-        nextCursor: undefined,
       });
       const { context } = createContext();
 
@@ -2093,7 +2089,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: MOCK_EVENTS_RESPONSE,
-        nextCursor: undefined,
       });
       const { context } = createContext();
 

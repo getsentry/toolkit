@@ -93,7 +93,6 @@ describe("formatTraceView", () => {
     const result = formatTraceView({
       summary: mockSummary,
       spans: [],
-      spanTreeLines: undefined,
     });
 
     expect(result).toContain("abc123");

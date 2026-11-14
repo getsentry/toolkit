@@ -467,7 +467,6 @@ describe("issue list: org-as-project detection", () => {
   test("lists the organization when no project has that slug", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     // Two orgs returned from /organizations/, but getProject returns 404 for both.
@@ -537,7 +536,6 @@ describe("issue list: org-as-project detection", () => {
     });
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
     resolveCursorMock.mockReturnValue({
       cursor: undefined,
@@ -992,7 +990,6 @@ describe("issue list: org-all mode (cursor pagination)", () => {
 
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     // Raw cursor passthrough: resolveCursor returns the cursor string as-is
@@ -1108,7 +1105,6 @@ describe("issue list: org-all mode (cursor pagination)", () => {
   test("human output 'No issues found' when empty org-all", async () => {
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     const orgAllFunc = (await listCommand.loader()) as unknown as (
@@ -2230,7 +2226,6 @@ describe("issue list: comma-separated project slugs", () => {
     setProjectAliases({ stale: { orgSlug: "old-org", projectSlug: "old" } });
     listIssuesAllPagesMock.mockResolvedValue({
       issues: [],
-      nextCursor: undefined,
     });
 
     const { context, stdout } = createContext();

@@ -171,7 +171,6 @@ describe("dashboard revisions command", () => {
   test("outputs JSON envelope with { data, hasMore, hasPrev } when --json", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A, REVISION_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -192,7 +191,6 @@ describe("dashboard revisions command", () => {
   test("outputs { data: [], hasMore: false } when no revisions exist", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -211,7 +209,6 @@ describe("dashboard revisions command", () => {
   test("outputs human-readable table with column headers", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A, REVISION_B],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -228,7 +225,6 @@ describe("dashboard revisions command", () => {
   test("shows empty state message when no revisions exist", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -277,7 +273,6 @@ describe("dashboard revisions command", () => {
     hasPreviousPageSpy.mockReturnValue(true);
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_B, REVISION_C],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -319,7 +314,6 @@ describe("dashboard revisions command", () => {
   test("uses dashboard ID from positional argument", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -337,7 +331,6 @@ describe("dashboard revisions command", () => {
   test("two args parses target + dashboard correctly", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -350,7 +343,6 @@ describe("dashboard revisions command", () => {
   test("resolves dashboard by title", async () => {
     listDashboardRevisionsPaginatedSpy.mockResolvedValue({
       data: [REVISION_A],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();

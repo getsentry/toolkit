@@ -94,7 +94,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Performance");
@@ -104,7 +103,6 @@ describe("resolveDashboardId", () => {
   test("title match is case-insensitive", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "10", title: "Errors Overview" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "errors overview");
@@ -117,7 +115,6 @@ describe("resolveDashboardId", () => {
         { id: "default-overview", title: "General" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "default-overview");
@@ -127,7 +124,6 @@ describe("resolveDashboardId", () => {
   test("ID match is case-insensitive", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "default-overview", title: "General" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Default-Overview");
@@ -140,7 +136,6 @@ describe("resolveDashboardId", () => {
         { id: "perf", title: "Performance Dashboard" },
         { id: "30", title: "perf" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "perf");
@@ -150,7 +145,6 @@ describe("resolveDashboardId", () => {
   test("title match still works when no ID matches", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "default-overview", title: "General" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "General");
@@ -163,7 +157,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     try {
@@ -182,7 +175,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     try {
@@ -200,7 +192,6 @@ describe("resolveDashboardId", () => {
   test("no dashboards at all shows empty org message", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     try {
@@ -220,7 +211,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: undefined as unknown as string },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Performance");
@@ -230,7 +220,6 @@ describe("resolveDashboardId", () => {
   test("undefined title dashboards are collected as '(untitled)' in suggestions", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "10", title: undefined as unknown as string }],
-      nextCursor: undefined,
     });
 
     try {

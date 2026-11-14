@@ -271,7 +271,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -301,7 +300,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("translates query shorthand when --query is set", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -327,7 +326,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("requests discovered typed attribute keys intact through --fields", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
     const { context } = createContext();
 
     await func.call(
@@ -374,7 +373,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("uses explicit org/project when target is provided", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -412,7 +411,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context } = createContext();
@@ -506,7 +504,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("passes statsPeriod to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -540,7 +538,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -571,7 +568,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -607,7 +603,6 @@ describe("listCommand.func (trace mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -630,7 +625,7 @@ describe("listCommand.func (trace mode)", () => {
   });
 
   test("trace mode passes allProjects: true to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -732,7 +727,6 @@ describe("listCommand.func (project mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -755,7 +749,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("uses explicit org/project in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -784,7 +778,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("translates query in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -857,7 +851,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("passes statsPeriod in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 
@@ -894,7 +888,6 @@ describe("listCommand.func (project mode)", () => {
           trace: VALID_TRACE_ID,
         },
       ],
-      nextCursor: undefined,
     });
 
     const { context, getStdout } = createContext();
@@ -953,7 +946,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("shows 'No spans matched' when empty in project mode", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context, getStdout } = createContext();
 
@@ -973,7 +966,7 @@ describe("listCommand.func (project mode)", () => {
   });
 
   test("project mode does not pass allProjects to listSpans", async () => {
-    listSpansSpy.mockResolvedValue({ data: [], nextCursor: undefined });
+    listSpansSpy.mockResolvedValue({ data: [] });
 
     const { context } = createContext();
 

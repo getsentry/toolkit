@@ -232,7 +232,6 @@ describe("listCommand.func — explicit org/project", () => {
         data: sampleTeams.filter(
           (team) => !opts?.query || team.slug.includes(opts.query),
         ),
-        nextCursor: undefined,
       }),
     );
 
@@ -250,7 +249,6 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockRejectedValue(new ApiError("Not found", 404));
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -419,7 +417,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("returns paginated JSON with hasMore=false when no nextCursor", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -471,7 +468,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output shows count without next-page hint when no more", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -486,7 +482,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output 'No teams found' when empty and no cursor", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
@@ -504,7 +499,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -528,7 +522,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -577,7 +570,6 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("passes perPage from limit to paginated call", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
@@ -602,7 +594,6 @@ describe("listCommand.func — name filter", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
   });
 

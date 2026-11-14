@@ -64,13 +64,13 @@ describe("resolveDsn", () => {
 
   test("SENTRY_DSN env var used when no flag", () => {
     process.env["SENTRY_DSN"] = SAAS_DSN;
-    const result = resolveDsn({ dsn: undefined });
+    const result = resolveDsn({});
     expect(result).toBe(SAAS_DSN);
   });
 
   test("returns undefined when neither flag nor env set", () => {
     delete process.env["SENTRY_DSN"];
-    const result = resolveDsn({ dsn: undefined });
+    const result = resolveDsn({});
     expect(result).toBeUndefined();
   });
 
@@ -81,7 +81,7 @@ describe("resolveDsn", () => {
 
   test("trims whitespace from SENTRY_DSN env var", () => {
     process.env["SENTRY_DSN"] = `\n${SAAS_DSN}\n`;
-    const result = resolveDsn({ dsn: undefined });
+    const result = resolveDsn({});
     expect(result).toBe(SAAS_DSN);
   });
 });

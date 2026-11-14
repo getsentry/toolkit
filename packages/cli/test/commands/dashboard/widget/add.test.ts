@@ -171,7 +171,7 @@ describe("dashboard widget add", () => {
       resolveOrgOnlyTargetSpy.mockResolvedValue("my-org");
       const listDashboardsSpy = vi
         .spyOn(apiClient, "listDashboardsPaginated")
-        .mockResolvedValue({ data: [], nextCursor: undefined });
+        .mockResolvedValue({ data: [] });
       const { context, stdoutWrite } = createMockContext();
       const func = await loadCommand(addCommand);
 

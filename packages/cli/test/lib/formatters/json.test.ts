@@ -521,7 +521,7 @@ describe("writeJsonList", () => {
   test("with undefined fields: outputs full items (no filtering)", () => {
     const { writer, parsed } = capture();
     const items = [{ id: 1, title: "Bug", extra: true }];
-    writeJsonList(writer, items, { hasMore: false, fields: undefined });
+    writeJsonList(writer, items, { hasMore: false });
     const result = parsed() as Record<string, unknown>;
     expect(result["data"]).toEqual(items);
   });
