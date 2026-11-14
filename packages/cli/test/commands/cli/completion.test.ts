@@ -19,7 +19,7 @@ import type { SentryContext } from "../../../src/context.js";
 async function runCompletion(
   args: string[],
   shellEnv?: string,
-): Promise<{ output: string; exitCode: number | undefined }> {
+): Promise<{ output: string; exitCode: NodeJS.Process["exitCode"] }> {
   let output = "";
   const env = { ...process.env, SHELL: shellEnv };
   const mockContext: SentryContext = {

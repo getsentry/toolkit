@@ -51,7 +51,7 @@ const BREAKPAD_NO_SOURCES = [
 /** Run `debug-files print-sources` and capture stdout + exit code. */
 async function runPrintSources(
   args: string[],
-): Promise<{ output: string; exitCode: number | undefined }> {
+): Promise<{ output: string; exitCode: NodeJS.Process["exitCode"] }> {
   let output = "";
   const mockContext: SentryContext = {
     process: { ...process, exitCode: undefined },

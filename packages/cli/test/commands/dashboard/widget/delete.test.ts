@@ -40,7 +40,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand, at } from "../../../helpers.js";
+import { loadCommand, at, rejection } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -171,9 +171,9 @@ describe("dashboard widget delete", () => {
     const { context } = createMockContext();
     const func = await loadCommand(deleteCommand);
 
-    const err = await func
-      .call(context, { json: false, yes: true }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, yes: true }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--index or --title");
   });
@@ -182,9 +182,9 @@ describe("dashboard widget delete", () => {
     const { context } = createMockContext();
     const func = await loadCommand(deleteCommand);
 
-    const err = await func
-      .call(context, { json: false, yes: true, index: 99 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, yes: true, index: 99 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("out of range");
   });

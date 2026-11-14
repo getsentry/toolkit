@@ -19,7 +19,10 @@ useTestConfigDir("bash-hook-");
  */
 async function runBashHook(
   args: string[],
-): Promise<{ output: string; exitCode: number }> {
+): Promise<{
+  output: string;
+  exitCode: NonNullable<NodeJS.Process["exitCode"]>;
+}> {
   let output = "";
   const mockContext: SentryContext = {
     process: {

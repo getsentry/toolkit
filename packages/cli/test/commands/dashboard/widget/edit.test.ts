@@ -40,7 +40,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand, at, must } from "../../../helpers.js";
+import { loadCommand, at, must, rejection } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -160,9 +160,13 @@ describe("dashboard widget edit", () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
 
-    const err = await func
-      .call(context, { json: false, index: 0, "new-title": "Renamed" }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(
+        context,
+        { json: false, index: 0, "new-title": "Renamed" },
+        "123",
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--display");
     expect(updateDashboardSpy).not.toHaveBeenCalled();
@@ -199,9 +203,9 @@ describe("dashboard widget edit", () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
 
-    const err = await func
-      .call(context, { json: false, display: "line" }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, display: "line" }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--index or --title");
   });
@@ -210,9 +214,13 @@ describe("dashboard widget edit", () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
 
-    const err = await func
-      .call(context, { json: false, index: 0, query: ["bogus_func"] }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(
+        context,
+        { json: false, index: 0, query: ["bogus_func"] },
+        "123",
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Unknown aggregate function");
   });
@@ -382,9 +390,9 @@ describe("dashboard widget edit", () => {
   test("throws ValidationError for col out of range", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
-    const err = await func
-      .call(context, { json: false, index: 0, col: 6 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, index: 0, col: 6 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--col");
   });
@@ -392,9 +400,9 @@ describe("dashboard widget edit", () => {
   test("throws ValidationError for negative width", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
-    const err = await func
-      .call(context, { json: false, index: 0, width: 0 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, index: 0, width: 0 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--width");
   });
@@ -423,9 +431,9 @@ describe("dashboard widget edit", () => {
     });
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
-    const err = await func
-      .call(context, { json: false, index: 0, col: 4 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, index: 0, col: 4 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("overflows the grid");
   });
@@ -433,9 +441,9 @@ describe("dashboard widget edit", () => {
   test("throws ValidationError when col + width overflows grid", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(editCommand);
-    const err = await func
-      .call(context, { json: false, index: 0, col: 4, width: 4 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, index: 0, col: 4, width: 4 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("overflows the grid");
   });

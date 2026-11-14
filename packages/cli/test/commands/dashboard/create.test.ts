@@ -38,7 +38,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
-import { parseFailure, loadCommand } from "../../helpers.js";
+import { parseFailure, loadCommand, rejection } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,9 @@ describe("dashboard create", () => {
     const { context } = createMockContext();
     const func = await loadCommand(createCommand);
 
-    const err = await func.call(context, { json: false }).catch(parseFailure);
+    const err = parseFailure(
+      await rejection(func.call(context, { json: false })),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Dashboard title is required");
     expect(createDashboardSpy).not.toHaveBeenCalled();

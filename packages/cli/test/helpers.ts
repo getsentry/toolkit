@@ -441,3 +441,19 @@ export function must<T>(value: T | null | undefined, what = "a value"): T {
   }
   return value;
 }
+
+/**
+ * The error `promise` rejects with, failing the test when it resolves or
+ * rejects with something other than an Error.
+ */
+export async function rejection(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new Error(`Expected an Error rejection, but got ${String(error)}`);
+  }
+  throw new Error("Expected the promise to reject, but it resolved");
+}

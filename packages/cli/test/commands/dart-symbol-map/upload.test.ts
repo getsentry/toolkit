@@ -31,7 +31,11 @@ afterEach(async () => {
  */
 async function runUpload(
   args: string[],
-): Promise<{ output: string; exitCode: number | undefined; error?: string }> {
+): Promise<{
+  output: string;
+  exitCode: NodeJS.Process["exitCode"];
+  error?: string;
+}> {
   let output = "";
   let error = "";
   const mockContext: SentryContext = {

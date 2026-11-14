@@ -124,7 +124,11 @@ async function writeIl2cppFixture(): Promise<void> {
 /** Run `debug-files upload` and capture stdout + exit code. */
 async function runUpload(
   args: string[],
-): Promise<{ output: string; error: string; exitCode: number | undefined }> {
+): Promise<{
+  output: string;
+  error: string;
+  exitCode: NodeJS.Process["exitCode"];
+}> {
   let output = "";
   let error = "";
   const mockContext: SentryContext = {

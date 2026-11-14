@@ -41,7 +41,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand, at, must } from "../../../helpers.js";
+import { loadCommand, at, must, rejection } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -248,9 +248,9 @@ describe("dashboard widget add", () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(context, { json: false, display: "line" }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, display: "line" }, "123"),
+    );
     expect(err).toBeInstanceOf(ArgumentParseError);
     const { exception } = err as ArgumentParseError;
     expect(exception).toBeInstanceOf(ValidationError);
@@ -264,14 +264,14 @@ describe("dashboard widget add", () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "invalid_type" },
         "123",
         "Bad Widget",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Invalid --display");
   });
@@ -280,14 +280,14 @@ describe("dashboard widget add", () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["not_a_function"] },
         "123",
         "Bad Widget",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("Unknown aggregate function");
   });
@@ -412,8 +412,8 @@ describe("dashboard widget add", () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
 
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         {
           json: false,
@@ -423,8 +423,8 @@ describe("dashboard widget add", () => {
         },
         "123",
         "Bad",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
 
     expect(err).toBeInstanceOf(ValidationError);
     // Error message surfaces the normalized (lowercased) value.
@@ -509,14 +509,14 @@ describe("dashboard widget add", () => {
   test("throws ValidationError for width > 6", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["count"], width: 7 },
         "123",
         "Too Wide",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--width");
   });
@@ -525,14 +525,14 @@ describe("dashboard widget add", () => {
     // table display defaults to w=6, so --col 1 would produce x=1 + w=6 = 7 > 6
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "table", query: ["count"], col: 1 },
         "123",
         "Wide Table",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("overflows the grid");
   });
@@ -540,14 +540,14 @@ describe("dashboard widget add", () => {
   test("throws ValidationError for negative row", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         { json: false, display: "line", query: ["count"], row: -1 },
         "123",
         "Bad Y",
-      )
-      .catch((e: Error) => e);
+      ),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--row");
   });
@@ -695,8 +695,8 @@ describe("dashboard widget add", () => {
   test("--layout invalid rejects with ValidationError", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(addCommand);
-    const err = await func
-      .call(
+    const err = await rejection(
+      func.call(
         context,
         {
           json: false,
@@ -706,8 +706,8 @@ describe("dashboard widget add", () => {
         },
         "123",
         "Bad Layout",
-      )
-      .catch((e: unknown) => e);
+      ),
+    );
 
     expect(err).toBeInstanceOf(ValidationError);
     expect((err as ValidationError).message).toContain("--layout");

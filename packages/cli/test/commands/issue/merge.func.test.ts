@@ -45,7 +45,7 @@ import {
 } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, rejection } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
@@ -109,9 +109,7 @@ describe("mergeCommand.func()", () => {
   test("rejects when fewer than 2 issues are provided (0 positionals, no --into)", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false })
-      .catch((e: Error) => e);
+    const err = await rejection(func.call(context, { json: false }));
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -121,9 +119,7 @@ describe("mergeCommand.func()", () => {
   test("rejects when 1 positional is given without --into (shows --into hint)", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false }, "CLI-A")
-      .catch((e: Error) => e);
+    const err = await rejection(func.call(context, { json: false }, "CLI-A"));
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -134,9 +130,9 @@ describe("mergeCommand.func()", () => {
   test("a malformed issue fails to parse, before any issue is resolved", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "my-org/")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "my-org/"),
+    );
 
     expect(err).toBeInstanceOf(ArgumentParseError);
     expect(resolveIssueSpy).not.toHaveBeenCalled();
@@ -167,9 +163,9 @@ describe("mergeCommand.func()", () => {
   test("rejects when 0 positionals + --into (still needs at least 1 positional)", async () => {
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false, into: "CLI-B" })
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-B" }),
+    );
 
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toContain("needs at least 2 issue IDs");
@@ -216,9 +212,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false, into: "CLI-A" }, "CLI-A")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-A" }, "CLI-A"),
+    );
 
     expect(err.message).toContain("at least 2 distinct issues");
     expect(mergeSpy).not.toHaveBeenCalled();
@@ -236,9 +232,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "CLI-B"),
+    );
 
     expect(err.message).toContain("Cannot merge issues across organizations");
     expect(mergeSpy).not.toHaveBeenCalled();
@@ -511,9 +507,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false }, "CLI-A", "100")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false }, "CLI-A", "100"),
+    );
 
     expect(err.message).toContain("at least 2 distinct issues");
     expect(err.message).toContain("CLI-A");
@@ -546,9 +542,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     // AuthError bubbles up (not masked as a not-found error)
     expect(err).toBeInstanceOf(AuthError);
@@ -575,9 +571,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, into: "CLI-XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(500);
@@ -610,9 +606,9 @@ describe("mergeCommand.func()", () => {
 
     const { context } = createMockContext();
     const func = await loadCommand(mergeCommand);
-    const err = await func
-      .call(context, { json: false, into: "XYZ" }, "CLI-A", "CLI-B")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, into: "XYZ" }, "CLI-A", "CLI-B"),
+    );
 
     expect(err).toBeInstanceOf(ResolutionError);
     expect(err.message).toContain("Issue 'XYZ'");
