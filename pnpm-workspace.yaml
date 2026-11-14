@@ -38,7 +38,7 @@ overrides:
   zod: ^4.6.6
 
 catalog:
-  "@ast-grep/cli": ^0.43.0
+  "@ast-grep/cli": ^0.51.2
   "@ai-sdk/anthropic": ^3.0.33
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
@@ -61,11 +61,11 @@ catalog:
   "@sentry/vite-plugin": ^4.6.1
   "@tailwindcss/typography": ^0.5.16
   "@tailwindcss/vite": ^4.3.3
-  "@types/node": ^22.15.33
+  "@types/node": ^22.20.3
   "@types/react": ^19.1.8
   "@types/react-dom": ^19.1.6
   "@vitejs/plugin-react": ^4.6.0
-  "@vitest/coverage-v8": ^5.0.5
+  "@vitest/coverage-v8": ^5.1.0
   agents: 0.32.0
   ai: ^6.0.64
   chalk: ^5.4.1
@@ -75,7 +75,7 @@ catalog:
   dotenv: ^16.6.1
   dotenv-cli: ^8.0.0
   hono: ^4.13.16
-  lint-staged: ^15.5.2
+  lint-staged: ^16.4.0
   lucide-react: ^0.503.0
   marked: ^15.0.12
   mdast-util-from-markdown: ^2.0.2
@@ -92,7 +92,7 @@ catalog:
   react-dom: ^19.2.8
   react-markdown: ^9.1.0
   remark-gfm: ^4.0.1
-  simple-git-hooks: ^2.13.1
+  simple-git-hooks: ^2.14.0
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.3.3
   tsdown: ^0.23.7
@@ -104,7 +104,7 @@ catalog:
   "@typescript/typescript6": 6.0.2
   valibot: ^1.4.2
   vite: ^6.4.5
-  vitest: ^5.0.5
+  vitest: ^5.1.0
   vitest-evals: ^0.18.0
   workers-mcp: 0.1.0-3
   wrangler: 4.156.1

@@ -23,7 +23,7 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:",
     "vitest": "catalog:"

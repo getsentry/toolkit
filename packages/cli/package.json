@@ -112,7 +112,7 @@
     "@stricli/auto-complete": "^1.2.8",
     "@stricli/core": "1.2.8",
     "@types/http-cache-semantics": "^4.2.0",
-    "@types/node": "^22.20.0",
+    "@types/node": "catalog:",
     "@types/picomatch": "^4.0.3",
     "@types/pngjs": "^6.0.5",
     "@types/qrcode-terminal": "^0.12.2",
