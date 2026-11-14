@@ -230,7 +230,7 @@ describeEval("search-events-agent-attributes-without-context", {
 
     return {
       result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call: any) => ({
+      toolCalls: agentResult.toolCalls.map((call) => ({
         name: call.toolName,
         arguments: call.args,
       })),
@@ -479,7 +479,7 @@ describeEval("search-events-agent-attributes-with-context", {
 
     return {
       result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call: any) => ({
+      toolCalls: agentResult.toolCalls.map((call) => ({
         name: call.toolName,
         arguments: call.args,
       })),
