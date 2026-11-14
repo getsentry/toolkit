@@ -111,8 +111,8 @@ export async function getSnapshotSummary(
   }: {
     showUnmodified: boolean;
     experimentalMode: boolean;
-    availableToolNames?: ReadonlySet<string>;
-    directToolNames?: ReadonlySet<string>;
+    availableToolNames?: ReadonlySet<string> | undefined;
+    directToolNames?: ReadonlySet<string> | undefined;
   },
 ): Promise<SnapshotSummary> {
   const data = (await apiService.getSnapshotDetails({

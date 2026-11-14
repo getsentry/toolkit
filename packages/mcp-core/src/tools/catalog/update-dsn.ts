@@ -11,6 +11,7 @@ import {
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { validateResourceId } from "../../utils/slug-validation";
+import { omitUndefined } from "../../internal/type-guards";
 
 export const updateDsnOutputSchema = z.object({
   dsn: z.object({
@@ -258,16 +259,18 @@ export default defineTool({
           params.loaderHasLogsAndMetrics;
     }
 
-    const clientKey = await apiService.updateClientKey({
-      organizationSlug,
-      projectSlug: params.projectSlug,
-      keyId: params.keyId,
-      name: params.name,
-      isActive: params.isActive,
-      rateLimit,
-      browserSdkVersion: params.browserSdkVersion,
-      dynamicSdkLoaderOptions,
-    });
+    const clientKey = await apiService.updateClientKey(
+      omitUndefined({
+        organizationSlug,
+        projectSlug: params.projectSlug,
+        keyId: params.keyId,
+        name: params.name,
+        isActive: params.isActive,
+        rateLimit,
+        browserSdkVersion: params.browserSdkVersion,
+        dynamicSdkLoaderOptions,
+      }),
+    );
 
     const { rateLimit: appliedRateLimit, dynamicSdkLoaderOptions: loader } =
       clientKey;

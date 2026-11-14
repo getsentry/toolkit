@@ -6,6 +6,7 @@ import {
 import { z } from "zod";
 import type { Detector, MetricMonitorUpdate } from "../../api-client/types";
 import { UserInputError } from "../../errors";
+import { omitUndefined } from "../../internal/type-guards";
 import {
   conditionGroupSchema,
   getMetricQuery,
@@ -142,13 +143,18 @@ export function toMetricMonitorUpdate(
   if (status !== undefined) body.enabled = status === "active";
   if (query !== undefined) {
     const sources = current.dataSources ?? [];
-    const existing = sources.length === 1 ? getMetricQuery(sources[0]) : null;
+    const [source] = sources;
+    const existing =
+      sources.length === 1 && source ? getMetricQuery(source) : null;
     if (!existing) {
       throw new UserInputError(
         "This monitor's query is unavailable or has multiple sources; cannot safely update it.",
       );
     }
-    const { timeWindowSeconds, ...merged } = { ...existing, ...query };
+    const { timeWindowSeconds, ...merged } = {
+      ...existing,
+      ...omitUndefined(query),
+    };
     // GET nests the query in queryObj.snubaQuery; PUT accepts only the flat query fields.
     body.dataSources = [{ ...merged, timeWindow: timeWindowSeconds }];
   }
@@ -164,7 +170,7 @@ export function toMetricMonitorUpdate(
     }
     // Config replaces the stored object. Resending it also refreshes Seer for Dynamic condition changes.
     body.config = toMetricDetectionConfig(
-      config ?? {},
+      omitUndefined(config ?? {}),
       conditionGroup?.conditions ??
         conditionGroupSchema.parse(current.conditionGroup).conditions,
       current.config,

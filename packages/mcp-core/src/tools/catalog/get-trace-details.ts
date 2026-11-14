@@ -285,8 +285,8 @@ function selectInterestingSpans(
       break;
     }
 
-    fakeRoot.children.push(createSelectedSpan(root, 0));
-    const selectedRoot = fakeRoot.children[fakeRoot.children.length - 1];
+    const selectedRoot = createSelectedSpan(root, 0);
+    fakeRoot.children.push(selectedRoot);
     spanCount += 1;
     enqueueSelectedChildren(
       root,
@@ -545,16 +545,14 @@ function renderSpanTree(spans: SelectedSpan[]): string[] {
     }
 
     // Render children with proper tree indentation
-    for (let i = 0; i < span.children.length; i++) {
-      const child = span.children[i];
+    for (const [i, child] of span.children.entries()) {
       const isLastChild = i === span.children.length - 1;
       const childPrefix = prefix + (isLast ? "   " : "│  ");
       renderSpan(child, childPrefix, isLastChild);
     }
   }
 
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const [i, span] of spans.entries()) {
     const isLastRoot = i === spans.length - 1;
     renderSpan(span, "", isLastRoot);
   }
@@ -607,7 +605,8 @@ function calculateOperationStats(trace: Trace): Record<
     // Only consider leaf nodes - spans that have no children
     if (span.children.length === 0) {
       // Use span.op if available, otherwise extract from span.name, fallback to "unknown"
-      const op = span.op || (span.name ? span.name.split(" ")[0] : "unknown");
+      const op =
+        span.op || (span.name ? (span.name.split(" ")[0] ?? "") : "unknown");
       const bucket = operationSpans.get(op);
       if (bucket) {
         bucket.push(span);
@@ -697,14 +696,14 @@ function formatTraceOutput({
 }: {
   organizationSlug: string;
   traceId: string;
-  spanId?: string;
+  spanId?: string | undefined;
   summary: TraceSummary;
   trace: Trace;
   traceFetchState: TraceFetchState;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   if (spanId) {
@@ -752,9 +751,9 @@ function formatTraceOverviewOutput({
   summary: TraceSummary;
   trace: Trace;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   const sections: string[] = [];
@@ -866,9 +865,9 @@ function formatFocusedSpanOutput({
   trace: Trace;
   traceFetchState: TraceFetchState;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   const focusedSpan = findTraceSpan(trace, spanId);
@@ -1188,8 +1187,8 @@ function formatAIConversationSection({
   aiConversations: AIConversationReference[];
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   if (aiConversations.length === 0) {
     return [];
@@ -1204,8 +1203,8 @@ function formatAIConversationSection({
   });
 
   const lines = ["## Agent Conversations", ""];
-  if (aiConversations.length === 1) {
-    const [conversation] = aiConversations;
+  const [conversation] = aiConversations;
+  if (aiConversations.length === 1 && conversation) {
     lines.push(`**Conversation ID**: \`${conversation.conversationId}\``);
     if (conversation.spanId) {
       lines.push(`**Matching Span**: \`${conversation.spanId}\``);
@@ -1238,10 +1237,10 @@ function buildTraceNextSteps({
 }: {
   organizationSlug: string;
   traceId: string;
-  spanFocused?: boolean;
+  spanFocused?: boolean | undefined;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const formatSearchStep = ({
     label,

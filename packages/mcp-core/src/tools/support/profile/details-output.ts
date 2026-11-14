@@ -212,11 +212,13 @@ function getTransactionProfileDurationNs(
     .map((sample) => sample.elapsed_since_start_ns)
     .filter((value) => Number.isFinite(value))
     .sort((a, b) => a - b);
-  if (elapsed.length < 2) {
+  const first = elapsed[0];
+  const last = elapsed.at(-1);
+  if (elapsed.length < 2 || first === undefined || last === undefined) {
     return null;
   }
 
-  const duration = elapsed[elapsed.length - 1] - elapsed[0];
+  const duration = last - first;
   return duration > 0 ? Math.round(duration) : null;
 }
 

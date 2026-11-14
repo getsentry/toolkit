@@ -278,7 +278,7 @@ function maskQuotedRegions(query: string): string {
   let escaped = false;
 
   for (let i = 0; i < query.length; i += 1) {
-    const char = query[i];
+    const char = query.charAt(i);
     if (escaped) {
       escaped = false;
       out += quote ? "x" : char;
@@ -648,8 +648,8 @@ function hasUserSummaryFields(
 function formatUserSummary(
   value: Record<string, unknown>,
   options: {
-    includeGeo?: boolean;
-    allowIdOnly?: boolean;
+    includeGeo?: boolean | undefined;
+    allowIdOnly?: boolean | undefined;
   } = {},
 ): string | null {
   const includeGeo = options.includeGeo ?? true;
@@ -827,10 +827,10 @@ export async function fetchCustomAttributes(
   projectId?: string,
   timeParams?: { statsPeriod?: string; start?: string; end?: string },
   options: {
-    attributeTypes?: TraceItemAttributeType[];
-    substringMatch?: string;
-    query?: string;
-    context?: boolean;
+    attributeTypes?: TraceItemAttributeType[] | undefined;
+    substringMatch?: string | undefined;
+    query?: string | undefined;
+    context?: boolean | undefined;
   } = {},
 ): Promise<{
   attributes: Record<string, Tag | TraceItemAttribute>;
@@ -917,10 +917,10 @@ function formatValidationStatusLine({
   indent = 0,
 }: {
   valid: boolean;
-  name?: string;
-  type?: string;
-  error?: string;
-  indent?: number;
+  name?: string | undefined;
+  type?: string | undefined;
+  error?: string | undefined;
+  indent?: number | undefined;
 }): string {
   const status = valid ? "OK" : "INVALID";
   const label = name ? ` ${name}` : "";
@@ -1108,11 +1108,11 @@ export async function validateEventsSearch(
     fields: string[];
     query: string;
     sort: string;
-    projectId?: string;
-    environment?: string | string[];
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    projectId?: string | undefined;
+    environment?: string | string[] | undefined;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
   },
 ): Promise<EventsValidationResult> {
   return await apiService.validateEvents({
@@ -1227,7 +1227,10 @@ function resolveAvailableFields(
       const replacementAttribute = { ...field, key: replacementKey };
       available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-      fieldTypes[replacementKey] = fieldTypes[key];
+      const fieldType = fieldTypes[key];
+      if (fieldType !== undefined) {
+        fieldTypes[replacementKey] = fieldType;
+      }
       delete fieldTypes[key];
     } else if (!attributeDeprecated && !available.has(key)) {
       available.set(key, field);
@@ -1259,7 +1262,7 @@ function describeField(field: AttributeDescriptor): string {
 export function createDatasetAttributesTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
   const traceItemAttributeTypeSchema = z.enum([
@@ -1465,7 +1468,7 @@ Use these examples as patterns for constructing your query.`;
 export function createValidateEventsSearchTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
 

@@ -24,7 +24,7 @@ export interface SearchIssuesAgentOptions {
   query: string;
   organizationSlug: string;
   apiService: SentryApiService;
-  projectId?: string;
+  projectId?: string | undefined;
 }
 
 /**

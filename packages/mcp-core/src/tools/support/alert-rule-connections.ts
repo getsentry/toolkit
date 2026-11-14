@@ -11,8 +11,8 @@ export async function validateAlertRuleProjectScope(
   params: {
     organizationSlug: string;
     ruleId: string;
-    projectSlug?: string | null;
-    scopedProjectSlug?: string | null;
+    projectSlug?: string | null | undefined;
+    scopedProjectSlug?: string | null | undefined;
   },
 ): Promise<{ id: string; slug: string } | undefined> {
   if (params.projectSlug) {
@@ -59,11 +59,11 @@ export async function resolveAlertRuleConnections(
   params: {
     organizationSlug: string;
     currentDetectorIds: readonly (string | number)[];
-    addProjectSlugs?: readonly string[];
-    removeProjectSlugs?: readonly string[];
-    addDetectorIds?: readonly string[];
-    removeDetectorIds?: readonly string[];
-    scopedProject?: { id: string; slug: string };
+    addProjectSlugs?: readonly string[] | undefined;
+    removeProjectSlugs?: readonly string[] | undefined;
+    addDetectorIds?: readonly string[] | undefined;
+    removeDetectorIds?: readonly string[] | undefined;
+    scopedProject?: { id: string; slug: string } | undefined;
   },
 ): Promise<string[]> {
   const additions = new Set<string>();

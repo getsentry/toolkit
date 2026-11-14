@@ -19,7 +19,7 @@ import {
 export function createIssueEventFieldsTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
   return agentTool({
@@ -93,9 +93,9 @@ IMPORTANT:
  * Supports both direct issueId/organizationSlug and issueUrl parsing
  */
 export function parseIssueParams(params: {
-  organizationSlug?: string | null;
-  issueId?: string;
-  issueUrl?: string;
+  organizationSlug?: string | null | undefined;
+  issueId?: string | undefined;
+  issueUrl?: string | undefined;
 }): { organizationSlug: string; issueId: string } {
   // If issueUrl is provided, parse it
   if (params.issueUrl) {
@@ -106,7 +106,8 @@ export function parseIssueParams(params: {
       params.issueUrl.match(/\/organizations\/([^/]+)\/issues\/([^/?]+)/) ||
       params.issueUrl.match(/https?:\/\/([^.]+)\.sentry\.io\/issues\/([^/?]+)/);
 
-    if (!orgMatch) {
+    const [, urlOrganizationSlug, issueId] = orgMatch ?? [];
+    if (!urlOrganizationSlug || !issueId) {
       throw new UserInputError(
         `Invalid issue URL format. Expected format like:
 - https://sentry.io/organizations/my-org/issues/123/
@@ -120,9 +121,9 @@ Received: ${params.issueUrl}`,
       organizationSlug: resolveScopedOrganizationSlug({
         resourceLabel: "Issue",
         scopedOrganizationSlug: params.organizationSlug,
-        urlOrganizationSlug: orgMatch[1],
+        urlOrganizationSlug,
       }),
-      issueId: orgMatch[2],
+      issueId,
     };
   }
 

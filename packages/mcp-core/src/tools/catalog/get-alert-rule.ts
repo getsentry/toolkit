@@ -40,12 +40,12 @@ type AlertRuleMatch =
   | {
       kind: "issue";
       rule: IssueAlertRule;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
     }
   | {
       kind: "metric";
       rule: Detector;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
     };
 
 function describeMatch(match: AlertRuleMatch): string {
@@ -173,7 +173,8 @@ export default defineTool({
         })),
       );
 
-      if (matches.length === 0) {
+      const [found] = matches;
+      if (!found) {
         throw new UserInputError(
           `Alert rule "${params.ruleIdOrName}" was not found. ${LIST_HINT}`,
         );
@@ -183,7 +184,6 @@ export default defineTool({
           `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID. ${LIST_HINT}`,
         );
       }
-      const [found] = matches;
       match =
         found.kind === "issue"
           ? {

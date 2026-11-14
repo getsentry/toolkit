@@ -361,9 +361,9 @@ export default defineTool({
 });
 
 export function resolveReplayParams(params: {
-  replayUrl?: string | null;
-  organizationSlug?: string | null;
-  replayId?: string | null;
+  replayUrl?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  replayId?: string | null | undefined;
 }): ResolvedReplayParams {
   if (params.replayUrl) {
     const parsed = parseSentryUrl(params.replayUrl);
@@ -403,7 +403,7 @@ async function assertReplayWithinProjectConstraint({
   apiService: SentryApiService;
   organizationSlug: string;
   replay: ReplayDetails;
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
 }): Promise<void> {
   if (!projectSlug) {
     return;

@@ -53,10 +53,10 @@ export const issueLinkOutputSchema = z.object({
 /** Resolve the numeric issue ID and enforce project scope before any link mutation. */
 export async function resolveIssueLinkContext(
   params: {
-    organizationSlug?: string;
-    regionUrl?: string | null;
-    issueId?: string;
-    issueUrl?: string;
+    organizationSlug?: string | undefined;
+    regionUrl?: string | null | undefined;
+    issueId?: string | undefined;
+    issueUrl?: string | undefined;
   },
   context: ServerContext,
 ) {
