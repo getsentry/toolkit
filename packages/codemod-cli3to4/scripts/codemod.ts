@@ -86,16 +86,13 @@ const operand = (n: Node) =>
 const projectArg = (opts: Node): string | null => {
   if (opts.kind() !== "object") return `${operand(opts)}.projects?.join(",")`;
   const props = opts.children().filter((c) => c.isNamed());
-  if (props.length !== 1) return null;
-  const [p] = props;
-  if (
-    p!.kind() === "shorthand_property_identifier" &&
-    p!.text() === "projects"
-  ) {
+  const p = props[0];
+  if (props.length !== 1 || !p) return null;
+  if (p.kind() === "shorthand_property_identifier" && p.text() === "projects") {
     return `projects.join(",")`;
   }
-  const k = p!.kind() === "pair" ? p!.field("key") : null;
-  const v = p!.field("value");
+  const k = p.kind() === "pair" ? p.field("key") : null;
+  const v = p.field("value");
   if (!k || !v || unquote(k.text()) !== "projects") return null;
   const items =
     v.kind() === "array" ? v.children().filter((c) => c.isNamed()) : [];
@@ -181,7 +178,9 @@ const codemod: Codemod<L> = async (root) => {
 
   /** Empty a call's argument list, keeping the parens: `X(null,\n)` → `X()`. */
   const clearArgs = (call: Node): Edit => {
-    const r = call.field("arguments")!.range();
+    const args = call.field("arguments");
+    if (!args) throw new Error(`call has no argument list: ${call.text()}`);
+    const r = args.range();
     return {
       startPos: r.start.index + 1,
       endPos: r.end.index - 1,
@@ -381,7 +380,7 @@ const codemod: Codemod<L> = async (root) => {
   }
   const newExprIds = new Set(newExprs.map((n) => n.id()));
   /** An SDK instance: a variable from step 2, or `new X()` inline. */
-  const isInstance = (recv: Node | null): boolean => {
+  const isInstance = (recv: Node | null): recv is Node => {
     while (recv?.kind() === "parenthesized_expression") {
       recv = recv.children().find(named) ?? null;
     }
@@ -411,21 +410,22 @@ const codemod: Codemod<L> = async (root) => {
     const a = argsOf(ne);
     let options: Node | null = null;
     let ambiguous = false;
-    if (a.length >= 2) {
-      if (isNullish(a[1]!)) {
+    const [first, second] = a;
+    if (first && second) {
+      if (isNullish(second)) {
         // `new X(cfg, null)` → `X()` (also drops any trailing comma).
         edits.push(clearArgs(ne));
       } else {
         // Drop the configFile positional (removed in v4).
         edits.push({
-          startPos: a[0]!.range().start.index,
-          endPos: a[1]!.range().start.index,
+          startPos: first.range().start.index,
+          endPos: second.range().start.index,
           insertedText: "",
         });
-        options = a[1]!;
+        options = second;
       }
-    } else if (a.length === 1) {
-      const arg = a[0]!;
+    } else if (first) {
+      const arg = first;
       if (isNullish(arg)) {
         edits.push(clearArgs(ne)); // `new X(null)` → `X()`
       } else if (arg.kind() === "object") {
@@ -507,7 +507,7 @@ const codemod: Codemod<L> = async (root) => {
         "run(...) passes raw CLI args verbatim; remap v3 command names to v4 (releases→release, new→create, login→auth login, …) and verify flags. NOTE: v3's second `execute` arg (`live`) is dropped — v4 `run()` always captures and returns output (v3 `live:false` behavior); if you passed `live:true`/`'rejectOnError'` for streamed stdio, adjust accordingly",
       ),
     );
-    edits.push(replaceAfter(recv!, call, `.run(${runArgs})`));
+    edits.push(replaceAfter(recv, call, `.run(${runArgs})`));
   }
 
   // 4b) `<instance>.releases.<method>(...)` → `<instance>.<route>.<target>({…})`.
