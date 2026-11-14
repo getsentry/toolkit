@@ -113,10 +113,13 @@ export async function runAgent(
       : process.env["OPENAI_MODEL"] || DEFAULT_OPENAI_MODEL);
   const maxSteps = config.maxSteps || 10;
   const sessionId = connection.sessionId;
+  const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
   const modelProvider =
     provider === "openrouter"
       ? createOpenAI({
-          apiKey: process.env["OPENROUTER_API_KEY"],
+          // Omitted when unset, as before: the provider then reads its default
+          // environment variable.
+          ...(openRouterApiKey !== undefined && { apiKey: openRouterApiKey }),
           baseURL: OPENROUTER_BASE_URL,
           headers: {
             "HTTP-Referer": "https://github.com/getsentry/sentry-mcp",
@@ -175,8 +178,7 @@ export async function runAgent(
                 }
 
                 // Show tool calls with their results
-                for (let i = 0; i < toolCalls.length; i++) {
-                  const toolCall = toolCalls[i];
+                for (const [i, toolCall] of toolCalls.entries()) {
                   const toolResult = toolResults?.[i];
 
                   logTool(toolCall.toolName, toolCall.input);

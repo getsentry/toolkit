@@ -12,6 +12,16 @@ export interface OAuthClientConfig {
   tokenExpiresAt?: string;
 }
 
+/** The client config with its cached access token and expiry removed. */
+function withoutAccessToken(client: OAuthClientConfig): OAuthClientConfig {
+  const {
+    accessToken: _accessToken,
+    tokenExpiresAt: _tokenExpiresAt,
+    ...rest
+  } = client;
+  return rest;
+}
+
 export interface ClientConfigFile {
   oauthClients: Record<string, OAuthClientConfig>;
 }
@@ -95,10 +105,14 @@ export class ConfigManager {
     config.oauthClients[mcpHost] = {
       clientId,
       mcpHost,
-      redirectUri,
+      ...(redirectUri !== undefined && { redirectUri }),
       registeredAt: new Date().toISOString(),
-      accessToken: existing?.accessToken,
-      tokenExpiresAt: existing?.tokenExpiresAt,
+      ...(existing?.accessToken !== undefined && {
+        accessToken: existing.accessToken,
+      }),
+      ...(existing?.tokenExpiresAt !== undefined && {
+        tokenExpiresAt: existing.tokenExpiresAt,
+      }),
     };
 
     await this.saveConfig(config);
@@ -164,9 +178,9 @@ export class ConfigManager {
     }
 
     config.oauthClients[mcpHost] = {
-      ...existing,
+      ...withoutAccessToken(existing),
       accessToken,
-      tokenExpiresAt,
+      ...(tokenExpiresAt !== undefined && { tokenExpiresAt }),
     };
 
     await this.saveConfig(config);
@@ -180,11 +194,7 @@ export class ConfigManager {
     const existing = config.oauthClients[mcpHost];
 
     if (existing) {
-      config.oauthClients[mcpHost] = {
-        ...existing,
-        accessToken: undefined,
-        tokenExpiresAt: undefined,
-      };
+      config.oauthClients[mcpHost] = withoutAccessToken(existing);
       await this.saveConfig(config);
     }
   }
@@ -196,11 +206,7 @@ export class ConfigManager {
     const config = await this.loadConfig();
 
     for (const [host, clientConfig] of Object.entries(config.oauthClients)) {
-      config.oauthClients[host] = {
-        ...clientConfig,
-        accessToken: undefined,
-        tokenExpiresAt: undefined,
-      };
+      config.oauthClients[host] = withoutAccessToken(clientConfig);
     }
 
     await this.saveConfig(config);
