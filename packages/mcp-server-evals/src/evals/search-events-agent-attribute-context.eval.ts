@@ -12,8 +12,11 @@ import "../setup-env";
 //
 // This service forces the context on or off for every attributes request.
 class AttributeContextApiService extends SentryApiService {
-  constructor(private readonly attributeContext: boolean) {
+  private readonly attributeContext: boolean;
+
+  constructor(attributeContext: boolean) {
     super({ accessToken: "test-token" });
+    this.attributeContext = attributeContext;
   }
 
   override listTraceItemAttributes(

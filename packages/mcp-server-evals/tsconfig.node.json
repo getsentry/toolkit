@@ -1,0 +1,10 @@
+{
+  // vitest.config.ts runs in Node and sits outside tsconfig.json's rootDir.
+  "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["vitest.config.ts"]
+}
