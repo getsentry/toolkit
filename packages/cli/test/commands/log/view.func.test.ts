@@ -61,6 +61,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const ID1 = "aaaa1111bbbb2222cccc3333dddd4444";
 const ID2 = "1111222233334444555566667777aaaa";
@@ -90,11 +91,11 @@ function makeSampleLog(id: string, message = "Test log"): DetailedSentryLog {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,

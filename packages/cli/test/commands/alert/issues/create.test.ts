@@ -7,6 +7,7 @@ import type { ResolvedTarget } from "../../../../src/lib/resolve-target.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import { useTestConfigDir } from "../../../helpers.js";
+import type { Writer } from "../../../../src/types/index.js";
 
 const getConfigDir = useTestConfigDir("test-alert-issues-create-", {
   isolateProjectRoot: true,
@@ -33,10 +34,10 @@ type CreateFlags = {
 };
 
 function createContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     stdout: { write: stdoutWrite },
-    stderr: { write: vi.fn(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: getConfigDir(),
     commandPrefix: ["sentry", "alert", "issues", "create"],
     stdoutWrite,

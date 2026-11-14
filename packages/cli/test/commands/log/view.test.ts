@@ -127,6 +127,7 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /** A valid 32-char hex log ID for tests */
 const ID1 = "968c763c740cfda8b6728f27fb9e9b01";
@@ -547,11 +548,11 @@ describe("viewCommand.func", () => {
   } as unknown as DetailedSentryLog;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -682,11 +683,11 @@ describe("log view --web interactive prompt", () => {
   let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   function createPromptMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,

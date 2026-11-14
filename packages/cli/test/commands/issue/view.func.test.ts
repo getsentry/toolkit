@@ -73,6 +73,7 @@ import {
 } from "../../../src/lib/issue-arguments.js";
 import type { SentryEvent, SentryIssue } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const SECOND_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
@@ -98,11 +99,11 @@ function sampleEvent(overrides: Partial<SentryEvent> = {}): SentryEvent {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,

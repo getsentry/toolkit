@@ -43,6 +43,7 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { slugify } from "../../../src/lib/utils.js";
 import type { SentryProject, SentryTeam } from "../../../src/types/index.js";
 import { parseFailure, useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleTeam: SentryTeam = {
   id: "1",
@@ -86,13 +87,13 @@ function createMockContext(): {
   context: SentryContext;
   stdoutWrite: ReturnType<typeof vi.fn>;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       process,
       env: process.env,
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       stdin: process.stdin,
       cwd: "/tmp",
       homeDir: "/tmp",

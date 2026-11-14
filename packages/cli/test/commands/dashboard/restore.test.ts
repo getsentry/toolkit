@@ -25,14 +25,15 @@ import * as polling from "../../../src/lib/polling.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

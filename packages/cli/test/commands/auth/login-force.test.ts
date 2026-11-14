@@ -32,6 +32,7 @@ import { getDatabase } from "../../../src/lib/db/index.js";
 import { getUserInfo, setUserInfo } from "../../../src/lib/db/user.js";
 import { ApiError, AuthError } from "../../../src/lib/errors.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type LoginFunc = (
   this: unknown,
@@ -53,8 +54,8 @@ const ACME = "https://sentry.acme.com";
 
 function createContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

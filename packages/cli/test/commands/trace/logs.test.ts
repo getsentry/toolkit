@@ -83,6 +83,7 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TraceLog } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Note: trace-target parsing tests are in test/lib/trace-target.test.ts
 
@@ -123,7 +124,7 @@ const sampleLogs: TraceLog[] = [
 ];
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

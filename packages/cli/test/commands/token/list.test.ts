@@ -43,6 +43,7 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const tokens = [
   {
@@ -66,11 +67,11 @@ const tokens = [
 ];
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
       commandPrefix: ["sentry", "token", "list"],
     },

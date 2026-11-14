@@ -42,6 +42,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
 import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-create-");
 
@@ -72,8 +73,8 @@ const sampleRelease: SentryRelease = {
 };
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

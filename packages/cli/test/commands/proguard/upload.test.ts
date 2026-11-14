@@ -15,6 +15,7 @@ import { uploadCommand } from "../../../src/commands/proguard/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as proguardApi from "../../../src/lib/api/proguard.js";
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type UploadFuncFlags = {
   uuid?: string;
@@ -31,8 +32,8 @@ type CmdFunc = (
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

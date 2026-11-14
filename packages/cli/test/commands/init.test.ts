@@ -20,6 +20,7 @@ import type { SentryContext } from "../../src/context.js";
 import { INIT_GUIDE } from "../../src/generated/init-guide.js";
 import { clearSentryCliRcCache } from "../../src/lib/sentryclirc.js";
 import { useTestConfigDir, loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 const GUIDE_SOURCE = readFileSync(
   new URL("../../init.md", import.meta.url),
@@ -32,12 +33,12 @@ async function runInit(
   flags: Record<string, unknown> = {},
   cwd = "/tmp",
 ): Promise<{ stdout: string }> {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   const context = {
     process,
     env: process.env,
     stdout: { write: stdoutWrite },
-    stderr: { write: vi.fn(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     stdin: process.stdin,
     cwd,
     homeDir: "/tmp",

@@ -70,6 +70,7 @@ import { applyBoundPositionals } from "../../../src/lib/positional-parse.js";
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const TRACE_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -222,11 +223,11 @@ describe("viewCommand.func", () => {
   let openInBrowserSpy: MockInstance<(typeof browser)["openInBrowser"]>;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,

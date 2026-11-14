@@ -99,6 +99,7 @@ vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 describe("parseEventViewInput", () => {
   describe("single argument (event ID only)", () => {
@@ -1155,11 +1156,11 @@ describe("viewCommand.func", () => {
   const attachmentDownloadUrl = `https://sentry.io/sentry/api/0/projects/test-org/test-proj/events/${VALID_EVENT_ID}/attachments/attachment-1/?download=1`;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,

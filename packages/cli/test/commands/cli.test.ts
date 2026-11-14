@@ -14,6 +14,7 @@ import type { UpgradeResult } from "../../src/commands/cli/upgrade.js";
 import { upgradeCommand } from "../../src/commands/cli/upgrade.js";
 import { extractInputUrl } from "../../src/lib/fetch-input.js";
 import { loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
@@ -69,8 +70,8 @@ describe("feedbackCommand.func", () => {
     // Access func through loader
     const func = await loadCommand(feedbackCommand);
     const mockContext = {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
     };
 
     await expect(func.call(mockContext, {}, "")).rejects.toThrow(
@@ -81,8 +82,8 @@ describe("feedbackCommand.func", () => {
   test("throws ValidationError for whitespace-only message", async () => {
     const func = await loadCommand(feedbackCommand);
     const mockContext = {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
     };
 
     await expect(func.call(mockContext, {}, "   ")).rejects.toThrow(
@@ -93,8 +94,8 @@ describe("feedbackCommand.func", () => {
   test("throws ConfigError when Sentry is disabled", async () => {
     const func = await loadCommand(feedbackCommand);
     const mockContext = {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
     };
 
     // Sentry is disabled in test environment (no DSN)

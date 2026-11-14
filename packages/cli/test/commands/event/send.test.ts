@@ -17,6 +17,7 @@ import {
   loadCommand,
   type TestCommandFunction,
 } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("send-event-");
 
@@ -32,7 +33,7 @@ function makeContext() {
           return true;
         },
       },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     writes,

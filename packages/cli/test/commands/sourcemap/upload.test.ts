@@ -16,6 +16,7 @@ import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -38,8 +39,8 @@ type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

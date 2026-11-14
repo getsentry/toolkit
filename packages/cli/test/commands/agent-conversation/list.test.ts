@@ -88,6 +88,7 @@ import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { ConversationListItem } from "../../../src/types/conversation.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // Helpers
@@ -97,8 +98,8 @@ const ORG = "test-org";
 const PROJECT = { id: "42", slug: "backend", name: "Backend" };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

@@ -62,6 +62,7 @@ import {
   type ReplayListItem,
 } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 describe("parseSort", () => {
   test("accepts supported sort values", () => {
@@ -108,11 +109,11 @@ describe("listCommand.func", () => {
   ];
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
         commandPrefix: ["sentry", "replay", "list"],
       },

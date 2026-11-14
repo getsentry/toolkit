@@ -939,8 +939,8 @@ const advancePaginationStateMock = vi.mocked(
 
 describe("issue list: org-all mode (cursor pagination)", () => {
   function createOrgAllContext() {
-    const stdoutWrite = vi.fn(() => true);
-    const stderrWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+    const stderrWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
@@ -1514,8 +1514,8 @@ describe("issue list: collapse parameter optimization", () => {
   };
 
   function createOrgAllContext() {
-    const stdoutWrite = vi.fn(() => true);
-    const stderrWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+    const stderrWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
@@ -1907,6 +1907,7 @@ const {
 } = __testing;
 
 import type { SentryIssue } from "../../../src/types/index.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeIssue(overrides: Partial<SentryIssue> = {}): SentryIssue {
   return {

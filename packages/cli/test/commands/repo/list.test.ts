@@ -55,6 +55,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRepository } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Sample test data
 const sampleRepos: SentryRepository[] = [
@@ -83,8 +84,8 @@ const sampleRepos: SentryRepository[] = [
 ];
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

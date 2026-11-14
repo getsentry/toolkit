@@ -21,6 +21,7 @@ import { logger } from "../../../src/lib/logger.js";
 import { CliError, ValidationError } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 import { TEST_TMP_DIR } from "../../constants.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /**
  * Records the env passed to the most recent `spawn` call so tests can assert
@@ -87,8 +88,8 @@ afterEach(async () => {
 
 function makeContext(cwd?: string) {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: cwd ?? tmpDir,
   };
 }

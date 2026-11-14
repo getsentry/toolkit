@@ -48,6 +48,7 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const created = {
   id: "9",
@@ -62,11 +63,11 @@ const created = {
 const flags = { "dry-run": false, json: false };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,

@@ -28,6 +28,7 @@ import { logger } from "../../../src/lib/logger.js";
 import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
 vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
@@ -60,8 +61,8 @@ function waitingState(causes: RootCause[]): AutofixState {
 
 function createMockContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

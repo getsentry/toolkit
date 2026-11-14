@@ -46,6 +46,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /** Minimal release shape returned by getRelease */
 const sampleRelease = {
@@ -69,8 +70,8 @@ const defaultFlags = {
 };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

@@ -24,6 +24,7 @@ import { ApiError, ContextError, EXIT } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const EXPLAIN_FLAGS = {
   json: true,
@@ -55,7 +56,7 @@ function createMockContext() {
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,

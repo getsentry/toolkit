@@ -29,6 +29,7 @@ import {
   useEnvSandbox,
   useTestConfigDir,
 } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type ListFunc = (
   this: unknown,
@@ -123,7 +124,7 @@ function createContext() {
   return {
     context: {
       stdout: { write: vi.fn((s: string) => chunks.push(s)) },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     getOutput: () => chunks.join(""),

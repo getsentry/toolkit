@@ -17,6 +17,7 @@ import {
   loadCommand,
   type TestCommandFunction,
 } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("monitor-run-");
 
@@ -27,8 +28,8 @@ const NODE = process.execPath;
 function makeContext() {
   return {
     ctx: {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
   };

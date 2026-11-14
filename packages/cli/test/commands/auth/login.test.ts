@@ -190,6 +190,7 @@ vi.mock("../../../src/lib/interactive-login.js", async (importOriginal) => {
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 import type { SentryCliRcConfig } from "../../../src/lib/sentryclirc.js";
 import { useEnvSandbox } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type LoginFlags = {
   readonly token?: string;
@@ -890,8 +891,8 @@ describe("login re-authentication interactive prompt", () => {
 
   function createPromptContext() {
     return {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     };
   }

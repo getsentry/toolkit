@@ -11,13 +11,14 @@ import {
   loadCommand,
   type TestCommandFunction,
 } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 useTestConfigDir("send-envelope-");
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }

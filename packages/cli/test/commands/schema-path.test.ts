@@ -10,6 +10,7 @@ import type { SentryContext } from "../../src/context.js";
 import { getAllEndpoints } from "../../src/lib/api-schema.js";
 import { OutputError, ResolutionError } from "../../src/lib/errors.js";
 import { loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 const ORG_ISSUES = "/api/0/organizations/{organization_id_or_slug}/issues/";
 const SKILL_QUERY = `GET ${ORG_ISSUES}`;
@@ -18,13 +19,13 @@ function createMockContext(): {
   context: SentryContext;
   stdoutWrite: ReturnType<typeof vi.fn>;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       process,
       env: process.env,
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       stdin: process.stdin,
       cwd: "/tmp",
       homeDir: "/tmp",

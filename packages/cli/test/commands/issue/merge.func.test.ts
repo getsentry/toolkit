@@ -54,6 +54,7 @@ import {
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -88,11 +89,11 @@ function byText<T>(
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,

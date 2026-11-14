@@ -19,12 +19,13 @@ vi.mock("../../src/lib/polling.js", () => ({ withProgress }));
 import { listCommand } from "../../src/commands/docs/list.js";
 import { queryCommand } from "../../src/commands/docs/query.js";
 import { loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 function createContext(): {
   context: SentryContext;
   stdoutWrite: ReturnType<typeof vi.fn>;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       configDir: "/tmp",
@@ -32,7 +33,7 @@ function createContext(): {
       env: process.env,
       homeDir: "/tmp",
       process,
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       stdin: process.stdin,
       stdout: { write: stdoutWrite },
     },

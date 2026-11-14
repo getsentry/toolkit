@@ -122,6 +122,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryProject } from "../../../src/types/index.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleProject: SentryProject = {
   id: "999",
@@ -135,8 +136,8 @@ const sampleProject: SentryProject = {
 const defaultFlags = { yes: true, force: false, "dry-run": false };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -446,11 +447,11 @@ describe("project delete — interactive confirmation", () => {
   >;
 
   function createPromptMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
         commandPrefix: ["sentry", "project", "delete"],
       },

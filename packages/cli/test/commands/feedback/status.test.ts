@@ -25,6 +25,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 import { resolveIssue } from "../../../src/commands/issue/utils.js";
 import { updateIssueStatus } from "../../../src/lib/api-client.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function feedback(): SentryFeedback {
   return {
@@ -39,11 +40,11 @@ function feedback(): SentryFeedback {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     output: () => stdoutWrite.mock.calls.map((call) => call[0]).join(""),

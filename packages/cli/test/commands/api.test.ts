@@ -39,6 +39,7 @@ import {
 } from "../../src/commands/api.js";
 import { OutputError, ValidationError } from "../../src/lib/errors.js";
 import { loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 /**
  * Create a mock stdin stream from a string
@@ -138,8 +139,8 @@ describe("apiCommand tags org from the path", () => {
     const func = await loadCommand(apiCommand);
     const context = {
       stdin: createMockStdin(""),
-      stdout: { write: vi.fn(() => true), isTTY: false },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true), isTTY: false },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     };
     await func.call(

@@ -12,18 +12,19 @@ import type { SentryContext } from "../../../src/context.js";
 import { EXIT, OutputError } from "../../../src/lib/errors.js";
 import { VALID_PLATFORMS } from "../../../src/lib/platforms.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 function createMockContext(): {
   context: SentryContext;
   stdoutWrite: ReturnType<typeof vi.fn>;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       process,
       env: process.env,
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       stdin: process.stdin,
       cwd: "/tmp",
       homeDir: "/tmp",

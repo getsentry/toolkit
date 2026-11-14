@@ -30,6 +30,7 @@ import {
   isTelemetryEnabled,
 } from "../../../src/lib/telemetry.js";
 import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Force chalk to produce ANSI output in test environment
 chalk.level = 3;
@@ -544,10 +545,10 @@ describe("defaultsCommand.func show-all aliases", () => {
     flags: Record<string, unknown>,
     ...args: string[]
   ): Promise<string> {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     const context = {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     };
     const func = await loadCommand(defaultsCommand);

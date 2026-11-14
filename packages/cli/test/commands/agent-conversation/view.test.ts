@@ -75,6 +75,7 @@ import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // Helpers
@@ -84,8 +85,8 @@ const ORG = "test-org";
 const CONVERSATION_ID = "conv-abc-123";
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },

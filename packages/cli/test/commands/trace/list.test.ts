@@ -68,6 +68,7 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
 import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Reference paginationDb early to prevent import stripping by auto-organize
 const _paginationDbRef = paginationDb;
@@ -309,11 +310,11 @@ describe("listCommand.func", () => {
   ];
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
         commandPrefix: ["sentry", "trace", "list"],
       },
