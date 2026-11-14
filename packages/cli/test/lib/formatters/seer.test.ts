@@ -431,6 +431,13 @@ describe("createSeerError", () => {
     expect(error?.reason).toBe("no_budget");
   });
 
+  test("ignores a code that only matches an Object.prototype key", () => {
+    expect(
+      createSeerError(402, undefined, "my-org", "constructor")?.reason,
+    ).toBe("no_budget");
+    expect(createSeerError(409, "Conflict", "my-org", "toString")).toBeNull();
+  });
+
   test("returns SeerError for 403 with 'not enabled' detail", () => {
     const error = createSeerError(403, "Seer is not enabled", "my-org");
     expect(error).toBeInstanceOf(SeerError);

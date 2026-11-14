@@ -43,8 +43,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 2.0.0
-      version: 2.0.0
+      specifier: 2.1.0
+      version: 2.1.0
     '@sentry/cloudflare':
       specifier: 11.12.0
       version: 11.12.0
@@ -504,7 +504,7 @@ importers:
         version: 2.1.7(hono@4.13.18)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.0.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.1.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -838,7 +838,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.0.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.1.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1015,7 +1015,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.0.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.1.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -4347,8 +4347,8 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@sentry/api@2.0.0':
-    resolution: {integrity: sha512-G7QUnqRExbwywo2P/q2XCmpO+FxKxDYyK85uflfFtRE2LfGst0rDgyzxyk2NIUmRm1KvSbvd8bU7NndTbMNctg==}
+  '@sentry/api@2.1.0':
+    resolution: {integrity: sha512-QeugH+eTHtujldYMsOMWfqfUpAwkYE/pe11O7eT5YCz7DkHiEtT3/L3OjhxMQWsS8aB+AVxltMxuq/PjV8h6Uw==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -11854,7 +11854,7 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@sentry/api@2.0.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+  '@sentry/api@2.1.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
     dependencies:
       http-cache-semantics: 4.2.0
       p-limit: 7.3.3

@@ -8,6 +8,9 @@ import {
   getSeerUnsupportedIssueMessage,
   getOutputForAutofixRun,
   getAutofixArtifactSummaries,
+  getSeerPaymentRequiredMessage,
+  getSeerSetupRequiredMessage,
+  SEER_START_OUT_OF_CREDITS_MESSAGE,
 } from "./seer";
 import type { AutofixRunState } from "../../api-client/index";
 
@@ -144,5 +147,51 @@ describe("seer-utils", () => {
         "Regex rejects ids",
       );
     });
+  });
+
+  describe("getSeerPaymentRequiredMessage", () => {
+    it("explains each 402 code from the API schema", () => {
+      expect(
+        getSeerPaymentRequiredMessage({
+          detail: "Out of credits",
+          code: "seer_out_of_credits",
+        }),
+      ).toBe(SEER_START_OUT_OF_CREDITS_MESSAGE);
+      expect(
+        getSeerPaymentRequiredMessage({
+          detail: "No quota",
+          code: "seer_out_of_quota",
+        }),
+      ).toContain("not have enough Seer quota");
+    });
+
+    it("treats a 402 without a known code as out of quota", () => {
+      expect(getSeerPaymentRequiredMessage("No budget")).toContain(
+        "not have enough Seer quota",
+      );
+      expect(
+        getSeerPaymentRequiredMessage({ detail: "x", code: "constructor" }),
+      ).toContain("not have enough Seer quota");
+    });
+  });
+
+  describe("getSeerSetupRequiredMessage", () => {
+    it.each(["scm_integration_required", "repos_not_linked"])(
+      "explains a 409 with %s",
+      (code) => {
+        expect(
+          getSeerSetupRequiredMessage({ detail: "Set up Seer first.", code }),
+        ).toContain("Set up Seer first.");
+      },
+    );
+
+    it.each(["run_in_flight", "toString", undefined])(
+      "returns null for a 409 with code %s",
+      (code) => {
+        expect(
+          getSeerSetupRequiredMessage({ detail: "Conflict", code }),
+        ).toBeNull();
+      },
+    );
   });
 });

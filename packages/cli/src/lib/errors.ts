@@ -23,6 +23,7 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import type { AutofixConflictResponse } from "@sentry/api";
 import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
@@ -764,13 +765,21 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
+/**
+ * 409 `code`s Sentry sends when it won't start a run until Seer setup is done.
+ * Taken from the generated API types so a renamed code fails type-checking.
+ */
+export type SeerSetupRequiredCode = Extract<
+  NonNullable<AutofixConflictResponse["code"]>,
+  "scm_integration_required" | "repos_not_linked"
+>;
+
 export type SeerErrorReason =
   | "not_enabled"
   | "no_budget"
   | "ai_disabled"
   | "out_of_credits"
-  | "scm_integration_required"
-  | "repos_not_linked";
+  | SeerSetupRequiredCode;
 
 /**
  * Seer-specific errors with actionable suggestions.

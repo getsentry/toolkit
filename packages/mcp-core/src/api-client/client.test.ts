@@ -2087,7 +2087,11 @@ describe("listOrganizations", () => {
             { status: 400 },
           );
         }
-        const start = cursor === null ? 0 : Number(cursor);
+        // Model Sentry's OffsetPaginator: a `<page size>:<page>:0` cursor
+        // selects rows by page number, so per_page must stay stable.
+        const page = cursor === null ? 0 : Number(cursor.split(":")[1]);
+        const start = page * perPage;
+        const nextCursor = `${perPage}:${page + 1}:0`;
         return HttpResponse.json(
           Array.from({ length: perPage }, (_, offset) => ({
             id: String(start + offset),
@@ -2096,7 +2100,7 @@ describe("listOrganizations", () => {
           })),
           {
             headers: {
-              Link: `<https://sentry.io/api/0/organizations/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
+              Link: `<https://sentry.io/api/0/organizations/?cursor=${nextCursor}>; rel="next"; results="true"; cursor="${nextCursor}"`,
             },
           },
         );
@@ -2107,9 +2111,19 @@ describe("listOrganizations", () => {
     const result = await api.listOrganizations({ limit: 205 });
     expect(result.organizations).toHaveLength(205);
     expect(result.organizations[204]?.slug).toBe("org-204");
-    expect(result.nextCursor).toBe("205");
-    expect(pageSizes).toEqual([100, 100, 5]);
-    expect(cursors).toEqual([null, "100", "200"]);
+    expect(pageSizes).toEqual([69, 69, 69]);
+    expect(cursors).toEqual([null, "69:1:0", "69:2:0"]);
+
+    // The cursor resumes partway through the last page, at the first row it
+    // didn't return.
+    const resumed = await api.listOrganizations({
+      limit: 2,
+      cursor: result.nextCursor,
+    });
+    expect(resumed.organizations.map((org) => org.slug)).toEqual([
+      "org-205",
+      "org-206",
+    ]);
   });
 
   it("should fetch from the organizations endpoint on the root host for SaaS", async () => {
@@ -2227,7 +2241,10 @@ describe("organization SDK list pages", () => {
                 { status: 400 },
               );
             }
-            const start = Number(url.searchParams.get("cursor") ?? "0");
+            const cursor = url.searchParams.get("cursor");
+            const page = cursor === null ? 0 : Number(cursor.split(":")[1]);
+            const start = page * perPage;
+            const nextCursor = `${perPage}:${page + 1}:0`;
             return HttpResponse.json(
               Array.from({ length: perPage }, (_, offset) => ({
                 ...fixture,
@@ -2235,7 +2252,7 @@ describe("organization SDK list pages", () => {
               })),
               {
                 headers: {
-                  Link: `<https://de.sentry.io/api/0/organizations/my-org/${resource}/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
+                  Link: `<https://de.sentry.io/api/0/organizations/my-org/${resource}/?cursor=${nextCursor}>; rel="next"; results="true"; cursor="${nextCursor}"`,
                 },
               },
             );
@@ -2246,8 +2263,8 @@ describe("organization SDK list pages", () => {
       const result = await list(api);
       const rows = "teams" in result ? result.teams : result.projects;
       expect(rows).toHaveLength(201);
-      expect(result.nextCursor).toBe("201");
-      expect(pageSizes).toEqual([100, 100, 1]);
+      expect(result.nextCursor).toBe("67:3:0");
+      expect(pageSizes).toEqual([67, 67, 67]);
     },
   );
 
