@@ -30,6 +30,7 @@ import {
   resolveCommandPath,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { must } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Arbitraries
@@ -121,7 +122,7 @@ describe("property: extractFlags", () => {
         for (const flag of result) {
           if (
             flag.kind === "boolean" &&
-            flags[flag.name].optional === undefined
+            must(flags[flag.name]).optional === undefined
           ) {
             expect(flag.optional).toBe(true);
           }

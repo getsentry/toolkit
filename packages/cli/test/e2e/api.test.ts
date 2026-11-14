@@ -19,7 +19,7 @@ import { EXIT } from "../../src/lib/errors.js";
 import { createE2EContext, type E2EContext, runCli } from "../fixture.js";
 import organizationsFixture from "../fixtures/organizations.json";
 import transactionsFixture from "../fixtures/transactions.json";
-import { cleanupTestDir, createTestConfigDir } from "../helpers.js";
+import { cleanupTestDir, createTestConfigDir, at } from "../helpers.js";
 import { apiRoutes, TEST_TOKEN } from "../mocks/routes.js";
 import { createMockServer, type MockServer } from "../mocks/server.js";
 
@@ -231,7 +231,7 @@ describe("sentry api", () => {
     const result = await ctx.run(args);
     expect(result.exitCode).toBe(EXIT.OUTPUT_ERROR);
     expect(preparedRequests).toHaveLength(1);
-    const sent = preparedRequests[0];
+    const sent = at(preparedRequests, 0);
     expect(sent.url).toBe(request.url);
     expect(sent.method).toBe(request.method);
     expect(sent.body).toBe("raw payload");
@@ -422,7 +422,7 @@ describe("sentry api", () => {
           hasPrev ? undefined : nextCursor,
         );
       }
-      expect(paginationRequests[0].href).toBe(url.href);
+      expect(at(paginationRequests, 0).href).toBe(url.href);
       expect(
         paginationRequests.map((request) => request.searchParams.get("cursor")),
       ).toEqual(["2:0:0", nextCursor, "2:0:0"]);

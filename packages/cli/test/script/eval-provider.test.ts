@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveEvalProvider } from "../eval-common/anthropic-client.js";
+import { at } from "../helpers.js";
 
 /**
  * Provider resolution drives which credential/endpoint the skill-eval suite uses.
@@ -89,7 +90,7 @@ describe("resolveEvalProvider", () => {
       OPENROUTER_BASE_URL: "https://proxy.example/v1",
     });
     await p?.chat("m", [], 16);
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    expect(at(fetchMock.mock.calls, 0)[0]).toBe(
       "https://proxy.example/v1/chat/completions",
     );
   });

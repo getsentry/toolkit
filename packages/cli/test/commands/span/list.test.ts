@@ -67,6 +67,7 @@ import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import { FlatSpanSchema } from "../../../src/generated/output-schemas/span.js";
+import { at, must } from "../../helpers.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
@@ -757,7 +758,7 @@ describe("listCommand.func (project mode)", () => {
     });
 
     // Should NOT have trace: prefix in the query
-    const callArgs = listSpansSpy.mock.calls[0];
+    const callArgs = at(listSpansSpy.mock.calls, 0);
     const query = callArgs[2]?.query;
     expect(query).toBeUndefined();
 
@@ -999,8 +1000,8 @@ describe("listCommand.func (project mode)", () => {
       "my-org/my-project",
     );
 
-    const callArgs = listSpansSpy.mock.calls[0];
-    const options = callArgs[2];
+    const callArgs = at(listSpansSpy.mock.calls, 0);
+    const options = must(callArgs[2]);
     expect(options.allProjects).toBeUndefined();
     expect(options.projectId).toBe(4242);
   });

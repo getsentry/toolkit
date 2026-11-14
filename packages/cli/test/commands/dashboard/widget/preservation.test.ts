@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, afterAll, expect, test } from "vitest";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
 import { createE2EContext, type E2EContext } from "../../../fixture.js";
-import { useTestConfigDir } from "../../../helpers.js";
+import { useTestConfigDir, at } from "../../../helpers.js";
 import { TEST_TOKEN } from "../../../mocks/routes.js";
 import { createMockServer } from "../../../mocks/server.js";
 
@@ -147,13 +147,13 @@ test.each([
   const reload = await ctx.run(["api", endpoint]);
   expect(reload.exitCode, reload.stderr).toBe(0);
   const expected = structuredClone(savedDashboard);
-  const transformed = expected.widgets![0];
+  const transformed = at(expected.widgets!, 0);
   if (name === "rename") {
     transformed.title = "Renamed";
   } else if (name === "move") {
     transformed.layout!.y = 4;
   } else if (name === "filter") {
-    transformed.queries![0].conditions = "span.op:queue";
+    at(transformed.queries!, 0).conditions = "span.op:queue";
   } else if (name === "delete another widget") {
     expected.widgets!.splice(1, 1);
   }
@@ -196,7 +196,7 @@ test("describes saved transformations after an edit", async () => {
 });
 
 test("reports unavailable transformation settings after an edit", async () => {
-  for (const query of stored.widgets![0].queries!) {
+  for (const query of at(stored.widgets!, 0).queries!) {
     delete query.transformations;
   }
 
@@ -242,6 +242,8 @@ test("reports the saved widget transformations in edit JSON", async () => {
       (query: { transformations?: unknown }) => query.transformations,
     ),
   ).toEqual(
-    savedDashboard.widgets![0].queries!.map((query) => query.transformations),
+    at(savedDashboard.widgets!, 0).queries!.map(
+      (query) => query.transformations,
+    ),
   );
 });

@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { at } from "../helpers.js";
 
 const { fakeLog } = vi.hoisted(() => {
   const log = {
@@ -43,7 +44,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
-    expect(warns[0].split("\n")).toEqual([
+    expect(at(warns, 0).split("\n")).toEqual([
       "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters. Rewrote OR using in-list syntax: key:[val1,val2].",
       'Running query: "project_id:[123,456]"',
     ]);
@@ -56,7 +57,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
-    expect(warns[0].split("\n")).toEqual([
+    expect(at(warns, 0).split("\n")).toEqual([
       "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters. Sentry search implicitly ANDs terms — removed explicit AND operator.",
       'Running query: "project_id:123 is:unresolved"',
     ]);
@@ -68,7 +69,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
-    expect(warns[0].split("\n")).toEqual([
+    expect(at(warns, 0).split("\n")).toEqual([
       "Rewrote OR using in-list syntax: key:[val1,val2].",
       'Running query: "level:[error,warning]"',
     ]);
@@ -93,7 +94,7 @@ describe("sanitizeQuery: rewrite warnings", () => {
     );
     const warns = runningQueries();
     expect(warns).toHaveLength(1);
-    expect(warns[0].split("\n")).toEqual([
+    expect(at(warns, 0).split("\n")).toEqual([
       "`project` is the slug; numeric ids use project_id. Rewrote numeric project: filters.",
       'Running query: "project_id:123 ((( broken"',
     ]);

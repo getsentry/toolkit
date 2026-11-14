@@ -412,3 +412,25 @@ export async function loadCommand<CONTEXT extends CommandContext>(
   // The command reads only some context fields; each test supplies those.
   return func as TestCommandFunction<CONTEXT>;
 }
+
+/**
+ * The element of `items` at `index`, failing the test when there is none.
+ * A negative index counts back from the end, as with `Array.prototype.at`.
+ */
+export function at<T>(items: ArrayLike<T>, index: number): T {
+  const position = index < 0 ? items.length + index : index;
+  if (position < 0 || position >= items.length) {
+    throw new Error(
+      `Expected an element at index ${index}, but there are ${items.length}`,
+    );
+  }
+  return items[position] as T;
+}
+
+/** `value`, failing the test when it is `null` or `undefined`. */
+export function must<T>(value: T | null | undefined, what = "a value"): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Expected ${what}, but got ${String(value)}`);
+  }
+  return value;
+}

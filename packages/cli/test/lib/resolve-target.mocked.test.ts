@@ -161,6 +161,7 @@ import {
   resolveOrgAndProject,
   resolveOrgsForListing,
 } from "../../src/lib/resolve-target.js";
+import { at } from "../helpers.js";
 
 /** Reset all mocks between tests */
 function resetAllMocks() {
@@ -735,8 +736,8 @@ describe("resolveAllTargets", () => {
     });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("my-org");
-    expect(result.targets[0].project).toBe("my-project");
+    expect(at(result.targets, 0).org).toBe("my-org");
+    expect(at(result.targets, 0).project).toBe("my-project");
   });
 
   test("throws ContextError when only org provided", async () => {
@@ -752,8 +753,8 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/test" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("default-org");
-    expect(result.targets[0].project).toBe("default-project");
+    expect(at(result.targets, 0).org).toBe("default-org");
+    expect(at(result.targets, 0).project).toBe("default-project");
   });
 
   test("resolves multiple DSNs in monorepo", async () => {
@@ -815,10 +816,10 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/test/monorepo" });
 
     expect(result.targets).toHaveLength(2);
-    expect(result.targets[0].org).toBe("my-org");
-    expect(result.targets[0].project).toBe("frontend");
-    expect(result.targets[1].org).toBe("my-org");
-    expect(result.targets[1].project).toBe("backend");
+    expect(at(result.targets, 0).org).toBe("my-org");
+    expect(at(result.targets, 0).project).toBe("frontend");
+    expect(at(result.targets, 1).org).toBe("my-org");
+    expect(at(result.targets, 1).project).toBe("backend");
   });
 
   test("deduplicates targets with same org+project", async () => {
@@ -899,8 +900,8 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/home/user/my-app" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("inferred-org");
-    expect(result.targets[0].project).toBe("my-app");
+    expect(at(result.targets, 0).org).toBe("inferred-org");
+    expect(at(result.targets, 0).project).toBe("my-app");
   });
 
   test("returns empty targets when a public-key DSN cannot be resolved", async () => {
@@ -975,8 +976,8 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/test" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("123");
-    expect(result.targets[0].project).toBe("456");
+    expect(at(result.targets, 0).org).toBe("123");
+    expect(at(result.targets, 0).project).toBe("456");
     // The DSN already identifies the target — no discovery API call.
     expect(mockGetProject).not.toHaveBeenCalled();
   });

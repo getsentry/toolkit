@@ -4,6 +4,7 @@ import {
   formatEventOutcomes,
   summarizeEventOutcomes,
 } from "../../../src/lib/formatters/event-outcomes.js";
+import { at } from "../../helpers.js";
 
 function bucket(
   overrides: Partial<
@@ -118,7 +119,7 @@ describe("summarizeEventOutcomes", () => {
       events: 10,
       tags: [],
     });
-    expect(rows[1].outcome).toBe("rate_limited");
+    expect(at(rows, 1).outcome).toBe("rate_limited");
   });
 
   test("defaults tags to [] when an older server omits them", () => {
@@ -137,7 +138,7 @@ describe("summarizeEventOutcomes", () => {
 
     const rows = summarizeEventOutcomes(response);
 
-    expect(rows[0].tags).toEqual([]);
+    expect(at(rows, 0).tags).toEqual([]);
     expect(formatEventOutcomes(rows)).toContain("—");
   });
 });

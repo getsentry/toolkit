@@ -49,7 +49,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand } from "../../../helpers.js";
+import { loadCommand, at, must } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ describe("dashboard widget add", () => {
       }),
     );
     // Original widgets should be preserved plus the new one
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(3);
   });
 
@@ -310,9 +310,9 @@ describe("dashboard widget add", () => {
       "Issues Over Time",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual([]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(addedWidget.queries, 0).columns).toEqual([]);
   });
 
   test("issue dataset defaults columns to ['issue'] and orderby to -count()", async () => {
@@ -325,11 +325,11 @@ describe("dashboard widget add", () => {
       "Top Issues",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual(["issue"]);
-    expect(addedWidget.queries[0].fields).toContain("issue");
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(addedWidget.queries, 0).columns).toEqual(["issue"]);
+    expect(at(addedWidget.queries, 0).fields).toContain("issue");
+    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
   });
 
   test("resolves dataset alias 'errors' to 'error-events' in PUT body", async () => {
@@ -347,8 +347,8 @@ describe("dashboard widget add", () => {
       "Error Count",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
   });
 
@@ -367,8 +367,8 @@ describe("dashboard widget add", () => {
       "Latency",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("tracemetrics");
   });
 
@@ -390,10 +390,10 @@ describe("dashboard widget add", () => {
       "Last Seen",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
-    expect(addedWidget.queries[0].aggregates).toEqual(["last_seen()"]);
+    expect(at(addedWidget.queries, 0).aggregates).toEqual(["last_seen()"]);
   });
 
   test("case-insensitive dataset values are accepted", async () => {
@@ -411,8 +411,8 @@ describe("dashboard widget add", () => {
       "Errors",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.widgetType).toBe("error-events");
   });
 
@@ -456,9 +456,9 @@ describe("dashboard widget add", () => {
       "Issues by Project",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].columns).toEqual(["project"]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(addedWidget.queries, 0).columns).toEqual(["project"]);
   });
 
   // -------------------------------------------------------------------------
@@ -483,12 +483,12 @@ describe("dashboard widget add", () => {
       "Full Width Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(5);
-    expect(addedWidget.layout.w).toBe(6);
-    expect(addedWidget.layout.h).toBe(3);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(5);
+    expect(must(addedWidget.layout).w).toBe(6);
+    expect(must(addedWidget.layout).h).toBe(3);
   });
 
   test("partial layout flags override auto-layout defaults", async () => {
@@ -506,12 +506,12 @@ describe("dashboard widget add", () => {
       "Positioned Counter",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // x overridden, other values from auto-layout defaults for big_number (w:2, h:1)
-    expect(addedWidget.layout.x).toBe(4);
-    expect(addedWidget.layout.w).toBe(2);
-    expect(addedWidget.layout.h).toBe(1);
+    expect(must(addedWidget.layout).x).toBe(4);
+    expect(must(addedWidget.layout).w).toBe(2);
+    expect(must(addedWidget.layout).h).toBe(1);
   });
 
   test("throws ValidationError for width > 6", async () => {
@@ -576,9 +576,9 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
+    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
   });
 
   test("auto-defaults --limit to 5 when --group-by is used without --limit", async () => {
@@ -596,11 +596,11 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBe(5);
-    expect(addedWidget.queries[0].columns).toEqual(["browser.name"]);
-    expect(addedWidget.queries[0].orderby).toBe("-count()");
+    expect(at(addedWidget.queries, 0).columns).toEqual(["browser.name"]);
+    expect(at(addedWidget.queries, 0).orderby).toBe("-count()");
   });
 
   test("explicit --limit wins over auto-default for grouped widgets", async () => {
@@ -619,8 +619,8 @@ describe("dashboard widget add", () => {
       "Top Browsers",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBe(10);
   });
 
@@ -634,8 +634,8 @@ describe("dashboard widget add", () => {
       "Total Count",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBeUndefined();
   });
 
@@ -652,8 +652,8 @@ describe("dashboard widget add", () => {
       "Top Issues",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     expect(addedWidget.limit).toBeUndefined();
   });
 
@@ -669,12 +669,12 @@ describe("dashboard widget add", () => {
       "Dense Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // Existing widgets: big_number at (0,0,2,1) and table at (2,0,4,2).
     // Dense mode finds the first gap. The gap at (0,1) fits a 2x1 big_number.
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(1);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(1);
   });
 
   test("--layout sequential (default) uses sequential placement", async () => {
@@ -692,12 +692,12 @@ describe("dashboard widget add", () => {
       "Sequential Widget",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const addedWidget = body.widgets.at(-1);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const addedWidget = at(body.widgets, -1);
     // Existing widgets: big_number at (0,0,2,1) and table at (2,0,4,2).
     // Last widget is table at x=2,w=4 → cursor=(6,0) → 6+2=8 > 6 → wrap to (0,2).
-    expect(addedWidget.layout.x).toBe(0);
-    expect(addedWidget.layout.y).toBe(2);
+    expect(must(addedWidget.layout).x).toBe(0);
+    expect(must(addedWidget.layout).y).toBe(2);
   });
 
   test("--layout invalid rejects with ValidationError", async () => {

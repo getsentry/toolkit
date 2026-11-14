@@ -15,6 +15,7 @@ import {
   type WidgetLayoutMode,
 } from "../../src/types/dashboard.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Arbitraries
@@ -116,8 +117,8 @@ describe("property: assignDefaultLayout", () => {
       property(array(widgetArb, { minLength: 2, maxLength: 20 }), (widgets) => {
         const placed = buildPlacedSequence(widgets, "sequential");
         for (let i = 1; i < placed.length; i++) {
-          expect(placed[i].layout!.y).toBeGreaterThanOrEqual(
-            placed[i - 1].layout!.y,
+          expect(at(placed, i).layout!.y).toBeGreaterThanOrEqual(
+            at(placed, i - 1).layout!.y,
           );
         }
       }),

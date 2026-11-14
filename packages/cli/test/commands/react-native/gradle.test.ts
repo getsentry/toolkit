@@ -15,7 +15,7 @@ import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 
 let tmpDir: string;
 let bundle: string;
@@ -91,7 +91,7 @@ describe("react-native gradle", () => {
       type: "minified_source",
       sourcemapFilename: "index.android.bundle.map",
     });
-    expect(opts.files[0].debugId).toMatch(/[0-9a-f-]{36}/);
+    expect(at(opts.files, 0).debugId).toMatch(/[0-9a-f-]{36}/);
     // The bundle on disk now carries the injected debug id.
     expect(await readFile(bundle, "utf8")).toContain("debugId");
   });

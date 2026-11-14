@@ -51,7 +51,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("attribute-list-");
 
@@ -589,7 +589,7 @@ describe("listCommand.func", () => {
     expect(collected).toEqual(data.map((row) => row.key));
     expect(cursorLengths.length).toBeGreaterThan(10);
     // Cursor stops growing once paging reaches a steady state
-    expect(Math.max(...cursorLengths) - cursorLengths[0]).toBeLessThan(64);
+    expect(Math.max(...cursorLengths) - at(cursorLengths, 0)).toBeLessThan(64);
   });
 
   test("continues mixed types past 100 rows without losing partially selected pages", async () => {

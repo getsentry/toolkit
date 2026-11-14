@@ -36,6 +36,7 @@ import {
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
+  at,
 } from "../helpers.js";
 import { createMockServer, type MockServer } from "../mocks/server.js";
 
@@ -326,7 +327,9 @@ describe.skipIf(process.platform === "win32")(
         const retry = await runCommand(args);
         expect(retry.exitCode, retry.stderr).toBe(0);
         expect(JSON.parse(retry.stdout)).toEqual({
-          data: [{ id: issuesFixture[0].id, title: issuesFixture[0].title }],
+          data: [
+            { id: at(issuesFixture, 0).id, title: at(issuesFixture, 0).title },
+          ],
           hasMore: false,
           hasPrev: false,
         });
@@ -334,9 +337,11 @@ describe.skipIf(process.platform === "win32")(
           url.pathname.endsWith("/issues/"),
         );
         expect(issueRequests).toHaveLength(1);
-        const request = issueRequests[0];
+        const request = at(issueRequests, 0);
         expect(request.pathname).toBe("/api/0/organizations/test-org/issues/");
-        expect(request.searchParams.get("project")).toBe(projectsFixture[0].id);
+        expect(request.searchParams.get("project")).toBe(
+          at(projectsFixture, 0).id,
+        );
         expect(request.searchParams.get("query")).toBe(query || null);
         expect(request.searchParams.get("limit")).toBe("7");
         expect(request.searchParams.get("sort")).toBe("freq");
@@ -452,7 +457,7 @@ describe("bounded target guidance", () => {
   test("shows one retry without an empty alternatives list for a single project", async () => {
     organizations = organizationsFixture.slice(0, 1);
     projectsByOrg = new Map([
-      [organizations[0].slug, projectsFixture.slice(0, 1)],
+      [at(organizations, 0).slug, projectsFixture.slice(0, 1)],
     ]);
 
     const error = await failure(guide());
@@ -523,7 +528,7 @@ describe.skipIf(process.platform === "win32")(
       ]);
       expect(result.exitCode, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).data).toEqual([
-        { id: issuesFixture[0].id },
+        { id: at(issuesFixture, 0).id },
       ]);
       const issueRequests = requests.filter((url) =>
         url.pathname.endsWith("/issues/"),

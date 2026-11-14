@@ -126,7 +126,7 @@ import {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 /** A valid 32-char hex log ID for tests */
@@ -721,8 +721,8 @@ describe("log view --web interactive prompt", () => {
 
     expect(mockPrompt).toHaveBeenCalled();
     expect(openInBrowserSpy).toHaveBeenCalledTimes(2);
-    const url1 = openInBrowserSpy.mock.calls[0][0] as string;
-    const url2 = openInBrowserSpy.mock.calls[1][0] as string;
+    const url1 = at(openInBrowserSpy.mock.calls, 0)[0] as string;
+    const url2 = at(openInBrowserSpy.mock.calls, 1)[0] as string;
     expect(url1).toContain(PROMPT_ID1);
     expect(url2).toContain(PROMPT_ID2);
   });

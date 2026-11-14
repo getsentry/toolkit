@@ -4,7 +4,7 @@ import { expect, test } from "vitest";
 import { createE2EContext } from "../fixture.js";
 import organizationFixture from "../fixtures/organization.json";
 import projectFixture from "../fixtures/project.json";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, at } from "../helpers.js";
 import { TEST_ORG, TEST_PROJECT, TEST_TOKEN } from "../mocks/routes.js";
 import { createMockServer } from "../mocks/server.js";
 
@@ -101,7 +101,7 @@ test("combines -b buckets with -t period and preserves metadata when projecting 
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(requests).toHaveLength(1);
-    const params = requests[0].searchParams;
+    const params = at(requests, 0).searchParams;
     expect(params.getAll("yAxis")).toEqual(["count()", "latest_event()"]);
     expect(Object.fromEntries(params)).toEqual({
       dataset: "spans",

@@ -158,13 +158,13 @@ function issueIndexResponse(
  */
 function resolveLogEventsBody(query: string | null) {
   if (query?.includes("sentry.item_id:")) {
-    const bracketMatch = query.match(/sentry\.item_id:\[([^\]]+)\]/);
-    const singleMatch = query.match(/sentry\.item_id:([0-9a-f]{32})/i);
+    const [, bracketIds] = query.match(/sentry\.item_id:\[([^\]]+)\]/) ?? [];
+    const [, singleId] = query.match(/sentry\.item_id:([0-9a-f]{32})/i) ?? [];
     let ids: string[] = [];
-    if (bracketMatch) {
-      ids = bracketMatch[1].split(",").map((s) => s.trim());
-    } else if (singleMatch) {
-      ids = [singleMatch[1]];
+    if (bracketIds) {
+      ids = bracketIds.split(",").map((s) => s.trim());
+    } else if (singleId) {
+      ids = [singleId];
     }
     if (ids.includes(TEST_LOG_ID)) {
       return logDetailFixture;

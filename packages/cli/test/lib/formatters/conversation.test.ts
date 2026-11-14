@@ -10,6 +10,7 @@ import type {
   AgentConversationSpan,
   ConversationListItem,
 } from "../../../src/types/conversation.js";
+import { at } from "../../helpers.js";
 
 function makeListItem(
   overrides: Partial<ConversationListItem> = {},
@@ -167,10 +168,10 @@ describe("extractTurns", () => {
     const spans = [makeSpan()];
     const turns = extractTurns(spans);
     expect(turns).toHaveLength(1);
-    expect(turns[0].turn).toBe(1);
-    expect(turns[0].userContent).toBe("hi");
-    expect(turns[0].assistantContent).toBe("hello");
-    expect(turns[0].model).toBe("gpt-4");
+    expect(at(turns, 0).turn).toBe(1);
+    expect(at(turns, 0).userContent).toBe("hi");
+    expect(at(turns, 0).assistantContent).toBe("hello");
+    expect(at(turns, 0).model).toBe("gpt-4");
   });
 
   test("associates tool calls with the correct turn", () => {
@@ -188,8 +189,8 @@ describe("extractTurns", () => {
     });
     const turns = extractTurns([aiSpan, toolSpan]);
     expect(turns).toHaveLength(1);
-    expect(turns[0].toolCalls).toHaveLength(1);
-    expect(turns[0].toolCalls[0].name).toBe("search");
+    expect(at(turns, 0).toolCalls).toHaveLength(1);
+    expect(at(at(turns, 0).toolCalls, 0).name).toBe("search");
   });
 
   test("returns empty array for no spans", () => {
@@ -208,8 +209,8 @@ describe("extractTurns", () => {
       "precise.finish_ts": 110,
     });
     const turns = extractTurns([span1, span2]);
-    expect(turns[0].started).toBe(100);
-    expect(turns[1].started).toBe(200);
+    expect(at(turns, 0).started).toBe(100);
+    expect(at(turns, 1).started).toBe(200);
   });
 
   test("handles filtered content", () => {
@@ -218,8 +219,8 @@ describe("extractTurns", () => {
       "gen_ai.output.messages": "[Filtered]",
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBe("[Filtered]");
-    expect(turns[0].assistantContent).toBe("[Filtered]");
+    expect(at(turns, 0).userContent).toBe("[Filtered]");
+    expect(at(turns, 0).assistantContent).toBe("[Filtered]");
   });
 
   test("handles null content messages gracefully", () => {
@@ -229,7 +230,7 @@ describe("extractTurns", () => {
       }),
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBeNull();
+    expect(at(turns, 0).userContent).toBeNull();
   });
 });
 
@@ -462,7 +463,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.response.text": "fallback text",
     });
     const turns = extractTurns([span]);
-    expect(turns[0].assistantContent).toBe("fallback text");
+    expect(at(turns, 0).assistantContent).toBe("fallback text");
   });
 
   test("extracts from gen_ai.response.object fallback", () => {
@@ -472,7 +473,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.response.object": '{"result": true}',
     });
     const turns = extractTurns([span]);
-    expect(turns[0].assistantContent).toBe('{"result": true}');
+    expect(at(turns, 0).assistantContent).toBe('{"result": true}');
   });
 
   test("handles plain string input messages", () => {
@@ -480,7 +481,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.input.messages": "plain string input",
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBe("plain string input");
+    expect(at(turns, 0).userContent).toBe("plain string input");
   });
 
   test("handles array of string messages", () => {
@@ -488,7 +489,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.input.messages": JSON.stringify(["msg1", "msg2"]),
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBe("msg2");
+    expect(at(turns, 0).userContent).toBe("msg2");
   });
 
   test("handles message with text field instead of content", () => {
@@ -498,7 +499,7 @@ describe("extractTurns: content extraction edge cases", () => {
       }),
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBe("from text field");
+    expect(at(turns, 0).userContent).toBe("from text field");
   });
 
   test("handles array content parts with text", () => {
@@ -513,8 +514,8 @@ describe("extractTurns: content extraction edge cases", () => {
       }),
     });
     const turns = extractTurns([span]);
-    expect(turns[0].assistantContent).toContain("part one");
-    expect(turns[0].assistantContent).toContain("part two");
+    expect(at(turns, 0).assistantContent).toContain("part one");
+    expect(at(turns, 0).assistantContent).toContain("part two");
   });
 
   test("handles no input or output messages", () => {
@@ -526,8 +527,8 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.response.object": undefined,
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBeNull();
-    expect(turns[0].assistantContent).toBeNull();
+    expect(at(turns, 0).userContent).toBeNull();
+    expect(at(turns, 0).assistantContent).toBeNull();
   });
 
   test("extracts from gen_ai.request.messages fallback", () => {
@@ -538,7 +539,7 @@ describe("extractTurns: content extraction edge cases", () => {
       }),
     });
     const turns = extractTurns([span]);
-    expect(turns[0].userContent).toBe("from request");
+    expect(at(turns, 0).userContent).toBe("from request");
   });
 
   test("handles numeric token values", () => {
@@ -546,7 +547,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.usage.total_tokens": 42,
     });
     const turns = extractTurns([span]);
-    expect(turns[0].totalTokens).toBe(42);
+    expect(at(turns, 0).totalTokens).toBe(42);
   });
 
   test("handles missing token values", () => {
@@ -554,7 +555,7 @@ describe("extractTurns: content extraction edge cases", () => {
       "gen_ai.usage.total_tokens": undefined,
     });
     const turns = extractTurns([span]);
-    expect(turns[0].totalTokens).toBe(0);
+    expect(at(turns, 0).totalTokens).toBe(0);
   });
 
   test("detects operation type from span name when explicit type missing", () => {

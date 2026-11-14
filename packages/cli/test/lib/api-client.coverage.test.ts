@@ -51,7 +51,7 @@ import { setAuthToken } from "../../src/lib/db/auth.js";
 import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
 import { ApiError, AuthError, TimeoutError } from "../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../helpers.js";
 
 // --- Shared test setup ---
 
@@ -505,7 +505,7 @@ describe("teams.ts", () => {
 
       const result = await listProjectTeams("test-org", "test-project");
       expect(result).toHaveLength(1);
-      expect(result[0].slug).toBe("test-team");
+      expect(at(result, 0).slug).toBe("test-team");
     });
   });
 
@@ -868,7 +868,7 @@ describe("projects.ts", () => {
         status: "active",
       });
       expect(result).toHaveLength(1);
-      expect(result[0].dsn.public).toBe("https://abc@sentry.io/1");
+      expect(at(result, 0).dsn.public).toBe("https://abc@sentry.io/1");
     });
   });
 
@@ -1244,7 +1244,7 @@ describe("traces.ts", () => {
         timestamp: 1_700_000_000,
       });
       expect(result).toHaveLength(1);
-      expect(result[0].span_id).toBe("span-1");
+      expect(at(result, 0).span_id).toBe("span-1");
     });
   });
 });
@@ -1277,7 +1277,7 @@ describe("repositories.ts", () => {
 
       const result = await listRepositories("test-org");
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe("getsentry/sentry");
+      expect(at(result, 0).name).toBe("getsentry/sentry");
     });
   });
 
@@ -1364,7 +1364,7 @@ describe("logs.ts", () => {
 
       const result = await listLogs("test-org", "my-project");
       expect(result).toHaveLength(1);
-      expect(result[0]["sentry.item_id"]).toBe("log-1");
+      expect(at(result, 0)["sentry.item_id"]).toBe("log-1");
     });
 
     test("uses numeric project ID via project param", async () => {
@@ -1926,7 +1926,7 @@ describe("traces.ts (transactions)", () => {
         limit: 1,
       });
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].transaction).toBe("GET /api/users");
+      expect(at(result.data, 0).transaction).toBe("GET /api/users");
       expect(result.nextCursor).toContain("txn-next");
     });
 
@@ -2026,7 +2026,7 @@ describe("logs.ts (detailed)", () => {
 
       const result = await getLogs("test-org", "test-project", ["log-1"]);
       expect(result).toHaveLength(1);
-      expect(result[0]["sentry.item_id"]).toBe("log-1");
+      expect(at(result, 0)["sentry.item_id"]).toBe("log-1");
     });
 
     test("splits into batches when over API_MAX_PER_PAGE", async () => {
@@ -2101,7 +2101,7 @@ describe("logs.ts (detailed)", () => {
 
       const result = await listTraceLogs("test-org", "abc123def456");
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe("tlog-1");
+      expect(at(result, 0).id).toBe("tlog-1");
     });
 
     test("passes custom statsPeriod and limit", async () => {

@@ -15,7 +15,7 @@ import {
   listSpans,
   listTransactions,
 } from "../../../src/lib/api/traces.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // listTransactions
@@ -64,7 +64,7 @@ describe("listTransactions", () => {
       const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex];
+      const resp = at(responses, callIndex);
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -325,7 +325,7 @@ describe("listSpans", () => {
       const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex];
+      const resp = at(responses, callIndex);
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -801,7 +801,7 @@ describe("getDetailedTrace", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].span_id).toBe("span-1");
+    expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(1);
     const url = new URL(getCapturedUrls()[0]);
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
@@ -828,7 +828,7 @@ describe("getDetailedTrace", () => {
     const result = await getDetailedTrace("my-org", "abc123def456");
 
     expect(result).toHaveLength(1);
-    expect(result[0].span_id).toBe("span-1");
+    expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
     expect(new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod")).toBe(
       "14d",

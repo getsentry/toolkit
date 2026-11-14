@@ -14,6 +14,7 @@ import {
   measure,
   summarize,
 } from "../../fixtures/bench/helpers.js";
+import { at } from "../../helpers.js";
 
 describe("summarize", () => {
   test("computes p50 and p95 via nearest-rank on sorted samples", () => {
@@ -172,7 +173,7 @@ describe("compareReports", () => {
       entries: [
         {
           ...baseline.entries[0],
-          stats: { ...baseline.entries[0].stats, p50: 15 },
+          stats: { ...at(baseline.entries, 0).stats, p50: 15 },
         },
         baseline.entries[1],
       ],
@@ -190,7 +191,7 @@ describe("compareReports", () => {
       entries: [
         {
           ...baseline.entries[0],
-          stats: { ...baseline.entries[0].stats, p50: 7 },
+          stats: { ...at(baseline.entries, 0).stats, p50: 7 },
         },
         baseline.entries[1],
       ],

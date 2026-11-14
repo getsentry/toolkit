@@ -22,7 +22,7 @@ import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import { useTestConfigDir, loadCommand, at } from "../../helpers.js";
 
 useTestConfigDir("build-upload-cmd-");
 
@@ -299,7 +299,7 @@ describe("build upload", () => {
         "archive.xcarchive/dSYMs/Framework.dSYM/Contents/symbols"
       ],
     ).toEqual(strToU8("framework symbols"));
-    expect(existsSync(uploads[0].path)).toBe(false);
+    expect(existsSync(at(uploads, 0).path)).toBe(false);
   });
 
   test.each(["apk", "aab", "xcarchive"])(

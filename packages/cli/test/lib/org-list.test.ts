@@ -121,6 +121,7 @@ vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
+import { at } from "../helpers.js";
 
 /**
  * Bypass the withProgress spinner in all tests — prevents real stderr
@@ -253,8 +254,8 @@ describe("fetchAllOrgs", () => {
 
     const result = await fetchAllOrgs(config);
     expect(result).toHaveLength(2);
-    expect(result[0].orgSlug).toBe("org-a");
-    expect(result[1].orgSlug).toBe("org-b");
+    expect(at(result, 0).orgSlug).toBe("org-a");
+    expect(at(result, 1).orgSlug).toBe("org-b");
   });
 
   test("skips orgs with non-auth errors", async () => {
@@ -274,7 +275,7 @@ describe("fetchAllOrgs", () => {
 
     const result = await fetchAllOrgs(config);
     expect(result).toHaveLength(1);
-    expect(result[0].orgSlug).toBe("org-b");
+    expect(at(result, 0).orgSlug).toBe("org-b");
   });
 
   test("rethrows AuthError from any org", async () => {
@@ -333,7 +334,7 @@ describe("handleOrgAll", () => {
     // paginate() wraps the server cursor with the walk's page size.
     expect(result.nextCursor).toContain("next:123");
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].orgSlug).toBe("my-org");
+    expect(at(result.items, 0).orgSlug).toBe("my-org");
   });
 
   test("caps perPage at API_MAX_PER_PAGE when limit exceeds it", async () => {
@@ -575,7 +576,7 @@ describe("handleExplicitOrg", () => {
     });
 
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].orgSlug).toBe("my-org");
+    expect(at(result.items, 0).orgSlug).toBe("my-org");
   });
 
   test("includes org-scoped note in header when noteOrgScoped=true", async () => {
@@ -646,7 +647,7 @@ describe("handleExplicitProject", () => {
 
     expect(listForProject).toHaveBeenCalledWith("my-org", "my-proj");
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].orgSlug).toBe("my-org");
+    expect(at(result.items, 0).orgSlug).toBe("my-org");
   });
 
   test("throws when listForProject is not defined on config", async () => {
@@ -736,7 +737,7 @@ describe("handleProjectSearch", () => {
     });
 
     expect(listForProject).toHaveBeenCalledWith("org-a", "my-proj");
-    expect(result.items[0].orgSlug).toBe("org-a");
+    expect(at(result.items, 0).orgSlug).toBe("org-a");
   });
 
   test("reuses fuzzy project data without a second slug search", async () => {
@@ -782,7 +783,7 @@ describe("handleProjectSearch", () => {
     });
 
     expect(listForOrg).toHaveBeenCalledWith("org-a");
-    expect(result.items[0].orgSlug).toBe("org-a");
+    expect(at(result.items, 0).orgSlug).toBe("org-a");
   });
 
   test("deduplicates orgs when multiple projects share one org", async () => {
@@ -1265,7 +1266,11 @@ describe("dispatchOrgScopedList", () => {
       });
 
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler.mock.calls[0]?.[0].parsed.type).toBe("project-search");
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parsed: expect.objectContaining({ type: "project-search" }),
+        }),
+      );
     });
   });
 });

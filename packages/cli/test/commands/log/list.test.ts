@@ -137,7 +137,7 @@ vi.mock("../../../src/lib/version-check.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as versionCheck from "../../../src/lib/version-check.js";
 import type { SentryLog, TraceLog } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at, must } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
@@ -1329,10 +1329,10 @@ describe("listCommand.func — follow mode (standard)", () => {
     await promise;
 
     // Poll call (index 1) should include afterTimestamp from max in batch
-    const pollCall = listLogsSpy.mock.calls[1];
+    const pollCall = at(listLogsSpy.mock.calls, 1);
     expect(pollCall).toBeDefined();
-    expect(pollCall[2].afterTimestamp).toBe(maxTs);
-    expect(pollCall[2].statsPeriod).toBe("10m");
+    expect(must(pollCall[2]).afterTimestamp).toBe(maxTs);
+    expect(must(pollCall[2]).statsPeriod).toBe("10m");
   });
 
   test("shows update notification when available", async () => {
@@ -1578,10 +1578,10 @@ describe("listCommand.func — follow mode (trace)", () => {
 
     // Poll call (index 1) should NOT have afterTimestamp
     // (trace-logs endpoint doesn't support it)
-    const pollCall = listTraceLogsSpy.mock.calls[1];
+    const pollCall = at(listTraceLogsSpy.mock.calls, 1);
     expect(pollCall).toBeDefined();
-    expect(pollCall[2].afterTimestamp).toBeUndefined();
-    expect(pollCall[2].statsPeriod).toBe("10m");
+    expect(must(pollCall[2]).afterTimestamp).toBeUndefined();
+    expect(must(pollCall[2]).statsPeriod).toBe("10m");
   });
 
   test("handles empty initial fetch then new logs in poll", async () => {

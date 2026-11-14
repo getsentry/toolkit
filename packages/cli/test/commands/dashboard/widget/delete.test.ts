@@ -48,7 +48,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand } from "../../../helpers.js";
+import { loadCommand, at } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -156,9 +156,9 @@ describe("dashboard widget delete", () => {
       }),
     );
     // Only one widget should remain after deleting index 0
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(1);
-    expect(body.widgets[0].title).toBe("Slow Spans");
+    expect(at(body.widgets, 0).title).toBe("Slow Spans");
   });
 
   test("deletes widget by title", async () => {
@@ -170,9 +170,9 @@ describe("dashboard widget delete", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(1);
-    expect(body.widgets[0].title).toBe("Error Count");
+    expect(at(body.widgets, 0).title).toBe("Error Count");
   });
 
   test("throws ValidationError when neither --index nor --title provided", async () => {

@@ -37,6 +37,7 @@ import {
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 // -- Arbitraries --
 
@@ -250,7 +251,7 @@ describe("proposeCompletions: Stricli integration", () => {
         continue;
       }
       // Pick the first subcommand's first character as prefix
-      const prefix = group.subcommands[0].name[0];
+      const prefix = at(group.subcommands, 0).name[0];
       const completions = await proposeCompletions(
         app,
         [group.name, prefix],

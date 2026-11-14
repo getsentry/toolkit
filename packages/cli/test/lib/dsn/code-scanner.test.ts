@@ -7,6 +7,7 @@ import {
   scanCodeForDsns,
   scanCodeForFirstDsn,
 } from "../../../src/lib/dsn/code-scanner.js";
+import { at } from "../../helpers.js";
 
 describe("Code Scanner", () => {
   const testDir = join(import.meta.dirname, ".test-code-scanner");
@@ -377,7 +378,7 @@ describe("Code Scanner", () => {
 
       const result = await scanCodeForDsns(testDir);
       expect(result.dsns).toHaveLength(1);
-      expect(result.dsns[0].raw).toBe(
+      expect(at(result.dsns, 0).raw).toBe(
         "https://realkey@o123.ingest.sentry.io/456",
       );
     });

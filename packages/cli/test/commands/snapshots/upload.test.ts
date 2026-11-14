@@ -19,7 +19,7 @@ import { ValidationError } from "../../../src/lib/errors.js";
 import * as objectstore from "../../../src/lib/objectstore.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, must } from "../../helpers.js";
 
 let tmpDir: string;
 
@@ -146,13 +146,13 @@ describe("snapshots upload", () => {
         height: 3,
         note: "hi",
       });
-      expect(images["a.png"]["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
+      expect(must(images["a.png"])["content_hash"]).toMatch(/^[0-9a-f]{64}$/);
       // selective omitted when not requested.
       expect(manifest["selective"]).toBeUndefined();
       expect(harness.output()).toContain("snap-1");
 
       // The objectstore key is `{orgId}/{projectId}/{sha256}` from the scope.
-      const hash = images["a.png"]["content_hash"] as string;
+      const hash = must(images["a.png"])["content_hash"] as string;
       const key = uploadedKeys().find((k) => k.endsWith(hash)) as string;
       expect(key).toMatch(/^1\/2\/[0-9a-f]{64}$/);
       expect(existsSpy).toHaveBeenCalledTimes(1);
@@ -192,9 +192,9 @@ describe("snapshots upload", () => {
       string,
       Record<string, unknown>,
     ];
-    const entry = (
-      manifest["images"] as Record<string, Record<string, unknown>>
-    )["a.png"];
+    const entry = must(
+      (manifest["images"] as Record<string, Record<string, unknown>>)["a.png"],
+    );
     expect(entry["width"]).toBe(4);
     expect(entry["height"]).toBe(3);
     expect(entry["content_hash"]).toMatch(/^[0-9a-f]{64}$/);

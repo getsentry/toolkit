@@ -60,7 +60,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 const ID1 = "aaaa1111bbbb2222cccc3333dddd4444";
@@ -315,7 +315,7 @@ describe("viewCommand.func", () => {
       await func.call(context, { json: false, web: true }, "my-org/proj", ID1);
 
       expect(openInBrowserSpy).toHaveBeenCalled();
-      const url = openInBrowserSpy.mock.calls[0][0] as string;
+      const url = at(openInBrowserSpy.mock.calls, 0)[0] as string;
       expect(url).toContain(ID1);
       // Should NOT fetch logs when using --web
       expect(getLogsSpy).not.toHaveBeenCalled();

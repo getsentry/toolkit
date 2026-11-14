@@ -45,6 +45,7 @@ import {
   resolveCommandPath,
 } from "../../src/lib/introspect.js";
 import { sanitizeIssueQuery } from "../../src/lib/search-query.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -244,7 +245,7 @@ describe("extractFlags", () => {
       verbose: { kind: "boolean", hidden: true },
     };
     const result = extractFlags(flags);
-    expect(result[0].hidden).toBe(true);
+    expect(at(result, 0).hidden).toBe(true);
   });
 });
 
@@ -285,7 +286,7 @@ describe("buildCommandInfo", () => {
     expect(info.fullDescription).toBe("List all the things.");
     expect(info.positional).toBe("<target>");
     expect(info.flags).toHaveLength(1);
-    expect(info.flags[0].name).toBe("limit");
+    expect(at(info.flags, 0).name).toBe("limit");
     expect(info.aliases).toEqual({ l: "limit" });
     expect(info.examples).toEqual([
       "# List things in an org\nsentry thing list myorg",
@@ -354,8 +355,8 @@ describe("extractRouteGroupCommands", () => {
 
     const commands = extractRouteGroupCommands(routeMap, "thing");
     expect(commands).toHaveLength(2);
-    expect(commands[0].path).toBe("sentry thing list");
-    expect(commands[1].path).toBe("sentry thing view");
+    expect(at(commands, 0).path).toBe("sentry thing list");
+    expect(at(commands, 1).path).toBe("sentry thing view");
   });
 
   test("skips route map entries (only extracts commands)", () => {
@@ -369,7 +370,7 @@ describe("extractRouteGroupCommands", () => {
 
     const commands = extractRouteGroupCommands(routeMap, "parent");
     expect(commands).toHaveLength(1);
-    expect(commands[0].path).toBe("sentry parent cmd");
+    expect(at(commands, 0).path).toBe("sentry parent cmd");
   });
 });
 
@@ -397,14 +398,14 @@ describe("extractAllRoutes", () => {
     expect(routes).toHaveLength(2);
 
     // Route group
-    expect(routes[0].name).toBe("issue");
-    expect(routes[0].brief).toBe("Manage issues");
-    expect(routes[0].commands).toHaveLength(2);
+    expect(at(routes, 0).name).toBe("issue");
+    expect(at(routes, 0).brief).toBe("Manage issues");
+    expect(at(routes, 0).commands).toHaveLength(2);
 
     // Standalone command
-    expect(routes[1].name).toBe("api");
-    expect(routes[1].commands).toHaveLength(1);
-    expect(routes[1].commands[0].path).toBe("sentry api");
+    expect(at(routes, 1).name).toBe("api");
+    expect(at(routes, 1).commands).toHaveLength(1);
+    expect(at(at(routes, 1).commands, 0).path).toBe("sentry api");
   });
 
   test("skips hidden entries", () => {
@@ -418,7 +419,7 @@ describe("extractAllRoutes", () => {
 
     const routes = extractAllRoutes(topLevel);
     expect(routes).toHaveLength(1);
-    expect(routes[0].name).toBe("visible");
+    expect(at(routes, 0).name).toBe("visible");
   });
 });
 

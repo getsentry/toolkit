@@ -51,6 +51,7 @@ import {
   useTestConfigDir,
   loadCommand,
   type TestCommandFunction,
+  at,
 } from "../../helpers.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
@@ -1326,8 +1327,8 @@ describe("fetchOrgProjects", () => {
     for (const p of result) {
       expect(p.orgSlug).toBe("myorg");
     }
-    expect(result[0].slug).toBe("frontend");
-    expect(result[1].slug).toBe("backend");
+    expect(at(result, 0).slug).toBe("frontend");
+    expect(at(result, 1).slug).toBe("backend");
   });
 
   test("returns empty array when org has no projects", async () => {

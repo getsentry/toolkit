@@ -21,7 +21,7 @@ import {
   setOrgRegion,
 } from "../../src/lib/db/regions.js";
 import { ApiError } from "../../src/lib/errors.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, at } from "../helpers.js";
 
 useTestConfigDir("test-multiregion-");
 let originalFetch: typeof globalThis.fetch;
@@ -190,7 +190,7 @@ describe("listOrganizationsPage", () => {
     expect(capturedUrl).toContain("us.sentry.io");
     expect(capturedUrl).toContain("/api/0/organizations/");
     expect(orgs).toHaveLength(2);
-    expect(orgs[0].slug).toBe("us-org-1");
+    expect(at(orgs, 0).slug).toBe("us-org-1");
   });
 
   test("enriches 403 error with re-auth guidance for OAuth users", async () => {

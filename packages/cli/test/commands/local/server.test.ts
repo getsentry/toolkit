@@ -24,6 +24,7 @@ import {
 import { openBrowser } from "../../../src/lib/browser.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
+import { at } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -294,7 +295,7 @@ describe("sentry local serve --open", () => {
       signal.trigger();
       await command;
       expectViewerHint();
-      const url = new URL(opener.mock.calls[0][0]);
+      const url = new URL(at(opener.mock.calls, 0)[0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
       );

@@ -17,7 +17,7 @@ import { xcodeCommand } from "../../../src/commands/react-native/xcode.js";
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at } from "../../helpers.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -39,14 +39,14 @@ const spawnMock = vi.mocked(spawnSync);
 let dir: string;
 let script: string;
 
-function createContext(env: NodeJS.ProcessEnv): Partial<SentryContext> {
+function createContext(env: NodeJS.ProcessEnv) {
   return {
     stdout: { write: () => true },
     stderr: { write: () => true },
     cwd: dir,
     env,
     process: { ...process, execPath: "/usr/bin/sentry", exitCode: undefined },
-  };
+  } satisfies Partial<SentryContext>;
 }
 
 beforeEach(() => {
@@ -78,7 +78,7 @@ describe("react-native xcode", () => {
   test("debug build just runs the script (no upload)", async () => {
     await runXcode({ CONFIGURATION: "Debug" });
     expect(spawnMock).toHaveBeenCalledTimes(1);
-    expect(spawnMock.mock.calls[0][0]).toBe(script);
+    expect(at(spawnMock.mock.calls, 0)[0]).toBe(script);
     expect(sourcemaps.uploadSourcemaps).not.toHaveBeenCalled();
   });
 
@@ -124,12 +124,12 @@ describe("react-native xcode", () => {
 
     // Non-SEA (npm) run: NODE_BINARY must re-invoke the CLI via a shim, not
     // plain node, so RN re-enters the wrapper.
-    const wrapEnv = spawnMock.mock.calls[0][2]?.env;
+    const wrapEnv = at(spawnMock.mock.calls, 0)[2]?.env;
     expect(wrapEnv?.["NODE_BINARY"]).toMatch(/sentry-rn-node\.sh$/);
     expect(wrapEnv?.["__SENTRY_RN_WRAP_XCODE_CALL"]).toBe("1");
 
     expect(sourcemaps.uploadSourcemaps).toHaveBeenCalledTimes(1);
-    const opts = vi.mocked(sourcemaps.uploadSourcemaps).mock.calls[0][0];
+    const opts = at(vi.mocked(sourcemaps.uploadSourcemaps).mock.calls, 0)[0];
     expect(opts).toMatchObject({
       org: "acme",
       project: "mobile",

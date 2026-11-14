@@ -41,7 +41,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import { useTestConfigDir, loadCommand, at } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-create-");
@@ -145,7 +145,7 @@ describe("release create", () => {
     const func = await loadCommand(createCommand);
     await func.call(context, { finalize: true, json: true }, "1.0.0");
 
-    const call = createReleaseSpy.mock.calls[0];
+    const call = at(createReleaseSpy.mock.calls, 0);
     const body = call[1];
     expect(body.dateReleased).toBeDefined();
     expect(typeof body.dateReleased).toBe("string");

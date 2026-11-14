@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { at } from "../../helpers.js";
 
 /** Parameters for a synthetic repo. Defaults live in `presets.ts`. */
 export type FixtureSpec = {
@@ -330,7 +331,7 @@ function buildTextFileContent(
   if (includeDsn) {
     // Put the DSN somewhere non-commented so the DSN scanner accepts it.
     lines.push(`const SENTRY_DSN = "${rng.pick(DSN_TEMPLATES)}";`);
-    bytes += lines[0].length + 1;
+    bytes += at(lines, 0).length + 1;
   }
   while (bytes < targetBytes) {
     const line = rng.pick(FILLER_LINES);

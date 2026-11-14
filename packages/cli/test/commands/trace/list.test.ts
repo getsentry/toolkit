@@ -67,7 +67,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { TransactionListItem } from "../../../src/types/sentry.js";
-import { loadCommand } from "../../helpers.js";
+import { loadCommand, at, must } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 // Reference paginationDb early to prevent import stripping by auto-organize
@@ -557,8 +557,8 @@ describe("listCommand.func", () => {
       "test-org/test-project",
     );
 
-    const callArgs = listTransactionsSpy.mock.calls[0];
-    expect(callArgs[2].cursor).toBeUndefined();
+    const callArgs = at(listTransactionsSpy.mock.calls, 0);
+    expect(must(callArgs[2]).cursor).toBeUndefined();
   });
 
   test("shows 'try next page' hint when no traces on page but hasMore", async () => {

@@ -23,6 +23,7 @@ import {
   startStalledIngest,
   startStalledProxy,
 } from "./ingest-servers.js";
+import { at } from "../../helpers.js";
 
 describe("makeCompressedTransport (e2e)", () => {
   afterEach(closeIngestServers);
@@ -53,7 +54,7 @@ describe("makeCompressedTransport (e2e)", () => {
     expect(captures).toHaveLength(1);
     expect(captures[0]?.headers["content-encoding"]).toBe("zstd");
 
-    const decompressed = await promisify(zstdDecompress)(captures[0].body);
+    const decompressed = await promisify(zstdDecompress)(at(captures, 0).body);
     const text = Buffer.from(
       decompressed.buffer,
       decompressed.byteOffset,

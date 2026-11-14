@@ -41,6 +41,7 @@ import {
   type WidgetDataResult,
   type WidgetType,
 } from "../../src/types/dashboard.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Enum constants
@@ -874,7 +875,7 @@ describe("stripWidgetServerFields", () => {
       ],
     };
     const result = stripWidgetServerFields(widget);
-    const query = result.queries![0];
+    const query = at(result.queries!, 0);
     expect(query.id).toBe("q1");
     expect(query).not.toHaveProperty("widgetId");
     expect(query).not.toHaveProperty("dateCreated");

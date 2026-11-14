@@ -48,7 +48,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
-import { loadCommand } from "../../../helpers.js";
+import { loadCommand, at, must } from "../../../helpers.js";
 import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
@@ -185,8 +185,8 @@ describe("dashboard widget edit", () => {
     const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, display: "line" }, "123");
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].displayType).toBe("line");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).displayType).toBe("line");
   });
 
   test("edits widget by title (case-insensitive)", async () => {
@@ -198,9 +198,9 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].displayType).toBe("bar");
-    expect(body.widgets[0].title).toBe("Error Count");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).displayType).toBe("bar");
+    expect(at(body.widgets, 0).title).toBe("Error Count");
   });
 
   test("throws ValidationError when neither --index nor --title provided", async () => {
@@ -230,15 +230,15 @@ describe("dashboard widget edit", () => {
     const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 1, display: "bar" }, "123");
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const edited = body.widgets[1];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const edited = at(body.widgets, 1);
     // Display changed but queries preserved from original
     expect(edited.displayType).toBe("bar");
-    expect(edited.queries[0].aggregates).toEqual([
+    expect(at(edited.queries, 0).aggregates).toEqual([
       "p95(span.duration)",
       "count()",
     ]);
-    expect(edited.queries[0].columns).toEqual(["span.description"]);
+    expect(at(edited.queries, 0).columns).toEqual(["span.description"]);
   });
 
   // The backend validates displayType and widgetType as independent enums —
@@ -273,9 +273,9 @@ describe("dashboard widget edit", () => {
       "123",
     );
     expect(updateDashboardSpy).toHaveBeenCalledTimes(1);
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].displayType).toBe("big_number");
-    expect(body.widgets[0].widgetType).toBe("issue");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).displayType).toBe("big_number");
+    expect(at(body.widgets, 0).widgetType).toBe("issue");
   });
 
   test("allows --display change to table on preprod-app-size widget", async () => {
@@ -307,9 +307,9 @@ describe("dashboard widget edit", () => {
       "123",
     );
     expect(updateDashboardSpy).toHaveBeenCalledTimes(1);
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].displayType).toBe("table");
-    expect(body.widgets[0].widgetType).toBe("preprod-app-size");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).displayType).toBe("table");
+    expect(at(body.widgets, 0).widgetType).toBe("preprod-app-size");
   });
 
   test("allows --dataset change on widget with text display type", async () => {
@@ -351,13 +351,13 @@ describe("dashboard widget edit", () => {
     const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, col: 4, row: 3 }, "123");
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const edited = body.widgets[0];
-    expect(edited.layout.x).toBe(4);
-    expect(edited.layout.y).toBe(3);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const edited = at(body.widgets, 0);
+    expect(must(edited.layout).x).toBe(4);
+    expect(must(edited.layout).y).toBe(3);
     // Width and height preserved from original
-    expect(edited.layout.w).toBe(2);
-    expect(edited.layout.h).toBe(1);
+    expect(must(edited.layout).w).toBe(2);
+    expect(must(edited.layout).h).toBe(1);
   });
 
   test("applies --width and --height layout flags", async () => {
@@ -369,12 +369,12 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const edited = body.widgets[1];
-    expect(edited.layout.w).toBe(6);
-    expect(edited.layout.h).toBe(4);
-    expect(edited.layout.x).toBe(0);
-    expect(edited.layout.y).toBe(0);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const edited = at(body.widgets, 1);
+    expect(must(edited.layout).w).toBe(6);
+    expect(must(edited.layout).h).toBe(4);
+    expect(must(edited.layout).x).toBe(0);
+    expect(must(edited.layout).y).toBe(0);
   });
 
   test("preserves existing layout when no layout flags provided", async () => {
@@ -382,8 +382,8 @@ describe("dashboard widget edit", () => {
     const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, display: "line" }, "123");
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    const edited = body.widgets[0];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    const edited = at(body.widgets, 0);
     expect(edited.layout).toEqual({ x: 0, y: 0, w: 2, h: 1 });
   });
 
@@ -466,9 +466,11 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].widgetType).toBe("error-events");
-    expect(body.widgets[0].queries[0].aggregates).toEqual(["last_seen()"]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).widgetType).toBe("error-events");
+    expect(at(at(body.widgets, 0).queries, 0).aggregates).toEqual([
+      "last_seen()",
+    ]);
   });
 
   test("resolves --dataset alias 'errors' to 'error-events' in PUT body", async () => {
@@ -480,8 +482,8 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].widgetType).toBe("error-events");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).widgetType).toBe("error-events");
   });
 
   test("dataset alias is resolved BEFORE dataset-aware aggregate validation", async () => {
@@ -503,9 +505,11 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].widgetType).toBe("error-events");
-    expect(body.widgets[0].queries[0].aggregates).toEqual(["last_seen()"]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).widgetType).toBe("error-events");
+    expect(at(at(body.widgets, 0).queries, 0).aggregates).toEqual([
+      "last_seen()",
+    ]);
   });
 
   test("case-insensitive --dataset values are accepted", async () => {
@@ -513,8 +517,8 @@ describe("dashboard widget edit", () => {
     const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, dataset: "LOGS" }, "123");
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].widgetType).toBe("logs");
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).widgetType).toBe("logs");
   });
 
   test("auto-defaults --limit to 5 when adding --group-by without --limit", async () => {
@@ -533,9 +537,11 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].limit).toBe(5);
-    expect(body.widgets[0].queries[0].columns).toEqual(["browser.name"]);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).limit).toBe(5);
+    expect(at(at(body.widgets, 0).queries, 0).columns).toEqual([
+      "browser.name",
+    ]);
   });
 
   test("explicit --limit wins over auto-default when adding --group-by", async () => {
@@ -556,8 +562,8 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].limit).toBe(25);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).limit).toBe(25);
   });
 
   test("preserves existing limit when adding --group-by to a widget that has one", async () => {
@@ -567,10 +573,10 @@ describe("dashboard widget edit", () => {
       ...sampleDashboard,
       widgets: [
         {
-          ...sampleDashboard.widgets[0],
+          ...at(must(sampleDashboard.widgets), 0),
           limit: 8,
         },
-        ...sampleDashboard.widgets.slice(1),
+        ...must(sampleDashboard.widgets).slice(1),
       ],
     });
 
@@ -587,8 +593,8 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].limit).toBe(8);
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).limit).toBe(8);
   });
 
   test("does not auto-default limit when only changing --query on an ungrouped widget", async () => {
@@ -601,7 +607,7 @@ describe("dashboard widget edit", () => {
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
-    expect(body.widgets[0].limit).toBeUndefined();
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
+    expect(at(body.widgets, 0).limit).toBeUndefined();
   });
 });
