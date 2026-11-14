@@ -145,7 +145,7 @@ const LIB_TO_PLATFORM_PATH: Record<string, string> = {
  * The feature slugs match the ones returned by skills.sentry.dev /
  * the existing get-available-features tool.
  */
-const FEATURE_TO_SUBPATH: Record<string, string> = {
+const FEATURE_TO_SUBPATH: Partial<Record<string, string>> = {
   "ai-monitoring": "tracing/instrumentation/ai-agents-module/",
   crons: "crons/",
   "error-monitoring": "", // base getting-started page covers errors

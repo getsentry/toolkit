@@ -21,7 +21,9 @@ function stringifyUnknown(value: unknown): string {
   }
 
   try {
-    return JSON.stringify(value) ?? String(value);
+    // JSON.stringify returns undefined for values like undefined and functions,
+    // even though its type says string. It never returns an empty string.
+    return JSON.stringify(value) || String(value);
   } catch {
     return String(value);
   }
