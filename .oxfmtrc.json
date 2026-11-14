@@ -15,6 +15,7 @@
     "packages/cli/CONTRIBUTING.md",
     "packages/cli/CHANGELOG.md",
     "packages/cli/AGENTS.md",
+    "packages/mcp-core/src/command-catalog.json",
     "packages/mcp-server-mocks/src/fixtures/**",
     "packages/codemod-cli3to4/tests/**",
     "**/worker-configuration.d.ts",

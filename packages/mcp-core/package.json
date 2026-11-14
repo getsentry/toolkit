@@ -29,6 +29,10 @@
       "types": "./dist/api-client/index.d.ts",
       "default": "./dist/api-client/index.js"
     },
+    "./command-catalog": {
+      "types": "./dist/command-catalog.d.ts",
+      "default": "./dist/command-catalog.js"
+    },
     "./constants": {
       "types": "./dist/constants.d.ts",
       "default": "./dist/constants.js"

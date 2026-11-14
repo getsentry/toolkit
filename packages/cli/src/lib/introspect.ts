@@ -498,7 +498,7 @@ export type CommandCompletions = Record<string, CommandCompletion>;
  * The kind and, for `choice` and `choice-list`, the values of one
  * argument: those of an `enum` flag, or the ones its parser completes.
  */
-function argumentCompletion(
+export function argumentCompletion(
   parse: unknown,
   enumValues?: readonly string[],
 ): { kind: CompletionTarget | null; values?: readonly string[] } {
