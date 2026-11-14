@@ -1,8 +1,14 @@
 import { SentryApiService } from "@sentry/mcp-core/api-client";
 import { searchEventsAgent } from "@sentry/mcp-core/tools/search-events/agent";
-import { describeEval, ToolCallScorer } from "vitest-evals/legacy";
-import { StructuredOutputScorer } from "./utils/structuredOutputScorer";
 import "../setup-env";
+import { describeEval } from "vitest-evals";
+import {
+  createTaskHarness,
+  defineEvalCases,
+  StructuredOutputJudge,
+  ToolCallJudge,
+  type EvalCase,
+} from "./utils";
 
 function messageRegexPattern(query: unknown): string | undefined {
   if (typeof query !== "string") {
@@ -35,192 +41,196 @@ function hasRegexFilter(query: unknown): boolean {
   return typeof query === "string" && /:\/\/.+\/\/(?=[\s)]|$)/.test(query);
 }
 
-describeEval("search-events-agent-regex", {
-  data: async () => [
-    {
-      input:
-        "Show logs from the last day whose message matches the regex `timeout after \\d+ms`",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) => {
-          const pattern = messageRegexPattern(value);
-          return (
-            pattern !== undefined &&
-            pattern.includes("timeout after") &&
-            pattern.includes("\\d")
-          );
-        },
-        timeRange: { statsPeriod: "24h" },
+const cases: EvalCase[] = [
+  {
+    input:
+      "Show logs from the last day whose message matches the regex `timeout after \\d+ms`",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) => {
+        const pattern = messageRegexPattern(value);
+        return (
+          pattern !== undefined &&
+          pattern.includes("timeout after") &&
+          pattern.includes("\\d")
+        );
       },
+      timeRange: { statsPeriod: "24h" },
     },
-    {
-      input: "Find logs whose message contains an IPv4 address",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) => {
-          const pattern = messageRegexPattern(value);
-          return (
-            pattern !== undefined &&
-            /\\d|\[0-9\]/.test(pattern) &&
-            pattern.includes("\\.")
-          );
-        },
-      },
-    },
-    {
-      input:
-        "Find error logs whose message ends with a 5xx status code, like 'upstream returned status=503'",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) => {
-          const pattern = messageRegexPattern(value);
-          return (
-            /\bseverity:error\b/.test(String(value)) &&
-            pattern !== undefined &&
-            pattern.includes("5") &&
-            pattern.endsWith("$")
-          );
-        },
-      },
-    },
-    {
-      input:
-        "Show logs whose message does not look like 'job <number> completed'",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          /!(?:message|log\.body):\/\//.test(value) &&
-          messageRegexPattern(value)?.includes("completed") === true,
-      },
-    },
-    {
-      input:
-        "Find logs whose message looks like 'connection refused on port <number>', ignoring case",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) => {
-          const pattern = messageRegexPattern(value);
-          return (
-            pattern !== undefined &&
-            /^\(\?i[):]/.test(pattern) &&
-            pattern
-              .toLowerCase()
-              .replace(/\\s[+*]?/g, " ")
-              .includes("connection refused") &&
-            /\\d|\[0-9\]/.test(pattern)
-          );
-        },
-      },
-    },
-    {
-      input: "Find logs whose message contains a UUID",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) => {
-          const pattern = messageRegexPattern(value);
-          return (
-            pattern !== undefined &&
-            pattern.includes("-") &&
-            /\{(4|8|12|36)\}/.test(pattern)
-          );
-        },
-      },
-    },
-    {
-      input: "Find logs whose message starts with 'Worker shutting down'",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("Worker shutting down*") &&
-          !value.includes("*Worker shutting down") &&
-          !hasRegexFilter(value),
-      },
-    },
-    {
-      input: "Find logs that mention either 'cache miss' or 'cache evicted'",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("*cache miss*") &&
-          value.includes("*cache evicted*") &&
-          !hasRegexFilter(value),
-      },
-    },
-    {
-      input:
-        "Find spans whose description looks like 'GET /api/users/<number>'",
-      expectedTools: [],
-      expected: {
-        dataset: "spans",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("/api/users/") &&
-          !hasRegexFilter(value),
-      },
-    },
-    {
-      input: "Find errors whose message looks like 'timeout after <number>ms'",
-      expectedTools: [],
-      expected: {
-        dataset: "errors",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("timeout after") &&
-          !hasRegexFilter(value),
-      },
-    },
-    {
-      input: "Show me error logs about payments",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("*payment") &&
-          !hasRegexFilter(value),
-      },
-    },
-    {
-      input: "Find warning logs that mention disk space",
-      expectedTools: [],
-      expected: {
-        dataset: "logs",
-        query: (value: unknown) =>
-          typeof value === "string" &&
-          value.includes("*disk") &&
-          !hasRegexFilter(value),
-      },
-    },
-  ],
-  task: async (input) => {
-    const apiService = new SentryApiService({ accessToken: "test-token" });
-    const agentResult = await searchEventsAgent({
-      query: input,
-      organizationSlug: "sentry-mcp-evals",
-      apiService,
-    });
-
-    return {
-      result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call) => ({
-        name: call.toolName,
-        arguments:
-          typeof call.args === "object" && call.args !== null
-            ? { ...call.args }
-            : {},
-      })),
-    };
   },
-  scorers: [ToolCallScorer(), StructuredOutputScorer({ match: "fuzzy" })],
-});
+  {
+    input: "Find logs whose message contains an IPv4 address",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) => {
+        const pattern = messageRegexPattern(value);
+        return (
+          pattern !== undefined &&
+          /\\d|\[0-9\]/.test(pattern) &&
+          pattern.includes("\\.")
+        );
+      },
+    },
+  },
+  {
+    input:
+      "Find error logs whose message ends with a 5xx status code, like 'upstream returned status=503'",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) => {
+        const pattern = messageRegexPattern(value);
+        return (
+          /\bseverity:error\b/.test(String(value)) &&
+          pattern !== undefined &&
+          pattern.includes("5") &&
+          pattern.endsWith("$")
+        );
+      },
+    },
+  },
+  {
+    input:
+      "Show logs whose message does not look like 'job <number> completed'",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        /!(?:message|log\.body):\/\//.test(value) &&
+        messageRegexPattern(value)?.includes("completed") === true,
+    },
+  },
+  {
+    input:
+      "Find logs whose message looks like 'connection refused on port <number>', ignoring case",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) => {
+        const pattern = messageRegexPattern(value);
+        return (
+          pattern !== undefined &&
+          /^\(\?i[):]/.test(pattern) &&
+          pattern
+            .toLowerCase()
+            .replace(/\\s[+*]?/g, " ")
+            .includes("connection refused") &&
+          /\\d|\[0-9\]/.test(pattern)
+        );
+      },
+    },
+  },
+  {
+    input: "Find logs whose message contains a UUID",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) => {
+        const pattern = messageRegexPattern(value);
+        return (
+          pattern !== undefined &&
+          pattern.includes("-") &&
+          /\{(4|8|12|36)\}/.test(pattern)
+        );
+      },
+    },
+  },
+  {
+    input: "Find logs whose message starts with 'Worker shutting down'",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("Worker shutting down*") &&
+        !value.includes("*Worker shutting down") &&
+        !hasRegexFilter(value),
+    },
+  },
+  {
+    input: "Find logs that mention either 'cache miss' or 'cache evicted'",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("*cache miss*") &&
+        value.includes("*cache evicted*") &&
+        !hasRegexFilter(value),
+    },
+  },
+  {
+    input: "Find spans whose description looks like 'GET /api/users/<number>'",
+    expectedTools: [],
+    expected: {
+      dataset: "spans",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("/api/users/") &&
+        !hasRegexFilter(value),
+    },
+  },
+  {
+    input: "Find errors whose message looks like 'timeout after <number>ms'",
+    expectedTools: [],
+    expected: {
+      dataset: "errors",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("timeout after") &&
+        !hasRegexFilter(value),
+    },
+  },
+  {
+    input: "Show me error logs about payments",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("*payment") &&
+        !hasRegexFilter(value),
+    },
+  },
+  {
+    input: "Find warning logs that mention disk space",
+    expectedTools: [],
+    expected: {
+      dataset: "logs",
+      query: (value: unknown) =>
+        typeof value === "string" &&
+        value.includes("*disk") &&
+        !hasRegexFilter(value),
+    },
+  },
+];
+
+describeEval(
+  "search-events-agent-regex",
+  {
+    harness: createTaskHarness("search-events-agent-regex", async (input) => {
+      const apiService = new SentryApiService({ accessToken: "test-token" });
+      const agentResult = await searchEventsAgent({
+        query: input,
+        organizationSlug: "sentry-mcp-evals",
+        apiService,
+      });
+
+      return {
+        result: JSON.stringify(agentResult.result),
+        toolCalls: agentResult.toolCalls.map((call) => ({
+          name: call.toolName,
+          arguments:
+            typeof call.args === "object" && call.args !== null
+              ? { ...call.args }
+              : {},
+        })),
+      };
+    }),
+    judges: [ToolCallJudge(), StructuredOutputJudge({ match: "fuzzy" })],
+  },
+  (it) => defineEvalCases(it, cases),
+);

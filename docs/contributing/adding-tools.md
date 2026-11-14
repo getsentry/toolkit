@@ -307,18 +307,22 @@ See [api-patterns.md](api-patterns.md#mock-patterns) for validation examples.
 **⚠️ Each eval costs time and API credits. Only test core functionality!**
 
 ```typescript
-describeEval("your-tool", {
-  data: async () => [
-    {
-      input: `Primary use case in ${FIXTURES.organizationSlug}`,
-      expected: "Expected response",
-    },
-    // Maximum 2-3 scenarios!
-  ],
-  task: TaskRunner(),
-  scorers: [Factuality()],
-  threshold: 0.6,
-});
+describeEval(
+  "your-tool",
+  {
+    harness: createTaskHarness("your-tool", NoOpTaskRunner()),
+    judges: [ToolPredictionJudge()],
+    judgeThreshold: 0.6,
+  },
+  (it) =>
+    defineEvalCases(it, [
+      {
+        input: `Primary use case in ${FIXTURES.organizationSlug}`,
+        expectedTools: [{ name: "your_tool", arguments: {} }],
+      },
+      // Maximum 2-3 scenarios!
+    ]),
+);
 ```
 
 ## Testing Workflow

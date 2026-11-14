@@ -1,26 +1,35 @@
-import { describeEval } from "vitest-evals/legacy";
-import { FIXTURES, NoOpTaskRunner, ToolPredictionScorer } from "./utils";
+import { describeEval } from "vitest-evals";
+import {
+  createTaskHarness,
+  defineEvalCases,
+  FIXTURES,
+  NoOpTaskRunner,
+  ToolPredictionJudge,
+  type EvalCase,
+} from "./utils";
 
-describeEval("create-dsn", {
-  data: async () => {
-    return [
+const cases: EvalCase[] = [
+  {
+    input: `Create a new DSN named "Production" for '${FIXTURES.organizationSlug}/${FIXTURES.projectSlug}'`,
+    expectedTools: [
       {
-        input: `Create a new DSN named "Production" for '${FIXTURES.organizationSlug}/${FIXTURES.projectSlug}'`,
-        expectedTools: [
-          {
-            name: "create_dsn",
-            arguments: {
-              organizationSlug: FIXTURES.organizationSlug,
-              projectSlug: FIXTURES.projectSlug,
-              name: "Production",
-            },
-          },
-        ],
+        name: "create_dsn",
+        arguments: {
+          organizationSlug: FIXTURES.organizationSlug,
+          projectSlug: FIXTURES.projectSlug,
+          name: "Production",
+        },
       },
-    ];
+    ],
   },
-  task: NoOpTaskRunner(),
-  scorers: [ToolPredictionScorer()],
-  threshold: 0.6,
-  timeout: 30000,
-});
+];
+
+describeEval(
+  "create-dsn",
+  {
+    harness: createTaskHarness("create-dsn", NoOpTaskRunner()),
+    judges: [ToolPredictionJudge()],
+    judgeThreshold: 0.6,
+  },
+  (it) => defineEvalCases(it, cases, { timeout: 30000 }),
+);
