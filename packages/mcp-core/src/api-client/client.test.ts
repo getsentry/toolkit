@@ -108,6 +108,50 @@ describe("validateEvents error bodies", () => {
       }
     },
   );
+
+  it("accepts the legacy self-hosted response shape without dataset names, environment, or query", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        () =>
+          HttpResponse.json({
+            valid: true,
+            projects: [],
+            dataset: [
+              {
+                valid: true,
+                error:
+                  "This dataset is not compatible with the validate endpoint, your request may still be valid",
+              },
+            ],
+            field: [],
+            orderby: [],
+          }),
+      ),
+    );
+    const api = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+    await expect(
+      api.validateEvents({ organizationSlug: "test-org", dataset: "errors" }),
+    ).resolves.toEqual({
+      valid: true,
+      projects: [],
+      dataset: [
+        {
+          name: "errors",
+          valid: true,
+          error:
+            "This dataset is not compatible with the validate endpoint, your request may still be valid",
+        },
+      ],
+      environment: [],
+      field: [],
+      query: { valid: true, fields: [] },
+      orderby: [],
+    });
+  });
 });
 
 describe("validateEvents non-JSON responses", () => {
