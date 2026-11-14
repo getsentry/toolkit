@@ -39,7 +39,7 @@ export function assertProjectListContainsConstraint({
 }: {
   resourceLabel: string;
   scopedProjectSlug?: string | null | undefined;
-  projects?: ProjectRef[] | null | undefined;
+  projects?: ProjectRef[] | null;
 }): void {
   if (!scopedProjectSlug) {
     return;

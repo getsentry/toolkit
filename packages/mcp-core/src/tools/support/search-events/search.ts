@@ -112,7 +112,7 @@ function resolveEventFields({
 }: {
   dataset: PublicEventsDataset;
   explicitFields?: string[] | null | undefined;
-  agentFields?: string[] | undefined;
+  agentFields?: string[];
   trustExplicitFields: boolean;
 }): string[] {
   if (trustExplicitFields && explicitFields && explicitFields.length > 0) {
@@ -353,7 +353,7 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
 
 function choosePreservingRepairedQuery(params: {
   originalQuery: string;
-  repairedQuery?: string | null | undefined;
+  repairedQuery?: string | null;
   filter?: string | undefined;
   dataset: PublicEventsDataset | "replays";
 }): string {
@@ -377,7 +377,7 @@ function choosePreservingRepairedQuery(params: {
 function buildAgentPrompt(params: {
   query?: string | undefined;
   dataset: PublicEventsDataset | "replays";
-  lockDataset?: boolean | undefined;
+  lockDataset?: boolean;
   fields?: string[] | null | undefined;
   sort?: string | null | undefined;
   statsPeriod?: string | undefined;

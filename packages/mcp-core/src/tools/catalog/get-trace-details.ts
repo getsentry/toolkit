@@ -1237,7 +1237,7 @@ function buildTraceNextSteps({
 }: {
   organizationSlug: string;
   traceId: string;
-  spanFocused?: boolean | undefined;
+  spanFocused?: boolean;
   experimentalMode: boolean;
   availableToolNames?: ReadonlySet<string> | undefined;
   directToolNames?: ReadonlySet<string> | undefined;

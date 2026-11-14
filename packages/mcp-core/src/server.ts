@@ -364,7 +364,7 @@ function configureServer({
   toolCallSpanAttributes,
 }: {
   context: ServerContext;
-  experimentalMode?: boolean | undefined;
+  experimentalMode?: boolean;
   tools?: ToolRegistry | undefined;
   toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {

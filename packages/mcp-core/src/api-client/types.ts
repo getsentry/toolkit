@@ -176,17 +176,15 @@ export type MetricMonitorUpdate = {
       conditionResult: unknown;
     }>;
   };
-  dataSources?:
-    | Array<{
-        dataset: string;
-        query: string;
-        aggregate: string;
-        timeWindow: number;
-        environment: string | null;
-        eventTypes: string[];
-        extrapolationMode?: string | null | undefined;
-      }>
-    | undefined;
+  dataSources?: Array<{
+    dataset: string;
+    query: string;
+    aggregate: string;
+    timeWindow: number;
+    environment: string | null;
+    eventTypes: string[];
+    extrapolationMode?: string | null | undefined;
+  }>;
 };
 export type MetricMonitorCreate = Pick<
   MetricMonitorUpdate,

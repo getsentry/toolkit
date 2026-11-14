@@ -229,16 +229,14 @@ export function formatEventOutput(
   event: Event,
   options?: {
     performanceTrace?: Trace | undefined;
-    replaySummary?:
-      | {
-          apiService: SentryApiService;
-          organizationSlug: string;
-          relatedReplayIds?: string[] | undefined;
-          experimentalMode?: boolean;
-          availableToolNames?: ReadonlySet<string> | undefined;
-          directToolNames?: ReadonlySet<string> | undefined;
-        }
-      | undefined;
+    replaySummary?: {
+      apiService: SentryApiService;
+      organizationSlug: string;
+      relatedReplayIds?: string[] | undefined;
+      experimentalMode?: boolean;
+      availableToolNames?: ReadonlySet<string> | undefined;
+      directToolNames?: ReadonlySet<string> | undefined;
+    };
   },
 ) {
   let output = "";
@@ -2295,7 +2293,7 @@ export function formatIssueOutput({
   performanceTrace?: Trace | undefined;
   externalIssues?: ExternalIssueList | undefined;
   relatedReplayIds?: string[] | undefined;
-  aiConversations?: AIConversationReference[] | undefined;
+  aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation | undefined;
   committers?: CommitterList | undefined;
   sourceMapDebug?: SourceMapDebug | undefined;

@@ -107,13 +107,13 @@ export function formatToolCallInstruction({
   fallbackInstruction,
 }: {
   toolName: string;
-  arguments?: Record<string, JsonValue> | undefined;
-  showArguments?: boolean | undefined;
+  arguments?: Record<string, JsonValue>;
+  showArguments?: boolean;
   experimentalMode: boolean;
   purpose?: string | undefined;
   availableToolNames?: ReadonlySet<string> | undefined;
   directToolNames?: ReadonlySet<string> | undefined;
-  fallbackInstruction?: string | undefined;
+  fallbackInstruction?: string;
 }): string {
   const route = getToolCallRoute(toolName, {
     experimentalMode,
@@ -157,9 +157,9 @@ export function formatAvailableToolCallInstruction({
 }: {
   toolName: string;
   experimentalMode: boolean;
-  purpose?: string | undefined;
-  availableToolNames?: ReadonlySet<string> | undefined;
-  directToolNames?: ReadonlySet<string> | undefined;
+  purpose?: string;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
 }): string | null {
   if (!isToolAvailableInSession(toolName, availableToolNames)) {
     return null;

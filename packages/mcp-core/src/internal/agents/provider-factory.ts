@@ -29,8 +29,8 @@ export function setAgentProvider(
  * Configure base URLs for providers (called from CLI).
  */
 export function setProviderBaseUrls(config: {
-  openaiBaseUrl?: string | undefined;
-  anthropicBaseUrl?: string | undefined;
+  openaiBaseUrl?: string;
+  anthropicBaseUrl?: string;
 }): void {
   setOpenAIBaseUrl(config.openaiBaseUrl);
   setAzureOpenAIBaseUrl(config.openaiBaseUrl);

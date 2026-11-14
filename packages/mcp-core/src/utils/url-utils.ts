@@ -517,10 +517,10 @@ export function getReplaysSearchUrl(
     query?: string | null | undefined;
     projectSlugOrId?: string | undefined;
     environment?: string | string[] | null | undefined;
-    sort?: string | null | undefined;
-    statsPeriod?: string | null | undefined;
-    start?: string | null | undefined;
-    end?: string | null | undefined;
+    sort?: string | null;
+    statsPeriod?: string | null;
+    start?: string | null;
+    end?: string | null;
   } = {},
   protocol: SentryProtocol = "https",
 ): string {

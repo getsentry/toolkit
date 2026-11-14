@@ -209,7 +209,7 @@ export async function formatErrorForUser(
   options?: {
     transport?: TransportType | undefined;
     /** Tool surface of the session, used to suggest reporting likely bugs. */
-    session?: Pick<ServerContext, "availableToolNames"> | undefined;
+    session?: Pick<ServerContext, "availableToolNames">;
   },
 ): Promise<string> {
   // Only failures that point at a Sentry MCP bug suggest feedback; input,

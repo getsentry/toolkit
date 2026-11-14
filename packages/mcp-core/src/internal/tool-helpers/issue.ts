@@ -20,7 +20,7 @@ export function assertIssueWithinProjectConstraint({
 }: {
   issue: Pick<Issue, "project">;
   projectSlug?: string | null | undefined;
-  resourceLabel?: string | undefined;
+  resourceLabel?: string;
 }): void {
   assertScopedProjectSlug({
     resourceLabel,
@@ -40,7 +40,7 @@ export async function ensureIssueWithinProjectConstraint({
   organizationSlug: string;
   issueId: string;
   projectSlug?: string | null | undefined;
-  resourceLabel?: string | undefined;
+  resourceLabel?: string;
 }): Promise<void> {
   if (!projectSlug) {
     return;

@@ -1085,10 +1085,10 @@ export function formatTimeSeriesResults(params: {
   yAxis: string;
   interval: string | null;
   inputQuery: string;
-  includeExplanation?: boolean | undefined;
+  includeExplanation?: boolean;
   explanation?: string | undefined;
-  timeRange?: SearchTimeRange | undefined;
-  url?: string | undefined;
+  timeRange?: SearchTimeRange;
+  url?: string;
 }): string {
   const {
     series,
