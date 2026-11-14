@@ -3,24 +3,27 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // @shikijs/types declares `using` support with Symbol.dispose.
+    "lib": ["ES2023", "ESNext.Disposable", "DOM"],
+    "module": "esnext",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
 
     /* Bundler mode */
+    "moduleResolution": "bundler",
     "paths": {
       "@/*": ["./src/*"]
     },
     "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true
+    "jsx": "react-jsx"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  // Tests and their setup and fixtures are checked by tsconfig.test.json.
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test-setup.ts",
+    "src/test-fixtures"
+  ]
 }

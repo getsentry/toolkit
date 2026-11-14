@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "ES2024.String"],
+    "allowJs": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.scripts.tsbuildinfo",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6.0.x dist/index.d.ts). Remove when they check cleanly.
+    "skipLibCheck": true
+  },
+  "include": ["scripts", "vitest.config.ts", "tsdown.config.ts"]
+}

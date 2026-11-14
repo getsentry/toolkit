@@ -500,7 +500,7 @@ Before committing changes that affect stdio:
 
 ```bash
 pnpm -w run build
-pnpm -w run tsc
+pnpm -w run typecheck
 pnpm -w run lint
 pnpm --dir packages/cli exec vitest run test/lib/mcp test/lib/mcp-start.test.ts
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
