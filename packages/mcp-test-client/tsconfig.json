@@ -2,8 +2,20 @@
   "extends": "../mcp-server-tsconfig/tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": ".",
+    // The AI SDK and MCP SDK declarations use Fetch DOM types (HeadersInit,
+    // RequestCredentials, FileList) that @types/node does not declare.
+    "lib": ["ES2023", "ES2024.String", "DOM"],
+    "types": ["node"],
+    // Exception to the shared policy: the `ai` package's declarations fail
+    // their own check under exactOptionalPropertyTypes (TS2344 in
+    // ai/dist/index.d.ts, e.g. "Type 'TOOLS[NAME]' does not satisfy the
+    // constraint 'Tool<any, any>'"), in 6.0.64 through 7.0.173. Remove this
+    // when `ai` type-checks with skipLibCheck off.
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  // Tests and the Vite/tsdown configs are checked with the source; tsdown
+  // bundles only src/index.ts.
+  "include": ["src", "vitest.config.ts", "tsdown.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

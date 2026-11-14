@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 import { readFileSync } from "node:fs";
 
 const packageVersion =
-  process.env.npm_package_version ??
+  process.env["npm_package_version"] ??
   JSON.parse(readFileSync("./package.json", "utf-8")).version;
 
 export default defineConfig({
