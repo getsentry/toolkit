@@ -39,7 +39,13 @@
  *   1 - Invalid args, or --compare detected a p50 regression over threshold
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  type Dirent,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -167,12 +173,10 @@ function applyFlag(
     case "-h": {
       printHelp();
       process.exit(0);
-      break;
     }
     case "--help": {
       printHelp();
       process.exit(0);
-      break;
     }
     default:
       throw new Error(`Unknown flag: ${arg}`);
@@ -195,6 +199,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === undefined) {
+      continue;
+    }
     const next = argv[i + 1];
     if (applyFlag(state, arg, next)) {
       i += 1;
@@ -287,7 +294,7 @@ async function roughFileCount(root: string): Promise<number> {
   ]);
   let count = 0;
   async function walk(dir: string): Promise<void> {
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
@@ -477,7 +484,9 @@ async function buildOps(): Promise<OpEntry[]> {
         ];
         for (let i = 0; i < 10_000; i += 1) {
           const q = queries[i % queries.length];
-          stack.isIgnored(q, false);
+          if (q !== undefined) {
+            stack.isIgnored(q, false);
+          }
         }
       },
     },
@@ -534,11 +543,17 @@ async function runAll(
     }
     await withBenchDb(async () => {
       for (const op of ops) {
-        const samples = await measure(() => op.run(fx.rootDir), {
-          runs: args.runs,
-          warmup: args.warmup,
-          beforeEach: op.setup ? () => op.setup?.(fx.rootDir) : undefined,
-        });
+        const setup = op.setup;
+        const samples = await measure(
+          async () => {
+            await op.run(fx.rootDir);
+          },
+          {
+            runs: args.runs,
+            warmup: args.warmup,
+            ...(setup && { beforeEach: () => setup(fx.rootDir) }),
+          },
+        );
         const stats = summarize(samples);
         entries.push({
           fixture: fx.label,

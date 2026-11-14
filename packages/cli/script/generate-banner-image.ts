@@ -58,6 +58,9 @@ function gradientAt(t: number): [number, number, number] {
   const f = seg - i;
   const a = GRADIENT_ANCHORS[i];
   const b = GRADIENT_ANCHORS[i + 1];
+  if (!(a && b)) {
+    throw new Error(`No gradient anchors around segment ${i}`);
+  }
   return [
     Math.round(a[0] + (b[0] - a[0]) * f),
     Math.round(a[1] + (b[1] - a[1]) * f),
@@ -106,7 +109,12 @@ function encodePngBase64(mask: PNG): string {
   const model = maskModel(mask);
   const out = new PNG({ width: mask.width, height: mask.height });
   for (let y = 0; y < mask.height; y++) {
-    const [r, g, b] = palette[model.bandForRow(y)];
+    const band = model.bandForRow(y);
+    const color = palette[band];
+    if (!color) {
+      throw new Error(`No palette color for band ${band}`);
+    }
+    const [r, g, b] = color;
     for (let x = 0; x < mask.width; x++) {
       const i = (y * mask.width + x) * 4;
       out.data[i] = r;
