@@ -16,6 +16,7 @@ import * as paginationDb from "../../../src/lib/db/pagination.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as polling from "../../../src/lib/polling.js";
 import type { DashboardRevision } from "../../../src/types/dashboard.js";
+import { loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -155,7 +156,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -176,7 +177,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -195,7 +196,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags(), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -212,7 +213,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags(), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -230,7 +231,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true, limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -246,7 +247,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -261,7 +262,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ limit: 2 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -275,7 +276,7 @@ describe("dashboard revisions command", () => {
       .mockResolvedValueOnce({ data: page, nextCursor: "100:2:0" });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true, limit: 200 }), "123");
 
     // The revisions endpoint uses OffsetPaginator, whose cursor encodes the
@@ -303,7 +304,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "456");
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "456");
@@ -321,7 +322,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(context, defaultFlags({ json: true }), "my-org/", "789");
 
     expect(resolveDashboardIdSpy).toHaveBeenCalledWith("test-org", "789");
@@ -334,7 +335,7 @@ describe("dashboard revisions command", () => {
     });
 
     const { context } = createMockContext();
-    const func = await revisionsCommand.loader();
+    const func = await loadCommand(revisionsCommand);
     await func.call(
       context,
       defaultFlags({ json: true }),

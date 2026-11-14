@@ -15,6 +15,7 @@ import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 let tmpDir: string;
 let bundle: string;
@@ -74,7 +75,7 @@ describe("react-native gradle", () => {
   });
 
   test("injects a debug id and uploads once (debug-id only)", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await func.call(createContext().context, { bundle, sourcemap });
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
@@ -96,7 +97,7 @@ describe("react-native gradle", () => {
   });
 
   test("uploads once per distribution when a release is given", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await func.call(createContext().context, {
       bundle,
       sourcemap,
@@ -115,7 +116,7 @@ describe("react-native gradle", () => {
   });
 
   test("threads --wait / --wait-for into the upload", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
 
     await func.call(createContext().context, { bundle, sourcemap });
     expect(uploadSpy.mock.calls[0][0]).toMatchObject({ wait: false });
@@ -135,7 +136,7 @@ describe("react-native gradle", () => {
   });
 
   test("rejects a missing bundle", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await expect(
       func.call(createContext().context, {
         bundle: join(tmpDir, "nope.bundle"),
@@ -146,7 +147,7 @@ describe("react-native gradle", () => {
 
   test("rejects an indexed RAM bundle", async () => {
     await writeFile(bundle, Buffer.from([0xe5, 0xd1, 0x0b, 0xfb, 0x00, 0x00]));
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await expect(
       func.call(createContext().context, { bundle, sourcemap }),
     ).rejects.toThrow(/RAM bundle/);

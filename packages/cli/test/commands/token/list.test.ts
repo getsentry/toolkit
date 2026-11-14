@@ -42,6 +42,7 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { loadCommand } from "../../helpers.js";
 
 const tokens = [
   {
@@ -102,7 +103,7 @@ describe("token list", () => {
 
   test("lists tokens without their values", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, "my-org/");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -120,7 +121,7 @@ describe("token list", () => {
 
   test("JSON output is the token array", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true });
 
     expect(JSON.parse(output(stdoutWrite))).toEqual(tokens);
@@ -129,7 +130,7 @@ describe("token list", () => {
   test("says when there are no tokens", async () => {
     listSpy.mockResolvedValue([]);
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, "my-org");
 
     expect(output(stdoutWrite)).toContain("No active org auth tokens");
@@ -139,7 +140,7 @@ describe("token list", () => {
     ensureScopesSpy.mockResolvedValue("unavailable");
     listSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const error = await func
       .call(context, { json: true }, "my-org")
@@ -151,7 +152,7 @@ describe("token list", () => {
   test("throws ContextError when no org can be resolved", async () => {
     resolveOrgSpy.mockResolvedValue(null);
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       ContextError,

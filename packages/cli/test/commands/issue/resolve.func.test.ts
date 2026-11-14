@@ -57,6 +57,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as apiClient from "../../../src/lib/api-client.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -110,7 +111,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue({ status: "resolved" }));
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -127,7 +128,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false, in: "0.26.1" }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -144,7 +145,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: false, in: "@next" }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "resolved", {
@@ -168,7 +169,7 @@ describe("resolveCommand.func()", () => {
 
     try {
       const { context } = createMockContext();
-      const func = await resolveCommand.loader();
+      const func = await loadCommand(resolveCommand);
       await func.call(context, { json: false, in: "@commit" }, "CLI-G5");
 
       expect(commitSpy).toHaveBeenCalledWith(
@@ -202,7 +203,7 @@ describe("resolveCommand.func()", () => {
 
     try {
       const { context } = createMockContext();
-      const func = await resolveCommand.loader();
+      const func = await loadCommand(resolveCommand);
       await func.call(
         context,
         { json: false, in: "@commit:getsentry/cli@abc123" },
@@ -233,7 +234,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: true, in: "0.26.1" }, "CLI-G5");
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
@@ -251,7 +252,7 @@ describe("resolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue());
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await resolveCommand.loader();
+    const func = await loadCommand(resolveCommand);
     await func.call(context, { json: true }, "CLI-G5");
 
     const output = stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
@@ -283,7 +284,7 @@ describe("unresolveCommand.func()", () => {
     updateSpy.mockResolvedValue(makeMockIssue({ status: "unresolved" }));
 
     const { context } = createMockContext();
-    const func = await unresolveCommand.loader();
+    const func = await loadCommand(unresolveCommand);
     await func.call(context, { json: false }, "CLI-G5");
 
     expect(updateSpy).toHaveBeenCalledWith("123456789", "unresolved", {

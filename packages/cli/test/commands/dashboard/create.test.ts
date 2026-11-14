@@ -38,7 +38,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
-import { parseFailure } from "../../helpers.js";
+import { parseFailure, loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -99,7 +99,7 @@ describe("dashboard create", () => {
 
   test("creates dashboard with title and verifies API args", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "My Dashboard");
 
     expect(createDashboardSpy).toHaveBeenCalledWith("acme-corp", {
@@ -111,7 +111,7 @@ describe("dashboard create", () => {
 
   test("JSON output contains dashboard data and url", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: true }, "My Dashboard");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -123,7 +123,7 @@ describe("dashboard create", () => {
 
   test("human output contains 'Created dashboard' and title", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "My Dashboard");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -133,7 +133,7 @@ describe("dashboard create", () => {
 
   test("throws ValidationError when title is missing", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func.call(context, { json: false }).catch(parseFailure);
     expect(err).toBeInstanceOf(ValidationError);
@@ -143,7 +143,7 @@ describe("dashboard create", () => {
 
   test("two args parses target + title correctly", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-org/", "My Dashboard");
 
     expect(createDashboardSpy).toHaveBeenCalledWith("my-org", {
@@ -155,7 +155,7 @@ describe("dashboard create", () => {
 
   test("words after the target are one title", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-org/", "My", "Dashboard");
 
     expect(createDashboardSpy).toHaveBeenCalledWith("my-org", {
@@ -169,7 +169,7 @@ describe("dashboard create", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     await expect(
       func.call(context, { json: false }, "My Dashboard"),
@@ -178,7 +178,7 @@ describe("dashboard create", () => {
 
   test("explicit org/project target calls fetchProjectId", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { json: false },

@@ -37,6 +37,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 /** Minimal release shape returned by getRelease */
 const sampleRelease = {
@@ -97,7 +98,7 @@ describe("release delete", () => {
 
   test("deletes release with explicit org/version and --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "my-org/1.0.0");
 
     expect(getReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0");
@@ -110,7 +111,7 @@ describe("release delete", () => {
 
   test("throws ContextError when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
       ContextError,
@@ -120,7 +121,7 @@ describe("release delete", () => {
 
   test("dry-run shows what would be deleted without calling deleteRelease", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
@@ -141,7 +142,7 @@ describe("release delete", () => {
     );
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(
       func.call(context, defaultFlags, "my-org/1.0.0"),
@@ -162,7 +163,7 @@ describe("release delete", () => {
     );
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -189,7 +190,7 @@ describe("release delete", () => {
     deleteReleaseSpy.mockRejectedValue(originalError);
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -205,7 +206,7 @@ describe("release delete", () => {
     deleteReleaseSpy.mockRejectedValue(originalError);
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "my-org/1.0.0");
@@ -217,7 +218,7 @@ describe("release delete", () => {
 
   test("verifies release exists before attempting delete", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "my-org/1.0.0");
 
     // getRelease must be called before deleteRelease

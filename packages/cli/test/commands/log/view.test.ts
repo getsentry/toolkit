@@ -118,6 +118,7 @@ import {
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { resolveProjectBoundSlug } from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 /** A valid 32-char hex log ID for tests */
 const ID1 = "968c763c740cfda8b6728f27fb9e9b01";
@@ -567,7 +568,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false },
@@ -590,7 +591,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("acme", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // "frontend" (no slash) → project-search → resolveProjectBoundSlug
     await func.call(
       context,
@@ -614,7 +615,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("cam-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false },
@@ -637,7 +638,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     try {
       await func.call(
         context,
@@ -696,7 +697,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },
@@ -718,7 +719,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },
@@ -739,7 +740,7 @@ describe("log view --web interactive prompt", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createPromptMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true },

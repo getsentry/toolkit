@@ -16,6 +16,7 @@ import * as apiClient from "../../../src/lib/api-client.js";
 import * as polling from "../../../src/lib/polling.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { DashboardDetail } from "../../../src/types/dashboard.js";
+import { loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,7 +112,7 @@ describe("dashboard restore command", () => {
 
   test("restores dashboard and outputs JSON", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "42" }),
@@ -134,7 +135,7 @@ describe("dashboard restore command", () => {
 
   test("restores dashboard and outputs human-readable format", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, defaultFlags({ revision: "42" }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -145,7 +146,7 @@ describe("dashboard restore command", () => {
 
   test("human output includes dashboard details table", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, defaultFlags({ revision: 1 }), "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -162,7 +163,7 @@ describe("dashboard restore command", () => {
 
   test("uses dashboard ID from positional argument", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "5" }),
@@ -179,7 +180,7 @@ describe("dashboard restore command", () => {
 
   test("two args parses target + dashboard correctly", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "10" }),
@@ -192,7 +193,7 @@ describe("dashboard restore command", () => {
 
   test("resolves dashboard by title", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -207,7 +208,7 @@ describe("dashboard restore command", () => {
 
   test("joins an unquoted title after a target", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -224,7 +225,7 @@ describe("dashboard restore command", () => {
 
   test("takes the org and dashboard ID from a pasted dashboard URL", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(
       context,
       defaultFlags({ json: true, revision: "3" }),
@@ -241,7 +242,7 @@ describe("dashboard restore command", () => {
 
   test("fails to parse a missing dashboard before any request", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     const error = await func
       .call(context, defaultFlags({ revision: "3" }))
@@ -266,7 +267,7 @@ describe("dashboard restore command", () => {
     // what happens when an invalid value is passed. The parse function
     // will throw ValidationError directly.
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     // We can't easily test the flag parsing directly, but we can verify
     // the API is called with the correct revision when valid
@@ -284,7 +285,7 @@ describe("dashboard restore command", () => {
     restoreDashboardRevisionSpy.mockRejectedValue(apiError);
 
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
 
     await expect(
       func.call(context, defaultFlags({ revision: "999" }), "123"),
@@ -297,7 +298,7 @@ describe("dashboard restore command", () => {
 
   test("shows progress message during restore", async () => {
     const { context } = createMockContext();
-    const func = await restoreCommand.loader();
+    const func = await loadCommand(restoreCommand);
     await func.call(context, defaultFlags({ revision: "42" }), "123");
 
     expect(withProgressSpy).toHaveBeenCalled();

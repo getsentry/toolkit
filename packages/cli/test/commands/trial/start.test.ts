@@ -70,6 +70,7 @@ import type {
   CustomerTrialInfo,
   ProductTrial,
 } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,7 +131,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -147,7 +148,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer");
 
     expect(startProductTrialSpy).toHaveBeenCalledWith("test-org", "seerUsers");
@@ -158,7 +159,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "seer");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -171,7 +172,7 @@ describe("trial start command", () => {
     resolveOrgSpy.mockResolvedValue({ org: "test-org" });
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     const error = await func
       .call(context, { json: false }, "unknown-name")
@@ -189,7 +190,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
       ValidationError,
@@ -201,7 +202,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     try {
       await func.call(context, { json: false }, "seer");
@@ -216,7 +217,7 @@ describe("trial start command", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "seer")).rejects.toThrow(
       "organization",
@@ -228,7 +229,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "seer", "my-org");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -241,7 +242,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([MOCK_TRIAL]);
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     // Swapped: org first, name second
     await func.call(context, { json: true }, "my-org", "seer");
 
@@ -264,7 +265,7 @@ describe("trial start command", () => {
       });
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     // Swapped: org first, "plan" second
     await func.call(context, { json: true }, "my-org", "plan");
 
@@ -284,7 +285,7 @@ describe("trial start command", () => {
     getProductTrialsSpy.mockResolvedValue([replaysTrial]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "replays");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -343,7 +344,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "plan");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -362,7 +363,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     // URL and QR code go through commandOutput → context stdout
@@ -378,7 +379,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     expect(generateQRCodeSpy).toHaveBeenCalled();
@@ -398,7 +399,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     try {
       await func.call(context, { json: false }, "plan");
@@ -417,7 +418,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
 
     await expect(func.call(context, { json: false }, "plan")).rejects.toThrow(
       ValidationError,
@@ -435,7 +436,7 @@ describe("trial start plan", () => {
     );
 
     const { context } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: true }, "plan");
 
     expect(startProductTrialSpy).not.toHaveBeenCalled();
@@ -452,7 +453,7 @@ describe("trial start plan", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await startCommand.loader();
+    const func = await loadCommand(startCommand);
     await func.call(context, { json: false }, "plan");
 
     // URL goes through commandOutput → context stdout

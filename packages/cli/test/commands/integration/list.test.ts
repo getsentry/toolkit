@@ -38,6 +38,7 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import type { SentryIntegration } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 const sampleIntegrations: SentryIntegration[] = [
   {
@@ -97,7 +98,7 @@ describe("integration list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
@@ -118,7 +119,7 @@ describe("integration list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -136,7 +137,7 @@ describe("integration list", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // No integration is named like `my-project`, so it reads as a project.
     await func.call(context, { limit: 30, json: true }, "my-org/my-project");
 
@@ -150,7 +151,7 @@ describe("integration list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "my-org/sentri");
 
     const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
@@ -168,7 +169,7 @@ describe("integration list", () => {
       });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await listCommand.loader();
+      const func = await loadCommand(listCommand);
       await func.call(context, { limit: 30, json: true }, target);
 
       const parsed = JSON.parse(

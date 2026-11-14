@@ -33,7 +33,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-finalize-");
 
@@ -86,7 +86,7 @@ describe("release finalize", () => {
     updateReleaseSpy.mockResolvedValue(finalizedRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
     await func.call(context, { json: true }, "my-org/1.0.0");
 
     expect(updateReleaseSpy).toHaveBeenCalledWith(
@@ -101,7 +101,7 @@ describe("release finalize", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Release version",
@@ -112,7 +112,7 @@ describe("release finalize", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await finalizeCommand.loader();
+    const func = await loadCommand(finalizeCommand);
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
       "organization",

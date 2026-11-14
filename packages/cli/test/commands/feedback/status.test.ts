@@ -24,6 +24,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 
 import { resolveIssue } from "../../../src/commands/issue/utils.js";
 import { updateIssueStatus } from "../../../src/lib/api-client.js";
+import { loadCommand } from "../../helpers.js";
 
 function feedback(): SentryFeedback {
   return {
@@ -88,7 +89,7 @@ describe.each([
 
   test("updates the checked Feedback and emits the server response as JSON", async () => {
     const { context, output } = createMockContext();
-    const func = await command.loader();
+    const func = await loadCommand(command);
     await func.call(context, { json: true }, "TEST-PROJECT-1A");
 
     expect(resolveIssue).toHaveBeenCalledWith({
@@ -120,7 +121,7 @@ describe.each([
       issue: { ...feedback(), issueCategory: "error", issueType: "error" },
     });
     const { context, output } = createMockContext();
-    const func = await command.loader();
+    const func = await loadCommand(command);
 
     await expect(
       func.call(context, { json: false }, "TEST-PROJECT-1A"),
@@ -136,7 +137,7 @@ describe.each([
     const error = new ApiError("Permission denied", 403);
     vi.mocked(updateIssueStatus).mockRejectedValue(error);
     const { context, output } = createMockContext();
-    const func = await command.loader();
+    const func = await loadCommand(command);
 
     await expect(
       func.call(context, { json: false }, "TEST-PROJECT-1A"),
@@ -152,7 +153,7 @@ test("feedback unresolve restores Feedback marked as spam", async () => {
   });
   vi.mocked(updateIssueStatus).mockResolvedValue(feedback());
   const { context, output } = createMockContext();
-  const func = await unresolveCommand.loader();
+  const func = await loadCommand(unresolveCommand);
 
   await func.call(context, { json: true }, "TEST-PROJECT-1A");
 

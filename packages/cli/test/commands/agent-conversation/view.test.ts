@@ -74,6 +74,7 @@ import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { AgentConversationSpan } from "../../../src/types/conversation.js";
+import { loadCommand } from "../../helpers.js";
 
 // ============================================================================
 // Helpers
@@ -201,7 +202,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     // resolveOrg is called with the explicit org from the arg
@@ -225,7 +226,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Only conversation ID provided — org should be auto-resolved
     await func.call(context, JSON_FLAGS, CONVERSATION_ID);
 
@@ -246,7 +247,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, ORG, CONVERSATION_ID);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -257,7 +258,7 @@ describe("viewCommand.func", () => {
 
   test("rejects more arguments than an org and a conversation ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     const error = await func
       .call(context, HUMAN_FLAGS, ORG, CONVERSATION_ID, "extra")
       .catch((caught: unknown) => caught);
@@ -286,7 +287,7 @@ describe("viewCommand.func", () => {
     "rejects malformed target %s before resolution or API access",
     async (target) => {
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       const error = await func
         .call(context, HUMAN_FLAGS, target)
         .catch((caught: unknown) => caught);
@@ -301,7 +302,7 @@ describe("viewCommand.func", () => {
 
   test("no args fail to parse, mentioning the Conversation ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     const error = await func
       .call(context, HUMAN_FLAGS)
@@ -316,7 +317,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, HUMAN_FLAGS, CONVERSATION_ID),
@@ -327,7 +328,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(context, HUMAN_FLAGS, CONVERSATION_ID);
@@ -354,7 +355,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -383,7 +384,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -399,7 +400,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -415,7 +416,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -433,7 +434,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -448,7 +449,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${CONVERSATION_ID}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

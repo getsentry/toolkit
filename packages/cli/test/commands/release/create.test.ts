@@ -33,7 +33,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-create-");
 
@@ -96,7 +96,7 @@ describe("release create", () => {
     createReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { finalize: false, json: true }, "my-org/1.0.0");
 
     expect(createReleaseSpy).toHaveBeenCalledWith("my-org", {
@@ -112,7 +112,7 @@ describe("release create", () => {
     createReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { finalize: false, project: "my-project", json: true },
@@ -133,7 +133,7 @@ describe("release create", () => {
     });
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { finalize: true, json: true }, "1.0.0");
 
     const call = createReleaseSpy.mock.calls[0];
@@ -147,7 +147,7 @@ describe("release create", () => {
     createReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { finalize: false, ref: "main", json: true },
@@ -164,7 +164,7 @@ describe("release create", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       {
@@ -194,7 +194,7 @@ describe("release create", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       {
@@ -216,7 +216,7 @@ describe("release create", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     await expect(
       func.call(context, { finalize: false, json: false }),

@@ -90,6 +90,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DashboardListItem } from "../../../src/types/dashboard.js";
+import { loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -209,7 +210,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -230,7 +231,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -250,7 +251,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags());
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -269,7 +270,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags());
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -284,7 +285,7 @@ describe("dashboard list command", () => {
     resolveOrgSpy.mockResolvedValue("test-org");
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ web: true }));
 
     expect(openInBrowserSpy).toHaveBeenCalled();
@@ -303,7 +304,7 @@ describe("dashboard list command", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true, limit: 10 }));
 
     expect(withProgressSpy).toHaveBeenCalled();
@@ -327,7 +328,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true, limit: 2 }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -344,7 +345,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ limit: 2 }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -359,7 +360,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -383,7 +384,7 @@ describe("dashboard list command", () => {
       });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // Request 3 items, which exceeds a single page of 2
     await func.call(context, defaultFlags({ json: true, limit: 3 }));
 
@@ -408,7 +409,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // "Error*" should match "Errors Overview" only
     await func.call(context, defaultFlags({ json: true }), "Error*");
 
@@ -427,7 +428,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }), "my-org/", "*API*");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -438,7 +439,7 @@ describe("dashboard list command", () => {
 
   test("a dashboard URL fails to parse with a view suggestion, before any request", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const error = await func
       .call(
@@ -463,7 +464,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // Lowercase "error*" should still match "Errors Overview"
     await func.call(context, defaultFlags({ json: true }), "error*");
 
@@ -481,7 +482,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags(), "NoMatch*");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -496,7 +497,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // "Perf" is a prefix of "Performance" → fuzzy match finds it
     await func.call(context, defaultFlags(), "Perf");
 
@@ -518,7 +519,7 @@ describe("dashboard list command", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }), "my-org/");
 
     expect(listDashboardsPaginatedSpy).toHaveBeenCalledWith(
@@ -533,7 +534,7 @@ describe("dashboard list command", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(func.call(context, defaultFlags())).rejects.toThrow(
       "organization",
@@ -555,7 +556,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags());
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -573,7 +574,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }));
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -592,7 +593,7 @@ describe("dashboard list command", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, defaultFlags({ json: true }), "Perf*");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

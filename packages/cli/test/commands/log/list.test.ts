@@ -129,6 +129,7 @@ vi.mock("../../../src/lib/version-check.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as versionCheck from "../../../src/lib/version-check.js";
 import type { SentryLog, TraceLog } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 // ============================================================================
 // Helpers
@@ -366,7 +367,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -384,7 +385,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -399,7 +400,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { ...BATCH_FLAGS, sort: "oldest" },
@@ -419,7 +420,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -431,7 +432,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -445,7 +446,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -457,7 +458,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     // limit equals number of returned logs → hasMore = true
     await func.call(context, { json: false, limit: 3 }, `${ORG}/${PROJECT}`);
 
@@ -470,7 +471,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -482,7 +483,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { json: false, limit: 50, query: "severity:error", sort: "newest" },
@@ -504,7 +505,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(
         context,
@@ -521,7 +522,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(
         context,
@@ -536,7 +537,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true, limit: 3 }, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -549,7 +550,7 @@ describe("listCommand.func — standard mode", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `${ORG}/${PROJECT}`);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -591,7 +592,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -611,7 +612,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, { ...BATCH_FLAGS, query: "bad:::query" }, TRACE_ID),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -624,7 +625,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, BATCH_FLAGS, TRACE_ID),
     ).rejects.toBeInstanceOf(ApiError);
@@ -636,7 +637,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -651,7 +652,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -664,7 +665,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -678,7 +679,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -691,7 +692,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false, limit: 3 }, TRACE_ID);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -703,7 +704,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { json: false, limit: 50, query: "severity:error", sort: "newest" },
@@ -723,7 +724,7 @@ describe("listCommand.func — trace mode", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: "my-org" });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `my-org/${TRACE_ID}`);
 
     // resolveTraceOrg receives the parsed ParsedTraceTarget
@@ -785,7 +786,7 @@ describe("listCommand.func — positional disambiguation", () => {
 
   test("32-char hex string triggers trace mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, TRACE_ID);
 
     expect(listTraceLogsSpy).toHaveBeenCalled();
@@ -794,7 +795,7 @@ describe("listCommand.func — positional disambiguation", () => {
 
   test("non-hex string triggers project mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `${ORG}/${PROJECT}`);
 
     expect(listLogsSpy).toHaveBeenCalled();
@@ -803,7 +804,7 @@ describe("listCommand.func — positional disambiguation", () => {
 
   test("org/trace-id triggers trace mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, `${ORG}/${TRACE_ID}`);
 
     expect(listTraceLogsSpy).toHaveBeenCalled();
@@ -812,7 +813,7 @@ describe("listCommand.func — positional disambiguation", () => {
 
   test("org/project (non-hex) triggers project mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, BATCH_FLAGS, "my-org/my-project");
 
     expect(listLogsSpy).toHaveBeenCalled();
@@ -857,7 +858,7 @@ describe("listCommand.func — period flag", () => {
 
   test("trace mode uses 14d default when period is omitted", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { json: true, limit: 100, sort: "newest" },
@@ -874,7 +875,7 @@ describe("listCommand.func — period flag", () => {
 
   test("trace mode uses explicit period when set to non-default", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { json: true, limit: 100, period: parsePeriod("30d"), sort: "newest" },
@@ -921,7 +922,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(func.call(context, HUMAN_FLAGS, TRACE_ID)).rejects.toThrow(
       ContextError,
@@ -934,7 +935,7 @@ describe("listCommand.func — trace mode org resolution failure", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     try {
       await func.call(context, HUMAN_FLAGS, TRACE_ID);
@@ -986,7 +987,7 @@ function collectProcessStderr(
 describe("listCommand.func — flag validation", () => {
   test("rejects --sort oldest with --follow", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(
         context,
@@ -1006,7 +1007,7 @@ describe("listCommand.func — flag validation", () => {
         new ContextError("Organization", "sentry log list"),
       );
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(
         context,
@@ -1066,7 +1067,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     await sleep(50);
@@ -1087,7 +1088,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(
@@ -1109,7 +1110,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     await sleep(10);
@@ -1134,7 +1135,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     await sleep(50);
@@ -1152,7 +1153,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(
       context,
@@ -1176,7 +1177,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1195,7 +1196,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(
       context,
@@ -1224,7 +1225,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, followFlags, `${ORG}/${PROJECT}`),
@@ -1238,7 +1239,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, followFlags, `${ORG}/${PROJECT}`),
@@ -1253,7 +1254,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1272,7 +1273,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     await sleep(50);
@@ -1294,7 +1295,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1315,7 +1316,7 @@ describe("listCommand.func — follow mode (standard)", () => {
     resolveOrgProjectSpy.mockResolvedValue({ org: ORG, project: PROJECT });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, followFlags, `${ORG}/${PROJECT}`);
     await sleep(50);
@@ -1379,7 +1380,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     await sleep(50);
@@ -1395,7 +1396,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     await sleep(50);
@@ -1421,7 +1422,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1443,7 +1444,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(
       context,
@@ -1484,7 +1485,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, traceFollowFlags, TRACE_ID),
@@ -1498,7 +1499,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1517,7 +1518,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     await sleep(50);
@@ -1538,7 +1539,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     // Wait for initial fetch + poll timer (1s) + poll execution
@@ -1562,7 +1563,7 @@ describe("listCommand.func — follow mode (trace)", () => {
     resolveTraceOrgSpy.mockResolvedValue({ traceId: TRACE_ID, org: ORG });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const promise = func.call(context, traceFollowFlags, TRACE_ID);
     // Wait for initial fetch + poll timer (1s) + poll execution

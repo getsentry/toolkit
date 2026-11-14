@@ -66,6 +66,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { TraceSpan } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 // ============================================================================
 // formatTraceView
@@ -205,7 +206,7 @@ describe("viewCommand.func", () => {
   ): Promise<unknown> {
     getDetailedTraceSpy.mockResolvedValue(spans);
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100, fields },
@@ -258,7 +259,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -524,7 +525,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 100 },
@@ -545,7 +546,7 @@ describe("viewCommand.func", () => {
     async function renderHuman(): Promise<string> {
       getDetailedTraceSpy.mockResolvedValue(sampleSpans);
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: false, web: false, spans: 100 },
@@ -587,7 +588,7 @@ describe("viewCommand.func", () => {
     ): Promise<Record<string, unknown>> {
       getDetailedTraceSpy.mockResolvedValue(sampleSpans);
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: true, web: false, spans: 100, fields },
@@ -627,7 +628,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -643,7 +644,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue([]);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(
@@ -665,7 +666,7 @@ describe("viewCommand.func", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, spans: 100 },
@@ -682,7 +683,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 0 },
@@ -702,7 +703,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await func.call(
       context,
@@ -727,7 +728,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -740,7 +741,7 @@ describe("viewCommand.func", () => {
 
   test("a missing trace ID fails to parse, before any lookup", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     const error = await func
       .call(context, { json: false, web: false, spans: 100 }, "my-org/web")
@@ -757,7 +758,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -781,7 +782,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -796,7 +797,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Trace ID first (no slash), target second (has slash) → swap detected (line 168-169)
     await func.call(
       context,
@@ -820,7 +821,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("cam-org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -848,7 +849,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false, spans: 100 }, "CLI-G5");
 
     expect(resolveOrgSpy).toHaveBeenCalled();
@@ -879,7 +880,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
@@ -890,7 +891,7 @@ describe("viewCommand.func", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 100 }, "CLI-G5"),
@@ -901,7 +902,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },
@@ -916,7 +917,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, full: true, web: false, spans: 100 },
@@ -931,7 +932,7 @@ describe("viewCommand.func", () => {
     getDetailedTraceSpy.mockResolvedValue(sampleSpans);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 100 },
@@ -963,7 +964,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 100 },

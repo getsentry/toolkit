@@ -49,6 +49,7 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
+import { loadCommand } from "../../helpers.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const EXTRA_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
@@ -144,7 +145,7 @@ describe("feedback view", () => {
 
   test("flattens feedback and enrichment data in JSON", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -172,7 +173,7 @@ describe("feedback view", () => {
 
   test("renders message, linked error, replay, and attachment context", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -197,7 +198,7 @@ describe("feedback view", () => {
     listReplayIdsSpy.mockRejectedValue(new Error("replays unavailable"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -222,7 +223,7 @@ describe("feedback view", () => {
     listAttachmentsSpy.mockRejectedValue(new Error("attachments unavailable"));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {
@@ -243,7 +244,7 @@ describe("feedback view", () => {
 
   test("opens the feedback permalink without enrichment calls", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       {

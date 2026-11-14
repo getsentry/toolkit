@@ -40,6 +40,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
+import { loadCommand } from "../../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,7 +131,7 @@ describe("dashboard widget edit", () => {
 
   test("edits widget by index with new display type", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, display: "line" }, "123");
 
     expect(getDashboardSpy).toHaveBeenCalledWith("acme-corp", "123");
@@ -154,7 +155,7 @@ describe("dashboard widget edit", () => {
       widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     const err = await func
       .call(context, { json: false, index: 0, "new-title": "Renamed" }, "123")
@@ -170,7 +171,7 @@ describe("dashboard widget edit", () => {
       widgets: [{ ...sampleDashboard.widgets?.[0], displayType: null }],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, display: "line" }, "123");
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -179,7 +180,7 @@ describe("dashboard widget edit", () => {
 
   test("edits widget by title (case-insensitive)", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       { json: false, title: "error count", display: "bar" },
@@ -193,7 +194,7 @@ describe("dashboard widget edit", () => {
 
   test("throws ValidationError when neither --index nor --title provided", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     const err = await func
       .call(context, { json: false, display: "line" }, "123")
@@ -204,7 +205,7 @@ describe("dashboard widget edit", () => {
 
   test("throws ValidationError for invalid aggregate", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     const err = await func
       .call(context, { json: false, index: 0, query: ["bogus_func"] }, "123")
@@ -215,7 +216,7 @@ describe("dashboard widget edit", () => {
 
   test("preserves existing fields when no query flags provided", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 1, display: "bar" }, "123");
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -254,7 +255,7 @@ describe("dashboard widget edit", () => {
       ],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       { json: false, index: 0, dataset: "issue" },
@@ -288,7 +289,7 @@ describe("dashboard widget edit", () => {
       ],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       { json: false, index: 0, display: "table" },
@@ -314,7 +315,7 @@ describe("dashboard widget edit", () => {
       ],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     // Should not throw — "text" is untracked, no dataset constraint applies
     await func.call(context, { json: false, index: 0, dataset: "logs" }, "123");
     expect(updateDashboardSpy).toHaveBeenCalled();
@@ -323,7 +324,7 @@ describe("dashboard widget edit", () => {
   test("allows --display change to untracked display type (text)", async () => {
     // Changing --display to an untracked type should also skip cross-validation.
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     // sampleDashboard widget[0] is displayType: "big_number", widgetType: "spans"
     // Changing to "text" should not throw even though "text" isn't in spans' supported types.
     await func.call(context, { json: false, index: 0, display: "text" }, "123");
@@ -336,7 +337,7 @@ describe("dashboard widget edit", () => {
 
   test("applies --col and --row layout flags to existing widget", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, col: 4, row: 3 }, "123");
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -350,7 +351,7 @@ describe("dashboard widget edit", () => {
 
   test("applies --width and --height layout flags", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       { json: false, index: 1, col: 0, width: 6, height: 4 },
@@ -367,7 +368,7 @@ describe("dashboard widget edit", () => {
 
   test("preserves existing layout when no layout flags provided", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, display: "line" }, "123");
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -377,7 +378,7 @@ describe("dashboard widget edit", () => {
 
   test("throws ValidationError for col out of range", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     const err = await func
       .call(context, { json: false, index: 0, col: 6 }, "123")
       .catch((e: Error) => e);
@@ -387,7 +388,7 @@ describe("dashboard widget edit", () => {
 
   test("throws ValidationError for negative width", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     const err = await func
       .call(context, { json: false, index: 0, width: 0 }, "123")
       .catch((e: Error) => e);
@@ -418,7 +419,7 @@ describe("dashboard widget edit", () => {
       ],
     });
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     const err = await func
       .call(context, { json: false, index: 0, col: 4 }, "123")
       .catch((e: Error) => e);
@@ -428,7 +429,7 @@ describe("dashboard widget edit", () => {
 
   test("throws ValidationError when col + width overflows grid", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     const err = await func
       .call(context, { json: false, index: 0, col: 4, width: 4 }, "123")
       .catch((e: Error) => e);
@@ -438,7 +439,7 @@ describe("dashboard widget edit", () => {
 
   test("validates aggregates against new dataset when --dataset changes", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     // "last_seen" is valid for error-events but not spans.
     // Here we change the existing spans widget to error-events dataset while
@@ -461,7 +462,7 @@ describe("dashboard widget edit", () => {
 
   test("resolves --dataset alias 'errors' to 'error-events' in PUT body", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       { json: false, index: 0, dataset: "errors" },
@@ -479,7 +480,7 @@ describe("dashboard widget edit", () => {
     // validateAggregateNames runs, "errors" falls through the canonical
     // branch and "Unknown aggregate function" is thrown.
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       {
@@ -498,7 +499,7 @@ describe("dashboard widget edit", () => {
 
   test("case-insensitive --dataset values are accepted", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(context, { json: false, index: 0, dataset: "LOGS" }, "123");
 
     const body = updateDashboardSpy.mock.calls[0]?.[2];
@@ -507,7 +508,7 @@ describe("dashboard widget edit", () => {
 
   test("auto-defaults --limit to 5 when adding --group-by without --limit", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     // Widget 0 (Error Count) has no existing limit or group-by.
     await func.call(
@@ -528,7 +529,7 @@ describe("dashboard widget edit", () => {
 
   test("explicit --limit wins over auto-default when adding --group-by", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     // line widgets have no row cap; bar/table cap at 10, which would mask the
     // explicit-limit signal we want to assert.
@@ -563,7 +564,7 @@ describe("dashboard widget edit", () => {
     });
 
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
     await func.call(
       context,
       {
@@ -581,7 +582,7 @@ describe("dashboard widget edit", () => {
 
   test("does not auto-default limit when only changing --query on an ungrouped widget", async () => {
     const { context } = createMockContext();
-    const func = await editCommand.loader();
+    const func = await loadCommand(editCommand);
 
     await func.call(
       context,

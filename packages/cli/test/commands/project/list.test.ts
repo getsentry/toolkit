@@ -14,6 +14,7 @@ import {
   property,
   tuple,
 } from "fast-check";
+import type { SentryContext } from "../../../src/context.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildContextKey,
@@ -46,7 +47,11 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { SentryProject } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+} from "../../helpers.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
 const getConfigDir = useTestConfigDir("test-project-list-", {
@@ -568,11 +573,11 @@ describe("handleExplicit", () => {
 
 describe("project list: comma-separated project slugs", () => {
   const flags = { limit: 30, json: false, fresh: false };
-  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    func = await listCommand.loader();
+    func = await loadCommand(listCommand);
     setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
@@ -1731,11 +1736,11 @@ describe("project list: name filter", () => {
       status: "active",
     },
   ];
-  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    func = await listCommand.loader();
+    func = await loadCommand(listCommand);
     setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });

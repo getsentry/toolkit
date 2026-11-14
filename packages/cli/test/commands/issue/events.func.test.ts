@@ -55,6 +55,7 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { IssueEvent, SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 // Reference paginationDb early to prevent import stripping by auto-organize
 const _paginationDbRef = paginationDb;
@@ -173,7 +174,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -197,7 +198,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -220,7 +221,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -239,7 +240,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -265,7 +266,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       {
@@ -292,7 +293,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 100, json: false, full: false, period: parsePeriod("7d") },
@@ -312,7 +313,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [sampleEvents[0]] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -332,7 +333,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       {
@@ -362,7 +363,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("30d") },
@@ -387,7 +388,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 2, json: true, full: false, period: parsePeriod("7d") },
@@ -408,7 +409,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -431,7 +432,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -456,7 +457,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -478,7 +479,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -501,7 +502,7 @@ describe("eventsCommand.func()", () => {
     hasPreviousPageSpy.mockReturnValue(true);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },

@@ -5,7 +5,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createCommand } from "../../../src/commands/token/create.js";
-import { useEnvSandbox } from "../../helpers.js";
+import { useEnvSandbox, loadCommand } from "../../helpers.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
@@ -103,7 +103,7 @@ describe("token create", () => {
 
   test("prints a long token intact on its own line exactly once", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, flags, "my-org/github-actions");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -122,7 +122,7 @@ describe("token create", () => {
   test("prints the token without styling or padding in a rendered terminal", async () => {
     process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, flags, "my-org/github-actions");
 
     // Raw output, not ANSI-stripped: a code span would add color codes and
@@ -135,7 +135,7 @@ describe("token create", () => {
 
   test("JSON output includes the token value", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { ...flags, json: true }, "github-actions");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: undefined, cwd: "/tmp" });
@@ -161,7 +161,7 @@ describe("token create", () => {
     });
     expect(resolveOrgSpy).not.toHaveBeenCalled();
 
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, flags, target);
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -170,7 +170,7 @@ describe("token create", () => {
 
   test("dry-run neither elevates nor creates", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { ...flags, "dry-run": true }, "my-org/ci");
 
     expect(ensureScopesSpy).not.toHaveBeenCalled();
@@ -181,7 +181,7 @@ describe("token create", () => {
   test("does not create when authorization is declined", async () => {
     ensureScopesSpy.mockResolvedValue("declined");
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     await expect(func.call(context, flags, "my-org/ci")).rejects.toThrow(
       AuthError,
@@ -192,7 +192,7 @@ describe("token create", () => {
   test("explains a 403", async () => {
     createSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const error = await func
       .call(context, flags, "my-org/ci")

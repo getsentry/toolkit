@@ -14,7 +14,12 @@ import type { SentryContext } from "../../../src/context.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  mockFetch,
+  useEnvSandbox,
+  useTestConfigDir,
+  loadCommand,
+} from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("issue-tags-", {
   isolateProjectRoot: true,
@@ -246,7 +251,7 @@ describe("sentry issue tags", () => {
   test("propagates API failures instead of returning an empty distribution", async () => {
     tagStatus = 403;
     const { context, stdout } = captureContext();
-    const func = await tagsCommand.loader();
+    const func = await loadCommand(tagsCommand);
 
     await expect(
       func.call(

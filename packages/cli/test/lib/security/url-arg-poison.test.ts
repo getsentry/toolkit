@@ -19,7 +19,7 @@ import {
 import { parseOrgProjectArg } from "../../../src/lib/arg-parsing.js";
 import { parseIssueArg } from "../../../src/lib/issue-arguments.js";
 import { resetEnvTokenHostForTesting } from "../../../src/lib/env-token-host.js";
-import { useEnvSandbox } from "../../helpers.js";
+import { useEnvSandbox, loadCommand } from "../../helpers.js";
 
 const ENV_KEYS = ["SENTRY_HOST", "SENTRY_URL"] as const;
 
@@ -58,7 +58,7 @@ describe("CVE: URL argument credential exfiltration", () => {
     expect(parseEventViewInput([url]).baseUrl).toBe("https://evil.com");
     expect(process.env["SENTRY_URL"]).toBeUndefined();
 
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     const context = {
       stdout: { write: vi.fn(() => true) },
       stderr: { write: vi.fn(() => true) },

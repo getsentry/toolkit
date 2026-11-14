@@ -11,11 +11,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { SentryContext } from "../../../src/context.js";
 import { xcodeCommand } from "../../../src/commands/react-native/xcode.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -37,16 +39,14 @@ const spawnMock = vi.mocked(spawnSync);
 let dir: string;
 let script: string;
 
-function createContext(env: NodeJS.ProcessEnv) {
+function createContext(env: NodeJS.ProcessEnv): Partial<SentryContext> {
   return {
     stdout: { write: () => true },
     stderr: { write: () => true },
     cwd: dir,
     env,
     process: { ...process, execPath: "/usr/bin/sentry", exitCode: undefined },
-  } as unknown as Parameters<
-    Awaited<ReturnType<typeof xcodeCommand.loader>>
-  >[0];
+  };
 }
 
 beforeEach(() => {
@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 async function runXcode(env: NodeJS.ProcessEnv, flags = {}): Promise<void> {
-  const func = await xcodeCommand.loader();
+  const func = await loadCommand(xcodeCommand);
   await func.call(createContext(env), { "build-script": script, ...flags });
 }
 
@@ -191,7 +191,7 @@ describe("react-native xcode", () => {
       );
 
       const ctx = createContext({ CONFIGURATION: "Release" });
-      const func = await xcodeCommand.loader();
+      const func = await loadCommand(xcodeCommand);
       await func.call(ctx, { "build-script": script });
 
       expect(ctx["process"].exitCode).toBe(status === 0 ? undefined : status);

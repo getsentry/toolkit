@@ -5,6 +5,7 @@
  * construction, validation errors, and human output.
  */
 
+import type { SentryContext } from "../../../src/context.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   archiveCommand,
@@ -42,6 +43,7 @@ vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
 import * as apiClient from "../../../src/lib/api-client.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import type { SentryIssue } from "../../../src/types/sentry.js";
+import { loadCommand, type TestCommandFunction } from "../../helpers.js";
 
 function makeMockIssue(overrides?: Partial<SentryIssue>): SentryIssue {
   return {
@@ -226,12 +228,12 @@ describe("parseUntilSpec", () => {
 describe("archiveCommand.func()", () => {
   let resolveIssueSpy: ReturnType<typeof spyOn>;
   let updateSpy: ReturnType<typeof spyOn>;
-  let func: Awaited<ReturnType<typeof archiveCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
     updateSpy = vi.spyOn(apiClient, "updateIssueStatus");
-    func = await archiveCommand.loader();
+    func = await loadCommand(archiveCommand);
   });
 
   afterEach(() => {

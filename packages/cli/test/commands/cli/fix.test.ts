@@ -23,7 +23,7 @@ import {
 } from "../../../src/lib/db/schema.js";
 import { Database } from "../../../src/lib/db/sqlite.js";
 import { EXIT, OutputError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 /**
  * Generate DDL for creating a database with pre-migration tables.
@@ -110,7 +110,7 @@ async function runFix(dryRun: boolean) {
   let exitCode = 0;
 
   try {
-    const func = await fixCommand.loader();
+    const func = await loadCommand(fixCommand);
     await func.call(context, { "dry-run": dryRun, json: false });
     // Successful return — exitCode stays 0
   } catch (err) {
@@ -482,7 +482,7 @@ describe("sentry cli fix — ownership detection", () => {
     let exitCode = 0;
 
     try {
-      const func = await fixCommand.loader();
+      const func = await loadCommand(fixCommand);
       await func.call(context, { "dry-run": dryRun, json: false });
     } catch (err) {
       if (err instanceof OutputError) {

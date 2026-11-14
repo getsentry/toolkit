@@ -27,6 +27,7 @@ import { ApiError, CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
 import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
+import { loadCommand } from "../../helpers.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
 vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
@@ -66,7 +67,7 @@ function createMockContext() {
 }
 
 async function runPlan(context: ReturnType<typeof createMockContext>) {
-  const func = await planCommand.loader();
+  const func = await loadCommand(planCommand);
   await func.call(context, PLAN_FLAGS, "IOS-1");
 }
 

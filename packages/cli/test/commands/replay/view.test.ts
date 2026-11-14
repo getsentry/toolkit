@@ -61,6 +61,7 @@ import { applyBoundPositionals } from "../../../src/lib/positional-parse.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const TRACE_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -278,7 +279,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, fresh: false },
@@ -314,7 +315,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(sampleReplay());
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, fresh: false },
@@ -332,7 +333,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(sampleReplay());
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, fresh: false },
@@ -350,7 +351,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(sampleReplay());
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, fresh: false },
@@ -370,7 +371,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID),
@@ -382,7 +383,7 @@ describe("viewCommand.func", () => {
     resolveReplaySpy.mockResolvedValue(sampleReplay({ project_id: "999" }));
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, fresh: false }, REPLAY_ID),
@@ -400,7 +401,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, fresh: false },
@@ -423,7 +424,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, fresh: false },
@@ -455,7 +456,7 @@ describe("viewCommand.func", () => {
     ]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, fresh: false },

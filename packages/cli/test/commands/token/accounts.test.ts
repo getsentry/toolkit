@@ -18,6 +18,7 @@ import {
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
+  loadCommand,
 } from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("token-accounts-", {
@@ -119,7 +120,7 @@ async function runCommand(
   target: string,
   name = "list",
 ): Promise<void> {
-  const func = await command.loader();
+  const func = await loadCommand(command);
   await func.call(
     {
       stdout: { write: vi.fn(() => true) },

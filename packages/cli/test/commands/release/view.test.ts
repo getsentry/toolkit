@@ -36,7 +36,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-view-");
 
@@ -162,7 +162,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: true }, "my-org/1.0.0");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -176,7 +176,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: false }, "1.0.0");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -189,7 +189,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: true }, "my-org/1.0.0");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -201,7 +201,7 @@ describe("release view", () => {
 
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { fresh: false, json: false }),
@@ -212,7 +212,7 @@ describe("release view", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { fresh: false, json: false }, "1.0.0"),
@@ -224,7 +224,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleReleaseWithHealth);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: false }, "1.0.0");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -246,7 +246,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleReleaseWithHealth);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: true }, "1.0.0");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -262,7 +262,7 @@ describe("release view", () => {
     getReleaseSpy.mockResolvedValue(sampleRelease);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { fresh: false, json: false }, "1.0.0");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

@@ -38,6 +38,7 @@ import {
   setNestedValue,
 } from "../../src/commands/api.js";
 import { OutputError, ValidationError } from "../../src/lib/errors.js";
+import { loadCommand } from "../helpers.js";
 
 /**
  * Create a mock stdin stream from a string
@@ -134,7 +135,7 @@ describe("apiCommand tags org from the path", () => {
   });
 
   test("dry-run of a projects path sets sentry.org and sentry.project", async () => {
-    const func = await apiCommand.loader();
+    const func = await loadCommand(apiCommand);
     const context = {
       stdin: createMockStdin(""),
       stdout: { write: vi.fn(() => true), isTTY: false },
@@ -1832,7 +1833,7 @@ describe("API request preview", () => {
     "preserves repeated axes and ordered indexed transformations from --%s",
     async (flag) => {
       let output = "";
-      const func = await apiCommand.loader();
+      const func = await loadCommand(apiCommand);
       await func.call(
         {
           cwd: "/tmp",
@@ -1878,7 +1879,7 @@ describe("API request preview", () => {
 
   test("absolute URL dry-run preserves the regional origin", async () => {
     let output = "";
-    const func = await apiCommand.loader();
+    const func = await loadCommand(apiCommand);
     await func.call(
       {
         cwd: "/tmp",

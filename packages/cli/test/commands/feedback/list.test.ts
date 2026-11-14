@@ -49,6 +49,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 function sampleFeedback(
   overrides: Partial<SentryFeedback> = {},
@@ -131,7 +132,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -173,7 +174,7 @@ describe("feedback list", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -218,7 +219,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, {
       status: "all",
       limit: 25,
@@ -246,7 +247,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [sampleFeedback()] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -277,7 +278,7 @@ describe("feedback list", () => {
     listFeedbackSpy.mockResolvedValue({ feedback: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, {
       status: "unresolved",
       limit: 25,
@@ -298,7 +299,7 @@ describe("feedback list", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, {
         status: "unresolved",

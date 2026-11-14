@@ -7,7 +7,14 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { ArgumentParseError } from "@stricli/core";
+import {
+  ArgumentParseError,
+  type BaseArgs,
+  type BaseFlags,
+  type Command,
+  type CommandContext,
+  type CommandFunction,
+} from "@stricli/core";
 import { afterEach, beforeEach, expect } from "vitest";
 import {
   resetAccountSelection,
@@ -380,4 +387,28 @@ export function envWithoutAgent(): NodeJS.ProcessEnv {
 export function parseFailure(error: unknown): Error {
   expect(error).toBeInstanceOf(ArgumentParseError);
   return (error as ArgumentParseError).exception as Error;
+}
+
+/**
+ * A loaded command function as tests call it. Tests pass a context that
+ * holds only the fields the command reads, so `this` is a partial context.
+ */
+export type TestCommandFunction<CONTEXT extends CommandContext> = (
+  this: Partial<CONTEXT>,
+  flags: BaseFlags,
+  ...args: BaseArgs
+) => ReturnType<CommandFunction<BaseFlags, BaseArgs, CONTEXT>>;
+
+/**
+ * Load the function behind a lazily loaded command. Stricli's loader
+ * resolves to either the function or a module whose default export is the
+ * function (`CommandModule`); this returns the function in both cases.
+ */
+export async function loadCommand<CONTEXT extends CommandContext>(
+  command: Command<CONTEXT>,
+): Promise<TestCommandFunction<CONTEXT>> {
+  const loaded = await command.loader();
+  const func = typeof loaded === "function" ? loaded : loaded.default;
+  // The command reads only some context fields; each test supplies those.
+  return func as TestCommandFunction<CONTEXT>;
 }

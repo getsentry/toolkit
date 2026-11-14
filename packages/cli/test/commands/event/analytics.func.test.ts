@@ -18,6 +18,7 @@ import * as apiClient from "../../../src/lib/api-client.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
+import { loadCommand } from "../../helpers.js";
 
 function createMockContext() {
   const stdoutWrite = vi.fn(() => true);
@@ -68,7 +69,7 @@ describe("event analytics", () => {
     getDroppedEventsSpy.mockResolvedValue(response());
 
     const { context } = createMockContext();
-    const func = await analyticsCommand.loader();
+    const func = await loadCommand(analyticsCommand);
     await func.call(
       context,
       { dataset: "tracemetrics", period: parsePeriod("24h"), json: true },
@@ -89,7 +90,7 @@ describe("event analytics", () => {
     getDroppedEventsSpy.mockResolvedValue(response());
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await analyticsCommand.loader();
+    const func = await loadCommand(analyticsCommand);
     await func.call(
       context,
       { dataset: "errors", period: parsePeriod("90d"), json: false },
@@ -119,7 +120,7 @@ describe("event analytics", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await analyticsCommand.loader();
+    const func = await loadCommand(analyticsCommand);
     await func.call(
       context,
       { dataset: "errors", period: parsePeriod("90d"), json: false },
@@ -150,7 +151,7 @@ describe("event analytics", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await analyticsCommand.loader();
+    const func = await loadCommand(analyticsCommand);
     await func.call(
       context,
       { dataset: "errors", period: parsePeriod("90d"), json: true },

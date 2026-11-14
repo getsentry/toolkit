@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { proposeVersionCommand } from "../../../src/commands/release/propose-version.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as git from "../../../src/lib/git.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-propose-version-");
 
@@ -42,7 +42,7 @@ describe("release propose-version", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -56,7 +56,7 @@ describe("release propose-version", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: false });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -67,7 +67,7 @@ describe("release propose-version", () => {
     getHeadCommitSpy.mockReturnValue("deadbeef");
 
     const { context } = createMockContext("/my/project");
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     expect(getHeadCommitSpy).toHaveBeenCalledWith("/my/project");
@@ -79,7 +79,7 @@ describe("release propose-version", () => {
     });
 
     const { context } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Not a git repository",
@@ -90,7 +90,7 @@ describe("release propose-version", () => {
     const { context, stdoutWrite } = createMockContext("/tmp", {
       SENTRY_RELEASE: "my-release-1.0",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // Should NOT call getHeadCommit
@@ -105,7 +105,7 @@ describe("release propose-version", () => {
       CIRCLE_SHA1: "circle-sha",
       SOURCE_VERSION: "heroku-version",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // SOURCE_VERSION has higher priority than CIRCLE_SHA1
@@ -121,7 +121,7 @@ describe("release propose-version", () => {
       SENTRY_RELEASE: "",
       SOURCE_VERSION: "  ",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // Empty/whitespace env vars are skipped, falls through to git

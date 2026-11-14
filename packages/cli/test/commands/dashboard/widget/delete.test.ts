@@ -40,6 +40,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
+import { loadCommand } from "../../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -130,7 +131,7 @@ describe("dashboard widget delete", () => {
 
   test("deletes widget by index", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { json: false, yes: true, index: 0 }, "123");
 
     expect(getDashboardSpy).toHaveBeenCalledWith("acme-corp", "123");
@@ -151,7 +152,7 @@ describe("dashboard widget delete", () => {
 
   test("deletes widget by title", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { json: false, yes: true, title: "Slow Spans" },
@@ -165,7 +166,7 @@ describe("dashboard widget delete", () => {
 
   test("throws ValidationError when neither --index nor --title provided", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const err = await func
       .call(context, { json: false, yes: true }, "123")
@@ -176,7 +177,7 @@ describe("dashboard widget delete", () => {
 
   test("throws ValidationError when index is out of range", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const err = await func
       .call(context, { json: false, yes: true, index: 99 }, "123")
@@ -187,7 +188,7 @@ describe("dashboard widget delete", () => {
 
   test("human output contains 'Removed widget' and title", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { json: false, yes: true, index: 0 }, "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

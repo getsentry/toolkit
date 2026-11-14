@@ -54,6 +54,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryTeam } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 // Sample test data
 const sampleTeams: SentryTeam[] = [
@@ -108,7 +109,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -127,7 +128,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -142,7 +143,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -157,7 +158,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -187,7 +188,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue(manyTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 5, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -202,7 +203,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -213,7 +214,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "unknown-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -247,7 +248,7 @@ describe("listCommand.func — explicit org/project", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/backnd");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -264,7 +265,7 @@ describe("listCommand.func — explicit org/project", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/zzzzzz");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -277,7 +278,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockRejectedValue(new ApiError("Forbidden", 403));
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, { limit: 30, json: false }, "my-org/my-project"),
     ).rejects.toThrow("Forbidden");
@@ -288,7 +289,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/my-project");
 
     expect(listProjectTeamsSpy).toHaveBeenCalledWith("my-org", "my-project");
@@ -298,7 +299,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "my-org/my-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -333,7 +334,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listTeamsSpy).toHaveBeenCalledWith("default-org");
@@ -344,7 +345,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listTeamsSpy).toHaveBeenCalledWith("detected-org");
@@ -359,7 +360,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listOrganizationsSpy).toHaveBeenCalled();
@@ -370,7 +371,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -384,7 +385,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -397,7 +398,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -433,7 +434,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -451,7 +452,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -468,7 +469,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -485,7 +486,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -500,7 +501,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -518,7 +519,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 25, json: false, cursor: "explicit:cursor:value" },
@@ -542,7 +543,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 25, json: false, cursor: "next" },
@@ -564,7 +565,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, { limit: 25, json: false, cursor: "next" }, "my-org/"),
@@ -573,7 +574,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
   test("throws ValidationError when --cursor used outside org-all mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(
@@ -591,7 +592,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 10, json: false }, "my-org/");
 
     expect(listTeamsPaginatedSpy).toHaveBeenCalledWith(
@@ -624,7 +625,7 @@ describe("listCommand.func — name filter", () => {
 
   async function runJson(...args: (string | undefined)[]) {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, ...args);
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);

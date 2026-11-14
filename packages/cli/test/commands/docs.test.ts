@@ -18,6 +18,7 @@ vi.mock("../../src/lib/polling.js", () => ({ withProgress }));
 
 import { listCommand } from "../../src/commands/docs/list.js";
 import { queryCommand } from "../../src/commands/docs/query.js";
+import { loadCommand } from "../helpers.js";
 
 function createContext(): {
   context: SentryContext;
@@ -78,7 +79,7 @@ beforeEach(() => {
 describe("docs commands", () => {
   test("queries docs with automatic safe context and returns it in JSON", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await queryCommand.loader();
+    const func = await loadCommand(queryCommand);
 
     await func.call(context, { json: true }, "How", "do", "I", "trace?");
 
@@ -134,7 +135,7 @@ describe("docs commands", () => {
 
   test("lists deterministic keyword matches with a bounded limit", async () => {
     const { context, stdoutWrite } = createContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await func.call(context, { json: false, limit: 5 }, "nextjs", "tracing");
 

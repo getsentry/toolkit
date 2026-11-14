@@ -29,7 +29,7 @@ import {
   computeTelemetryEffective,
   isTelemetryEnabled,
 } from "../../../src/lib/telemetry.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 // Force chalk to produce ANSI output in test environment
 chalk.level = 3;
@@ -550,7 +550,7 @@ describe("defaultsCommand.func show-all aliases", () => {
       stderr: { write: vi.fn(() => true) },
       cwd: "/tmp",
     };
-    const func = await defaultsCommand.loader();
+    const func = await loadCommand(defaultsCommand);
     await (func as any).call(context, flags, ...args);
     return stdoutWrite.mock.calls.map((c) => String(c[0])).join("");
   }

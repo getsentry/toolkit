@@ -90,6 +90,7 @@ vi.mock("../../../src/lib/span-tree.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as spanTree from "../../../src/lib/span-tree.js";
 import type { SentryEvent } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 describe("parseEventViewInput", () => {
   describe("single argument (event ID only)", () => {
@@ -1178,7 +1179,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Valid 32-char hex has no slash, "test-org/test-proj" has slash → swap detected
     await func.call(
       context,
@@ -1201,7 +1202,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     const result = await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1223,7 +1224,7 @@ describe("viewCommand.func", () => {
     listEventAttachmentsSpy.mockResolvedValue([attachment]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1261,7 +1262,7 @@ describe("viewCommand.func", () => {
     ]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, spans: 0 },
@@ -1290,7 +1291,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1326,7 +1327,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false, spans: 0 }, "17370");
 
     expect(resolveOrgSpy).toHaveBeenCalled();
@@ -1356,7 +1357,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1386,7 +1387,7 @@ describe("viewCommand.func", () => {
       .mockResolvedValue(sampleEvent);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1441,7 +1442,7 @@ describe("viewCommand.func", () => {
       .mockResolvedValue(sampleEvent);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1468,7 +1469,7 @@ describe("viewCommand.func", () => {
     const getLatestEventSpy = vi.spyOn(apiClient, "getLatestEvent");
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await expect(
       func.call(context, { json: true, web: false, spans: 0 }, "test-org/"),
     ).rejects.toThrow(ResolutionError);
@@ -1499,7 +1500,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: true, web: false, spans: 0 },
@@ -1530,7 +1531,7 @@ describe("viewCommand.func", () => {
     setOrgRegion("test_org", DEFAULT_SENTRY_URL);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // Underscores in the slug trigger normalized warning
     await func.call(
       context,
@@ -1552,7 +1553,7 @@ describe("viewCommand.func", () => {
     // The behavior under test is "a malformed ID still produces an error",
     // not the exact class — that's covered by hex-id unit tests.
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 0 }, "--h"),
@@ -1561,7 +1562,7 @@ describe("viewCommand.func", () => {
 
   test("parses the arguments before any API call", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(
@@ -1577,7 +1578,7 @@ describe("viewCommand.func", () => {
 
   test("throws error for non-hex event ID", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false, spans: 0 }, "not-a-hex-id"),

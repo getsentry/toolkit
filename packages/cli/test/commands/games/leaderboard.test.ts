@@ -3,7 +3,7 @@ import { leaderboardCommand } from "../../../src/commands/games/leaderboard.js";
 import { withEnv } from "../../../src/lib/env.js";
 import { ApiError, CliError, EXIT } from "../../../src/lib/errors.js";
 import { getPlayerHandle } from "../../../src/lib/games/player.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 import { createMockServer, type MockServer } from "../../mocks/server.js";
 
 useTestConfigDir("test-games-leaderboard-");
@@ -20,7 +20,7 @@ async function run(
     stderr: { write: () => true },
     stdin: { isTTY: false },
   };
-  const func = await leaderboardCommand.loader();
+  const func = await loadCommand(leaderboardCommand);
   await withEnv({ ...process.env, SENTRY_GAMES_API_URL: server.url }, () =>
     func.call(context as never, flags as never),
   );

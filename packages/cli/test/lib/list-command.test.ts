@@ -19,7 +19,7 @@ import {
 import type { OrgListConfig } from "../../src/lib/org-list.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as orgListModule from "../../src/lib/org-list.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, loadCommand } from "../helpers.js";
 
 describe("query pagination hints", () => {
   useTestConfigDir("query-pagination-hints-");
@@ -131,7 +131,7 @@ describe("buildOrgListCommand", () => {
     const config = makeFakeConfig();
     const docs: OrgListCommandDocs = { brief: "List widgets" };
     const cmd = buildOrgListCommand(config, docs, "widget");
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     // Stricli loader returns CommandModule | CommandFunction union;
@@ -163,7 +163,7 @@ describe("buildOrgListCommand", () => {
       { brief: "List widgets" },
       "widget",
     );
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     await (func as any).call(context, { limit: 30, json: false }, "my-org/");
@@ -183,7 +183,7 @@ describe("buildOrgListCommand", () => {
       { brief: "List widgets" },
       "widget",
     );
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     await (func as any).call(context, { limit: 30, json: false });

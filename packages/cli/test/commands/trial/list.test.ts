@@ -40,6 +40,7 @@ import type {
   CustomerTrialInfo,
   ProductTrial,
 } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -143,7 +144,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -164,7 +165,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -181,7 +182,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -204,7 +205,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -218,7 +219,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -232,7 +233,7 @@ describe("trial list command", () => {
     );
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, "my-org");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -245,7 +246,7 @@ describe("trial list command", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, { json: false }, undefined),
@@ -259,7 +260,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -281,7 +282,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -303,7 +304,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -323,7 +324,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -346,7 +347,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -367,7 +368,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -385,7 +386,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -406,7 +407,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -427,7 +428,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -448,7 +449,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -476,7 +477,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -499,7 +500,7 @@ describe("trial list command", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

@@ -43,7 +43,7 @@ import * as gitLib from "../../../src/lib/git.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryRelease } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-set-commits-");
 
@@ -96,7 +96,7 @@ describe("release set-commits --commit", () => {
     setCommitsWithRefsSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -132,7 +132,7 @@ describe("release set-commits --commit", () => {
       .mockResolvedValue(new ValidationError("explained", "commit.repository"));
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await expect(
       func.call(
         context,
@@ -175,7 +175,7 @@ describe("release set-commits --commit", () => {
       .mockResolvedValue(corrected);
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -207,7 +207,7 @@ describe("release set-commits --commit", () => {
     setCommitsWithRefsSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -235,7 +235,7 @@ describe("release set-commits --commit", () => {
     setCommitsWithRefsSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -259,7 +259,7 @@ describe("release set-commits --commit", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -281,7 +281,7 @@ describe("release set-commits --commit", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -322,7 +322,7 @@ describe("release set-commits --clear", () => {
     setCommitsWithRefsSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext();
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -359,7 +359,7 @@ describe("release set-commits --auto", () => {
     setCommitsAutoSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext("/my/project");
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -414,7 +414,7 @@ describe("release set-commits (default mode)", () => {
         "",
       );
       const { context } = createMockContext(repoRoot);
-      const func = await setCommitsCommand.loader();
+      const func = await loadCommand(setCommitsCommand);
       await expect(
         func.call(
           context,
@@ -452,7 +452,7 @@ describe("release set-commits (default mode)", () => {
       "",
     );
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -486,7 +486,7 @@ describe("release set-commits (default mode)", () => {
       "",
     );
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -544,7 +544,7 @@ describe("release set-commits without a git checkout", () => {
     setCommitsAutoSpy.mockRejectedValue(autoError);
 
     const { context } = createMockContext(noGitDir);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await expect(func.call(context, defaultFlags, "1.0.0")).rejects.toBe(
       autoError,
     );
@@ -553,7 +553,7 @@ describe("release set-commits without a git checkout", () => {
 
   test("--local explains that it needs a git checkout", async () => {
     const { context } = createMockContext(noGitDir);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     const error = await Promise.resolve(
       func.call(context, { ...defaultFlags, local: true }, "1.0.0"),
     ).catch((caught: unknown) => caught);
@@ -594,7 +594,7 @@ describe("release set-commits --path", () => {
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -618,7 +618,7 @@ describe("release set-commits --path", () => {
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -641,7 +641,7 @@ describe("release set-commits --path", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -664,7 +664,7 @@ describe("release set-commits --path", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -687,7 +687,7 @@ describe("release set-commits --path", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -748,7 +748,7 @@ describe("release set-commits --from", () => {
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -777,7 +777,7 @@ describe("release set-commits --from", () => {
     setCommitsLocalSpy.mockResolvedValue(sampleRelease);
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
     await func.call(
       context,
       {
@@ -805,7 +805,7 @@ describe("release set-commits --from", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -828,7 +828,7 @@ describe("release set-commits --from", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -851,7 +851,7 @@ describe("release set-commits --from", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(
@@ -874,7 +874,7 @@ describe("release set-commits --from", () => {
     resolveOrgSpy.mockResolvedValue({ org: "my-org" });
 
     const { context } = createMockContext(repoRoot);
-    const func = await setCommitsCommand.loader();
+    const func = await loadCommand(setCommitsCommand);
 
     await expect(
       func.call(

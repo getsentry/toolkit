@@ -52,6 +52,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { DetailedSentryLog } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
 
 const ID1 = "aaaa1111bbbb2222cccc3333dddd4444";
 const ID2 = "1111222233334444555566667777aaaa";
@@ -130,7 +131,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([log]);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: true, web: false }, "my-org/proj", ID1);
 
       const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -144,7 +145,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([log]);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: false }, "my-org/proj", ID1);
 
       const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -155,7 +156,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
 
       try {
         await func.call(
@@ -181,7 +182,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue(logs);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: true, web: false },
@@ -203,7 +204,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue(logs);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: false, web: false },
@@ -224,7 +225,7 @@ describe("viewCommand.func", () => {
 
       const combined = `${ID1}\n${ID2}`;
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: true, web: false },
@@ -248,7 +249,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([makeSampleLog(ID1)]);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: true, web: false },
@@ -270,7 +271,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
 
       try {
         await func.call(
@@ -297,7 +298,7 @@ describe("viewCommand.func", () => {
       openInBrowserSpy.mockResolvedValue(undefined);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: true }, "my-org/proj", ID1);
 
       expect(openInBrowserSpy).toHaveBeenCalled();
@@ -311,7 +312,7 @@ describe("viewCommand.func", () => {
       openInBrowserSpy.mockResolvedValue(undefined);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(
         context,
         { json: false, web: true },
@@ -334,7 +335,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([makeSampleLog(ID1)]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: true, web: false }, "my-project", ID1);
 
       expect(resolveProjectBoundSlugSpy).toHaveBeenCalled();
@@ -348,7 +349,7 @@ describe("viewCommand.func", () => {
 
     test("org/ target (org-all) throws ContextError", async () => {
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
 
       try {
         await func.call(context, { json: false, web: false }, "my-org/", ID1);
@@ -368,7 +369,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([makeSampleLog(ID1)]);
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       // No target arg — triggers auto-detect
       await func.call(context, { json: false, web: false }, ID1);
 
@@ -389,7 +390,7 @@ describe("viewCommand.func", () => {
       resolveOrgAndProjectSpy.mockResolvedValue(null);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
 
       try {
         await func.call(context, { json: false, web: false }, ID1);
@@ -409,7 +410,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([log]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: false }, "my-org/proj", ID1);
 
       expect(getLogItemDetailSpy).toHaveBeenCalledWith(
@@ -426,7 +427,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([log]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: false }, "my-org/proj", ID1);
 
       expect(getLogItemDetailSpy).not.toHaveBeenCalled();
@@ -438,7 +439,7 @@ describe("viewCommand.func", () => {
       getLogItemDetailSpy.mockRejectedValue(new Error("network error"));
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: false }, "my-org/proj", ID1);
 
       // Should still render the log with standard fields despite detail failure
@@ -451,7 +452,7 @@ describe("viewCommand.func", () => {
       getLogsSpy.mockResolvedValue([log]);
 
       const { context } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: true, web: false }, "my-org/proj", ID1);
 
       expect(getLogItemDetailSpy).not.toHaveBeenCalled();
@@ -470,7 +471,7 @@ describe("viewCommand.func", () => {
       });
 
       const { context, stdoutWrite } = createMockContext();
-      const func = await viewCommand.loader();
+      const func = await loadCommand(viewCommand);
       await func.call(context, { json: false, web: false }, "my-org/proj", ID1);
 
       const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

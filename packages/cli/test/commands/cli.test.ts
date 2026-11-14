@@ -13,6 +13,7 @@ import { feedbackCommand } from "../../src/commands/cli/feedback.js";
 import type { UpgradeResult } from "../../src/commands/cli/upgrade.js";
 import { upgradeCommand } from "../../src/commands/cli/upgrade.js";
 import { extractInputUrl } from "../../src/lib/fetch-input.js";
+import { loadCommand } from "../helpers.js";
 
 /**
  * Create a mock context with a process.stderr.write spy for capturing
@@ -66,7 +67,7 @@ function createMockContext(overrides: Partial<{ execPath: string }> = {}): {
 describe("feedbackCommand.func", () => {
   test("throws ValidationError for empty message", async () => {
     // Access func through loader
-    const func = await feedbackCommand.loader();
+    const func = await loadCommand(feedbackCommand);
     const mockContext = {
       stdout: { write: vi.fn(() => true) },
       stderr: { write: vi.fn(() => true) },
@@ -78,7 +79,7 @@ describe("feedbackCommand.func", () => {
   });
 
   test("throws ValidationError for whitespace-only message", async () => {
-    const func = await feedbackCommand.loader();
+    const func = await loadCommand(feedbackCommand);
     const mockContext = {
       stdout: { write: vi.fn(() => true) },
       stderr: { write: vi.fn(() => true) },
@@ -90,7 +91,7 @@ describe("feedbackCommand.func", () => {
   });
 
   test("throws ConfigError when Sentry is disabled", async () => {
-    const func = await feedbackCommand.loader();
+    const func = await loadCommand(feedbackCommand);
     const mockContext = {
       stdout: { write: vi.fn(() => true) },
       stderr: { write: vi.fn(() => true) },
@@ -130,7 +131,7 @@ describe("upgradeCommand.func", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-    const func = await upgradeCommand.loader();
+    const func = await loadCommand(upgradeCommand);
     const { context, getStdout, restore } = createMockContext();
     restoreStderr = restore;
 
@@ -152,7 +153,7 @@ describe("upgradeCommand.func", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-    const func = await upgradeCommand.loader();
+    const func = await loadCommand(upgradeCommand);
     const { context, getStdout, restore } = createMockContext();
     restoreStderr = restore;
 
@@ -177,7 +178,7 @@ describe("upgradeCommand.func", () => {
       });
     };
 
-    const func = await upgradeCommand.loader();
+    const func = await loadCommand(upgradeCommand);
     const { context, getStdout, restore } = createMockContext();
     restoreStderr = restore;
 
@@ -201,7 +202,7 @@ describe("upgradeCommand.func", () => {
         headers: { "Content-Type": "application/json" },
       });
 
-    const func = await upgradeCommand.loader();
+    const func = await loadCommand(upgradeCommand);
     const { context, getStdout, restore } = createMockContext();
     restoreStderr = restore;
 
@@ -220,7 +221,7 @@ describe("upgradeCommand.func", () => {
       return new Response("Not Found", { status: 404 });
     };
 
-    const func = await upgradeCommand.loader();
+    const func = await loadCommand(upgradeCommand);
     const { context, restore } = createMockContext();
     restoreStderr = restore;
 

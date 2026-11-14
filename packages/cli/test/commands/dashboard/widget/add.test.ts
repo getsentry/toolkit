@@ -41,6 +41,7 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
+import { loadCommand } from "../../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,7 +132,7 @@ describe("dashboard widget add", () => {
 
   test("adds widget with correct API args (getDashboard then updateDashboard)", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", query: ["count"] },
@@ -169,7 +170,7 @@ describe("dashboard widget add", () => {
         .spyOn(apiClient, "listDashboardsPaginated")
         .mockResolvedValue({ data: [], nextCursor: undefined });
       const { context, stdoutWrite } = createMockContext();
-      const func = await addCommand.loader();
+      const func = await loadCommand(addCommand);
 
       try {
         await func.call(
@@ -209,7 +210,7 @@ describe("dashboard widget add", () => {
 
   test("JSON output contains dashboard, widget, and url", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: true, display: "big_number", query: ["count"] },
@@ -227,7 +228,7 @@ describe("dashboard widget add", () => {
 
   test("human output contains 'Added widget' and title", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", query: ["count"] },
@@ -242,7 +243,7 @@ describe("dashboard widget add", () => {
 
   test("fails to parse the arguments when the title is missing (less than 2 positional args)", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
     const err = await func
       .call(context, { json: false, display: "line" }, "123")
@@ -258,7 +259,7 @@ describe("dashboard widget add", () => {
 
   test("throws ValidationError for invalid display type", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
     const err = await func
       .call(
@@ -274,7 +275,7 @@ describe("dashboard widget add", () => {
 
   test("throws ValidationError for invalid aggregate function", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
     const err = await func
       .call(
@@ -290,7 +291,7 @@ describe("dashboard widget add", () => {
 
   test("issue line dataset does not default columns", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "line", dataset: "issue" },
@@ -305,7 +306,7 @@ describe("dashboard widget add", () => {
 
   test("issue dataset defaults columns to ['issue'] and orderby to -count()", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "table", dataset: "issue" },
@@ -322,7 +323,7 @@ describe("dashboard widget add", () => {
 
   test("resolves dataset alias 'errors' to 'error-events' in PUT body", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -342,7 +343,7 @@ describe("dashboard widget add", () => {
 
   test("resolves dataset alias 'metricsEnhanced' to 'tracemetrics'", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -365,7 +366,7 @@ describe("dashboard widget add", () => {
     // "errors", dataset-aware validation must see "error-events" (canonical)
     // before deciding whether to accept the aggregate.
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -386,7 +387,7 @@ describe("dashboard widget add", () => {
 
   test("case-insensitive dataset values are accepted", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -406,7 +407,7 @@ describe("dashboard widget add", () => {
 
   test("rejects unknown --dataset with canonical list", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
 
     const err = await func
       .call(
@@ -430,7 +431,7 @@ describe("dashboard widget add", () => {
 
   test("issue dataset respects explicit --group-by over default", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -455,7 +456,7 @@ describe("dashboard widget add", () => {
 
   test("uses explicit layout when --col --row --width --height provided", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -481,7 +482,7 @@ describe("dashboard widget add", () => {
 
   test("partial layout flags override auto-layout defaults", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -504,7 +505,7 @@ describe("dashboard widget add", () => {
 
   test("throws ValidationError for width > 6", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     const err = await func
       .call(
         context,
@@ -520,7 +521,7 @@ describe("dashboard widget add", () => {
   test("throws ValidationError when --col overflows with auto-layout default width", async () => {
     // table display defaults to w=6, so --col 1 would produce x=1 + w=6 = 7 > 6
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     const err = await func
       .call(
         context,
@@ -535,7 +536,7 @@ describe("dashboard widget add", () => {
 
   test("throws ValidationError for negative row", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     const err = await func
       .call(
         context,
@@ -550,7 +551,7 @@ describe("dashboard widget add", () => {
 
   test("auto-defaults orderby when group-by + limit provided", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -571,7 +572,7 @@ describe("dashboard widget add", () => {
 
   test("auto-defaults --limit to 5 when --group-by is used without --limit", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -593,7 +594,7 @@ describe("dashboard widget add", () => {
 
   test("explicit --limit wins over auto-default for grouped widgets", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -614,7 +615,7 @@ describe("dashboard widget add", () => {
 
   test("ungrouped widget does not get an auto-default limit", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "big_number", query: ["count"] },
@@ -632,7 +633,7 @@ describe("dashboard widget add", () => {
     // ["issue"] but should not auto-default a limit — existing widgets of
     // this shape may legitimately have no limit.
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "table", dataset: "issue" },
@@ -649,7 +650,7 @@ describe("dashboard widget add", () => {
 
   test("--layout dense passes dense mode to auto-placer", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       { json: false, display: "big_number", query: ["count"], layout: "dense" },
@@ -667,7 +668,7 @@ describe("dashboard widget add", () => {
 
   test("--layout sequential (default) uses sequential placement", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     await func.call(
       context,
       {
@@ -690,7 +691,7 @@ describe("dashboard widget add", () => {
 
   test("--layout invalid rejects with ValidationError", async () => {
     const { context } = createMockContext();
-    const func = await addCommand.loader();
+    const func = await loadCommand(addCommand);
     const err = await func
       .call(
         context,

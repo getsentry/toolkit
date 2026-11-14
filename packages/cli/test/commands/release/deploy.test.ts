@@ -33,7 +33,7 @@ vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryDeploy } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("release-deploy-");
 
@@ -79,7 +79,7 @@ describe("release deploy", () => {
     createRelaseDeploySpy.mockResolvedValue(sampleDeploy);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     await func.call(context, { json: true }, "my-org/1.0.0", "production");
 
     expect(createRelaseDeploySpy).toHaveBeenCalledWith("my-org", "1.0.0", {
@@ -98,7 +98,7 @@ describe("release deploy", () => {
     });
 
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     // Multi-word deploy names are passed as a single quoted positional.
     await func.call(context, { json: true }, "1.0.0", "staging", "Deploy #42");
 
@@ -114,7 +114,7 @@ describe("release deploy", () => {
     createRelaseDeploySpy.mockResolvedValue(sampleDeploy);
 
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     await func.call(
       context,
       { url: "https://example.com", json: true },
@@ -134,7 +134,7 @@ describe("release deploy", () => {
 
   test("throws when missing environment", async () => {
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
       "Environment is required",
@@ -143,7 +143,7 @@ describe("release deploy", () => {
 
   test("throws when no args provided", async () => {
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Release version is required",

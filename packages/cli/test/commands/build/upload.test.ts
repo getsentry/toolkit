@@ -22,7 +22,7 @@ import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
 
 useTestConfigDir("build-upload-cmd-");
 
@@ -111,7 +111,7 @@ describe("build upload", () => {
   test("uploads an APK and reports the artifact URL", async () => {
     const apk = await writeApk();
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, apk);
 
@@ -129,7 +129,7 @@ describe("build upload", () => {
   test("passes build metadata flags through to the API", async () => {
     const apk = await writeApk();
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(
       harness.context,
@@ -150,7 +150,7 @@ describe("build upload", () => {
   test("folds explicit git-metadata flags into the assemble body", async () => {
     const apk = await writeApk();
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     const sha = "abcdef01".repeat(5); // 40 hex chars
     await func.call(
@@ -174,7 +174,7 @@ describe("build upload", () => {
     const bad = join(tmpDir, "notes.txt");
     await writeFile(bad, "not a build");
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, bad);
 
@@ -197,7 +197,7 @@ describe("build upload", () => {
   test("uploads an XCArchive directory", async () => {
     const dir = await writeXcarchive();
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, dir);
 
@@ -211,7 +211,7 @@ describe("build upload", () => {
     await mkdir(dir);
     await writeFile(join(dir, "readme.txt"), "hello");
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, dir);
 
@@ -230,7 +230,7 @@ describe("build upload", () => {
       }),
     );
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, ipa);
 
@@ -243,7 +243,7 @@ describe("build upload", () => {
     const bad = join(tmpDir, "bad.txt");
     await writeFile(bad, "nope");
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
 
     await func.call(harness.context, {}, apk, bad);
 
@@ -317,7 +317,7 @@ describe("build upload", () => {
         );
       }
       const harness = createContext();
-      const func = await uploadCommand.loader();
+      const func = await loadCommand(uploadCommand);
       await func.call(harness.context, { dsym: ["unused.dSYM"] }, path);
       expect(uploadSpy).not.toHaveBeenCalled();
       expect(harness.exitCode).toBe(1);
@@ -326,7 +326,7 @@ describe("build upload", () => {
   );
 
   test("rejects --dsym with multiple builds before resolving or uploading", async () => {
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
     await expect(
       func.call(
         createContext().context,
@@ -354,7 +354,7 @@ describe("build upload", () => {
       }),
     );
     const harness = createContext();
-    const func = await uploadCommand.loader();
+    const func = await loadCommand(uploadCommand);
     await func.call(harness.context, { dsym: [zipPath] }, ipa);
     expect(uploadSpy).not.toHaveBeenCalled();
     expect(harness.exitCode).toBe(1);

@@ -87,6 +87,7 @@ vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { ConversationListItem } from "../../../src/types/conversation.js";
+import { loadCommand } from "../../helpers.js";
 
 // ============================================================================
 // Helpers
@@ -243,7 +244,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/`);
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
@@ -265,7 +266,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, undefined);
 
     expect(resolveTargetSpy).toHaveBeenCalledWith(
@@ -285,7 +286,7 @@ describe("listCommand.func", () => {
     listConversationsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, `${ORG}/${PROJECT.slug}`);
 
     expect(getProjectSpy).toHaveBeenCalledWith(ORG, PROJECT.slug);
@@ -304,7 +305,7 @@ describe("listCommand.func", () => {
     listConversationsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, PROJECT.slug);
 
     expect(getProjectSpy).not.toHaveBeenCalled();
@@ -321,7 +322,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -340,7 +341,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -356,7 +357,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { ...JSON_FLAGS, query: "has:errors" }, ORG);
 
     expect(listConversationsSpy).toHaveBeenCalledWith(
@@ -372,7 +373,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { ...JSON_FLAGS, sort: "-conversation.totalCost" },
@@ -392,7 +393,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { ...JSON_FLAGS, period: parsePeriod("24h") },
@@ -412,7 +413,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { ...JSON_FLAGS, limit: 50 }, ORG);
 
     expect(listConversationsSpy).toHaveBeenCalledWith(
@@ -433,7 +434,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       {
@@ -465,7 +466,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -479,7 +480,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, HUMAN_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -493,7 +494,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -509,7 +510,7 @@ describe("listCommand.func", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, ORG);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -524,7 +525,7 @@ describe("listCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, JSON_FLAGS, ORG);
 
     expect(advancePaginationStateSpy).toHaveBeenCalledWith(

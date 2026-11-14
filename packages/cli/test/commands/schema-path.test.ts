@@ -9,6 +9,7 @@ import { schemaCommand } from "../../src/commands/schema.js";
 import type { SentryContext } from "../../src/context.js";
 import { getAllEndpoints } from "../../src/lib/api-schema.js";
 import { OutputError, ResolutionError } from "../../src/lib/errors.js";
+import { loadCommand } from "../helpers.js";
 
 const ORG_ISSUES = "/api/0/organizations/{organization_id_or_slug}/issues/";
 const SKILL_QUERY = `GET ${ORG_ISSUES}`;
@@ -48,7 +49,7 @@ describe("sentry schema path lookup", () => {
     ["GET", ORG_ISSUES],
   ])("exact lookup preserves the endpoint object for %j", async (...args) => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: false }, ...args);
     expect(JSON.parse(stdoutOf(stdoutWrite))).toEqual(
       getAllEndpoints().find(
@@ -59,7 +60,7 @@ describe("sentry schema path lookup", () => {
 
   test("--search keeps exact HTTP-qualified identifiers in an array and rejects a different method", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(
       context,
       { json: true, all: false, search: "GET" },
@@ -85,7 +86,7 @@ describe("sentry schema path lookup", () => {
 
   test("--all remains an unannotated flat array", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: true });
     expect(JSON.parse(stdoutOf(stdoutWrite))).toEqual(getAllEndpoints());
   });
@@ -121,7 +122,7 @@ describe("sentry schema path lookup", () => {
     },
   ])("discovers the API used by $args", async ({ args, fn, command, note }) => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: false }, ...args);
     const result = JSON.parse(stdoutOf(stdoutWrite));
     expect(Array.isArray(result)).toBe(true);
@@ -143,7 +144,7 @@ describe("sentry schema path lookup", () => {
   test("--search and positionals share discovery, including a complete nested path", async () => {
     const positional = createMockContext();
     const search = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(
       positional.context,
       { json: true, all: false },
@@ -179,7 +180,7 @@ describe("sentry schema path lookup", () => {
     "HTTP filters preserve CLI discovery for $args",
     async ({ args, search, fn, command }) => {
       const { context, stdoutWrite } = createMockContext();
-      const func = await schemaCommand.loader();
+      const func = await loadCommand(schemaCommand);
       await func.call(
         context,
         { json: true, all: false, search: search ? "GET" : undefined },
@@ -213,7 +214,7 @@ describe("sentry schema path lookup", () => {
 
   test("renders the selector and related CLI command in human output", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: false, all: false }, "logs");
     const output = stdoutOf(stdoutWrite);
     expect(output).toContain("dataset=logs");
@@ -222,7 +223,7 @@ describe("sentry schema path lookup", () => {
 
   test("discovery supports existing --fields filtering", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(
       context,
       { json: true, all: false, fields: ["fn"] },
@@ -238,7 +239,7 @@ describe("sentry schema path lookup", () => {
 
   test("path without METHOD lists methods on that URL", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: false }, ORG_ISSUES);
 
     const parsed = JSON.parse(stdoutOf(stdoutWrite));
@@ -252,7 +253,7 @@ describe("sentry schema path lookup", () => {
 
   test("--search with GET + path finds the endpoint", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: false, search: SKILL_QUERY });
 
     const parsed = JSON.parse(stdoutOf(stdoutWrite));
@@ -262,7 +263,7 @@ describe("sentry schema path lookup", () => {
 
   test("--search GET plus path positional (unquoted) finds the endpoint", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(
       context,
       { json: true, all: false, search: "GET" },
@@ -276,7 +277,7 @@ describe("sentry schema path lookup", () => {
 
   test("unknown path does not suggest --search GET /path", async () => {
     const { context } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     const query =
       "GET /api/0/organizations/{organization_id_or_slug}/not-a-route/";
 
@@ -293,7 +294,7 @@ describe("sentry schema path lookup", () => {
 
   test("wrong METHOD at a real path hints the methods that exist", async () => {
     const { context } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
 
     const err = await func
       .call(context, { json: false, all: false }, `POST ${ORG_ISSUES}`)
@@ -309,7 +310,7 @@ describe("sentry schema path lookup", () => {
 
   test("resource discovery preserves the endpoint array JSON shape", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await schemaCommand.loader();
+    const func = await loadCommand(schemaCommand);
     await func.call(context, { json: true, all: false }, "issues");
 
     const parsed = JSON.parse(stdoutOf(stdoutWrite));

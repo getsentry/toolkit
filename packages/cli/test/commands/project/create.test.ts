@@ -42,7 +42,7 @@ import type { ProjectCreatedResult } from "../../../src/lib/formatters/human.js"
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { slugify } from "../../../src/lib/utils.js";
 import type { SentryProject, SentryTeam } from "../../../src/types/index.js";
-import { parseFailure, useTestConfigDir } from "../../helpers.js";
+import { parseFailure, useTestConfigDir, loadCommand } from "../../helpers.js";
 
 const sampleTeam: SentryTeam = {
   id: "1",
@@ -161,7 +161,7 @@ describe("project create", () => {
 
   test("creates project with auto-detected org and single team", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
@@ -182,7 +182,7 @@ describe("project create", () => {
 
   test("parses org/name positional syntax", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-org/my-app:python");
 
     // resolveOrg should receive the explicit org
@@ -196,7 +196,7 @@ describe("project create", () => {
     "passes the paired platform %s to createProject",
     async (platform) => {
       const { context } = createMockContext();
-      const func = await createCommand.loader();
+      const func = await loadCommand(createCommand);
       await func.call(context, { json: false }, `my-app:${platform}`);
 
       expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
@@ -217,7 +217,7 @@ describe("project create", () => {
     "rejects the space-separated form %s — platform must use :",
     async (_label, args) => {
       const { context } = createMockContext();
-      const func = await createCommand.loader();
+      const func = await loadCommand(createCommand);
 
       const err = await func
         .call(context, { json: false }, ...args)
@@ -262,7 +262,7 @@ describe("project create", () => {
 
   test("splits historical colon-containing names on the final colon instead", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-org/api:europe:node");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({
@@ -283,7 +283,7 @@ describe("project create", () => {
     listTeamsSpy.mockResolvedValue([sampleTeam, sampleTeam2]);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { team: "mobile", json: false }, "my-app:go");
 
     // listTeams should NOT be called when --team is explicit
@@ -303,7 +303,7 @@ describe("project create", () => {
     listTeamsSpy.mockResolvedValue([nonMemberTeam, sampleTeam]);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     // Should auto-select the one team the user is a member of
@@ -324,7 +324,7 @@ describe("project create", () => {
     ]);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
@@ -347,7 +347,7 @@ describe("project create", () => {
     ]);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     // infra is older and admin, but the user is not a member of it
@@ -365,7 +365,7 @@ describe("project create", () => {
     ]);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith("acme-corp", "alpha", {
@@ -383,7 +383,7 @@ describe("project create", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     expect(createTeamSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -405,7 +405,7 @@ describe("project create", () => {
     resolveOrgSpy.mockResolvedValue(null);
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     await expect(
       func.call(context, { json: false }, "my-app:node"),
@@ -422,7 +422,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "my-app:node")
@@ -438,7 +438,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     // Use --team with a slug that doesn't match any team in the org
     const err = await func
@@ -463,7 +463,7 @@ describe("project create", () => {
     // calls listTeams again and finds "engineering" in the list.
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "my-app:node")
@@ -485,7 +485,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false, team: "backend" }, "my-app:node")
@@ -506,7 +506,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false, team: "backend" }, "my-app:node")
@@ -518,7 +518,7 @@ describe("project create", () => {
 
   test("rejects invalid platform client-side without API call", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "my-app:javascript-node")
@@ -544,7 +544,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     // Use a valid platform so client-side check passes, but API rejects
     const err = await func
@@ -563,7 +563,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = (await func
       .call(context, { json: false }, "my-app:node")
@@ -591,7 +591,7 @@ describe("project create", () => {
     });
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     expect(createProjectWithAutoTeamSpy).toHaveBeenCalledWith("acme-corp", {
@@ -609,7 +609,7 @@ describe("project create", () => {
       ),
     );
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const err = (await func
       .call(context, { json: false }, "my-cool-app:node")
       .catch((e: Error) => e)) as ApiError;
@@ -631,7 +631,7 @@ describe("project create", () => {
       ),
     );
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const err = (await func
       .call(context, { json: false }, "my-cool-app:node")
       .catch((e: Error) => e)) as ApiError;
@@ -654,7 +654,7 @@ describe("project create", () => {
       ),
     );
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const err = await func
       .call(context, { json: false }, "my-app:node")
       .catch((error: Error) => error);
@@ -673,7 +673,7 @@ describe("project create", () => {
     // createProjectWithAutoTeamSpy already defaults to "disabled this feature" 403
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = (await func
       .call(context, { json: false }, "my-app:node")
@@ -685,7 +685,7 @@ describe("project create", () => {
 
   test("outputs JSON when --json flag is set", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: true }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -704,7 +704,7 @@ describe("project create", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -715,7 +715,7 @@ describe("project create", () => {
 
   test("errors on invalid org/name syntax", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     // Missing name after slash
     const err = await func
@@ -726,7 +726,7 @@ describe("project create", () => {
 
   test("shows platform in human output", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:python-django");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -735,7 +735,7 @@ describe("project create", () => {
 
   test("shows project URL in human output", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -753,7 +753,7 @@ describe("project create", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -764,7 +764,7 @@ describe("project create", () => {
 
   test("does not show slug note when slug matches name", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -773,7 +773,7 @@ describe("project create", () => {
 
   test("shows helpful error when name is missing", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func.call(context, { json: false }).catch(parseFailure);
     expect(err).toBeInstanceOf(ContextError);
@@ -787,7 +787,7 @@ describe("project create", () => {
     "rejects an empty project name argument (%j)",
     async (name) => {
       const { context } = createMockContext();
-      const func = await createCommand.loader();
+      const func = await loadCommand(createCommand);
 
       const err = await func
         .call(context, { json: false }, `${name}:node`)
@@ -801,7 +801,7 @@ describe("project create", () => {
     "shows a helpful error when platform is missing from %s",
     async (projectArg) => {
       const { context } = createMockContext();
-      const func = await createCommand.loader();
+      const func = await loadCommand(createCommand);
 
       const err = await func
         .call(context, { json: false }, projectArg)
@@ -820,7 +820,7 @@ describe("project create", () => {
 
   test("rejects trailing-platform batches that were never supported", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "web", "api", "node")
@@ -836,7 +836,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "my-app:node")
@@ -859,7 +859,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(context, { json: false }, "my-app:node")
@@ -880,7 +880,7 @@ describe("project create", () => {
     );
 
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = (await func
       .call(context, { json: false }, "my-app:node")
@@ -892,7 +892,7 @@ describe("project create", () => {
 
   test("auto-corrects dot-separated platform to hyphen-separated", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:javascript.nextjs");
 
     // Should send corrected platform to API
@@ -908,7 +908,7 @@ describe("project create", () => {
 
   test("does not correct platform without dots", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "my-app:javascript-nextjs");
 
     // Should send platform as-is to API (no correction needed)
@@ -924,7 +924,7 @@ describe("project create", () => {
 
   test("auto-corrects multiple dots in platform then validates", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     // python.django.rest → python-django-rest (not a valid platform)
     const err = await func
@@ -936,7 +936,7 @@ describe("project create", () => {
 
   test("creates multiple projects with independent platforms", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { json: false },
@@ -967,7 +967,7 @@ describe("project create", () => {
       (_, index) => `project-${index}:node`,
     );
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     await func.call(context, { json: false }, ...specs);
 
@@ -984,7 +984,7 @@ describe("project create", () => {
       .mockResolvedValueOnce(createdProjectDetails("web"))
       .mockResolvedValueOnce(createdProjectDetails("api"));
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: true }, "web:node", "api:node");
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -1005,7 +1005,7 @@ describe("project create", () => {
       .mockResolvedValueOnce(createdProjectDetails("web"))
       .mockRejectedValueOnce(new ApiError("Server Error", 500));
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const error = await func
       .call(context, { json: false }, "web:node", "api:node")
       .catch((caught: Error) => caught);
@@ -1021,7 +1021,7 @@ describe("project create", () => {
       .mockResolvedValueOnce(createdProjectDetails("web"))
       .mockRejectedValueOnce(new ApiError("Server Error", 500));
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const error = await func
       .call(context, { json: true }, "web:node", "api:node")
       .catch((caught: Error) => caught);
@@ -1034,7 +1034,7 @@ describe("project create", () => {
 
   test("invalid platform identifies its project pair", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     const err = await func
       .call(context, { json: false }, "proj1:node", "proj2:not-a-platform")
       .catch(parseFailure);
@@ -1047,7 +1047,7 @@ describe("project create", () => {
     "rejects whitespace in a %s project name",
     async (_syntax, args) => {
       const { context } = createMockContext();
-      const func = await createCommand.loader();
+      const func = await loadCommand(createCommand);
       const err = await func
         .call(context, { json: false }, ...args)
         .catch(parseFailure);
@@ -1062,7 +1062,7 @@ describe("project create", () => {
 
   test("preserves commas inside a project name", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "payments,eu:node");
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledTimes(1);
@@ -1075,7 +1075,7 @@ describe("project create", () => {
 
   test("preserves commas inside an organization-scoped project name", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "acme/web,api:node");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith(
@@ -1090,7 +1090,7 @@ describe("project create", () => {
 
   test("splits a project specification on its final colon", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false }, "api:europe:node");
 
     expect(createProjectWithDsnSpy).toHaveBeenCalledWith(
@@ -1104,7 +1104,7 @@ describe("project create", () => {
 
   test("dry-run shows what would be created without API call", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false, "dry-run": true }, "my-app:node");
 
     // Should NOT call createProject
@@ -1123,7 +1123,7 @@ describe("project create", () => {
   test("dry-run: multi-project empty org previews one shared team", async () => {
     listTeamsSpy.mockResolvedValue([]);
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { json: false, "dry-run": true },
@@ -1146,7 +1146,7 @@ describe("project create", () => {
 
   test("dry-run still validates platform", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
 
     const err = await func
       .call(
@@ -1161,7 +1161,7 @@ describe("project create", () => {
 
   test("dry-run still resolves org", async () => {
     const { context } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { json: false, "dry-run": true },
@@ -1176,7 +1176,7 @@ describe("project create", () => {
 
   test("dry-run outputs JSON when --json is set", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: true, "dry-run": true }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -1196,7 +1196,7 @@ describe("project create", () => {
 
   test("dry-run outputs one JSON array for multiple projects", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(
       context,
       { json: true, "dry-run": true },
@@ -1214,7 +1214,7 @@ describe("project create", () => {
 
   test("dry-run shows team source for auto-selected teams", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false, "dry-run": true }, "my-app:node");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -1226,7 +1226,7 @@ describe("project create", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     await func.call(context, { json: false, "dry-run": true }, "my-app:node");
 
     // Should NOT call createTeam
@@ -1244,7 +1244,7 @@ describe("project create", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await createCommand.loader();
+    const func = await loadCommand(createCommand);
     // "!!!" has no characters slugify() keeps, so it alone can't name the
     // auto-created team — the batch should still share "my-app" instead of
     // rejecting every project with "No teams found".
