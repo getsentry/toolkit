@@ -4,6 +4,9 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
+    // msw's declarations name Fetch and WebSocket DOM globals (ResponseType,
+    // BodyInit, EventInit, MessageEvent<T>) that @types/node does not declare.
+    "lib": ["ES2023", "ES2024.String", "DOM"],
     "types": ["node"],
     // Lets tsdown emit declarations with Oxc instead of the compiler API.
     "allowJs": false,
