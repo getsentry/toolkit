@@ -392,11 +392,11 @@ export function logIssue(
 
     return typeof error === "string"
       ? captureMessage(error, {
-          contexts: options.contexts,
+          ...(options.contexts && { contexts: options.contexts }),
           level: captureLevel,
         })
       : captureException(error, {
-          contexts: options.contexts,
+          ...(options.contexts && { contexts: options.contexts }),
           level: captureLevel,
         });
   });

@@ -9,7 +9,7 @@ export interface DatasetField {
   key: string;
   name: string;
   totalValues: number;
-  examples?: string[];
+  examples?: string[] | undefined;
 }
 
 export interface DatasetFieldsResult {
@@ -112,7 +112,7 @@ export async function discoverDatasetFields(
   organizationSlug: string,
   dataset: DatasetType,
   options: {
-    projectId?: string;
+    projectId?: string | undefined;
   } = {},
 ): Promise<DatasetFieldsResult> {
   const { projectId } = options;
@@ -162,7 +162,7 @@ export function createDatasetFieldsTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
   dataset: DatasetType;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, dataset, projectId } = options;
   return agentTool({

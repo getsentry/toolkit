@@ -8,7 +8,7 @@ import { formatToolCall } from "./tool-call-formatting";
 
 export interface AIConversationReference {
   conversationId: string;
-  spanId?: string;
+  spanId?: string | undefined;
 }
 
 /** Builds transcript actions that match the session's direct or catalog surface. */
@@ -22,8 +22,8 @@ export function getAIConversationSuggestedActions({
   organizationSlug: string;
   aiConversations: AIConversationReference[];
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): SuggestedToolAction[] {
   return aiConversations
     .slice(0, MAX_SUGGESTED_ACTIONS)
@@ -54,8 +54,8 @@ export function formatAIConversationActionInstructions({
   organizationSlug: string;
   aiConversations: AIConversationReference[];
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const actions = getAIConversationSuggestedActions({
     organizationSlug,

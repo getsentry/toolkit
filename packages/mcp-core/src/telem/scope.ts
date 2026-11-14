@@ -8,19 +8,19 @@ import { isNumericId } from "../utils/slug-validation";
  */
 export interface Target {
   organizationSlug: string;
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
   /** Numeric project ID. */
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
   /**
    * Project reference as the user gave it: a numeric value is sent as
    * `project.id`, any other value as `project.slug`.
    */
-  projectSlugOrId?: string | null;
+  projectSlugOrId?: string | null | undefined;
   teamSlug?: string | null;
   issueId?: string | null;
   traceId?: string | null;
   /** Span ID inside `traceId`. */
-  spanId?: string | null;
+  spanId?: string | null | undefined;
   monitorSlug?: string | null;
   uptimeMonitorId?: string | null;
   releaseVersion?: string | null;

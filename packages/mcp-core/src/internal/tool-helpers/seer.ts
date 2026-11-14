@@ -342,7 +342,7 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
  */
 export function getActiveAutofixTodo(autofix: AutofixRun): string | null {
   for (let i = autofix.blocks.length - 1; i >= 0; i--) {
-    const todos = autofix.blocks[i].todos;
+    const todos = autofix.blocks[i]?.todos;
     if (!todos?.length) {
       continue;
     }

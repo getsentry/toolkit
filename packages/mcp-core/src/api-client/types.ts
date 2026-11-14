@@ -161,30 +161,32 @@ export type AlertRuleProjectScope = z.infer<typeof AlertRuleProjectScopeSchema>;
 export type Detector = z.infer<typeof DetectorSchema>;
 export type MetricMonitorUpdate = {
   name?: string;
-  description?: string | null;
+  description?: string | null | undefined;
   enabled?: boolean;
-  owner?: string | null;
+  owner?: string | null | undefined;
   workflowIds?: string[];
   config?: Record<string, unknown>;
   conditionGroup?: {
-    id?: string | number;
+    id?: string | number | undefined;
     logicType: string;
     conditions: Array<{
-      id?: string | number;
+      id?: string | number | undefined;
       type: string;
       comparison: unknown;
       conditionResult: unknown;
     }>;
   };
-  dataSources?: Array<{
-    dataset: string;
-    query: string;
-    aggregate: string;
-    timeWindow: number;
-    environment: string | null;
-    eventTypes: string[];
-    extrapolationMode?: string | null;
-  }>;
+  dataSources?:
+    | Array<{
+        dataset: string;
+        query: string;
+        aggregate: string;
+        timeWindow: number;
+        environment: string | null;
+        eventTypes: string[];
+        extrapolationMode?: string | null | undefined;
+      }>
+    | undefined;
 };
 export type MetricMonitorCreate = Pick<
   MetricMonitorUpdate,
@@ -200,9 +202,9 @@ export type AlertRuleUpdate = {
   name: string;
   enabled: boolean;
   config?: Record<string, unknown>;
-  environment?: string | null;
-  owner?: string | null;
-  triggers?: NonNullable<IssueAlertRule["triggers"]>;
+  environment?: string | null | undefined;
+  owner?: string | null | undefined;
+  triggers?: NonNullable<IssueAlertRule["triggers"]> | undefined;
   actionFilters?: NonNullable<IssueAlertRule["actionFilters"]>;
   detectorIds?: string[];
 };

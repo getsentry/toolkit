@@ -197,8 +197,8 @@ export function formatFrameHeader(
  * misnames the error text.
  */
 export function isPerformanceIssueType(issue: {
-  issueType?: string | null;
-  issueCategory?: string | null;
+  issueType?: string | null | undefined;
+  issueCategory?: string | null | undefined;
 }): boolean {
   return (
     issue.issueType?.startsWith("performance_") === true ||
@@ -228,15 +228,17 @@ export function isSupportedEventType(event: { type?: unknown }): boolean {
 export function formatEventOutput(
   event: Event,
   options?: {
-    performanceTrace?: Trace;
-    replaySummary?: {
-      apiService: SentryApiService;
-      organizationSlug: string;
-      relatedReplayIds?: string[];
-      experimentalMode?: boolean;
-      availableToolNames?: ReadonlySet<string>;
-      directToolNames?: ReadonlySet<string>;
-    };
+    performanceTrace?: Trace | undefined;
+    replaySummary?:
+      | {
+          apiService: SentryApiService;
+          organizationSlug: string;
+          relatedReplayIds?: string[] | undefined;
+          experimentalMode?: boolean;
+          availableToolNames?: ReadonlySet<string> | undefined;
+          directToolNames?: ReadonlySet<string> | undefined;
+        }
+      | undefined;
   },
 ) {
   let output = "";
@@ -274,7 +276,6 @@ export function formatEventOutput(
   // Error message (if present)
   if (messageEntry) {
     output += formatMessageInterfaceOutput(
-      eventToRender,
       messageEntry.data as z.infer<typeof MessageEntrySchema>,
     );
   }
@@ -297,14 +298,13 @@ export function formatEventOutput(
   // Request info (if HTTP error)
   if (requestEntry) {
     output += formatRequestInterfaceOutput(
-      eventToRender,
       requestEntry.data as z.infer<typeof RequestEntrySchema>,
     );
   }
 
   // CSP violation details
   if (cspEntry) {
-    output += formatCspInterfaceOutput(eventToRender, cspEntry.data);
+    output += formatCspInterfaceOutput(cspEntry.data);
   }
 
   // Performance issue details (N+1 queries, etc.)
@@ -514,7 +514,7 @@ function getExceptionChainMessage(
   }
 }
 
-function formatCspInterfaceOutput(event: Event, data: any) {
+function formatCspInterfaceOutput(data: any) {
   if (!data) {
     return "";
   }
@@ -563,7 +563,6 @@ function formatCspInterfaceOutput(event: Event, data: any) {
 }
 
 function formatRequestInterfaceOutput(
-  event: Event,
   data: z.infer<typeof RequestEntrySchema>,
 ) {
   if (!data.method || !data.url) {
@@ -573,7 +572,6 @@ function formatRequestInterfaceOutput(
 }
 
 function formatMessageInterfaceOutput(
-  event: Event,
   data: z.infer<typeof MessageEntrySchema>,
 ) {
   if (!data.formatted && !data.message) {
@@ -1229,16 +1227,14 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
     lines.push(line);
 
     // Render children
-    for (let i = 0; i < span.children.length; i++) {
-      const child = span.children[i];
+    for (const [i, child] of span.children.entries()) {
       const isLastChild = i === span.children.length - 1;
       const childPrefix = prefix + (isLast ? "   " : "│  ");
       renderSpan(child, childPrefix, isLastChild);
     }
   }
 
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const [i, span] of spans.entries()) {
     const isLastRoot = i === spans.length - 1;
     renderSpan(span, "", isLastRoot);
   }
@@ -1420,8 +1416,9 @@ function formatN1QueryEvidence(
     }
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
-    if (repeatingLines.length === 1) {
-      parts.push(codeBlock(repeatingLines[0], "sql"));
+    const [onlyRepeatingLine] = repeatingLines;
+    if (repeatingLines.length === 1 && onlyRepeatingLine !== undefined) {
+      parts.push(codeBlock(onlyRepeatingLine, "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1529,7 +1526,7 @@ function formatPerformanceIssueOutput(
   event: Event,
   spansData: unknown,
   options?: {
-    performanceTrace?: Trace;
+    performanceTrace?: Trace | undefined;
   },
 ): string {
   const parts: string[] = [];
@@ -1641,19 +1638,19 @@ function asUnverified<T>(value: unknown): Unverified<T> | undefined {
 }
 
 type MetricAlertQuery = {
-  dataset?: string;
-  aggregate?: string;
-  query?: string;
-  timeWindowSeconds?: number;
-  environment?: string;
+  dataset?: string | undefined;
+  aggregate?: string | undefined;
+  query?: string | undefined;
+  timeWindowSeconds?: number | undefined;
+  environment?: string | undefined;
   eventTypes: string[];
 };
 
 export type MetricAlertContext = {
   evidenceData: Unverified<MetricIssueEvidenceData>;
-  query?: MetricAlertQuery;
-  monitorId?: string;
-  alertRuleId?: string;
+  query?: MetricAlertQuery | undefined;
+  monitorId?: string | undefined;
+  alertRuleId?: string | undefined;
 };
 
 /**
@@ -1970,8 +1967,8 @@ function buildMetricAlertResponseNotes({
   event: Event;
   context: MetricAlertContext;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const calls = getMetricAlertFollowUpCalls({
@@ -2289,22 +2286,22 @@ export function formatIssueOutput({
   availableToolNames,
   directToolNames,
 }: {
-  packageNames?: string[];
+  packageNames?: string[] | undefined;
   organizationSlug: string;
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
-  aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  sourceMapDebug?: SourceMapDebug;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  autofixState?: AutofixRunState | undefined;
+  performanceTrace?: Trace | undefined;
+  externalIssues?: ExternalIssueList | undefined;
+  relatedReplayIds?: string[] | undefined;
+  aiConversations?: AIConversationReference[] | undefined;
+  codeLocation?: CodeLocation | undefined;
+  committers?: CommitterList | undefined;
+  sourceMapDebug?: SourceMapDebug | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }) {
   let output = `# Issue ${issue.shortId} in **${organizationSlug}**\n\n`;
 
@@ -2537,10 +2534,10 @@ export function buildIssueResponseNotes({
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  aiConversations?: AIConversationReference[] | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const traceId =
@@ -2699,8 +2696,8 @@ function buildAIConversationResponseNotes({
   aiConversations: AIConversationReference[];
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
@@ -2710,8 +2707,8 @@ function buildAIConversationResponseNotes({
     directToolNames,
   });
 
-  if (aiConversations.length === 1) {
-    const [conversation] = aiConversations;
+  const [conversation] = aiConversations;
+  if (aiConversations.length === 1 && conversation) {
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
@@ -2744,10 +2741,10 @@ function formatIssueReplayOutput({
   apiService: SentryApiService;
   organizationSlug: string;
   event: Event;
-  relatedReplayIds?: string[];
+  relatedReplayIds?: string[] | undefined;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string {
   const attachedReplayId = getReplayIdFromEvent(event);
   const normalizedRelatedReplayIds = dedupeReplayIds(relatedReplayIds ?? []);
