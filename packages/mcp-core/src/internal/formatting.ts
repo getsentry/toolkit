@@ -2750,6 +2750,10 @@ function formatIssueReplayOutput({
   directToolNames?: ReadonlySet<string>;
 }): string {
   const attachedReplayId = getReplayIdFromEvent(event);
+  const attachedReplayMissing = isAttachedReplayMissing(
+    attachedReplayId,
+    relatedReplayIds,
+  );
   const normalizedRelatedReplayIds = dedupeReplayIds(relatedReplayIds ?? []);
   const additionalRelatedReplayIds = normalizedRelatedReplayIds.filter(
     (replayId) => replayId !== attachedReplayId,
@@ -2761,7 +2765,11 @@ function formatIssueReplayOutput({
 
   const lines: string[] = ["## Session Replay", ""];
 
-  if (attachedReplayId) {
+  if (attachedReplayId && attachedReplayMissing) {
+    lines.push(
+      `**Attached Replay**: \`${attachedReplayId}\` (not stored: the event references this replay, but Sentry has no recording for it, so it cannot be inspected)`,
+    );
+  } else if (attachedReplayId) {
     lines.push(
       `**Attached Replay**: ${apiService.getReplayUrl(organizationSlug, attachedReplayId)}`,
     );
@@ -2799,7 +2807,9 @@ function formatIssueReplayOutput({
   }
 
   const exampleReplayId =
-    attachedReplayId ?? normalizedRelatedReplayIds.at(0) ?? null;
+    (attachedReplayMissing ? null : attachedReplayId) ??
+    additionalRelatedReplayIds.at(0) ??
+    null;
   if (exampleReplayId) {
     const replayDetailsInstruction = formatToolCallInstruction({
       toolName: "get_replay_details",
@@ -2832,6 +2842,34 @@ export function getReplayIdFromEvent(event: Event): string | null {
       ?.value ?? null;
 
   return normalizeReplayId(replayContextId ?? replayTagId);
+}
+
+// Sentry's replay-count endpoint returns at most 51 ids per issue
+// (MAX_REPLAY_COUNT in src/sentry/replays/usecases/replay_counts.py).
+const REPLAY_COUNT_MAX_IDS = 51;
+
+/**
+ * Whether the event's replay id is known not to be stored.
+ *
+ * replay-count returns only replays that Sentry stored, so an attached id that
+ * is missing from an uncapped list points at a recording that was never ingested
+ * (for example a dropped mobile buffer replay), and replay details returns 404.
+ * Unknown (lookup failed, or the list hit the server cap) is not missing.
+ * Sentry reads at most 100 candidate ids from the issue's events, so an issue
+ * with more distinct replay ids than that can still be a false positive.
+ */
+export function isAttachedReplayMissing(
+  attachedReplayId: string | null,
+  relatedReplayIds: string[] | undefined,
+): boolean {
+  if (!attachedReplayId || relatedReplayIds === undefined) {
+    return false;
+  }
+  const storedReplayIds = dedupeReplayIds(relatedReplayIds);
+  return (
+    storedReplayIds.length < REPLAY_COUNT_MAX_IDS &&
+    !storedReplayIds.includes(attachedReplayId)
+  );
 }
 
 export function dedupeReplayIds(replayIds: string[]): string[] {

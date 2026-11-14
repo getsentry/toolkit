@@ -23,6 +23,7 @@ import {
   getReplayIdFromEvent,
   getSeerActionabilityLabel,
   getSuspectCommit,
+  isAttachedReplayMissing,
   isPerformanceIssueType,
   isSupportedEventType,
   reportUnsupportedEventType,
@@ -133,6 +134,8 @@ export const getIssueDetailsOutputSchema = z.object({
   replays: z
     .object({
       attached: z.string().nullable(),
+      // the event names a replay that Sentry never stored, so replay lookups return not found
+      attachedMissing: z.boolean(),
       related: z.array(z.string()),
       // the full count, since `related` is capped
       relatedCount: z.number(),
@@ -182,6 +185,7 @@ function buildReplays(
   // markdown shows a count plus the first few, not every id
   return {
     attached,
+    attachedMissing: isAttachedReplayMissing(attached, relatedReplayIds),
     related: related.slice(0, MAX_RELATED_REPLAYS),
     relatedCount: related.length,
   };

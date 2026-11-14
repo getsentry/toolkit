@@ -846,6 +846,103 @@ describe("get_issue_details", () => {
     expect(result).not.toContain("**replayId**:");
   });
 
+  it("marks an attached replay that Sentry never stored", async () => {
+    // A mobile error event can name a buffer replay whose recording was never
+    // ingested. replay-count lists only stored replays, so the attached id is
+    // missing from it and get_replay_details would return 404.
+    const missingReplayId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const storedReplayId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const event = createDefaultEvent();
+    event.contexts = {
+      ...event.contexts,
+      replay: { type: "default", replay_id: missingReplayId },
+    };
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () => HttpResponse.json(event),
+        { once: true },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/replay-count/",
+        () => HttpResponse.json({ "6507376925": [storedReplayId] }),
+        { once: true },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        eventId: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      baseContext,
+    );
+
+    if (typeof result !== "string") {
+      throw new Error("Expected string result");
+    }
+
+    const replaySection = result
+      .slice(result.indexOf("## Session Replay"), result.indexOf("### Error"))
+      .trim();
+
+    expect(replaySection).toMatchInlineSnapshot(`
+      "## Session Replay
+
+      **Attached Replay**: \`bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\` (not stored: the event references this replay, but Sentry has no recording for it, so it cannot be inspected)
+      **Related Replay Count**: 1
+
+      ### Other Related Replays
+
+      - https://sentry-mcp-evals.sentry.io/explore/replays/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/
+
+      Use the Sentry tool \`get_replay_details\` to inspect a replay in detail."
+    `);
+    expect(replaySection).not.toContain(`/replays/${missingReplayId}/`);
+  });
+
+  it("keeps the attached replay link when the stored replay lookup fails", async () => {
+    const attachedReplayId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const event = createDefaultEvent();
+    event.contexts = {
+      ...event.contexts,
+      replay: { type: "default", replay_id: attachedReplayId },
+    };
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () => HttpResponse.json(event),
+        { once: true },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/replay-count/",
+        () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+        { once: true },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        eventId: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      baseContext,
+    );
+
+    expect(result).toContain(
+      `**Attached Replay**: https://sentry-mcp-evals.sentry.io/explore/replays/${attachedReplayId}/`,
+    );
+    expect(result).not.toContain("not stored");
+  });
+
   it("serializes with issueUrl", async () => {
     const result = await getIssueDetails.handler(
       {
@@ -2469,6 +2566,42 @@ describe("structuredContent", () => {
     expect(JSON.stringify(payload.event)).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
+  });
+
+  it("flags an attached replay that is not among the stored replays", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () =>
+          HttpResponse.json({
+            ...createDefaultEvent(),
+            contexts: {
+              replay: {
+                type: "default",
+                replay_id: "1234567890abcdef1234567890abcdef",
+              },
+            },
+          }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/replay-count/",
+        () =>
+          HttpResponse.json({
+            "6507376925": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          }),
+        { once: true },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = (result as { structuredContent: Record<string, any> })
+      .structuredContent;
+
+    expect(payload.replays?.attached).toBe("1234567890abcdef1234567890abcdef");
+    expect(payload.replays?.attachedMissing).toBe(true);
+    expect(payload.replays?.related).toEqual([
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ]);
   });
 
   it("reports no replays when there are none", async () => {
