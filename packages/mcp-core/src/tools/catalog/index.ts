@@ -87,7 +87,7 @@ const legacyGetAIConversationDetails = {
     "",
     "Use get_agent_conversation_details for new integrations. This alias is kept for backward compatibility.",
   ].join("\n"),
-} satisfies ToolConfig<any>;
+} satisfies ToolConfig;
 
 const legacySearchAIConversations = {
   ...searchAgentConversations,
@@ -100,14 +100,14 @@ const legacySearchAIConversations = {
     "",
     "Use search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
   ].join("\n"),
-} satisfies ToolConfig<any>;
+} satisfies ToolConfig;
 
 // The docs tools read docs.sentry.io, not the Sentry API, so they have no
 // cached reads to bypass.
 const DOCS_TOOL_NAMES = new Set(["search_docs", "get_doc"]);
 
 /** Give every read tool that calls the Sentry API the shared `fresh` input. */
-function withFreshReadInputs<T extends Record<string, ToolConfig<any>>>(
+function withFreshReadInputs<T extends Record<string, ToolConfig>>(
   tools: T,
 ): T {
   return Object.fromEntries(
@@ -209,7 +209,7 @@ const catalogTools = withFreshReadInputs({
   add_issue_note: addIssueNote,
   onboarding_status_update: onboardingStatusUpdate,
   submit_feedback_to_sentry_team: submitFeedbackToSentryTeam,
-} as const satisfies Record<string, ToolConfig<any>>);
+} as const satisfies Record<string, ToolConfig>);
 
 export default catalogTools;
 export type CatalogToolName = keyof typeof catalogTools;

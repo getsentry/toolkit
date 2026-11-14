@@ -247,13 +247,17 @@ function buildResolution(
     return { inRelease: params.inRelease };
   }
 
-  if (params.inCommitRepository === undefined) {
+  // With `inRelease` unset, the checks above guarantee `inCommit` is set.
+  if (
+    params.inCommit === undefined ||
+    params.inCommitRepository === undefined
+  ) {
     throw new UserInputError("`inCommit` requires `inCommitRepository`");
   }
 
   return {
     inCommit: {
-      commit: params.inCommit!,
+      commit: params.inCommit,
       repository: params.inCommitRepository,
     },
   };

@@ -1016,7 +1016,8 @@ const EventTagsSchema = z.preprocess((value) => {
 
   // Sentry can occasionally return malformed tag entries (e.g. null keys).
   // Drop invalid tags so event parsing can still succeed.
-  return value.filter((tag) => {
+  const tags: unknown[] = value;
+  return tags.filter((tag) => {
     if (typeof tag !== "object" || tag === null) {
       return false;
     }

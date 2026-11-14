@@ -26,7 +26,7 @@ function probeTool() {
       calls.push({ params, fresh: isFreshRead() });
       return "ok";
     },
-  } satisfies ToolConfig<any>);
+  } satisfies ToolConfig);
   return { tool, calls };
 }
 

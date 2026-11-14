@@ -10,7 +10,7 @@ describe("sentry", () => {
           "Error with key: sk-abc123def456ghi789jkl012mno345pqr678stu901vwx234",
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.message).toBe("Error with key: [REDACTED_OPENAI_KEY]");
     });
 
@@ -20,7 +20,7 @@ describe("sentry", () => {
           "Keys: sk-abc123def456ghi789jkl012mno345pqr678stu901vwx234 and sk-xyz123def456ghi789jkl012mno345pqr678stu901vwx234",
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.message).toBe(
         "Keys: [REDACTED_OPENAI_KEY] and [REDACTED_OPENAI_KEY]",
       );
@@ -32,7 +32,7 @@ describe("sentry", () => {
           "Not a key: sk-abc or task-abc123def456ghi789jkl012mno345pqr678stu901vwx234",
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.message).toBe(event.message);
     });
   });
@@ -44,7 +44,7 @@ describe("sentry", () => {
           "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.message).toBe("Authorization: Bearer [REDACTED_TOKEN]");
     });
   });
@@ -56,7 +56,7 @@ describe("sentry", () => {
           "Using token: sntrys_eyJpYXQiOjE2OTQwMzMxNTMuNzk0NjI4LCJ1cmwiOiJodHRwczovL3NlbnRyeS5pbyIsInJlZ2lvbl91cmwiOiJodHRwczovL3VzLnNlbnRyeS5pbyIsIm9yZyI6InNlbnRyeSJ9_abcdef123456",
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.message).toBe("Using token: [REDACTED_SENTRY_TOKEN]");
     });
   });
@@ -74,7 +74,7 @@ describe("sentry", () => {
         },
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.extra).toEqual({
         config: {
           apiKey: "[REDACTED_OPENAI_KEY]",
@@ -99,7 +99,7 @@ describe("sentry", () => {
         ],
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.breadcrumbs?.[0]?.message).toBe(
         "API call with [REDACTED_OPENAI_KEY]",
       );
@@ -125,7 +125,7 @@ describe("sentry", () => {
         },
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result.exception?.values?.[0]?.value).toBe(
         "Failed to authenticate with [REDACTED_OPENAI_KEY]",
       );
@@ -141,7 +141,7 @@ describe("sentry", () => {
         },
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       expect(result).toEqual(event);
     });
   });
@@ -164,8 +164,8 @@ describe("sentry", () => {
       const result2 = sentryBeforeSend(event2, {});
 
       // Both should be properly scrubbed
-      expect(result1?.message).toBe("First error with [REDACTED_OPENAI_KEY]");
-      expect(result2?.message).toBe("Second error with [REDACTED_OPENAI_KEY]");
+      expect(result1.message).toBe("First error with [REDACTED_OPENAI_KEY]");
+      expect(result2.message).toBe("Second error with [REDACTED_OPENAI_KEY]");
 
       // Test multiple replacements in the same string
       const event3: SentryEvent = {
@@ -174,7 +174,7 @@ describe("sentry", () => {
       };
 
       const result3 = sentryBeforeSend(event3, {});
-      expect(result3?.message).toBe(
+      expect(result3.message).toBe(
         "Multiple keys: [REDACTED_OPENAI_KEY] and [REDACTED_OPENAI_KEY]",
       );
     });
@@ -195,7 +195,7 @@ describe("sentry", () => {
         extra: deep,
       };
 
-      const result = sentryBeforeSend(event, {}) as SentryEvent;
+      const result = sentryBeforeSend(event, {});
       // Should not throw, and should handle max depth gracefully
       expect(result).toBeDefined();
       expect(result.message).toBe("Deep nesting test");

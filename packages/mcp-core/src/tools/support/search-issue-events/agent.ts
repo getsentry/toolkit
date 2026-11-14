@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
+import {
+  callEmbeddedAgent,
+  type ToolCall,
+} from "../../../internal/agents/callEmbeddedAgent";
 import type { SentryApiService } from "../../../api-client";
 import { createWhoamiTool } from "../../../internal/agents/tools/whoami";
 import { createIssueEventFieldsTool } from "./utils";
@@ -82,7 +85,7 @@ export async function searchIssueEventsAgent(
   options: SearchIssueEventsAgentOptions,
 ): Promise<{
   result: z.output<typeof searchIssueEventsAgentOutputSchema>;
-  toolCalls: any[];
+  toolCalls: ToolCall[];
 }> {
   // Provider check happens in callEmbeddedAgent via getAgentProvider()
   // Create tools pre-bound with the provided API service and organization

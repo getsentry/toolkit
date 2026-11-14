@@ -71,7 +71,8 @@ function parseSchedule(value: unknown): {
     return { type: null, value: value.trim() || null };
   }
   if (Array.isArray(value)) {
-    const [first, second, third] = value;
+    const entries: unknown[] = value;
+    const [first, second, third] = entries;
     if (first === "crontab" && typeof second === "string") {
       return { type: "crontab", value: second };
     }

@@ -393,7 +393,7 @@ function rescueFromText<TOutput>(
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed: unknown = JSON.parse(candidate);
       const result = schema.safeParse(parsed);
       if (result.success) {
         return result.data;

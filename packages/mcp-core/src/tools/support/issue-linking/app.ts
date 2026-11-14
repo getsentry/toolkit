@@ -187,7 +187,11 @@ async function resolveFields(
   while (pending.size > 0) {
     let progressed = false;
     for (const name of pending) {
-      const field = fields.get(name)!;
+      const field = fields.get(name);
+      if (!field)
+        throw new UserInputError(
+          `The App's link form references unknown field '${name}'.`,
+        );
       const dependencies = field.depends_on ?? [];
       if (dependencies.some((dependency) => pending.has(dependency))) continue;
       if (field.multiple)

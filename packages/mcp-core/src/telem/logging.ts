@@ -182,7 +182,7 @@ export function getLogger(
 ): Logger {
   ensureLoggingConfigured();
 
-  const category = Array.isArray(scope) ? scope : [scope];
+  const category = typeof scope === "string" ? [scope] : scope;
   const logger = getLogTapeLogger([...ROOT_LOG_CATEGORY, ...category]);
 
   return defaults ? logger.with(defaults) : logger;

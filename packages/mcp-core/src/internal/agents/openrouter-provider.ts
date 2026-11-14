@@ -20,14 +20,14 @@ const OPENROUTER_REASONING_EFFORTS = [
 
 type OpenRouterReasoningEffort = (typeof OPENROUTER_REASONING_EFFORTS)[number];
 
-// Null prototype so Object.prototype keys like "constructor" cannot slip through.
-const OPENROUTER_REASONING_EFFORT_ALIASES: Record<
+// A Map so Object.prototype keys like "constructor" cannot slip through.
+const OPENROUTER_REASONING_EFFORT_ALIASES = new Map<
   string,
   OpenRouterReasoningEffort
-> = Object.assign(Object.create(null), {
+>([
   // OpenRouter sometimes documents "max"; AI SDK accepts "xhigh".
-  max: "xhigh",
-});
+  ["max", "xhigh"],
+]);
 
 function resolveOpenRouterReasoningEffort(
   value: string | undefined,
@@ -42,8 +42,9 @@ function resolveOpenRouterReasoningEffort(
   }
 
   const normalized = value.trim().toLowerCase();
-  if (Object.hasOwn(OPENROUTER_REASONING_EFFORT_ALIASES, normalized)) {
-    return OPENROUTER_REASONING_EFFORT_ALIASES[normalized];
+  const alias = OPENROUTER_REASONING_EFFORT_ALIASES.get(normalized);
+  if (alias !== undefined) {
+    return alias;
   }
 
   if (

@@ -183,12 +183,13 @@ async function main() {
     const toolsPayload = { tools: mcpTools };
 
     // Initialize tiktoken with GPT-4 encoding (cl100k_base)
-    encoder = encoding_for_model("gpt-4");
+    const activeEncoder = encoding_for_model("gpt-4");
+    encoder = activeEncoder;
 
     // Also calculate per-tool breakdown for reporting
     const toolStats = mcpTools.map((tool) => {
       const toolJson = JSON.stringify(tool);
-      const tokens = countTokens(toolJson, encoder!);
+      const tokens = countTokens(toolJson, activeEncoder);
 
       return {
         name: tool.name,
@@ -199,7 +200,7 @@ async function main() {
 
     // Calculate totals - use the complete payload with tools array wrapper
     const payloadJson = JSON.stringify(toolsPayload);
-    const totalTokens = countTokens(payloadJson, encoder);
+    const totalTokens = countTokens(payloadJson, activeEncoder);
     const toolCount = toolStats.length;
     const avgTokensPerTool = Math.round(totalTokens / toolCount);
 

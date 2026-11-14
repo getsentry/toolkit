@@ -11,7 +11,7 @@ import {
 import type { ToolConfig } from "../../tools/types";
 import type { CredentialRouter, ServerContext } from "../../types";
 
-const requiredOrgTool: ToolConfig<any> = {
+const requiredOrgTool: ToolConfig = {
   name: "required_org_tool",
   title: "Required Org Tool",
   description: "required_org_tool description",
@@ -30,7 +30,7 @@ const requiredOrgTool: ToolConfig<any> = {
   handler: async () => "ok",
 };
 
-const optionalOrgTool: ToolConfig<any> = {
+const optionalOrgTool: ToolConfig = {
   ...requiredOrgTool,
   name: "optional_org_tool",
   inputSchema: {
@@ -71,7 +71,7 @@ function serveOrganizations(
 }
 
 async function prepare(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   params: Record<string, unknown>,
   context: ServerContext = getServerContext({ sentryHost: "sentry.io" }),
 ) {
@@ -170,7 +170,7 @@ describe("applyDefaultOrganization", () => {
 
   it("defaults a required slug even when the tool's url is an external one", async () => {
     serveOrganizations([organization("solo-org")]);
-    const uptimeLikeTool: ToolConfig<any> = {
+    const uptimeLikeTool: ToolConfig = {
       ...requiredOrgTool,
       name: "uptime_like_tool",
       inputSchema: {

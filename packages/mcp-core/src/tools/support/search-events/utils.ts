@@ -699,7 +699,7 @@ function truncateString(value: string, maxLength: number): string {
 
 function safeJsonStringify(value: unknown): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(value, (_key, currentValue) => {
+  return JSON.stringify(value, (_key, currentValue: unknown) => {
     if (typeof currentValue === "bigint") {
       return currentValue.toString();
     }

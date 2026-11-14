@@ -130,7 +130,8 @@ export function toUptimeHeadersForOutput(
     if (!Array.isArray(header) || header.length < 2) {
       continue;
     }
-    const [name, value] = header;
+    const entry: unknown[] = header;
+    const [name, value] = entry;
     if (typeof name !== "string" || typeof value !== "string") {
       continue;
     }
@@ -208,6 +209,8 @@ export function toUptimeMonitorListItem(
   monitor: UptimeMonitor,
   webUrl: string,
 ): UptimeMonitorListItem {
+  const environment = optionalString(monitor.environment);
+  const owner = getUptimeOwnerName(monitor);
   return {
     id: String(monitor.id),
     name: monitor.name,
@@ -217,12 +220,8 @@ export function toUptimeMonitorListItem(
     url: monitor.url,
     ...(monitor.method ? { method: monitor.method } : {}),
     intervalSeconds: monitor.intervalSeconds,
-    ...(optionalString(monitor.environment)
-      ? { environment: optionalString(monitor.environment) }
-      : {}),
-    ...(getUptimeOwnerName(monitor)
-      ? { owner: getUptimeOwnerName(monitor)! }
-      : {}),
+    ...(environment ? { environment } : {}),
+    ...(owner ? { owner } : {}),
     webUrl,
   };
 }

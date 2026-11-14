@@ -85,6 +85,21 @@ export interface ResolvedResourceParams {
   dashboardIdOrTitle?: string;
 }
 
+/**
+ * Returns a field the resolver sets for the resolved resource type. Every
+ * branch of `resolveResourceParams` sets the fields its type needs, so a
+ * missing one is a resolver bug.
+ */
+function requireResolved(
+  value: string | undefined,
+  field: keyof ResolvedResourceParams,
+): string {
+  if (value === undefined) {
+    throw new Error(`Resolved resource is missing \`${field}\`.`);
+  }
+  return value;
+}
+
 // Issue short IDs (PROJECT-123) and numeric issue IDs. Only used to infer a
 // missing resourceType, so other resource IDs keep requiring an explicit type.
 const ISSUE_ID_PATTERN = /^(?:\d+|[A-Z0-9_.]+(?:-[A-Z0-9_.]+)*-[A-Z0-9]+)$/;
@@ -694,7 +709,7 @@ export default defineTool({
         return await getTraceDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
-            traceId: resolved.traceId!,
+            traceId: requireResolved(resolved.traceId, "traceId"),
             regionUrl: context.constraints.regionUrl ?? null,
           },
           context,
@@ -704,8 +719,8 @@ export default defineTool({
         return await getSpanDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
-            traceId: resolved.traceId!,
-            spanId: resolved.spanId!,
+            traceId: requireResolved(resolved.traceId, "traceId"),
+            spanId: requireResolved(resolved.spanId, "spanId"),
             regionUrl: context.constraints.regionUrl ?? null,
           },
           context,
@@ -715,7 +730,10 @@ export default defineTool({
         return await getAIConversationDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
-            conversationId: resolved.conversationId!,
+            conversationId: requireResolved(
+              resolved.conversationId,
+              "conversationId",
+            ),
             project: resolved.projectSlugOrId,
             start: resolved.start,
             end: resolved.end,
@@ -741,7 +759,7 @@ export default defineTool({
           {
             organizationSlug: resolved.organizationSlug,
             projectSlugOrId: resolved.projectSlugOrId ?? null,
-            monitorSlug: resolved.monitorSlug!,
+            monitorSlug: requireResolved(resolved.monitorSlug, "monitorSlug"),
             regionUrl: context.constraints.regionUrl ?? null,
             environment: null,
             period: "24h",
@@ -779,7 +797,10 @@ export default defineTool({
         return await getDashboardDetails.handler(
           {
             organizationSlug: resolved.organizationSlug,
-            dashboardIdOrTitle: resolved.dashboardIdOrTitle!,
+            dashboardIdOrTitle: requireResolved(
+              resolved.dashboardIdOrTitle,
+              "dashboardIdOrTitle",
+            ),
             regionUrl: context.constraints.regionUrl ?? null,
           },
           context,
@@ -790,7 +811,7 @@ export default defineTool({
           return await getSnapshotImage.handler(
             {
               organizationSlug: resolved.organizationSlug,
-              snapshotId: resolved.snapshotId!,
+              snapshotId: requireResolved(resolved.snapshotId, "snapshotId"),
               imageIdentifier: resolved.selectedSnapshot,
               imageResolution: "preview",
               regionUrl: context.constraints.regionUrl ?? null,
@@ -802,7 +823,7 @@ export default defineTool({
         return await getSnapshot.handler(
           {
             organizationSlug: resolved.organizationSlug,
-            snapshotId: resolved.snapshotId!,
+            snapshotId: requireResolved(resolved.snapshotId, "snapshotId"),
             showUnmodified: false,
             regionUrl: context.constraints.regionUrl ?? null,
           },

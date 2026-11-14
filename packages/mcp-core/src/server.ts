@@ -230,17 +230,18 @@ function toWellFormedOutput<T>(value: T): T {
     return value;
   }
   if (Array.isArray(value)) {
+    const items: unknown[] = value;
     let copy: unknown[] | undefined;
-    for (let index = 0; index < value.length; index++) {
-      const next = toWellFormedOutput(value[index]);
-      if (next !== value[index]) {
-        copy ??= [...value];
+    for (let index = 0; index < items.length; index++) {
+      const next = toWellFormedOutput(items[index]);
+      if (next !== items[index]) {
+        copy ??= [...items];
         copy[index] = next;
       }
     }
     return (copy ?? value) as T;
   }
-  const prototype = Object.getPrototypeOf(value);
+  const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     return value;
   }

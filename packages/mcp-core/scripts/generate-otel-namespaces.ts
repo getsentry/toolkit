@@ -223,7 +223,7 @@ function convertYamlToJson(
   namespace: string,
 ): JsonNamespace {
   // Parse YAML and validate with Zod
-  const parsedYaml = parseYaml(yamlContent);
+  const parsedYaml: unknown = parseYaml(yamlContent);
   const validationResult = OtelYamlFileSchema.safeParse(parsedYaml);
 
   if (!validationResult.success) {
@@ -328,10 +328,15 @@ async function generateNamespaceFiles() {
     // Check if file exists and has custom content (not from OpenTelemetry)
     if (existsSync(outputPath)) {
       const existingContent = readFileSync(outputPath, "utf8");
-      const existingJson = JSON.parse(existingContent);
+      const existingJson: unknown = JSON.parse(existingContent);
 
       // Skip if this appears to be a custom namespace (not from OpenTelemetry)
-      if (existingJson.custom === true) {
+      if (
+        typeof existingJson === "object" &&
+        existingJson !== null &&
+        "custom" in existingJson &&
+        existingJson.custom === true
+      ) {
         console.log(`⏭️  Skipping custom namespace: ${namespace}`);
         skipped++;
         continue;

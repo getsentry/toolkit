@@ -44,7 +44,7 @@ export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
  * Markdown, strings, and raw MCP content are only allowed without a schema.
  * Tools without a schema may still pass through another tool's structured
  * result (`execute_sentry_tool`, `get_sentry_resource`). The type distributes
- * over a union so `ToolConfig<any>` registries accept every tool.
+ * over a union so `ToolConfig` registries accept every tool.
  */
 export type ToolOutputFor<TOutputSchema extends ToolOutputSchema | undefined> =
   TOutputSchema extends ToolOutputSchema

@@ -512,8 +512,8 @@ function getExceptionChainMessage(
   }
 }
 
-function formatCspInterfaceOutput(data: any) {
-  if (!data) {
+function formatCspInterfaceOutput(data: unknown) {
+  if (!isPlainObject(data)) {
     return "";
   }
 
@@ -521,37 +521,50 @@ function formatCspInterfaceOutput(data: any) {
   parts.push("### CSP Violation");
   parts.push("");
 
-  if (data.blocked_uri) {
-    parts.push(`**Blocked URI**: ${data.blocked_uri}`);
+  const field = (key: string): string | undefined => {
+    const value = data[key];
+    return value ? formatPrimitive(value) : undefined;
+  };
+
+  const blockedUri = field("blocked_uri");
+  if (blockedUri) {
+    parts.push(`**Blocked URI**: ${blockedUri}`);
   }
 
-  if (data.violated_directive) {
-    parts.push(`**Violated Directive**: ${data.violated_directive}`);
+  const violatedDirective = field("violated_directive");
+  if (violatedDirective) {
+    parts.push(`**Violated Directive**: ${violatedDirective}`);
   }
 
-  if (data.effective_directive) {
-    parts.push(`**Effective Directive**: ${data.effective_directive}`);
+  const effectiveDirective = field("effective_directive");
+  if (effectiveDirective) {
+    parts.push(`**Effective Directive**: ${effectiveDirective}`);
   }
 
-  if (data.document_uri) {
-    parts.push(`**Document URI**: ${data.document_uri}`);
+  const documentUri = field("document_uri");
+  if (documentUri) {
+    parts.push(`**Document URI**: ${documentUri}`);
   }
 
-  if (data.source_file) {
-    parts.push(`**Source File**: ${data.source_file}`);
-    if (data.line_number) {
-      parts.push(`**Line Number**: ${data.line_number}`);
+  const sourceFile = field("source_file");
+  if (sourceFile) {
+    parts.push(`**Source File**: ${sourceFile}`);
+    const lineNumber = field("line_number");
+    if (lineNumber) {
+      parts.push(`**Line Number**: ${lineNumber}`);
     }
   }
 
-  if (data.disposition) {
-    parts.push(`**Disposition**: ${data.disposition}`);
+  const disposition = field("disposition");
+  if (disposition) {
+    parts.push(`**Disposition**: ${disposition}`);
   }
 
-  if (data.original_policy) {
+  const originalPolicy = field("original_policy");
+  if (originalPolicy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push(codeBlock(data.original_policy));
+    parts.push(codeBlock(originalPolicy));
   }
 
   parts.push("");
@@ -1529,21 +1542,31 @@ function formatPerformanceIssueOutput(
 ): string {
   const parts: string[] = [];
 
-  // Check if we have occurrence data
-  const occurrence = (event as any).occurrence;
-  if (!occurrence) {
+  // Check if we have occurrence data. Only transaction and generic events
+  // model it, and its evidence fields vary by issue type, so read it as
+  // untrusted data.
+  const occurrence: unknown =
+    "occurrence" in event ? event.occurrence : undefined;
+  if (!isPlainObject(occurrence)) {
     return "";
   }
 
   // Get issue type - occurrence.type is numeric, issueType may be a string
+  const occurrenceType = occurrence["type"];
   let issueType: string | undefined;
-  if (typeof occurrence.type === "number") {
-    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence.type];
+  if (typeof occurrenceType === "number") {
+    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrenceType];
   } else {
-    issueType = occurrence.issueType || occurrence.type;
+    const rawIssueType = occurrence["issueType"];
+    issueType =
+      (typeof rawIssueType === "string" && rawIssueType) ||
+      (typeof occurrenceType === "string" ? occurrenceType : undefined);
   }
 
-  const evidenceData = occurrence.evidenceData;
+  const rawEvidenceData = occurrence["evidenceData"];
+  const evidenceData = isPlainObject(rawEvidenceData)
+    ? rawEvidenceData
+    : undefined;
 
   // Process evidence data based on known performance issue types
   if (evidenceData) {
@@ -1581,18 +1604,24 @@ function formatPerformanceIssueOutput(
   }
 
   // Show transaction name if available for any performance issue (generic field)
-  if (evidenceData?.transactionName) {
+  const transactionName = evidenceData?.["transactionName"];
+  const formattedTransactionName = transactionName
+    ? formatPrimitive(transactionName)
+    : undefined;
+  if (formattedTransactionName) {
     parts.push("**Transaction:**");
-    parts.push(`${evidenceData.transactionName}`);
+    parts.push(formattedTransactionName);
     parts.push("");
   }
 
   // Always show evidence display if available (this is generic and doesn't require type knowledge)
-  if (occurrence.evidenceDisplay?.length > 0) {
-    for (const display of occurrence.evidenceDisplay) {
-      if (display.important) {
-        parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+  const evidenceDisplay = occurrence["evidenceDisplay"];
+  if (Array.isArray(evidenceDisplay)) {
+    const displays: unknown[] = evidenceDisplay;
+    for (const display of displays) {
+      if (isPlainObject(display) && display["important"]) {
+        parts.push(`**${String(display["name"])}:**`);
+        parts.push(String(display["value"]));
         parts.push("");
       }
     }
