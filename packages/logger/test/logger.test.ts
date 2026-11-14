@@ -172,13 +172,14 @@ describe("fancyReporter", () => {
     env: Record<string, string>,
     options: { columns?: number; formatTime?: (date: Date) => string } = {},
   ) {
-    const stream = memoryStream({ columns: options.columns });
+    const { columns, formatTime } = options;
+    const stream = memoryStream(columns === undefined ? {} : { columns });
     const logger = createLogger({
       reporters: [
         fancyReporter({
           stream,
           env: () => env,
-          formatTime: options.formatTime,
+          ...(formatTime && { formatTime }),
         }),
       ],
     });
