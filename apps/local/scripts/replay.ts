@@ -128,9 +128,10 @@ async function main() {
       : "http://localhost:8969/stream");
   const target = new URL(endpoint);
   console.log(`Replaying envelopes to ${target.origin}${target.pathname}`);
+  const fixtures = values.fixtures ?? positionals[0];
   const count = await replayEnvelopes({
     endpoint,
-    fixtures: values.fixtures ?? positionals[0],
+    ...(fixtures !== undefined && { fixtures }),
     compression,
     interval: Number(values.interval),
     repeat: Number(values.repeat),

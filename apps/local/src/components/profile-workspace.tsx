@@ -247,7 +247,11 @@ function ProfileInspector({
       ? focused.node
       : undefined;
   const setFocus = (node?: ProfileNode) =>
-    setFocused(node ? { source, thread, node } : undefined);
+    setFocused(
+      node
+        ? { source, ...(thread !== undefined && { thread }), node }
+        : undefined,
+    );
   const linked = traces.filter((trace) => profileMatchesTrace(source, trace));
   const functions = profile.functions
     .filter((fn) =>
@@ -460,7 +464,7 @@ export function ProfileWorkspace({
   items: readonly LocalFeedItem[];
   traces: readonly TraceGroup[];
   query: string;
-  selectedId?: string;
+  selectedId?: string | undefined;
   onSelect: (id: string) => void;
   onSelectTrace: (id: string) => void;
 }) {

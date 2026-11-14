@@ -177,9 +177,9 @@ export function parseProfile(
       (a, b) => b.totalMs - a.totalMs || b.samples - a.samples,
     ),
     sampleCount: selected.length,
-    durationMs: hasTiming ? root.totalMs : undefined,
+    ...(hasTiming && { durationMs: root.totalMs }),
     threads,
-    threadId,
+    ...(threadId !== undefined && { threadId }),
   };
 }
 type ProfileBounds = { start: number; end: number };

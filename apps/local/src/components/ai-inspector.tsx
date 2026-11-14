@@ -43,7 +43,7 @@ export function AiInspector({
   steps = [],
 }: {
   payload: unknown;
-  steps?: readonly TraceSpan[];
+  steps?: readonly TraceSpan[] | undefined;
 }) {
   const ai = inspectAiInteraction(payload, steps);
   if (!ai) return null;

@@ -153,7 +153,7 @@ export function RelatedTelemetry({
 }: {
   trace: TraceGroup;
   currentItemId?: string;
-  onSelect?: (item: LocalFeedItem) => void;
+  onSelect?: ((item: LocalFeedItem) => void) | undefined;
 }) {
   const items = trace.items.filter(
     (item) =>
@@ -201,8 +201,8 @@ export function SpanDetail({
 }: {
   span: TraceSpan;
   trace: TraceGroup;
-  onBack?: () => void;
-  onSelectRelatedItem?: (item: LocalFeedItem) => void;
+  onBack?: (() => void) | undefined;
+  onSelectRelatedItem?: ((item: LocalFeedItem) => void) | undefined;
 }) {
   const payload = detailRecord(span.payload);
   const context = detailRecord(detailRecord(payload["contexts"])["trace"]);

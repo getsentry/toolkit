@@ -92,8 +92,8 @@ export function FeedbackInspector({
   onSelect,
 }: {
   item: LocalFeedItem;
-  items?: readonly LocalFeedItem[];
-  onSelect?: (item: LocalFeedItem) => void;
+  items?: readonly LocalFeedItem[] | undefined;
+  onSelect?: ((item: LocalFeedItem) => void) | undefined;
 }) {
   const feedback = feedbackData(item.payload);
   const associatedId =

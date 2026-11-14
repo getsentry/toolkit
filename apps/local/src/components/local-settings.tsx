@@ -26,9 +26,9 @@ type Props = {
   count: number;
   editable: boolean;
   supported: boolean;
-  unavailableReason?: string;
-  captureLabel?: string;
-  expiresAt?: number;
+  unavailableReason?: string | undefined;
+  captureLabel?: string | undefined;
+  expiresAt?: number | undefined;
 };
 
 export function LocalSettings({

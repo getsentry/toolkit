@@ -56,7 +56,7 @@ export function attachmentBytes(item: LocalFeedItem):
       : undefined;
   try {
     return {
-      preview,
+      ...(preview && { preview }),
       // Untrusted document MIME types must stay inert even if a Blob URL is opened in a tab.
       downloadType: preview
         ? contentType

@@ -253,12 +253,15 @@ export function sdkInventory(items: readonly LocalFeedItem[]): SdkEntry[] {
     const version = text(sdk["version"]) ?? "Unknown",
       key = `${name}@${version}`;
     const previous = entries.get(key);
-    const timestamp = item.timestamp ?? text(item.envelopeHeader?.["sent_at"]);
+    const lastSeen =
+      item.timestamp ??
+      text(item.envelopeHeader?.["sent_at"]) ??
+      previous?.lastSeen;
     entries.set(key, {
       name,
       version,
       platform: text(p["platform"]) ?? previous?.platform ?? "Unknown",
-      lastSeen: timestamp ?? previous?.lastSeen,
+      ...(lastSeen !== undefined && { lastSeen }),
       count: (previous?.count ?? 0) + 1,
     });
   }

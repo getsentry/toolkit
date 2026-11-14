@@ -36,6 +36,7 @@ function tokenCount(
     if (typeof number === "number" && Number.isFinite(number) && number >= 0)
       return number;
   }
+  return undefined;
 }
 
 function hasConversation(value: unknown): boolean {
@@ -78,7 +79,7 @@ export function inspectAiInteraction(
     const node: InteractionNode = {
       payload: span.payload,
       children: [],
-      start: span.startTimestamp,
+      ...(span.startTimestamp !== undefined && { start: span.startTimestamp }),
     };
     parent.children.push(node);
     nodes.push(node);
