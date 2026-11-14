@@ -1,4 +1,4 @@
-import { HttpResponse, http } from "msw";
+import { type HttpHandler, HttpResponse, http } from "msw";
 /**
  * MSW-based Mock Server for Sentry MCP Development and Testing.
  *
@@ -22,7 +22,7 @@ import { HttpResponse, http } from "msw";
  * // Now all Sentry API calls will be intercepted
  * ```
  */
-import { setupServer } from "msw/node";
+import { type SetupServerApi, setupServer } from "msw/node";
 
 import autofixStateFixture from "./fixtures/autofix-state.json" with { type: "json" };
 import autofixStateExplorerFixture from "./fixtures/autofix-state-explorer.json" with { type: "json" };
@@ -120,8 +120,8 @@ function buildHandlers(
     fetch: Parameters<(typeof http)[keyof typeof http]>[1];
     controlOnly?: boolean;
   }[],
-) {
-  const result = [];
+): HttpHandler[] {
+  const result: HttpHandler[] = [];
 
   for (const handler of handlers) {
     // Always add handler for main host (sentry.io)
@@ -220,7 +220,7 @@ function buildMockIgnoredStatusDetails(
 }
 
 function buildUpdatedIssueResponse(
-  baseIssue: typeof issueFixture,
+  baseIssue: typeof issueFixture | typeof issueFixture2,
   body: IssueUpdateBody,
 ) {
   const hasIgnoreConditions =
@@ -274,7 +274,7 @@ function buildUpdatedIssueResponse(
  * Covers all endpoints used by the MCP server with realistic responses,
  * parameter validation, and error scenarios.
  */
-export const restHandlers = buildHandlers([
+export const restHandlers: HttpHandler[] = buildHandlers([
   // User data endpoints - controlOnly: true (only available on sentry.io)
   {
     method: "get",
@@ -1800,7 +1800,7 @@ export const restHandlers = buildHandlers([
 ]);
 
 // Add handlers for mcp.sentry.dev and localhost
-export const searchHandlers = [
+export const searchHandlers: HttpHandler[] = [
   // Presigned target for the oversized-attachment redirect (999).
   http.get("https://objectstore.example.test/attachments/999/blob", () =>
     HttpResponse.text("presigned blob bytes"),
@@ -1860,7 +1860,7 @@ export const searchHandlers = [
 ];
 
 // Mock handlers for documentation fetching
-export const docsHandlers = [
+export const docsHandlers: HttpHandler[] = [
   http.get("https://docs.sentry.io/product/rate-limiting.md", () => {
     return new HttpResponse(
       `# Project Rate Limits and Quotas
@@ -2119,7 +2119,7 @@ The page \`/ai/mcp\` does not exist.
  * This matches the real Sentry API behavior where user data must always be queried
  * from the main API server.
  */
-export const mswServer = setupServer(
+export const mswServer: SetupServerApi = setupServer(
   ...restHandlers,
   ...searchHandlers,
   ...docsHandlers,

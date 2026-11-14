@@ -9,7 +9,9 @@
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "declaration": true,
+    "isolatedDeclarations": true
   },
   "include": ["src/**/*.ts", "test/*.ts"]
 }

@@ -56,18 +56,13 @@ const feedbackIssueFixture = feedbackIssueFixtureJson as any;
  * Arrays are replaced, not merged.
  */
 function deepMerge<T>(target: T, source: DeepPartial<T>): T {
-  const output = { ...target } as any;
+  const output = { ...target } as Record<string, unknown>;
 
   if (isObject(target) && isObject(source)) {
-    for (const key of Object.keys(source)) {
-      const sourceValue = (source as any)[key];
+    for (const [key, sourceValue] of Object.entries(source)) {
       const targetValue = output[key];
 
-      if (
-        isObject(sourceValue) &&
-        isObject(targetValue) &&
-        !Array.isArray(sourceValue)
-      ) {
+      if (isObject(sourceValue) && isObject(targetValue)) {
         output[key] = deepMerge(targetValue, sourceValue);
       } else {
         output[key] = sourceValue;
@@ -75,11 +70,11 @@ function deepMerge<T>(target: T, source: DeepPartial<T>): T {
     }
   }
 
-  return output;
+  return output as T;
 }
 
-function isObject(item: any): boolean {
-  return item && typeof item === "object" && !Array.isArray(item);
+function isObject(item: unknown): item is Record<string, unknown> {
+  return typeof item === "object" && item !== null && !Array.isArray(item);
 }
 
 /**

@@ -13,7 +13,13 @@ vi.mock("../../telem/logging", () => ({
   logIssue: vi.fn(),
 }));
 
-type MockIssue = typeof issueFixture;
+/**
+ * The issue fixture. Tests swap `assignedTo` for any shape the API accepts or
+ * returns, including request-body echoes.
+ */
+type MockIssue = Omit<typeof issueFixture, "assignedTo"> & {
+  assignedTo: unknown;
+};
 
 function structured(result: unknown) {
   assertStructuredOnlyResult(result);

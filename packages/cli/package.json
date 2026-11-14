@@ -118,6 +118,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@types/semver": "^7.7.1",
     "@types/yauzl": "3.4.0",
+    "@typescript/typescript6": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "binpatch": "^0.4.2",
     "chalk": "^5.6.2",

@@ -16,11 +16,14 @@ const files = ["/a.js", "/b.js", "/c.js"];
 function eventWithFourFiles() {
   const fixture = structuredClone(eventFixture);
   for (const entry of fixture.entries) {
-    if (entry.type !== "exception") {
+    if (entry.type !== "exception" || !("values" in entry.data)) {
       continue;
     }
-    for (const value of entry.data.values) {
-      value.rawStacktrace?.frames.forEach(
+    for (const value of entry.data.values ?? []) {
+      if (!("rawStacktrace" in value)) {
+        continue;
+      }
+      value.rawStacktrace.frames.forEach(
         (frame: { absPath: string | null }, index: number) => {
           frame.absPath = files[index] ?? frame.absPath;
         },

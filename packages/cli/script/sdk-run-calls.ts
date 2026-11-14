@@ -7,7 +7,7 @@
  * and multi-line calls are handled the way TypeScript sees them.
  */
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { markdownCodeBlocks } from "./markdown.js";
 
 /** Markdown fence languages parsed as TypeScript. */

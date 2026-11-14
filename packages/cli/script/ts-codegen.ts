@@ -7,7 +7,7 @@
  * containing a quote cannot produce a broken file.
  */
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /** Shorthand for the compiler's node factory. */
 export const f = ts.factory;

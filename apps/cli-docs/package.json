@@ -11,7 +11,8 @@
     "build": "astro build",
     "test": "node --test test/*.test.mjs",
     "preview": "astro preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "typecheck": "astro check"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",
@@ -25,6 +26,8 @@
     "shiki": "^3.21.0"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "typescript": "catalog:astro-check",
     "wrangler": "catalog:"
   }
 }

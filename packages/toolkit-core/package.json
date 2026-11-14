@@ -78,6 +78,7 @@
     "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "fast-check": "^4.8.0",
     "marked": "catalog:",
     "mdast-util-from-markdown": "catalog:",

@@ -541,9 +541,12 @@ export function createLocalControlPlane({
       ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
       : c.body(null, 404),
   );
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
-    sessionExists(c.req.param("id")) ? updateRetention(c) : c.body(null, 404),
-  );
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, async (c) => {
+    if (!sessionExists(c.req.param("id"))) {
+      return c.body(null, 404);
+    }
+    return await updateRetention(c);
+  });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
     if (!sessionExists(c.req.param("id"))) {

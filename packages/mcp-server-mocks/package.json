@@ -23,10 +23,12 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "tsdown -w"
+    "dev": "tsdown -w",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@sentry/mcp-server-tsconfig": "workspace:*",
+    "@types/node": "catalog:",
     "tsdown": "catalog:"
   },
   "dependencies": {

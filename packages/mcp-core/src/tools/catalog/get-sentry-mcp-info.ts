@@ -28,7 +28,7 @@ export default defineTool({
     openWorldHint: false,
   },
   async handler() {
-    return structuredResult({
+    return structuredResult<z.infer<typeof getSentryMcpInfoOutputSchema>>({
       version: getServerVersion(),
     });
   },

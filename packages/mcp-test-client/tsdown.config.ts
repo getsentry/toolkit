@@ -9,12 +9,14 @@ export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
   clean: true,
+  // `bin` and `test-client` run `dist/index.js`.
+  fixedExtension: false,
+  // A CLI entry point; no declarations, even though the shared tsconfig
+  // enables `declaration`.
+  dts: false,
   platform: "node",
   minify: false,
   shims: true,
-  banner: {
-    js: "#!/usr/bin/env node",
-  },
   env: {
     DEFAULT_SENTRY_DSN:
       "https://d0805acebb937435abcb5958da99cdab@o1.ingest.us.sentry.io/4509062593708032",

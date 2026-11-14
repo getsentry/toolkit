@@ -3,7 +3,11 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": ["node"],
+    // Lets tsdown emit declarations with Oxc instead of the compiler API.
+    "allowJs": false,
+    "isolatedDeclarations": true
   },
   "include": ["src"]
 }
