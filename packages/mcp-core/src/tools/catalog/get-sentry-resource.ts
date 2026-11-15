@@ -111,18 +111,42 @@ const UNSUPPORTED_URL_GUIDANCE: Array<[RegExp, string]> = [
     /(^|\/)(explore\/traces|performance|traces)\/?$/,
     "This is a trace search URL. Use `search_traces` to query traces, or pass a URL for one trace.",
   ],
+  [
+    /(^|\/)(explore\/(errors|errors-v2|discover)|discover)(\/(homepage|results|queries))?\/?$/,
+    "This is an errors search URL. Use `search_errors` to query error events, or pass a URL for one issue or event.",
+  ],
+];
+
+// Page filters that a search tool needs to reproduce a list URL's scope.
+const URL_SCOPE_PARAMS = [
+  "project",
+  "environment",
+  "statsPeriod",
+  "start",
+  "end",
+  "query",
 ];
 
 function getUnsupportedUrlGuidance(url: string): string | undefined {
-  let pathname: string;
+  let parsedUrl: URL;
   try {
-    pathname = new URL(url).pathname.replace(/^\/+|\/+$/g, "");
+    parsedUrl = new URL(url);
   } catch {
     return undefined;
   }
-  return UNSUPPORTED_URL_GUIDANCE.find(([pattern]) =>
+  const pathname = parsedUrl.pathname.replace(/^\/+|\/+$/g, "");
+  const guidance = UNSUPPORTED_URL_GUIDANCE.find(([pattern]) =>
     pattern.test(pathname),
   )?.[1];
+  if (!guidance) {
+    return undefined;
+  }
+  const scope = URL_SCOPE_PARAMS.flatMap((name) =>
+    parsedUrl.searchParams.getAll(name).map((value) => `${name}=${value}`),
+  );
+  return scope.length > 0
+    ? `${guidance} The URL is scoped to: ${scope.join(", ")}.`
+    : guidance;
 }
 
 export function resolveResourceParams(params: {

@@ -451,8 +451,30 @@ describe("resolveResourceParams", () => {
         "https://sentry.io/api/0/projects/my-org/my-project/events/abc123/",
         "This is a Sentry API URL",
       ],
+      [
+        "https://my-org.sentry.io/explore/errors/homepage/?dataset=errors&field=title&sort=-timestamp&referrer=weekly_report",
+        "Use `search_errors` to query error events",
+      ],
+      [
+        "https://my-org.sentry.io/explore/discover/results/?dataset=errors",
+        "Use `search_errors` to query error events",
+      ],
+      [
+        "https://sentry.io/organizations/my-org/discover/homepage/",
+        "Use `search_errors` to query error events",
+      ],
     ])("explains unsupported URL %s", (url, message) => {
       expect(() => resolveResourceParams({ url })).toThrow(message);
+    });
+
+    it("lists the page filters of an unsupported list URL", () => {
+      expect(() =>
+        resolveResourceParams({
+          url: "https://my-org.sentry.io/explore/errors/homepage/?dataset=errors&project=1&project=2&environment=prod&statsPeriod=7d&query=level%3Aerror&referrer=weekly_report",
+        }),
+      ).toThrow(
+        "The URL is scoped to: project=1, project=2, environment=prod, statsPeriod=7d, query=level:error.",
+      );
     });
 
     it("throws for unknown URL path (settings)", () => {
