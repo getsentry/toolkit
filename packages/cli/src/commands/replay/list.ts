@@ -107,9 +107,10 @@ function parseLimit(value: string): number {
  */
 export function parseSort(value: string): ReplaySortValue {
   const trimmed = value.trim();
-  // User input: an unknown key misses the map.
-  const sortAliases: Partial<Record<string, ReplaySortValue>> = SORT_MAP;
-  const mapped = sortAliases[trimmed.toLowerCase()];
+  // User input, so look it up as any string.
+  const mapped = (SORT_MAP as Record<string, ReplaySortValue>)[
+    trimmed.toLowerCase()
+  ];
   if (mapped) {
     return mapped;
   }

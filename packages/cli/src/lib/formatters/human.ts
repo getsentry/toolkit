@@ -58,7 +58,6 @@ import { sparkline } from "./sparkline.js";
 import { colorizeSql, isDbSpanOp } from "./sql.js";
 import { type Column, writeTable } from "./table.js";
 import { computeSpanDurationMs, formatRelativeTime } from "./time-utils.js";
-import { traceSpanId } from "./trace.js";
 
 // Color tag maps
 
@@ -72,21 +71,22 @@ const FIXABILITY_TAGS: Record<FixabilityTier, Parameters<typeof colorTag>[0]> =
 
 // Status Formatting
 
-const STATUS_ICONS: Record<IssueStatus, string> = {
+// Keyed by any string: statuses come from the API, which can add new ones.
+const STATUS_ICONS: Record<string, string> = {
   resolved: colorTag("green", "✓"),
   resolvedInNextRelease: colorTag("green", "✓"),
   unresolved: colorTag("yellow", "●"),
   ignored: colorTag("muted", "−"),
   muted: colorTag("muted", "−"),
-};
+} satisfies Record<IssueStatus, string>;
 
-const STATUS_LABELS: Record<IssueStatus, string> = {
+const STATUS_LABELS: Record<string, string> = {
   resolved: `${colorTag("green", "✓")} Resolved`,
   resolvedInNextRelease: `${colorTag("green", "✓")} Resolved in Next Release`,
   unresolved: `${colorTag("yellow", "●")} Unresolved`,
   ignored: `${colorTag("muted", "−")} Ignored`,
   muted: `${colorTag("muted", "−")} Muted`,
-};
+} satisfies Record<IssueStatus, string>;
 
 /** Maximum features to display before truncating with "... and N more" */
 const MAX_DISPLAY_FEATURES = 10;
@@ -211,16 +211,14 @@ function formatFeaturesMarkdown(features: string[] | undefined): string {
  * Get status icon for an issue status
  */
 export function formatStatusIcon(status: string | undefined): string {
-  const icons: Partial<Record<string, string>> = STATUS_ICONS;
-  return icons[status ?? ""] ?? colorTag("yellow", "●");
+  return STATUS_ICONS[status ?? ""] ?? colorTag("yellow", "●");
 }
 
 /**
  * Get full status label for an issue status
  */
 export function formatStatusLabel(status: string | undefined): string {
-  const labels: Partial<Record<string, string>> = STATUS_LABELS;
-  return labels[status ?? ""] ?? `${colorTag("yellow", "●")} Unknown`;
+  return STATUS_LABELS[status ?? ""] ?? `${colorTag("yellow", "●")} Unknown`;
 }
 
 // Issue Formatting
@@ -1275,7 +1273,7 @@ function formatSpanSimple(span: TraceSpan, opts: FormatSpanOptions): void {
     line += `  ${plainSafeMuted(`(${prettyMs(durationMs)})`)}`;
   }
 
-  line += `  ${plainSafeMuted(traceSpanId(span) ?? "")}`;
+  line += `  ${plainSafeMuted(span.span_id ?? "")}`;
 
   lines.push(line);
 
@@ -2572,8 +2570,7 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     default: {
       // Exhaustive check — all action types should be handled above
       const _: never = data.action;
-      const descriptions: Partial<Record<string, string>> = ACTION_DESCRIPTIONS;
-      lines.push(descriptions[_] ?? "Done");
+      lines.push("Done");
     }
   }
 

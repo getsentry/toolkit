@@ -409,11 +409,6 @@ export type FoundSpan = {
   ancestors: TraceSpan[];
 };
 
-/** A span's ID. Some trace API responses omit it, though the type requires it. */
-export function traceSpanId(span: { span_id?: string }): string | undefined {
-  return span.span_id;
-}
-
 /**
  * Find a span by ID in the tree, returning the span, its depth, and ancestor chain.
  *
@@ -430,7 +425,7 @@ export function findSpanById(
     depth: number,
     ancestors: TraceSpan[],
   ): FoundSpan | null {
-    if (traceSpanId(span)?.toLowerCase() === spanId) {
+    if (span.span_id?.toLowerCase() === spanId) {
       return { span, depth, ancestors };
     }
     for (const child of span.children ?? []) {

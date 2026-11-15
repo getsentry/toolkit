@@ -928,9 +928,8 @@ export const listCommand = buildListCommand(
           const generator = generateFollowLogs({
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (
-              this.process as { abortSignal?: AbortSignal } | undefined
-            )?.abortSignal,
+            abortSignal: (this.process as { abortSignal?: AbortSignal })
+              .abortSignal,
             fetch: (statsPeriod) =>
               listTraceLogs(org, traceId, {
                 query: traceQuery,
@@ -1002,9 +1001,8 @@ export const listCommand = buildListCommand(
           const generator = generateFollowLogs({
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (
-              this.process as { abortSignal?: AbortSignal } | undefined
-            )?.abortSignal,
+            abortSignal: (this.process as { abortSignal?: AbortSignal })
+              .abortSignal,
             fetch: (statsPeriod, afterTimestamp) =>
               listLogs(org, project, {
                 query: flags.query,

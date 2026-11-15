@@ -468,7 +468,11 @@ export type Span = InferOutput<typeof SpanSchema>;
  * on the span source. Code should check both fields when reading the end time.
  */
 export type TraceSpan = {
-  span_id: string;
+  /**
+   * The `/trace/` API sends the span ID as `event_id`; `normalizeTraceSpan`
+   * copies it here. Missing when the API sent neither.
+   */
+  span_id?: string;
   parent_span_id?: string | null;
   op?: string;
   description?: string | null;

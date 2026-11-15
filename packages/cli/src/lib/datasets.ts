@@ -31,14 +31,14 @@ export type ExploreDataset =
   | "tracemetrics"
   | "replays";
 
-/** Canonical user-facing name for each API dataset */
-const DISPLAY_NAMES: Record<ExploreDataset, string> = {
+/** Canonical user-facing name for each API dataset, keyed by any string */
+const DISPLAY_NAMES: Record<string, string> = {
   errors: "errors",
   spans: "spans",
   logs: "logs",
   tracemetrics: "metrics",
   replays: "replays",
-};
+} satisfies Record<ExploreDataset, string>;
 
 /** Every accepted spelling (lowercase) → API dataset */
 const ALIASES: Record<string, ExploreDataset> = {
@@ -59,8 +59,7 @@ const ALIASES: Record<string, ExploreDataset> = {
  * User-facing name for an API dataset, e.g. `tracemetrics` to `metrics`.
  */
 export function datasetDisplayName(dataset: string): string {
-  const names: Partial<Record<string, string>> = DISPLAY_NAMES;
-  return names[dataset] ?? dataset;
+  return DISPLAY_NAMES[dataset] ?? dataset;
 }
 
 /**

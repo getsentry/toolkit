@@ -448,7 +448,11 @@ function fetchTraceSpanDetails(
   },
 ): Promise<Map<string, TraceItemDetail>> {
   const log = logger.withTag("trace.view");
-  const flat = flattenSpanTree(spans);
+  // A node without a span ID has no detail to fetch.
+  const flat = flattenSpanTree(spans).filter(
+    (span): span is TraceSpan & { span_id: string } =>
+      span.span_id !== undefined,
+  );
 
   if (totalCount > LARGE_TRACE_WARN_THRESHOLD) {
     log.warn(

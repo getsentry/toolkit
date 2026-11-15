@@ -32,7 +32,7 @@ List dashboards
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string |  |
-| `title` | string |  |
+| `title` | string \| null |  |
 | `dateCreated` | string |  |
 | `createdBy` | object |  |
 | `widgetDisplay` | array |  |
@@ -148,7 +148,7 @@ Create a dashboard
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string |  |
-| `title` | string |  |
+| `title` | string \| null |  |
 | `widgets` | array |  |
 | `dateCreated` | string |  |
 | `createdBy` | object |  |

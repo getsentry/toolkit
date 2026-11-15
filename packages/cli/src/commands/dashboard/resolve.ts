@@ -43,14 +43,6 @@ import {
   WIDGET_TYPES,
 } from "../../types/dashboard.js";
 
-/**
- * A dashboard or widget title. The API can omit it, though the schemas type it
- * as a string.
- */
-export function titleOf(item: { title?: string }): string | undefined {
-  return item.title;
-}
-
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
   readonly display?: string;
@@ -148,13 +140,13 @@ export async function resolveDashboardId(
     // Match by ID/slug first (e.g. "default-overview"), then fall back to title
     const match =
       data.find((d) => d.id.toLowerCase() === lowerRef) ??
-      data.find((d) => (titleOf(d) ?? "").toLowerCase() === lowerRef);
+      data.find((d) => (d.title ?? "").toLowerCase() === lowerRef);
     if (match) {
       return match.id;
     }
 
     for (const d of data) {
-      const title = titleOf(d) ?? "(untitled)";
+      const title = d.title ?? "(untitled)";
       allTitles.push(title);
       titleToId.set(title, d.id);
     }
@@ -207,7 +199,8 @@ export function resolveWidgetIndex(
   }
   const lowerTitle = (title ?? "").toLowerCase();
   const matchIndex = widgets.findIndex(
-    (w) => (titleOf(w) ?? "").toLowerCase() === lowerTitle,
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- self-hosted servers can omit widget titles (getsentry/cli#1097)
+    (w) => (w.title ?? "").toLowerCase() === lowerTitle,
   );
   if (matchIndex === -1) {
     throw new ValidationError(
@@ -494,7 +487,7 @@ async function build404Error(
         });
         if (data.length > 0) {
           const lines = data.map(
-            (d) => `    ${d.id}  ${titleOf(d) ?? "(untitled)"}`,
+            (d) => `    ${d.id}  ${d.title ?? "(untitled)"}`,
           );
           alternatives.push(`Available dashboards:\n${lines.join("\n")}`);
         }

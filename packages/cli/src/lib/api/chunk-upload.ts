@@ -668,11 +668,6 @@ export async function assembleDebugFiles(
   );
 }
 
-/** The bundle's projects. Callers may omit them, though the SDK requires them. */
-function projectsOf(body: { projects?: string[] }): string[] {
-  return body.projects ?? [];
-}
-
 /**
  * Request assembly of an artifact bundle. Sending the same body again polls
  * the assembly state.
@@ -698,7 +693,7 @@ export async function assembleArtifactBundle(
       `organizations/${org}/artifactbundle/assemble/`,
     );
   } catch (error) {
-    const projects = projectsOf(body);
+    const projects = body.projects;
     if (projects.length > 0 && isInvalidProjectsError(error)) {
       throw projectsNotFoundError(org, projects);
     }

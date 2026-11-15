@@ -31,7 +31,8 @@ export { DashboardRevisionSchema } from "../types/dashboard.js";
 /** Schema for dashboard list items (lightweight, from GET /dashboards/) */
 export const DashboardListItemSchema = looseObject({
   id: string(),
-  title: string(),
+  /** Self-hosted servers can send a dashboard without a title (getsentry/cli#1097). */
+  title: optional(nullable(string())),
   dateCreated: optional(string()),
   createdBy: optional(
     object({
