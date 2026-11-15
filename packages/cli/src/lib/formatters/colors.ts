@@ -86,13 +86,14 @@ export const header = (text: string): string => muted(text);
 
 // Status-based Coloring
 
-const STATUS_COLORS: Record<IssueStatus, (text: string) => string> = {
+// Keyed by any string: statuses come from the API, which can add new ones.
+const STATUS_COLORS: Record<string, (text: string) => string> = {
   resolved: green,
   resolvedInNextRelease: green,
   unresolved: yellow,
   ignored: muted,
   muted,
-};
+} satisfies Record<IssueStatus, (text: string) => string>;
 
 /**
  * Color text based on issue status (case-insensitive)
@@ -100,32 +101,30 @@ const STATUS_COLORS: Record<IssueStatus, (text: string) => string> = {
 export function statusColor(text: string, status: string | undefined): string {
   // Try exact match first (handles camelCase like resolvedInNextRelease),
   // then fall back to lowercase (handles unexpected uppercase from older instances).
-  const colors: Partial<Record<string, (text: string) => string>> =
-    STATUS_COLORS;
+  // Unknown statuses get the "unresolved" color.
   const colorFn =
-    colors[status ?? ""] ??
-    colors[status?.toLowerCase() ?? ""] ??
-    STATUS_COLORS.unresolved;
+    STATUS_COLORS[status ?? ""] ??
+    STATUS_COLORS[status?.toLowerCase() ?? ""] ??
+    yellow;
   return colorFn(text);
 }
 
 // Level-based Coloring
 
-const LEVEL_COLORS: Record<IssueLevel, (text: string) => string> = {
+// Keyed by any string: levels come from the API and SDKs.
+const LEVEL_COLORS: Record<string, (text: string) => string> = {
   fatal: red,
   error: red,
   warning: yellow,
   info: cyan,
   debug: muted,
-};
+} satisfies Record<IssueLevel, (text: string) => string>;
 
 /**
  * Color text based on issue level (case-insensitive)
  */
 export function levelColor(text: string, level: string | undefined): string {
-  const colors: Partial<Record<string, (text: string) => string>> =
-    LEVEL_COLORS;
-  const colorFn = colors[level?.toLowerCase() ?? ""];
+  const colorFn = LEVEL_COLORS[level?.toLowerCase() ?? ""];
   return colorFn ? colorFn(text) : text;
 }
 
