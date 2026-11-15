@@ -148,7 +148,7 @@ Create a dashboard
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string |  |
-| `title` | string \| null |  |
+| `title` | string |  |
 | `widgets` | array |  |
 | `dateCreated` | string |  |
 | `createdBy` | object |  |
