@@ -363,6 +363,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
               // SIGINT, 137 for SIGKILL, 143 for SIGTERM) so CI pipelines
               // and shell scripts inspecting $? see the correct exit code.
               const sigNum = osConstants.signals[signal];
+              // oxlint-disable-next-line typescript/no-unnecessary-condition -- Node types every signal, but each platform only defines some (SIGBREAK is undefined on Linux)
               resolve(128 + (sigNum ?? 1));
             } else {
               resolve(1);
