@@ -420,7 +420,7 @@ async function resolveTraceFromIssue(
   }
 
   const event = await getLatestEvent(org, issue.id);
-  const traceId = event?.contexts?.trace?.trace_id;
+  const traceId = event.contexts?.trace?.trace_id;
   if (!traceId) {
     throw new ValidationError(
       `Could not find a trace for issue '${issueShortId}'. The latest event has no trace context.\n\n` +
@@ -448,7 +448,11 @@ function fetchTraceSpanDetails(
   },
 ): Promise<Map<string, TraceItemDetail>> {
   const log = logger.withTag("trace.view");
-  const flat = flattenSpanTree(spans);
+  // A node without a span ID has no detail to fetch.
+  const flat = flattenSpanTree(spans).filter(
+    (span): span is TraceSpan & { span_id: string } =>
+      span.span_id !== undefined,
+  );
 
   if (totalCount > LARGE_TRACE_WARN_THRESHOLD) {
     log.warn(

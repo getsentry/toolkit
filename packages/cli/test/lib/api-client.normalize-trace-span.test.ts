@@ -23,7 +23,7 @@ describe("normalizeTraceSpan", () => {
     const result = normalizeTraceSpan({
       span_id: "parent",
       start_timestamp: 0,
-      children: [{ event_id: "child1", start_timestamp: 1 } as any],
+      children: [{ event_id: "child1", start_timestamp: 1 }],
     });
     expect(result.children?.[0]?.span_id).toBe("child1");
   });

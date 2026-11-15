@@ -32,7 +32,7 @@ List dashboards
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string |  |
-| `title` | string |  |
+| `title` | string \| null |  |
 | `dateCreated` | string |  |
 | `createdBy` | object |  |
 | `widgetDisplay` | array |  |

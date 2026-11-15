@@ -35,7 +35,9 @@ function shareRatio(events: number, total: number): number {
   return total === 0 ? 0 : events / total;
 }
 
-type Buckets = ListOrganizationEventsDroppedResponse["droppedEvents"];
+type Bucket = ListOrganizationEventsDroppedResponse["droppedEvents"][number];
+/** Older self-hosted servers omit `tags` (added in getsentry/sentry#127850). */
+type Buckets = Array<Omit<Bucket, "tags"> & Partial<Pick<Bucket, "tags">>>;
 
 function sumCounts(buckets: Buckets): number {
   return buckets.reduce((sum, bucket) => sum + bucket.count, 0);

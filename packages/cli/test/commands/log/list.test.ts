@@ -199,6 +199,8 @@ function createMockContext() {
       stdout: { write: stdoutWrite },
       stderr: { write: stderrWrite },
       cwd: "/tmp",
+      // The CLI always runs commands with a process; library mode passes a fake one.
+      process: {},
     },
     stdoutWrite,
     stderrWrite,

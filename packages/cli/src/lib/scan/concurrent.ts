@@ -76,6 +76,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
             return;
           }
           const out = await fn(item);
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit during the await above
           if (state.earlyExit || out === null) {
             return;
           }
@@ -152,6 +153,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
               return;
             }
             const out = await fn(item);
+            // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit during the await above
             if (state.earlyExit || out === null || out.length === 0) {
               return;
             }

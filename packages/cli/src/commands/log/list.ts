@@ -465,6 +465,7 @@ async function* generateFollowLogs<T extends LogLike>(
     // Poll loop — exits when SIGINT fires
     while (!controller.signal.aborted) {
       await abortableSleep(pollIntervalMs, controller.signal);
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- aborted by SIGINT during the await above
       if (controller.signal.aborted) {
         break;
       }
@@ -928,7 +929,7 @@ export const listCommand = buildListCommand(
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
             abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+              .abortSignal,
             fetch: (statsPeriod) =>
               listTraceLogs(org, traceId, {
                 query: traceQuery,
@@ -1001,7 +1002,7 @@ export const listCommand = buildListCommand(
             flags,
             onDiagnostic: (msg) => logger.warn(msg),
             abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
+              .abortSignal,
             fetch: (statsPeriod, afterTimestamp) =>
               listLogs(org, project, {
                 query: flags.query,

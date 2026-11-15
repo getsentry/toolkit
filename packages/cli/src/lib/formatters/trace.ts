@@ -752,7 +752,7 @@ function appendAttributeRows(
 
   const shown = attrs.slice(0, MAX_DISPLAY_ATTRS);
   for (const attr of shown) {
-    if (attr.value !== undefined && attr.value !== null && attr.value !== "") {
+    if (attr.value !== "") {
       kvRows.push([attr.name, tableCell(String(attr.value))]);
     }
   }

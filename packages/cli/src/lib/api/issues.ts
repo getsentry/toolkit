@@ -359,7 +359,8 @@ export async function findIssueInOrgs(
   options?: { collapse?: IssueCollapseField[] },
 ): Promise<{ org: string; issue: SentryIssue } | null> {
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
-  let found: { org: string; issue: SentryIssue } | null = null;
+  // Widened: set in the callbacks, which control-flow narrowing cannot see.
+  let found = null as { org: string; issue: SentryIssue } | null;
   let failure: unknown;
   await Promise.all(
     orgSlugs.map((org) =>
@@ -813,7 +814,7 @@ export async function getSharedIssue(
   ) {
     throw new ApiError(
       "Share link response missing a valid issue ID",
-      result.response?.status ?? 0,
+      result.response.status,
       undefined,
       path,
     );

@@ -874,20 +874,20 @@ function parseUrlEncodedParams(
  *
  * Duplicate keys in URL-encoded strings are collected into arrays.
  *
- * @param data - Parsed output from {@link parseDataBody}
+ * @param data - Parsed output from {@link parseDataBody}. Typed `unknown`
+ *   because `JSON.parse` can also return a primitive or `null`.
  * @returns Query parameter map suitable for `rawApiRequest`'s `params` option
  * @throws {ValidationError} When data is a JSON array or primitive (cannot be query params)
  * @internal Exported for testing
  */
 export function dataToQueryParams(
-  data: Record<string, unknown> | unknown[] | string,
+  data: unknown,
 ): Record<string, string | string[]> {
   if (typeof data === "string") {
     return parseUrlEncodedParams(data);
   }
 
   // JSON arrays and primitives (null, boolean, number) can't be query params.
-  // parseDataBody uses `as` to narrow JSON.parse output, but primitives slip through.
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     throw new ValidationError(
       "Cannot use --data with a JSON primitive or array for GET requests. " +

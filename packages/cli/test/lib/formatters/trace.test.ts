@@ -605,9 +605,7 @@ describe("findSpanById", () => {
   });
 
   test("handles span with undefined span_id gracefully", () => {
-    const spans = [
-      { start_timestamp: 1000, children: [] } as unknown as TraceSpan,
-    ];
+    const spans: TraceSpan[] = [{ start_timestamp: 1000, children: [] }];
     const result = findSpanById(spans, "a1b2c3d4e5f67890");
     expect(result).toBeNull();
   });

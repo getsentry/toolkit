@@ -199,6 +199,7 @@ export function resolveWidgetIndex(
   }
   const lowerTitle = (title ?? "").toLowerCase();
   const matchIndex = widgets.findIndex(
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- self-hosted servers can omit widget titles (getsentry/cli#1097)
     (w) => (w.title ?? "").toLowerCase() === lowerTitle,
   );
   if (matchIndex === -1) {

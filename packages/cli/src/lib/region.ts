@@ -167,6 +167,7 @@ async function resolveOrgRegionUncached(
     const responseIdentity = rawResponse
       ? getResponseCredentialIdentity(rawResponse)
       : undefined;
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- older and self-hosted servers omit `links`
     const rawRegionUrl = response.data?.links?.regionUrl;
     const regionUrl = getResolvedRegionUrl(
       rawRegionUrl,
