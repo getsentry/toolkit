@@ -398,6 +398,35 @@ describe("callEmbeddedAgent", () => {
     );
   });
 
+  it.each([
+    [
+      "a provider RetryError",
+      () => new RetryError({ message: "aborted", reason: "abort", errors: [] }),
+    ],
+    ["an unexpected error", () => new Error("The operation was aborted")],
+  ])(
+    "rethrows the abort reason for %s after cancellation without filing an issue",
+    async (_label, makeError) => {
+      const controller = new AbortController();
+      const reason = new Error("client cancelled the tool call");
+      mockGenerateText.mockImplementation(async () => {
+        controller.abort(reason);
+        throw makeError();
+      });
+
+      await expect(
+        callEmbeddedAgent({
+          system: "You are a test agent",
+          prompt: "Test prompt",
+          tools: {},
+          schema: testSchema,
+          abortSignal: controller.signal,
+        }),
+      ).rejects.toBe(reason);
+      expect(logIssue).not.toHaveBeenCalled();
+    },
+  );
+
   it("treats NoOutputGeneratedError as a recoverable UserInputError without filing a Sentry issue", async () => {
     const noOutputError = new NoOutputGeneratedError({
       message: "No output generated.",

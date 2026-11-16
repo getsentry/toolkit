@@ -202,6 +202,12 @@ export async function callEmbeddedAgent<TOutput>({
       toolCalls: capturedToolCalls,
     };
   } catch (error: unknown) {
+    // A cancelled call is not an agent failure. Surface the abort reason so the
+    // tool stops, instead of filing an issue or falling back to the raw query.
+    if (abortSignal?.aborted) {
+      throw abortSignal.reason;
+    }
+
     // Rescue NoObjectGeneratedError: try to parse the raw LLM text through the schema
     // (schema defaults like .default("") fill missing fields)
     if (NoObjectGeneratedError.isInstance(error)) {
