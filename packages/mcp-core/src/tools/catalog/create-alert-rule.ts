@@ -19,6 +19,7 @@ import {
   toAlertRuleSummary,
 } from "../support/alert-rule-config";
 import { resolveAlertRuleConnections } from "../support/alert-rule-connections";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 
 export default defineTool({
   name: "create_alert_rule",
@@ -88,21 +89,23 @@ export default defineTool({
         ? { id: String(project.id), slug: project.slug }
         : undefined,
     });
-    const created = await api.createAlertRule({
-      organizationSlug: params.organizationSlug,
-      body: {
-        name: params.name,
-        enabled: params.status === "active",
-        config: { frequency: params.frequencyMinutes },
-        environment: params.environment,
-        owner: params.owner,
-        triggers: params.triggers?.conditions.length
-          ? params.triggers
-          : undefined,
-        actionFilters: params.actionFilters,
-        detectorIds,
-      },
-    });
+    const created = await withAlertWritePermissionHint("Alert", () =>
+      api.createAlertRule({
+        organizationSlug: params.organizationSlug,
+        body: {
+          name: params.name,
+          enabled: params.status === "active",
+          config: { frequency: params.frequencyMinutes },
+          environment: params.environment,
+          owner: params.owner,
+          triggers: params.triggers?.conditions.length
+            ? params.triggers
+            : undefined,
+          actionFilters: params.actionFilters,
+          detectorIds,
+        },
+      }),
+    );
     const alertRule = toAlertRuleSummary(
       created,
       api.getIssueAlertRuleUrl(params.organizationSlug, created.id),

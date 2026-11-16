@@ -59,6 +59,7 @@ describe("create_project", () => {
     expect(output).toMatchInlineSnapshot(`
       {
         "dsn": "https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945",
+        "guidance": "Tell the user the project slug and DSN; the SDK needs the DSN.",
         "project": {
           "id": "4509109104082945",
           "name": "cloudflare-mcp",
@@ -259,6 +260,7 @@ describe("create_project", () => {
       project: { slug: "cloudflare-mcp" },
       dsn: null,
       repository: null,
+      guidance: expect.stringContaining("Create one with create_dsn."),
     });
   });
 
@@ -435,6 +437,7 @@ describe("create_project", () => {
       project: { slug: "cloudflare-mcp" },
       dsn: expect.any(String),
       repository: { name: "getsentry/sentry", linked: false },
+      guidance: expect.stringContaining("The repository did not link."),
     });
   });
 

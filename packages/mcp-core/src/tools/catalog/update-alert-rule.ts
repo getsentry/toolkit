@@ -24,6 +24,7 @@ import {
   resolveAlertRuleConnections,
   validateAlertRuleProjectScope,
 } from "../support/alert-rule-connections";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 import {
   findExactIssueAlertRuleMatches,
   isNumericAlertRuleId,
@@ -231,11 +232,9 @@ export default defineTool({
         scopedProject,
       });
     }
-    const updated = await apiService.updateAlertRule({
-      organizationSlug,
-      ruleId,
-      body,
-    });
+    const updated = await withAlertWritePermissionHint("Alert", () =>
+      apiService.updateAlertRule({ organizationSlug, ruleId, body }),
+    );
     const alertRule = toAlertRuleSummary(
       updated,
       apiService.getIssueAlertRuleUrl(organizationSlug, updated.id),

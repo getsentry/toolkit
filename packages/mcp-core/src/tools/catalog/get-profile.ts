@@ -24,6 +24,24 @@ import {
   getProfileOutputSchema,
 } from "../support/profile/flamegraph-output";
 
+/** Explain a missing analysis or comparison; omitted when every period has data. */
+function emptyProfileGuidance(periods: {
+  current: { period: string; hasData: boolean };
+  baseline?: { period: string; hasData: boolean };
+}): string | undefined {
+  const { current, baseline } = periods;
+  if (!current.hasData && (!baseline || !baseline.hasData)) {
+    return "No profiles were found for this transaction. Check the exact, case-sensitive transaction name with search_traces, try a longer period such as 30d, or confirm that profiling is enabled for the project.";
+  }
+  if (baseline && !baseline.hasData) {
+    return `The baseline period (${baseline.period}) has no profiles, so there is no comparison. Choose a different baseline, or analyze ${current.period} alone.`;
+  }
+  if (baseline && !current.hasData) {
+    return `The current period (${current.period}) has no profiles, so there is no comparison. Choose a longer current period, or analyze ${baseline.period} alone.`;
+  }
+  return undefined;
+}
+
 interface ResolvedProfileParams {
   organizationSlug: string;
   projectSlugOrId?: string | number;
@@ -235,6 +253,13 @@ export default defineTool({
 
       const hasBaselineData = hasProfileData(baselineFlamegraph);
       const hasCurrentData = hasProfileData(currentFlamegraph);
+      const guidance = emptyProfileGuidance({
+        current: { period: params.period, hasData: hasCurrentData },
+        baseline: {
+          period: params.compareAgainstPeriod,
+          hasData: hasBaselineData,
+        },
+      });
 
       return structuredResult({
         ...baseOutput,
@@ -247,6 +272,7 @@ export default defineTool({
                 focusOnUserCode: params.focusOnUserCode,
               })
             : null,
+        ...(guidance ? { guidance } : {}),
       });
     }
 
@@ -258,6 +284,9 @@ export default defineTool({
       statsPeriod: params.period,
     });
     const hasCurrentData = hasProfileData(flamegraph);
+    const guidance = emptyProfileGuidance({
+      current: { period: params.period, hasData: hasCurrentData },
+    });
 
     return structuredResult({
       ...baseOutput,
@@ -270,6 +299,7 @@ export default defineTool({
           })
         : null,
       comparison: null,
+      ...(guidance ? { guidance } : {}),
     });
   },
 });

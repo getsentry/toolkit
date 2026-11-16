@@ -1320,9 +1320,12 @@
               "type": "null"
             }
           ]
+        },
+        "guidance": {
+          "type": "string"
         }
       },
-      "required": ["project", "dsn", "repository"],
+      "required": ["project", "dsn", "repository", "guidance"],
       "additionalProperties": false
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
@@ -9294,6 +9297,9 @@
             }
           ],
           "description": "Baseline comparison. Null unless both periods have data."
+        },
+        "guidance": {
+          "type": "string"
         }
       },
       "required": [

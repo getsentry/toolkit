@@ -266,4 +266,23 @@ describe("update_metric_monitor", () => {
     ).rejects.toThrow(UserInputError);
     expect(writes).toEqual([]);
   });
+
+  it("explains a permission denial from Sentry", async () => {
+    mswServer.use(
+      http.get(endpoint, () => HttpResponse.json(metricMonitor)),
+      http.put(endpoint, () =>
+        HttpResponse.json(
+          { detail: "You do not have permission to perform this action." },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    await expect(update({ name: "Renamed" })).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining(
+        "Changing a Metric Monitor needs the alerts:write scope",
+      ),
+    });
+  });
 });

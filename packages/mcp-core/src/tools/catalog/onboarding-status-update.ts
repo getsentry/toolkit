@@ -94,6 +94,15 @@ const onboardingUpdateSchema = z
     receiveVerificationErrorUpdateSchema,
     updateWithoutExtraSchema,
   ])
+  .superRefine((update, ctx) => {
+    if (update.status === "failed" && !update.eventNote) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["eventNote"],
+        message: "eventNote is required when status is failed.",
+      });
+    }
+  })
   .describe("Progress update for one onboarding stage.");
 
 type OnboardingUpdate = z.infer<typeof onboardingUpdateSchema>;

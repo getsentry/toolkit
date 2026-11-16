@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiPermissionError } from "../../api-client";
 import type { Detector } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -18,6 +19,7 @@ import {
   metricMonitorDetailsSchema,
   toMetricMonitorDetails,
 } from "../support/metric-monitors";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 
 export default defineTool({
@@ -72,14 +74,17 @@ export default defineTool({
     };
     let created: Detector;
     try {
-      created = await api.createMetricMonitor({
-        organizationSlug: params.organizationSlug,
-        projectSlug: params.projectSlug,
-        body,
-      });
+      created = await withAlertWritePermissionHint("Metric Monitor", () =>
+        api.createMetricMonitor({
+          organizationSlug: params.organizationSlug,
+          projectSlug: params.projectSlug,
+          body,
+        }),
+      );
     } catch (error) {
       // Preserve the API error class so client/server failures retain their logging behavior.
-      if (error instanceof Error) {
+      // Sentry checks permissions before it saves, inside one transaction, so a 403 never persists.
+      if (error instanceof Error && !(error instanceof ApiPermissionError)) {
         error.message +=
           "\nCreation may have partially succeeded. Use find_metric_monitors with the name and project before retrying; inspect or delete any created monitor first.";
       }
