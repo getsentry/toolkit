@@ -101,9 +101,15 @@ describe("install script", () => {
 set -euo pipefail
 url="\${!#}"
 out=""
+write_out=""
+data=""
 args=("$@")
 for ((i = 0; i < \${#args[@]}; i++)); do
-  if [[ "\${args[i]}" == "-o" ]]; then out="\${args[i + 1]}"; fi
+  case "\${args[i]}" in
+    -o) out="\${args[i + 1]}" ;;
+    -w) write_out="\${args[i + 1]}" ;;
+    -d) data="\${args[i + 1]}" ;;
+  esac
 done
 emit() { if [[ -n "$out" ]]; then cat > "$out"; else cat; fi; }
 printf '%s\\n' "$url" >> "$SENTRY_TEST_DIR/curl-urls"
@@ -116,7 +122,10 @@ case "$url" in
     else
       : | emit
     fi
-    printf '%s' "$SENTRY_TEST_REGISTRY_STATUS"
+    printf "\${write_out//'%{http_code}'/$SENTRY_TEST_REGISTRY_STATUS}"
+    ;;
+  https://o1.ingest.us.sentry.io/api/*/envelope/)
+    printf '%s\\n' "$data" > "$SENTRY_TEST_DIR/error-report"
     ;;
   *"/repos/getsentry/toolkit/releases?per_page=100&page="*)
     page_file="SENTRY_TEST_RELEASES_PAGE_\${url##*=}"
@@ -584,6 +593,59 @@ process.exitCode = result.status ?? 1;
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("npm install -g sentry");
     expect(recorded("curl-urls")).toEqual([]);
+  });
+
+  // CLI-BJ: gunzip failures, such as a full temporary directory, hit the
+  // generic ERR trap.
+  test("explains a failed unpack instead of reporting an unexpected failure", () => {
+    writeFileSync(
+      join(binDir, "gunzip"),
+      "#!/bin/sh\necho 'gzip: stdout: No space left on device' >&2\nexit 1\n",
+      { mode: 0o700 },
+    );
+    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      `Failed to unpack sentry v${LATEST_VERSION}.`,
+    );
+    expect(result.stderr).toContain("set TMPDIR to another directory");
+    expect(result.stderr).not.toContain("Unexpected failure");
+    expect(recorded("setup-args")).toEqual([]);
+    expect(installerTempFiles()).toEqual([]);
+  });
+
+  // CLI-BJ: the trap reported only a line number, and a failure inside a
+  // function exited without any message or report.
+  test("reports the command and function of an unexpected failure without local paths", () => {
+    writeFileSync(
+      join(binDir, "sha256sum"),
+      "#!/bin/sh\necho 'sha256sum: read error' >&2\nexit 1\n",
+      { mode: 0o700 },
+    );
+    delete env.SENTRY_CLI_NO_TELEMETRY;
+    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+
+    const failure = String.raw`in verify_sha256() (exit 1): actual=$(sha256sum "$1" | awk '{print $1}')`;
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /Unexpected failure at line \d+ in verify_sha256\(\)/,
+    );
+    expect(result.stderr).toContain(failure);
+    const [, , event] = recorded("error-report");
+    const report = JSON.parse(event ?? "{}");
+    expect(report.message.formatted).toContain(failure);
+    expect(report.tags.step).toBe("trap");
+    expect(event).not.toContain(testDir);
+    expect(recorded("setup-args")).toEqual([]);
   });
 
   test("connects setup to the controlling terminal and cleans up after setup", () => {

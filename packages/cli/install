@@ -31,7 +31,9 @@ report_error() {
   [[ "${SENTRY_CLI_NO_TELEMETRY:-}" == "1" ]] && return 0
 
   (
-    set +e  # Telemetry must never fail the script
+    # Telemetry must never fail the script or report its own failures.
+    set +e
+    trap - ERR
     local msg="${1:-unknown error}"
     local step="${2:-unknown}"
     local event_id
@@ -70,8 +72,26 @@ die() {
   exit 1
 }
 
-# Catch unexpected failures from set -e / pipefail (e.g., gunzip failing)
-trap 'die "Unexpected failure at line $LINENO" "trap"' ERR
+# Catch unexpected failures from set -e / pipefail. errtrace (-E) makes
+# functions and command substitutions inherit the trap; without it, a failure
+# inside a function exits without a message or a report. $BASH_COMMAND is the
+# failing command's unexpanded source text, so the report names the command
+# without the paths or values it ran with.
+set -E
+on_unexpected_failure() {
+  local status=$1 line=$2 failed_command=$3 function_name=$4
+  # A failing command substitution also fails the command that contains it,
+  # which reports from the parent shell.
+  if (( BASH_SUBSHELL > 0 )); then
+    exit "$status"
+  fi
+  local where="line ${line}"
+  if [[ -n "$function_name" ]]; then
+    where="${where} in ${function_name}()"
+  fi
+  die "Unexpected failure at ${where} (exit ${status}): ${failed_command:0:200}" "trap"
+}
+trap 'on_unexpected_failure "$?" "$LINENO" "$BASH_COMMAND" "${FUNCNAME[0]:-}"' ERR
 
 usage() {
   cat <<EOF
@@ -190,12 +210,19 @@ tmpdir="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 tmp_binary="${tmpdir}/sentry-install-$$${suffix}"
 blob_headers="${tmpdir}/sentry-install-headers-$$"
 blob_file="${tmpdir}/sentry-install-blob-$$"
-metadata_file="${tmpdir}/sentry-install-metadata-$$"
 init_binary="${tmpdir}/sentry-install-init-$$${suffix}"
 version=""
 
 # Clean up temporary files after setup or on failure.
-trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$metadata_file" "$init_binary"' EXIT
+trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$init_binary"' EXIT
+
+# Usage: unpack_binary <gz-file>. Downloads are checksum-verified when the
+# release registry lists a checksum, so gunzip usually fails here because the
+# temporary directory is full or not writable.
+unpack_binary() {
+  gunzip -c "$1" > "$tmp_binary" \
+    || die "Failed to unpack sentry v${version}. The temporary directory needs about 100 MB free; free up space or set TMPDIR to another directory, then retry." "unpack"
+}
 
 if [[ "$requested_version" == "nightly" ]]; then
   # Nightly build: download from GHCR via OCI blob protocol.
@@ -263,7 +290,7 @@ if [[ "$requested_version" == "nightly" ]]; then
 
   case "$blob_status" in
     200)
-      gunzip -c "$blob_file" > "$tmp_binary"
+      unpack_binary "$blob_file"
       ;;
     3??)
       redir_url=$(awk '/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$blob_headers")
@@ -298,13 +325,17 @@ else
   raw_url=""
   raw_sha=""
   registry_version=""
-  registry_status=$(curl -sS --max-time 10 -o "$metadata_file" -w '%{http_code}' \
+  # Read the body from curl's stdout, not a temp file: on some Windows shells,
+  # bash could not read the file that curl had just written. The status code
+  # follows the body on its own line.
+  registry_response=$(curl -sS --max-time 10 -w '\n%{http_code}' \
     "https://release-registry.services.sentry.io/apps/sentry/${registry_path}" 2>/dev/null) \
-    || registry_status="000"
+    || registry_response="000"
+  registry_status="${registry_response##*$'\n'}"
   if [[ "$registry_status" == "200" ]]; then
     # Asset names, URLs, and checksums contain no whitespace, so stripping it
     # lets the parser below treat compact and pretty-printed JSON the same.
-    metadata=$(tr -d ' \t\r\n' < "$metadata_file")
+    metadata=$(tr -d ' \t\r\n' <<< "${registry_response%$'\n'*}")
     registry_version=$(printf '%s\n' "$metadata" \
       | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
     if [[ "$registry_path" == "latest" && ! "$registry_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -433,7 +464,7 @@ else
   # raw binary when it is missing.
   if [[ -n "$gz_url" ]] && curl -fsSL -o "$blob_file" "$gz_url" 2>/dev/null; then
     verify_sha256 "$blob_file" "$gz_sha"
-    gunzip -c "$blob_file" > "$tmp_binary"
+    unpack_binary "$blob_file"
   elif [[ -n "$raw_url" ]]; then
     curl -fsSL --progress-bar -o "$tmp_binary" "$raw_url" \
       || die "Failed to download ${raw_url}" "download"
