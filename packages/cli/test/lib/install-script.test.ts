@@ -261,12 +261,15 @@ ${manifest}
 JSON
     ;;
   "https://objects.example/nightly.gz")
-    for arg in "$@"; do
-      if [[ "$arg" == Authorization:* ]]; then
-        exit 90
-      fi
+    output=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        Authorization:*) exit 90 ;;
+        -o) output="$2"; shift 2 ;;
+        *) shift ;;
+      esac
     done
-    cat "$SENTRY_TEST_GZIP"
+    cp "$SENTRY_TEST_GZIP" "$output"
     ;;
   *"/blobs/"*)
     headers=""
@@ -640,6 +643,8 @@ process.exitCode = result.status ?? 1;
       /Unexpected failure at line \d+ in verify_sha256\(\)/,
     );
     expect(result.stderr).toContain(failure);
+    // spawnSync returns only after the backgrounded report_error subshell
+    // exits, because it keeps the installer's stdout and stderr open.
     const [, , event] = recorded("error-report");
     const report = JSON.parse(event ?? "{}");
     expect(report.message.formatted).toContain(failure);

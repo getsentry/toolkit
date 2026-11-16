@@ -297,7 +297,9 @@ if [[ "$requested_version" == "nightly" ]]; then
       if [[ -z "$redir_url" ]]; then
         die "Failed to get blob redirect URL from GHCR" "ghcr-redirect"
       fi
-      curl -fsSL "$redir_url" | gunzip > "$tmp_binary"
+      curl -fsSL -o "$blob_file" "$redir_url" \
+        || die "Failed to download nightly blob" "ghcr-blob"
+      unpack_binary "$blob_file"
       ;;
     *)
       die "Failed to fetch nightly blob from GHCR (HTTP ${blob_status})" "ghcr-blob"
