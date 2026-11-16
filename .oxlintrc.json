@@ -92,6 +92,12 @@
       }
     },
     {
+      "files": ["packages/mcp-core/src/**/*.ts"],
+      "rules": {
+        "sentry-cli/no-manual-pagination": "error"
+      }
+    },
+    {
       "files": ["packages/cli/test/**/*.ts"],
       "rules": {
         "typescript/no-unnecessary-condition": "error"
