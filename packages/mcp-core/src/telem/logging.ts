@@ -49,8 +49,8 @@ const STDERR_CONSOLE_LEVEL_MAP = {
 let loggingConfigured = false;
 
 function resolveLowestLevel(): LogLevel {
-  const envLevel =
-    typeof process !== "undefined" ? process.env.LOG_LEVEL : undefined;
+  const env = typeof process !== "undefined" ? process.env : undefined;
+  const envLevel = env?.LOG_LEVEL;
 
   if (envLevel) {
     try {
@@ -60,10 +60,7 @@ function resolveLowestLevel(): LogLevel {
     }
   }
 
-  return typeof process !== "undefined" &&
-    process.env.NODE_ENV === "development"
-    ? "debug"
-    : "info";
+  return env?.NODE_ENV === "development" ? "debug" : "info";
 }
 
 /**

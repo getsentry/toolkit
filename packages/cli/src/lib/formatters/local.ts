@@ -513,11 +513,7 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
     const attrs = Object.entries(logEntry.attributes)
       .filter(
         ([k, v]) =>
-          isUserLogAttribute(k) &&
-          v !== null &&
-          v !== undefined &&
-          v.value !== null &&
-          v.value !== undefined,
+          isUserLogAttribute(k) && v?.value !== undefined && v.value !== null,
       )
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
