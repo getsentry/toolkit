@@ -789,8 +789,10 @@ exec /usr/bin/gunzip "$@"
       const result = install();
 
       expect(result.status, result.output).toBe(0);
+      const firstPage =
+        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=1";
       expect(
-        recorded("curl-urls").filter((url) => url.includes("api.github.com")),
+        recorded("curl-urls").filter((url) => url === firstPage),
       ).toHaveLength(2);
       expect(existsSync(join(installDir, "sentry"))).toBe(true);
     });
