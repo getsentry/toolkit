@@ -108,7 +108,7 @@ export function Chat({ isOpen, onClose, onLogout }: ChatProps) {
     } else if (metadataError) {
       content = `❌ Failed to load tools: ${metadataError}\n\nPlease check your connection and try again.`;
       messageMetadata = { type: "tools-error", error: metadataError };
-    } else if (!metadata || !metadata.tools || !Array.isArray(metadata.tools)) {
+    } else if (!metadata || !Array.isArray(metadata.tools)) {
       content =
         "No tools are currently available. The MCP server may not have loaded tools yet.\n\nPlease check your connection and try again.";
       messageMetadata = { type: "tools-empty" };
@@ -391,7 +391,7 @@ Try asking me things like:
             <span className="sr-only">Logout</span>
             <PanelLeftOpen className="size-4" />
           </Button>
-          {isAuthenticated && onLogout ? (
+          {isAuthenticated ? (
             <Button
               variant="secondary"
               onClick={onLogout}

@@ -51,9 +51,9 @@ describe("private MCP transport", () => {
         "query-docs",
         "search-docs",
       ]);
-      expect(tools.every((tool) => tool.inputSchema.type === "object")).toBe(
-        true,
-      );
+      for (const tool of tools) {
+        expect(tool.inputSchema).toMatchObject({ type: "object" });
+      }
     } finally {
       await client.close();
     }

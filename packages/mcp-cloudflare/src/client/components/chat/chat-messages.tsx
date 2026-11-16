@@ -25,7 +25,7 @@ function processMessages(
     const isLastMessage = messageIndex === lastMessageIndex;
 
     // Handle messages with parts array
-    if (message.parts && message.parts.length > 0) {
+    if (message.parts.length > 0) {
       const lastPartIndex = message.parts.length - 1;
 
       message.parts.forEach(
@@ -135,7 +135,7 @@ export function ChatMessages({
                 {/* Show tool actions list for tools-list messages */}
                 {hasToolActions &&
                   item.partIndex ===
-                    (originalMessage?.parts?.length ?? 1) - 1 && (
+                    (originalMessage?.parts.length ?? 1) - 1 && (
                     <div className="mr-8 mt-4">
                       <ToolActions tools={messageData.toolsDetailed} />
                     </div>

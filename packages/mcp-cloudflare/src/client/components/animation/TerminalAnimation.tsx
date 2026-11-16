@@ -132,8 +132,8 @@ export default function TerminalAnimation() {
       const p = playerRef.current;
       if (!p) return;
 
+      if (idx < 0 || idx >= steps.length) return;
       const step = steps[idx];
-      if (!step) return;
 
       clearAllTimers();
       isManualSeekRef.current = true;
@@ -190,7 +190,7 @@ export default function TerminalAnimation() {
     try {
       isMobileRef.current =
         (typeof window !== "undefined" &&
-          window.matchMedia?.("(hover: none)")?.matches) ||
+          window.matchMedia("(hover: none)").matches) ||
         (typeof window !== "undefined" && window.innerWidth < 768);
     } catch {
       isMobileRef.current = false;
@@ -211,8 +211,7 @@ export default function TerminalAnimation() {
         rows: Math.max(
           1,
           Math.floor(
-            ((cliDemoRef.current?.getBoundingClientRect().height ?? 0) - 18) /
-              16.82, // line-height
+            (cliDemoRef.current.getBoundingClientRect().height - 18) / 16.82, // line-height
           ),
         ), // -18 for 9px border on <pre> for terminal output
         // NOTE: fits cols to container width (which is extended to 200% on mobile for optimal font-size result), or rows (specified above) to container height by decreasing the font size (note below)

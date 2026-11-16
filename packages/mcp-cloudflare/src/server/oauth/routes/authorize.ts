@@ -159,7 +159,7 @@ export default new Hono<{ Bindings: Env }>()
     const requestUrl = new URL(c.req.url);
     const resourceParams = requestUrl.searchParams.getAll("resource");
     const resourceParam =
-      resourceParams.length <= 1 ? (resourceParams[0] ?? null) : undefined;
+      resourceParams.length <= 1 ? (resourceParams.at(0) ?? null) : undefined;
     const hasInvalidResourceParam =
       resourceParams.length > 1 ||
       (resourceParam !== null &&
@@ -180,7 +180,7 @@ export default new Hono<{ Bindings: Env }>()
       if (oauthReqInfo.redirectUri) {
         return createResourceValidationError(
           oauthReqInfo.redirectUri,
-          oauthReqInfo.state ?? undefined,
+          oauthReqInfo.state,
           c.req.url,
         );
       }

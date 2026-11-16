@@ -279,7 +279,7 @@ function parseAuthenticateParams(
 
   for (const part of params.split(AUTH_PARAM_SEPARATOR)) {
     const [rawKey, ...rawValueParts] = part.split("=");
-    const key = rawKey?.trim().toLowerCase();
+    const key = rawKey.trim().toLowerCase();
     if (!key || rawValueParts.length === 0) {
       continue;
     }

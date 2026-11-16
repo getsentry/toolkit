@@ -86,7 +86,7 @@ async function safeFetch(
   // Merge any existing signal with our controller
   const signal = fetchOptions.signal || controller.signal;
 
-  let response: Response;
+  let response: Response | undefined;
   let data: any = null;
 
   try {
@@ -125,7 +125,7 @@ async function safeFetch(
     }
   }
 
-  return { response: response!, data };
+  return { response, data };
 }
 
 describeIfPreviewUrl(

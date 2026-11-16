@@ -76,7 +76,7 @@ export interface Env {
   EMBEDDED_AGENT_PROVIDER?: string;
   MCP_URL?: string;
   OAUTH_PROVIDER: OAuthHelpers;
-  AI: Ai;
+  AI?: Ai;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   CHAT_RATE_LIMITER?: RateLimit;
   SEARCH_RATE_LIMITER?: RateLimit;

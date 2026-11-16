@@ -98,6 +98,8 @@ export function flattenAttribute(
   value: LogAttributeValue,
   depth = 1,
 ): void {
+  // JavaScript callers can still pass null, which typeof reports as "object".
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard for untyped callers
   if (typeof value !== "object" || value === null) {
     setField(target, key, value);
   } else if (depth > MAX_ATTRIBUTE_DEPTH) {

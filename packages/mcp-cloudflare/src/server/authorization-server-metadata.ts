@@ -84,7 +84,7 @@ const ROOT_AUTHORIZATION_SERVER_METADATA_PATH =
 // 0.146.0-alpha.9.2 via rmcp 1.8.0). Keep emitting callback `iss`; only skip
 // advertising support for now.
 // TODO(2026-10-02): set this back to true once broken Codex clients age out.
-const ADVERTISE_AUTHORIZATION_RESPONSE_ISS_PARAMETER_SUPPORTED = false;
+const ADVERTISE_AUTHORIZATION_RESPONSE_ISS_PARAMETER_SUPPORTED: boolean = false;
 
 /**
  * workers-oauth-provider emits root AS metadata without the `prompt` values we

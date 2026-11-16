@@ -166,7 +166,7 @@ export async function recoverQueryFallbackSources(
   query: string,
 ): Promise<readonly string[]> {
   try {
-    const [candidate] = await searchPages(query, 1);
+    const candidate = (await searchPages(query, 1)).at(0);
     if (!candidate) {
       return [];
     }

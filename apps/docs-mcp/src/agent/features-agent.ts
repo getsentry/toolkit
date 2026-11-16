@@ -208,9 +208,9 @@ Return the canonical feature slugs available for this platform.`;
           structuredOutput: { schema: featuresOutputSchema },
         });
 
-        const inputTokens = result.totalUsage?.inputTokens ?? 0;
-        const outputTokens = result.totalUsage?.outputTokens ?? 0;
-        const stepCount = result.steps?.length ?? 0;
+        const inputTokens = result.totalUsage.inputTokens ?? 0;
+        const outputTokens = result.totalUsage.outputTokens ?? 0;
+        const stepCount = result.steps.length;
         const usedModelId = getUsedModelId(result);
 
         span.setAttribute("agent.model", usedModelId);
@@ -222,7 +222,12 @@ Return the canonical feature slugs available for this platform.`;
         trackAgentSteps(stepCount);
         trackAgentCall(true);
 
-        const rawFeatures = result.object?.features ?? [];
+        // Mastra leaves `object` unset when structured output never completes
+        // (for example after a processor tripwire), despite its type.
+        const output = result.object as
+          | z.infer<typeof featuresOutputSchema>
+          | undefined;
+        const rawFeatures = output?.features ?? [];
         const features = sanitizeFeatures(rawFeatures);
 
         span.setAttribute("agent.feature_count", features.length);
