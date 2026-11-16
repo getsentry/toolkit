@@ -50,12 +50,16 @@ export function isRelease(version) {
 }
 
 function run(command, args, options = {}) {
-  return execFileSync(command, args, {
-    encoding: "utf8",
-    timeout: 600_000,
-    stdio: ["ignore", "pipe", "inherit"],
-    ...options,
-  }).trim();
+  return (
+    execFileSync(command, args, {
+      encoding: "utf8",
+      timeout: 600_000,
+      stdio: ["ignore", "pipe", "inherit"],
+      ...options,
+    })
+      // execFileSync returns null when stdout is inherited.
+      ?.trim()
+  );
 }
 
 function main() {
@@ -71,6 +75,26 @@ function main() {
     console.log(`${PACKAGE} is already ${latest}.`);
     return;
   }
+
+  // An open bump PR can carry adapter fixes, so leave it alone.
+  const branch = `bot/bump-sentry-api-to-${latest}`;
+  const open = run("gh", [
+    "pr",
+    "list",
+    "--head",
+    branch,
+    "--state",
+    "open",
+    "--json",
+    "number",
+    "--jq",
+    "length",
+  ]);
+  if (open !== "0") {
+    console.log(`A PR for ${branch} is already open.`);
+    return;
+  }
+
   console.log(`Bumping ${PACKAGE} from ${current} to ${latest}.`);
   writeFileSync(WORKSPACE, workspace);
   run("pnpm", ["install", "--lockfile-only", "--ignore-scripts"], {
@@ -78,8 +102,7 @@ function main() {
   });
 
   // A run that stopped before opening the PR leaves the branch behind, so
-  // overwrite it and reuse an open PR.
-  const branch = `bot/bump-sentry-api-to-${latest}`;
+  // overwrite it.
   const title = `chore(deps): Bump ${PACKAGE} to ${latest}`;
   run("git", ["checkout", "-B", branch]);
   run("git", ["add", WORKSPACE, "pnpm-lock.yaml"]);
@@ -93,30 +116,16 @@ function main() {
     title,
   ]);
   run("git", ["push", "--force", "--set-upstream", "origin", branch]);
-  const open = run("gh", [
+  run("gh", [
     "pr",
-    "list",
+    "create",
     "--head",
     branch,
-    "--state",
-    "open",
-    "--json",
-    "number",
-    "--jq",
-    "length",
+    "--title",
+    title,
+    "--body",
+    `Pins ${PACKAGE} to [${latest}](https://github.com/getsentry/sentry/releases/tag/api@${latest}), so CI checks this repository against the release.`,
   ]);
-  if (open === "0") {
-    run("gh", [
-      "pr",
-      "create",
-      "--head",
-      branch,
-      "--title",
-      title,
-      "--body",
-      `Pins ${PACKAGE} to [${latest}](https://github.com/getsentry/sentry/releases/tag/api@${latest}), so CI checks this repository against the release.`,
-    ]);
-  }
 }
 
 if (
