@@ -194,6 +194,8 @@ describe("get_alert_options", () => {
         },
         notes: expect.arrayContaining([
           expect.stringContaining("Dynamic fields require explicit values"),
+          // Sentry's validator looks the target up by app ID; an installation ID 400s.
+          expect.stringContaining("sentryApp.id as targetIdentifier"),
         ]),
       },
     });

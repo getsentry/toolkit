@@ -179,6 +179,7 @@ export default defineTool({
           notes: [
             "Integration actions also require integrationId; choose a returned integration and service ID when applicable.",
             "Email team IDs can be found with find_teams; member destinations require a user ID.",
+            "Sentry App actions use targetType 'sentry_app' and sentryApp.id as targetIdentifier; installationId and installationUuid are rejected.",
             "Sentry App settings include static field choices. Dynamic fields require explicit values; preserve existing settings when editing unrelated fields.",
           ],
         },
