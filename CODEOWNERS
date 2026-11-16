@@ -1,0 +1,5 @@
+# MCP resources require review before changes
+packages/mcp-cloudlfare             @getsentry/OCPO
+packages/mcp-core                   @getsentry/OCPO
+packages/mcp-server-tsconfig        @getsentry/OCPO
+packages/mcp-server                 @getsentry/OCPO
