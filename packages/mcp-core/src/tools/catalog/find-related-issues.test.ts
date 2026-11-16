@@ -162,6 +162,24 @@ describe("find_related_issues", () => {
     expect(requested?.get("limit")).toBe("5");
   });
 
+  it("names every known type when none are requested", async () => {
+    let requested: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(RELATED_URL, ({ request }) => {
+        requested = new URL(request.url).searchParams;
+        return HttpResponse.json({ data: [], meta: { types: [] } });
+      }),
+    );
+
+    await findRelatedIssues.handler(params, context);
+
+    expect(requested?.getAll("type")).toEqual([
+      "similar_stacktrace",
+      "same_trace",
+      "contributing",
+    ]);
+  });
+
   it("says how to search by hand when a type is unavailable", async () => {
     mswServer.use(
       http.get(RELATED_URL, () =>

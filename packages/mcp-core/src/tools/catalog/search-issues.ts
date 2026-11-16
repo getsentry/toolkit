@@ -85,7 +85,7 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"], // Available in inspect, triage, and seer skills
   requiredScopes: ["event:read"],
   description:
-    "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces. For issues related to a specific issue, start with find_related_issues. It doesn't compare wording, so search here for issues with a similar title or error message.",
+    "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     query: z

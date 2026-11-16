@@ -1,5 +1,9 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
+import {
+  RELATED_ISSUE_TYPE_STATUSES,
+  RELATED_ISSUE_TYPES,
+} from "../../api-client/schema";
 import type { RelatedIssues } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -25,12 +29,6 @@ import {
   toIssueSummary,
 } from "../support/search-issues/results";
 
-const RELATION_TYPES = [
-  "similar_stacktrace",
-  "same_trace",
-  "contributing",
-] as const;
-
 export const findRelatedIssuesOutputSchema = z.object({
   organizationSlug: z.string(),
   issueId: z.string(),
@@ -40,7 +38,7 @@ export const findRelatedIssuesOutputSchema = z.object({
         relations: z
           .array(
             z.object({
-              type: z.string(),
+              type: z.enum(RELATED_ISSUE_TYPES),
               score: z
                 .number()
                 .nullable()
@@ -56,9 +54,9 @@ export const findRelatedIssuesOutputSchema = z.object({
   relationTypes: z
     .array(
       z.object({
-        type: z.string(),
+        type: z.enum(RELATED_ISSUE_TYPES),
         status: z
-          .string()
+          .enum(RELATED_ISSUE_TYPE_STATUSES)
           .describe(
             "ok: it ran, so no issues of this type means none were found. not_applicable: it doesn't apply to this issue. unavailable: it failed.",
           ),
@@ -95,14 +93,14 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description:
-    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages; for issues with similar wording, use search_issues.",
+    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     issueId: ParamIssueShortId.optional(),
     issueUrl: ParamIssueUrl.optional(),
     types: z
-      .array(z.enum(RELATION_TYPES))
+      .array(z.enum(RELATED_ISSUE_TYPES))
       .nullable()
       .default(null)
       .describe(
@@ -149,7 +147,9 @@ export default defineTool({
     const related = await apiService.getRelatedIssues({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
-      types: params.types ?? [],
+      // Name every type when none are asked for, rather than letting Sentry
+      // default to all, so a type it adds later can't break the output schema.
+      types: params.types ?? RELATED_ISSUE_TYPES,
       limit: params.limit,
     });
 

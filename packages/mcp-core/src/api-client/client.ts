@@ -250,6 +250,7 @@ import type {
   Project,
   ProjectList,
   RelatedIssues,
+  RelatedIssueType,
   ReleaseDetails,
   ReleaseList,
   ReplayDetails,
@@ -3350,7 +3351,7 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       issueId: string;
-      types?: readonly string[];
+      types?: readonly RelatedIssueType[];
       limit?: number;
     },
     opts?: RequestOptions,

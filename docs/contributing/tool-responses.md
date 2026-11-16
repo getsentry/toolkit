@@ -183,20 +183,6 @@ every thread summary. Only the thread's most relevant frame (its last in-app
 frame) gets pre/post context and variables. Held locks,
 registers and the raw (unsymbolicated) stacktrace stay out.
 
-### Related Issues
-
-`find_related_issues` returns the issues Sentry finds related to one issue,
-with the issues matched by more relation types first. Each issue uses the
-`search_issues` issue shape plus `relations`: one entry per relation type that
-matched, with a `score` for `similar_stacktrace` only. `relationTypes` says
-whether each requested type ran (`ok`), doesn't apply to the issue
-(`not_applicable`), or failed (`unavailable`). An unavailable type adds a note
-with Sentry's reason. For `same_trace` the note also gives the `trace:` issue
-search, which reads the same data; similar stack traces come from Seer and have
-no equivalent search. Sentry returns an error only when every
-requested type failed. A project-scoped session leaves out related issues from
-other projects, which `same_trace` can return, and says so in a note.
-
 ### Profile Details
 
 `get_profile_details` returns one profile summary under `profile`,

@@ -3041,7 +3041,7 @@
   {
     "name": "find_related_issues",
     "title": "Find Related Issues",
-    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages; for issues with similar wording, use search_issues.",
+    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3185,7 +3185,12 @@
                   "type": "object",
                   "properties": {
                     "type": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "similar_stacktrace",
+                        "same_trace",
+                        "contributing"
+                      ]
                     },
                     "score": {
                       "description": "similar_stacktrace only: how similar the stack traces are, from 0 to 1.",
@@ -3227,10 +3232,12 @@
             "type": "object",
             "properties": {
               "type": {
-                "type": "string"
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
               },
               "status": {
                 "type": "string",
+                "enum": ["ok", "not_applicable", "unavailable"],
                 "description": "ok: it ran, so no issues of this type means none were found. not_applicable: it doesn't apply to this issue. unavailable: it failed."
               },
               "detail": {
@@ -13440,7 +13447,7 @@
   {
     "name": "search_issues",
     "title": "Search Issues",
-    "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces. For issues related to a specific issue, start with find_related_issues. It doesn't compare wording, so search here for issues with a similar title or error message.",
+    "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
     "inputSchema": {
       "type": "object",
       "properties": {
