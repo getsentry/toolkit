@@ -169,6 +169,7 @@ import {
   ProjectListSchema,
   ProjectRepositoryMappingSchema,
   ProjectSchema,
+  RELATED_ISSUE_TYPES,
   RelatedIssuesResponseSchema,
   ReleaseDetailsSchema,
   ReleaseListSchema,
@@ -3338,7 +3339,8 @@ export class SentryApiService {
    *
    * The endpoint is private, so the generated SDK doesn't have it.
    *
-   * @param params.types Relation types to return; Sentry returns all when empty
+   * @param params.types Relation types to return; every known type when empty
+   *   or omitted
    * @param params.limit Maximum issues per relation type (Sentry allows 1-100)
    * @see https://github.com/getsentry/sentry/blob/master/src/sentry/issues/endpoints/group_related.py
    */
@@ -3346,7 +3348,7 @@ export class SentryApiService {
     {
       organizationSlug,
       issueId,
-      types = [],
+      types,
       limit,
     }: {
       organizationSlug: string;
@@ -3357,7 +3359,9 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<RelatedIssues> {
     const query = new URLSearchParams();
-    for (const type of types) {
+    // Always name the types: left to its default, Sentry returns every type it
+    // has, and one added later would fail the response schema's enum.
+    for (const type of types?.length ? types : RELATED_ISSUE_TYPES) {
       query.append("type", type);
     }
     if (limit !== undefined) {

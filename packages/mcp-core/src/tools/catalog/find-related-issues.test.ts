@@ -171,6 +171,26 @@ describe("find_related_issues", () => {
     expect(requested?.get("limit")).toBe("5");
   });
 
+  // Left to its default, Sentry would return every type it has, including
+  // ones added after this release, which the response enum rejects.
+  it("names every known type when given an empty list", async () => {
+    let requested: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(RELATED_URL, ({ request }) => {
+        requested = new URL(request.url).searchParams;
+        return HttpResponse.json({ data: [], meta: { types: [] } });
+      }),
+    );
+
+    await findRelatedIssues.handler({ ...params, types: [] }, context);
+
+    expect(requested?.getAll("type")).toEqual([
+      "similar_stacktrace",
+      "same_trace",
+      "contributing",
+    ]);
+  });
+
   it("passes on Sentry's reason when a type is unavailable", async () => {
     mswServer.use(
       http.get(RELATED_URL, () =>

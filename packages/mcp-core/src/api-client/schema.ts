@@ -909,7 +909,7 @@ export const RELATED_ISSUE_TYPE_STATUSES = [
 /**
  * Issues related to an issue, from the private
  * `/organizations/{org}/issues/{issue_id}/related/` endpoint. Types and
- * statuses are enums: find_related_issues always names the types it asks for,
+ * statuses are enums: `getRelatedIssues` always names the types it asks for,
  * so a type Sentry adds later can't show up here.
  *
  * Upstream source of truth in getsentry/sentry:

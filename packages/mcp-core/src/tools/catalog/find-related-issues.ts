@@ -147,9 +147,7 @@ export default defineTool({
     const related = await apiService.getRelatedIssues({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
-      // Name every type when none are asked for, rather than letting Sentry
-      // default to all, so a type it adds later can't break the output schema.
-      types: params.types ?? RELATED_ISSUE_TYPES,
+      types: params.types ?? undefined,
       limit: params.limit,
     });
 
