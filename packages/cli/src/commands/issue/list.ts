@@ -1341,13 +1341,17 @@ async function handleResolvedTargets(
           ? appendProjectMembershipHint(first.detail)
           : build403Detail(first.detail);
       }
-      throw new ApiError(
+      const wrapped = new ApiError(
         `${prefix}: ${first.message}`,
         first.status,
         detail,
         first.endpoint,
         { enriched403: first.enriched403 || first.status === 403 },
       );
+      // Keep the cause so error reporting still recognizes a network
+      // failure (status 0 wrapping `fetch failed`) behind this prefix (CLI-1DH).
+      wrapped.cause = first.cause;
+      throw wrapped;
     }
 
     // Keep the timeout's status-page hint and exit code.

@@ -56,6 +56,7 @@ import {
   setProjectAliases,
 } from "../../../src/lib/db/project-aliases.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { classifySilenced } from "../../../src/lib/error-reporting.js";
 import {
   ApiError,
   ResolutionError,
@@ -287,6 +288,37 @@ describe("issue list: error propagation", () => {
       expect((error as TimeoutError).hint).toBe("Check status.");
     } finally {
       listIssuesAllPagesMock.mockReset();
+    }
+  });
+
+  test("keeps the network cause so an unreachable Sentry is not reported (CLI-1DH)", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      const projectResp = mockDefaultProject(req.url);
+      if (projectResp) return projectResp;
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("getaddrinfo ENOTFOUND example.test"), {
+          code: "ENOTFOUND",
+        }),
+      });
+    });
+
+    const { context } = createContext();
+
+    try {
+      await func.call(context, {
+        limit: 10,
+        sort: "date",
+        period: parsePeriod("90d"),
+        json: false,
+      });
+      expect.unreachable("Should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(0);
+      expect((error as Error).message).toContain("Failed to fetch issues");
+      expect((error as ApiError).detail).toContain("Unable to reach Sentry");
+      expect(classifySilenced(error)).toBe("network_error");
     }
   });
 
