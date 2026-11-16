@@ -339,8 +339,12 @@ they do not replace a full-response snapshot.
 For output-format changes:
 
 - Run the normal quality gate from [quality-checks.md](quality-checks.md).
+- Capture the raw result offline with the `verify-toolkit` skill
+  ([.agents/skills/verify-toolkit/SKILL.md](../../.agents/skills/verify-toolkit/SKILL.md));
+  its `mcp-tool-responses` map checks the rules every result follows.
 - Use the stdio MCP QA path in
-  [.agents/skills/mcp-qa/SKILL.md](../../.agents/skills/mcp-qa/SKILL.md).
+  [.agents/skills/mcp-qa/SKILL.md](../../.agents/skills/mcp-qa/SKILL.md)
+  against prod data.
 - Inspect the raw MCP tool result when possible, not only the LLM's final
   answer. The test client's final answer can add model-specific phrasing that is
   not part of the tool response.

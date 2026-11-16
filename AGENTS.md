@@ -135,7 +135,9 @@ pnpm run --filter @sentry/mcp-core generate-definitions
 
 For MCP tool QA, use the `mcp-qa` skill at `.agents/skills/mcp-qa/SKILL.md`:
 stdio-first local CLI and real agent clients; Cloudflare HTTP or `/mcp` only
-for transport, OAuth, routing, or hosted-server compatibility.
+for transport, OAuth, routing, or hosted-server compatibility. To prove MCP or
+CLI behavior offline, with no Sentry account, use the `verify-toolkit` skill at
+`.agents/skills/verify-toolkit/SKILL.md` and its claim map.
 
 ## Task Management
 
