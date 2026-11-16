@@ -892,6 +892,43 @@ export const IssueSchema = z
 
 export const IssueListSchema = z.array(IssueSchema);
 
+/**
+ * Issues related to an issue, from the private
+ * `/organizations/{org}/issues/{issue_id}/related/` endpoint. Relation types
+ * and statuses stay strings, so Sentry can add a type without a release here.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/issues/related/types.py` (`RelatedIssuesResponse`)
+ * - `src/sentry/issues/endpoints/group_related.py`
+ */
+export const RelatedIssuesResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      issue: IssueSchema,
+      relations: z.array(
+        z
+          .object({
+            type: z.string(),
+            score: z.number().optional(),
+          })
+          .passthrough(),
+      ),
+    }),
+  ),
+  meta: z.object({
+    types: z.array(
+      z
+        .object({
+          type: z.string(),
+          status: z.string(),
+          detail: z.string().optional(),
+          traceId: z.string().optional(),
+        })
+        .passthrough(),
+    ),
+  }),
+});
+
 export const FrameInterface = z
   .object({
     filename: z.string().nullable(),

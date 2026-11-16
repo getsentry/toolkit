@@ -169,6 +169,7 @@ import {
   ProjectListSchema,
   ProjectRepositoryMappingSchema,
   ProjectSchema,
+  RelatedIssuesResponseSchema,
   ReleaseDetailsSchema,
   ReleaseListSchema,
   ReplayDetailsSchema,
@@ -248,6 +249,7 @@ import type {
   ProfileChunk,
   Project,
   ProjectList,
+  RelatedIssues,
   ReleaseDetails,
   ReleaseList,
   ReplayDetails,
@@ -3326,6 +3328,49 @@ export class SentryApiService {
       throwOnError: true,
     });
     return IssueSchema.parse(data);
+  }
+
+  /**
+   * Lists other issues related to an issue, each with the relation types that
+   * matched it, plus whether each requested type ran, didn't apply, or
+   * failed. Sentry returns 503 only when every requested type failed.
+   *
+   * The endpoint is private, so the generated SDK doesn't have it.
+   *
+   * @param params.types Relation types to return; Sentry returns all when empty
+   * @param params.limit Maximum issues per relation type (Sentry allows 1-100)
+   * @see https://github.com/getsentry/sentry/blob/master/src/sentry/issues/endpoints/group_related.py
+   */
+  async getRelatedIssues(
+    {
+      organizationSlug,
+      issueId,
+      types = [],
+      limit,
+    }: {
+      organizationSlug: string;
+      issueId: string;
+      types?: readonly string[];
+      limit?: number;
+    },
+    opts?: RequestOptions,
+  ): Promise<RelatedIssues> {
+    const query = new URLSearchParams();
+    for (const type of types) {
+      query.append("type", type);
+    }
+    if (limit !== undefined) {
+      query.set("limit", String(limit));
+    }
+    const queryString = query.toString();
+
+    const body = await this.requestJSON(
+      apiPath`/organizations/${organizationSlug}/issues/${issueId}/related/` +
+        (queryString ? `?${queryString}` : ""),
+      {},
+      opts,
+    );
+    return RelatedIssuesResponseSchema.parse(body);
   }
 
   /**

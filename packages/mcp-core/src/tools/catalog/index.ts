@@ -60,6 +60,7 @@ import analyzeIssueWithSeer from "./analyze-issue-with-seer";
 import searchDocs from "./search-docs";
 import getDoc from "./get-doc";
 import searchIssues from "./search-issues";
+import findRelatedIssues from "./find-related-issues";
 import searchIssueEvents from "./search-issue-events";
 import getProfile from "./get-profile";
 import getProfileDetails from "./get-profile-details";
@@ -187,6 +188,7 @@ const catalogTools = withFreshReadInputs({
   search_docs: searchDocs,
   get_doc: getDoc,
   search_issues: searchIssues,
+  find_related_issues: findRelatedIssues,
   search_issue_events: searchIssueEvents,
   find_dropped_events: findDroppedEvents,
   get_profile: getProfile,

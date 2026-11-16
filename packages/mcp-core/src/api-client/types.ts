@@ -112,6 +112,7 @@ import type {
   ProjectListSchema,
   ProjectRepositoryMappingSchema,
   ProjectSchema,
+  RelatedIssuesResponseSchema,
   ReleaseDetailsSchema,
   ReleaseListSchema,
   ReleaseSchema,
@@ -252,6 +253,7 @@ export type Event =
   | UnknownEvent;
 export type StacktraceLink = z.infer<typeof StacktraceLinkSchema>;
 export type SourceMapDebug = z.infer<typeof SourceMapDebugSchema>;
+export type RelatedIssues = z.infer<typeof RelatedIssuesResponseSchema>;
 
 export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;

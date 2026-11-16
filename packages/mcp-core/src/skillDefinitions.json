@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 48,
+    "toolCount": 49,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -41,6 +41,11 @@
         "name": "find_projects",
         "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
+      },
+      {
+        "name": "find_related_issues",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages; for issues with similar wording, use search_issues.",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "find_releases",
@@ -209,7 +214,7 @@
       },
       {
         "name": "search_issues",
-        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
+        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces. For issues related to a specific issue, start with find_related_issues. It doesn't compare wording, so search here for issues with a similar title or error message.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -255,7 +260,7 @@
     "description": "Sentry's AI debugger that helps you analyze, root cause, and fix issues",
     "defaultEnabled": true,
     "order": 2,
-    "toolCount": 18,
+    "toolCount": 19,
     "tools": [
       {
         "name": "analyze_issue_with_seer",
@@ -271,6 +276,11 @@
         "name": "find_projects",
         "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
+      },
+      {
+        "name": "find_related_issues",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages; for issues with similar wording, use search_issues.",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "get_agent_conversation_details",
@@ -309,7 +319,7 @@
       },
       {
         "name": "search_issues",
-        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
+        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces. For issues related to a specific issue, start with find_related_issues. It doesn't compare wording, so search here for issues with a similar title or error message.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -401,7 +411,7 @@
     "description": "Resolve, assign, and update issues",
     "defaultEnabled": false,
     "order": 4,
-    "toolCount": 26,
+    "toolCount": 27,
     "tools": [
       {
         "name": "add_issue_note",
@@ -417,6 +427,11 @@
         "name": "find_projects",
         "description": "List or search projects in a Sentry organization. Returns project slugs, 25 per page.",
         "requiredScopes": ["project:read"]
+      },
+      {
+        "name": "find_related_issues",
+        "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages; for issues with similar wording, use search_issues.",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "find_teams",
@@ -485,7 +500,7 @@
       },
       {
         "name": "search_issues",
-        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces.",
+        "description": "Search Sentry issues (grouped errors, crashes, and user feedback) and list them with status, occurrences, users impacted, assignee, and first and last seen. Accepts natural language or Sentry issue search syntax. For individual events, counts, or aggregates, use search_errors, search_logs, or search_traces. For issues related to a specific issue, start with find_related_issues. It doesn't compare wording, so search here for issues with a similar title or error message.",
         "requiredScopes": ["event:read"]
       },
       {
