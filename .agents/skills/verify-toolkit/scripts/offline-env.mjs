@@ -8,11 +8,14 @@ const OFFLINE_SENTRY_URL = "http://127.0.0.1:9";
 export const OFFLINE_TOKEN = "sntryu_verify_toolkit_offline";
 
 /**
- * Copy of the caller's env with no real credentials, an empty CLI config dir,
- * an unreachable Sentry host, and telemetry off. Call `cleanup()` when done.
+ * Copy of the caller's env with no real credentials, an empty home and CLI
+ * config dir, an unreachable Sentry host, and telemetry off. The empty home
+ * keeps the CLI from reading a token in `~/.sentryclirc`. Call `cleanup()`
+ * when done.
  */
 export function offlineEnv({ token }) {
-  const configDir = mkdtempSync(join(tmpdir(), "verify-toolkit-config-"));
+  const home = mkdtempSync(join(tmpdir(), "verify-toolkit-home-"));
+  const configDir = join(home, ".sentry");
   const env = { ...process.env };
   for (const name of [
     "SENTRY_AUTH_TOKEN",
@@ -23,6 +26,8 @@ export function offlineEnv({ token }) {
     delete env[name];
   }
   Object.assign(env, {
+    HOME: home,
+    USERPROFILE: home,
     SENTRY_CONFIG_DIR: configDir,
     SENTRY_URL: OFFLINE_SENTRY_URL,
     SENTRY_CLI_NO_TELEMETRY: "1",
@@ -30,6 +35,6 @@ export function offlineEnv({ token }) {
   if (token) env.SENTRY_AUTH_TOKEN = OFFLINE_TOKEN;
   return {
     env,
-    cleanup: () => rmSync(configDir, { recursive: true, force: true }),
+    cleanup: () => rmSync(home, { recursive: true, force: true }),
   };
 }

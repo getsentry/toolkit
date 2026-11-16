@@ -36,7 +36,7 @@ Ready means: `pnpm run build` exits 0, and `ensure-generated` exits 0 and
 leaves `packages/cli/src/generated/command-api.json` as valid JSON. Each
 drive starts its own server process and stops it when it finishes, so there
 is no long-running server and nothing to tear down. Runs are isolated: each
-gets its own temporary CLI config dir, and two runs can go side by side.
+gets its own temporary home and CLI config dir, and two runs can go side by side.
 
 Set a run directory for evidence, outside the checkout:
 
