@@ -178,15 +178,9 @@ program
 
           const rl = readline.createInterface({ input, output });
 
-          while (true) {
+          for (;;) {
             try {
               const userInput = await rl.question(chalk.gray("> "));
-
-              // Handle null input (Ctrl+D / EOF)
-              if (userInput === null) {
-                logInfo("Goodbye!");
-                break;
-              }
 
               if (
                 userInput.toLowerCase() === "exit" ||
@@ -205,7 +199,7 @@ program
               // Handle EOF (Ctrl+D) which may throw an error
               if (
                 (error as any).code === "ERR_USE_AFTER_CLOSE" ||
-                (error instanceof Error && error.message?.includes("EOF"))
+                (error instanceof Error && error.message.includes("EOF"))
               ) {
                 logInfo("Goodbye!");
                 break;

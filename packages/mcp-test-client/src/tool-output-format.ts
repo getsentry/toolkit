@@ -21,7 +21,8 @@ function stringifyUnknown(value: unknown): string {
   }
 
   try {
-    return JSON.stringify(value) ?? String(value);
+    const json = JSON.stringify(value) as string | undefined;
+    return json ?? String(value);
   } catch {
     return String(value);
   }
