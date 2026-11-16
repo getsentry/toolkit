@@ -440,6 +440,27 @@ describe("addWasmDiscoveryCounts", () => {
     );
   });
 
+  test("explains the pairing rule when modules and maps don't pair", async () => {
+    await writeWasm("app.wasm", FIXED_UUID);
+    await writeMap("other.wasm.map");
+
+    const diag = await addWasmDiscoveryCounts(dir, {
+      jsFiles: 0,
+      mapFiles: 1,
+    });
+    const message = buildEmptyDiscoveryError(dir, diag).message;
+
+    expect(diag).toEqual({
+      jsFiles: 0,
+      mapFiles: 0,
+      wasmFiles: 1,
+      wasmMaps: 1,
+    });
+    expect(message).toContain("1 .wasm and 1 .wasm.map file(s)");
+    expect(message).toContain("`<module>.wasm.map`");
+    expect(message).not.toContain("no JS or sourcemap files");
+  });
+
   test("counts only what a glob target matches", async () => {
     await mkdir(join(dir, "pkg"));
     await writeFile(

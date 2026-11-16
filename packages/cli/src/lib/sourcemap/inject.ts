@@ -964,6 +964,17 @@ export function buildEmptyDiscoveryError(
       "directory",
     );
   }
+  // Both sides exist but no filename pairs them, so the pairing rule is the
+  // fix, not the build flags.
+  if (jsFiles === 0 && mapFiles === 0 && wasmFiles > 0 && wasmMaps > 0) {
+    return new ValidationError(
+      `Found ${wasmFiles} .wasm and ${wasmMaps} .wasm.map file(s) in ` +
+        `'${dir}' but none pair up. A wasm sourcemap must be named ` +
+        "`<module>.wasm.map` and sit beside `<module>.wasm`. Pass " +
+        "--allow-empty to suppress.",
+      "directory",
+    );
+  }
   if (jsFiles === 0 && mapFiles === 0) {
     return new ValidationError(
       `Directory '${dir}' contains no JS or sourcemap files. ` +
