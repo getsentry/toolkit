@@ -16,7 +16,7 @@ function makeListItem(
 ): ConversationListItem {
   return {
     conversationId: "conv-abc-123",
-    startTimestamp: 1_716_500_000,
+    startTimestamp: 1_716_500_000_000,
     totalTokens: 500,
     totalCost: 0.01,
     toolCalls: 3,
@@ -149,10 +149,11 @@ describe("formatConversationTable", () => {
     expect(result).toContain(conversationId);
   });
 
-  test("formats timestamps correctly (not 1970)", () => {
-    const items = [makeListItem({ startTimestamp: 1_716_500_000 })];
-    const result = formatConversationTable(items);
-    expect(result).not.toContain("1970");
+  test("formats conversation timestamps in milliseconds", () => {
+    setTerminalWidth(200);
+    const startTimestamp = Date.parse("2026-11-16T15:40:18Z");
+    const result = formatConversationTable([makeListItem({ startTimestamp })]);
+    expect(result).toContain(new Date(startTimestamp).toLocaleString());
   });
 
   test("shows dash for zero timestamp", () => {
