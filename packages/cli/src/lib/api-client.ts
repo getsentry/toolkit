@@ -187,6 +187,7 @@ export {
   updateRelease,
 } from "./api/releases.js";
 export {
+  downloadReplayVideoClip,
   findTraceReplay,
   getReplay,
   getReplayRecordingSegments,

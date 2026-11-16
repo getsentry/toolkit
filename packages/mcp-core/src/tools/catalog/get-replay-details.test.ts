@@ -220,6 +220,7 @@ describe("get_replay_details", () => {
           "status": "loaded",
           "truncated": false,
         },
+        "video": null,
       }
     `);
   });
@@ -882,6 +883,60 @@ describe("get_replay_details", () => {
     expect(timeline.events).toEqual([
       { offsetSeconds: 5, label: "click", target: "button.ok", details: {} },
     ]);
+  });
+
+  describe("mobile video", () => {
+    const startMs = Date.parse(replayDetailsFixture.started_at);
+    const videoEvent = (
+      segmentId: number,
+      offsetMs: number,
+      duration: number,
+    ) => ({
+      type: 5,
+      timestamp: startMs + offsetMs,
+      data: {
+        tag: "video",
+        payload: {
+          segmentId,
+          duration,
+          container: "mp4",
+          encoding: "h264",
+          height: 1920,
+          width: 1080,
+        },
+      },
+    });
+
+    it("points to the CLI command that downloads the video", async () => {
+      mswServer.use(
+        http.get(
+          recordingEndpoint,
+          () =>
+            HttpResponse.json([
+              [videoEvent(0, 0, 5000)],
+              [videoEvent(1, 5000, 5000)],
+              // Sentry skips empty videos.
+              [videoEvent(2, 10000, 0)],
+            ]),
+          { once: true },
+        ),
+      );
+
+      const payload = await getPayload(directParams);
+
+      expect(payload.video).toEqual({
+        clips: 2,
+        downloadCommand: `sentry replay download sentry-mcp-evals/${replayDetailsFixture.id}`,
+      });
+      // Video events are not user activity.
+      expect(loadedTimeline(payload).recorded).toEqual({});
+    });
+
+    it("returns null video for web replays", async () => {
+      const payload = await getPayload(directParams);
+
+      expect(payload.video).toBeNull();
+    });
   });
 
   describe("tool definition", () => {

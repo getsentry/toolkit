@@ -4,7 +4,8 @@
  * Recording segments mix rrweb DOM events with Sentry custom events. The
  * Sentry SDKs emit custom events as `{ type: 5, data: { tag, payload } }`,
  * where `tag` is `breadcrumb` (payload is a breadcrumb with a `category`),
- * `performanceSpan` (payload is a span with an `op`), or `options`. See
+ * `performanceSpan` (payload is a span with an `op`), `video` (mobile SDKs
+ * record the screen as one video clip per segment), or `options`. See
  * `packages/replay-internal/src/types/replayFrame.ts` in sentry-javascript and
  * `static/app/utils/replays/replayReader.tsx` in getsentry/sentry, whose
  * deduplication rules this mirrors.
@@ -90,9 +91,15 @@ type UnknownRecord = Record<string, unknown>;
  */
 export class ReplayTimelineBuilder {
   private readonly events: ReplayTimelineEvent[] = [];
+  private readonly videoSegmentIds = new Set<number>();
 
   addSegment(rawEvents: unknown[]): void {
     for (const rawEvent of rawEvents) {
+      const videoSegmentId = parseVideoSegmentId(rawEvent);
+      if (videoSegmentId !== null) {
+        this.videoSegmentIds.add(videoSegmentId);
+        continue;
+      }
       const event = parseRecordingEvent(rawEvent);
       if (event) {
         this.events.push(event);
@@ -107,6 +114,36 @@ export class ReplayTimelineBuilder {
     );
     return removeDuplicateNavigations(removeDuplicateClicks(sorted));
   }
+
+  /** Number of screen video clips read; web replays have none. */
+  videoClipCount(): number {
+    return this.videoSegmentIds.size;
+  }
+}
+
+/**
+ * Mobile SDKs emit `{ type: 5, timestamp, data: { tag: "video", payload } }`
+ * per segment, with `payload.segmentId` and `payload.duration` (ms). Like
+ * `hydrateFrames` in getsentry/sentry, empty clips are skipped.
+ */
+function parseVideoSegmentId(rawEvent: unknown): number | null {
+  const data = asRecord(asRecord(rawEvent)?.data);
+  if (data?.tag !== "video") {
+    return null;
+  }
+  const payload = asRecord(data.payload);
+  const segmentId = asNumber(payload?.segmentId);
+  const durationMs = asNumber(payload?.duration);
+  if (
+    segmentId === null ||
+    !Number.isInteger(segmentId) ||
+    segmentId < 0 ||
+    durationMs === null ||
+    durationMs <= 0
+  ) {
+    return null;
+  }
+  return segmentId;
 }
 
 function parseRecordingEvent(rawEvent: unknown): ReplayTimelineEvent | null {

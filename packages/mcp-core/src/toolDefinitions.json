@@ -8880,7 +8880,7 @@
   {
     "name": "get_replay_details",
     "title": "Get Replay Details",
-    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next\n</hints>",
+    "description": "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.\n\nUSE THIS TOOL WHEN USERS:\n- Share a replay URL\n- Ask what happened in a replay, or what a user saw and clicked\n- Need the moments before an error, a dead click, or the end of a session\n\n<examples>\nget_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')\nget_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)\nget_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)\n</examples>\n\n<hints>\n- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds\n- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next\n- Mobile replays are recorded as video; `video.downloadCommand` is a Sentry CLI command that downloads it as one mp4 file\n</hints>",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -9271,6 +9271,29 @@
             }
           ]
         },
+        "video": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "clips": {
+                  "type": "number",
+                  "description": "Clips in the segments read, one per recording segment."
+                },
+                "downloadCommand": {
+                  "type": "string",
+                  "description": "Sentry CLI command that saves the video as one mp4, joining the clips with ffmpeg when it is installed."
+                }
+              },
+              "required": ["clips", "downloadCommand"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Screen video of a mobile replay. Null for web replays or when the recording is unavailable. This tool does not return the video: to watch it, run `downloadCommand` in a shell where the Sentry CLI is logged in (`npx sentry` runs it without installing)."
+        },
         "related": {
           "type": "object",
           "properties": {
@@ -9343,7 +9366,13 @@
           }
         }
       },
-      "required": ["replay", "timeline", "related", "suggestedActions"],
+      "required": [
+        "replay",
+        "timeline",
+        "video",
+        "related",
+        "suggestedActions"
+      ],
       "additionalProperties": false
     },
     "requiredScopes": ["org:read", "project:read", "event:read"],

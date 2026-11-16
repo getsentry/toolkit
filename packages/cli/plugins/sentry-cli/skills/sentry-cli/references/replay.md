@@ -182,7 +182,7 @@ sentry replay view my-org/346789a703f6454384f1de473b8b9fcc --web
 
 ### `sentry replay download <replay-id-or-url...>`
 
-Download a Session Replay as rrweb JSON
+Download a Session Replay as rrweb JSON or mp4 video
 
 **Arguments:**
 
@@ -191,7 +191,7 @@ Download a Session Replay as rrweb JSON
 | `<replay-id-or-url...>` | [&lt;org&gt;/&lt;project&gt;] &lt;replay-id or trace-id&gt; or &lt;replay-url&gt; |
 
 **Flags:**
-- `-o, --output <value> - Output path (default: <replay-id>.rrweb.json in the current directory)`
+- `-o, --output <value> - Output path (default: <replay-id>.rrweb.json, or <replay-id>.mp4 for mobile replays, in the current directory)`
 - `-f, --fresh - Bypass cache, re-detect projects, and fetch fresh data`
 
 **Examples:**
@@ -199,6 +199,9 @@ Download a Session Replay as rrweb JSON
 ```bash
 # Download a replay as rrweb JSON to ./<replay-id>.rrweb.json
 sentry replay download my-org/346789a703f6454384f1de473b8b9fcc
+
+# Download a mobile replay as one mp4 to ./<replay-id>.mp4 (needs ffmpeg)
+sentry replay download my-org/7c5b4a3f2e1d4c6b8a9f0e1d2c3b4a59
 
 # Choose where the file goes
 sentry replay download my-org/346789a703f6454384f1de473b8b9fcc --output ./replay.json

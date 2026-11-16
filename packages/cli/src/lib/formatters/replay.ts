@@ -612,14 +612,30 @@ export type ReplayDownloadData = {
   org: string;
   /** The downloaded replay's ID. */
   replayId: string;
-  /** Local path the rrweb JSON was written to. */
+  /**
+   * What was written: `rrweb` JSON, one `mp4` for a mobile replay, or the
+   * mobile replay's separate `clips` when ffmpeg is not installed.
+   */
+  format: "rrweb" | "mp4" | "clips";
+  /** Local path written: the rrweb JSON or mp4 file, or the clips directory. */
   output: string;
   /** Number of recording segments fetched. */
   segmentCount: number;
-  /** Number of events written. */
+  /** Number of recording events. */
   eventCount: number;
-  /** Time between the first and last event, in milliseconds. */
+  /** Number of video clips downloaded, for mobile replays. */
+  clipCount?: number;
+  /** Length of the recording, in milliseconds. */
   durationMs: number;
+};
+
+const REPLAY_DOWNLOAD_FORMAT_LABELS: Record<
+  ReplayDownloadData["format"],
+  string
+> = {
+  rrweb: "rrweb JSON",
+  mp4: "mp4 video",
+  clips: "mp4 clips (ffmpeg not found)",
 };
 
 /** Human-readable formatter for the `replay download` result. */
@@ -627,8 +643,11 @@ export function formatReplayDownloadResult(data: ReplayDownloadData): string {
   return renderMarkdown(
     mdKvTable([
       ["Replay ID", data.replayId],
+      ["Format", REPLAY_DOWNLOAD_FORMAT_LABELS[data.format]],
       ["Segments", String(data.segmentCount)],
-      ["Events", String(data.eventCount)],
+      data.clipCount === undefined
+        ? ["Events", String(data.eventCount)]
+        : ["Clips", String(data.clipCount)],
       ["Duration", formatDurationCompactMs(data.durationMs)],
       ["Saved to", data.output],
     ]),
