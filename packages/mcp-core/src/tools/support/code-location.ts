@@ -22,7 +22,7 @@ export async function resolveCodeLocation({
   projectSlug,
   event,
 }: {
-  apiService: Pick<SentryApiService, "getStacktraceLink">;
+  apiService: Pick<SentryApiService, "getStacktraceLink" | "signal">;
   organizationSlug: string;
   projectSlug: string;
   event: Event;
@@ -91,6 +91,7 @@ export async function resolveCodeLocation({
   } catch (error) {
     if (
       !controller.signal.aborted &&
+      !apiService.signal?.aborted &&
       !(error instanceof ApiClientError) &&
       !(error instanceof ConfigurationError)
     ) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApiError, ApiServerError } from "../../api-client/index";
-import { retryWithBackoff } from "../../internal/fetch-utils";
+import { retryWithBackoff, sleep } from "../../internal/fetch-utils";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import {
@@ -134,6 +134,7 @@ export default defineTool({
       {
         maxRetries: SEER_MAX_RETRIES,
         initialDelay: SEER_INITIAL_RETRY_DELAY,
+        signal: context.signal,
         shouldRetry: (error) => {
           // Retry on server errors (5xx) or non-API errors (network issues)
           return (
@@ -186,7 +187,7 @@ export default defineTool({
       output += `Analysis started with Run ID: ${startResult.run_id}\n\n`;
 
       // Give it a moment to initialize
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await sleep(1000, context.signal);
 
       // Refresh state with retry logic
       autofixState = await retryWithBackoff(
@@ -198,6 +199,7 @@ export default defineTool({
         {
           maxRetries: SEER_MAX_RETRIES,
           initialDelay: SEER_INITIAL_RETRY_DELAY,
+          signal: context.signal,
           shouldRetry: (error) => {
             // Retry on server errors (5xx) or non-API errors (network issues)
             return (
@@ -269,9 +271,7 @@ export default defineTool({
       }
 
       // Wait before next poll
-      await new Promise((resolve) =>
-        setTimeout(resolve, SEER_POLLING_INTERVAL),
-      );
+      await sleep(SEER_POLLING_INTERVAL, context.signal);
 
       // Refresh state with error handling
       try {
@@ -284,6 +284,7 @@ export default defineTool({
           {
             maxRetries: SEER_MAX_RETRIES,
             initialDelay: SEER_INITIAL_RETRY_DELAY,
+            signal: context.signal,
             shouldRetry: (error) => {
               // Retry on server errors (5xx) or non-API errors (network issues)
               return (

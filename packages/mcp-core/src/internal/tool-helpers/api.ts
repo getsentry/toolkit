@@ -37,6 +37,7 @@ export function apiServiceFromContext(
     clientName: context.clientName,
     clientFamily: context.clientFamily,
     utmSource: context.utmSource,
+    signal: context.signal,
   });
 }
 
