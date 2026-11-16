@@ -11,7 +11,7 @@
     "test": "pnpm --filter sentry exec node script/ensure-generated.mjs schema grammar && vitest run",
     "test:integration": "pnpm run test src/App.integration.test.tsx",
     "typecheck": "tsc -b",
-    "sample": "tsx scripts/replay.ts"
+    "sample": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/replay.ts"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -45,7 +45,6 @@
     "valibot": "catalog:"
   },
   "devDependencies": {
-    "@spotlightjs/spotlight": "^4.11.7",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",

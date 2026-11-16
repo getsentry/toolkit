@@ -7,7 +7,11 @@ import {
   LLMProviderError,
 } from "../errors";
 import { APICallError, RetryError } from "ai";
-import { ApiRateLimitError } from "../api-client";
+import {
+  ApiPermissionError,
+  ApiRateLimitError,
+  createApiError,
+} from "../api-client";
 
 vi.mock("../telem/logging", () => ({
   logIssue: vi.fn(() => "mock-event-id"),
@@ -245,6 +249,47 @@ describe("formatErrorForUser", () => {
     });
   });
 
+  describe("insufficient_scope ApiPermissionError", () => {
+    const detail = "You do not have permission to perform this action.";
+    const expected = [
+      "**Missing Permission**",
+      "API error (403): You do not have permission to perform this action. The access token is missing the scope this endpoint requires; it needs one of: event:write, seer:write. Retrying with the same token will not help.",
+      "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+
+    it("names the accepted scopes and says retrying won't help", async () => {
+      const error = createApiError(detail, 403, detail, { detail }, undefined, [
+        "event:write",
+        "seer:write",
+      ]);
+
+      expect(await formatErrorForUser(error, { transport: "http" })).toBe(
+        expected,
+      );
+      expect(isExpectedToolError(error)).toBe(true);
+      expect(logIssue).not.toHaveBeenCalled();
+    });
+
+    it("finds the scopes when a tool rewraps the error as an input error", async () => {
+      const cause = new ApiPermissionError(detail, detail, { detail }, [
+        "event:write",
+        "seer:write",
+      ]);
+      const error = new UserInputError(`API error (403): ${detail}`, {
+        cause,
+      });
+
+      expect(await formatErrorForUser(error)).toBe(expected);
+    });
+
+    it("keeps the input error template for a 403 without a challenge", async () => {
+      const result = await formatErrorForUser(createApiError("Forbidden", 403));
+
+      expect(result).toContain("**Input Error**");
+      expect(result).toContain("API error (403): Forbidden");
+    });
+  });
+
   describe("UserInputError", () => {
     const error = new UserInputError("Invalid issue ID format");
 
@@ -277,6 +322,54 @@ describe("formatErrorForUser", () => {
       expect(result).toContain("**Event ID**: evt-abc");
       expect(logIssue).not.toHaveBeenCalled();
       expect(logWarn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("feedback suggestion", () => {
+    const session = {
+      availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+    };
+
+    it("suggests reporting an unexpected error", async () => {
+      const result = await formatErrorForUser(new Error("boom"), { session });
+
+      expect(result).toContain(
+        "If this keeps failing, report it to the Sentry MCP team with `submit_feedback_to_sentry_team`.",
+      );
+    });
+
+    it("suggests reporting a Sentry API server error", async () => {
+      const result = await formatErrorForUser(
+        createApiError("Internal Error", 500),
+        { session },
+      );
+
+      expect(result).toContain("`submit_feedback_to_sentry_team`");
+    });
+
+    it("suggests reporting an embedded agent failure", async () => {
+      const result = await formatErrorForUser(
+        new AgentExecutionError("agent failed", { eventId: "evt-1" }),
+        { session },
+      );
+
+      expect(result).toContain(
+        "If rephrasing does not help, report it to the Sentry MCP team with `submit_feedback_to_sentry_team`.",
+      );
+    });
+
+    it("does not suggest reporting input errors", async () => {
+      const result = await formatErrorForUser(new UserInputError("bad input"), {
+        session,
+      });
+
+      expect(result).not.toContain("submit_feedback_to_sentry_team");
+    });
+
+    it("does not suggest reporting without the session tool surface", async () => {
+      const result = await formatErrorForUser(new Error("boom"));
+
+      expect(result).not.toContain("submit_feedback_to_sentry_team");
     });
   });
 });

@@ -52,5 +52,6 @@ export async function searchIssuesAgent(
       whoami: createWhoamiTool({ apiService: options.apiService }),
     },
     schema: searchIssuesAgentOutputSchema,
+    abortSignal: options.apiService.signal,
   });
 }

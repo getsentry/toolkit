@@ -651,6 +651,27 @@ describe("buildQueryParams", () => {
     });
   });
 
+  test("appends repeated scalar and array values in order", () => {
+    expect(
+      buildQueryParams([
+        "project=1",
+        "project=[2,3]",
+        "project=4",
+        "project=[]",
+      ]),
+    ).toEqual({ project: ["1", "2", "3", "4"] });
+  });
+
+  test("keeps parameter names that also exist on Object.prototype", () => {
+    expect(
+      buildQueryParams([
+        "constructor=first",
+        "constructor=second",
+        "toString=value",
+      ]),
+    ).toEqual({ constructor: ["first", "second"], toString: "value" });
+  });
+
   test("handles arrays of strings", () => {
     expect(buildQueryParams(['names=["alice","bob"]'])).toEqual({
       names: ["alice", "bob"],
@@ -1807,6 +1828,54 @@ describe("dataToQueryParams", () => {
 // Dry-run tests
 
 describe("API request preview", () => {
+  test.each(["field", "raw-field"] as const)(
+    "preserves repeated axes and ordered indexed transformations from --%s",
+    async (flag) => {
+      let output = "";
+      const func = await apiCommand.loader();
+      await func.call(
+        {
+          cwd: "/tmp",
+          stdin: createMockStdin(""),
+          stdout: {
+            write(value: string | Uint8Array) {
+              output += String(value);
+              return true;
+            },
+          },
+          stderr: { write: () => true },
+        },
+        {
+          method: "GET",
+          silent: false,
+          verbose: false,
+          "dry-run": true,
+          json: true,
+          [flag]: [
+            "dataset=spans",
+            "yAxis=count()",
+            "yAxis=count()",
+            "transformations[1]=smooth(sma,3)",
+            "transformations[1]=fill(locf)",
+            "interval=5m",
+          ],
+        },
+        "https://de.sentry.io/api/0/organizations/acme/events-timeseries/",
+      );
+
+      const request = JSON.parse(output);
+      expect(request.method).toBe("GET");
+      expect([...new URL(request.url).searchParams]).toEqual([
+        ["dataset", "spans"],
+        ["yAxis", "count()"],
+        ["yAxis", "count()"],
+        ["transformations[1]", "smooth(sma,3)"],
+        ["transformations[1]", "fill(locf)"],
+        ["interval", "5m"],
+      ]);
+    },
+  );
+
   test("absolute URL dry-run preserves the regional origin", async () => {
     let output = "";
     const func = await apiCommand.loader();

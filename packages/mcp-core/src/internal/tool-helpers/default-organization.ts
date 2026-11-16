@@ -13,6 +13,7 @@ import { MISSING_ORGANIZATION_SLUG_HINT } from "../../schema";
 import type { ToolConfig } from "../../tools/types";
 import type { ServerContext } from "../../types";
 import { apiServiceFromContext } from "./api";
+import { getSessionContext } from "./call-signal";
 import {
   getTargetOrganizationSlug,
   listCredentialContexts,
@@ -244,7 +245,9 @@ export async function applyDefaultOrganization({
 
   let reachable: ReachableOrganizations;
   try {
-    reachable = await getReachableOrganizations(context);
+    // The listing is shared by the session's calls, so one call's
+    // cancellation must not abort it.
+    reachable = await getReachableOrganizations(getSessionContext(context));
   } catch (error) {
     if (!(error instanceof ApiError)) {
       throw error;

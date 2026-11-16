@@ -15,12 +15,13 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors, schema = []) {
+/** `packages` lists the workspace directories a rule may run in. */
+function rule(message, visitors, schema = [], packages = ["/packages/cli/"]) {
   return {
     meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
-      if (!filename.includes("/packages/cli/")) return {};
+      if (!packages.some((dir) => filename.includes(dir))) return {};
       return visitors(context, filename, (node, override = message) =>
         context.report({ node, message: override }),
       );
@@ -465,6 +466,73 @@ function isInvocationSafe(node) {
   return false;
 }
 
+/**
+ * Sanctioned raw API transports for `sentry-cli/no-manual-api-request`, keyed by
+ * a path under `packages/cli/src/`. `true` exempts the whole file; a list names
+ * the top-level functions allowed to call the helpers. Each entry needs a reason.
+ */
+const MANUAL_API_REQUEST_EXCEPTIONS = new Map([
+  // Defines apiRequest, apiRequestToRegion and apiRequestToRegionNoContent.
+  ["lib/api/infrastructure.ts", true],
+  // Re-exports the infrastructure helpers.
+  ["lib/api-client.ts", true],
+  // Defines customFetch.
+  ["lib/custom-ca.ts", true],
+  // `/auth/`: private fallback for servers that predate the public `/users/me/` read.
+  ["lib/api/users.ts", ["getCurrentUser"]],
+  // `projects/?query=dsn:`: fallback for servers without the DSN-keyed project lookup.
+  ["lib/api/projects.ts", ["findProjectByDsnKeyOnOldServer"]],
+  // `replay list --json` prints `info_ids`/`warning_ids`, which the generated field enum omits.
+  ["lib/api/replays.ts", ["fetchReplayPage"]],
+  // getsentry billing (`/customers/{org}/`, `/product-trial/`) stays private.
+  ["lib/api/trials.ts", ["getCustomerTrialInfo", "startProductTrial"]],
+  [
+    "lib/api/preprod-artifacts.ts",
+    [
+      // Signed storage URLs, not API routes: the token only goes to the region origin.
+      "downloadBuildArtifact",
+      // `snapshots/upload-options/` is private upload transport config.
+      "fetchSnapshotsUploadOptions",
+      // Archive `?download` streams a ZIP and is excluded from the spec.
+      "openSnapshotArchive",
+    ],
+  ],
+  // Unauthenticated transport for the generated shared-issue call on another host.
+  ["lib/api/issues.ts", ["getSharedIssue"]],
+  // Public status page, not the Sentry API.
+  ["lib/api/status-page.ts", true],
+  // CLI binary downloads from release hosts.
+  ["lib/binary.ts", true],
+  // Delta upgrade patches from release hosts.
+  ["lib/delta-upgrade.ts", true],
+  // GitHub Container Registry, which hosts nightly builds.
+  ["lib/ghcr.ts", true],
+  // GitHub release notes.
+  ["lib/release-notes.ts", true],
+  // Docs service, not the Sentry API.
+  ["lib/docs-service.ts", true],
+  // Games leaderboard Worker, not the Sentry API.
+  ["lib/games/leaderboard-api.ts", true],
+  // Objectstore upload transport, authorized by the upload-options token.
+  ["lib/objectstore.ts", true],
+]);
+
+const MANUAL_API_REQUEST_NAME = /^(?:apiRequest\w*|customFetch)$/;
+
+/** Name of the top-level declaration that contains `node`. */
+function topLevelName(node) {
+  let current = node;
+  while (current.parent && current.parent.type !== "Program") {
+    current = current.parent;
+  }
+  const declaration =
+    current.type === "ExportNamedDeclaration" ? current.declaration : current;
+  if (declaration?.type === "FunctionDeclaration") return declaration.id?.name;
+  if (declaration?.type === "VariableDeclaration")
+    return declaration.declarations[0]?.id?.name;
+  return undefined;
+}
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -779,7 +847,7 @@ const rules = {
         : {},
   ),
   "no-manual-pagination": rule(
-    "Use paginate() from infrastructure.js instead of a limit-bounded cursor loop.",
+    "Use the shared pagination helpers instead of a limit-bounded cursor loop: paginate() or fetchAllPages() from infrastructure.js in the CLI; paginate() from @sentry/api/client or fetchEveryPage() from api-client/pagination.ts in mcp-core.",
     (_context, file, report) => {
       if (
         !file.includes("/src/") ||
@@ -798,6 +866,36 @@ const rules = {
         ForStatement: check,
         WhileStatement: check,
         DoWhileStatement: check,
+      };
+    },
+    [],
+    ["/packages/cli/", "/packages/mcp-core/"],
+  ),
+  "no-manual-api-request": rule(
+    "Call the generated @sentry/api operation instead of apiRequest*/customFetch. Sanctioned exceptions live in MANUAL_API_REQUEST_EXCEPTIONS.",
+    (_context, file, report) => {
+      const index = file.indexOf("/packages/cli/src/");
+      if (index === -1) return {};
+      const exception = MANUAL_API_REQUEST_EXCEPTIONS.get(
+        file.slice(index + "/packages/cli/src/".length),
+      );
+      if (exception === true) return {};
+      return {
+        Identifier(node) {
+          if (!MANUAL_API_REQUEST_NAME.test(node.name)) return;
+          const { parent } = node;
+          if (
+            parent.type === "ImportSpecifier" ||
+            parent.type === "ExportSpecifier" ||
+            parent.type === "TSTypeQuery" ||
+            (parent.type === "MemberExpression" &&
+              parent.property === node &&
+              !parent.computed) ||
+            exception?.includes(topLevelName(node))
+          )
+            return;
+          report(node);
+        },
       };
     },
   ),

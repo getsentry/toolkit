@@ -8,6 +8,7 @@ import {
   UserInputError,
 } from "../../../errors";
 import { logIssue, logWarn } from "../../../telem/logging";
+import { findInsufficientScopeError } from "../../error-handling";
 
 export type AgentToolResponse<T = unknown> = {
   error?: string;
@@ -44,6 +45,14 @@ function recordExtractedAgentToolResultCount<TResult>(
  * We trust: Sentry API errors, our own UserInputError messages, and system templates.
  */
 function handleAgentToolError<T>(error: unknown): AgentToolResponse<T> {
+  // Before input errors, whose "try again" advice cannot help here.
+  const insufficientScopeError = findInsufficientScopeError(error);
+  if (insufficientScopeError) {
+    return {
+      error: `Missing Permission: ${insufficientScopeError.toUserMessage()}`,
+    };
+  }
+
   if (error instanceof UserInputError) {
     // Log UserInputError for Sentry logging (as log, not exception)
     logWarn(error, {

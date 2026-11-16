@@ -1,9 +1,8 @@
 /**
  * Types for the fuzzy-filter select picker.
  *
- * `select-prompt.ts` takes {@link SelectOptions} from callers; `ink-ui.ts`
- * turns them into a {@link SelectPrompt} that the Ink sidecar
- * (`ink-app.tsx`) renders.
+ * `select-prompt.ts` takes {@link SelectOptions} from callers; `terminal.ts`
+ * turns them into a {@link SelectPrompt} that `picker.ts` renders.
  */
 
 /** Single option in a select prompt. */
@@ -26,7 +25,7 @@ export type SelectOptions<T extends string> = {
   initialValue?: T;
 };
 
-/** The prompt the Ink sidecar renders, with its completion callback. */
+/** The prompt the picker renders, with its completion callback. */
 export type SelectPrompt = {
   /** Prompt title shown above the choices. */
   message: string;

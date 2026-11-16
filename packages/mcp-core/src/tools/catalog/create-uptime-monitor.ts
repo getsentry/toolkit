@@ -32,21 +32,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [
-    "Create a Sentry HTTP uptime monitor.",
-    "",
-    "Use this tool when you need to:",
-    "- Start monitoring a URL for availability",
-    "- Create a new uptime check with interval and timeout",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "Required fields match Sentry's uptime API: name, url, intervalSeconds, timeoutMs.",
-    "Advanced response assertions are not supported in this MVP; configure them in the Sentry UI if needed.",
-    "",
-    "<examples>",
-    "create_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='API Health', url='https://api.example.com/health', intervalSeconds=60, timeoutMs=5000)",
-    "create_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='Checkout', url='https://example.com/checkout', intervalSeconds=300, timeoutMs=10000, method='GET', environment='production')",
-    "</examples>",
+    "Create a Sentry uptime monitor that checks a URL over HTTP on an interval. Response assertions are not supported; set them in the Sentry UI.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -64,7 +51,7 @@ export default defineTool({
     headers: ParamUptimeHeaders.optional(),
     body: z
       .string()
-      .describe("Optional request body for methods that support a body.")
+      .describe("Request body, for methods that take one.")
       .optional(),
     status: ParamUptimeMonitorStatus.optional(),
     owner: ParamUptimeOwner.optional(),
@@ -73,7 +60,7 @@ export default defineTool({
       .trim()
       .min(1)
       .max(64)
-      .describe("Optional environment name for created uptime issues.")
+      .describe("Environment for uptime issues this monitor creates.")
       .optional(),
     traceSampling: z
       .boolean()
@@ -81,7 +68,7 @@ export default defineTool({
       .optional(),
     responseCaptureEnabled: z
       .boolean()
-      .describe("Capture response body/headers on failures.")
+      .describe("Capture response body and headers on failed checks.")
       .optional(),
     recoveryThreshold: z
       .number()

@@ -96,6 +96,16 @@ guidance, but it should not act like a system prompt. See "Response Formatting"
 in [common-patterns.md](common-patterns.md) for examples of acceptable response
 notes.
 
+## Side Quests
+
+Side quests are things that might help but may not matter for the current
+task, such as configuration issues or follow-ups. Source maps that failed to
+apply are one. List each once, at the end under `## Concerns Identified`, as a
+short tip that names the problem and its fix. When one changes how to read the
+current data, say so in the tip: "Source maps weren't applied, so frames may be
+minified." Raise one only when Sentry's own data shows it unambiguously. Build
+them with `buildSideQuests` in `packages/mcp-core/src/internal/side-quests.ts`.
+
 ## Formatting Upstream Data
 
 Translate upstream API shapes into user-facing terms:
@@ -127,25 +137,51 @@ need.
 
 ### Issue Details
 
-`get_issue_details` includes the issue's suspect commit when available, with
-its SHA, message, author, and source. Structured responses expose
-`suspectCommit`; Markdown responses include a `Suspect Commit` section with
-the same data. Without a commit, the structured field is `null` and Markdown
-omits the section. Commit lookup is optional: failures do not prevent issue
-details from loading, but unexpected server or response-validation failures
-are reported to Sentry.
+`get_issue_details` declares `outputSchema` and returns `structuredContent`
+for every event type, including types it has no dedicated mapping for, which
+keep their identity, message, tags, and contexts.
 
-For metric issues, `Metric Alert Details` comes from the occurrence's
+It includes the issue's suspect commit when available as `suspectCommit`, with
+its SHA, message, author, and source, or `null` without one. Commit lookup is
+optional: failures do not prevent issue details from loading, but unexpected
+server or response-validation failures are reported to Sentry.
+
+For metric issues, `event.metricAlert` comes from the occurrence's
 `evidenceData`, which the event API returns camelCased
-(`dataSources[].queryObj.snubaQuery`, `detectorId`). It shows the Metric
-Monitor ID, dataset, aggregate, query, interval, environment, evaluated window,
-value, and threshold. Response Notes replace the stacktrace and trace hints with
+(`dataSources[].queryObj.snubaQuery`, `detectorId`). It has the Metric Monitor
+ID, dataset, aggregate, query, interval, environment, evaluated window, value,
+and thresholds. `suggestedActions` replace the trace action with
 `get_metric_monitor_details` and a pre-filled `search_errors`, `search_logs`,
 `search_traces`, or `search_metrics` call for the monitor's query.
 
 The event API's legacy `context` field (extra data) can be `null`. Issue details
-must still load; omit the `Extra Data` section for null or empty values while
-preserving the event's error, stacktrace, and structured `contexts` data.
+must still load; `event.extra` is `null` for null or empty values while the
+event's error, stacktrace, and structured `contexts` data are preserved.
+
+`event` maps the entries into fields: the exception chain (the raised
+exception first), up to 20 thread summaries with a `threadCount`, the crashed
+thread when there is no exception, request method and URL, CSP report, N+1
+evidence and spans, metric alert, evidence, user (including email and IP), tags,
+extra data, and contexts. Frames use the shared shape in
+`tools/support/structured-stacktrace.ts`: most recent call last, with only the
+fields that have a value (`inApp` only when true, `absPath` only when it differs
+from `filename`). Every frame gets its `contextLine`. Only the most relevant
+frame (the last in-app frame of the raised exception or the thread) gets
+`preContext`, `postContext` (3 lines each) and `vars`, with each variable cut
+to 200 characters of JSON. Request headers, cookies and body, frame addresses,
+symbols and source links, tag search queries, and external issue link ids stay
+out. An event with more than one thread suggests `get_event_stacktrace` for a
+thread that is neither crashed nor current.
+
+### Event Stacktrace
+
+`get_event_stacktrace` returns one thread under `thread`, using the same frame
+and thread shapes as `get_issue_details`, with `selection.status` saying how the
+`thread` selector resolved. When the selector matches no thread or several,
+`thread` is null, `selection.message` says why, and `availableThreads` lists
+every thread summary. Only the thread's most relevant frame (its last in-app
+frame) gets pre/post context and variables. Held locks,
+registers and the raw (unsymbolicated) stacktrace stay out.
 
 ### Profile Details
 
@@ -171,21 +207,16 @@ the same selection with an explicit `eventId`.
 - Selection is optional: omitting it preserves the ordinary response.
 - Accept 1–10 exact, case-sensitive names, each up to 256 characters. Duplicate
   names produce one entry; package names are not normalized across ecosystems.
-- Use the existing response's `packages` map without extra API calls. In experimental
-  mode, include `event.packageVersions` in `structuredContent`: a
-  `metadataAvailable` flag and selected `packages` entries with `name`, `status`,
-  `version`, and `truncated`. Status is `recorded`, `not_listed`, or
-  `version_not_recorded`; unavailable metadata has an empty selection. The server
-  generates equivalent JSON text. When returning Markdown, append the same
-  selection after local event formatting.
+- Use the existing response's `packages` map without extra API calls. Include
+  `event.packageVersions` in `structuredContent`: a `metadataAvailable` flag and
+  selected `packages` entries with `name`, `status`, `version`, and
+  `truncated`. Status is `recorded`, `not_listed`, or `version_not_recorded`;
+  unavailable metadata has an empty selection.
 - Missing, null, and empty maps mean metadata is unavailable. In a populated map,
   distinguish a name not listed from a null or blank version. Neither proves a
   dependency was absent from the application.
-- Truncate versions after 256 characters with an explicit marker. In Markdown,
-  render package names and versions as code spans with `inlineCode` from
-  `@sentry/toolkit-core/markdown`, which keeps them inside
-  their list entries; structured strings stay raw. Do not render unrelated
-  packages.
+- Truncate versions after 256 characters with an explicit marker. Do not return
+  unrelated packages.
 - Package selection requires an exact event; issue/latest-event and other resource
   lookups reject it.
 
@@ -209,10 +240,15 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   `content` as compact JSON (no indentation) of that same payload. Most
   clients that read the text send it to a model, and indentation adds tokens
   without adding data.
-- Markdown-only tools (for example issue and trace details today) should return
+- Markdown-only tools (for example trace details today) should return
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
+- A tool whose structured payload is still behind experimental mode declares
+  `experimentalOutputSchema` instead. The server advertises it to experimental
+  sessions only, and tsc cannot check the handler against it. The test guard
+  checks every `structuredContent` result against it, and the tool's tests
+  must cover every structured path.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
   must conform to that schema. `defineTool` enforces this at compile time: the
   handler must return `structuredResult(...)` typed as the schema's `z.output`,
@@ -280,8 +316,11 @@ reason:
 - `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
   the PR, for example `"pending getsentry/toolkit#2004"`.
 
-An entry fails once its tool has an `outputSchema`, so the PR that adds one
-also deletes the entry. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+An `OUTPUT_SCHEMA_EXEMPT` entry fails once any session lists its tool with an
+`outputSchema`. An `OUTPUT_SCHEMA_PENDING` entry fails once every session that
+lists the tool has one, so a tool whose `experimentalOutputSchema` reaches
+experimental sessions first stays pending until it graduates. The PR that
+makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
 ## Suggested Actions
@@ -341,6 +380,29 @@ Avoid implementation jargon:
 - Avoid: `Treat the returned payload as the canonical source for mutation workflows.`
 - Avoid: `Inspect detector IDs before constructing workflow payloads.`
 - Avoid: `Display these results exactly as written.`
+
+## Feedback Suggestions
+
+When a result likely means a Sentry MCP bug or gap, add a response note that
+points the agent at `submit_feedback_to_sentry_team`. Build it with
+`formatFeedbackSuggestion` from
+`packages/mcp-core/src/internal/tool-helpers/feedback-suggestion.ts`. It returns
+null when the session cannot call the tool, for example when Sentry has no DSN.
+
+This is a note, not a `suggestedActions` entry: the agent has to write the task
+and description, so the call is never complete. The note only names the tool.
+Do not prefill arguments or event IDs; the feedback event already carries the
+user and client tags and the trace that Sentry MCP sets on every tool call.
+
+Suggest feedback only for:
+
+- Unexpected errors, Sentry API 5xx errors, and embedded agent failures.
+  `formatErrorForUser` adds these.
+- `search_sentry_tools` results with no match.
+- Translated event searches that return nothing.
+
+Do not suggest it for input, validation, permission, auth, rate limit,
+configuration, or AI provider errors, or for empty results that are expected.
 
 ## Snapshot Policy
 

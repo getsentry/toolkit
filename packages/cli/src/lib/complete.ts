@@ -18,7 +18,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
-import generatedTargets from "../generated/completion-targets.json";
+import generatedTargets from "../generated/completion-targets.json" with { type: "json" };
 import type { SeriesCompletionContext } from "../generated/series-expression-grammar.js";
 import type {
   CompletionValues,

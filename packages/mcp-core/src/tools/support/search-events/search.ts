@@ -6,6 +6,7 @@ import { ApiValidationError } from "../../../api-client";
 import { setTargetTagsAndAttributes } from "../../../telem/scope";
 import { UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
+import { formatFeedbackSuggestion } from "../../../internal/tool-helpers/feedback-suggestion";
 import { withProviderFallback } from "../../../internal/agents/provider-fallback";
 import { apiServiceFromContext } from "../../../internal/tool-helpers/api";
 import {
@@ -73,6 +74,7 @@ import {
   isAggregateQuery,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
   readRegexFilterValue,
   recordEventsSearchValidationTelemetry,
   validateEventsSearch,
@@ -142,6 +144,58 @@ function parseAgentTimeRange(
   }
 
   return undefined;
+}
+
+const PERIOD_UNIT_MS = {
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+  w: 604_800_000,
+} as const;
+
+/**
+ * Narrow an explicit relative `period` to the agent's absolute range.
+ *
+ * The agent returns `start`/`end` when the query names a fixed window, often
+ * with `period` sent as an outer guard. Keeping only `period` would silently
+ * search the whole period. The overlap of the two can only narrow `period`, so
+ * it is always safe; without an overlap, `period` is kept.
+ */
+function narrowPeriodToAgentRange(
+  period: string,
+  agentRange:
+    | { statsPeriod?: string; start?: string; end?: string }
+    | undefined,
+): { statsPeriod?: string; start?: string; end?: string } {
+  const periodMatch = /^(\d+)([mhdw])$/.exec(period);
+  if (!agentRange?.start || !agentRange.end || !periodMatch) {
+    return { statsPeriod: period };
+  }
+  const start = Date.parse(agentRange.start);
+  const end = Date.parse(agentRange.end);
+  const now = Date.now();
+  const periodStart =
+    now -
+    Number(periodMatch[1]) *
+      PERIOD_UNIT_MS[periodMatch[2] as keyof typeof PERIOD_UNIT_MS];
+  const narrowedStart = Math.max(start, periodStart);
+  const narrowedEnd = Math.min(end, now);
+  if (
+    Number.isNaN(narrowedStart + narrowedEnd) ||
+    narrowedStart >= narrowedEnd
+  ) {
+    return { statsPeriod: period };
+  }
+  return {
+    start:
+      narrowedStart === start
+        ? agentRange.start
+        : new Date(narrowedStart).toISOString(),
+    end:
+      narrowedEnd === end
+        ? agentRange.end
+        : new Date(narrowedEnd).toISOString(),
+  };
 }
 
 function buildRequestFields(
@@ -457,12 +511,12 @@ const searchLimitParam = z
   .min(1)
   .max(100)
   .default(10)
-  .describe("Maximum number of results to return (1-100)");
+  .describe("Maximum number of results to return.");
 
 const includeExplanationParam = z
   .boolean()
   .default(false)
-  .describe("Include explanation of how the query was translated or repaired");
+  .describe("Explain how the query was translated or repaired.");
 
 const environmentParam = (description: string) =>
   z
@@ -482,19 +536,19 @@ export function buildSearchEventsInputSchema() {
       .enum(SEARCH_EVENTS_DATASETS)
       .optional()
       .describe(
-        "Initial dataset hint: errors, logs, spans, metrics, profiles, or replays. Always pass it, including for natural language queries. The agent may correct it when configured.",
+        "Dataset to search. Always pass it, even for a natural language query; it may be corrected.",
       ),
     query: z
       .string()
       .trim()
       .optional()
-      .describe("Natural language or Sentry event search query syntax."),
+      .describe("What to find, in natural language or Sentry search syntax."),
     fields: z
       .array(z.string())
       .nullable()
       .optional()
       .describe(
-        "Fields to return for event datasets. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics. Leave null for dataset='replays'.",
+        "Columns to return; omit for defaults. Include aggregates such as count() or avg() for statistics. Leave null for replays.",
       ),
     sort: z
       .string()
@@ -502,11 +556,11 @@ export function buildSearchEventsInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). If omitted, event datasets default to -timestamp and replays default to -started_at. Use -count() for event aggregations. For dataset='replays', use replay sorts like -started_at or -count_errors.",
+        "Sort field, - prefix for descending, such as -count() for aggregates. Replays use replay sorts such as -started_at or -count_errors.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
     environment: environmentParam(
-      "Optional environment filter for dataset='replays'. Use a string for one environment or an array for multiple. Omit when unused. For other datasets, filter environment in the query string instead.",
+      "Environment name or list of names; replays only. For other datasets, filter environment in the query.",
     ),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -528,14 +582,14 @@ export function buildDatasetSearchInputSchema() {
       .trim()
       .optional()
       .describe(
-        "What to find, in natural language (preferred) or Sentry search syntax. Include environment, release, or other filters here.",
+        "What to find, in natural language or Sentry search syntax. Put environment, release, and other filters here.",
       ),
     fields: z
       .array(z.string())
       .nullable()
       .optional()
       .describe(
-        "Fields to return. If not specified, uses sensible defaults. Include aggregate functions like count(), avg() for statistics.",
+        "Columns to return; omit unless you need exact columns. Include aggregates such as count() or avg() for statistics.",
       ),
     sort: z
       .string()
@@ -543,7 +597,7 @@ export function buildDatasetSearchInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Sort field (prefix with - for descending). Defaults to -timestamp. Use -count() for aggregations.",
+        "Sort field, - prefix for descending, such as -count() for aggregates. Omit unless you need a specific order.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
     period: ParamPeriod.optional(),
@@ -565,7 +619,7 @@ export function buildReplaySearchInputSchema() {
       .trim()
       .optional()
       .describe(
-        "What to find, in natural language (preferred) or replay search syntax.",
+        "What to find, in natural language or replay search syntax such as count_errors:>0 or url:*checkout*.",
       ),
     sort: z
       .string()
@@ -573,12 +627,10 @@ export function buildReplaySearchInputSchema() {
       .nullable()
       .optional()
       .describe(
-        "Replay sort (prefix with - for descending): -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
+        "Replay sort, - prefix for descending: -started_at (default), -count_errors, -count_rage_clicks, or -duration.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
-    environment: environmentParam(
-      "Optional environment filter. Use a string for one environment or an array for multiple. Omit when unused.",
-    ),
+    environment: environmentParam("Environment name or list of names."),
     period: ParamPeriod.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     limit: searchLimitParam,
@@ -839,6 +891,8 @@ async function executeSearchEvents(
     environmentNames.map((name) => name.toLowerCase()),
   );
 
+  // True only when Seer or the embedded agent actually rewrote the query.
+  let queryTranslated = Boolean(seerTranslation);
   if (seerTranslation) {
     dataset = inputDataset;
     sentryQuery = seerTranslation.query;
@@ -851,8 +905,12 @@ async function executeSearchEvents(
     explanation = seerTranslation.explanation;
     timeSeries = seerTranslation.timeSeries;
   } else if (willRunAgent) {
+    queryTranslated = true;
     const parsed = await withProviderFallback<SearchEventsAgentResult>({
       operation: "search_events.rewrite",
+      onFallback: () => {
+        queryTranslated = false;
+      },
       fallback: () => ({
         dataset: inputDataset,
         query: params.query ?? "",
@@ -929,10 +987,11 @@ async function executeSearchEvents(
     explanation = parsed.explanation;
     environment = params.environment ?? parsed.environment;
 
+    const agentTimeRange = parseAgentTimeRange(parsed.timeRange);
     timeParams =
-      shouldTrustExplicitSearchParams && hasExplicitPeriod
-        ? { statsPeriod: params.period }
-        : (parseAgentTimeRange(parsed.timeRange) ?? { statsPeriod: "14d" });
+      shouldTrustExplicitSearchParams && params.period !== undefined
+        ? narrowPeriodToAgentRange(params.period, agentTimeRange)
+        : (agentTimeRange ?? { statsPeriod: "14d" });
 
     if (dataset === "replays") {
       fields = [];
@@ -965,6 +1024,11 @@ async function executeSearchEvents(
       : null;
   }
 
+  // The errors dataset only resolves short IDs under `issue:`.
+  if (dataset === "errors") {
+    sentryQuery = normalizeNumericIssueFilters(sentryQuery);
+  }
+
   // Flag any requested environment that doesn't exist (checking both the
   // separate field and `environment:` tokens in the query) so the caller can
   // retry with a valid name instead of silently getting zero results.
@@ -992,10 +1056,25 @@ async function executeSearchEvents(
     environmentNote,
     projectSuggestionNote,
   ].filter((note): note is string => Boolean(note));
-  const notesFor = (resultCount: number): string[] =>
-    resultCount === 0 && untranslatedQueryNote
-      ? [...leadingNotes, untranslatedQueryNote]
-      : leadingNotes;
+  // An empty result after Seer or the embedded agent translated the query may
+  // be a bad translation. An unknown environment already explains it.
+  const emptyTranslationFeedbackNote =
+    queryTranslated && !environmentNote
+      ? formatFeedbackSuggestion(
+          "If this stays empty after you broaden the query and you expected matching data",
+          context,
+        )
+      : null;
+  const notesFor = (resultCount: number): string[] => {
+    if (resultCount > 0) {
+      return leadingNotes;
+    }
+    return [
+      ...leadingNotes,
+      ...(untranslatedQueryNote ? [untranslatedQueryNote] : []),
+      ...(emptyTranslationFeedbackNote ? [emptyTranslationFeedbackNote] : []),
+    ];
+  };
   const withLeadingNote = (text: string, resultCount: number): string => {
     const leadingNote = notesFor(resultCount).join("\n\n");
     return leadingNote ? `${leadingNote}\n\n${text}` : text;

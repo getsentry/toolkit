@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Evaluate SKILL.md effectiveness by testing LLM command planning.
  *
@@ -12,8 +11,8 @@
  * are OpenRouter slugs (e.g. `anthropic/claude-sonnet-5`).
  *
  * Usage:
- *   tsx script/eval-skill.ts
- *   EVAL_AGENT_MODELS=anthropic/claude-sonnet-5 tsx script/eval-skill.ts
+ *   pnpm ts script/eval-skill.ts
+ *   EVAL_AGENT_MODELS=anthropic/claude-sonnet-5 pnpm ts script/eval-skill.ts
  *
  * Environment variables:
  *   OPENROUTER_API_KEY  - OpenRouter API key (preferred)
@@ -21,12 +20,12 @@
  *   EVAL_AGENT_MODELS   - Comma-separated model IDs (default: sonnet-5, gpt-5.6-luna)
  *   EVAL_JUDGE_MODEL    - Judge model ID (default: haiku-4.5)
  *   EVAL_THRESHOLD      - Minimum pass rate 0-1 (default: 0.75)
- *   SENTRY_CLI_BINARY   - Path to pre-built binary (falls back to tsx src/bin.ts)
+ *   SENTRY_CLI_BINARY   - Path to pre-built binary (falls back to running src/bin.ts from source)
  */
 
 import { readFile } from "node:fs/promises";
 import { resolveEvalProvider } from "../test/eval-common/anthropic-client.js";
-import cases from "../test/skill-eval/cases.json";
+import cases from "../test/skill-eval/cases.json" with { type: "json" };
 import { judgePlan } from "../test/skill-eval/helpers/judge.js";
 import { createClient } from "../test/skill-eval/helpers/llm-client.js";
 import { generatePlan } from "../test/skill-eval/helpers/planner.js";

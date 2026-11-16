@@ -217,7 +217,7 @@ describe("telemetry credential boundaries", () => {
     const redacted = redactTelemetryEnvelope(envelope);
     expect(JSON.stringify(redacted)).not.toContain("SYNTHETIC");
     expect(JSON.stringify(redacted)).toContain("[Circular ~]");
-    expect(redacted[1][1]?.[1]).toBe(bytes);
+    expect(redacted[1][1][1]).toBe(bytes);
     expect(data.token).toBe(token);
     expect(data.circular).toBe(data);
   });

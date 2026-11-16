@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Local benchmark harness for DSN detection, project-root finding, and
  * (after the `src/lib/scan/` refactor lands) the generic scanner module.

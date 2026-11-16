@@ -405,6 +405,45 @@ describe("SeerError", () => {
     );
   });
 
+  test("format() includes billing URL for daily_cap_exceeded with orgSlug", () => {
+    const formatted = new SeerError("daily_cap_exceeded", "my-org").format();
+    expect(formatted).toBe(
+      "Your organization has reached its daily Seer spend limit.\n\n" +
+        "Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n" +
+        "  https://my-org.sentry.io/settings/billing/overview/?product=seer",
+    );
+  });
+
+  test("format() shows fallback for daily_cap_exceeded without orgSlug", () => {
+    const formatted = new SeerError("daily_cap_exceeded").format();
+    expect(formatted).toBe(
+      "Your organization has reached its daily Seer spend limit.\n\n" +
+        "Someone with billing access can raise the limit in your organization's billing settings, or you can try again tomorrow.",
+    );
+  });
+
+  test("format() links source code integrations for scm_integration_required", () => {
+    const err = new SeerError("scm_integration_required", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs a GitHub or GitLab integration for this organization.",
+    );
+    expect(formatted).toContain(
+      "https://my-org.sentry.io/settings/integrations/?category=source%20code%20management",
+    );
+    expect(formatted).not.toContain("trial");
+  });
+
+  test("format() links Seer settings for repos_not_linked", () => {
+    const err = new SeerError("repos_not_linked", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs repositories connected to this project.",
+    );
+    expect(formatted).toContain("https://my-org.sentry.io/settings/seer/");
+    expect(formatted).not.toContain("trial");
+  });
+
   test("format() shows fallback message without orgSlug", () => {
     const err = new SeerError("not_enabled");
     const formatted = err.format();
@@ -788,6 +827,15 @@ describe("exit codes", () => {
     expect(new SeerError("ai_disabled").exitCode).toBe(EXIT.SEER_AI_DISABLED);
     expect(new SeerError("out_of_credits").exitCode).toBe(
       EXIT.SEER_OUT_OF_CREDITS,
+    );
+    expect(new SeerError("daily_cap_exceeded").exitCode).toBe(
+      EXIT.SEER_OUT_OF_CREDITS,
+    );
+    expect(new SeerError("scm_integration_required").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
+    );
+    expect(new SeerError("repos_not_linked").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
     );
   });
 

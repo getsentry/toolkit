@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiPermissionError } from "../../api-client";
 import type { Detector } from "../../api-client/types";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -18,6 +19,7 @@ import {
   metricMonitorDetailsSchema,
   toMetricMonitorDetails,
 } from "../support/metric-monitors";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 
 export default defineTool({
@@ -26,14 +28,9 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a threshold. Supports Static, Percent or Dynamic detection.",
-    "Provide the complete query, detection config and conditions. Time windows and comparison deltas use seconds. Percent comparisons are absolute: 110 means 10% higher.",
-    "To copy a monitor, use the query, config and conditionGroup from get_metric_monitor_details. Component IDs are discarded; new condition groups use logicType='any'.",
-    "New monitors start ACTIVE and immediately evaluate data. Initially disabled creation is not supported. Use update_metric_monitor to disable an existing monitor.",
-    "workflowIds optionally connect existing notification Alerts, including shared Alerts, without modifying their configuration. Create an Alert separately with create_alert_rule if needed.",
-    "Dataset access, quota, aggregate, window and historical-data requirements are enforced by Sentry. Dynamic detection requires sufficient history and Seer availability.",
-    "Creation can fail after persisting a monitor, especially during Dynamic setup. After an error or timeout, use find_metric_monitors with the name and project before retrying; do not assume rollback or blindly repeat creation.",
-    "create_metric_monitor(organizationSlug='my-org', projectSlug='backend', name='High error count', query={dataset:'events', query:'level:error', aggregate:'count()', eventTypes:['error'], timeWindowSeconds:300}, config={detectionType:'static'}, conditionGroup={conditions:[{type:'gt', comparison:100, conditionResult:75}, {type:'lte', comparison:50, conditionResult:0}]})",
+    "Create a Sentry Metric Monitor that detects when a metric, such as an error count or latency, crosses a static, percent-change, or dynamic threshold. New monitors start active.",
+    "Copy a monitor's setup from get_metric_monitor_details. Notifications come from Alerts: create_alert_rule. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
+    "Creation can persist before an error or timeout; check find_metric_monitors before retrying.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -77,14 +74,17 @@ export default defineTool({
     };
     let created: Detector;
     try {
-      created = await api.createMetricMonitor({
-        organizationSlug: params.organizationSlug,
-        projectSlug: params.projectSlug,
-        body,
-      });
+      created = await withAlertWritePermissionHint("Metric Monitor", () =>
+        api.createMetricMonitor({
+          organizationSlug: params.organizationSlug,
+          projectSlug: params.projectSlug,
+          body,
+        }),
+      );
     } catch (error) {
       // Preserve the API error class so client/server failures retain their logging behavior.
-      if (error instanceof Error) {
+      // Sentry checks permissions before it saves, inside one transaction, so a 403 never persists.
+      if (error instanceof Error && !(error instanceof ApiPermissionError)) {
         error.message +=
           "\nCreation may have partially succeeded. Use find_metric_monitors with the name and project before retrying; inspect or delete any created monitor first.";
       }

@@ -237,5 +237,6 @@ export async function searchEventsAgent(
     schema: searchEventsAgentOutputSchema,
     isReadyToFinalize: ({ toolResults }) =>
       hasSuccessfulSearchValidation(toolResults),
+    abortSignal: options.apiService.signal,
   });
 }

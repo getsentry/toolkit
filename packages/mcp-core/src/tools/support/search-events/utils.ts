@@ -316,6 +316,29 @@ function maskQuotedRegions(query: string): string {
   return out;
 }
 
+// `issue:` followed by a numeric ID or an all-numeric list, e.g. `issue:123`,
+// `!issue:"123"`, or `issue:[123, 456]`. Matches only the key, at a token start.
+const NUMERIC_ISSUE_FILTER_PATTERN =
+  /(?<=(?:^|[\s(])!?)issue:(?=(?:"?\d+"?|\[\s*"?\d+"?(?:\s*,\s*"?\d+"?)*\s*\])(?=[\s)]|$))/g;
+
+/**
+ * Rewrite `issue:<numeric id>` filters to `issue.id:<numeric id>`.
+ *
+ * The errors dataset resolves `issue:` values as short IDs (`PROJECT-123`) and
+ * rejects numeric group IDs with "Issue IDs do not exist". Other tools, such as
+ * get_sentry_resource, return and accept numeric IDs, so normalize them here.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  const masked = maskQuotedRegions(query);
+  let result = "";
+  let lastIndex = 0;
+  for (const match of masked.matchAll(NUMERIC_ISSUE_FILTER_PATTERN)) {
+    result += `${query.slice(lastIndex, match.index)}issue.id:`;
+    lastIndex = match.index + match[0].length;
+  }
+  return lastIndex === 0 ? query : result + query.slice(lastIndex);
+}
+
 type SearchFilterOccurrence = {
   key: string;
   value: string;

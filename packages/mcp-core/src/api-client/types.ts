@@ -120,6 +120,7 @@ import type {
   SentryAppComponentListSchema,
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
+  SourceMapDebugSchema,
   StacktraceLinkSchema,
   TagListSchema,
   TagSchema,
@@ -250,6 +251,7 @@ export type Event =
   | GenericEvent
   | UnknownEvent;
 export type StacktraceLink = z.infer<typeof StacktraceLinkSchema>;
+export type SourceMapDebug = z.infer<typeof SourceMapDebugSchema>;
 
 export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;

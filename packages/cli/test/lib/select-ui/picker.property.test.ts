@@ -1,13 +1,13 @@
 /**
- * Property tests for terminal-height option windowing in the Ink prompt UI.
+ * Property tests for terminal-height option windowing in the select picker.
  */
 
 import { assert as fcAssert, integer, property } from "fast-check";
 import { describe, expect, test } from "vitest";
-import { getOptionWindow } from "../../../src/lib/select-ui/ink-app.js";
+import { getOptionWindow } from "../../../src/lib/select-ui/picker.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
-describe("property: Ink prompt option window", () => {
+describe("property: select picker option window", () => {
   test("stays bounded and always contains the highlighted option", () => {
     fcAssert(
       property(

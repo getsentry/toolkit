@@ -29,6 +29,7 @@ import {
   buildBillingUrl,
   buildOrgSettingsUrl,
   buildSeerSettingsUrl,
+  buildSourceCodeIntegrationsUrl,
 } from "./sentry-urls.js";
 import { getLoginCommand, getUrlLoginCommand, sentry } from "./app-identity.js";
 
@@ -83,8 +84,10 @@ export const EXIT = {
   SEER_NO_BUDGET: 41,
   /** AI features disabled by org admin */
   SEER_AI_DISABLED: 42,
-  /** Organization is out of Seer credits */
+  /** Organization is out of Seer credits or hit its daily Seer spend limit */
   SEER_OUT_OF_CREDITS: 43,
+  /** Seer needs a GitHub/GitLab integration or repositories connected to the project */
+  SEER_SETUP_REQUIRED: 44,
 
   // 50–59: Operations
   /** CLI upgrade failed */
@@ -173,7 +176,7 @@ export type FunctionArgument = {
 };
 
 /**
- * Why Sentry refused a request with a 401 or 403, as far as the CLI can tell.
+ * Why Sentry refused a request, as far as the CLI can tell.
  *
  * Recorded on spans and the `cli.error.silenced` metric, so each value is a
  * fixed category: never a slug, token, URL, or text from the server. Avoid
@@ -188,6 +191,7 @@ export type FunctionArgument = {
  * - `expired`: Sentry says the credential expired
  * - `unrecognized`: Sentry does not know the credential (revoked, mistyped,
  *   or created on another server)
+ * - `daily_cap_exceeded`: a 402 because the org hit its daily Seer spend limit
  */
 export type ApiDenialReason =
   | "org_mismatch"
@@ -196,7 +200,8 @@ export type ApiDenialReason =
   | "seat_limit"
   | "access_denied"
   | "expired"
-  | "unrecognized";
+  | "unrecognized"
+  | "daily_cap_exceeded";
 
 /**
  * API request errors from Sentry.
@@ -765,7 +770,10 @@ export type SeerErrorReason =
   | "not_enabled"
   | "no_budget"
   | "ai_disabled"
-  | "out_of_credits";
+  | "out_of_credits"
+  | "daily_cap_exceeded"
+  | "scm_integration_required"
+  | "repos_not_linked";
 
 /**
  * Seer-specific errors with actionable suggestions.
@@ -783,12 +791,20 @@ export class SeerError extends CliError {
       no_budget: "Seer requires a paid plan.",
       ai_disabled: "AI features are disabled for this organization.",
       out_of_credits: "Your organization is out of Seer credits.",
+      daily_cap_exceeded:
+        "Your organization has reached its daily Seer spend limit.",
+      scm_integration_required:
+        "Seer needs a GitHub or GitLab integration for this organization.",
+      repos_not_linked: "Seer needs repositories connected to this project.",
     };
     const exitCodes: Record<SeerErrorReason, number> = {
       not_enabled: EXIT.SEER_NOT_ENABLED,
       no_budget: EXIT.SEER_NO_BUDGET,
       ai_disabled: EXIT.SEER_AI_DISABLED,
       out_of_credits: EXIT.SEER_OUT_OF_CREDITS,
+      daily_cap_exceeded: EXIT.SEER_OUT_OF_CREDITS,
+      scm_integration_required: EXIT.SEER_SETUP_REQUIRED,
+      repos_not_linked: EXIT.SEER_SETUP_REQUIRED,
     };
     super(messages[reason], exitCodes[reason]);
     this.name = "SeerError";
@@ -817,6 +833,10 @@ export class SeerError extends CliError {
         // Sentry doesn't say whether auto-reload is off or has run through its
         // top-ups, so the advice covers both.
         out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
+        daily_cap_exceeded: `Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
+        // Setup gaps are fixed in Sentry settings, not with a trial.
+        scm_integration_required: `Connect GitHub or GitLab to Sentry:\n  ${buildSourceCodeIntegrationsUrl(this.orgSlug)}`,
+        repos_not_linked: `Connect the project's repositories in Seer settings:\n  ${buildSeerSettingsUrl(this.orgSlug)}`,
       };
       return `${this.message}\n\n${suggestions[this.reason]}`;
     }
@@ -831,6 +851,12 @@ export class SeerError extends CliError {
       // out_of_credits orgs already have Seer, so a trial is not the fix
       out_of_credits:
         "Someone with billing access can adjust Seer spend and auto-reload in your organization's billing settings.",
+      daily_cap_exceeded:
+        "Someone with billing access can raise the limit in your organization's billing settings, or you can try again tomorrow.",
+      scm_integration_required:
+        "Connect GitHub or GitLab in your organization's integration settings.",
+      repos_not_linked:
+        "Connect the project's repositories in your organization's Seer settings.",
     };
     return `${this.message}\n\n${fallbackSuggestions[this.reason]}`;
   }

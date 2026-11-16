@@ -21,17 +21,14 @@ import {
   type FetchAllPagesFailure,
   type CursorPosition,
   paginate as paginateFrom,
+  parseInsufficientScopeChallenge,
   readErrorResponse,
 } from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import { type GenericSchema, safeParse } from "valibot";
 
-import {
-  extractRequiredScopes,
-  parseInsufficientScopeChallenge,
-  SENTRY_SCOPES,
-} from "../api-scope.js";
+import { extractRequiredScopes, SENTRY_SCOPES } from "../api-scope.js";
 import { getUrlLoginCommand, sentry } from "../app-identity.js";
 import {
   type CredentialContext,
@@ -417,11 +414,13 @@ export type ApiRequestOptions<T = unknown> = {
 
 /**
  * Structured fields of a JSON error body: its string `code` (e.g.
- * `invalid_search_query`) and the rejected `function` and `argument`, with an
- * optional `hint` (sent with `invalid_function_argument`).
+ * `invalid_search_query`), the Seer 402 `denialReason` we act on, and the
+ * rejected `function` and `argument`, with an optional `hint` (sent with
+ * `invalid_function_argument`).
  */
 function readErrorFields(body: unknown): {
   code?: string;
+  denialReason?: ApiDenialReason;
   functionArgument?: FunctionArgument;
 } {
   if (body === null || typeof body !== "object") {
@@ -429,11 +428,16 @@ function readErrorFields(body: unknown): {
   }
   const fields = body as Record<string, unknown>;
   const code = typeof fields.code === "string" ? fields.code : undefined;
+  // Leave the key out otherwise, so it can't clear the 401/403 denial reason.
+  const denialReason: { denialReason?: ApiDenialReason } =
+    fields.denialReason === "daily_cap_exceeded"
+      ? { denialReason: "daily_cap_exceeded" }
+      : {};
   if (
     typeof fields.function !== "string" ||
     typeof fields.argument !== "string"
   ) {
-    return { code };
+    return { code, ...denialReason };
   }
   const functionArgument: FunctionArgument = {
     function: fields.function,
@@ -442,7 +446,7 @@ function readErrorFields(body: unknown): {
   if (typeof fields.hint === "string") {
     functionArgument.hint = fields.hint;
   }
-  return { code, functionArgument };
+  return { code, ...denialReason, functionArgument };
 }
 
 const CONNECT_TIMEOUT_HINT =
@@ -1271,7 +1275,8 @@ export async function prepareRawApiRequest(
   const isStringBody = typeof body === "string";
   const request = await createSentryClient(config).client.prepareRequest({
     method,
-    url: buildSentryApiUrl("", appendSearchParams(endpoint, params)),
+    // Relative to the API base path, which the client adds.
+    url: `/${appendSearchParams(endpoint, params).replace(/^\/+/, "")}`,
     query,
     body,
     headers: isStringBody ? { "Content-Type": null, ...headers } : headers,

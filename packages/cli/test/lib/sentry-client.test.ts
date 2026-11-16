@@ -697,6 +697,23 @@ describe("fetchWithTimeout internal timeout classification", () => {
   });
 });
 
+describe("dispatcher option", () => {
+  test("passes the dispatcher to every fetch", async () => {
+    const dispatcher = {} as NonNullable<RequestInit["dispatcher"]>;
+    const seen: unknown[] = [];
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      seen.push((init as { dispatcher?: unknown } | undefined)?.dispatcher);
+      return jsonResponse({});
+    });
+
+    await getSdkConfig(REGION_URL, { dispatcher }).fetch(
+      `${REGION_URL}/api/0/organizations/`,
+    );
+
+    expect(seen).toEqual([dispatcher]);
+  });
+});
+
 describe("user abort passthrough", () => {
   test("external AbortSignal.abort() propagates the original AbortError", async () => {
     const marker = "__test_user_abort__";
@@ -756,7 +773,7 @@ describe("API request tracing", () => {
       );
       const span = getActiveSpan();
       activeSpanOp = span
-        ? spanToJSON(span).attributes?.[SEMANTIC_ATTRIBUTE_SENTRY_OP]
+        ? spanToJSON(span).attributes[SEMANTIC_ATTRIBUTE_SENTRY_OP]
         : undefined;
       return jsonResponse({ ok: true });
     });

@@ -178,3 +178,85 @@ test("large continuous profiles can be matched without exceeding argument limits
     ),
   ).toBe(false);
 });
+
+test.each(["queries", "resources"] as const)(
+  "%s summaries normalize blank and padded names without combining operations",
+  (kind) => {
+    const operation = kind === "queries" ? "db.query" : "resource.script";
+    const items = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "span" },
+            {
+              version: 2,
+              items: [undefined, "   ", " SELECT 1 ", "SELECT 1"].map(
+                (name, index) => ({
+                  trace_id: "labels",
+                  span_id: String(index),
+                  name,
+                  start_timestamp: index,
+                  end_timestamp: index + 0.1,
+                  attributes: { "sentry.op": { value: operation } },
+                }),
+              ),
+            },
+          ],
+        ],
+      ]),
+      "labels",
+    );
+    const summaries = spanInsights(buildTraceGroups(items), kind);
+    expect(summaries.map(({ name, count }) => ({ name, count }))).toEqual([
+      { name: operation, count: 2 },
+      { name: "SELECT 1", count: 2 },
+    ]);
+    expect(summaries[1]?.executions[0]?.span.payload).toMatchObject({
+      name: " SELECT 1 ",
+    });
+  },
+);
+
+test("resource sizes skip invalid aliases before using captured nonnegative sizes", () => {
+  const items = decodeEnvelope(
+    JSON.stringify([
+      {},
+      [
+        [
+          { type: "span" },
+          {
+            version: 2,
+            items: [
+              {
+                "http.response_content_length": -1,
+                "http.response.body.size": 200,
+              },
+              {
+                "http.response_content_length": -1,
+                "http.response.body.size": -2,
+                "http.decoded_response_content_length": 400,
+              },
+              {},
+            ].map((data, index) => ({
+              trace_id: "sizes",
+              span_id: String(index),
+              name: "asset.js",
+              start_timestamp: index,
+              end_timestamp: index + 0.1,
+              attributes: Object.fromEntries(
+                Object.entries({ "sentry.op": "resource.script", ...data }).map(
+                  ([key, value]) => [key, { value }],
+                ),
+              ),
+            })),
+          },
+        ],
+      ],
+    ]),
+    "sizes",
+  );
+  expect(spanInsights(buildTraceGroups(items), "resources")).toMatchObject([
+    { count: 3, averageBytes: 300 },
+  ]);
+});

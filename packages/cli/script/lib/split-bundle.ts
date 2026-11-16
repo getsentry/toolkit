@@ -170,7 +170,7 @@ function lazyRequirePlugin(
  * Pass 1 of a CommonJS build: ESM chunks with `.cjs` names, in memory.
  *
  * Builds for `options.outdir`, so plugins that write next to the output
- * (the Ink sidecar) write there, and builds again until every lazily
+ * write there, and builds again until every lazily
  * required module is an entry point.
  */
 async function buildEsmChunks(options: SplitBundleOptions): Promise<{
@@ -221,8 +221,7 @@ async function buildEsmChunks(options: SplitBundleOptions): Promise<{
 /**
  * Replace each `import("./chunk-ABC.cjs")` in a pass 1 output with
  * `__load("./chunk-ABC.cjs")`, which `require`s the chunk once it is
- * CommonJS. Other `import()` calls, like the one that loads the Ink UI (an
- * ES module with top-level await), stay as they are.
+ * CommonJS. Other `import()` calls stay as they are.
  *
  * `__load` is as long as `import`, so the sourcemap of pass 1 stays valid.
  * Every chunk the metafile says `file` imports dynamically must be replaced.

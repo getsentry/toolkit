@@ -252,6 +252,19 @@ describe("create_metric_monitor", () => {
     expect(writes).toHaveLength(1);
   });
 
+  it("explains a permission denial without the partial-creation note", async () => {
+    useCreateHandler(403);
+    const error = await create().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      name: "ApiPermissionError",
+      status: 403,
+      message: expect.stringContaining(
+        "Changing a Metric Monitor needs the alerts:write scope",
+      ),
+    });
+    expect((error as Error).message).not.toContain("partially succeeded");
+  });
+
   it("rejects a conflicting project before creating a monitor", async () => {
     const writes = useCreateHandler();
     const parsed = z.object(createMetricMonitor.inputSchema).parse(params);

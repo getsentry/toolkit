@@ -385,6 +385,32 @@ describe("createSeerError", () => {
     expect(error?.orgSlug).toBe("my-org");
   });
 
+  test.each(["scm_integration_required", "repos_not_linked"] as const)(
+    "returns %s for a 409 with that setup code",
+    (code) => {
+      const error = createSeerError(
+        409,
+        "Seer Autofix requires …",
+        "my-org",
+        code,
+      );
+      expect(error).toBeInstanceOf(SeerError);
+      expect(error?.reason).toBe(code);
+      expect(error?.orgSlug).toBe("my-org");
+    },
+  );
+
+  test("returns null for a 409 without a setup code", () => {
+    expect(
+      createSeerError(
+        409,
+        "A step is already running for this autofix run",
+        "my-org",
+        "run_in_flight",
+      ),
+    ).toBeNull();
+  });
+
   test("returns out_of_credits for a 402 with the out-of-credits code", () => {
     const error = createSeerError(
       402,
@@ -394,6 +420,23 @@ describe("createSeerError", () => {
     );
     expect(error?.reason).toBe("out_of_credits");
   });
+
+  test.each([
+    ["daily_cap_exceeded", "daily_cap_exceeded"],
+    [undefined, "out_of_credits"],
+  ] as const)(
+    "maps an out-of-credits 402 with denial reason %s to %s",
+    (denialReason, reason) => {
+      const error = createSeerError(
+        402,
+        undefined,
+        "my-org",
+        "seer_out_of_credits",
+        denialReason,
+      );
+      expect(error?.reason).toBe(reason);
+    },
+  );
 
   test("returns no_budget for a 402 with the out-of-quota code", () => {
     const error = createSeerError(

@@ -19,7 +19,7 @@
     "@sentry/cloudflare": "catalog:",
     "@sentry/toolkit-core": "workspace:*",
     "ai": "^5.0.0",
-    "hono": "^4.13.11",
+    "hono": "^4.13.16",
     "zod": "^4.6.6"
   },
   "devDependencies": {

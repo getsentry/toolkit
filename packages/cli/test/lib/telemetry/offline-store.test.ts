@@ -87,7 +87,7 @@ describe.each(["node", "wasm"] as const)(
 
       expect(claimed?.[0]).toEqual(envelope[0]);
       expect(claimed?.[1][0]).toEqual(envelope[1][0]);
-      expect(claimed?.[1][1]?.[0]).toEqual(envelope[1][1]?.[0]);
+      expect(claimed?.[1][1]?.[0]).toEqual(envelope[1][1][0]);
       expect(Buffer.from(claimed?.[1][1]?.[1] as Uint8Array)).toEqual(
         Buffer.from(bytes),
       );

@@ -200,10 +200,9 @@ export function parseInstallationMethod(value: string): InstallationMethod {
  * (e.g., Alpine Linux, Void Linux musl variant).
  *
  * Uses two heuristics in order of reliability:
- * 1. Check for `/lib/ld-musl-<arch>.so.1` — the musl dynamic linker is always
- *    at this path on musl systems. Fast stat check, no subprocess.
- * 2. Parse `ldd --version` output — musl's ldd writes "musl libc" to stderr,
+ * 1. Parse `ldd --version` output — musl's ldd writes "musl libc" to stderr,
  *    while glibc outputs "GNU C Library" to stdout.
+ * 2. If `ldd` is unavailable, check for `/lib/ld-musl-<arch>.so.1`.
  *
  * The result is cached after first call since libc cannot change at runtime.
  */
@@ -217,28 +216,24 @@ export function isMusl(): boolean {
     return cachedIsMusl;
   }
 
-  // Heuristic 1: Check for musl dynamic linker
-  const muslArch = process.arch === "x64" ? "x86_64" : "aarch64";
-  if (existsSync(`/lib/ld-musl-${muslArch}.so.1`)) {
-    cachedIsMusl = true;
-    return true;
+  // Heuristic 1: ldd --version output (musl ldd writes "musl libc" to stderr
+  // and exits non-zero, so only a spawn error means ldd is unavailable)
+  const result = spawnSync("ldd", ["--version"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (!result.error) {
+    cachedIsMusl = `${result.stdout}${result.stderr}`
+      .toLowerCase()
+      .includes("musl");
+    return cachedIsMusl;
   }
 
-  // Heuristic 2: ldd --version output (musl ldd writes "musl libc" to stderr)
-  try {
-    const result = spawnSync("ldd", ["--version"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const output =
-      Buffer.from(result.stdout).toString() +
-      Buffer.from(result.stderr).toString();
-    cachedIsMusl = output.toLowerCase().includes("musl");
-    return cachedIsMusl;
-  } catch {
-    // ldd not found or failed — assume glibc (the common case)
-    cachedIsMusl = false;
-    return false;
-  }
+  // Heuristic 2: no ldd — check for the musl dynamic linker. Only a fallback:
+  // glibc systems can have it too when the musl package is installed.
+  const muslArch = process.arch === "x64" ? "x86_64" : "aarch64";
+  cachedIsMusl = existsSync(`/lib/ld-musl-${muslArch}.so.1`);
+  return cachedIsMusl;
 }
 
 /**

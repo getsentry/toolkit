@@ -65,64 +65,34 @@ export default defineTool({
   title: "Find Dropped Events",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
-  description: [
-    "Find events dropped before they were stored in Sentry — ground-truth data-fidelity information about what was and wasn't captured.",
-    "",
-    "Events can be dropped client-side in the SDK (sample_rate, before_send) or",
-    "server-side at ingest (rate limited, over quota, filtered, invalid, abuse/spike",
-    "protection, cardinality limited). Accepted-only views (searches, aggregates,",
-    "charts) can't show this, so the data may be incomplete in ways they don't reveal",
-    "— for example, a flat or spiky chart caused entirely by drops.",
-    "",
-    "Use this tool when you need to:",
-    "- Explain why a chart is flat, lower than expected, or doesn't match what the user is sending",
-    "- Confirm the data you need is actually in Sentry (not dropped) before trusting a query, aggregate, or dashboard",
-    "- Attribute a volume anomaly to a specific drop reason (quota, spike protection, sampling, filters)",
-    "- Tell the user why their data is missing and what to do about it (raise quota, fix sampling, etc.)",
-    "",
-    "Returns dropped event volume bucketed over time, with the drop `outcome` and `reason`",
-    "for each bucket, plus the accepted volume per bucket so you can compute the dropped share.",
-    "",
-    "<examples>",
-    "find_dropped_events(organizationSlug='my-org', dataset='spans', projectSlug='my-project')",
-    "find_dropped_events(organizationSlug='my-org', dataset='logs', statsPeriod='30d', interval='1d')",
-    "find_dropped_events(organizationSlug='my-org', dataset='errors', outcome='rate_limited')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- This is independent of any search query — it reports drops for the whole project/time range.",
-    "- `outcome` is the drop kind (e.g. rate_limited, filtered); `reason` is the sub-cause (e.g. key_quota, sample_rate).",
-    "- Each bucket's `tags` classify the drop: `intentional` (user-configured, e.g. sampling or filters) vs `unintentional` (not intended, e.g. quota or abuse).",
-    "- Pass `outcome` and/or `reason` to scope the dropped side to one classification; the accepted volume is always returned in full.",
-    "- An empty `droppedEvents` list means no drops in the window — the data can be trusted.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Find events Sentry dropped before storing them (SDK sampling, filters, rate limits, quota, spike protection), as dropped and accepted volume over time by outcome and reason. Each drop is tagged intentional (sampling, filters) or unintentional (quota, abuse). Use it to explain flat, low, or missing data that searches, charts, and dashboards cannot show; no drops means the data is complete.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     dataset: z
       .enum(DROPPED_EVENTS_DATASETS)
-      .describe("Which data type to report drops for.")
+      .describe("Data type to report drops for.")
       .default("spans"),
     projectSlug: ParamProjectSlug.nullable().default(null),
     statsPeriod: z
       .string()
       .trim()
       .describe(
-        "Relative time range, e.g. '24h', '7d', '30d'. Mutually exclusive with start/end.",
+        "Relative time range such as 24h or 7d. Do not combine with start and end.",
       )
       .nullable()
       .default(null),
     start: z
       .string()
       .trim()
-      .describe("Absolute start (ISO 8601). Must be paired with end.")
+      .describe("Absolute start, ISO 8601; requires end.")
       .nullable()
       .default(null),
     end: z
       .string()
       .trim()
-      .describe("Absolute end (ISO 8601). Must be paired with start.")
+      .describe("Absolute end, ISO 8601; requires start.")
       .nullable()
       .default(null),
     interval: z
@@ -133,14 +103,14 @@ export default defineTool({
           "Must be at most '1d' and divide one day evenly, e.g. '1h', '6h', or '1d', with the range split into at most 1000 buckets. For a total over a longer range, use '1d' and sum the buckets, or omit interval to let Sentry pick.",
       })
       .describe(
-        "Bucket size, at most '1d' and dividing one day evenly, e.g. '1h', '1d'. Use '1d' and sum the buckets for longer ranges. Omit to let Sentry pick for the range.",
+        "Bucket size such as 1h or 1d, at most 1d. Omit to let Sentry pick.",
       )
       .nullable()
       .default(null),
     outcome: z
       .enum(DROP_OUTCOMES)
       .describe(
-        "Scope the dropped side to one top-level drop classification. Accepted volume is still returned in full.",
+        "Only count drops of this kind; accepted volume is always returned in full.",
       )
       .nullable()
       .default(null),
@@ -148,7 +118,7 @@ export default defineTool({
       .string()
       .trim()
       .describe(
-        "Scope the dropped side to one reason (sub-classification within an outcome, e.g. 'spike_protection'). Combine with `outcome`.",
+        "Only count drops with this sub-cause of an outcome, such as key_quota, sample_rate, or spike_protection.",
       )
       .nullable()
       .default(null),

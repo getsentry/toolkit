@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Environment variable documentation coverage.
  *
@@ -17,7 +16,7 @@
  * INTERNAL_ENV_VARS so their exclusion is explicit and reviewable.
  *
  * Usage:
- *   tsx script/check-env-coverage.ts
+ *   pnpm ts script/check-env-coverage.ts
  *
  * Exit codes:
  *   0 - Every user-facing env var read by the CLI or an installer is documented
@@ -115,7 +114,7 @@ for (const file of files) {
   const content = await readFile(file, "utf-8");
   fileContents.set(file, content);
   for (const match of content.matchAll(ENV_CONST_RE)) {
-    const value = match[2] ?? match[3];
+    const value = match.at(2) ?? match.at(3);
     if (value && isUserFacing(value)) {
       constMap.set(match[1], value);
     }
@@ -140,7 +139,7 @@ for (const [file, content] of fileContents) {
   for (const match of content.matchAll(ENV_BRACKET_RE)) {
     const ident = match[3];
     const name =
-      match[1] ?? match[2] ?? (ident ? constMap.get(ident) : undefined);
+      match.at(1) ?? match.at(2) ?? (ident ? constMap.get(ident) : undefined);
     if (name) {
       record(name, file, content, match.index);
     }

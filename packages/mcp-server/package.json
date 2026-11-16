@@ -40,11 +40,10 @@
     "dist/sentry-mcp.cjs"
   ],
   "scripts": {
-    "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate && tsx script/bundle.ts",
+    "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate && node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs script/bundle.ts",
     "test:bundle": "node --test test/bundle.test.mjs test/server-json.test.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1",
-    "tsx": "catalog:"
+    "esbuild": "^0.28.1"
   }
 }

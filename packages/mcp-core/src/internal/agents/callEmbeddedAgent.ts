@@ -114,6 +114,7 @@ export async function callEmbeddedAgent<TOutput>({
   tools,
   schema,
   isReadyToFinalize,
+  abortSignal,
 }: {
   system: string;
   prompt: string;
@@ -121,6 +122,8 @@ export async function callEmbeddedAgent<TOutput>({
   schema: z.ZodType<TOutput>;
   /** Whether this step produced a result that permits a final response. */
   isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
+  /** Cancels the model calls, such as when the MCP client cancels the tool call. */
+  abortSignal?: AbortSignal;
 }): Promise<EmbeddedAgentResult<TOutput>> {
   const capturedToolCalls: ToolCall[] = [];
 
@@ -144,6 +147,7 @@ export async function callEmbeddedAgent<TOutput>({
       system,
       prompt,
       tools,
+      abortSignal,
       stopWhen: ({ steps }) =>
         steps.length >= MAX_WORK_STEPS && !shouldAllowFinalResponseStep(steps),
       prepareStep: ({ steps }) => {
@@ -198,6 +202,12 @@ export async function callEmbeddedAgent<TOutput>({
       toolCalls: capturedToolCalls,
     };
   } catch (error: unknown) {
+    // A cancelled call is not an agent failure. Surface the abort reason so the
+    // tool stops, instead of filing an issue or falling back to the raw query.
+    if (abortSignal?.aborted) {
+      throw abortSignal.reason;
+    }
+
     // Rescue NoObjectGeneratedError: try to parse the raw LLM text through the schema
     // (schema defaults like .default("") fill missing fields)
     if (NoObjectGeneratedError.isInstance(error)) {

@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Validate doc fragment files.
  *
@@ -16,8 +15,8 @@
  *      with `<!-- allow-commands: <reason> -->` (see fragment-commands.ts)
  *
  * Usage:
- *   tsx script/check-fragments.ts            # Warnings for missing subcommands
- *   tsx script/check-fragments.ts --strict   # Errors for missing subcommands
+ *   pnpm ts script/check-fragments.ts            # Warnings for missing subcommands
+ *   pnpm ts script/check-fragments.ts --strict   # Errors for missing subcommands
  */
 
 import { readdirSync } from "node:fs";

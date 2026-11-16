@@ -402,7 +402,7 @@ async function attemptPoll(
       case "denied":
         return {
           status: "error",
-          message: "Authorization was denied. Please try again.",
+          message: `You denied the authorization request. Y tho? Run '${getLoginCommand()}' if you change your mind.`,
         };
       case "unexpected":
         return { status: "error", message: error.message };
