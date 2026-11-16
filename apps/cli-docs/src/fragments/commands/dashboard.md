@@ -28,35 +28,46 @@ position. Explicitly saved empty transformation lists appear as `none`.
 Servers that omit transformation settings show an unavailable notice for each
 query. Widgets whose queries report no saved transformations show no extra output.
 
-Widget add and edit accept `--transformations` as a JSON object. Keys are
-zero-based aggregate positions in the first query. Arrays contain transformations
-in execution order. Each supplied array replaces that position's transformations.
-Omitted positions preserve saved values. An empty array clears a position.
-An empty object changes nothing.
+`dashboard view` and `dashboard widget edit` also show each transformed series
+of the first query the way `--transform` writes it.
 
-For example, `--transformations '{"0":["fill(linear)","smooth(ema,7)"],"1":[]}'`
-sets ordered transformations on position 0 and clears position 1.
+## Transformations
 
-Transformations support `spans`, `logs`, and `tracemetrics` datasets with `line`,
-`area`, or `bar` displays. Each axis accepts one `fill` transformation and one
-`smooth` transformation, in either order. Supported transformations are
-`fill(zero)`, `fill(linear)`, `fill(locf)`, `smooth(sma,N)`, `smooth(ema,N)`,
-`smooth(ema,N,A)`, `smooth(asap)`, and `smooth(asap,N)`. `N` is a positive integer
-window size. EMA's optional `A` is a factor greater than 0 and at most 1. ASAP
-selects its window automatically when `N` is omitted.
+Write transformations around a `--query` aggregate. Calls nest, and the
+innermost runs first: `--query 'smooth(fill(count, linear), ema, 7)'` fills
+gaps in `count()`, then smooths the result. Add `--query count` next to it to
+chart the raw series too.
 
-Changing the ordered aggregate list with `--query` requires explicit
-transformations or `[]` for every saved transformed position. This prevents
-transformations from silently moving to another aggregate, including a duplicate.
-Use `[]` to acknowledge a removed position. Positions without saved
-transformations need no correction, except removed positions with saved empty
-arrays.
+| Transformation | Does |
+|----------------|------|
+| `fill(<series>, zero)` | Fills gaps with 0 |
+| `fill(<series>, linear)` | Interpolates across gaps |
+| `fill(<series>, locf)` | Carries the last value forward |
+| `smooth(<series>, sma, N)` | Simple moving average over `N` points |
+| `smooth(<series>, ema, N[, A])` | Exponential moving average; `A` is in (0, 1] |
+| `smooth(<series>, asap[, N])` | ASAP; picks a window when `N` is omitted |
 
-Saving nonempty transformation lists requires the organization feature.
-Unrelated edits preserve saved transformations when the feature is disabled.
-Explicit clears remove the selected axes from the saved map. Clearing every
-transformed axis sends an empty map. Changing to an unsupported display or dataset
-requires clearing transformations from every query.
+A series takes at most one `fill` and one `smooth`, in either order. The
+aggregate inside takes the same shorthand as `--query` (`count`,
+`p95:span.duration`). Transformations need the `spans`, `logs`, or
+`tracemetrics` dataset with a `line`, `area`, or `bar` display. Shell completion
+completes each part: aggregates, `fill(` and `smooth(`, then their arguments.
+
+`widget edit --query` replaces the series list. A series written without
+transformations keeps the ones it had: the n-th `count()` keeps those of the
+n-th saved `count()`, wherever it moves. A removed series takes its
+transformations with it, and the command says so.
+
+`widget edit --transform` sets one series' transformations without restating
+`--query`. It names the series by its aggregate, and a bare aggregate clears
+them. When the first query has the same aggregate more than once, add `#<n>`
+to pick one, counting from 1: `--transform 'smooth(count#2, sma, 5)'` smooths
+the second `count()`. Completion offers the widget's own series once its
+dashboard has been viewed or edited.
+
+Saving transformations requires the organization feature. Edits that leave
+them alone send none, so they work without it. Changing to a dataset or display
+without transformations requires clearing them from every query first.
 
 ## Query Shorthand
 

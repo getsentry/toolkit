@@ -1,240 +1,318 @@
 import {
-  array,
-  check,
-  digits,
-  gtValue,
-  literal,
-  maxValue,
-  minValue,
-  object,
-  optional,
-  picklist,
-  pipe,
-  record,
-  regex,
-  safeInteger,
-  safeParse,
-  strictTuple,
-  string,
-  toNumber,
-  union,
-  variant,
-} from "valibot";
-import { textParser } from "../../lib/completion-target.js";
+  parse,
+  type SeriesSyntax,
+  SyntaxError as SeriesSyntaxError,
+} from "../../generated/series-expression-grammar.js";
+import {
+  formatSeriesExpression,
+  seriesTargets,
+  TRANSFORMATION_DATASETS,
+  TRANSFORMATION_DISPLAYS,
+} from "../../lib/dashboard-series.js";
 import { ValidationError } from "../../lib/errors.js";
-import type { DashboardWidget } from "../../types/dashboard.js";
-import type { WidgetQueryFlags } from "./resolve.js";
+import { logger } from "../../lib/logger.js";
+import { type DashboardWidget, parseAggregate } from "../../types/dashboard.js";
 
-/** Ordered transformation replacements by zero-based aggregate position. */
-export type WidgetTransformationFlags = {
-  readonly transformations?: string | Record<string, string[]>;
-};
+const log = logger.withTag("dashboard");
 
-const transformationsSchema = record(string(), array(string()));
-const integerStringSchema = pipe(
-  string(),
-  digits(),
-  check((value) => value === "0" || !value.startsWith("0")),
-  toNumber(),
-  safeInteger(),
-);
-const axisIndexSchema = pipe(integerStringSchema, minValue(0));
-const windowSchema = pipe(integerStringSchema, minValue(1));
-const alphaSchema = pipe(
-  string(),
-  regex(/^(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i),
-  toNumber(),
-  gtValue(0),
-  maxValue(1),
-);
-const transformationSchema = variant("name", [
-  object({
-    name: literal("fill"),
-    arguments: strictTuple([picklist(["zero", "linear", "locf"])]),
-  }),
-  object({
-    name: literal("smooth"),
-    arguments: union([
-      strictTuple([literal("sma"), windowSchema]),
-      strictTuple([literal("ema"), windowSchema, optional(alphaSchema)]),
-      strictTuple([literal("asap"), optional(windowSchema)]),
-    ]),
-  }),
-]);
+/** Transformations by zero-based aggregate position, as Sentry stores them. */
+type TransformationMap = Record<string, string[]>;
 
-function invalidTransformations(message: string): never {
-  throw new ValidationError(message, "transformations");
+/** The flag a series came from, for error messages. */
+type SeriesFlag = "query" | "transform";
+
+/**
+ * Parse one `--query` or `--transform` value: an aggregate, maybe wrapped
+ * in `fill(…)` and `smooth(…)` calls (see grammar/series-expression.pegjs).
+ *
+ * @throws {ValidationError} With the position of the first error
+ */
+export function parseSeriesExpression(
+  input: string,
+  flag: SeriesFlag,
+): SeriesSyntax {
+  try {
+    return parse(input);
+  } catch (error) {
+    if (!(error instanceof SeriesSyntaxError)) {
+      throw error;
+    }
+    const column = error.location.start.column;
+    throw new ValidationError(
+      `Invalid --${flag} "${input}": ${error.message}\n\n` +
+        `  ${input}\n  ${" ".repeat(column - 1)}^\n\n` +
+        "Wrap an aggregate in transformations, innermost first: " +
+        "fill(<series>, zero|linear|locf), smooth(<series>, sma, N), " +
+        "smooth(<series>, ema, N[, A]), or smooth(<series>, asap[, N]). " +
+        "N is a positive window size; A is greater than 0 and at most 1.",
+      flag,
+    );
+  }
 }
 
-function validateTransformation(expression: string): string {
-  const match = /^(\w+)\(([^()\r\n]*)\)$/.exec(expression);
-  const parsed = safeParse(transformationSchema, {
-    name: match?.[0] === expression ? match[1] : undefined,
-    arguments: match?.[2]?.split(",").map((arg) => arg.trim()) ?? [],
+/**
+ * Parse `--query` values into the aggregates the widget builders take and
+ * the transformations written around them.
+ *
+ * @returns `undefined` when `--query` was not given
+ */
+export function parseQuerySeries(
+  query: readonly string[] | undefined,
+): SeriesSyntax[] | undefined {
+  return query?.map((value) => {
+    const series = parseSeriesExpression(value, "query");
+    if (series.occurrence !== undefined) {
+      throw new ValidationError(
+        `--query "${value}": #${series.occurrence} picks one of several equal series for --transform. ` +
+          "--query lists every series in order, so leave it out.",
+        "query",
+      );
+    }
+    return series;
   });
-  if (parsed.success) {
-    return parsed.output.name;
-  }
-  return invalidTransformations(
-    `Invalid transformation "${expression}". Use fill(zero|linear|locf), smooth(sma,N), smooth(ema,N[,A]), or smooth(asap[,N]). N must be a positive integer and A must be greater than 0 and at most 1.`,
+}
+
+/** Positions of each aggregate, in order. */
+function positionsByAggregate(
+  aggregates: readonly string[],
+): Map<string, number[]> {
+  const positions = new Map<string, number[]>();
+  aggregates.forEach((aggregate, index) => {
+    positions.set(aggregate, [...(positions.get(aggregate) ?? []), index]);
+  });
+  return positions;
+}
+
+/** The map without empty lists, which mean the same as no entry. */
+function withoutEmpty(map: Readonly<TransformationMap>): TransformationMap {
+  return Object.fromEntries(
+    Object.entries(map).filter(([, steps]) => steps.length > 0),
   );
 }
 
-/** Parse a JSON axis patch. Empty arrays clear axes and omitted axes preserve them. */
-export function parseTransformations(value: string): Record<string, string[]> {
-  let input: unknown;
-  try {
-    input = JSON.parse(value);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return invalidTransformations(
-      `Expected a JSON object, for example '{"0":["fill(linear)"],"1":[]}'. ${detail}`,
-    );
-  }
-  if (typeof input === "object" && input !== null) {
-    for (const index of Object.keys(input)) {
-      if (!safeParse(axisIndexSchema, index).success) {
-        invalidTransformations(
-          `Invalid aggregate position "${index}". Use a zero-based integer such as "0" or "1".`,
-        );
-      }
-    }
-  }
-  const parsed = safeParse(transformationsSchema, input);
-  if (!parsed.success) {
-    return invalidTransformations(
-      'Expected a JSON object mapping aggregate positions to arrays of transformation strings, for example \'{"0":["fill(linear)"],"1":[]}\'.',
-    );
-  }
-  for (const [index, axisTransformations] of Object.entries(parsed.output)) {
-    const kinds = axisTransformations.map(validateTransformation);
-    if (
-      axisTransformations.length > 2 ||
-      new Set(kinds).size !== axisTransformations.length
-    ) {
-      invalidTransformations(
-        `Aggregate position ${index} accepts at most one fill and one smooth transformation, in either order.`,
-      );
-    }
-  }
-  return parsed.output;
+function sameTransformations(
+  a: Readonly<TransformationMap>,
+  b: Readonly<TransformationMap>,
+): boolean {
+  const left = withoutEmpty(a);
+  const right = withoutEmpty(b);
+  return (
+    Object.keys(left).length === Object.keys(right).length &&
+    Object.entries(left).every(
+      ([key, steps]) =>
+        right[key]?.length === steps.length &&
+        steps.every((step, index) => right[key]?.[index] === step),
+    )
+  );
 }
 
-export const WIDGET_TRANSFORMATION_FLAGS = {
-  transformations: {
-    kind: "parsed",
-    parse: textParser(parseTransformations),
-    brief:
-      'JSON axis patch, e.g. \'{"0":["fill(linear)","smooth(ema,7)"],"1":[]}\'. Omitted axes preserve saved transformations; [] clears an axis',
-    optional: true,
-  },
-} as const;
+/**
+ * Transformations of the new aggregate list. A series written with
+ * transformations gets exactly those. A bare one keeps what the same
+ * series had: the n-th `count()` inherits from the n-th saved `count()`,
+ * wherever either sits in its list. Saved series that are gone take their
+ * transformations with them, which is logged.
+ */
+function rebaseTransformations(
+  series: readonly SeriesSyntax[],
+  aggregates: readonly string[],
+  savedAggregates: readonly string[],
+  saved: Readonly<TransformationMap>,
+): TransformationMap {
+  const savedPositions = positionsByAggregate(savedAggregates);
+  const seen = new Map<string, number>();
+  const matched = new Set<number>();
+  const map: TransformationMap = {};
+  series.forEach((entry, index) => {
+    const aggregate = aggregates[index] ?? "";
+    const occurrence = seen.get(aggregate) ?? 0;
+    seen.set(aggregate, occurrence + 1);
+    const from = savedPositions.get(aggregate)?.[occurrence];
+    if (from !== undefined) {
+      matched.add(from);
+    }
+    const steps =
+      entry.transformations.length > 0
+        ? entry.transformations
+        : from === undefined
+          ? []
+          : (saved[String(from)] ?? []);
+    if (steps.length > 0) {
+      map[String(index)] = [...steps];
+    }
+  });
+  for (const [key, steps] of Object.entries(saved)) {
+    const position = Number(key);
+    if (steps.length > 0 && !matched.has(position)) {
+      const aggregate = savedAggregates[position];
+      log.warn(
+        aggregate === undefined
+          ? `Dropped transformations ${steps.join(" → ")} saved for aggregate ${position + 1}, which the widget no longer has.`
+          : `Removed ${formatSeriesExpression(aggregate, steps)}: --query no longer lists ${aggregate} (aggregate ${position + 1}).`,
+      );
+    }
+  }
+  return map;
+}
 
-export const WIDGET_TRANSFORMATION_HELP =
-  "Transformations (--transformations) target zero-based aggregate positions in the first query.\n" +
-  "Pass a JSON object mapping positions to arrays of ordered transformations.\n" +
-  "Each array replaces that axis's transformations.\n" +
-  "Omitted axes preserve saved values; [] clears an axis; {} changes nothing.\n" +
-  "Supported datasets are spans, logs, and tracemetrics with line, area, or bar displays.\n" +
-  "When changing --query, explicitly set or clear every saved transformed position.\n" +
-  "A removed position can be acknowledged with [].";
+/**
+ * Where a `--transform` value points in the aggregate list: the only series
+ * with its aggregate, or the `#n`-th of several.
+ */
+function resolveTransformTarget(
+  input: string,
+  target: SeriesSyntax,
+  aggregates: readonly string[],
+  map: Readonly<TransformationMap>,
+): number {
+  const aggregate = parseAggregate(target.aggregate);
+  const positions = positionsByAggregate(aggregates).get(aggregate) ?? [];
+  if (positions.length === 0) {
+    const listed =
+      aggregates.length > 0 ? aggregates.join(", ") : "no aggregates";
+    throw new ValidationError(
+      `--transform "${input}": the widget has no ${aggregate} series. Its first query has ${listed}.`,
+      "transform",
+    );
+  }
+  if (target.occurrence !== undefined) {
+    const position = positions[target.occurrence - 1];
+    if (position === undefined) {
+      throw new ValidationError(
+        `--transform "${input}": the widget has ${positions.length} ${aggregate} series, so #${target.occurrence} names none of them.`,
+        "transform",
+      );
+    }
+    return position;
+  }
+  if (positions.length > 1) {
+    const choices = positions.map((position, index) => {
+      const current = formatSeriesExpression(
+        aggregate,
+        map[String(position)] ?? [],
+      );
+      return `  ${formatSeriesExpression(`${target.aggregate}#${index + 1}`, target.transformations)}  (aggregate ${position + 1}, now ${current})`;
+    });
+    throw new ValidationError(
+      `--transform "${input}": the widget has ${positions.length} ${aggregate} series. ` +
+        `Add #<n> to pick one:\n${choices.join("\n")}`,
+      "transform",
+    );
+  }
+  return positions[0] as number;
+}
 
-/** Merge explicit axis edits while keeping untouched saved queries on the omission path. */
-export function updateWidgetTransformations(
+function hasSteps(map: Readonly<TransformationMap> | undefined): boolean {
+  return Object.values(map ?? {}).some((steps) => steps.length > 0);
+}
+
+/** What the widget commands read to set transformations. */
+export type SeriesTransformationInput = {
+  /** Parsed `--query` values; `undefined` when not given. */
+  readonly series?: readonly SeriesSyntax[];
+  /** `--transform` values (edit only). */
+  readonly transform?: readonly string[];
+  /** Whether `--dataset` or `--display` was given. */
+  readonly retyped?: boolean;
+};
+
+/**
+ * Set the transformations of the widget's first query from `--query` and
+ * `--transform`, keeping each saved series' transformations attached to it
+ * when `--query` reorders or changes the aggregates.
+ *
+ * Sends the map only when it changed: Sentry keeps the saved one for a query
+ * whose ID is sent without it.
+ *
+ * @param widget - Widget built from the flags, with the new aggregates
+ * @param original - The widget as saved, when editing
+ */
+export function applySeriesTransformations(
   widget: DashboardWidget,
-  flags: WidgetQueryFlags & WidgetTransformationFlags,
+  input: SeriesTransformationInput,
   original?: DashboardWidget,
 ): DashboardWidget {
-  const patch =
-    typeof flags.transformations === "string"
-      ? parseTransformations(flags.transformations)
-      : flags.transformations;
-  const savedQuery = original?.queries?.[0];
   const query = widget.queries?.[0];
   const aggregates = query?.aggregates ?? [];
-  const savedAggregates = savedQuery?.aggregates ?? [];
+  const savedQuery = original?.queries?.[0];
   const saved = savedQuery?.transformations ?? {};
-  const aggregatesChanged =
-    flags.query !== undefined &&
-    (aggregates.length !== savedAggregates.length ||
-      aggregates.some(
-        (aggregate, index) => aggregate !== savedAggregates[index],
-      ));
 
-  if (aggregatesChanged) {
-    for (const [index, axisTransformations] of Object.entries(saved)) {
-      if (
-        (axisTransformations.length > 0 ||
-          Number(index) >= aggregates.length) &&
-        !Object.hasOwn(patch ?? {}, index)
-      ) {
-        invalidTransformations(
-          `Changing --query requires explicit transformations or [] for saved aggregate position ${index}. Pass --transformations to correct its association, including removed positions.`,
-        );
-      }
+  let map: TransformationMap = input.series
+    ? rebaseTransformations(
+        input.series,
+        aggregates,
+        savedQuery?.aggregates ?? [],
+        saved,
+      )
+    : { ...saved };
+
+  const inline = new Set(
+    (input.series ?? []).flatMap((entry, index) =>
+      entry.transformations.length > 0 ? [index] : [],
+    ),
+  );
+  const transformed = new Map<number, string>();
+  for (const value of input.transform ?? []) {
+    const target = parseSeriesExpression(value, "transform");
+    const position = resolveTransformTarget(value, target, aggregates, map);
+    const earlier = transformed.get(position);
+    if (earlier !== undefined || inline.has(position)) {
+      throw new ValidationError(
+        `--transform "${value}" sets aggregate ${position + 1}, which ${earlier === undefined ? "--query already transforms" : `--transform "${earlier}" already sets`}. ` +
+          "Give each series' transformations once.",
+        "transform",
+      );
     }
+    transformed.set(position, value);
+    map = { ...map, [String(position)]: [...target.transformations] };
   }
+  map = withoutEmpty(map);
 
-  const edited = patch !== undefined && Object.keys(patch).length > 0;
-  let transformations = saved;
-  if (edited) {
-    transformations = Object.fromEntries(
-      Object.entries(saved).filter(
-        ([, axisTransformations]) => axisTransformations.length > 0,
-      ),
-    );
-    for (const [index, axisTransformations] of Object.entries(patch)) {
-      const axis = Number(index);
-      if (
-        axis >= aggregates.length &&
-        !(axisTransformations.length === 0 && axis < savedAggregates.length)
-      ) {
-        invalidTransformations(
-          `Aggregate position ${index} is out of range for ${aggregates.length} aggregate(s). Use a position from --query; [] may also clear a removed saved position.`,
-        );
-      }
-      if (axisTransformations.length === 0) {
-        delete transformations[index];
-      } else {
-        transformations[index] = axisTransformations;
-      }
-    }
-  }
-
-  if (edited || flags.dataset !== undefined || flags.display !== undefined) {
-    const hasTransformations =
-      Object.values(transformations).some(
-        (axisTransformations) => axisTransformations.length > 0,
-      ) ||
-      (original?.queries
-        ?.slice(1)
-        .some((remaining) =>
-          Object.values(remaining.transformations ?? {}).some(
-            (axisTransformations) => axisTransformations.length > 0,
-          ),
-        ) ??
-        false);
+  const changed = !sameTransformations(map, saved);
+  if (changed || input.retyped) {
+    const transformedElsewhere = (original?.queries ?? [])
+      .slice(1)
+      .some((remaining) => hasSteps(remaining.transformations));
     if (
-      hasTransformations &&
+      (hasSteps(map) || transformedElsewhere) &&
       !(
-        ["spans", "logs", "tracemetrics"].includes(widget.widgetType ?? "") &&
-        ["line", "area", "bar"].includes(widget.displayType ?? "")
+        TRANSFORMATION_DATASETS.includes(widget.widgetType ?? "") &&
+        TRANSFORMATION_DISPLAYS.includes(widget.displayType ?? "")
       )
     ) {
-      invalidTransformations(
-        "Transformations require dataset spans, logs, or tracemetrics and display line, area, or bar. Choose a supported combination or clear the saved transformations before changing dataset or display. Transformation flags edit only the first query.",
+      const targets = seriesTargets(aggregates);
+      const clear = Object.keys(map)
+        .map((key) => `--transform '${targets[Number(key)] ?? key}'`)
+        .join(" ");
+      throw new ValidationError(
+        `Transformations need dataset ${TRANSFORMATION_DATASETS.join(", ")} and display ${TRANSFORMATION_DISPLAYS.join(", ")}. ` +
+          "Choose a supported combination, or clear the transformations first" +
+          (clear ? `: ${clear}` : "") +
+          "." +
+          (transformedElsewhere
+            ? " The widget's other queries have transformations too, which these flags cannot change: they edit only the first query."
+            : ""),
+        "transform",
       );
     }
   }
 
-  if (!(edited && query)) {
+  if (!(changed && query)) {
     return widget;
   }
   return {
     ...widget,
     queries: [
-      { ...query, transformations },
+      { ...query, transformations: map },
       ...(widget.queries?.slice(1) ?? []),
     ],
   };
 }
+
+export const WIDGET_SERIES_HELP =
+  "Transformations wrap a --query aggregate and run innermost first:\n" +
+  "  fill(count, zero)                       fill gaps with zero, linear, or locf\n" +
+  "  smooth(count, ema, 7)                   sma,N · ema,N[,A] · asap[,N]\n" +
+  "  smooth(fill(p95:span.duration, linear), ema, 7)\n" +
+  "Each series takes at most one fill and one smooth. Transformations need the\n" +
+  "spans, logs, or tracemetrics dataset with a line, area, or bar display.";
