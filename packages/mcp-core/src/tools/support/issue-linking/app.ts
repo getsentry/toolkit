@@ -300,6 +300,28 @@ async function resolveFields(
   return values;
 }
 
+/**
+ * Sentry answers 404 "Could not find requested organization" when the token's
+ * user is not an org member, such as an internal integration's proxy user, even
+ * though the caller already read the issue in that org.
+ */
+async function listInstallations(
+  api: AppIssueLinkApi,
+  params: AppIssueLinkParams,
+) {
+  try {
+    return await api.listSentryAppInstallations(params);
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 404) {
+      throw new UserInputError(
+        `Sentry returned 404 when listing Sentry App installations for organization '${params.organizationSlug}'. Sentry only lists Sentry App installations for organization members, so integration tokens get this 404 even when they can read the issue. Link Sentry App issues with a user token or an OAuth sign-in; a different issue ID or URL won't help.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 /** Prepare a complete form even on retries, since an existing association may disappear. */
 export async function linkAppIssue(
   api: AppIssueLinkApi,
@@ -309,7 +331,7 @@ export async function linkAppIssue(
   if (!appSlug)
     throw new UserInputError("Provide appSlug for this external issue URL.");
   const [installations, components, links] = await Promise.all([
-    api.listSentryAppInstallations(params),
+    listInstallations(api, params),
     api.listSentryAppComponents(params),
     api.getIssueExternalLinks(params),
   ]);

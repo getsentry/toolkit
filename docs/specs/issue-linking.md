@@ -35,6 +35,9 @@ inferred from their URLs. `link_issue` accepts optional `fields` for additional
 values required by the App's issue-link form. The client reads the installed
 component and resolves its form choices before invoking its link callback.
 Missing or ambiguous fields are reported without submitting the callback.
+Sentry lists App installations only for organization members. An integration
+token gets a 404 "Could not find requested organization" there even when it can
+read the issue. The tool reports that a user token or OAuth sign-in is needed.
 Supported fields are single-value selects, text, and textarea. Other field types
 and multi-select fields are reported as unsupported.
 

@@ -437,6 +437,22 @@ describe("linkAppIssue", () => {
     );
     expect(actions).toBe(1);
   });
+
+  it("explains the installation-list 404 that tokens without org membership get", async () => {
+    mockDiscovery();
+    // Sentry's response to an internal integration token for an org it can read.
+    mswServer.use(
+      http.get(`${base}/organizations/example/sentry-app-installations/`, () =>
+        HttpResponse.json(
+          { detail: "Could not find requested organization" },
+          { status: 404 },
+        ),
+      ),
+    );
+    await expect(linkAppIssue(api, params)).rejects.toThrow(
+      "Sentry only lists Sentry App installations for organization members",
+    );
+  });
 });
 
 describe("unlinkAppIssue", () => {
