@@ -64,6 +64,18 @@ curl https://cli.sentry.dev/install -fsS | SENTRY_INIT=1 bash
 The installer reports its own errors to Sentry. Set `SENTRY_CLI_NO_TELEMETRY=1`
 to turn this off; the CLI honors the same variable.
 
+When Sentry's release registry can't be reached, the install script looks up
+the release on GitHub instead. CI runners that share an IP address often hit
+GitHub's limit for anonymous requests, so the script authenticates those
+requests with `GITHUB_TOKEN` (or `GH_TOKEN`) when one is set. GitHub Actions
+doesn't export the token by default; pass it to the install step:
+
+```yaml
+- run: curl https://cli.sentry.dev/install -fsS | bash
+  env:
+    GITHUB_TOKEN: ${{ github.token }}
+```
+
 ### Verify the Install Script
 
 Each stable release attaches `install` and `install.ps1` to its
