@@ -190,6 +190,27 @@ describe("issue explain multiple IDs", () => {
     ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
   });
 
+  test("throws daily_cap_exceeded when Sentry refuses the analysis for the daily limit", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockRejectedValue(
+      new ApiError(
+        "Failed to start root cause analysis: 402 Payment Required",
+        402,
+        "Your organization does not have enough credits to start an Autofix run.",
+        undefined,
+        { code: "seer_out_of_credits", denialReason: "daily_cap_exceeded" },
+      ),
+    );
+
+    const func = await explainCommand.loader();
+    await expect(
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
+    ).rejects.toMatchObject({
+      reason: "daily_cap_exceeded",
+      orgSlug: "test-org",
+    });
+  });
+
   test("throws repos_not_linked when Sentry refuses the analysis with a 409", async () => {
     resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
     analyzeSpy.mockRejectedValue(

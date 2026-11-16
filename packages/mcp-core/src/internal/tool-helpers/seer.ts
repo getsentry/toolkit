@@ -92,6 +92,9 @@ export const SEER_START_OUT_OF_CREDITS_MESSAGE =
 export const SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE =
   "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
 
+const SEER_START_DAILY_CAP_MESSAGE =
+  "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.";
+
 const SEER_NO_QUOTA_MESSAGE =
   "Your organization does not have enough Seer quota to start an Autofix run.";
 
@@ -105,7 +108,9 @@ export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
     isPlainObject(responseBody) &&
     responseBody.code === "seer_out_of_credits"
   ) {
-    return SEER_START_OUT_OF_CREDITS_MESSAGE;
+    return responseBody.denialReason === "daily_cap_exceeded"
+      ? SEER_START_DAILY_CAP_MESSAGE
+      : SEER_START_OUT_OF_CREDITS_MESSAGE;
   }
   return SEER_NO_QUOTA_MESSAGE;
 }

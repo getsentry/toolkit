@@ -451,6 +451,36 @@ describe("analyze_issue_with_seer", () => {
       "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
     ],
     [
+      "out of credits, not enough credits",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: "not_enough_credits",
+      },
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+    ],
+    [
+      "out of credits, null denial reason",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: null,
+      },
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+    ],
+    [
+      "daily spend limit reached",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: "daily_cap_exceeded",
+      },
+      "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.",
+    ],
+    [
       "out of quota",
       { detail: "No budget for Seer Autofix.", code: "seer_out_of_quota" },
       "Your organization does not have enough Seer quota to start an Autofix run.",

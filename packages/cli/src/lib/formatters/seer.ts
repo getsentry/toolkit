@@ -11,7 +11,12 @@ import type {
   RootCause,
   SolutionArtifact,
 } from "../../types/seer.js";
-import { ApiError, SeerError, type SeerErrorReason } from "../errors.js";
+import {
+  type ApiDenialReason,
+  ApiError,
+  SeerError,
+  type SeerErrorReason,
+} from "../errors.js";
 import { cyan } from "./colors.js";
 import { filterFields } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
@@ -288,6 +293,7 @@ const SETUP_REQUIRED_REASONS: readonly SeerErrorReason[] = [
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
  * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError if the status code indicates a Seer-specific error, null otherwise
  */
 export function createSeerError(
@@ -295,10 +301,16 @@ export function createSeerError(
   detail?: string,
   orgSlug?: string,
   code?: string,
+  denialReason?: ApiDenialReason,
 ): SeerError | null {
   if (status === 402) {
+    if (code !== OUT_OF_CREDITS_CODE) {
+      return new SeerError("no_budget", orgSlug);
+    }
     return new SeerError(
-      code === OUT_OF_CREDITS_CODE ? "out_of_credits" : "no_budget",
+      denialReason === "daily_cap_exceeded"
+        ? "daily_cap_exceeded"
+        : "out_of_credits",
       orgSlug,
     );
   }
@@ -333,6 +345,7 @@ export function createSeerError(
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
  * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError for Seer-specific errors, or ApiError for other API errors
  */
 export function handleSeerApiError(
@@ -340,8 +353,15 @@ export function handleSeerApiError(
   detail?: string,
   orgSlug?: string,
   code?: string,
+  denialReason?: ApiDenialReason,
 ): Error {
-  const seerError = createSeerError(status, detail, orgSlug, code);
+  const seerError = createSeerError(
+    status,
+    detail,
+    orgSlug,
+    code,
+    denialReason,
+  );
   if (seerError) {
     return seerError;
   }
