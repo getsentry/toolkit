@@ -67,6 +67,8 @@ When adding a package, always use `pnpm add -D <package>` (the `-D` flag).
 
 When the `@sentry/api` SDK provides types for an API response, import them directly from `@sentry/api` instead of creating redundant Valibot schemas in `src/types/sentry.ts`.
 
+Call Sentry API routes through the generated `@sentry/api` operations. The `sentry-cli/no-manual-api-request` lint rule rejects `apiRequest*` and `customFetch` in `src/`. A route that has no generated operation, or a request to a non-API host, goes in the rule's `MANUAL_API_REQUEST_EXCEPTIONS` list with a one-line reason.
+
 ## Rules: Use Node.js APIs
 
 **CRITICAL**: This project runs on Node.js. Use Node.js standard-library
