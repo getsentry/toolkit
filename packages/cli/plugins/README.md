@@ -75,7 +75,8 @@ To regenerate after modifying commands:
 pnpm run generate:docs
 ```
 
-CI will auto-commit updated skill files when they are stale.
+Commit the regenerated files with your change. CI regenerates them and fails
+when the committed copies are stale.
 
 ## License
 
