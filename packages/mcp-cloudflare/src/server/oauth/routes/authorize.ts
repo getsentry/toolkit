@@ -1,10 +1,11 @@
 import {
   AuthorizationError,
   type AuthRequest,
+  CimdFetchError,
 } from "@cloudflare/workers-oauth-provider";
 import * as Sentry from "@sentry/cloudflare";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { SCOPES } from "../../../constants";
 import {
   getRememberedSkillsForClient,
@@ -15,6 +16,7 @@ import { resolveClientFamilyFromName } from "../../lib/client-family";
 import { redirectUriHasUserInfo } from "../../lib/html-utils";
 import { isRegisteredRedirectUri } from "../../lib/redirect-uri";
 import type { Env } from "../../types";
+import { classifyClientMetadataFailure } from "../client-metadata-failure";
 import { SENTRY_AUTH_URL } from "../constants";
 import {
   createAuthorizationErrorRedirect,
@@ -67,6 +69,54 @@ async function redirectToUpstream(
     status: 302,
     headers: responseHeaders,
   });
+}
+
+function getUrlHost(value: string): string | undefined {
+  try {
+    return new URL(value).host;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Renders a failure to resolve a CIMD client's metadata document locally.
+ * Without client metadata the redirect URI cannot be validated, so the error
+ * is never relayed to the client (CIMD draft §6.1). Returns undefined for
+ * unclassified failures so they keep reaching Sentry.
+ */
+function createClientMetadataFailureResponse(
+  c: Context<{ Bindings: Env }>,
+  error: unknown,
+): Response | undefined {
+  if (!(error instanceof CimdFetchError)) {
+    return undefined;
+  }
+  const failure = classifyClientMetadataFailure(error);
+  if (!failure) {
+    return undefined;
+  }
+
+  logWarn("OAuth client metadata could not be resolved", {
+    loggerScope: ["cloudflare", "oauth", "authorize"],
+    extra: {
+      clientIdHost: getUrlHost(error.metadataUrl),
+      failureClass: failure.failureClass,
+      failureReason: failure.reason,
+      metadataStatus: failure.status,
+    },
+  });
+
+  if (failure.failureClass === "transient") {
+    return c.text(
+      "Client metadata is temporarily unavailable. Try again later.",
+      503,
+    );
+  }
+  return c.text(
+    "Invalid client_id: client metadata could not be retrieved or is invalid",
+    400,
+  );
 }
 
 // Export Hono app for /authorize endpoints
@@ -136,6 +186,10 @@ export default new Hono<{ Bindings: Env }>()
         }
 
         return c.text(errorMessage, 400);
+      }
+      const clientMetadataFailure = createClientMetadataFailureResponse(c, err);
+      if (clientMetadataFailure) {
+        return clientMetadataFailure;
       }
       // Re-throw other errors to be captured by Sentry
       throw err;
