@@ -605,7 +605,7 @@
       },
       {
         "name": "find_dsns",
-        "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.\n\nUse this tool when you need to:\n- Retrieve a SENTRY_DSN for a specific project\n- Configure a Sentry SDK for an existing project\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If only one parameter is provided, and it could be either `organizationSlug` or `projectSlug`, its probably `organizationSlug`, but if you're really uncertain you might want to call `find_organizations()` first.\n</hints>",
+        "description": "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Each DSN includes its status and rate limit.\n\nUse this tool when you need to:\n- Retrieve a SENTRY_DSN for a specific project\n- Configure a Sentry SDK for an existing project\n- Check whether a DSN is active or what rate limit it has\n\n<hints>\n- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.\n- If only one parameter is provided, and it could be either `organizationSlug` or `projectSlug`, its probably `organizationSlug`, but if you're really uncertain you might want to call `find_organizations()` first.\n</hints>",
         "requiredScopes": ["project:read"]
       },
       {

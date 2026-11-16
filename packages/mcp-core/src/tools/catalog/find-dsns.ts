@@ -16,6 +16,14 @@ export const findDsnsOutputSchema = z.object({
       id: z.string(),
       name: z.string(),
       dsn: z.string(),
+      isActive: z.boolean(),
+      rateLimit: z
+        .object({
+          count: z.number(),
+          windowSeconds: z.number(),
+        })
+        .nullable()
+        .describe("Null when rate limiting is disabled."),
     }),
   ),
 });
@@ -26,11 +34,12 @@ export default defineTool({
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:read"],
   description: [
-    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events.",
+    "List the DSNs (client keys) for a Sentry project: the SENTRY_DSN an SDK uses to send events. Each DSN includes its status and rate limit.",
     "",
     "Use this tool when you need to:",
     "- Retrieve a SENTRY_DSN for a specific project",
     "- Configure a Sentry SDK for an existing project",
+    "- Check whether a DSN is active or what rate limit it has",
     "",
     "<hints>",
     "- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.",
@@ -66,6 +75,13 @@ export default defineTool({
         id: String(clientKey.id),
         name: clientKey.name,
         dsn: clientKey.dsn.public,
+        isActive: clientKey.isActive,
+        rateLimit: clientKey.rateLimit
+          ? {
+              count: clientKey.rateLimit.count,
+              windowSeconds: clientKey.rateLimit.window,
+            }
+          : null,
       })),
     });
   },
