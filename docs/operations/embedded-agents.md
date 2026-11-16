@@ -304,4 +304,4 @@ Should output:
 - [Security](security.md) - Authentication and token management
 - [Testing](../testing/overview.md) - Testing MCP server functionality
 - [Common Patterns](../contributing/common-patterns.md) - Error handling and shared formatting patterns
-- [Tool Responses](../contributing/tool-responses.md) - Tool output policy and QA review checklist
+- [Tool Responses](../contributing/tool-responses.md) - Conventions every tool result follows

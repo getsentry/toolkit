@@ -41,6 +41,7 @@ toolkit/
 
 ## Documentation Map
 
+- design/README.md — Design docs: each system's goals and rules. Read the owning file before changing a system.
 - docs/README.md — Toolkit documentation index
 - docs/cli/README.md — CLI guides and the published CLI site
 - docs/mcp/README.md — MCP guides across its packages
@@ -50,7 +51,7 @@ toolkit/
 **Read before MCP tool changes:**
 
 - docs/contributing/adding-tools.md — Tool implementation guide
-- docs/contributing/tool-responses.md — Tool output policy and QA review checklist
+- docs/contributing/tool-responses.md — Conventions every tool result follows (goals and rules: design/mcp-tool-responses.md)
 - docs/testing/overview.md — Testing requirements and snapshot policy
 - docs/contributing/common-patterns.md — Error handling, Zod schemas, shared formatting patterns
 - docs/contributing/error-handling.md — Error types and propagation
