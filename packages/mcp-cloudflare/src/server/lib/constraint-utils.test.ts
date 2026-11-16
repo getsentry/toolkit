@@ -6,6 +6,17 @@ import {
   type CacheOptions,
 } from "./constraint-utils";
 
+const { logIssue, logWarn } = vi.hoisted(() => ({
+  logIssue: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
+  logIssue,
+  logWarn,
+}));
+
 /**
  * Create a mock KVNamespace for testing cache behavior.
  */
@@ -73,6 +84,7 @@ describe("verifyConstraintsAccess", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.useRealTimers();
   });
 
@@ -186,6 +198,25 @@ describe("verifyConstraintsAccess", () => {
         },
       },
     });
+  });
+
+  it("requests the organization without its projects and teams", async () => {
+    const requested: URL[] = [];
+    const originalFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      requested.push(new URL(input instanceof Request ? input.url : input));
+      return originalFetch(input, init);
+    });
+
+    const result = await verifyConstraintsAccess(
+      { organizationSlug: "sentry-mcp-evals", projectSlug: null },
+      { accessToken: token, sentryHost: host },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(requested.map((url) => `${url.pathname}${url.search}`)).toEqual([
+      "/api/0/organizations/sentry-mcp-evals/?detailed=0",
+    ]);
   });
 
   it("fails when org does not exist", async () => {
@@ -362,6 +393,16 @@ describe("verifyConstraintsAccess", () => {
           ...constraints,
           regionUrl: "https://us.sentry.io",
           projectCapabilities: null,
+        },
+      });
+      // Upstream slowness is a handled fail-open: a warning log, not an issue.
+      expect(logIssue).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledWith("Project verification timed out", {
+        loggerScope: ["cloudflare", "constraint-utils"],
+        extra: {
+          ...constraints,
+          regionUrl: "https://us.sentry.io",
+          timeoutMs: 5000,
         },
       });
       expect(cache.waitUntil).toHaveBeenCalledOnce();

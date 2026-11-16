@@ -182,13 +182,14 @@ export function registerFetchMockInterceptors(fetchMock: FetchMockLike) {
       .reply(200, [organizationFixture], { headers: JSON_HEADERS })
       .persist();
 
+    // Hosted constraint verification skips projects and teams.
     pool
-      .intercept({ path: "/api/0/organizations/sentry-mcp-evals/" })
+      .intercept({ path: "/api/0/organizations/sentry-mcp-evals/?detailed=0" })
       .reply(200, organizationFixture, { headers: JSON_HEADERS })
       .persist();
 
     pool
-      .intercept({ path: "/api/0/organizations/nonexistent-org/" })
+      .intercept({ path: "/api/0/organizations/nonexistent-org/?detailed=0" })
       .reply(
         404,
         { detail: "The requested resource does not exist" },
