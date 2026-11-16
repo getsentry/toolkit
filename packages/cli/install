@@ -208,13 +208,12 @@ fi
 # Download binary to a temp location
 tmpdir="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 tmp_binary="${tmpdir}/sentry-install-$$${suffix}"
-blob_headers="${tmpdir}/sentry-install-headers-$$"
 blob_file="${tmpdir}/sentry-install-blob-$$"
 init_binary="${tmpdir}/sentry-install-init-$$${suffix}"
 version=""
 
 # Clean up temporary files after setup or on failure.
-trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$init_binary"' EXIT
+trap 'rm -f "$tmp_binary" "$blob_file" "$init_binary"' EXIT
 
 # When the temp directory is full or not writable, stage downloads in the
 # directory setup installs into instead (determineInstallDir in
@@ -224,10 +223,28 @@ setup_dir="${SENTRY_INSTALL_DIR:-}"
 if [[ -z "$setup_dir" && ( "${XDG_BIN_HOME:-}" == /* || "${XDG_BIN_HOME:-}" =~ ^[A-Za-z]:[\\/] ) ]]; then
   setup_dir="$XDG_BIN_HOME"
 fi
+# Usage: in_path <dir>. Compares PATH entries like samePath: one trailing
+# slash is ignored, and so is case on macOS and Windows. The subshell keeps
+# nocasematch local.
+in_path() (
+  local entry entries
+  [[ -n "${PATH:-}" ]] || return 1
+  if [[ "$os" == "darwin" || "$os" == "windows" ]]; then
+    shopt -s nocasematch
+  fi
+  IFS=: read -ra entries <<< "$PATH"
+  for entry in "${entries[@]}"; do
+    if [[ "${#entry}" -gt 1 ]]; then
+      entry="${entry%/}"
+    fi
+    [[ "$entry" == "$1" ]] && return 0
+  done
+  return 1
+)
 if [[ -z "$setup_dir" && -n "${HOME:-}" ]]; then
   setup_dir="${HOME}/.local/bin"
   for dir in "${HOME}/.local/bin" "${HOME}/bin"; do
-    if [[ -d "$dir" && ":${PATH}:" == *":${dir}:"* ]]; then
+    if [[ -d "$dir" ]] && in_path "$dir"; then
       setup_dir="$dir"
       break
     fi
@@ -402,12 +419,23 @@ if [[ "$requested_version" == "nightly" ]]; then
 
   # Step 5: Fetch the blob. GHCR normally redirects to Azure, but it can also
   # return the blob directly with HTTP 200. Do not forward the auth header to
-  # the redirect target.
-  if ! blob_status=$(curl -sS "${curl_retry[@]}" -D "$blob_headers" -o "$blob_file" -w '%{http_code}' \
-    -H "Authorization: Bearer $GHCR_TOKEN" \
-    "https://ghcr.io/v2/getsentry/toolkit/blobs/${digest}"); then
+  # the redirect target. The headers and then the status code go to stdout,
+  # so only the body needs room on disk (see write_staged).
+  # Usage: fetch_ghcr_blob <file>. Sets blob_response.
+  fetch_ghcr_blob() {
+    blob_response=$(curl -sS "${curl_retry[@]}" -D - -o "$1" -w '%{http_code}' \
+      -H "Authorization: Bearer $GHCR_TOKEN" \
+      "https://ghcr.io/v2/getsentry/toolkit/blobs/${digest}")
+  }
+  blob_response=""
+  fetch_status=0
+  write_staged blob_file "$setup_blob" fetch_ghcr_blob || fetch_status=$?
+  if [[ "$fetch_status" == 23 ]]; then
+    die "$no_room_message" "ghcr-blob"
+  elif [[ "$fetch_status" != 0 ]]; then
     die "Failed to fetch nightly blob from GHCR" "ghcr-blob"
   fi
+  blob_status="${blob_response##*$'\n'}"
 
   case "$blob_status" in
     200)
@@ -415,12 +443,17 @@ if [[ "$requested_version" == "nightly" ]]; then
       unpack_binary "$blob_file"
       ;;
     3??)
-      redir_url=$(awk '/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$blob_headers")
+      redir_url=$(awk '/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*/ { sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' <<< "$blob_response")
       if [[ -z "$redir_url" ]]; then
         die "Failed to get blob redirect URL from GHCR" "ghcr-redirect"
       fi
-      download_verified blob_file "$setup_blob" "$redir_url" "" gzip_intact \
-        || die "Failed to download nightly blob" "ghcr-blob"
+      fetch_status=0
+      download_verified blob_file "$setup_blob" "$redir_url" "" gzip_intact || fetch_status=$?
+      if [[ "$fetch_status" == 23 ]]; then
+        die "$no_room_message" "ghcr-blob"
+      elif [[ "$fetch_status" != 0 ]]; then
+        die "Failed to download nightly blob" "ghcr-blob"
+      fi
       unpack_binary "$blob_file"
       ;;
     *)

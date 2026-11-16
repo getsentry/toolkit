@@ -50,8 +50,9 @@ if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$0" > "$SENTRY_TEST_DIR/setup-binary"
   record_tty 3> "$SENTRY_TEST_DIR/setup-tty"
-  mkdir -p "$SENTRY_INSTALL_DIR"
-  cp "$0" "$SENTRY_INSTALL_DIR/sentry"
+  install_dir="\${SENTRY_INSTALL_DIR:-\${0%/*}}"
+  mkdir -p "$install_dir"
+  cp "$0" "$install_dir/sentry"
   if [[ "\${SENTRY_TEST_KEEP_TEMP_BINARY:-}" != "1" ]]; then
     rm "$0"
   fi
@@ -291,7 +292,7 @@ JSON
         *) shift ;;
       esac
     done
-    cp "$SENTRY_TEST_GZIP" "$output"
+    cp "$SENTRY_TEST_GZIP" "$output" 2>/dev/null || exit 23
     ;;
   *"/blobs/"*)
     headers=""
@@ -303,13 +304,15 @@ JSON
         *) shift ;;
       esac
     done
+    # The installer reads the headers from stdout.
+    if [[ "$headers" != "-" ]]; then exit 92; fi
     if [[ "$SENTRY_TEST_NIGHTLY_REDIRECT" == "1" ]]; then
-      printf 'HTTP/1.1 307 Temporary Redirect\\r\\nLocation: https://objects.example/nightly.gz\\r\\n\\r\\n' > "$headers"
-      : > "$output"
+      : 2>/dev/null > "$output" || exit 23
+      printf 'HTTP/1.1 307 Temporary Redirect\\r\\nLocation: https://objects.example/nightly.gz\\r\\n\\r\\n'
       printf '307'
     else
-      printf 'HTTP/1.1 200 OK\\r\\n\\r\\n' > "$headers"
-      cp "$SENTRY_TEST_GZIP" "$output"
+      cp "$SENTRY_TEST_GZIP" "$output" 2>/dev/null || exit 23
+      printf 'HTTP/1.1 200 OK\\r\\n\\r\\n'
       printf '200'
     fi
     ;;
@@ -443,6 +446,28 @@ process.exitCode = result.status ?? 1;
       "https://ghcr.io/v2/getsentry/toolkit/blobs/sha256:test",
     ]);
   });
+
+  test.each([
+    { response: "direct HTTP 200 response", redirect: false },
+    { response: "HTTP redirect", redirect: true },
+  ])(
+    "stages nightly from a $response in the install directory without a temp directory",
+    ({ redirect }) => {
+      configureNightlyDownload(redirect);
+      env.TMPDIR = join(testDir, "deleted");
+      const result = spawnSync(
+        "bash",
+        [installScript, "--version", "nightly", "--no-modify-path"],
+        { env, encoding: "utf8", timeout: 10_000 },
+      );
+
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(recorded("setup-binary")).toEqual([
+        join(installDir, "sentry.download"),
+      ]);
+      expect(readdirSync(installDir)).toEqual(["sentry"]);
+    },
+  );
 
   test.each([
     { failure: "token", flag: "SENTRY_TEST_NIGHTLY_TOKEN_FAIL" },
@@ -734,6 +759,22 @@ exec /usr/bin/gunzip "$@"
       join(installDir, "sentry.download"),
     ]);
     expect(readdirSync(installDir)).toEqual(["sentry"]);
+  });
+
+  test("stages in a home bin directory listed in PATH with a trailing slash", () => {
+    const homeBin = join(testDir, "home", "bin");
+    mkdirSync(homeBin);
+    delete env.SENTRY_INSTALL_DIR;
+    env.PATH = `${env.PATH}:${homeBin}/`;
+    env.TMPDIR = join(testDir, "deleted");
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    // Setup's determineInstallDir picks the same directory, so it can rename
+    // the staged binary instead of copying it.
+    expect(recorded("setup-binary")).toEqual([
+      join(homeBin, "sentry.download"),
+    ]);
   });
 
   test("names the full disk only when no directory has room", () => {
