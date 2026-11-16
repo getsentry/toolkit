@@ -25,11 +25,11 @@ function truncate(value: string, max = 60): string {
   return `${value.slice(0, max - 1)}…`;
 }
 
-function formatTimestamp(epochSeconds: number): string {
-  if (epochSeconds === 0) {
+function formatTimestamp(epochMilliseconds: number): string {
+  if (epochMilliseconds === 0) {
     return "—";
   }
-  return new Date(epochSeconds * 1000).toLocaleString();
+  return new Date(epochMilliseconds).toLocaleString();
 }
 
 const USD_FORMAT = new Intl.NumberFormat("en-US", {
