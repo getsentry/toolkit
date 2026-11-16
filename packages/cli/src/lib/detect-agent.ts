@@ -396,7 +396,7 @@ function execFileUnreffed(
       cmd,
       args,
       { encoding: "utf-8", ...opts },
-      (err, stdout) => {
+      (err: Error | null, stdout: string) => {
         if (err) {
           reject(err);
         } else {
