@@ -216,12 +216,133 @@ version=""
 # Clean up temporary files after setup or on failure.
 trap 'rm -f "$tmp_binary" "$blob_headers" "$blob_file" "$init_binary"' EXIT
 
-# Usage: unpack_binary <gz-file>. Downloads are checksum-verified when the
-# release registry lists a checksum, so gunzip usually fails here because the
-# temporary directory is full or not writable.
+# When the temp directory is full or not writable, stage downloads in the
+# directory setup installs into instead (determineInstallDir in
+# src/lib/binary.ts). The binary takes the name of setup's own temp file
+# there, so setup renames it into place instead of copying it.
+setup_dir="${SENTRY_INSTALL_DIR:-}"
+if [[ -z "$setup_dir" && ( "${XDG_BIN_HOME:-}" == /* || "${XDG_BIN_HOME:-}" =~ ^[A-Za-z]:[\\/] ) ]]; then
+  setup_dir="$XDG_BIN_HOME"
+fi
+if [[ -z "$setup_dir" && -n "${HOME:-}" ]]; then
+  setup_dir="${HOME}/.local/bin"
+  for dir in "${HOME}/.local/bin" "${HOME}/bin"; do
+    if [[ -d "$dir" && ":${PATH}:" == *":${dir}:"* ]]; then
+      setup_dir="$dir"
+      break
+    fi
+  done
+fi
+setup_binary=""
+setup_blob=""
+if [[ -n "$setup_dir" ]]; then
+  setup_binary="${setup_dir}/sentry${suffix}.download"
+  setup_blob="${setup_dir}/sentry-install-blob-$$"
+fi
+
+# Retry transient network failures (timeouts, refused connections, HTTP 408,
+# 429, and 5xx) with curl's exponential backoff. The binary needs glibc 2.28
+# or macOS 11, whose curl (7.61, 7.64) has --retry-connrefused (7.52) but not
+# --retry-all-errors (7.71).
+curl_retry=(--retry 3 --retry-connrefused --retry-max-time 60)
+
+# Usage: download_to <url> <file>. Exits with curl's status: 22 for an HTTP
+# error, 23 when the file cannot be written.
+download_to() {
+  curl -fsSL "${curl_retry[@]}" -o "$2" "$1"
+}
+
+# Usage: unpack_to <gz-file> <file>. gzip_intact has already checked the
+# archive, so a failure here means the file could not be written (23).
+unpack_to() {
+  gunzip -c "$1" > "$2" || return 23
+}
+
+# Usage: gzip_intact <gz-file>.
+gzip_intact() {
+  gunzip -t "$1" 2>/dev/null
+}
+
+# Usage: write_staged <var> <fallback-path> <writer> [args...]. Runs
+# `<writer> [args...] <path>` for the path in <var>. When the writer cannot
+# write there (exit 23), points <var> at <fallback-path> and runs it again.
+write_staged() {
+  local var=$1 fallback=$2 status
+  shift 2
+  "$@" "${!var}" && return 0
+  status=$?
+  rm -f "${!var}"
+  if [[ "$status" != 23 || -z "$fallback" || "${!var}" == "$fallback" ]] \
+    || ! mkdir -p "${fallback%/*}" 2>/dev/null; then
+    return "$status"
+  fi
+  echo -e "${MUTED}Not enough room in the temporary directory; using ${fallback%/*} instead.${NC}" >&2
+  printf -v "$var" '%s' "$fallback"
+  "$@" "$fallback" && return 0
+  status=$?
+  rm -f "$fallback"
+  return "$status"
+}
+
+# Usage: checksum_matches <file> <expected-hex>. A missing checksum or a
+# missing hash tool counts as a match; a mismatch records the actual hash in
+# bad_checksum.
+bad_checksum=""
+checksum_matches() {
+  [[ -z "$2" ]] && return 0
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$1" | awk '{print $1}') || actual=""
+  elif command -v shasum >/dev/null 2>&1; then
+    actual=$(shasum -a 256 "$1" | awk '{print $1}') || actual=""
+  else
+    echo -e "${MUTED}Warning: sha256sum and shasum are unavailable; skipping checksum verification.${NC}" >&2
+    return 0
+  fi
+  # Callers run this as a condition, where set -e and the ERR trap are off, so
+  # a failing hash tool is checked here.
+  [[ -n "$actual" ]] || die "Failed to compute the SHA-256 checksum of the download" "checksum"
+  [[ "$actual" == "$2" ]] && return 0
+  bad_checksum="$actual"
+  return 1
+}
+
+# Usage: download_verified <var> <fallback-path> <url> <sha256> [check].
+# Downloads <url> to the path in <var> (see write_staged), and downloads it
+# once more when the transfer breaks, the checksum does not match, or <check>
+# rejects the file. Returns curl's status for an HTTP error (22) or nowhere to
+# write (23), since another try cannot help, and 1 when both copies are bad.
+download_verified() {
+  local var=$1 fallback=$2 url=$3 sha=$4 check=${5:-} attempt status=0 name
+  # Drop the query string: GHCR redirects to a signed URL.
+  name="${url%%\?*}"
+  name="${name##*/}"
+  for attempt in 1 2; do
+    bad_checksum=""
+    if write_staged "$var" "$fallback" download_to "$url"; then
+      if checksum_matches "${!var}" "$sha" && { [[ -z "$check" ]] || "$check" "${!var}"; }; then
+        return 0
+      fi
+      status=1
+    else
+      status=$?
+      if [[ "$status" == 22 || "$status" == 23 ]]; then
+        return "$status"
+      fi
+    fi
+    if [[ "$attempt" == 1 ]]; then
+      echo -e "${MUTED}The download of ${name} was incomplete or corrupt. Downloading it again...${NC}" >&2
+    fi
+  done
+  return "$status"
+}
+
+no_room_message="There is not enough room to stage sentry (about 140 MB): the temporary directory and the install directory are both full or not writable. Free up space or set TMPDIR to another directory, then retry."
+
+# Usage: unpack_binary <gz-file>.
 unpack_binary() {
-  gunzip -c "$1" > "$tmp_binary" \
-    || die "Failed to unpack sentry v${version}. The temporary directory needs about 100 MB free; free up space or set TMPDIR to another directory, then retry." "unpack"
+  write_staged tmp_binary "$setup_binary" unpack_to "$1" \
+    || die "$no_room_message" "unpack"
 }
 
 if [[ "$requested_version" == "nightly" ]]; then
@@ -234,7 +355,7 @@ if [[ "$requested_version" == "nightly" ]]; then
   echo -e "${MUTED}Fetching nightly build from GHCR...${NC}"
 
   # Step 1: Get anonymous pull token
-  if ! GHCR_TOKEN=$(curl -sf \
+  if ! GHCR_TOKEN=$(curl -sf "${curl_retry[@]}" \
     "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull" \
     | awk -F'"' '{for(i=1;i<=NF;i++) if($i=="token"){print $(i+2);exit}}'); then
     die "Failed to get GHCR token" "ghcr-token"
@@ -244,7 +365,7 @@ if [[ "$requested_version" == "nightly" ]]; then
   fi
 
   # Step 2: Fetch the OCI manifest for the :nightly tag
-  if ! MANIFEST=$(curl -sf \
+  if ! MANIFEST=$(curl -sf "${curl_retry[@]}" \
     -H "Authorization: Bearer $GHCR_TOKEN" \
     -H "Accept: application/vnd.oci.image.manifest.v1+json" \
     "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly"); then
@@ -282,7 +403,7 @@ if [[ "$requested_version" == "nightly" ]]; then
   # Step 5: Fetch the blob. GHCR normally redirects to Azure, but it can also
   # return the blob directly with HTTP 200. Do not forward the auth header to
   # the redirect target.
-  if ! blob_status=$(curl -sS -D "$blob_headers" -o "$blob_file" -w '%{http_code}' \
+  if ! blob_status=$(curl -sS "${curl_retry[@]}" -D "$blob_headers" -o "$blob_file" -w '%{http_code}' \
     -H "Authorization: Bearer $GHCR_TOKEN" \
     "https://ghcr.io/v2/getsentry/toolkit/blobs/${digest}"); then
     die "Failed to fetch nightly blob from GHCR" "ghcr-blob"
@@ -290,6 +411,7 @@ if [[ "$requested_version" == "nightly" ]]; then
 
   case "$blob_status" in
     200)
+      gzip_intact "$blob_file" || die "The nightly blob from GHCR is corrupt" "ghcr-blob"
       unpack_binary "$blob_file"
       ;;
     3??)
@@ -297,7 +419,7 @@ if [[ "$requested_version" == "nightly" ]]; then
       if [[ -z "$redir_url" ]]; then
         die "Failed to get blob redirect URL from GHCR" "ghcr-redirect"
       fi
-      curl -fsSL -o "$blob_file" "$redir_url" \
+      download_verified blob_file "$setup_blob" "$redir_url" "" gzip_intact \
         || die "Failed to download nightly blob" "ghcr-blob"
       unpack_binary "$blob_file"
       ;;
@@ -330,7 +452,7 @@ else
   # Read the body from curl's stdout, not a temp file: on some Windows shells,
   # bash could not read the file that curl had just written. The status code
   # follows the body on its own line.
-  registry_response=$(curl -sS --max-time 10 -w '\n%{http_code}' \
+  registry_response=$(curl -sS --max-time 10 "${curl_retry[@]}" -w '\n%{http_code}' \
     "https://release-registry.services.sentry.io/apps/sentry/${registry_path}" 2>/dev/null) \
     || registry_response="000"
   registry_status="${registry_response##*$'\n'}"
@@ -381,10 +503,43 @@ else
     die "Unknown Sentry CLI version: ${version}" "resolve-version"
   else
     echo -e "${MUTED}Could not resolve ${registry_path} from Sentry's release registry. Trying GitHub...${NC}" >&2
+    # Usage: github_api <url>. Prints the response body. Runners that share an
+    # IP exhaust GitHub's anonymous rate limit, so send GITHUB_TOKEN or
+    # GH_TOKEN when one is set. The header goes through stdin, so the token
+    # stays out of the process list and of $BASH_COMMAND in error reports.
+    # Rate-limited responses (403, 429) are retried with a growing delay.
+    github_api() {
+      local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}" response status attempt
+      for attempt in 1 2 3; do
+        if [[ -n "$token" ]]; then
+          response=$(curl -sSL "${curl_retry[@]}" -w '\n%{http_code}' -H @- "$1" \
+            <<< "Authorization: Bearer ${token}") || return
+        else
+          response=$(curl -sSL "${curl_retry[@]}" -w '\n%{http_code}' "$1") || return
+        fi
+        status="${response##*$'\n'}"
+        case "$status" in
+          200)
+            printf '%s\n' "${response%$'\n'*}"
+            return 0
+            ;;
+          403|429) ;;
+          *) return 22 ;;
+        esac
+        if [[ "$attempt" != 3 ]]; then
+          echo -e "${MUTED}GitHub rate-limited the request; retrying in $((attempt * 2))s...${NC}" >&2
+          sleep $((attempt * 2))
+        fi
+      done
+      if [[ -z "$token" ]]; then
+        echo -e "${MUTED}GitHub rate-limited this machine. Setting GITHUB_TOKEN raises the limit.${NC}" >&2
+      fi
+      return 22
+    }
     if [[ "$registry_path" == "latest" ]]; then
       release_tag=""
       for page in {1..20}; do
-        if ! releases=$(curl -fsSL "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=${page}"); then
+        if ! releases=$(github_api "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=${page}"); then
           die "Failed to list Toolkit releases" "gh-version"
         fi
         # Read the full page: exiting awk early can SIGPIPE printf under pipefail.
@@ -443,40 +598,39 @@ else
     echo -e "${MUTED}Warning: GitHub fallback downloads are not checksum-verified.${NC}" >&2
   fi
 
-  # Usage: verify_sha256 <file> <expected-hex>; a missing checksum is a no-op.
-  verify_sha256() {
-    [[ -z "$2" ]] && return 0
-    local actual
-    if command -v sha256sum >/dev/null 2>&1; then
-      actual=$(sha256sum "$1" | awk '{print $1}')
-    elif command -v shasum >/dev/null 2>&1; then
-      actual=$(shasum -a 256 "$1" | awk '{print $1}')
-    else
-      echo -e "${MUTED}Warning: sha256sum and shasum are unavailable; skipping checksum verification.${NC}" >&2
-      return 0
-    fi
-    if [[ "$actual" != "$2" ]]; then
-      die "Checksum mismatch for ${asset} ${version}: expected $2, got ${actual}" "checksum"
-    fi
-  }
-
   echo -e "${MUTED}Downloading sentry v${version}...${NC}"
 
   # Prefer the gzip asset (~60% smaller, ~37 MB vs ~99 MB); fall back to the
-  # raw binary when it is missing.
-  if [[ -n "$gz_url" ]] && curl -fsSL -o "$blob_file" "$gz_url" 2>/dev/null; then
-    verify_sha256 "$blob_file" "$gz_sha"
+  # raw binary when it is missing or unusable. A checksum mismatch on both
+  # tries is fatal, never a reason to fall back.
+  gz_status=1
+  if [[ -n "$gz_url" ]]; then
+    download_verified blob_file "$setup_blob" "$gz_url" "$gz_sha" gzip_intact \
+      && gz_status=0 || gz_status=$?
+  fi
+  if [[ -n "$bad_checksum" ]]; then
+    die "Checksum mismatch for ${asset} ${version}: expected ${gz_sha}, got ${bad_checksum}" "checksum"
+  fi
+  if [[ "$gz_status" == 0 ]]; then
     unpack_binary "$blob_file"
   elif [[ -n "$raw_url" ]]; then
-    curl -fsSL --progress-bar -o "$tmp_binary" "$raw_url" \
-      || die "Failed to download ${raw_url}" "download"
-    verify_sha256 "$tmp_binary" "$raw_sha"
+    rm -f "$blob_file"
+    raw_status=0
+    download_verified tmp_binary "$setup_binary" "$raw_url" "$raw_sha" || raw_status=$?
+    if [[ -n "$bad_checksum" ]]; then
+      die "Checksum mismatch for ${asset} ${version}: expected ${raw_sha}, got ${bad_checksum}" "checksum"
+    elif [[ "$raw_status" == 23 ]]; then
+      die "$no_room_message" "download"
+    elif [[ "$raw_status" != 0 ]]; then
+      die "Failed to download ${raw_url}" "download"
+    fi
   else
     die "Failed to download ${gz_url}" "download"
   fi
 fi
 
 chmod +x "$tmp_binary"
+init_binary="${tmp_binary%/*}/sentry-install-init-$$${suffix}"
 
 # `sentry init` runs from a hard link to the downloaded binary: setup removes
 # the temp binary after installing it, and the link means the installer never

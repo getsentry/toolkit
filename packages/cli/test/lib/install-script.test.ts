@@ -3,7 +3,7 @@
  * verify terminal reconnection for setup and the existing init handoff.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -14,6 +14,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -111,8 +113,17 @@ for ((i = 0; i < \${#args[@]}; i++)); do
     -d) data="\${args[i + 1]}" ;;
   esac
 done
-emit() { if [[ -n "$out" ]]; then cat > "$out"; else cat; fi; }
+# Like curl, exit 23 when the output file cannot be written.
+emit() { if [[ -n "$out" ]]; then cat > "$out" || exit 23; else cat; fi; }
+# Usage: nth <name>. Counts the requests of one kind.
+nth() {
+  local file="$SENTRY_TEST_DIR/count-$1" n
+  n=$(( $(cat "$file" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > "$file"
+  echo "$n"
+}
 printf '%s\\n' "$url" >> "$SENTRY_TEST_DIR/curl-urls"
+printf '%s\\n' "$*" >> "$SENTRY_TEST_DIR/curl-args"
 case "$url" in
   https://release-registry.services.sentry.io/apps/sentry/*)
     version="\${url##*/}"
@@ -128,11 +139,22 @@ case "$url" in
     printf '%s\\n' "$data" > "$SENTRY_TEST_DIR/error-report"
     ;;
   *"/repos/getsentry/toolkit/releases?per_page=100&page="*)
+    if [[ " $* " == *" -H @- "* ]]; then cat >> "$SENTRY_TEST_DIR/github-headers"; fi
+    if (( $(nth github) <= \${SENTRY_TEST_GITHUB_RATE_LIMITED:-0} )); then
+      printf '{"message":"API rate limit exceeded"}'
+      printf "\${write_out//'%{http_code}'/403}"
+      exit 0
+    fi
     page_file="SENTRY_TEST_RELEASES_PAGE_\${url##*=}"
     if [[ -n "\${!page_file:-}" ]]; then cat "\${!page_file}"; else printf '[]'; fi
+    printf "\${write_out//'%{http_code}'/200}"
     ;;
   https://github.com/*/releases/download/*.gz)
     if [[ "\${SENTRY_TEST_GZ_MISSING:-}" == "1" ]]; then exit 22; fi
+    if (( $(nth gz) <= \${SENTRY_TEST_GZ_CORRUPT:-0} )); then
+      head -c 100 "$SENTRY_TEST_GZ_FILE" | emit
+      exit 0
+    fi
     emit < "$SENTRY_TEST_GZ_FILE"
     ;;
   https://github.com/*/releases/download/*)
@@ -302,7 +324,7 @@ esac
       join(binDir, "gunzip"),
       `#!/usr/bin/env bash
 set -euo pipefail
-if [[ $# -gt 0 && "$1" != "-c" ]]; then
+if [[ $# -gt 0 && "$1" != "-c" && "$1" != "-t" ]]; then
   exit 64
 fi
 exec /usr/bin/gunzip "$@"
@@ -598,51 +620,197 @@ process.exitCode = result.status ?? 1;
     expect(recorded("curl-urls")).toEqual([]);
   });
 
-  // CLI-BJ: gunzip failures, such as a full temporary directory, hit the
-  // generic ERR trap.
-  test("explains a failed unpack instead of reporting an unexpected failure", () => {
-    writeFileSync(
-      join(binDir, "gunzip"),
-      "#!/bin/sh\necho 'gzip: stdout: No space left on device' >&2\nexit 1\n",
-      { mode: 0o700 },
-    );
+  function install(): ReturnType<typeof spawnSync> & { output: string } {
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
-      timeout: 10_000,
+      timeout: 20_000,
     });
+    return { ...result, output: `${result.stdout}${result.stderr}` };
+  }
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(
-      `Failed to unpack sentry v${LATEST_VERSION}.`,
+  // CLI-BJ: transient network errors used to end the install.
+  test("retries transient registry errors with the real curl", async () => {
+    const realCurl = spawnSync("sh", ["-c", "command -v curl"], {
+      encoding: "utf8",
+    }).stdout.trim();
+    let registryRequests = 0;
+    const server = createServer((request, response) => {
+      const path = request.url ?? "";
+      if (path.startsWith("/release-registry.services.sentry.io/")) {
+        registryRequests++;
+        if (registryRequests <= 2) {
+          response.writeHead(503).end();
+          return;
+        }
+        response.end(
+          registryTemplate(served, {}).replaceAll(
+            "__VERSION__",
+            LATEST_VERSION,
+          ),
+        );
+      } else if (path.endsWith(`/${hostAsset}.gz`)) {
+        response.end(served.gz);
+      } else {
+        response.writeHead(404).end();
+      }
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
     );
-    expect(result.stderr).toContain("set TMPDIR to another directory");
-    expect(result.stderr).not.toContain("Unexpected failure");
-    expect(recorded("setup-args")).toEqual([]);
+    const { port } = server.address() as AddressInfo;
+    // Send every https:// URL to the local server.
+    writeFileSync(
+      join(binDir, "curl"),
+      `#!/usr/bin/env bash
+args=()
+for arg in "$@"; do
+  case "$arg" in https://*) arg="http://127.0.0.1:${port}/\${arg#https://}" ;; esac
+  args+=("$arg")
+done
+exec ${realCurl} "\${args[@]}"
+`,
+      { mode: 0o755 },
+    );
+    try {
+      const child = spawn("bash", [installScript, "--no-modify-path"], { env });
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      const status = await new Promise((resolve) => child.on("close", resolve));
+      expect(status, output).toBe(0);
+    } finally {
+      server.close();
+    }
+    expect(registryRequests).toBe(3);
+    expect(existsSync(join(installDir, "sentry"))).toBe(true);
+  }, 30_000);
+
+  test("downloads a corrupt archive again", () => {
+    env.SENTRY_TEST_GZ_CORRUPT = "1";
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain("Downloading it again");
+    expect(
+      recorded("curl-urls").filter((url) => url.endsWith(".gz")),
+    ).toHaveLength(2);
+    expect(existsSync(join(installDir, "sentry"))).toBe(true);
+  });
+
+  // CLI-BJ: a full temporary directory made gunzip hit the generic ERR trap.
+  test("unpacks into the install directory when the temp directory is full", () => {
+    // The first unpack fails like a full disk; later ones work.
+    writeFileSync(
+      join(binDir, "gunzip"),
+      `#!/usr/bin/env bash
+if [[ "$1" == "-c" && ! -e "$SENTRY_TEST_DIR/unpacked-once" ]]; then
+  touch "$SENTRY_TEST_DIR/unpacked-once"
+  echo 'gzip: stdout: No space left on device' >&2
+  exit 1
+fi
+exec /usr/bin/gunzip "$@"
+`,
+      { mode: 0o755 },
+    );
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).not.toContain("Unexpected failure");
+    // Staged under setup's own temp name, which setup renames into place.
+    expect(recorded("setup-binary")).toEqual([
+      join(installDir, "sentry.download"),
+    ]);
+    expect(existsSync(join(installDir, "sentry"))).toBe(true);
     expect(installerTempFiles()).toEqual([]);
   });
 
-  // CLI-BJ: the trap reported only a line number, and a failure inside a
-  // function exited without any message or report.
-  test("reports the command and function of an unexpected failure without local paths", () => {
+  test("downloads into the install directory when the temp directory is missing", () => {
+    env.TMPDIR = join(testDir, "deleted");
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(recorded("setup-binary")).toEqual([
+      join(installDir, "sentry.download"),
+    ]);
+    expect(readdirSync(installDir)).toEqual(["sentry"]);
+  });
+
+  test("names the full disk only when no directory has room", () => {
     writeFileSync(
-      join(binDir, "sha256sum"),
-      "#!/bin/sh\necho 'sha256sum: read error' >&2\nexit 1\n",
-      { mode: 0o700 },
+      join(binDir, "gunzip"),
+      `#!/usr/bin/env bash
+if [[ "$1" == "-c" ]]; then
+  echo 'gzip: stdout: No space left on device' >&2
+  exit 1
+fi
+exec /usr/bin/gunzip "$@"
+`,
+      { mode: 0o755 },
     );
-    delete env.SENTRY_CLI_NO_TELEMETRY;
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
+    const result = install();
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain("There is not enough room to stage sentry");
+    expect(result.output).not.toContain("Unexpected failure");
+    expect(recorded("setup-args")).toEqual([]);
+    expect(installerTempFiles()).toEqual([]);
+    expect(readdirSync(installDir)).toEqual([]);
+  });
+
+  describe("when the registry is down", () => {
+    beforeEach(() => {
+      env.SENTRY_TEST_REGISTRY_STATUS = "503";
+      const page = join(testDir, "releases-1.json");
+      writeFileSync(
+        page,
+        JSON.stringify([{ tag_name: "cli@0.46.0", prerelease: false }]),
+      );
+      env.SENTRY_TEST_RELEASES_PAGE_1 = page;
     });
 
-    const failure = String.raw`in verify_sha256() (exit 1): actual=$(sha256sum "$1" | awk '{print $1}')`;
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(
-      /Unexpected failure at line \d+ in verify_sha256\(\)/,
+    test("authenticates to GitHub without exposing the token", () => {
+      env.GITHUB_TOKEN = "test-token-value";
+      delete env.SENTRY_CLI_NO_TELEMETRY;
+      const result = install();
+
+      expect(result.status, result.output).toBe(0);
+      expect(recorded("github-headers")).toEqual([
+        "Authorization: Bearer test-token-value",
+      ]);
+      expect(recorded("curl-args").join("\n")).not.toContain(
+        "test-token-value",
+      );
+      expect(result.output).not.toContain("test-token-value");
+    });
+
+    test("waits out a GitHub rate limit", () => {
+      env.SENTRY_TEST_GITHUB_RATE_LIMITED = "1";
+      const result = install();
+
+      expect(result.status, result.output).toBe(0);
+      expect(
+        recorded("curl-urls").filter((url) => url.includes("api.github.com")),
+      ).toHaveLength(2);
+      expect(existsSync(join(installDir, "sentry"))).toBe(true);
+    });
+  });
+
+  // CLI-BJ: the trap reported only a line number, which bash 3.2 sets to the
+  // closing `fi` of the enclosing block.
+  test("reports the failing command of an unexpected failure without local paths", () => {
+    writeFileSync(
+      join(binDir, "chmod"),
+      "#!/bin/sh\necho 'chmod: Operation not permitted' >&2\nexit 1\n",
+      { mode: 0o755 },
     );
-    expect(result.stderr).toContain(failure);
+    delete env.SENTRY_CLI_NO_TELEMETRY;
+    const result = install();
+
+    const failure = '(exit 1): chmod +x "$tmp_binary"';
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(/Unexpected failure at line \d+ \(exit 1\)/);
+    expect(result.output).toContain(failure);
     // spawnSync returns only after the backgrounded report_error subshell
     // exits, because it keeps the installer's stdout and stderr open.
     const [, , event] = recorded("error-report");
