@@ -82,11 +82,8 @@ const legacyGetAIConversationDetails = {
   title: "Get AI Conversation Details (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["get_agent_conversation_details"] },
-  description: [
-    "Deprecated alias for get_agent_conversation_details.",
-    "",
-    "Use get_agent_conversation_details for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
+  description:
+    "Deprecated alias for get_agent_conversation_details; use that tool instead.",
 } satisfies ToolConfig<any>;
 
 const legacySearchAIConversations = {
@@ -95,11 +92,8 @@ const legacySearchAIConversations = {
   title: "Search AI Conversations (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["search_agent_conversations"] },
-  description: [
-    "Deprecated alias for search_agent_conversations.",
-    "",
-    "Use search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
+  description:
+    "Deprecated alias for search_agent_conversations; use that tool instead.",
 } satisfies ToolConfig<any>;
 
 // The docs tools read docs.sentry.io, not the Sentry API, so they have no

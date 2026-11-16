@@ -878,24 +878,8 @@ export default defineTool({
   title: "Update Issue",
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
-  description: [
-    "Update a Sentry issue's status, assignment, or priority.",
-    "",
-    "<examples>",
-    "```",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
-    "- At least one of `status`, `assignedTo`, or `priority` is required.",
-    "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
-    "- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Update a Sentry issue: resolve, ignore (archive), or reopen it, assign it to a user or team, or change its priority.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),

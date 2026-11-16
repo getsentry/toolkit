@@ -30,16 +30,7 @@ export default defineTool({
   title: "Find Projects",
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["project:read"],
-  description: [
-    "List or search projects in a Sentry organization.",
-    "",
-    "Use this tool when you need to:",
-    "- View projects in a Sentry organization",
-    "- Find a project's slug to aid other tool requests",
-    "- Search for specific projects by name or slug",
-    "",
-    `Returns up to ${RESULT_LIMIT} results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.`,
-  ].join("\n"),
+  description: `List or search projects in a Sentry organization. Returns project slugs, ${RESULT_LIMIT} per page.`,
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),

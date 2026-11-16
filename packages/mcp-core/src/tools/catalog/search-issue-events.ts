@@ -50,72 +50,43 @@ export default defineTool({
   title: "Search Issue Events",
   skills: ["inspect", "triage"], // Available in inspect and triage skills
   requiredScopes: ["event:read"],
-  description: [
-    "Search and filter events within a specific issue.",
-    "",
-    "Provide `query` as natural language or Sentry event search syntax. When an embedded agent is configured, it fixes filters and time range before running. Results are always newest first; fields and sort only shape the Sentry link.",
-    "",
-    "The tool automatically constrains results to the specified issue.",
-    "",
-    "Common Query Filters:",
-    "- environment:production - Filter by environment",
-    "- release:1.0.0 - Filter by release version",
-    "- user.email:alice@example.com - Filter by user",
-    "- trace:TRACE_ID - Filter by trace ID",
-    "",
-    "For cross-issue searches use search_issues. For single issue or event details use get_sentry_resource.",
-    "",
-    "<examples>",
-    "search_issue_events(issueId='MCP-41', organizationSlug='my-org', query='from last hour')",
-    "search_issue_events(issueId='MCP-41', organizationSlug='my-org', query='environment:production')",
-    "search_issue_events(issueUrl='https://sentry.io/.../issues/123/', query='release:v1.0.0', period='7d')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Search and filter the individual events (occurrences) of one Sentry issue, newest first, by environment, release, user, trace, or time. Accepts natural language or Sentry event search syntax. Use search_issues to search across issues.",
   inputSchema: {
     // Issue identification - one method required
     organizationSlug: ParamOrganizationSlug.nullable()
       .default(null)
       .describe(
-        "Organization slug. Required when using issueId. Not needed when using issueUrl.",
+        "The organization slug, from `find_organizations`. Not needed with an issue URL.",
       ),
     issueId: z
       .string()
       .optional()
       .describe(
-        "Issue ID (e.g., 'MCP-41', 'PROJECT-123'). Requires organizationSlug. Alternatively, use issueUrl.",
+        "The issue short ID, e.g. `PROJECT-123`. Give this or issueUrl.",
       ),
-    issueUrl: z
-      .string()
-      .url()
-      .optional()
-      .describe(
-        "Full Sentry issue URL (e.g., 'https://sentry.io/organizations/my-org/issues/123/'). Includes both organization and issue ID.",
-      ),
+    issueUrl: z.string().url().optional().describe("The Sentry issue URL."),
 
     query: z
       .string()
       .trim()
       .optional()
       .describe(
-        "Natural language or Sentry event search query syntax for filtering within the issue.",
+        "Natural language or Sentry event search syntax, e.g. `environment:production release:1.0.0 user.email:alice@example.com trace:<id>`.",
       ),
     sort: z
       .string()
       .optional()
       .describe(
-        "Sort for the Sentry link (prefix with - for descending). Results are always newest first. Default: -timestamp",
+        "Sort for the Sentry link only, e.g. `-timestamp`; returned events are always newest first.",
       ),
     period: ParamPeriod.optional(),
 
     // Optional context parameters
     projectSlug: ParamProjectSlug.nullable()
       .default(null)
-      .describe(
-        "Project slug for better tag discovery. Optional - helps find project-specific tags.",
-      ),
-    regionUrl: ParamRegionUrl.nullable()
-      .default(null)
-      .describe("Sentry region URL. Optional - defaults to main region."),
+      .describe("The project slug. Helps translate project-specific tags."),
+    regionUrl: ParamRegionUrl.nullable().default(null),
 
     // Output control
     limit: z
@@ -123,13 +94,11 @@ export default defineTool({
       .min(1)
       .max(100)
       .default(50)
-      .describe("Maximum number of events to return (1-100, default: 50)"),
+      .describe("Maximum events to return."),
     includeExplanation: z
       .boolean()
       .default(false)
-      .describe(
-        "Include explanation of how the query was translated or repaired",
-      ),
+      .describe("Return how the query was translated or repaired."),
   },
   outputSchema: searchIssueEventsOutputSchema,
   annotations: {

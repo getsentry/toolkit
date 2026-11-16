@@ -77,22 +77,9 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Update a Sentry Alert (workflow), including notification actions and connections.",
-    "Use get_alert_rule with kind='issue' first to inspect the complete triggers and actionFilters configuration.",
-    "Use get_alert_options to discover notification actions, integrations, conditions, and available sources.",
-    "Omit fields to leave them unchanged. Pass null to clear owner or environment.",
-    "triggers replaces the trigger conditions. actionFilters replaces ALL action groups: copy the complete configuration, retain existing IDs, and change only the intended values. Omitted groups, conditions, and actions are removed.",
-    "For Slack or Microsoft Teams, change config.targetDisplay to the channel name and use integrationId for the workspace or team. Sentry resolves the channel ID. Slack also accepts an explicit new targetIdentifier; a copied old ID is cleared when the name or workspace changes.",
-    "Other actions use their provider's config and data. For Discord, PagerDuty, Opsgenie, and email, update targetIdentifier to the channel, service, team, or recipient ID; changing only its display name does not change the destination.",
-    "Use addProjectSlugs/removeProjectSlugs to connect/disconnect a project's issue stream. Other monitors in that project remain connected. Use addDetectorIds/removeDetectorIds for individual monitors. Unmentioned connections are preserved.",
-    "Metric Monitor detection queries and thresholds are separate operations.",
-    "All-project connections require Sentry's all-project feature and an API token with org:write in addition to alerts:write.",
-    "A project-constrained session can only edit alerts affecting that project exclusively.",
-    "Requires alerts:write; reconnect OAuth if the existing token lacks it.",
-    "<examples>",
-    "update_alert_rule(organizationSlug='my-org', ruleIdOrName='12345', status='disabled')",
-    "update_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='Notify backend team', frequencyMinutes=30)",
-    "</examples>",
+    "Update a Sentry Alert (notification workflow): name, status, owner, environment, notification frequency, triggers, notification actions, and connected projects or monitors.",
+    "Read it with get_alert_rule first; get_alert_options lists valid actions, conditions, and sources. Omitted fields stay unchanged.",
+    "Metric Monitor queries and thresholds change with update_metric_monitor; cron and uptime monitors have their own tools.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -103,7 +90,7 @@ export default defineTool({
       .trim()
       .min(1)
       .describe(
-        "Workflow ID or exact alert name. Digit-only values are treated as IDs. Use IDs from get_alert_rule(kind='issue').",
+        "Alert workflow ID from get_alert_rule, or exact Alert name. Digits are treated as an ID.",
       ),
     ...alertRuleConfigFields,
     triggers: ParamAlertTriggers.optional(),
@@ -112,26 +99,26 @@ export default defineTool({
       .array(ParamProjectSlug)
       .min(1)
       .optional()
-      .describe("Projects whose existing issue streams should be connected."),
+      .describe("Projects whose issue streams to connect."),
     removeProjectSlugs: z
       .array(ParamProjectSlug)
       .min(1)
       .optional()
       .describe(
-        "Projects whose issue streams should be disconnected; other monitor connections are retained.",
+        "Projects whose issue streams to disconnect. Other monitors in those projects stay connected.",
       ),
     addDetectorIds: z
       .array(z.string().regex(/^\d+$/))
       .min(1)
       .optional()
       .describe(
-        "Existing detector IDs to connect, from get_alert_options(section='sources').",
+        "Monitor source IDs to connect, from get_alert_options sources. An all-project source also needs org:write.",
       ),
     removeDetectorIds: z
       .array(z.string().regex(/^\d+$/))
       .min(1)
       .optional()
-      .describe("Detector IDs to disconnect. Other connections are retained."),
+      .describe("Monitor source IDs to disconnect."),
   },
   annotations: {
     readOnlyHint: false,

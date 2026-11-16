@@ -48,34 +48,7 @@ export default defineTool({
   title: "Find Releases",
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["project:read"],
-  description: [
-    "List or search releases (deployed versions) in a Sentry organization or project.",
-    "",
-    "Use this tool when you need to:",
-    "- Find recent releases in a Sentry organization",
-    "- Find the most recent version released of a specific project",
-    "- Determine when a release was deployed to an environment",
-    "",
-    `Returns up to ${RESULT_LIMIT} results. When hasMore is true, use the projectSlug or query parameter to narrow down results.`,
-    "",
-    "<examples>",
-    "### Find the most recent releases in the 'my-organization' organization",
-    "",
-    "```",
-    "find_releases(organizationSlug='my-organization')",
-    "```",
-    "",
-    "### Find releases matching '2ce6a27' in the 'my-organization' organization",
-    "",
-    "```",
-    "find_releases(organizationSlug='my-organization', query='2ce6a27')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If the user passes a parameter in the form of name/otherName, its likely in the format of <organizationSlug>/<projectSlug>.",
-    "</hints>",
-  ].join("\n"),
+  description: `List or search releases (deployed versions) in a Sentry organization or project. Returns each release's dates, new issue count, last commit, and last deploy. Returns at most ${RESULT_LIMIT} releases with no next page; narrow by project or version to see others.`,
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -83,7 +56,9 @@ export default defineTool({
     query: z
       .string()
       .trim()
-      .describe("Search for versions which contain the provided string.")
+      .describe(
+        "Substring of the release version, such as a commit SHA prefix.",
+      )
       .nullable()
       .default(null),
   },
