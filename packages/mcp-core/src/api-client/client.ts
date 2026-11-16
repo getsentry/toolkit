@@ -13,7 +13,6 @@ import {
   listOrganizationIssueIntegrations,
   listOrganizationIssues,
   listProjectEventAttachments,
-  parseSentryLinkHeader,
 } from "@sentry/api";
 import { operations } from "@sentry/api/operations";
 import {
@@ -27,6 +26,7 @@ import {
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
+  nextPageCursor,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
@@ -118,6 +118,7 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { getUserAgent } from "../version";
+import { fetchEveryPage } from "./pagination";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -306,10 +307,6 @@ type ExplorerUrlParams = ExplorerAggregateParams & {
 function formatWorkflowNameQuery(query: string): string {
   const escapedQuery = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `name:"*${escapedQuery}*"`;
-}
-
-function getNextCursor(linkHeader: string | null): string | null {
-  return parseSentryLinkHeader(linkHeader).nextCursor ?? null;
 }
 
 /**
@@ -1763,10 +1760,7 @@ export class SentryApiService {
     const targetLimit = limit ?? 100;
     return {
       rules: rules.slice(0, targetLimit),
-      nextCursor:
-        rules.length > targetLimit
-          ? null
-          : getNextCursor(response.headers.get("link")),
+      nextCursor: rules.length > targetLimit ? null : nextPageCursor(response),
     };
   }
 
@@ -1959,7 +1953,7 @@ export class SentryApiService {
       detectors: z
         .array(DetectorSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -1991,7 +1985,7 @@ export class SentryApiService {
       actions: z
         .array(AlertActionOptionSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2023,7 +2017,7 @@ export class SentryApiService {
       conditions: z
         .array(AlertConditionOptionSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2167,7 +2161,7 @@ export class SentryApiService {
     const body = await readJsonResponse(response);
     return {
       rules: MetricAlertRuleListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2228,7 +2222,7 @@ export class SentryApiService {
     );
     return {
       data: await readJsonResponse(response),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -3412,41 +3406,44 @@ export class SentryApiService {
           throwOnError: true,
         }),
       ExternalIssueListSchema,
+      "listing issue external links",
     );
   }
 
   private async listIssueLinkPages<T>(
     path: string,
     schema: z.ZodType<T[]>,
+    context: string,
     opts?: RequestOptions,
   ): Promise<T[]> {
-    return await this.collectAllPages(async (cursor) => {
-      const query = new URLSearchParams({ per_page: "100" });
-      if (cursor) query.set("cursor", cursor);
-      const response = await this.request(
-        `${path}${path.includes("?") ? "&" : "?"}${query.toString()}`,
-        undefined,
-        opts,
-      );
-      return { data: await readJsonResponse(response), response };
-    }, schema);
+    return await this.collectAllPages(
+      async (cursor) => {
+        const query = new URLSearchParams({ per_page: "100" });
+        if (cursor) query.set("cursor", cursor);
+        const response = await this.request(
+          `${path}${path.includes("?") ? "&" : "?"}${query.toString()}`,
+          undefined,
+          opts,
+        );
+        return { data: await readJsonResponse(response), response };
+      },
+      schema,
+      context,
+    );
   }
 
-  /** Walks every page of a Link-paginated list. */
+  /** Walks every page of a Link-paginated list, or throws. */
   private async collectAllPages<T>(
     fetchPage: (
       cursor: string | undefined,
     ) => Promise<{ data: unknown; response: Response }>,
     schema: z.ZodType<T[]>,
+    context: string,
   ): Promise<T[]> {
-    const items: T[] = [];
-    let cursor: string | undefined;
-    do {
+    return await fetchEveryPage(async (cursor) => {
       const { data, response } = await fetchPage(cursor);
-      items.push(...schema.parse(data));
-      cursor = getNextCursor(response.headers.get("link")) ?? undefined;
-    } while (cursor);
-    return items;
+      return { data: schema.parse(data), nextCursor: nextPageCursor(response) };
+    }, context);
   }
 
   async listIssueIntegrations(
@@ -3472,6 +3469,7 @@ export class SentryApiService {
           throwOnError: true,
         }),
       IssueIntegrationListSchema,
+      "listing issue integrations",
     );
   }
 
@@ -3535,6 +3533,7 @@ export class SentryApiService {
     return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-installations/`,
       SentryAppInstallationListSchema,
+      "listing Sentry App installations",
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
   }
@@ -3547,6 +3546,7 @@ export class SentryApiService {
       apiPath`/organizations/${organizationSlug}/sentry-app-components/` +
         "?filter=issue-link",
       SentryAppComponentListSchema,
+      "listing Sentry App issue-link components",
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
   }
@@ -3673,7 +3673,7 @@ export class SentryApiService {
     const body = await readJsonResponse(response);
     return {
       reports: UserReportListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -4905,7 +4905,7 @@ export class SentryApiService {
       title = details.title;
       spans.push(...details.spans);
 
-      cursor = getNextCursor(response.headers.get("link"));
+      cursor = nextPageCursor(response);
       if (!cursor) {
         break;
       }
@@ -4985,7 +4985,7 @@ export class SentryApiService {
 
     return {
       conversations: AIConversationSummaryListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 

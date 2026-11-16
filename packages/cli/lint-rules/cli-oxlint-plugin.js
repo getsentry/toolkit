@@ -15,12 +15,13 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors, schema = []) {
+/** `packages` lists the workspace directories a rule may run in. */
+function rule(message, visitors, schema = [], packages = ["/packages/cli/"]) {
   return {
     meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
-      if (!filename.includes("/packages/cli/")) return {};
+      if (!packages.some((dir) => filename.includes(dir))) return {};
       return visitors(context, filename, (node, override = message) =>
         context.report({ node, message: override }),
       );
@@ -779,7 +780,7 @@ const rules = {
         : {},
   ),
   "no-manual-pagination": rule(
-    "Use paginate() from infrastructure.js instead of a limit-bounded cursor loop.",
+    "Use the shared pagination helpers instead of a limit-bounded cursor loop: paginate() or fetchAllPages() from infrastructure.js in the CLI; paginate() from @sentry/api/client or fetchEveryPage() from api-client/pagination.ts in mcp-core.",
     (_context, file, report) => {
       if (
         !file.includes("/src/") ||
@@ -800,6 +801,8 @@ const rules = {
         DoWhileStatement: check,
       };
     },
+    [],
+    ["/packages/cli/", "/packages/mcp-core/"],
   ),
   "no-namespace-import": rule(
     "Import only the names used by production code.",

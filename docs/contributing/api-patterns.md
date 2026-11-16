@@ -225,9 +225,15 @@ return HttpResponse.json(page, {
 });
 ```
 
-Use `@sentry/api`'s `parseSentryLinkHeader` to read the next cursor. Sentry's
-`Link` header reports whether the next page has results; a URL query alone does
-not establish that another page exists.
+Read the next cursor with `nextPageCursor(response)` from `@sentry/api/client`.
+Sentry's `Link` header reports whether the next page has results; a URL query
+alone does not establish that another page exists.
+
+Do not write the page walk yourself. Use `@sentry/api/client`'s `paginate()` to
+fill a tool's `limit` and return a resumable cursor, and mcp-core's
+`fetchEveryPage()` (`src/api-client/pagination.ts`) when a lookup needs every
+row. The `sentry-cli/no-manual-pagination` lint rule rejects cursor loops that
+count toward a limit in mcp-core and the CLI.
 
 ## Testing with Mocks
 
