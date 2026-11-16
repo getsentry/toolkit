@@ -100,7 +100,7 @@ export const ParamExternalIssueUrl = z
   .url()
   .trim()
   .describe(
-    "URL of the existing external ticket or GitHub pull request. For Sentry Apps, use the canonical issue URL shown by the provider.",
+    "URL of the existing external ticket or GitHub pull request. For Sentry Apps such as Linear, pass the URL exactly as the provider returns it; do not build or edit its title path.",
   );
 
 export const ParamReplayId = z
