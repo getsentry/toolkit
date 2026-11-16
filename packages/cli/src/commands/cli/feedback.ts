@@ -60,7 +60,7 @@ export const feedbackCommand = buildCommand({
   async *func(
     this: SentryContext,
     // Stricli requires empty object for commands with no flags
-    _flags: {},
+    _flags: Record<string, never>,
     ...messageParts: string[]
   ) {
     let message = messageParts.join(" ").trim();

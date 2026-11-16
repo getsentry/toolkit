@@ -1197,9 +1197,10 @@ function build403Detail(originalDetail: unknown): string {
  * has already added scope/token hints and we only need the issue-list-specific
  * suggestion.
  */
-function appendProjectMembershipHint(detail: string | undefined): string {
-  const base = detail ?? "You do not have permission to perform this action.";
-  return `${base}\n  Verify project membership: ${sentry`project list <org>/`}`;
+function appendProjectMembershipHint(
+  detail = "You do not have permission to perform this action.",
+): string {
+  return `${detail}\n  Verify project membership: ${sentry`project list <org>/`}`;
 }
 
 /**

@@ -765,16 +765,14 @@ describe("Local control plane", () => {
   });
 
   test("acknowledges a daemon stop request before closing its listener", async () => {
-    let server: import("node:http").Server | undefined;
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,
       onStop: () => {
-        server?.closeAllConnections();
-        server?.close();
+        listening.server.closeAllConnections();
+        listening.server.close();
       },
     });
     const listening = await tryListen(controlPlane.app, 0, "127.0.0.1");
-    server = listening.server;
 
     const statusCode = await new Promise<number>((resolve, reject) => {
       const stopRequest = request(

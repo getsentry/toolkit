@@ -102,6 +102,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
   }
 
   try {
+    // oxlint-disable-next-line no-new -- the worker types lack URL.canParse, so parse to validate
     new URL(oauthReqInfo.redirectUri);
   } catch (err) {
     logWarn(`Invalid redirectUri in OAuth state: ${oauthReqInfo.redirectUri}`, {
