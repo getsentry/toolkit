@@ -4,6 +4,7 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 import {
   metricMonitorConfigFields,
   toMetricMonitorUpdate,
@@ -55,11 +56,13 @@ export default defineTool({
       projectSlug: requestedProject,
       scopedProjectSlug: context.constraints.projectSlug,
     });
-    const updated = await api.updateMetricMonitor({
-      organizationSlug,
-      monitorId,
-      body: toMetricMonitorUpdate(current, changes),
-    });
+    const updated = await withAlertWritePermissionHint("Metric Monitor", () =>
+      api.updateMetricMonitor({
+        organizationSlug,
+        monitorId,
+        body: toMetricMonitorUpdate(current, changes),
+      }),
+    );
     return structuredResult({
       monitor: toMetricMonitorDetails(api, organizationSlug, updated),
     });

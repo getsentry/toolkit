@@ -33,6 +33,7 @@ export const createProjectOutputSchema = z.object({
       linked: z.boolean(),
     })
     .nullable(),
+  guidance: z.string(),
 });
 
 type RepositoryMatch = {
@@ -219,16 +220,28 @@ export default defineTool({
       organizationSlug,
       projectSlug: project.slug,
     });
+    const dsn = clientKey?.dsn.public ?? null;
+    const guidance = [
+      dsn
+        ? "Tell the user the project slug and DSN; the SDK needs the DSN."
+        : "The project exists, but its DSN could not be set up. Create one with create_dsn.",
+    ];
+    if (repositoryMatch && !repositoryLinked) {
+      guidance.push(
+        "The repository did not link. Ask the user to check that the integration can access it, or link it in the project's Sentry settings.",
+      );
+    }
     return structuredResult({
       project: {
         id: String(project.id),
         slug: project.slug,
         name: project.name,
       },
-      dsn: clientKey?.dsn.public ?? null,
+      dsn,
       repository: repositoryMatch
         ? { name: repositoryMatch.name, linked: repositoryLinked }
         : null,
+      guidance: guidance.join(" "),
     });
   },
 });

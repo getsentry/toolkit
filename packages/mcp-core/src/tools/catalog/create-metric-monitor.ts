@@ -18,6 +18,7 @@ import {
   metricMonitorDetailsSchema,
   toMetricMonitorDetails,
 } from "../support/metric-monitors";
+import { withAlertWritePermissionHint } from "../support/alert-write-permission";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 
 export default defineTool({
@@ -72,11 +73,13 @@ export default defineTool({
     };
     let created: Detector;
     try {
-      created = await api.createMetricMonitor({
-        organizationSlug: params.organizationSlug,
-        projectSlug: params.projectSlug,
-        body,
-      });
+      created = await withAlertWritePermissionHint("Metric Monitor", () =>
+        api.createMetricMonitor({
+          organizationSlug: params.organizationSlug,
+          projectSlug: params.projectSlug,
+          body,
+        }),
+      );
     } catch (error) {
       // Preserve the API error class so client/server failures retain their logging behavior.
       if (error instanceof Error) {

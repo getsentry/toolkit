@@ -1,6 +1,7 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -308,5 +309,36 @@ describe("onboarding_status_update", () => {
       context,
     );
     expect(getOutput(result)).toEqual({ continueUpdates: true });
+  });
+
+  it("requires eventNote when a stage failed", () => {
+    const inputSchema = z.object(onboardingStatusUpdate.inputSchema);
+    const params = {
+      organizationSlug: "sentry-mcp-evals",
+      runToken: "a1B2c3D4e5",
+    };
+
+    const missing = inputSchema.safeParse({
+      ...params,
+      update: { stage: "instrument_app", status: "failed" },
+    });
+    expect(missing.success).toBe(false);
+    expect(missing.error?.issues).toMatchObject([
+      {
+        path: ["update", "eventNote"],
+        message: "eventNote is required when status is failed.",
+      },
+    ]);
+
+    expect(
+      inputSchema.safeParse({
+        ...params,
+        update: {
+          stage: "instrument_app",
+          status: "failed",
+          eventNote: "The SDK package could not be installed.",
+        },
+      }).success,
+    ).toBe(true);
   });
 });
