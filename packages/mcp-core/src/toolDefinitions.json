@@ -3042,6 +3042,269 @@
     "surface": "direct"
   },
   {
+    "name": "find_related_issues",
+    "title": "Find Related Issues",
+    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace in the same project, other errors in the same trace, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue. It doesn't compare titles or error messages.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issueId": {
+          "type": "string",
+          "description": "The issue short ID, e.g. `PROJECT-1Z43`."
+        },
+        "issueUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The issue URL, e.g. https://my-org.sentry.io/issues/PROJECT-1Z43"
+        },
+        "types": {
+          "default": null,
+          "description": "Relation types to return; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace, often the other side of a request. contributing: for a metric issue, the error issues behind it.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum related issues per relation type.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string"
+        },
+        "issueId": {
+          "type": "string"
+        },
+        "relatedIssues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "shortId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "substatus": {
+                "type": ["string", "null"]
+              },
+              "issueCategory": {
+                "type": ["string", "null"]
+              },
+              "occurrences": {
+                "type": "number"
+              },
+              "usersImpacted": {
+                "type": "number"
+              },
+              "assignedTo": {
+                "type": ["string", "null"]
+              },
+              "assigneeEmail": {
+                "type": ["string", "null"]
+              },
+              "reporter": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": ["string", "null"]
+                      },
+                      "email": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "required": ["name", "email"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Who submitted a feedback issue. Null for other issues."
+              },
+              "firstSeen": {
+                "type": ["string", "null"]
+              },
+              "lastSeen": {
+                "type": ["string", "null"]
+              },
+              "culprit": {
+                "type": ["string", "null"]
+              },
+              "seerActionability": {
+                "type": ["string", "null"]
+              },
+              "projectSlug": {
+                "type": ["string", "null"]
+              },
+              "relations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "similar_stacktrace",
+                        "same_trace",
+                        "contributing"
+                      ]
+                    },
+                    "score": {
+                      "description": "similar_stacktrace only: how similar the stack traces are, from 0 to 1.",
+                      "type": ["number", "null"]
+                    }
+                  },
+                  "required": ["type", "score"],
+                  "additionalProperties": false
+                },
+                "description": "One entry per relation type that matched the issue."
+              }
+            },
+            "required": [
+              "shortId",
+              "title",
+              "url",
+              "status",
+              "substatus",
+              "issueCategory",
+              "occurrences",
+              "usersImpacted",
+              "assignedTo",
+              "assigneeEmail",
+              "reporter",
+              "firstSeen",
+              "lastSeen",
+              "culprit",
+              "seerActionability",
+              "projectSlug",
+              "relations"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Issues matched by more relation types first."
+        },
+        "relationTypes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+              },
+              "status": {
+                "type": "string",
+                "enum": ["ok", "not_applicable", "unavailable"],
+                "description": "ok: it ran, so no issues of this type means none were found. not_applicable: it doesn't apply to this issue. unavailable: it failed."
+              },
+              "detail": {
+                "type": ["string", "null"]
+              },
+              "traceId": {
+                "description": "same_trace only: the trace that was searched.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["type", "status", "detail", "traceId"],
+            "additionalProperties": false
+          },
+          "description": "Whether each requested relation type ran."
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "organizationSlug",
+        "issueId",
+        "relatedIssues",
+        "relationTypes",
+        "notes",
+        "suggestedActions"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
     "name": "find_releases",
     "title": "Find Releases",
     "description": "List or search releases (deployed versions) in a Sentry organization or project. Returns each release's dates, new issue count, last commit, and last deploy. Returns at most 25 releases with no next page; narrow by project or version to see others.",

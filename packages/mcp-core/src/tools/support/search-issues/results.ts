@@ -28,9 +28,37 @@ export const ISSUE_SORTS = [
 export type IssueSort = (typeof ISSUE_SORTS)[number];
 
 /**
- * The search_issues payload. Issue fields are mapped explicitly, with the
- * names get_issue_details uses, so the passthrough issue schema cannot leak.
+ * One issue in a list result. Fields are mapped explicitly, with the names
+ * get_issue_details uses, so the passthrough issue schema cannot leak.
  */
+export const issueSummarySchema = z.object({
+  shortId: z.string(),
+  title: z.string(),
+  url: z.string(),
+  status: z.string(),
+  substatus: z.string().nullable(),
+  issueCategory: z.string().nullable(),
+  occurrences: z.number(),
+  usersImpacted: z.number(),
+  assignedTo: z.string().nullable(),
+  assigneeEmail: z.string().nullable(),
+  reporter: z
+    .object({
+      name: z.string().nullable(),
+      email: z.string().nullable(),
+    })
+    .nullable()
+    .describe("Who submitted a feedback issue. Null for other issues."),
+  firstSeen: z.string().nullable(),
+  lastSeen: z.string().nullable(),
+  culprit: z.string().nullable(),
+  seerActionability: z.string().nullable(),
+  projectSlug: z.string().nullable(),
+});
+
+export type IssueSummary = z.infer<typeof issueSummarySchema>;
+
+/** The search_issues payload. */
 export const searchIssuesOutputSchema = z.object({
   query: z.string(),
   explanation: z.string().nullable(),
@@ -43,32 +71,7 @@ export const searchIssuesOutputSchema = z.object({
   url: z.string().describe("Opens these results in Sentry."),
   presentationHint: z.string(),
   notes: z.array(z.string()),
-  issues: z.array(
-    z.object({
-      shortId: z.string(),
-      title: z.string(),
-      url: z.string(),
-      status: z.string(),
-      substatus: z.string().nullable(),
-      issueCategory: z.string().nullable(),
-      occurrences: z.number(),
-      usersImpacted: z.number(),
-      assignedTo: z.string().nullable(),
-      assigneeEmail: z.string().nullable(),
-      reporter: z
-        .object({
-          name: z.string().nullable(),
-          email: z.string().nullable(),
-        })
-        .nullable()
-        .describe("Who submitted a feedback issue. Null for other issues."),
-      firstSeen: z.string().nullable(),
-      lastSeen: z.string().nullable(),
-      culprit: z.string().nullable(),
-      seerActionability: z.string().nullable(),
-      projectSlug: z.string().nullable(),
-    }),
-  ),
+  issues: z.array(issueSummarySchema),
   suggestedActions: z.array(suggestedToolActionSchema),
 });
 
@@ -114,6 +117,31 @@ function formatReporter(issue: Issue) {
   return name || email ? { name, email } : null;
 }
 
+/** Maps an issue to the shared list shape, linking it to `url`. */
+export function toIssueSummary(issue: Issue, url: string): IssueSummary {
+  return {
+    shortId: issue.shortId,
+    title: issue.title,
+    url,
+    status: issue.status,
+    substatus: issue.substatus ?? null,
+    issueCategory: issue.issueCategory ?? null,
+    occurrences: Number(issue.count) || 0,
+    usersImpacted: Number(issue.userCount) || 0,
+    assignedTo: formatAssignee(issue.assignedTo),
+    assigneeEmail: formatAssigneeEmail(issue.assignedTo),
+    reporter: formatReporter(issue),
+    firstSeen: issue.firstSeen,
+    lastSeen: issue.lastSeen,
+    culprit: issue.culprit || null,
+    seerActionability:
+      issue.seerFixabilityScore == null
+        ? null
+        : getSeerActionabilityLabel(issue.seerFixabilityScore),
+    projectSlug: issue.project.slug,
+  };
+}
+
 /** Builds the structured search_issues result. */
 export function buildIssueResults(
   params: BuildIssueResultsParams,
@@ -138,27 +166,12 @@ export function buildIssueResults(
     });
   }
 
-  const issues = params.issues.map((issue) => ({
-    shortId: issue.shortId,
-    title: issue.title,
-    url: getIssueUrl(host, organizationSlug, issue.shortId, protocol),
-    status: issue.status,
-    substatus: issue.substatus ?? null,
-    issueCategory: issue.issueCategory ?? null,
-    occurrences: Number(issue.count) || 0,
-    usersImpacted: Number(issue.userCount) || 0,
-    assignedTo: formatAssignee(issue.assignedTo),
-    assigneeEmail: formatAssigneeEmail(issue.assignedTo),
-    reporter: formatReporter(issue),
-    firstSeen: issue.firstSeen,
-    lastSeen: issue.lastSeen,
-    culprit: issue.culprit || null,
-    seerActionability:
-      issue.seerFixabilityScore == null
-        ? null
-        : getSeerActionabilityLabel(issue.seerFixabilityScore),
-    projectSlug: issue.project.slug,
-  }));
+  const issues = params.issues.map((issue) =>
+    toIssueSummary(
+      issue,
+      getIssueUrl(host, organizationSlug, issue.shortId, protocol),
+    ),
+  );
 
   return structuredResult({
     query: params.inputQuery,

@@ -892,6 +892,58 @@ export const IssueSchema = z
 
 export const IssueListSchema = z.array(IssueSchema);
 
+/** Relation types the related issues endpoint supports (`RelationType`). */
+export const RELATED_ISSUE_TYPES = [
+  "similar_stacktrace",
+  "same_trace",
+  "contributing",
+] as const;
+
+/** Outcome of each requested relation type (`RelationTypeStatus`). */
+export const RELATED_ISSUE_TYPE_STATUSES = [
+  "ok",
+  "not_applicable",
+  "unavailable",
+] as const;
+
+/**
+ * Issues related to an issue, from the private
+ * `/organizations/{org}/issues/{issue_id}/related/` endpoint. Types and
+ * statuses are enums: `getRelatedIssues` always names the types it asks for,
+ * so a type Sentry adds later can't show up here.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/issues/related/types.py` (`RelatedIssuesResponse`)
+ * - `src/sentry/issues/endpoints/group_related.py`
+ */
+export const RelatedIssuesResponseSchema = z.object({
+  data: z.array(
+    z.object({
+      issue: IssueSchema,
+      relations: z.array(
+        z
+          .object({
+            type: z.enum(RELATED_ISSUE_TYPES),
+            score: z.number().optional(),
+          })
+          .passthrough(),
+      ),
+    }),
+  ),
+  meta: z.object({
+    types: z.array(
+      z
+        .object({
+          type: z.enum(RELATED_ISSUE_TYPES),
+          status: z.enum(RELATED_ISSUE_TYPE_STATUSES),
+          detail: z.string().optional(),
+          traceId: z.string().optional(),
+        })
+        .passthrough(),
+    ),
+  }),
+});
+
 export const FrameInterface = z
   .object({
     filename: z.string().nullable(),

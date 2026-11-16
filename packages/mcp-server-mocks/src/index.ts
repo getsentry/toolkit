@@ -46,6 +46,7 @@ import issueNullCulpritFixture from "./fixtures/issue-null-culprit.json" with { 
 import issueTagValuesFixture from "./fixtures/issue-tag-values.json" with { type: "json" };
 import issueTagsFixture from "./fixtures/issue-tags.json" with { type: "json" };
 import issueUserReportsFixture from "./fixtures/issue-user-reports.json" with { type: "json" };
+import relatedIssuesFixture from "./fixtures/related-issues.json" with { type: "json" };
 import monitorFixture from "./fixtures/monitor.json" with { type: "json" };
 import monitorCheckInsFixture from "./fixtures/monitor-checkins.json" with { type: "json" };
 import monitorStatsFixture from "./fixtures/monitor-stats.json" with { type: "json" };
@@ -1443,6 +1444,12 @@ export const restHandlers = buildHandlers([
     path: "/api/0/organizations/:org/issues/:issueId/user-reports/",
     fetch: () => HttpResponse.json(issueUserReportsFixture),
   },
+  // Related issues endpoint
+  {
+    method: "get",
+    path: "/api/0/organizations/:org/issues/:issueId/related/",
+    fetch: () => HttpResponse.json(relatedIssuesFixture),
+  },
   // Issue tag keys and tag values endpoints
   {
     method: "get",
@@ -2161,6 +2168,7 @@ export {
   performanceEventFixture,
   profileChunkFixture,
   projectFixture,
+  relatedIssuesFixture,
   releaseFixture,
   replayDetailsFixture,
   replayRecordingSegmentsFixture,
