@@ -105,5 +105,6 @@ export async function searchIssueEventsAgent(
       whoami: whoamiTool,
     },
     schema: searchIssueEventsAgentOutputSchema,
+    abortSignal: options.apiService.signal,
   });
 }

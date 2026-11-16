@@ -13,13 +13,13 @@ import {
   listOrganizationIssueIntegrations,
   listOrganizationIssues,
   listProjectEventAttachments,
-  parseSentryLinkHeader,
 } from "@sentry/api";
 import { operations } from "@sentry/api/operations";
 import {
   API_BASE_PATH,
   ApiNotFoundError,
   apiPath,
+  type ApiClientCore,
   type ApiTarget,
   ApiValidationError,
   applyTimeParams,
@@ -27,6 +27,7 @@ import {
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
+  nextPageCursor,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
@@ -118,6 +119,7 @@ import {
   type TraceMetricIdentifier,
 } from "../utils/url-utils";
 import { getUserAgent } from "../version";
+import { fetchEveryPage } from "./pagination";
 import {
   AgenticOnboardingRunSchema,
   AIConversationDetailsResponseSchema,
@@ -306,10 +308,6 @@ type ExplorerUrlParams = ExplorerAggregateParams & {
 function formatWorkflowNameQuery(query: string): string {
   const escapedQuery = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `name:"*${escapedQuery}*"`;
-}
-
-function getNextCursor(linkHeader: string | null): string | null {
-  return parseSentryLinkHeader(linkHeader).nextCursor ?? null;
 }
 
 /**
@@ -615,14 +613,18 @@ export class SentryApiService {
   protected host: string;
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
-  private readonly core = createApiClientCore({
-    transport,
-    headers: () => this.requestHeaders(),
-    logger: {
-      warn: (message, extra) =>
-        logWarn(message, { loggerScope: ["api", "client"], extra }),
-    },
-  });
+  /** Cancels every request this service sends, such as a tool call's signal. */
+  readonly signal?: AbortSignal;
+  private readonly core = this.withSignal(
+    createApiClientCore({
+      transport,
+      headers: () => this.requestHeaders(),
+      logger: {
+        warn: (message, extra) =>
+          logWarn(message, { loggerScope: ["api", "client"], extra }),
+      },
+    }),
+  );
 
   /**
    * Creates a new Sentry API service instance.
@@ -636,6 +638,7 @@ export class SentryApiService {
    * @param config.clientName DCR-registered OAuth client name
    * @param config.clientFamily Bucketed client family (e.g. "claude-code", "cursor")
    * @param config.utmSource Sanitized MCP request attribution source
+   * @param config.signal Aborts every request, retry wait, and pagination walk of this service
    */
   constructor({
     accessToken = null,
@@ -645,6 +648,7 @@ export class SentryApiService {
     clientName = null,
     clientFamily = null,
     utmSource = null,
+    signal,
   }: {
     accessToken?: string | null;
     host?: string;
@@ -653,6 +657,7 @@ export class SentryApiService {
     clientName?: string | null;
     clientFamily?: string | null;
     utmSource?: string | null;
+    signal?: AbortSignal;
   }) {
     this.accessToken = accessToken;
     this.clientId = clientId;
@@ -662,6 +667,40 @@ export class SentryApiService {
     this.host = host;
     this.protocol = protocol;
     this.apiPrefix = `${protocol}://${host}${API_BASE_PATH}`;
+    this.signal = signal;
+  }
+
+  /**
+   * `core` with {@link signal} on every request, including SDK operations
+   * and shared endpoint wrappers. The signal reaches the core itself, so an
+   * aborted request rejects with the signal's reason instead of a network
+   * error, and the transport stops its retry waits.
+   */
+  private withSignal(core: ApiClientCore): ApiClientCore {
+    const requestInit = (init: RequestInit = {}): RequestInit => {
+      if (!this.signal) {
+        return init;
+      }
+      return {
+        ...init,
+        signal: init.signal
+          ? AbortSignal.any([this.signal, init.signal])
+          : this.signal,
+      };
+    };
+    return {
+      request: (origin, path, init, options) =>
+        core.request(origin, path, requestInit(init), options),
+      requestJson: (origin, path, init) =>
+        core.requestJson(origin, path, requestInit(init)),
+      sdkClient: (origin, expectedPath) => {
+        const client = core.sdkClient(origin, expectedPath);
+        if (this.signal) {
+          client.setConfig({ signal: this.signal });
+        }
+        return client;
+      },
+    };
   }
 
   /**
@@ -1763,10 +1802,7 @@ export class SentryApiService {
     const targetLimit = limit ?? 100;
     return {
       rules: rules.slice(0, targetLimit),
-      nextCursor:
-        rules.length > targetLimit
-          ? null
-          : getNextCursor(response.headers.get("link")),
+      nextCursor: rules.length > targetLimit ? null : nextPageCursor(response),
     };
   }
 
@@ -1959,7 +1995,7 @@ export class SentryApiService {
       detectors: z
         .array(DetectorSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -1991,7 +2027,7 @@ export class SentryApiService {
       actions: z
         .array(AlertActionOptionSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2023,7 +2059,7 @@ export class SentryApiService {
       conditions: z
         .array(AlertConditionOptionSchema)
         .parse(await readJsonResponse(response)),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2167,7 +2203,7 @@ export class SentryApiService {
     const body = await readJsonResponse(response);
     return {
       rules: MetricAlertRuleListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -2228,7 +2264,7 @@ export class SentryApiService {
     );
     return {
       data: await readJsonResponse(response),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -3412,41 +3448,44 @@ export class SentryApiService {
           throwOnError: true,
         }),
       ExternalIssueListSchema,
+      "listing issue external links",
     );
   }
 
   private async listIssueLinkPages<T>(
     path: string,
     schema: z.ZodType<T[]>,
+    context: string,
     opts?: RequestOptions,
   ): Promise<T[]> {
-    return await this.collectAllPages(async (cursor) => {
-      const query = new URLSearchParams({ per_page: "100" });
-      if (cursor) query.set("cursor", cursor);
-      const response = await this.request(
-        `${path}${path.includes("?") ? "&" : "?"}${query.toString()}`,
-        undefined,
-        opts,
-      );
-      return { data: await readJsonResponse(response), response };
-    }, schema);
+    return await this.collectAllPages(
+      async (cursor) => {
+        const query = new URLSearchParams({ per_page: "100" });
+        if (cursor) query.set("cursor", cursor);
+        const response = await this.request(
+          `${path}${path.includes("?") ? "&" : "?"}${query.toString()}`,
+          undefined,
+          opts,
+        );
+        return { data: await readJsonResponse(response), response };
+      },
+      schema,
+      context,
+    );
   }
 
-  /** Walks every page of a Link-paginated list. */
+  /** Walks every page of a Link-paginated list, or throws. */
   private async collectAllPages<T>(
     fetchPage: (
       cursor: string | undefined,
     ) => Promise<{ data: unknown; response: Response }>,
     schema: z.ZodType<T[]>,
+    context: string,
   ): Promise<T[]> {
-    const items: T[] = [];
-    let cursor: string | undefined;
-    do {
+    return await fetchEveryPage(async (cursor) => {
       const { data, response } = await fetchPage(cursor);
-      items.push(...schema.parse(data));
-      cursor = getNextCursor(response.headers.get("link")) ?? undefined;
-    } while (cursor);
-    return items;
+      return { data: schema.parse(data), nextCursor: nextPageCursor(response) };
+    }, context);
   }
 
   async listIssueIntegrations(
@@ -3472,6 +3511,7 @@ export class SentryApiService {
           throwOnError: true,
         }),
       IssueIntegrationListSchema,
+      "listing issue integrations",
     );
   }
 
@@ -3535,6 +3575,7 @@ export class SentryApiService {
     return await this.listIssueLinkPages(
       apiPath`/organizations/${organizationSlug}/sentry-app-installations/`,
       SentryAppInstallationListSchema,
+      "listing Sentry App installations",
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
   }
@@ -3547,6 +3588,7 @@ export class SentryApiService {
       apiPath`/organizations/${organizationSlug}/sentry-app-components/` +
         "?filter=issue-link",
       SentryAppComponentListSchema,
+      "listing Sentry App issue-link components",
       { ...opts, host: this.isPublicSaas() ? "sentry.io" : opts?.host },
     );
   }
@@ -3673,7 +3715,7 @@ export class SentryApiService {
     const body = await readJsonResponse(response);
     return {
       reports: UserReportListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -4905,7 +4947,7 @@ export class SentryApiService {
       title = details.title;
       spans.push(...details.spans);
 
-      cursor = getNextCursor(response.headers.get("link"));
+      cursor = nextPageCursor(response);
       if (!cursor) {
         break;
       }
@@ -4985,7 +5027,7 @@ export class SentryApiService {
 
     return {
       conversations: AIConversationSummaryListSchema.parse(body),
-      nextCursor: getNextCursor(response.headers.get("link")),
+      nextCursor: nextPageCursor(response),
     };
   }
 
@@ -5148,7 +5190,7 @@ export class SentryApiService {
     imageUrl: string,
   ): Promise<{ blob: Blob; contentType: string }> {
     const response = imageUrl.startsWith("https://")
-      ? await fetch(imageUrl)
+      ? await fetch(imageUrl, { signal: this.signal })
       : await this.request(
           imageUrl.startsWith(API_BASE_PATH)
             ? imageUrl.slice(API_BASE_PATH.length)

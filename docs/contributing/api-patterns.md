@@ -225,9 +225,15 @@ return HttpResponse.json(page, {
 });
 ```
 
-Use `@sentry/api`'s `parseSentryLinkHeader` to read the next cursor. Sentry's
-`Link` header reports whether the next page has results; a URL query alone does
-not establish that another page exists.
+Read the next cursor with `nextPageCursor(response)` from `@sentry/api/client`.
+Sentry's `Link` header reports whether the next page has results; a URL query
+alone does not establish that another page exists.
+
+Do not write the page walk yourself. Use `@sentry/api/client`'s `paginate()` to
+fill a tool's `limit` and return a resumable cursor, and mcp-core's
+`fetchEveryPage()` (`src/api-client/pagination.ts`) when a lookup needs every
+row. The `sentry-cli/no-manual-pagination` lint rule rejects cursor loops that
+count toward a limit in mcp-core and the CLI.
 
 ## Testing with Mocks
 
@@ -346,6 +352,26 @@ streams on one connection with `ENHANCE_YOUR_CALM`. Code that uploads large
 bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
 `createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
 `dispatcher` option of `getSdkConfig`, and destroys it after the upload.
+
+### Cancellation
+
+When an MCP client cancels a tool call, the SDK aborts that call's signal.
+The server puts it on a per-call copy of the context as `context.signal`, and
+`apiServiceFromContext` passes it to `SentryApiService`, which sends it with
+every request. An aborted call's in-flight request, retry waits, and page walks
+stop, and the request rejects with the signal's reason. Concurrent calls on the
+same session keep running.
+
+In a tool:
+
+- Wait with `sleep(ms, context.signal)` from `internal/fetch-utils.ts`, not a
+  bare `setTimeout`, and pass `signal: context.signal` to `retryWithBackoff`
+  and `fetchWithTimeout`.
+- Check `signal.aborted`, not the error, to tell a cancellation apart. The
+  reason can be a string.
+- Key state that calls share, such as caches, on `getSessionContext(context)`,
+  and run shared lookups with it, so one call's cancellation never fails
+  another call waiting on the same lookup.
 
 ## Best Practices
 
