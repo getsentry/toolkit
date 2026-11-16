@@ -88,11 +88,61 @@ function scrubValue(value: unknown, depth = 0): [unknown, boolean, string[]] {
   return [value, false, []];
 }
 
+// The MCP SDK's Streamable HTTP transport reports each request it rejects
+// through `transport.onerror`, then answers the client with a 4xx. Each
+// rejection message starts with the HTTP reason phrase of that 4xx
+// (for example "Not Acceptable:" for a missing Accept media type). A
+// `SyntaxError` is the request body failing `JSON.parse` (400).
+const TRANSPORT_CLIENT_REJECTION_PREFIXES = [
+  "Not Acceptable:",
+  "Unsupported Media Type:",
+  "Payload Too Large:",
+  "Bad Request:",
+  "Invalid Request:",
+];
+
 /**
- * Sentry beforeSend hook that scrubs sensitive data from events
- * and applies custom fingerprinting for specific error types.
+ * Whether a transport error is the MCP SDK rejecting a malformed client
+ * request with a 4xx. These are client mistakes, not server faults, so they
+ * must not create Sentry issues.
+ */
+export function isTransportClientRejection(error: {
+  name?: string;
+  message?: string;
+}): boolean {
+  if (error.name === "SyntaxError") {
+    return true;
+  }
+  const message = error.message ?? "";
+  return TRANSPORT_CLIENT_REJECTION_PREFIXES.some((prefix) =>
+    message.startsWith(prefix),
+  );
+}
+
+// Sentry's MCP server integration captures every `transport.onerror` call as
+// an unhandled exception with this mechanism, before our own handler runs.
+function isCapturedTransportClientRejection(exception: any): boolean {
+  const mechanism = exception?.mechanism;
+  return (
+    mechanism?.type === "auto.ai.mcp_server" &&
+    mechanism.data?.error_type === "transport" &&
+    isTransportClientRejection({
+      name: exception.type,
+      message: exception.value,
+    })
+  );
+}
+
+/**
+ * Sentry beforeSend hook that drops MCP transport rejections of malformed
+ * client requests, scrubs sensitive data from events, and applies custom
+ * fingerprinting for specific error types.
  */
 export function sentryBeforeSend(event: any, _hint: any): any {
+  if (event?.exception?.values?.some(isCapturedTransportClientRejection)) {
+    return null;
+  }
+
   // Custom fingerprinting for AI SDK API call errors.
   // These errors share the same stack trace but have different messages
   // (e.g., "Country, region, or territory not supported", temperature issues).

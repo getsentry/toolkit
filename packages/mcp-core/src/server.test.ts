@@ -1,7 +1,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, getClient, setUser, startSpan } from "@sentry/core";
+import {
+  McpServer,
+  WebStandardStreamableHTTPServerTransport,
+} from "@modelcontextprotocol/server";
+import {
+  type Span,
+  captureException,
+  getClient,
+  setUser,
+  startSpan,
+} from "@sentry/core";
 import {
   createDefaultEvent,
   eventFixture,
@@ -231,6 +240,41 @@ describe("buildServer", () => {
       }
 
       expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
+  });
+
+  describe("transport errors", () => {
+    // MCP-SERVER-GFB: clients that omit text/event-stream from Accept got a
+    // 406 and also created a Sentry issue.
+    it("does not create an issue when the transport rejects a request", async () => {
+      const server = buildServer({ context: baseContext });
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      await server.connect(transport);
+      const response = await transport.handleRequest(
+        new Request("http://localhost/mcp", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+        }),
+      );
+      await server.close();
+
+      expect(response.status).toBe(406);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("creates an issue for unexpected transport errors", () => {
+      const server = buildServer({ context: baseContext });
+      const error = new Error("Failed to send response: socket closed");
+
+      server.server.onerror?.(error);
+
+      expect(captureException).toHaveBeenCalledWith(error, expect.anything());
     });
   });
 

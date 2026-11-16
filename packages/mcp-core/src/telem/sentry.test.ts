@@ -201,4 +201,67 @@ describe("sentry", () => {
       expect(result.message).toBe("Deep nesting test");
     });
   });
+
+  describe("MCP transport client rejections", () => {
+    // Shape of the events Sentry's MCP server integration captures from
+    // `transport.onerror` (MCP-SERVER-GFB).
+    function transportErrorEvent(
+      type: string,
+      value: string,
+      errorType = "transport",
+    ): SentryEvent {
+      return {
+        exception: {
+          values: [
+            {
+              type,
+              value,
+              mechanism: {
+                type: "auto.ai.mcp_server",
+                handled: false,
+                data: { error_type: errorType },
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    it.each([
+      [
+        "Error",
+        "Not Acceptable: Client must accept both application/json and text/event-stream",
+      ],
+      [
+        "Error",
+        "Unsupported Media Type: Content-Type must be application/json",
+      ],
+      [
+        "Error",
+        "Bad Request: Unsupported protocol version: 2024-01-01 (supported versions: 2025-11-25, 2025-06-18)",
+      ],
+      [
+        "SyntaxError",
+        "Expected property name or '}' in JSON at position 1 (line 1 column 2)",
+      ],
+    ])("drops the rejected request %s: %s", (type, value) => {
+      expect(sentryBeforeSend(transportErrorEvent(type, value), {})).toBeNull();
+    });
+
+    it("keeps other transport errors", () => {
+      const event = transportErrorEvent("Error", "Error replaying events");
+
+      expect(sentryBeforeSend(event, {})).toEqual(event);
+    });
+
+    it("keeps rejection messages that did not come from the transport", () => {
+      const event = transportErrorEvent(
+        "Error",
+        "Bad Request: something the server did",
+        "handler_execution",
+      );
+
+      expect(sentryBeforeSend(event, {})).toEqual(event);
+    });
+  });
 });
