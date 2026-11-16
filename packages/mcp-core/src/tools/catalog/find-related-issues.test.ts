@@ -1,14 +1,23 @@
-import { mswServer } from "@sentry/mcp-server-mocks";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
+import { buildServer } from "../../server.js";
+import type { Skill } from "../../skills.js";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
 } from "../../test-utils/structured-content.js";
+import type { ServerContext } from "../../types.js";
 import findRelatedIssues, {
   findRelatedIssuesOutputSchema,
 } from "./find-related-issues.js";
+
+vi.mock("@sentry/core/server", () => ({
+  wrapMcpServerWithSentry: vi.fn((server) => server),
+}));
 
 type Output = z.infer<typeof findRelatedIssuesOutputSchema>;
 
@@ -162,25 +171,7 @@ describe("find_related_issues", () => {
     expect(requested?.get("limit")).toBe("5");
   });
 
-  it("names every known type when none are requested", async () => {
-    let requested: URLSearchParams | undefined;
-    mswServer.use(
-      http.get(RELATED_URL, ({ request }) => {
-        requested = new URL(request.url).searchParams;
-        return HttpResponse.json({ data: [], meta: { types: [] } });
-      }),
-    );
-
-    await findRelatedIssues.handler(params, context);
-
-    expect(requested?.getAll("type")).toEqual([
-      "similar_stacktrace",
-      "same_trace",
-      "contributing",
-    ]);
-  });
-
-  it("says how to search by hand when a type is unavailable", async () => {
+  it("passes on Sentry's reason when a type is unavailable", async () => {
     mswServer.use(
       http.get(RELATED_URL, () =>
         HttpResponse.json({
@@ -242,21 +233,133 @@ describe("find_related_issues", () => {
       "Related issues outside the CLOUDFLARE-MCP project are left out.",
     ]);
   });
+});
 
-  it("accepts an issue URL", async () => {
-    const result = await findRelatedIssues.handler(
-      {
-        organizationSlug: undefined,
-        regionUrl: null,
-        issueUrl: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
-        types: null,
-        limit: 10,
-      },
-      context,
+describe("find_related_issues through the MCP server", () => {
+  const serverContext: ServerContext = {
+    accessToken: "test-token",
+    grantedSkills: new Set<Skill>(["inspect", "triage"]),
+    constraints: { organizationSlug: null, projectSlug: null },
+    sentryHost: "sentry.io",
+  };
+
+  async function withClient<T>(run: (client: Client) => Promise<T>) {
+    const server = buildServer({ context: serverContext });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "related-issues-test", version: "1" });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      return await run(client);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  }
+
+  it("finds an issue's siblings from its URL, then opens the suggested one", async () => {
+    let relatedRequest: URL | undefined;
+    mswServer.use(
+      http.get(RELATED_URL, ({ request }) => {
+        relatedRequest = new URL(request.url);
+        return HttpResponse.json({
+          data: [
+            {
+              issue: issueFixture,
+              relations: [{ type: "similar_stacktrace", score: 0.97 }],
+            },
+          ],
+          meta: {
+            types: [
+              { type: "similar_stacktrace", status: "ok" },
+              {
+                type: "same_trace",
+                status: "not_applicable",
+                detail: "This issue's event has no trace.",
+              },
+              {
+                type: "contributing",
+                status: "not_applicable",
+                detail: "Only metric issues have contributing issues.",
+              },
+            ],
+          },
+        });
+      }),
     );
-    const structuredContent = getStructuredContent<Output>(result);
 
-    expect(structuredContent.organizationSlug).toBe("sentry-mcp-evals");
-    expect(structuredContent.issueId).toBe("CLOUDFLARE-MCP-41");
+    await withClient(async (client) => {
+      const related = await client.callTool({
+        name: "find_related_issues",
+        arguments: {
+          issueUrl:
+            "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-42",
+        },
+      });
+      expect(related.isError).toBeFalsy();
+
+      // The issue comes from the URL. With no types given, every known type is
+      // named, so Sentry can't return one the output schema rejects.
+      expect(relatedRequest?.pathname).toBe(
+        "/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-42/related/",
+      );
+      expect(relatedRequest?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+      expect(relatedRequest?.searchParams.get("limit")).toBe("10");
+
+      const next = getStructuredContent<Output>(related).suggestedActions.at(0);
+      expect(next).toMatchObject({
+        toolName: "get_sentry_resource",
+        arguments: { resourceType: "issue", resourceId: "CLOUDFLARE-MCP-41" },
+      });
+      if (!next) {
+        throw new Error("Expected a suggested action");
+      }
+
+      // The agent runs the suggested call exactly as given.
+      const opened = await client.callTool({
+        name: next.toolName,
+        arguments: next.arguments,
+      });
+      expect(opened.isError).toBeFalsy();
+      expect(JSON.stringify(opened)).toContain(
+        "Tool list_organizations is already registered",
+      );
+    });
   });
+
+  it("returns Sentry's reason as a tool error when every type fails", async () => {
+    mswServer.use(
+      http.get(RELATED_URL, () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Related issues are temporarily unavailable. Try again later.",
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+
+    // A 503 is retried with backoff before the error reaches the agent, hence
+    // the longer timeout.
+    const result = await withClient((client) =>
+      client.callTool({
+        name: "find_related_issues",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+        },
+      }),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      "Related issues are temporarily unavailable. Try again later.",
+    );
+  }, 10_000);
 });
