@@ -69,6 +69,12 @@
       }
     },
     {
+      "files": ["packages/mcp-cloudflare/**/*.{ts,tsx,js,mjs,cjs}"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
       "files": ["packages/mcp-core/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
         "typescript/no-unnecessary-condition": "error",

@@ -496,7 +496,7 @@ export async function renderApprovalDialog(
   const rawRedirectUri =
     typeof redirectUri === "string" && redirectUri.length > 0
       ? redirectUri
-      : client?.redirectUris?.length === 1
+      : client?.redirectUris.length === 1
         ? client.redirectUris[0]
         : null;
 
