@@ -120,8 +120,11 @@ function main() {
   if (pr && remote) {
     run("git", ["fetch", "--quiet", "origin", BRANCH, "main"]);
     branch = pinnedVersion(run("git", ["show", `${remote}:${WORKSPACE}`]));
+    // Merging main into the branch, such as with GitHub's "Update branch",
+    // adds nothing the rebuild from main would lose, so merges don't count.
     foreignCommits = run("git", [
       "log",
+      "--no-merges",
       "--format=%ae",
       `origin/main..${remote}`,
     ])

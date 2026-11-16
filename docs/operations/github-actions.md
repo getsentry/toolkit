@@ -127,8 +127,9 @@ PR opened with `github.token` does not start other workflows.
   second one.
 - The branch belongs to the script. If someone pushes their own commit to it,
   the script stops updating the PR and logs a warning, so the commit is not
-  lost. Rebase it onto the new release by hand, or close it and let the next run
-  open a fresh PR.
+  lost. Merging main into the branch, such as with "Update branch", doesn't
+  count. Rebase it onto the new release by hand, or close it and let the next
+  run open a fresh PR.
 - The PR is never merged automatically.
 
 ## Package CI checks
