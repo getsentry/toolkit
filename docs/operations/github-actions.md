@@ -113,13 +113,23 @@ label creation.
 
 ### bump-sentry-api.yml
 
-Every day and on manual dispatch, `scripts/bump-sentry-api.mjs` pins the
-catalog's `@sentry/api` to its newest npm release. It also updates its
-`minimumReleaseAgeExclude` entry so the fresh release installs, and opens a PR
-for the change. `test.yml` runs on that PR, so the CLI, MCP and shared packages
-are checked against each release that getsentry/sentry publishes. The release
-bot's token opens the PR, because a PR opened with `github.token` does not
-start other workflows. The PR is not merged automatically.
+Every day and on manual dispatch, `scripts/bump-sentry-api.mjs` keeps one PR
+that pins the catalog's `@sentry/api` to its newest npm release, on the
+`bot/bump-sentry-api` branch. It also updates the package's
+`minimumReleaseAgeExclude` entry so the fresh release installs. `test.yml` runs
+on that PR, so the CLI, MCP and shared packages are checked against each release
+that getsentry/sentry publishes. The release bot's token opens the PR, because a
+PR opened with `github.token` does not start other workflows.
+
+- With no open bump PR, it opens one.
+- When a newer release ships while the PR is open, it rebuilds the branch from
+  main with that version, force-pushes it, and retitles the PR. It never opens a
+  second one.
+- The branch belongs to the script. If someone pushes their own commit to it,
+  the script stops updating the PR and logs a warning, so the commit is not
+  lost. Rebase it onto the new release by hand, or close it and let the next run
+  open a fresh PR.
+- The PR is never merged automatically.
 
 ## Package CI checks
 

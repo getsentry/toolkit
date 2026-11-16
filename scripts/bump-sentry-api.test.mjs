@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { isRelease, pinSentryApi } from "./bump-sentry-api.mjs";
+import { isRelease, pinSentryApi, planBump } from "./bump-sentry-api.mjs";
 
 const workspace = readFileSync(
   new URL("../pnpm-workspace.yaml", import.meta.url),
@@ -32,4 +32,16 @@ test("accepts only stable releases", () => {
   assert.equal(isRelease("2.5.1"), true);
   assert.equal(isRelease("3.0.0-rc.0"), false);
   assert.equal(isRelease(""), false);
+});
+
+test("keeps one bump PR on the newest release", () => {
+  const latest = "2.6.0";
+  assert.equal(planBump({ latest, main: "2.6.0" }), "none");
+  assert.equal(planBump({ latest, main: "2.5.0" }), "open");
+  assert.equal(planBump({ latest, main: "2.5.0", branch: "2.6.0" }), "none");
+  assert.equal(planBump({ latest, main: "2.5.0", branch: "2.5.3" }), "update");
+  assert.equal(
+    planBump({ latest, main: "2.5.0", branch: "2.5.3", foreignCommits: 1 }),
+    "keep",
+  );
 });

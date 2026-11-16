@@ -1,9 +1,9 @@
 name: Bump @sentry/api
 
-# Opens a pull request that pins @sentry/api, which getsentry/sentry releases
-# from static/packages/api, to its newest npm release. test.yml then checks the
-# CLI, MCP and shared packages against it, so this repository validates each
-# release as an outside consumer.
+# Keeps one pull request that pins @sentry/api, which getsentry/sentry releases
+# from static/packages/api, to its newest npm release, and moves it to each new
+# release. test.yml then checks the CLI, MCP and shared packages against it, so
+# this repository validates each release as an outside consumer.
 on:
   schedule:
     - cron: "41 7 * * *"
@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           token: ${{ steps.token.outputs.token }}
+          # The bump compares the open PR's branch with main.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
