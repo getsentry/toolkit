@@ -350,6 +350,7 @@ export const planCommand = buildCommand({
           error.detail,
           resolvedOrg,
           error.code,
+          error.denialReason,
         );
       }
       throw error;

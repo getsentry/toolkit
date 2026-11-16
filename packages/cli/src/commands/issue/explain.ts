@@ -79,6 +79,7 @@ async function analyzeIssue(
         error.detail,
         resolvedOrg,
         error.code,
+        error.denialReason,
       );
     }
     throw error;
