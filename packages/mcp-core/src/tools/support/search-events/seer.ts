@@ -8,6 +8,7 @@ import {
   ApiError,
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
+import { sleep } from "../../../internal/fetch-utils";
 import { logWarn } from "../../../telem/logging";
 import {
   type EventsApiDataset,
@@ -323,9 +324,7 @@ async function runSearchAgent({
         return null;
       }
 
-      await new Promise((resolve) =>
-        setTimeout(resolve, SEER_SEARCH_AGENT_POLLING_INTERVAL),
-      );
+      await sleep(SEER_SEARCH_AGENT_POLLING_INTERVAL, apiService.signal);
     }
 
     logWarn("Seer search agent timed out", {
@@ -333,6 +332,8 @@ async function runSearchAgent({
     });
     return null;
   } catch (error) {
+    // A cancelled call must not fall back to the embedded agent.
+    apiService.signal?.throwIfAborted();
     // An invalid token should surface to the user rather than fall back.
     if (error instanceof ApiAuthenticationError) {
       throw error;

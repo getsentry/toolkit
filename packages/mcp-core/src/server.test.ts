@@ -1,12 +1,19 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, getClient, setUser, startSpan } from "@sentry/core";
+import {
+  type Span,
+  captureException,
+  getClient,
+  setUser,
+  startSpan,
+} from "@sentry/core";
 import {
   createDefaultEvent,
   eventFixture,
   issueFixture,
   mswServer,
+  organizationFixture,
   projectFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
@@ -436,6 +443,192 @@ describe("buildServer", () => {
       // The outer call targets no organization; the inner call targets org-b.
       expect(resolved).toEqual([null, "org-b"]);
       expect(refreshed).toEqual(["org-b"]);
+    });
+  });
+
+  describe("cancellation", () => {
+    const INTEGRATIONS_URL =
+      "https://sentry.io/api/0/organizations/org/issues/1/integrations/";
+    const NEXT_PAGE_LINK =
+      '<https://sentry.io/>; rel="previous"; results="false"; cursor="0:0:1", ' +
+      '<https://sentry.io/>; rel="next"; results="true"; cursor="0:100:0"';
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    /** A tool whose handler outcome the test can await. */
+    function trackedTool(
+      name: string,
+      run: (context: ServerContext) => Promise<unknown>,
+    ) {
+      let settle!: (outcome: PromiseSettledResult<unknown>) => void;
+      const settled = new Promise<PromiseSettledResult<unknown>>((resolve) => {
+        settle = resolve;
+      });
+      const tool = createMockTool(name, {
+        handler: async (_params, context) => {
+          try {
+            const value = await run(context);
+            settle({ status: "fulfilled", value });
+            return "done";
+          } catch (reason) {
+            settle({ status: "rejected", reason });
+            throw reason;
+          }
+        },
+      });
+      return { tool, settled };
+    }
+
+    it("aborts the in-flight request and fetches no further pages", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      let inFlightAborted = false;
+      mswServer.use(
+        http.get(INTEGRATIONS_URL, async ({ request }) => {
+          requests++;
+          if (requests > 1) {
+            // Cancel while the second page is in flight.
+            controller.abort("client cancelled");
+            await new Promise((resolve) => {
+              if (request.signal.aborted) resolve(undefined);
+              request.signal.addEventListener("abort", resolve);
+            });
+            inFlightAborted = true;
+          }
+          return HttpResponse.json([], {
+            headers: { Link: NEXT_PAGE_LINK },
+          });
+        }),
+      );
+      const { tool, settled } = trackedTool("paged_tool", (context) =>
+        apiServiceFromContext(context).listIssueIntegrations({
+          organizationSlug: "org",
+          issueId: "1",
+        }),
+      );
+      const server = buildServer({
+        context: baseContext,
+        tools: { paged_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "paged_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        // MCP cancellation reasons can be strings, not AbortErrors.
+        await expect(settled).resolves.toEqual({
+          status: "rejected",
+          reason: "client cancelled",
+        });
+      });
+
+      expect(inFlightAborted).toBe(true);
+      expect(requests).toBe(2);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("stops retrying a failed request once the call is cancelled", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", () => {
+          requests++;
+          // A 503 GET is retried after a backoff; cancel during it.
+          controller.abort("client cancelled");
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+      const { tool, settled } = trackedTool("retry_tool", (context) =>
+        apiServiceFromContext(context).getOrganization("org"),
+      );
+      const router: CredentialRouter = {
+        resolve: async () => ({ id: "default", accessToken: "routed-token" }),
+        list: async () => [],
+      };
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: { retry_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "retry_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        await expect(settled).resolves.toMatchObject({ status: "rejected" });
+      });
+
+      expect(requests).toBe(1);
+    });
+
+    it("keeps other calls on the session running", async () => {
+      const controller = new AbortController();
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", async () => {
+          requests++;
+          if (requests === 2) {
+            controller.abort("client cancelled");
+            release();
+          }
+          await released;
+          return HttpResponse.json({ ...organizationFixture, slug: "org" });
+        }),
+      );
+      const fetchOrganization = (context: ServerContext) =>
+        apiServiceFromContext(context).getOrganization("org");
+      const cancelled = trackedTool("cancelled_tool", fetchOrganization);
+      const kept = trackedTool("kept_tool", fetchOrganization);
+      const server = buildServer({
+        context: baseContext,
+        tools: { cancelled_tool: cancelled.tool, kept_tool: kept.tool },
+      });
+
+      const keptResult = await withClient(server, async (client) => {
+        const [cancelledResult, keptResult] = await Promise.allSettled([
+          client.callTool(
+            { name: "cancelled_tool", arguments: {} },
+            undefined,
+            {
+              signal: controller.signal,
+            },
+          ),
+          client.callTool({ name: "kept_tool", arguments: {} }),
+        ]);
+        expect(cancelledResult.status).toBe("rejected");
+        await cancelled.settled;
+        return keptResult;
+      });
+
+      expect(keptResult).toMatchObject({
+        status: "fulfilled",
+        value: { content: [{ type: "text", text: "done" }] },
+      });
+      await expect(kept.settled).resolves.toMatchObject({
+        status: "fulfilled",
+      });
     });
   });
 

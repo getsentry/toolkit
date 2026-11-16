@@ -19,7 +19,7 @@ export async function maybeFetchSourceMapDebug({
   projectSlug,
   event,
 }: {
-  apiService: Pick<SentryApiService, "getSourceMapDebug">;
+  apiService: Pick<SentryApiService, "getSourceMapDebug" | "signal">;
   organizationSlug: string;
   projectSlug: string;
   event: Event;
@@ -47,6 +47,7 @@ export async function maybeFetchSourceMapDebug({
   } catch (error) {
     if (
       !controller.signal.aborted &&
+      !apiService.signal?.aborted &&
       !(error instanceof ApiClientError) &&
       !(error instanceof ConfigurationError)
     ) {

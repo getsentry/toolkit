@@ -118,6 +118,7 @@ export default defineTool({
           maxResults: params.maxResults,
           guide: params.guide,
         }),
+        signal: context.signal,
       },
       15000, // 15 second timeout
     );

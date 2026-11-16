@@ -347,6 +347,26 @@ bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
 `createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
 `dispatcher` option of `getSdkConfig`, and destroys it after the upload.
 
+### Cancellation
+
+When an MCP client cancels a tool call, the SDK aborts that call's signal.
+The server puts it on a per-call copy of the context as `context.signal`, and
+`apiServiceFromContext` passes it to `SentryApiService`, which sends it with
+every request. An aborted call's in-flight request, retry waits, and page walks
+stop, and the request rejects with the signal's reason. Concurrent calls on the
+same session keep running.
+
+In a tool:
+
+- Wait with `sleep(ms, context.signal)` from `internal/fetch-utils.ts`, not a
+  bare `setTimeout`, and pass `signal: context.signal` to `retryWithBackoff`
+  and `fetchWithTimeout`.
+- Check `signal.aborted`, not the error, to tell a cancellation apart. The
+  reason can be a string.
+- Key state that calls share, such as caches, on `getSessionContext(context)`,
+  and run shared lookups with it, so one call's cancellation never fails
+  another call waiting on the same lookup.
+
 ## Best Practices
 
 1. **Always use context helper** when in tools/prompts

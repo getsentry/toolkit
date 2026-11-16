@@ -71,7 +71,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params) {
+  async handler(params, context) {
     const docContext = { "doc.path": params.path };
     setTags(docContext);
     setAttributes(docContext);
@@ -95,6 +95,7 @@ export default defineTool({
             "User-Agent": getUserAgent(),
           },
           redirect: "manual",
+          signal: context.signal,
         },
         15000, // 15 second timeout
       );
