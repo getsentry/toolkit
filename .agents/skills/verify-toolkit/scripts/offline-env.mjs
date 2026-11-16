@@ -17,18 +17,20 @@ export function offlineEnv({ token }) {
   const home = mkdtempSync(join(tmpdir(), "verify-toolkit-home-"));
   const configDir = join(home, ".sentry");
   const env = { ...process.env };
+  // Set, not deleted: `pnpm run cli` loads `packages/cli/.env.local` for
+  // unset variables only, and the CLI treats an empty token as unset.
   for (const name of [
     "SENTRY_AUTH_TOKEN",
     "SENTRY_ACCESS_TOKEN",
     "SENTRY_TOKEN",
-    "SENTRY_HOST",
   ]) {
-    delete env[name];
+    env[name] = "";
   }
   Object.assign(env, {
     HOME: home,
     USERPROFILE: home,
     SENTRY_CONFIG_DIR: configDir,
+    SENTRY_HOST: OFFLINE_SENTRY_URL,
     SENTRY_URL: OFFLINE_SENTRY_URL,
     SENTRY_CLI_NO_TELEMETRY: "1",
   });

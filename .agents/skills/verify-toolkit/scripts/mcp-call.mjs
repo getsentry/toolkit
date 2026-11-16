@@ -49,6 +49,8 @@ const { StdioClientTransport } = await sdk("client/stdio.js");
 // from MSW fixtures and ignores it; `sentry mcp` gets a fake token (unless
 // --no-token), an empty config dir, and an unreachable Sentry host.
 const { env, cleanup } = offlineEnv({ token: opts.token });
+// The mock server answers for its default host, sentry.io.
+if (opts.server === "mock") delete env.SENTRY_HOST;
 const [command, args] =
   opts.server === "mock"
     ? [

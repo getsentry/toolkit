@@ -33,7 +33,7 @@ Preconditions:
 ## Gotchas
 
 - The scope check at startup cannot reach the offline host, so `sentry mcp acme/` starts as if the org exists. That is the documented behavior for a network failure, not proof that `acme` exists.
-- `--no-token` also needs the empty home and config dir that the script makes: the CLI reads a token from `~/.sentryclirc`. Never point `HOME` or `SENTRY_CONFIG_DIR` at a real login for this drive.
+- `--no-token` also needs the empty home and config dir that the script makes: the CLI reads a token from `~/.sentryclirc`. The script also sets the token variables to empty, because `pnpm run cli` loads `packages/cli/.env.local` for any variable that is not set. Never point `HOME` or `SENTRY_CONFIG_DIR` at a real login for this drive.
 
 ## Gaps
 
