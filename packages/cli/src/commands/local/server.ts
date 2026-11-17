@@ -37,7 +37,11 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { PORT_IN_USE_FIELD, ValidationError } from "../../lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../lib/errors.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
 import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
@@ -646,7 +650,7 @@ export async function isServerRunning(url: string): Promise<boolean> {
   if (holder === "daemon") {
     throw new ValidationError(
       "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
-      "session",
+      PORT_HELD_BY_DAEMON_FIELD,
     );
   }
   return holder === "other";

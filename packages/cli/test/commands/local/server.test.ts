@@ -22,7 +22,10 @@ import {
   tryListen,
 } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
@@ -1000,6 +1003,26 @@ describe("isServerRunning", () => {
     } finally {
       globalThis.fetch = savedFetch;
       await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  test("rejects a port that a Sentry Local daemon holds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("OK", { headers: { "X-Sentry-Local-Mode": "daemon" } }),
+      ),
+    );
+    try {
+      await expect(
+        isServerRunning("http://127.0.0.1:8969"),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_HELD_BY_DAEMON_FIELD,
+      });
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 
