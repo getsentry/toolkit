@@ -4,15 +4,22 @@
  * `spawn()` does not apply PATHEXT, so `npm` is not found (ENOENT), and since
  * the CVE-2024-27980 fix Node refuses to run a `.cmd` or `.bat` file without a
  * shell (EINVAL). Turning on `shell: true` would join the arguments without
- * quoting them, so this module resolves the command itself and runs batch
- * files through `cmd.exe` with each argument escaped, like `cross-spawn`.
+ * quoting them, so this module resolves the command itself and runs anything
+ * that is not an `.exe` or `.com` through `cmd.exe`, quoting each argument
+ * the way Rust's standard library does since CVE-2024-24576 ("BatBadBut").
  *
  * `whichSync` does not fit here: `where.exe npm` lists the extensionless sh
  * script that npm installs before `npm.cmd`, and Windows cannot run it.
  */
 
+import {
+  type ChildProcess,
+  type SpawnOptions,
+  spawn,
+} from "node:child_process";
 import { statSync } from "node:fs";
 import { extname, isAbsolute, join, resolve } from "node:path";
+import { ValidationError } from "./errors.js";
 
 /** What to pass to `spawn()`. */
 export type SpawnTarget = {
@@ -27,38 +34,41 @@ type SpawnEnv = Record<string, string | undefined>;
 /** Used when PATHEXT is unset; the Windows default order. */
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 
-/** Batch files, which only `cmd.exe` can run. */
-const BATCH_FILE_RE = /\.(?:cmd|bat)$/i;
-
-/**
- * An npm `.cmd` shim in `node_modules/.bin` passes its arguments through a
- * second `cmd.exe` parse, so shell metacharacters need escaping twice.
- */
-const CMD_SHIM_RE = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i;
-
-/** Characters `cmd.exe` treats specially; escaped with `^`. */
-const CMD_META_RE = /([()\][%!^"`<>&|;, *?])/g;
-
-/** Backslashes followed by a double quote. */
-const QUOTE_BACKSLASHES_RE = /(\\*)"/g;
-
-/** Backslashes at the end of the string. */
-const TRAILING_BACKSLASHES_RE = /(\\*)$/;
+/** Files Windows can run directly; anything else goes through `cmd.exe`. */
+const EXECUTABLE_RE = /\.(?:com|exe)$/i;
 
 /** A command given as a path, not a bare name to look up on PATH. */
 const HAS_PATH_SEPARATOR_RE = /[\\/]/;
 
+/** A PATH entry wrapped in double quotes, which Windows allows. */
+const QUOTED_PATH_ENTRY_RE = /^"(.*)"$/;
+
+/** Line breaks end a `cmd.exe` command, so they cannot be passed safely. */
+const LINE_BREAK_RE = /[\r\n]/;
+
 /**
- * Read an environment variable by name, ignoring case like Windows does.
- *
- * A copy of `process.env` can hold both `Path` and `PATH` (local run adds
- * `PATH` with `node_modules/.bin`). Node keeps the key that sorts first, so
- * the child gets `PATH`; read the same one.
+ * Expands to nothing in `cmd.exe`, so `%` followed by it is never read as the
+ * start of a `%VAR%` reference (needs command extensions, `/e:ON`).
  */
-function getEnv(env: SpawnEnv, name: string): string | undefined {
-  const key = Object.keys(env)
+const PERCENT_GUARD = "%cd:~,";
+
+/**
+ * The key Node passes to the child for an environment variable on Windows.
+ *
+ * Windows names are case-insensitive, and a copy of `process.env` can hold
+ * both `Path` and `PATH`. Node keeps only the key that sorts first, so this
+ * returns the same one.
+ */
+export function windowsEnvKey(env: SpawnEnv, name: string): string | undefined {
+  const upper = name.toUpperCase();
+  return Object.keys(env)
     .sort()
-    .find((k) => k.toUpperCase() === name.toUpperCase());
+    .find((key) => key.toUpperCase() === upper);
+}
+
+/** Read an environment variable the way the Windows child will see it. */
+function getEnv(env: SpawnEnv, name: string): string | undefined {
+  const key = windowsEnvKey(env, name);
   return key === undefined ? undefined : env[key];
 }
 
@@ -89,7 +99,10 @@ function resolveWindowsCommand(
 
   const dirs = HAS_PATH_SEPARATOR_RE.test(command)
     ? [isAbsolute(command) ? "" : cwd]
-    : (getEnv(env, "PATH") ?? "").split(";").filter(Boolean);
+    : (getEnv(env, "PATH") ?? "")
+        .split(";")
+        .map((dir) => dir.replace(QUOTED_PATH_ENTRY_RE, "$1"))
+        .filter(Boolean);
 
   for (const dir of dirs) {
     for (const name of names) {
@@ -102,22 +115,40 @@ function resolveWindowsCommand(
   return;
 }
 
-/** Escape a program path for a `cmd.exe` command line. */
-function escapeCmdCommand(command: string): string {
-  return command.replace(CMD_META_RE, "^$1");
-}
-
 /**
- * Quote one argument for a `cmd.exe` command line: first for the program's
- * own argument parser (MSVCRT rules), then `^`-escape the result for
- * `cmd.exe`.
+ * Quote one argument for a batch file run by `cmd.exe`.
+ *
+ * Every argument is quoted, so `cmd.exe` treats `&`, `|`, `<`, `>`, `^` and
+ * spaces as text, both on this command line and when the batch file expands
+ * `%*`. An embedded `"` is written as `""`, which keeps `cmd.exe` inside the
+ * quotes and which the program reads back as one `"`. Backslashes before a
+ * `"` are doubled for the program's own parser (MSVCRT rules), and `%` gets
+ * {@link PERCENT_GUARD} so `%PATH%` is not expanded.
  */
-function escapeCmdArgument(arg: string, doubleEscape: boolean): string {
-  let quoted = arg
-    .replace(QUOTE_BACKSLASHES_RE, '$1$1\\"')
-    .replace(TRAILING_BACKSLASHES_RE, "$1$1");
-  quoted = `"${quoted}"`.replace(CMD_META_RE, "^$1");
-  return doubleEscape ? quoted.replace(CMD_META_RE, "^$1") : quoted;
+function quoteBatchArgument(arg: string): string {
+  if (LINE_BREAK_RE.test(arg)) {
+    throw new ValidationError(
+      "Arguments to a .cmd or .bat command cannot contain line breaks.",
+      "command",
+    );
+  }
+  let quoted = '"';
+  let backslashes = 0;
+  for (const char of arg) {
+    if (char === "\\") {
+      backslashes += 1;
+      quoted += char;
+      continue;
+    }
+    if (char === '"') {
+      quoted += `${"\\".repeat(backslashes)}"`;
+    } else if (char === "%") {
+      quoted += `%${PERCENT_GUARD}`;
+    }
+    backslashes = 0;
+    quoted += char;
+  }
+  return `${quoted}${"\\".repeat(backslashes)}"`;
 }
 
 /**
@@ -132,6 +163,8 @@ function escapeCmdArgument(arg: string, doubleEscape: boolean): string {
  * @param options - The `cwd` and `env` the child will get (PATH may differ
  *   from this process's)
  * @param platform - Defaults to `process.platform`; tests set it
+ * @throws {ValidationError} When a batch file would get an argument with a
+ *   line break
  */
 export function resolveSpawnTarget(
   command: string,
@@ -146,17 +179,35 @@ export function resolveSpawnTarget(
   if (!resolved) {
     return { command, args };
   }
-  if (!BATCH_FILE_RE.test(resolved)) {
+  if (EXECUTABLE_RE.test(resolved)) {
     return { command: resolved, args };
   }
-  const doubleEscape = CMD_SHIM_RE.test(resolved);
-  const commandLine = [
-    escapeCmdCommand(resolved),
-    ...args.map((arg) => escapeCmdArgument(arg, doubleEscape)),
-  ].join(" ");
+  // Windows file names cannot contain `"`, so quoting the path is enough.
+  const commandLine = [`"${resolved}"`, ...args.map(quoteBatchArgument)].join(
+    " ",
+  );
   return {
     command: getEnv(options.env, "ComSpec") ?? "cmd.exe",
-    args: ["/d", "/s", "/c", `"${commandLine}"`],
+    args: ["/d", "/e:ON", "/v:OFF", "/s", "/c", `"${commandLine}"`],
     windowsVerbatimArguments: true,
   };
+}
+
+/**
+ * Spawn the command a user asked `sentry local run` or `sentry monitor run`
+ * to run, resolved with {@link resolveSpawnTarget}.
+ *
+ * @throws {ValidationError} When a batch file would get an argument with a
+ *   line break
+ */
+export function spawnUserCommand(
+  command: string,
+  args: string[],
+  options: SpawnOptions & { cwd: string; env: SpawnEnv },
+): ChildProcess {
+  const target = resolveSpawnTarget(command, args, options);
+  return spawn(target.command, target.args, {
+    ...options,
+    windowsVerbatimArguments: target.windowsVerbatimArguments,
+  });
 }

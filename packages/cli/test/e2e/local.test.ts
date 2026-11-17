@@ -2,8 +2,16 @@
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { rmSync } from "node:fs";
-import { chmod, readFile, stat, rm, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  stat,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
 import { runCli } from "../fixture.js";
@@ -1022,51 +1030,74 @@ describe("Local daemon E2E", () => {
 });
 
 describe("Local foreground commands", () => {
-  test("runs a batch-file command with its arguments intact", async () => {
-    // On Windows the command is a .cmd file, given without its extension:
-    // spawn alone fails with ENOENT (no PATHEXT) or EINVAL (CVE-2024-27980).
-    const dir = getConfigDir();
-    const printArgs = join(dir, "print-args.cjs");
-    await writeFile(
-      printArgs,
-      "console.log(JSON.stringify(process.argv.slice(2)));",
-    );
-    const command = join(dir, "print-args");
-    if (process.platform === "win32") {
+  test.each(["bin", "node_modules/.bin"])(
+    "runs a batch-file command from %s on PATH with its arguments intact",
+    async (binPath) => {
+      // CLI-3T4: on Windows `print-args` is a .cmd file found by bare name,
+      // where spawn alone fails with ENOENT (no PATHEXT) or EINVAL
+      // (CVE-2024-27980). The arguments must reach the program unchanged and
+      // none of them may run as a cmd.exe command (BatBadBut).
+      const dir = getConfigDir();
+      const binDir = join(dir, ...binPath.split("/"));
+      await mkdir(binDir, { recursive: true });
+      const printArgs = join(dir, "print-args.cjs");
       await writeFile(
-        `${command}.cmd`,
-        `@"${process.execPath}" "${printArgs}" %*\r\n`,
+        printArgs,
+        "console.log(JSON.stringify(process.argv.slice(2)));",
       );
-    } else {
-      await writeFile(
-        command,
-        `#!/bin/sh\nexec "${process.execPath}" "${printArgs}" "$@"\n`,
-      );
-      await chmod(command, 0o755);
-    }
-    const args = ["a b", "x&y", 'say "hi"'];
-    const result = await runCli(
-      [
-        "local",
-        "run",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(await availablePort()),
-        "--",
-        command,
-        ...args,
-      ],
-      {
-        env: {
-          SENTRY_CONFIG_DIR: dir,
-          SENTRY_CLI_NO_TELEMETRY: "1",
+      const command = join(binDir, "print-args");
+      if (process.platform === "win32") {
+        await writeFile(
+          `${command}.cmd`,
+          `@"${process.execPath}" "${printArgs}" %*\r\n`,
+        );
+      } else {
+        await writeFile(
+          command,
+          `#!/bin/sh\nexec "${process.execPath}" "${printArgs}" "$@"\n`,
+        );
+        await chmod(command, 0o755);
+      }
+      const pathKey =
+        Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
+        "PATH";
+      const args = [
+        "a b",
+        "x&y",
+        'say "hi"',
+        'say "a&b"',
+        'x"&echo INJECTED&"',
+        "100%",
+        "%PATH%",
+        "a^b",
+      ];
+      const result = await runCli(
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(await availablePort()),
+          "--",
+          "print-args",
+          ...args,
+        ],
+        {
+          env: {
+            SENTRY_CONFIG_DIR: dir,
+            SENTRY_CLI_NO_TELEMETRY: "1",
+            [pathKey]: `${binDir}${delimiter}${process.env[pathKey] ?? ""}`,
+          },
         },
-      },
-    );
-    expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stdout).toContain(JSON.stringify(args));
-  }, 30000);
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toContain(JSON.stringify(args));
+      const lines = `${result.stdout}\n${result.stderr}`.split(/\r?\n/);
+      expect(lines.map((line) => line.trim())).not.toContain("INJECTED");
+    },
+    30000,
+  );
 
   test("rejects verification with a retained session before running the application", async () => {
     const marker = join(getConfigDir(), "verify-session-child-ran");

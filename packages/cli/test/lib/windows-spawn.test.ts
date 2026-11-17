@@ -7,6 +7,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { augmentPathForNode } from "../../src/commands/local/run.js";
+import { ValidationError } from "../../src/lib/errors.js";
 import { resolveSpawnTarget } from "../../src/lib/windows-spawn.js";
 import { TEST_TMP_DIR } from "../constants.js";
 
@@ -26,6 +28,7 @@ beforeEach(async () => {
   await writeFile(join(nodeDir, "npm.cmd"), "");
   await writeFile(join(nodeDir, "node.exe"), "");
   await writeFile(join(binDir, "next.cmd"), "");
+  await writeFile(join(nodeDir, "tool.js"), "");
 });
 
 afterEach(async () => {
@@ -55,15 +58,18 @@ describe("resolveSpawnTarget", () => {
   test.each(["npm", "npm.cmd"])(
     "runs %s through cmd.exe instead of failing with EINVAL or ENOENT",
     (command) => {
-      const target = onWindows(command, ["run", "dev"]);
-      expect(target.command).toBe("cmd.exe");
-      expect(target.windowsVerbatimArguments).toBe(true);
-      expect(target.args).toEqual([
-        "/d",
-        "/s",
-        "/c",
-        `"${join(nodeDir, "npm.cmd")} ^"run^" ^"dev^""`,
-      ]);
+      expect(onWindows(command, ["run", "dev"])).toEqual({
+        command: "cmd.exe",
+        args: [
+          "/d",
+          "/e:ON",
+          "/v:OFF",
+          "/s",
+          "/c",
+          `""${join(nodeDir, "npm.cmd")}" "run" "dev""`,
+        ],
+        windowsVerbatimArguments: true,
+      });
     },
   );
 
@@ -74,21 +80,44 @@ describe("resolveSpawnTarget", () => {
     });
   });
 
-  test("finds node_modules/.bin shims on the child's PATH", () => {
-    const target = onWindows("next", ["dev"], `${binDir};${nodeDir}`);
-    expect(target.args.at(-1)).toContain(join(binDir, "next.cmd"));
+  test("runs other PATHEXT matches through cmd.exe, like cross-spawn", () => {
+    const target = resolveSpawnTarget(
+      "tool",
+      [],
+      { cwd: tmpDir, env: { Path: nodeDir, PATHEXT: ".EXE;.JS" } },
+      "win32",
+    );
+    expect(target.command).toBe("cmd.exe");
+    expect(target.args.at(-1)).toBe(`""${join(nodeDir, "tool.js")}""`);
   });
 
-  test("reads the PATH key Node gives the child when both Path and PATH exist", () => {
-    // local run spreads process.env (`Path` on Windows), then adds `PATH`
-    // with node_modules/.bin; Node keeps the key that sorts first (`PATH`).
+  test("strips quotes around PATH entries", () => {
+    const target = onWindows("npm", [], `"${nodeDir}"`);
+    expect(target.args.at(-1)).toBe(`""${join(nodeDir, "npm.cmd")}""`);
+  });
+
+  test("finds node_modules/.bin shims on the PATH local run builds", () => {
+    // A Windows env copy spells the key `Path`; augmentPathForNode must
+    // prepend to it, not add a second `PATH` holding only node_modules/.bin.
+    const env = augmentPathForNode(
+      { Path: nodeDir, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+      tmpDir,
+      "win32",
+    );
+    expect(env).toEqual({
+      Path: `${binDir};${nodeDir}`,
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    });
     const target = resolveSpawnTarget(
       "next",
       ["dev"],
-      { cwd: tmpDir, env: { Path: nodeDir, PATH: `${binDir};${nodeDir}` } },
+      { cwd: tmpDir, env },
       "win32",
     );
     expect(target.args.at(-1)).toContain(join(binDir, "next.cmd"));
+    expect(
+      resolveSpawnTarget("node", [], { cwd: tmpDir, env }, "win32").command,
+    ).toBe(join(nodeDir, "node.exe"));
   });
 
   test("returns an unknown command unchanged so spawn reports ENOENT", () => {
@@ -98,28 +127,29 @@ describe("resolveSpawnTarget", () => {
     });
   });
 
-  test("quotes arguments so cmd.exe passes them through intact", () => {
-    const [, , , line] = onWindows("npm", [
-      "run",
-      "dev",
-      "--",
-      "--port",
-      "3000 & calc",
-      'say "hi"',
+  test("quotes batch arguments so cmd.exe cannot run any part of them", () => {
+    // BatBadBut (CVE-2024-24576): cmd.exe ignores \" when the batch file
+    // re-reads %*, so `"` is doubled instead and every argument is quoted.
+    // `%` gets a guard that expands to nothing, so %PATH% stays literal.
+    const line = onWindows("npm", [
+      'say "a&b"',
+      'x"&echo INJECTED&"',
       "C:\\dir\\",
+      'a\\"b',
       "100%",
-    ]).args;
-    // Spaces, &, %, and quotes are ^-escaped, so cmd.exe neither splits nor
-    // runs them; embedded quotes and trailing backslashes follow the MSVCRT
-    // rules the program uses to split its command line.
+      "%PATH%",
+      "a^b",
+    ]).args.at(-1);
     expect(line).toBe(
-      `"${join(nodeDir, "npm.cmd")} ^"run^" ^"dev^" ^"--^" ^"--port^"` +
-        ` ^"3000^ ^&^ calc^" ^"say^ \\^"hi\\^"^" ^"C:\\dir\\\\^" ^"100^%^""`,
+      `""${join(nodeDir, "npm.cmd")}" "say ""a&b""" "x""&echo INJECTED&"""` +
+        ` "C:\\dir\\\\" "a\\\\""b" "100%%cd:~,%" "%%cd:~,%PATH%%cd:~,%" "a^b""`,
     );
   });
 
-  test("escapes metacharacters twice for node_modules/.bin shims", () => {
-    const [, , , line] = onWindows("next", ["a&b"], binDir).args;
-    expect(line).toBe(`"${join(binDir, "next.cmd")} ^^^"a^^^&b^^^""`);
-  });
+  test.each(["a\nb", "a\rb"])(
+    "rejects a line break in a batch argument (%j)",
+    (arg) => {
+      expect(() => onWindows("npm", [arg])).toThrow(ValidationError);
+    },
+  );
 });

@@ -15,7 +15,7 @@
  * with its own code.
  */
 
-import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { constants as osConstants } from "node:os";
 import {
   createCheckInEnvelope,
@@ -42,9 +42,14 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
-import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
+import {
+  CliError,
+  ConfigError,
+  stringifyUnknown,
+  ValidationError,
+} from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
-import { resolveSpawnTarget } from "../../lib/windows-spawn.js";
+import { spawnUserCommand } from "../../lib/windows-spawn.js";
 import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("monitor.run");
@@ -332,29 +337,31 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     const startedAt = Date.now();
 
     const [cmd = "", ...cmdArgs] = command;
-    const childEnv = { ...process.env, SENTRY_MONITOR_SLUG: monitorSlug };
-    const target = resolveSpawnTarget(cmd, cmdArgs, { cwd, env: childEnv });
-    const child = spawn(target.command, target.args, {
-      env: childEnv,
-      stdio: "inherit",
-      windowsVerbatimArguments: target.windowsVerbatimArguments,
-    });
+    let child: ChildProcess | undefined;
 
     // Forward signals so the whole process tree shuts down together.
-    const onSigint = () => child.kill("SIGINT");
-    const onSigterm = () => child.kill("SIGTERM");
+    const onSigint = () => child?.kill("SIGINT");
+    const onSigterm = () => child?.kill("SIGTERM");
     // Use `on` (not `once`) so repeated signals are still forwarded to the
     // child instead of letting Node's default handler kill the parent — which
     // would skip the closing check-in and leave the monitor stuck in_progress.
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
 
-    let exitCode: number;
-    let spawnError: Error | undefined;
+    let exitCode = 1;
+    let spawnError: unknown;
     try {
+      // Inside the try: if starting the command throws, the closing check-in
+      // below still reports an `error` status.
+      const running = spawnUserCommand(cmd, cmdArgs, {
+        cwd,
+        env: { ...process.env, SENTRY_MONITOR_SLUG: monitorSlug },
+        stdio: "inherit",
+      });
+      child = running;
       exitCode = await new Promise<number>((resolve) => {
         let settled = false;
-        child.on("close", (code, signal) => {
+        running.on("close", (code, signal) => {
           if (!settled) {
             settled = true;
             if (code !== null) {
@@ -373,7 +380,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
         // If spawn itself fails (e.g. ENOENT), 'close' may never fire.
         // Record the error, treat as a failed run (exit code 1) so the close
         // check-in still reports an `error` status, then surface a CliError.
-        child.on("error", (err) => {
+        running.on("error", (err) => {
           log.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
@@ -382,6 +389,8 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
           }
         });
       });
+    } catch (err) {
+      spawnError = err;
     } finally {
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
@@ -403,8 +412,14 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       "final",
     );
 
+    if (spawnError instanceof CliError) {
+      throw spawnError;
+    }
     if (spawnError) {
-      throw new CliError(`Failed to start "${cmd}": ${spawnError.message}`, 1);
+      throw new CliError(
+        `Failed to start "${cmd}": ${stringifyUnknown(spawnError)}`,
+        1,
+      );
     }
 
     if (exitCode !== 0) {
