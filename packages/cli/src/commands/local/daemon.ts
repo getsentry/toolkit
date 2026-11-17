@@ -204,7 +204,7 @@ async function isPortHeldByOtherServer(
 ): Promise<boolean> {
   try {
     const response = await fetch(`${formatLocalServerUrl(host, port)}/health`, {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(500),
     });
     await response.body?.cancel();
     return response.headers.get("X-Sentry-Local-Mode") !== "daemon";
