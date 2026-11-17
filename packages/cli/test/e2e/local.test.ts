@@ -2,7 +2,7 @@
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { rmSync } from "node:fs";
-import { readFile, stat, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, readFile, stat, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, test } from "vitest";
@@ -1022,6 +1022,52 @@ describe("Local daemon E2E", () => {
 });
 
 describe("Local foreground commands", () => {
+  test("runs a batch-file command with its arguments intact", async () => {
+    // On Windows the command is a .cmd file, given without its extension:
+    // spawn alone fails with ENOENT (no PATHEXT) or EINVAL (CVE-2024-27980).
+    const dir = getConfigDir();
+    const printArgs = join(dir, "print-args.cjs");
+    await writeFile(
+      printArgs,
+      "console.log(JSON.stringify(process.argv.slice(2)));",
+    );
+    const command = join(dir, "print-args");
+    if (process.platform === "win32") {
+      await writeFile(
+        `${command}.cmd`,
+        `@"${process.execPath}" "${printArgs}" %*\r\n`,
+      );
+    } else {
+      await writeFile(
+        command,
+        `#!/bin/sh\nexec "${process.execPath}" "${printArgs}" "$@"\n`,
+      );
+      await chmod(command, 0o755);
+    }
+    const args = ["a b", "x&y", 'say "hi"'];
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        command,
+        ...args,
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+        },
+      },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain(JSON.stringify(args));
+  }, 30000);
+
   test("rejects verification with a retained session before running the application", async () => {
     const marker = join(getConfigDir(), "verify-session-child-ran");
     const script = join(getConfigDir(), "verify-session-child.cjs");
