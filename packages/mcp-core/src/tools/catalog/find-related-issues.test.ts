@@ -169,6 +169,26 @@ describe("find_related_issues", () => {
 
     expect(requested?.getAll("type")).toEqual(["same_trace", "contributing"]);
     expect(requested?.get("limit")).toBe("5");
+    // No event given, so Sentry reads the issue's latest one.
+    expect(requested?.has("eventId")).toBe(false);
+  });
+
+  it("finds relations from the given event", async () => {
+    let requested: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(RELATED_URL, ({ request }) => {
+        requested = new URL(request.url).searchParams;
+        return HttpResponse.json({ data: [], meta: { types: [] } });
+      }),
+    );
+
+    await findRelatedIssues.handler(
+      { ...params, eventId: "7ca573c0f4814912aaa9bdc77d1a7d51" },
+      context,
+    );
+
+    // camelCase: Sentry ignores `event_id` and would read the latest event.
+    expect(requested?.get("eventId")).toBe("7ca573c0f4814912aaa9bdc77d1a7d51");
   });
 
   // Left to its default, Sentry would return every type it has, including
@@ -382,4 +402,34 @@ describe("find_related_issues through the MCP server", () => {
       "Related issues are temporarily unavailable. Try again later.",
     );
   }, 10_000);
+
+  it("returns Sentry's reason as a tool error when the event isn't in the issue", async () => {
+    mswServer.use(
+      http.get(RELATED_URL, () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Event not found in this issue. The event ID may be incorrect, belong to another issue, or be past the retention period.",
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    const result = await withClient((client) =>
+      client.callTool({
+        name: "find_related_issues",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          eventId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+        },
+      }),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain(
+      "Event not found in this issue.",
+    );
+  });
 });

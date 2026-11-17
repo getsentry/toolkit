@@ -17,6 +17,7 @@ import {
   suggestedToolActionSchema,
 } from "../../internal/tool-helpers/suggested-actions";
 import {
+  ParamEventId,
   ParamIssueShortId,
   ParamIssueUrl,
   ParamOrganizationSlug,
@@ -99,6 +100,9 @@ export default defineTool({
     regionUrl: ParamRegionUrl.nullable().default(null),
     issueId: ParamIssueShortId.optional(),
     issueUrl: ParamIssueUrl.optional(),
+    eventId: ParamEventId.optional().describe(
+      "One of the issue's events to find relations from, such as its trace. Defaults to the issue's latest event.",
+    ),
     types: z
       .array(z.enum(RELATED_ISSUE_TYPES))
       .nullable()
@@ -149,6 +153,7 @@ export default defineTool({
       issueId: parsed.issueId,
       types: params.types ?? undefined,
       limit: params.limit,
+      eventId: params.eventId,
     });
 
     // Same-trace issues can be in any project, so a project-scoped session

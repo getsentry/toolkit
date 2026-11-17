@@ -3073,6 +3073,11 @@
           "format": "uri",
           "description": "The issue URL, e.g. https://my-org.sentry.io/issues/PROJECT-1Z43"
         },
+        "eventId": {
+          "description": "One of the issue's events to find relations from, such as its trace. Defaults to the issue's latest event.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{32}$"
+        },
         "types": {
           "default": null,
           "description": "Relation types to return; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace, often the other side of a request. contributing: for a metric issue, the error issues behind it.",
