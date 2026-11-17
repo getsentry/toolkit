@@ -42,6 +42,7 @@ import {
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { resolveSpawnTarget } from "../../lib/windows-spawn.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -605,10 +606,15 @@ export const runCommand = buildCommand({
     let child: ChildProcess;
     try {
       const [cmd = "", ...cmdArgs] = wrangler.args;
-      child = spawn(cmd, cmdArgs, {
+      const target = resolveSpawnTarget(cmd, cmdArgs, {
+        cwd: this.cwd,
+        env: childEnv,
+      });
+      child = spawn(target.command, target.args, {
         cwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
+        windowsVerbatimArguments: target.windowsVerbatimArguments,
       });
       forwardChildOutput(child, useJson);
     } catch (err) {
@@ -761,10 +767,12 @@ async function* runWithVerify(
   const useJson = flags.format === "json";
   try {
     const [cmd = "", ...cmdArgs] = wrangler.args;
-    child = spawn(cmd, cmdArgs, {
+    const target = resolveSpawnTarget(cmd, cmdArgs, { cwd, env: childEnv });
+    child = spawn(target.command, target.args, {
       cwd,
       env: childEnv,
       stdio: childStdio(useJson),
+      windowsVerbatimArguments: target.windowsVerbatimArguments,
     });
     forwardChildOutput(child, useJson);
   } catch (err) {

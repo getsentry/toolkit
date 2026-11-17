@@ -44,6 +44,7 @@ import {
 } from "../../lib/completion-target.js";
 import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { resolveSpawnTarget } from "../../lib/windows-spawn.js";
 import { sentry } from "../../lib/app-identity.js";
 
 const log = logger.withTag("monitor.run");
@@ -331,12 +332,15 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     const startedAt = Date.now();
 
     const [cmd = "", ...cmdArgs] = command;
-    const child = spawn(cmd, cmdArgs, {
-      env: {
-        ...process.env,
-        SENTRY_MONITOR_SLUG: monitorSlug,
-      },
+    const childEnv = { ...process.env, SENTRY_MONITOR_SLUG: monitorSlug };
+    const target = resolveSpawnTarget(cmd, cmdArgs, {
+      cwd: process.cwd(),
+      env: childEnv,
+    });
+    const child = spawn(target.command, target.args, {
+      env: childEnv,
       stdio: "inherit",
+      windowsVerbatimArguments: target.windowsVerbatimArguments,
     });
 
     // Forward signals so the whole process tree shuts down together.
