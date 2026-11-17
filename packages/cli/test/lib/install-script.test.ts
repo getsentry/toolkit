@@ -49,6 +49,7 @@ record_tty() {
 if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$0" > "$SENTRY_TEST_DIR/setup-binary"
+  printf '%s\\n' "\${SENTRY_HANDOFF:-}" > "$SENTRY_TEST_DIR/setup-handoff"
   record_tty 3> "$SENTRY_TEST_DIR/setup-tty"
   install_dir="\${SENTRY_INSTALL_DIR:-\${0%/*}}"
   mkdir -p "$install_dir"
@@ -377,7 +378,10 @@ process.exitCode = result.status ?? 1;
     });
   }
 
-  test("passes setup flags through and skips login without a terminal", () => {
+  test("passes setup environment and flags through without a terminal", () => {
+    const handoffCode = `sntryh_${"a".repeat(43)}`;
+    env.SENTRY_HANDOFF = handoffCode;
+
     const result = spawnSync(
       "bash",
       [
@@ -403,6 +407,7 @@ process.exitCode = result.status ?? 1;
       "--no-completions",
       "--no-agent-skills",
     ]);
+    expect(recorded("setup-handoff")).toEqual([handoffCode]);
     expect(recorded("setup-tty").slice(0, 3)).toEqual([
       "0:false",
       "1:false",
