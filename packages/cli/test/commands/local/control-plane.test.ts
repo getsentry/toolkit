@@ -692,6 +692,197 @@ describe("Local control plane", () => {
     expect(viewed.status).toBe(200);
   });
 
+  test("summarizes each listed event so agents can skip per-event views", async () => {
+    const traceId = "4c79f60c11214eb38604f4ae0781bfb2";
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "sdk", cwd: "/sdk" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const send = async (...lines: unknown[]) => {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: lines.map((line) => JSON.stringify(line)).join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+    };
+    const before = Date.now();
+
+    // sentry-python: logging.error("Payment failed for order %s", 42)
+    await send(
+      { event_id: "9ec79c33ec9942ab8353589fcb2e04dc" },
+      { type: "event" },
+      {
+        level: "error",
+        logger: "shop.payments",
+        logentry: {
+          message: "Payment failed for order %s",
+          params: [42],
+          formatted: "Payment failed for order 42",
+        },
+        platform: "python",
+        timestamp: "2026-11-17T10:00:00.100000Z",
+        contexts: { trace: { trace_id: traceId, span_id: "a7e1f3b5c9d2e4f6" } },
+      },
+    );
+    // JavaScript SDK 11: captureMessage with a synthetic stack, no exception type
+    await send(
+      {
+        event_id: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        trace: { trace_id: traceId },
+      },
+      { type: "event" },
+      {
+        level: "warning",
+        message: "Hello from captureMessage",
+        exception: {
+          values: [
+            {
+              value: "Hello from captureMessage",
+              mechanism: { type: "generic", synthetic: true },
+            },
+          ],
+        },
+        platform: "javascript",
+        timestamp: 1_794_045_602.5,
+      },
+    );
+    // An exception thrown in a Node.js route handler
+    await send(
+      { event_id: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a" },
+      { type: "event" },
+      {
+        level: "error",
+        exception: {
+          values: [{ type: "TypeError", value: "x is not a function" }],
+        },
+        platform: "node",
+        timestamp: 1_794_045_603,
+        contexts: { trace: { trace_id: traceId, span_id: "d4e5f6a7b8c9d0e1" } },
+      },
+    );
+    await send(
+      { event_id: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c" },
+      { type: "transaction" },
+      {
+        transaction: "GET /api/users",
+        start_timestamp: 1_794_045_603,
+        timestamp: 1_794_045_604,
+        contexts: { trace: { trace_id: traceId, span_id: "e5f6a7b8c9d0e1f2" } },
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.python.flask" } },
+      { type: "log", item_count: 2 },
+      {
+        items: [
+          {
+            timestamp: 1_794_045_605,
+            trace_id: traceId,
+            level: "info",
+            body: '"GET /boom HTTP/1.1" 500 -',
+          },
+          { timestamp: 1_794_045_605.1, level: "error", body: "boom" },
+        ],
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.javascript.node" } },
+      { type: "session" },
+      {
+        sid: "7c0ab2b2a4b74bb9b9b5e5c6b1d2e3f4",
+        status: "exited",
+        started: "2026-11-17T10:00:00.000Z",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    );
+
+    const listed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events`,
+      { headers: controlHeaders() },
+    );
+    const { events } = (await listed.json()) as {
+      events: Record<string, unknown>[];
+    };
+    expect(events.map(({ receivedAt: _, ...event }) => event)).toEqual([
+      {
+        envelopeId: expect.any(String),
+        eventId: "9ec79c33ec9942ab8353589fcb2e04dc",
+        itemTypes: ["event"],
+        type: "message",
+        level: "error",
+        title: "Payment failed for order 42",
+        timestamp: "2026-11-17T10:00:00.100Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        itemTypes: ["event"],
+        type: "message",
+        level: "warning",
+        title: "Hello from captureMessage",
+        timestamp: "2026-11-07T10:00:02.500Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a",
+        itemTypes: ["event"],
+        type: "error",
+        level: "error",
+        title: "TypeError: x is not a function",
+        timestamp: "2026-11-07T10:00:03.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c",
+        itemTypes: ["transaction"],
+        type: "transaction",
+        title: "GET /api/users",
+        timestamp: "2026-11-07T10:00:04.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["log"],
+        type: "log",
+        level: "info",
+        title: '"GET /boom HTTP/1.1" 500 -',
+        timestamp: "2026-11-07T10:00:05.000Z",
+        traceId,
+        count: 2,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["session"],
+        type: "session",
+        title: "exited",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    ]);
+    for (const event of events) {
+      const receivedAt = Date.parse(String(event.receivedAt));
+      expect(receivedAt).toBeGreaterThanOrEqual(before);
+      expect(receivedAt).toBeLessThanOrEqual(Date.now());
+    }
+
+    const viewed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events/d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a`,
+      { headers: controlHeaders() },
+    );
+    await expect(viewed.json()).resolves.toMatchObject({
+      type: "error",
+      title: "TypeError: x is not a function",
+      receivedAt: expect.any(String),
+      envelope: expect.any(Array),
+    });
+  });
+
   test.each([
     [
       { sdk: { name: "sentry.node" } },

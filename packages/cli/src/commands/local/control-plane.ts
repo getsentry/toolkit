@@ -12,6 +12,8 @@ import {
   ingestReceiverEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
+  receiverEnvelopeReceivedAt,
+  type ReceiverEnvelope,
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
@@ -20,6 +22,8 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { summarizeEnvelope } from "./event-summary.js";
+import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
 import {
   buildSSEHandler,
@@ -119,6 +123,21 @@ function eventSummary(parsed: {
         ? stringifyUnknown((item[0] as { type?: unknown }).type ?? "unknown")
         : "unknown",
     ),
+  };
+}
+
+/**
+ * List and view entry for a retained envelope: its identity plus a decoded
+ * summary and the time the receiver accepted it.
+ */
+function describeEvent(
+  container: ReceiverEnvelope,
+  parsed: ParsedReceiverEnvelope,
+) {
+  return {
+    ...eventSummary(parsed),
+    ...summarizeEnvelope(parsed),
+    receivedAt: new Date(receiverEnvelopeReceivedAt(container)).toISOString(),
   };
 }
 
@@ -627,11 +646,7 @@ export function createLocalControlPlane({
         if (!parsed) {
           return [];
         }
-        return [
-          {
-            ...eventSummary(parsed),
-          },
-        ];
+        return [describeEvent(container, parsed)];
       })
       .reverse();
     return c.json({ events });
@@ -651,11 +666,11 @@ export function createLocalControlPlane({
         );
       });
     const parsed = container?.getParsedEnvelope();
-    if (!parsed) {
+    if (!(container && parsed)) {
       return c.body(null, 404);
     }
     return c.json({
-      ...eventSummary(parsed),
+      ...describeEvent(container, parsed),
       envelope: parsed.envelope,
     });
   });

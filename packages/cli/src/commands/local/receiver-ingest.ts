@@ -6,6 +6,7 @@ export {
   createReceiverEnvelope,
   prepareReceiverEnvelope,
   receiverEnvelopeId,
+  receiverEnvelopeReceivedAt,
   type ReceiverBuffer,
   type ReceiverEnvelope,
 } from "./envelope.js";

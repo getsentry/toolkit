@@ -88,13 +88,28 @@ const SESSION_REFERENCE_POSITIONAL = {
   },
 } as const;
 
+/**
+ * Options for one control-plane request. `notFound` builds the error for an
+ * HTTP 404, which the control plane returns for a missing session, event, or
+ * envelope; without it a 404 is a generic request failure.
+ */
+type ControlOptions = {
+  host?: string;
+  port?: number;
+  notFound?: () => CliError | Promise<CliError>;
+};
+
 async function controlJson(
   path: string,
   init: RequestInit = {},
-  options: { host?: string; port?: number } = {},
+  { notFound, ...daemon }: ControlOptions = {},
 ): Promise<ControlResult> {
-  const state = await ensureLocalDaemon(options);
+  const state = await ensureLocalDaemon(daemon);
   const response = await requestLocalDaemon(state, path, init);
+  if (response.status === 404 && notFound) {
+    await response.body?.cancel();
+    throw await notFound();
+  }
   if (!response.ok) {
     const body: unknown = await response.json().catch((error: unknown) => {
       logger.debug("Could not read Local control-plane error details", error);
@@ -146,6 +161,45 @@ function ambiguousSessionError(body: unknown): ResolutionError | undefined {
     "matches more than one session",
     sentry`local session list`,
     sessionIds.map((id) => `Use session ID ${id}`),
+  );
+}
+
+/** A session reference that matches no session, open or closed, on the daemon. */
+function sessionNotFoundError(reference: string): ResolutionError {
+  return new ResolutionError(
+    `Local session "${reference}"`,
+    "not found",
+    sentry`local session list`,
+    [
+      "Closed sessions are kept for three hours, and every session ends when the Local daemon stops",
+    ],
+  );
+}
+
+/**
+ * Error for an event or envelope lookup that got a 404. The control plane
+ * answers 404 both for a missing session and for a missing ID inside it, so
+ * this checks the session first and throws its error when it is the one gone.
+ */
+async function telemetryNotFoundError(
+  kind: "event" | "envelope",
+  session: string,
+  id: string,
+): Promise<ResolutionError> {
+  await controlJson(
+    `/sessions/${encodeURIComponent(session)}`,
+    {},
+    { notFound: () => sessionNotFoundError(session) },
+  );
+  return new ResolutionError(
+    `Local ${kind} "${id}"`,
+    `not found in session "${session}"`,
+    kind === "event"
+      ? sentry`local event list ${session}`
+      : sentry`local envelope list ${session}`,
+    [
+      `It may have been evicted when the session reached its envelope limit; raise it with ${sentry`local session retention ${session} --max-envelopes <count>`}`,
+    ],
   );
 }
 
@@ -318,10 +372,12 @@ function buildSessionCommand(
     docs: { brief },
     parameters: { flags: {}, positional: SESSION_REFERENCE_POSITIONAL },
     async *func(_flags, ...parts: string[]) {
+      const reference = singleReference(parts);
       yield new CommandOutput(
         await controlJson(
-          `/sessions/${encodeURIComponent(singleReference(parts))}${suffix}`,
+          `/sessions/${encodeURIComponent(reference)}${suffix}`,
           { method },
+          { notFound: () => sessionNotFoundError(reference) },
         ),
       );
     },
@@ -356,6 +412,8 @@ function buildTelemetryViewCommand(
       yield new CommandOutput(
         await controlJson(
           `/sessions/${encodeURIComponent(session)}/${kind}s/${encodeURIComponent(id)}`,
+          {},
+          { notFound: () => telemetryNotFoundError(kind, session, id) },
         ),
       );
     },
@@ -373,7 +431,8 @@ const sessionRetentionCommand = buildCommand({
     flags: { readonly "max-envelopes"?: number },
     ...parts: string[]
   ) {
-    const path = `/sessions/${encodeURIComponent(singleReference(parts))}/retention`;
+    const reference = singleReference(parts);
+    const path = `/sessions/${encodeURIComponent(reference)}/retention`;
     const value = flags["max-envelopes"];
     yield new CommandOutput(
       await controlJson(
@@ -385,6 +444,7 @@ const sessionRetentionCommand = buildCommand({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ maxEnvelopes: value }),
             },
+        { notFound: () => sessionNotFoundError(reference) },
       ),
     );
   },
