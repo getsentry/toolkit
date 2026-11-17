@@ -79,6 +79,25 @@ describe("update_issue", () => {
         "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         "organizationSlug": "sentry-mcp-evals",
         "reasonComment": null,
+        "sideQuests": [
+          {
+            "details": [
+              "\`WEB-1A2\` (same trace): \`TypeError: Failed to fetch\`",
+            ],
+            "id": "related_issues_open",
+            "next": [
+              {
+                "args": {
+                  "organizationSlug": "sentry-mcp-evals",
+                  "resourceId": "WEB-1A2",
+                  "resourceType": "issue",
+                },
+                "tool": "get_sentry_resource",
+              },
+            ],
+            "tip": "1 issue related to this one is still open. Check whether this change covers it too.",
+          },
+        ],
         "title": "Error: Tool list_organizations is already registered",
         "updated": true,
       }
@@ -462,6 +481,25 @@ describe("update_issue", () => {
         "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         "organizationSlug": "sentry-mcp-evals",
         "reasonComment": null,
+        "sideQuests": [
+          {
+            "details": [
+              "\`WEB-1A2\` (same trace): \`TypeError: Failed to fetch\`",
+            ],
+            "id": "related_issues_open",
+            "next": [
+              {
+                "args": {
+                  "organizationSlug": "sentry-mcp-evals",
+                  "resourceId": "WEB-1A2",
+                  "resourceType": "issue",
+                },
+                "tool": "get_sentry_resource",
+              },
+            ],
+            "tip": "1 issue related to this one is still open. Check whether this change covers it too.",
+          },
+        ],
         "title": "Error: Tool list_organizations is already registered",
         "updated": true,
       }
@@ -615,6 +653,25 @@ describe("update_issue", () => {
         "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         "organizationSlug": "sentry-mcp-evals",
         "reasonComment": null,
+        "sideQuests": [
+          {
+            "details": [
+              "\`WEB-1A2\` (same trace): \`TypeError: Failed to fetch\`",
+            ],
+            "id": "related_issues_open",
+            "next": [
+              {
+                "args": {
+                  "organizationSlug": "sentry-mcp-evals",
+                  "resourceId": "WEB-1A2",
+                  "resourceType": "issue",
+                },
+                "tool": "get_sentry_resource",
+              },
+            ],
+            "tip": "1 issue related to this one is still open. Check whether this change covers it too.",
+          },
+        ],
         "title": "Error: Tool list_organizations is already registered",
         "updated": true,
       }
@@ -977,6 +1034,25 @@ describe("update_issue", () => {
         "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         "organizationSlug": "sentry-mcp-evals",
         "reasonComment": null,
+        "sideQuests": [
+          {
+            "details": [
+              "\`WEB-1A2\` (same trace): \`TypeError: Failed to fetch\`",
+            ],
+            "id": "related_issues_open",
+            "next": [
+              {
+                "args": {
+                  "organizationSlug": "sentry-mcp-evals",
+                  "resourceId": "WEB-1A2",
+                  "resourceType": "issue",
+                },
+                "tool": "get_sentry_resource",
+              },
+            ],
+            "tip": "1 issue related to this one is still open. Check whether this change covers it too.",
+          },
+        ],
         "title": "Error: Tool list_organizations is already registered",
         "updated": true,
       }
@@ -1041,6 +1117,25 @@ describe("update_issue", () => {
         "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         "organizationSlug": "sentry-mcp-evals",
         "reasonComment": null,
+        "sideQuests": [
+          {
+            "details": [
+              "\`WEB-1A2\` (same trace): \`TypeError: Failed to fetch\`",
+            ],
+            "id": "related_issues_open",
+            "next": [
+              {
+                "args": {
+                  "organizationSlug": "sentry-mcp-evals",
+                  "resourceId": "WEB-1A2",
+                  "resourceType": "issue",
+                },
+                "tool": "get_sentry_resource",
+              },
+            ],
+            "tip": "1 issue related to this one is still open. Check whether this change covers it too.",
+          },
+        ],
         "title": "Error: Tool list_organizations is already registered",
         "updated": true,
       }
@@ -1779,7 +1874,6 @@ describe("update_issue", () => {
   describe("related issues side quest", () => {
     const relatedUrl =
       "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/related/";
-    const experimentalContext = { ...serverContext, experimentalMode: true };
     const resolve = {
       organizationSlug: "sentry-mcp-evals",
       issueId: "CLOUDFLARE-MCP-41",
@@ -1806,7 +1900,7 @@ describe("update_issue", () => {
       const requests = captureRelatedRequests();
 
       const output = structured(
-        await updateIssue.handler(resolve, experimentalContext),
+        await updateIssue.handler(resolve, serverContext),
       );
 
       expect(requests).toHaveLength(1);
@@ -1843,7 +1937,7 @@ describe("update_issue", () => {
       const output = structured(
         await updateIssue.handler(
           { ...resolve, status: "ignored" as const },
-          experimentalContext,
+          serverContext,
         ),
       );
 
@@ -1853,22 +1947,13 @@ describe("update_issue", () => {
       ]);
     });
 
-    it("doesn't look them up outside experimental mode", async () => {
-      const requests = captureRelatedRequests();
-
-      const result = await updateIssue.handler(resolve, serverContext);
-
-      expect(requests).toHaveLength(0);
-      expect(getStructuredContent(result)).not.toHaveProperty("sideQuests");
-    });
-
     it("doesn't look them up when the issue stays open", async () => {
       const requests = captureRelatedRequests();
 
       const output = structured(
         await updateIssue.handler(
           { ...resolve, status: undefined, priority: "high" },
-          experimentalContext,
+          serverContext,
         ),
       );
 
@@ -1883,7 +1968,7 @@ describe("update_issue", () => {
       );
 
       const output = structured(
-        await updateIssue.handler(resolve, experimentalContext),
+        await updateIssue.handler(resolve, serverContext),
       );
 
       expect(output.updated).toBe(true);
@@ -1895,7 +1980,7 @@ describe("update_issue", () => {
       captureRelatedRequests(() => HttpResponse.json({}, { status: 500 }));
 
       const output = structured(
-        await updateIssue.handler(resolve, experimentalContext),
+        await updateIssue.handler(resolve, serverContext),
       );
 
       expect(output.updated).toBe(true);

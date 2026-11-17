@@ -1115,10 +1115,10 @@ export default defineTool({
       ignoreUserWindow: updateIgnore?.ignoreUserWindow,
     });
 
-    // Experimental for now: each lookup also calls Seer, and the endpoint's
-    // per-user rate limit is tight for bulk updates.
+    // Only closing the issue raises what else the change covers. Each lookup
+    // also calls Seer, and the endpoint's per-user rate limit is tight for
+    // bulk updates; a rate-limited lookup leaves the quest out.
     const lookUpRelated =
-      context.experimentalMode === true &&
       updatedIssue.status !== currentIssue.status &&
       (updatedIssue.status === "resolved" || updatedIssue.status === "ignored");
     const [commentResult, relatedIssues] = await Promise.all([
