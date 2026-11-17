@@ -3,6 +3,7 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { logger } from "./logger.js";
+import { whichSync } from "./which.js";
 
 export type DetectedCommand = {
   /** The command args to pass to spawn. */
@@ -43,13 +44,9 @@ export async function detectDevCommand(
 ): Promise<DetectedCommand | null> {
   const result =
     (await tryPackageJson(cwd)) ??
-    (await tryPythonFile(cwd, "manage.py", [
-      "python",
-      "manage.py",
-      "runserver",
-    ])) ??
-    (await tryPythonFile(cwd, "app.py", ["python", "app.py"])) ??
-    (await tryPythonFile(cwd, "main.py", ["python", "main.py"])) ??
+    (await tryPythonFile(cwd, "manage.py", ["manage.py", "runserver"])) ??
+    (await tryPythonFile(cwd, "app.py", ["app.py"])) ??
+    (await tryPythonFile(cwd, "main.py", ["main.py"])) ??
     (await tryGoMod(cwd)) ??
     (await tryDockerCompose(cwd));
   return result;
@@ -96,16 +93,28 @@ async function tryPackageJson(cwd: string): Promise<DetectedCommand | null> {
   }
 }
 
+/**
+ * The Python interpreter to run: `python`, or `python3` when only that is on
+ * PATH (Ubuntu and Debian ship no `python`). Falls back to `python` when
+ * neither is found, so the not-found error names the usual command.
+ */
+function pythonExecutable(): string {
+  if (whichSync("python") || !whichSync("python3")) {
+    return "python";
+  }
+  return "python3";
+}
+
 /** Check if a Python entry point exists and return the matching command. */
 async function tryPythonFile(
   cwd: string,
   filename: string,
-  args: string[],
+  scriptArgs: string[],
 ): Promise<DetectedCommand | null> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await access(join(cwd, filename));
-    return { args, source: filename };
+    return { args: [pythonExecutable(), ...scriptArgs], source: filename };
   } catch {
     return null;
   }

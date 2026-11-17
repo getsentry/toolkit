@@ -43,6 +43,7 @@ import {
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { spawnFailureError } from "../../lib/spawn-failure.js";
 import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
@@ -631,13 +632,7 @@ export const runCommand = buildCommand({
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
       }
-      if (err instanceof ValidationError) {
-        throw err;
-      }
-      throw new CliError(
-        `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-        EXIT.GENERAL,
-      );
+      throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
     const onSigint = () => child.kill("SIGINT");
@@ -667,7 +662,7 @@ export const runCommand = buildCommand({
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
-            fail(err);
+            fail(spawnFailureError(wrangler.args[0] ?? "", err, this.cwd));
           }
         });
       });
@@ -697,7 +692,9 @@ const KILL_GRACE_MS = 5000;
 
 /** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
 async function gracefulKill(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) {
+  // No pid means the spawn failed: there is nothing to kill, and `close` may
+  // never fire, so waiting for it would hang.
+  if (child.exitCode !== null || child.pid === undefined) {
     return;
   }
   try {
@@ -788,13 +785,7 @@ async function* runWithVerify(
     forwardChildOutput(child, useJson);
   } catch (err) {
     await shutdownServer(server);
-    if (err instanceof ValidationError) {
-      throw err;
-    }
-    throw new CliError(
-      `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-      EXIT.GENERAL,
-    );
+    throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
   let signalReceived: NodeJS.Signals | null = null;
@@ -809,10 +800,18 @@ async function* runWithVerify(
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
 
+  // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
+  // a negative errno code, which is not a real exit code of the app.
+  let spawnError: Error | undefined;
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
       r({ kind: "exited" as const, code: code ?? 1 }),
     );
+    child.on("error", (err) => {
+      logger.debug(`Child process error: ${err.message}`);
+      spawnError = err;
+      r({ kind: "exited" as const, code: 1 });
+    });
   });
 
   const verifyTimeout =
@@ -885,6 +884,9 @@ async function* runWithVerify(
       );
     }
     case "exited": {
+      if (spawnError) {
+        throw spawnFailureError(wrangler.args[0] ?? "", spawnError, cwd);
+      }
       if (outcome.code === 0) {
         logger.warn("Process exited before sending any events");
         throw new CliError(

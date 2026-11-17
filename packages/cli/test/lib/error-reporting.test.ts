@@ -26,6 +26,7 @@ import {
   ApiError,
   AuthError,
   CliError,
+  COMMAND_NOT_FOUND_FIELD,
   ConfigError,
   ContextError,
   HostScopeError,
@@ -427,6 +428,16 @@ describe("classifySilenced", () => {
       );
     },
   );
+
+  test("silences a command-not-found ValidationError (CLI-3NK)", () => {
+    // `sentry local run -- <cmd>` where <cmd> is not installed is the user's
+    // environment, not a CLI bug.
+    expect(
+      classifySilenced(
+        new ValidationError("Command not found: npm", COMMAND_NOT_FOUND_FIELD),
+      ),
+    ).toBe("user_validation");
+  });
 
   test("silences a port-in-use ValidationError (CLI-4R9, CLI-23H)", () => {
     // Another process, such as a foreground `local serve`, holds the port.
