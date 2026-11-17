@@ -40,6 +40,14 @@ async function cli(...args: string[]) {
   });
 }
 
+/**
+ * A TCP listener that holds a port and never answers. It reads what clients
+ * send, so it sees them disconnect and `close()` does not wait on them.
+ */
+function createSilentServer() {
+  return createServer((socket) => socket.resume());
+}
+
 async function availablePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
@@ -908,7 +916,7 @@ describe("Local daemon E2E", () => {
   }, 30000);
 
   test("waits for the port retry window during concurrent daemon startup", async () => {
-    const server = createServer();
+    const server = createSilentServer();
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
@@ -938,7 +946,7 @@ describe("Local daemon E2E", () => {
   }, 30_000);
 
   test("reports a failed daemon startup without leaving an owner or late listener", async () => {
-    const server = createServer();
+    const server = createSilentServer();
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
@@ -955,7 +963,7 @@ describe("Local daemon E2E", () => {
         String(address.port),
       );
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("exited before startup");
+      expect(result.stderr).toContain(`Port ${address.port} is already in use`);
       for (const filename of [
         "local-control-plane.owner",
         "local-control-plane.lock",
