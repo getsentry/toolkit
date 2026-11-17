@@ -426,8 +426,11 @@ describe("Local daemon E2E", () => {
       ["envelope", "list"],
     ]) {
       const result = await cli(...parts, "duplicate");
-      expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("ambiguous; use its session ID");
+      expect(result.exitCode).toBe(23);
+      expect(result.stderr).toContain(
+        'Local session name "duplicate" matches more than one session.',
+      );
+      expect(result.stderr).toContain(`Use session ID ${first.id}`);
     }
     expect((await cli("session", "view", first.id)).exitCode).toBe(0);
   }, 30_000);

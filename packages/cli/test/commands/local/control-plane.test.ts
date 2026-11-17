@@ -446,7 +446,7 @@ describe("Local control plane", () => {
   test("reports ambiguous session names with ID guidance across control routes", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
-    plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const two = plane.sessionStore.create({ label: "My App", cwd: "/two" });
     for (const [method, suffix] of [
       ["GET", ""],
       ["GET", "/events"],
@@ -463,6 +463,9 @@ describe("Local control plane", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
         error: 'Local session name "My App" is ambiguous; use its session ID.',
+        code: "ambiguous_session",
+        reference: "My App",
+        sessionIds: [one.id, two.id],
       });
     }
     expect(

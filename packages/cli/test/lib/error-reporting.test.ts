@@ -14,6 +14,10 @@ import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
+  buildLocalUiUrl,
+  validateOpenHost,
+} from "../../src/commands/local/ui.js";
+import {
   classifySilenced,
   enrichEventWithGroupingTags,
   extractMessagePrefix,
@@ -37,6 +41,7 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
+  VerifyFailedError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -247,6 +252,16 @@ describe("normalizeEndpoint", () => {
 // classifySilenced
 // ---------------------------------------------------------------------------
 
+/** The value that `fn` throws, or undefined when it returns. */
+function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
 describe("classifySilenced", () => {
   test("silences OutputError", () => {
     expect(classifySilenced(new OutputError(null))).toBe("output_error");
@@ -429,6 +444,43 @@ describe("classifySilenced", () => {
     },
   );
 
+  test("silences --open with a non-loopback --host (CLI-3XY)", () => {
+    const error = thrownBy(() => validateOpenHost(true, "0.0.0.0"));
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test.each([
+    // The CLI built these UI URLs itself, so a failure is a CLI bug.
+    [
+      "a non-loopback receiver",
+      () => buildLocalUiUrl("http://10.1.2.3:8969/stream"),
+    ],
+    [
+      "a discovery URL on another receiver",
+      () =>
+        buildLocalUiUrl(
+          "http://localhost:8969/stream",
+          "http://localhost:9999/_local/v1/ui/sessions?cap=x",
+        ),
+    ],
+  ])("does NOT silence a Local UI URL with %s", (_label, build) => {
+    const error = thrownBy(build);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBeNull();
+  });
+
+  test.each([
+    new VerifyFailedError("Process exited before sending any events"),
+    new VerifyFailedError("Process crashed with code 3", 3),
+    new VerifyFailedError("Verification timed out after 30s"),
+  ])(
+    "silences a sentry local run --verify outcome: $message (CLI-34S, CLI-293, CLI-46T)",
+    (error) => {
+      expect(classifySilenced(error)).toBe("verify_failed");
+    },
+  );
+
   test("silences a command-not-found ValidationError (CLI-3NK)", () => {
     // `sentry local run -- <cmd>` where <cmd> is not installed is the user's
     // environment, not a CLI bug.
@@ -471,6 +523,22 @@ describe("classifySilenced", () => {
     [
       "ValidationError (other field)",
       new ValidationError("Invalid trace ID", "trace_id"),
+    ],
+    // An omitted value stays captured, like ContextError (CLI-3B).
+    [
+      "ValidationError (field 'command.missing', CLI-1YT)",
+      new ValidationError("No command provided", "command.missing"),
+    ],
+    [
+      "ValidationError (field 'session.id_missing', CLI-4GP)",
+      new ValidationError(
+        "Provide a Local session or envelope ID.",
+        "session.id_missing",
+      ),
+    ],
+    [
+      "CliError with a verify message",
+      new CliError("Process crashed with code 3", 3),
     ],
     ["SeerError", new SeerError("not_enabled")],
     ["ConfigError", new ConfigError("bad")],
@@ -779,6 +847,23 @@ describe("reportCliError integration", () => {
           error_class: "ValidationError",
           reason: "user_validation",
           validation_field: "repository",
+        }),
+      }),
+    );
+  });
+
+  test("silences a --verify outcome and keeps it in the metric", () => {
+    reportCliError(
+      new VerifyFailedError("Process exited before sending any events"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "VerifyFailedError",
+          reason: "verify_failed",
         }),
       }),
     );

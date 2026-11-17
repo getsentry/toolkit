@@ -24,6 +24,7 @@ import {
   CliError,
   COMMAND_NOT_FOUND_FIELD,
   ValidationError,
+  VerifyFailedError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
@@ -288,7 +289,7 @@ describe("sentry local run", () => {
         "true",
       ),
     ).rejects.toMatchObject({
-      field: "host",
+      field: "host.not_loopback",
       message:
         "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
     });
@@ -390,7 +391,7 @@ describe("sentry local run", () => {
       );
       expect.unreachable("should have thrown");
     } catch (err) {
-      expect(err).toBeInstanceOf(CliError);
+      expect(err).toBeInstanceOf(VerifyFailedError);
       expect((err as CliError).message).toContain(
         "Process exited before sending any events",
       );
@@ -411,7 +412,7 @@ describe("sentry local run", () => {
       );
       expect.unreachable("should have thrown");
     } catch (err) {
-      expect(err).toBeInstanceOf(CliError);
+      expect(err).toBeInstanceOf(VerifyFailedError);
       expect((err as CliError).message).toContain("Verification timed out");
       expect((err as CliError).exitCode).toBe(64);
     }

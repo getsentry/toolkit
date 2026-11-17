@@ -46,6 +46,7 @@ import {
   COMMAND_NOT_FOUND_FIELD,
   ContextError,
   DeviceFlowError,
+  HOST_NOT_LOOPBACK_FIELD,
   HostScopeError,
   isNetworkError,
   MalformedAuthTokenError,
@@ -56,6 +57,7 @@ import {
   TimeoutError,
   UpgradeError,
   ValidationError,
+  VerifyFailedError,
 } from "./errors.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
@@ -73,6 +75,7 @@ type SilenceReason =
   | "api_user_error"
   | "network_error"
   | "process_exit"
+  | "verify_failed"
   | "user_validation"
   | "user_input_error"
   | "seer_unavailable_self_hosted"
@@ -176,6 +179,15 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
+  // A ValidationError with field "host.not_loopback" means the user passed
+  // `--open` with a `--host` the browser UI cannot reach, such as 0.0.0.0.
+  // The user sees which hosts work (CLI-3XY).
+  if (
+    error instanceof ValidationError &&
+    error.field === HOST_NOT_LOOPBACK_FIELD
+  ) {
+    return "user_input_error";
+  }
   // A ValidationError with field COMMAND_NOT_FOUND_FIELD means the command
   // the user asked `sentry local run` or `sentry monitor run` to start is not
   // installed or not on PATH (spawn ENOENT, CLI-3NK). Their environment has
@@ -231,6 +243,12 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     error.message.startsWith("Process exited with code")
   ) {
     return "process_exit";
+  }
+  // `sentry local run --verify` reports that the user's app exited, crashed,
+  // or timed out before it sent an event (CLI-34S, CLI-4NV, CLI-293,
+  // CLI-46T). That is the answer `--verify` exists to give, not a CLI bug.
+  if (error instanceof VerifyFailedError) {
+    return "verify_failed";
   }
   // A 400 (Bad Request) signals a malformed request the CLI built — a code
   // defect — so it is always captured. 400s caused by user input are

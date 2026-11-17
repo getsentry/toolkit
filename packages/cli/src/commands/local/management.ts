@@ -9,7 +9,12 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
-import { CliError, ValidationError } from "../../lib/errors.js";
+import { sentry } from "../../lib/app-identity.js";
+import {
+  CliError,
+  ResolutionError,
+  ValidationError,
+} from "../../lib/errors.js";
 import { formatLocalControlResult } from "../../lib/formatters/local.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildRouteMap } from "../../lib/route-map.js";
@@ -30,6 +35,7 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
+import { AMBIGUOUS_SESSION_CODE } from "./session-store.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -94,6 +100,10 @@ async function controlJson(
       logger.debug("Could not read Local control-plane error details", error);
       return undefined;
     });
+    const ambiguous = ambiguousSessionError(body);
+    if (ambiguous) {
+      throw ambiguous;
+    }
     const detail =
       typeof body === "object" &&
       body !== null &&
@@ -112,10 +122,40 @@ async function controlJson(
   return (await response.json()) as ControlResult;
 }
 
+/**
+ * Turn the control plane's ambiguous-name 409 into a user-input error. Session
+ * labels may repeat, so a shared label is not a CLI failure (CLI-4T6, CLI-4FP).
+ */
+function ambiguousSessionError(body: unknown): ResolutionError | undefined {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("code" in body) ||
+    body.code !== AMBIGUOUS_SESSION_CODE ||
+    !("reference" in body) ||
+    typeof body.reference !== "string"
+  ) {
+    return;
+  }
+  const sessionIds =
+    "sessionIds" in body && Array.isArray(body.sessionIds)
+      ? body.sessionIds.filter((id): id is string => typeof id === "string")
+      : [];
+  return new ResolutionError(
+    `Local session name "${redactCredentialText(body.reference)}"`,
+    "matches more than one session",
+    sentry`local session list`,
+    sessionIds.map((id) => `Use session ID ${id}`),
+  );
+}
+
 function singleReference(parts: string[]): string {
   const reference = parts.join(" ").trim();
   if (!reference) {
-    throw new ValidationError("Provide a Local session or envelope ID.", "id");
+    throw new ValidationError(
+      "Provide a Local session or envelope ID.",
+      "session.id_missing",
+    );
   }
   return reference;
 }

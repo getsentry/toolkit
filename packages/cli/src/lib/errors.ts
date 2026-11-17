@@ -715,6 +715,12 @@ export function validationError(
 }
 
 /**
+ * `ValidationError` field for `--open` with a non-loopback `--host`: the
+ * browser UI only connects to a loopback receiver (CLI-3XY).
+ */
+export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
+
+/**
  * `ValidationError` field for an argument with a line break that a `.cmd` or
  * `.bat` command cannot be given safely on Windows.
  */
@@ -752,6 +758,21 @@ export class ValidationError extends CliError {
     super(message, EXIT.VALIDATION);
     this.name = "ValidationError";
     this.field = field;
+  }
+}
+
+/**
+ * `sentry local run --verify` saw no event from the user's app: it exited,
+ * crashed, or timed out first. This reports on the app's Sentry setup, not a
+ * CLI failure.
+ *
+ * @param message - What the app did instead of sending an event
+ * @param exitCode - `EXIT.VERIFY_FAILED`, or the crashed app's exit code
+ */
+export class VerifyFailedError extends CliError {
+  constructor(message: string, exitCode: number = EXIT.VERIFY_FAILED) {
+    super(message, exitCode);
+    this.name = "VerifyFailedError";
   }
 }
 
