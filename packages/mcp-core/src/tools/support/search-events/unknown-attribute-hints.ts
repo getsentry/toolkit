@@ -48,8 +48,11 @@ export async function getUnknownAttributeHints({
     return [];
   }
 
+  // Order-by entries never carry "Unknown attribute" (Sentry reports
+  // "Orderby must also be a selected field"), and their names keep the `-`
+  // direction prefix, so only fields and query terms are looked up.
   const unknownNames = new Set(
-    [...validation.field, ...validation.query.fields, ...validation.orderby]
+    [...validation.field, ...validation.query.fields]
       .filter((item) => !item.valid && item.error === UNKNOWN_ATTRIBUTE_ERROR)
       .map((item) => item.name)
       .filter((name) => name.length > 0),
