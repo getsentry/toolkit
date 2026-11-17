@@ -27,8 +27,6 @@ allowBuilds:
 overrides:
   "@ai-sdk/provider-utils@4": ^4.0.33
   "@babel/core@7": ^7.29.6
-  # No @sentry/bundler-plugin-core@4 release moves off vulnerable glob 10.
-  "@sentry/bundler-plugin-core@4>glob": ^14.0.2
   "express-rate-limit@8>ip-address": 10.7.4
   "js-yaml@3.15.2>argparse": 2.0.1
   "@modelcontextprotocol/sdk": 1.32.2
@@ -69,7 +67,7 @@ catalog:
   "@sentry/react": 11.12.0
   "@sentry/roach": 0.3.0
   "@sentry/search-syntax": ^1.0.0
-  "@sentry/vite-plugin": ^4.6.1
+  "@sentry/vite-plugin": 11.12.0
   "@tailwindcss/typography": ^0.5.16
   "@tailwindcss/vite": ^4.3.3
   "@types/node": ^22.15.33
