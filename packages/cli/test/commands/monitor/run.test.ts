@@ -187,6 +187,22 @@ describe("monitor runCommand.func()", () => {
     const closeBody = sendSpy.mock.calls[1]?.[1] as string;
     expect(closeBody).toContain('"status":"error"');
   });
+  test("still runs the command when the working directory was deleted", async () => {
+    // context.cwd falls back to a stale PWD then; the child must not be
+    // started there, or spawn fails with ENOENT.
+    const { ctx } = makeContext();
+    ctx.cwd = "/nonexistent-deleted-worktree";
+    await func.call(
+      ctx,
+      { dsn: SAAS_DSN, environment: "production" },
+      "my-job",
+      NODE,
+      "-e",
+      "process.exit(0)",
+    );
+    expect(sendSpy.mock.calls[1]?.[1] as string).toContain('"status":"ok"');
+  });
+
   test("sends an error check-in when the command cannot be started", async () => {
     // e.g. a .cmd argument with a line break on Windows: the throw must not
     // leave the monitor stuck in_progress.

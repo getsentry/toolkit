@@ -352,9 +352,11 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
     let spawnError: unknown;
     try {
       // Inside the try: if starting the command throws, the closing check-in
-      // below still reports an `error` status.
+      // below still reports an `error` status. No `cwd`: the child inherits
+      // this process's directory, which still works when that directory was
+      // deleted and `cwd` fell back to a stale PWD.
       const running = spawnUserCommand(cmd, cmdArgs, {
-        cwd,
+        resolveCwd: cwd,
         env: { ...process.env, SENTRY_MONITOR_SLUG: monitorSlug },
         stdio: "inherit",
       });

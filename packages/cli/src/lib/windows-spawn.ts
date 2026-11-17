@@ -115,6 +115,11 @@ function resolveWindowsCommand(
   return;
 }
 
+/** Keep `cmd.exe` from expanding `%VAR%` in `text`; see {@link PERCENT_GUARD}. */
+function guardPercent(text: string): string {
+  return text.replaceAll("%", `%${PERCENT_GUARD}%`);
+}
+
 /**
  * Quote one argument for a batch file run by `cmd.exe`.
  *
@@ -142,13 +147,11 @@ function quoteBatchArgument(arg: string): string {
     }
     if (char === '"') {
       quoted += `${"\\".repeat(backslashes)}"`;
-    } else if (char === "%") {
-      quoted += `%${PERCENT_GUARD}`;
     }
     backslashes = 0;
     quoted += char;
   }
-  return `${quoted}${"\\".repeat(backslashes)}"`;
+  return guardPercent(`${quoted}${"\\".repeat(backslashes)}"`);
 }
 
 /**
@@ -182,10 +185,11 @@ export function resolveSpawnTarget(
   if (EXECUTABLE_RE.test(resolved)) {
     return { command: resolved, args };
   }
-  // Windows file names cannot contain `"`, so quoting the path is enough.
-  const commandLine = [`"${resolved}"`, ...args.map(quoteBatchArgument)].join(
-    " ",
-  );
+  // Windows file names cannot contain `"`, but they can contain `%`.
+  const commandLine = [
+    `"${guardPercent(resolved)}"`,
+    ...args.map(quoteBatchArgument),
+  ].join(" ");
   return {
     command: getEnv(options.env, "ComSpec") ?? "cmd.exe",
     args: ["/d", "/e:ON", "/v:OFF", "/s", "/c", `"${commandLine}"`],
@@ -197,15 +201,24 @@ export function resolveSpawnTarget(
  * Spawn the command a user asked `sentry local run` or `sentry monitor run`
  * to run, resolved with {@link resolveSpawnTarget}.
  *
+ * @param options - Passed to `spawn()`, plus `resolveCwd`: the directory a
+ *   relative command path is resolved against. It is separate from `cwd`, so
+ *   a caller can resolve without making the child start in that directory.
  * @throws {ValidationError} When a batch file would get an argument with a
  *   line break
  */
 export function spawnUserCommand(
   command: string,
   args: string[],
-  options: SpawnOptions & { cwd: string; env: SpawnEnv },
+  {
+    resolveCwd,
+    ...options
+  }: SpawnOptions & { env: SpawnEnv; resolveCwd: string },
 ): ChildProcess {
-  const target = resolveSpawnTarget(command, args, options);
+  const target = resolveSpawnTarget(command, args, {
+    cwd: resolveCwd,
+    env: options.env,
+  });
   return spawn(target.command, target.args, {
     ...options,
     windowsVerbatimArguments: target.windowsVerbatimArguments,

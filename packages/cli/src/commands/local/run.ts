@@ -616,6 +616,7 @@ export const runCommand = buildCommand({
       const [cmd = "", ...cmdArgs] = wrangler.args;
       child = spawnUserCommand(cmd, cmdArgs, {
         cwd: this.cwd,
+        resolveCwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
       });
@@ -775,6 +776,7 @@ async function* runWithVerify(
     const [cmd = "", ...cmdArgs] = wrangler.args;
     child = spawnUserCommand(cmd, cmdArgs, {
       cwd,
+      resolveCwd: cwd,
       env: childEnv,
       stdio: childStdio(useJson),
     });

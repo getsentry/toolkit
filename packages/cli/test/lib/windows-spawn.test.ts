@@ -146,6 +146,21 @@ describe("resolveSpawnTarget", () => {
     );
   });
 
+  test("guards % in the batch file's own path", async () => {
+    const dir = join(tmpDir, "%CD%");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "tool.cmd"), "");
+    const target = resolveSpawnTarget(
+      join(dir, "tool"),
+      [],
+      { cwd: tmpDir, env: {} },
+      "win32",
+    );
+    expect(target.args.at(-1)).toBe(
+      `""${join(tmpDir, "%%cd:~,%CD%%cd:~,%", "tool.cmd")}""`,
+    );
+  });
+
   test.each(["a\nb", "a\rb"])(
     "rejects a line break in a batch argument (%j)",
     (arg) => {
