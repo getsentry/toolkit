@@ -159,7 +159,9 @@ function mergeSpan(
       payload.description,
       payload.name,
     ].some(
-      (value) => typeof value === "string" && value.trim() === description,
+      (value) =>
+        typeof value === "string" &&
+        withCapturedUrl(value.trim(), span.payload) === description,
     );
     return named ? (captured ? 4 : 2) : 0;
   };

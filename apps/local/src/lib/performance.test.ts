@@ -296,3 +296,22 @@ test("resource analysis groups streamed spans by URL instead of their host name"
   ]);
   expect(groups.every((group) => group.averageBytes === 1200)).toBe(true);
 });
+test("a later name-less update keeps the streamed resource URL label", () => {
+  const [script] = streamedPageloadSpans.filter(
+    (span) => span.span_id === "b5a0feefbd6a1dd8",
+  );
+  if (!script) throw new Error("Expected resource span");
+  const { name: _name, ...update } = {
+    ...script,
+    end_timestamp: script.end_timestamp + 0.01,
+  };
+  const [group, ...rest] = spanInsights(
+    buildTraceGroups([
+      ...decodeEnvelope(spanEnvelope([script]), "first"),
+      ...decodeEnvelope(spanEnvelope([update]), "update"),
+    ]),
+    "resources",
+  );
+  expect(rest).toEqual([]);
+  expect(group?.name).toBe("http://localhost:4000/app.js");
+});
