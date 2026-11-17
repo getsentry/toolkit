@@ -367,6 +367,9 @@ describe("source tag", () => {
     "sentry.javascript.aws-serverless",
     "sentry.javascript.google-cloud-serverless",
     "sentry.javascript.nestjs",
+    "sentry.javascript.solidstart",
+    "sentry.javascript.react-router",
+    "sentry.javascript.tanstackstart-react",
   ])("%s logs without event contexts are a server", (sdkName) => {
     const lines = formatItem(
       "log",
