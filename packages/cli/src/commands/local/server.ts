@@ -760,6 +760,14 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+/** Whether a failed `fetch` found nothing listening at the address. */
+export function isConnectionRefused(err: unknown): boolean {
+  const cause = err instanceof Error ? err.cause : undefined;
+  return (
+    cause instanceof Error && "code" in cause && cause.code === "ECONNREFUSED"
+  );
+}
+
 /** Sleep with abort support, suppressing abort errors. */
 async function sleepUnlessAborted(
   ms: number,
@@ -813,6 +821,15 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
     if (signal.aborted || result === "retained") {
       return;
     }
+    // A daemon keeps sessions in memory, so once it stops, this session can
+    // never come back: retrying would only print reconnect lines forever
+    // while the app sends telemetry nowhere.
+    if (hasConnectedBefore && result === "session-gone") {
+      logger.warn(
+        "The Local daemon stopped, so this session is no longer capturing telemetry. Restart this command to capture into a new session.",
+      );
+      return;
+    }
     // On the first attempt, both "no-connection" (HTTP error/no body) and
     // "error" (network failure) are fatal — the server doesn't exist.
     // After a previous successful connection, retry on any failure since
@@ -854,10 +871,14 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
  * - `"connected-then-lost"` if a connection was established (got HTTP 200)
  *   but the stream ended or errored — eligible for reconnection
  * - `"retained"` after a session's final lifecycle message — never reconnect
+ * - `"session-gone"` for a daemon session stream whose daemon refuses
+ *   connections or no longer knows the session (HTTP 404)
  */
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
-): Promise<"no-connection" | "connected-then-lost" | "retained"> {
+): Promise<
+  "no-connection" | "connected-then-lost" | "retained" | "session-gone"
+> {
   let wasConnected = false;
   const augmented = {
     ...opts,
@@ -867,7 +888,8 @@ async function attemptSSEConnection(
   };
   try {
     const completed = await consumeSSEOnce(augmented);
-    if (completed === "retained") return "retained";
+    if (completed === "retained" || completed === "session-gone")
+      return completed;
     return completed ? "connected-then-lost" : "no-connection";
   } catch (err: unknown) {
     if (isAbortError(err) || opts.signal.aborted) {
@@ -876,6 +898,9 @@ async function attemptSSEConnection(
     logger.debug(
       `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
+    if (opts.streamUrl && !wasConnected && isConnectionRefused(err)) {
+      return "session-gone";
+    }
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
     return wasConnected ? "connected-then-lost" : "no-connection";
@@ -899,13 +924,14 @@ type ConsumeSSEOnceOptions = {
 
 /**
  * Single SSE connection attempt. Returns `true` if a connection was
- * established (received a 200 response), `false` if it never connected, and
- * `"retained"` when the session closes after replay. Quiet tails still parse
+ * established (received a 200 response), `false` if it never connected,
+ * `"retained"` when the session closes after replay, and `"session-gone"`
+ * when a daemon session stream answers 404. Quiet tails still parse
  * lifecycle metadata so closing capture terminates them without reconnecting.
  */
 async function consumeSSEOnce(
   opts: ConsumeSSEOnceOptions,
-): Promise<boolean | "retained"> {
+): Promise<boolean | "retained" | "session-gone"> {
   const {
     url,
     activeFilters,
@@ -926,6 +952,10 @@ async function consumeSSEOnce(
     signal,
   });
   if (!res.ok) {
+    if (opts.streamUrl && res.status === 404) {
+      logger.debug("The Local session stream returned HTTP 404");
+      return "session-gone";
+    }
     logger.warn(`SSE stream returned HTTP ${res.status}`);
     return false;
   }

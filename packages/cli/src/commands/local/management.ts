@@ -35,7 +35,7 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
-import { AMBIGUOUS_SESSION_CODE } from "./session-store.js";
+import { AMBIGUOUS_SESSION_CODE, type LocalSession } from "./session-store.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -160,6 +160,37 @@ function singleReference(parts: string[]): string {
   return reference;
 }
 
+/** A session that still accepts telemetry, named in `daemon stop` output. */
+type CapturingSession = Pick<LocalSession, "id" | "label">;
+
+/**
+ * Sessions that still accept telemetry. Stopping the daemon ends them, and
+ * their apps keep sending to an address nobody answers. Listing them is best
+ * effort, so it never blocks a stop.
+ */
+async function listCapturingSessions(
+  state: LocalDaemonState,
+): Promise<CapturingSession[]> {
+  try {
+    const response = await requestLocalDaemon(state, "/sessions", {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      logger.debug(`Could not list Local sessions (HTTP ${response.status})`);
+      return [];
+    }
+    const { sessions = [] } = (await response.json()) as {
+      sessions?: LocalSession[];
+    };
+    return sessions
+      .filter((session) => session.state === "open")
+      .map(({ id, label }) => ({ id, label }));
+  } catch (error) {
+    logger.debug("Could not list Local sessions before stopping", error);
+    return [];
+  }
+}
+
 /** Request shutdown and confirm discovery and ownership have been released. */
 async function stopLocalDaemon(state: LocalDaemonState): Promise<void> {
   const response = await requestLocalDaemon(state, "/daemon/stop", {
@@ -230,8 +261,21 @@ const daemonStopCommand = buildCommand({
       yield new CommandOutput({ stopped: false, reason: "not running" });
       return;
     }
+    const capturingSessions = await listCapturingSessions(state);
     await stopLocalDaemon(state);
-    yield new CommandOutput({ stopped: true });
+    if (capturingSessions.length > 0) {
+      const count =
+        capturingSessions.length === 1
+          ? "1 session was"
+          : `${capturingSessions.length} sessions were`;
+      const names = capturingSessions
+        .map(({ id, label }) => `${label} (${id})`)
+        .join(", ");
+      logger.warn(
+        `Stopped the Local daemon while ${count} still capturing: ${names}. Their apps' telemetry is no longer captured; restart their commands to capture again.`,
+      );
+    }
+    yield new CommandOutput({ stopped: true, capturingSessions });
   },
 });
 

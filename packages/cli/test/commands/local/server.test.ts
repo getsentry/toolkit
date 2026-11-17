@@ -176,6 +176,64 @@ test.each([
   },
 );
 
+test.each([
+  {
+    gone: "refuses connections",
+    reconnect: () =>
+      Promise.reject(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        }),
+      ),
+  },
+  {
+    gone: "no longer knows the session",
+    reconnect: () => Promise.resolve(new Response(null, { status: 404 })),
+  },
+])(
+  "stops a scoped tail with one warning when the daemon $gone",
+  async ({ reconnect }) => {
+    const savedFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = () => {
+      requests += 1;
+      // The first stream opens, then ends when the daemon stops.
+      return requests === 1
+        ? Promise.resolve(
+            new Response("", {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+          )
+        : reconnect();
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const signal = AbortSignal.timeout(6000);
+    try {
+      await consumeSSE({
+        url: "http://127.0.0.1:8969",
+        streamUrl:
+          "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+        activeFilters: new Set(),
+        signal,
+      });
+      expect(signal.aborted).toBe(false);
+      expect(requests).toBe(2);
+      expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([
+        expect.stringContaining(
+          "The Local daemon stopped, so this session is no longer capturing",
+        ),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  },
+);
+
 test("keeps reading after a retained reset notification until Close", async () => {
   const savedFetch = globalThis.fetch;
   const envelope = [{}, [[{ type: "event" }, { message: "after reset" }]]];
