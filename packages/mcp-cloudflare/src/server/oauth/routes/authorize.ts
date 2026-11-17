@@ -17,6 +17,7 @@ import { isRegisteredRedirectUri } from "../../lib/redirect-uri";
 import type { Env } from "../../types";
 import { SENTRY_AUTH_URL } from "../constants";
 import {
+  ACCESS_DENIED_DESCRIPTION,
   createAuthorizationErrorRedirect,
   createResourceValidationError,
   getAuthorizationServerIssuer,
@@ -335,7 +336,7 @@ export default new Hono<{ Bindings: Env }>()
       return createAuthorizationErrorRedirect(
         oauthReqWithSkills.redirectUri,
         "access_denied",
-        "The user denied the authorization request",
+        ACCESS_DENIED_DESCRIPTION,
         oauthReqWithSkills.state ?? undefined,
         getAuthorizationServerIssuer(c.req.url),
       );

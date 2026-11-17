@@ -119,6 +119,44 @@ export function getOAuthCallbackFailureDetails({
   }
 }
 
+export const ACCESS_DENIED_DESCRIPTION =
+  "The user denied the authorization request";
+
+/**
+ * Maps an upstream authorization callback error to the RFC 6749 §4.1.2.1
+ * error relayed to the MCP client.
+ *
+ * Only codes that describe the user or the authorization server, not the
+ * client's own request, pass through: `access_denied`, `server_error`, and
+ * `temporarily_unavailable`. Every other code describes our upstream request
+ * (scopes, client credentials, response type), so relaying it would blame the
+ * MCP client for our configuration; those become `server_error`. Descriptions
+ * are fixed so upstream text never reaches the client.
+ */
+export function getClientAuthorizationError(upstreamError: string): {
+  code: string;
+  description: string;
+} {
+  switch (upstreamError) {
+    case "access_denied":
+      return {
+        code: "access_denied",
+        description: ACCESS_DENIED_DESCRIPTION,
+      };
+    case "temporarily_unavailable":
+      return {
+        code: "temporarily_unavailable",
+        description:
+          "The upstream authorization server is temporarily unavailable",
+      };
+    default:
+      return {
+        code: "server_error",
+        description: "The upstream authorization server returned an error",
+      };
+  }
+}
+
 export function getTokenExchangeFailureDetails({
   oauthError,
   errorDescription,
