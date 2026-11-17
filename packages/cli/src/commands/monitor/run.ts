@@ -410,9 +410,6 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       "final",
     );
 
-    if (spawnError instanceof CliError) {
-      throw spawnError;
-    }
     if (spawnError) {
       throw spawnFailureError(cmd, spawnError);
     }

@@ -627,9 +627,6 @@ export const runCommand = buildCommand({
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
       }
-      if (err instanceof ValidationError) {
-        throw err;
-      }
       throw spawnFailureError(wrangler.args[0] ?? "", err);
     }
 
@@ -781,9 +778,6 @@ async function* runWithVerify(
     forwardChildOutput(child, useJson);
   } catch (err) {
     await shutdownServer(server);
-    if (err instanceof ValidationError) {
-      throw err;
-    }
     throw spawnFailureError(wrangler.args[0] ?? "", err);
   }
 

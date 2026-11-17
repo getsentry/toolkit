@@ -3,6 +3,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   CliError,
+  COMMAND_LINE_BREAK_FIELD,
   COMMAND_NOT_FOUND_FIELD,
   ValidationError,
 } from "../../src/lib/errors.js";
@@ -39,6 +40,12 @@ describe("spawnFailureError", () => {
     expect(spawnFailureError("python", enoent("python")).message).toBe(
       "Command not found: python\n\nDid you mean python3?",
     );
+  });
+
+  test("returns a CliError unchanged", () => {
+    // e.g. the line-break ValidationError that spawnUserCommand throws.
+    const error = new ValidationError("bad argument", COMMAND_LINE_BREAK_FIELD);
+    expect(spawnFailureError("npm", error)).toBe(error);
   });
 
   test("keeps the errno message for other failures", () => {
