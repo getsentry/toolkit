@@ -72,13 +72,14 @@ describe("formatErrorItem", () => {
     expect(result).toContain("TypeError: x is not a function");
   });
 
-  test("falls back to message when no exception", () => {
+  test("shows a message event without an exception type", () => {
     const event = {
       timestamp: 1_700_000_000,
       message: "Something went wrong",
     };
     const result = stripAnsi(formatErrorItem(event, serverHeader));
-    expect(result).toContain("Error: Something went wrong");
+    expect(result).toContain("[ERROR]   [SERVER]  Something went wrong");
+    expect(result).not.toContain("Error: Something went wrong");
   });
 
   test("falls back to Unknown error when no exception or message", () => {
@@ -803,20 +804,25 @@ describe("formatItemJson", () => {
     });
   });
 
-  test("formats error without stack frame", () => {
+  test("formats a message event without stack frame", () => {
     const event = {
       timestamp: 1_700_000_000,
       message: "Something went wrong",
     };
     const lines = formatItemJson("error", event, serverHeader);
     const parsed = JSON.parse(lines[0]);
-    expect(parsed.error_type).toBe("Error");
+    expect(parsed.type).toBe("message");
+    expect(parsed.level).toBe("error");
+    expect(parsed.error_type).toBeUndefined();
     expect(parsed.message).toBe("Something went wrong");
     expect(parsed.filename).toBeUndefined();
   });
 
-  test("formats event type as error", () => {
-    const event = { timestamp: 1_700_000_000, message: "boom" };
+  test("formats event type with an exception as error", () => {
+    const event = {
+      timestamp: 1_700_000_000,
+      exception: { values: [{ type: "TypeError", value: "boom" }] },
+    };
     const lines = formatItemJson("event", event, serverHeader);
     const parsed = JSON.parse(lines[0]);
     expect(parsed.type).toBe("error");

@@ -60,9 +60,12 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:01 [ERROR]   [SERVER]  TypeError: x is not a function [app.ts:42:5] [handleRequest]
 14:32:02 [TRACE]   [BROWSER] [http.client] GET /api/users [245ms] [3 spans]
 14:32:03 [INFO]    [SERVER]  User logged in [user_id=1234] [region=us]
+14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show the exception type, message, and top stack frame. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes; add `--attributes` (`-a`) to list the SDK attributes under each log line.
+
+The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs.
@@ -96,8 +99,9 @@ without SDK housekeeping envelopes, filter to `error`, `transaction`, `log`, and
 
 ```json
 {"type":"transaction","timestamp":1700000001,"op":"gen_ai","label":"chat anthropic/claude-4-sonnet","duration_ms":1200,"span_count":5,"source":"server"}
-{"type":"error","timestamp":1700000002,"error_type":"RateLimitError","message":"API quota exceeded","source":"server"}
+{"type":"error","timestamp":1700000002,"level":"error","error_type":"RateLimitError","message":"API quota exceeded","source":"server"}
 {"type":"log","timestamp":1700000003,"level":"info","message":"User logged in","attributes":{"user_id":1234},"source":"server"}
+{"type":"message","timestamp":1700000004,"level":"warning","message":"Cart is empty","logger":"shop.cart","source":"server"}
 ```
 
 This is useful for AI coding agents and automation tools that need to consume Sentry events programmatically.
