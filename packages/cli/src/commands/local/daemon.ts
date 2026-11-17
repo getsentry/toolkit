@@ -424,7 +424,8 @@ async function releaseStaleLocalDaemon(
           return "released";
         throw error;
       }
-      // Owner locks change only under the guard, so this one is still there.
+      // Owner locks and discovery change only under the guard (a shutdown
+      // only removes discovery), so both still belong to this daemon.
       const ownerFile = await stat(ownerPath);
       if (ownerFile.mtimeMs > stateFile.mtimeMs) return "released";
       await rm(ownerPath, { force: true });
@@ -652,7 +653,11 @@ export async function runLocalDaemonForeground({
       version: LOCAL_DAEMON_PROTOCOL_VERSION,
     };
     ownedState = state;
-    await writeLocalDaemonState(directory, state);
+    // Under the guard, so stale-daemon recovery never sees this discovery
+    // appear between its checks and deletes it.
+    await withDaemonOwnershipGuard(directory, () =>
+      writeLocalDaemonState(directory, state),
+    );
     // Replaces the sessions of a daemon that exited without removing them
     snapshotSessions(controlPlane.sessionStore.list());
 

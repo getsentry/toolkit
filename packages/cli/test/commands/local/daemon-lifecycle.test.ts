@@ -1,10 +1,12 @@
 /** Daemon identity and process invocation regression coverage. */
-import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { useTestConfigDir } from "../../helpers.js";
 import {
+  LOCAL_DAEMON_STATE_FILENAME,
   readLocalDaemonState,
   getRunningLocalDaemon,
   requestLocalDaemon,
@@ -16,6 +18,10 @@ import {
   readLocalSessionSnapshot,
 } from "../../../src/commands/local/session-snapshot.js";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, rename: vi.fn(fs.rename) };
+});
 const getConfigDir = useTestConfigDir("local-daemon-lifecycle-");
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -431,6 +437,43 @@ test("mirrors its sessions to the completion snapshot and removes it on shutdown
   await expect(
     readFile(join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME)),
   ).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("publishes discovery only while holding the ownership guard", async () => {
+  vi.stubGlobal(
+    "fetch",
+    (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+  );
+  const directory = getConfigDir();
+  const guardHeld: boolean[] = [];
+  const actual =
+    await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises",
+    );
+  vi.mocked(rename).mockImplementation(async (from, to) => {
+    if (to === join(directory, LOCAL_DAEMON_STATE_FILENAME)) {
+      guardHeld.push(
+        existsSync(join(directory, "local-control-plane.owner.guard")),
+      );
+    }
+    await actual.rename(from, to);
+  });
+  try {
+    const running = runLocalDaemonForeground({
+      host: "127.0.0.1",
+      port: await freePort(),
+    });
+    const state = await eventually(
+      () => readLocalDaemonState(directory),
+      (value) => value !== undefined,
+    );
+    if (!state) throw new Error("Expected daemon discovery state");
+    await requestLocalDaemon(state, "/daemon/stop", { method: "POST" });
+    await running;
+  } finally {
+    vi.mocked(rename).mockImplementation(actual.rename);
+  }
+  expect(guardHeld).toEqual([true]);
 });
 
 test("closes the listener when discovery persistence fails", async () => {
