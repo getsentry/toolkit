@@ -10,7 +10,15 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { rawApiRequest } from "../../../src/lib/api/infrastructure.js";
+import {
+  listOrganizationIntegrations,
+  listOrganizationProjects,
+} from "@sentry/api";
+import {
+  getOrgSdkConfig,
+  rawApiRequest,
+} from "../../../src/lib/api/infrastructure.js";
+import { getIntegration } from "../../../src/lib/api/integrations.js";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
@@ -501,6 +509,21 @@ describe("requests whose path names an organization", () => {
     ]);
   });
 
+  test("send cell operations to the org's region and control operations to the configured server", async () => {
+    login("saas-token", SAAS, "saas");
+    seeOrg("us-org", SAAS, "https://us.sentry.io");
+    const path = { organization_id_or_slug: "us-org" };
+
+    await listOrganizationProjects({ ...getOrgSdkConfig(), path });
+    await listOrganizationIntegrations({ ...getOrgSdkConfig(), path });
+
+    expect(sent).toEqual(["Bearer saas-token", "Bearer saas-token"]);
+    expect(urls).toEqual([
+      "https://us.sentry.io/api/0/organizations/us-org/projects/",
+      `${SAAS}/api/0/organizations/us-org/integrations/`,
+    ]);
+  });
+
   test("leave unscoped requests on the active account", async () => {
     login("work-token", SAAS, "work");
     seeOrg("work-org", SAAS);
@@ -522,6 +545,21 @@ describe("requests whose path names an organization", () => {
 
     expect(sent).toEqual(["Bearer acme-token"]);
     expect(urls).toEqual([`${ACME}/api/0/organizations/acme-org/`]);
+    expect(getEffectiveAccountRow()?.host).toBe(ACME);
+  });
+
+  test("reach an org whose account is on another server through a control operation", async () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("acme-org", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["saas-org"]);
+
+    await getIntegration("acme-org", "1");
+
+    expect(sent).toEqual(["Bearer acme-token"]);
+    expect(urls).toEqual([
+      `${ACME}/api/0/organizations/acme-org/integrations/1/`,
+    ]);
     expect(getEffectiveAccountRow()?.host).toBe(ACME);
   });
 
