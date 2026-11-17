@@ -10,8 +10,10 @@ import { Buffer } from "node:buffer";
 import {
   drainReceiver,
   ingestReceiverEnvelope,
+  onOversizedEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
+  reportIngestStatus,
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
@@ -37,6 +39,7 @@ import {
 import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
+  LOCAL_OVERSIZED_EVENT,
   LOCAL_SESSION_EVENT,
   type LocalSessionEvent,
 } from "./viewer-protocol.js";
@@ -414,7 +417,10 @@ export function createLocalControlPlane({
     }
 
     const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
-    if (typeof body === "number") return c.body(null, body);
+    if (typeof body === "number") {
+      reportIngestStatus(sessionStore.getBuffer(reference), body);
+      return c.body(null, body);
+    }
     const encoding = c.req.header("content-encoding");
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
@@ -425,17 +431,16 @@ export function createLocalControlPlane({
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
-    const status = await ingestReceiverEnvelope(
-      sessionStore.getBuffer(reference),
-      {
-        body,
-        contentType: browserBeacon
-          ? SENTRY_CONTENT_TYPE
-          : (c.req.header("content-type") ?? ""),
-        encoding,
-        userAgent: c.req.header("user-agent"),
-      },
-    );
+    const buffer = sessionStore.getBuffer(reference);
+    const status = await ingestReceiverEnvelope(buffer, {
+      body,
+      contentType: browserBeacon
+        ? SENTRY_CONTENT_TYPE
+        : (c.req.header("content-type") ?? ""),
+      encoding,
+      userAgent: c.req.header("user-agent"),
+    });
+    reportIngestStatus(buffer, status);
     if (status === 503) c.header("Retry-After", "1");
     if (status === 204) sessionStore.recordActivity(reference);
     return c.body(null, status);
@@ -490,6 +495,9 @@ export function createLocalControlPlane({
         buildSSEHandler(writer, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
       );
+      const unsubscribeOversized = onOversizedEnvelope(buffer, () => {
+        void writer.writeSSE({ event: LOCAL_OVERSIZED_EVENT, data: "{}" });
+      });
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => {
         finish = resolve;
@@ -522,6 +530,7 @@ export function createLocalControlPlane({
       } finally {
         buffer.unsubscribe(readerId);
         unsubscribeSettings();
+        unsubscribeOversized();
         unsubscribeSession();
       }
     });

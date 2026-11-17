@@ -10,6 +10,12 @@ export type LocalSessionEvent = {
   expiresAt?: number;
 };
 
+/**
+ * The receiver rejected an envelope as too large (HTTP 413). SDKs ignore the
+ * status and drop the envelope, so terminal tails print a warning.
+ */
+export const LOCAL_OVERSIZED_EVENT = "sentry.local.oversized";
+
 const LOCAL_UI_ORIGIN = "https://local.sentry.dev";
 const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 

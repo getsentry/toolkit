@@ -47,6 +47,23 @@ describe("local UI URLs", () => {
     }
   });
 
+  test("names the session to view when a browser launch fails", async () => {
+    vi.mocked(openBrowser).mockResolvedValueOnce(false);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await openLocalUi(
+        "http://localhost:8969/_local/v1/sessions/session-1/stream?cap=stream-secret",
+        "http://localhost:8969/_local/v1/ui/sessions?cap=directory-secret",
+      );
+      const warned = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(warned).toContain("local session view session-1 --json");
+      expect(warned).not.toContain("<session>");
+      expect(warned).not.toContain("secret");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("keeps browser session discovery in the fragment alongside its scoped stream", () => {
     const stream =
       "http://localhost:8969/_local/v1/sessions/web/stream?cap=stream-secret";

@@ -25,7 +25,8 @@ application is started. Omit `--verify` to capture into a retained daemon sessio
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
-Treat those URLs as credentials.
+Treat those URLs as credentials. Terminal output redacts them, including the
+`Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
 retained session expires, reusing its key creates a fresh session with new capabilities.
 Names must be unique for name-based queries; ambiguous names return HTTP 409 with guidance
@@ -286,7 +287,10 @@ chunks and final sample tails do not create inferred work.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
-encoding 415, and temporary admission overload 503. Malformed envelopes remain
+encoding 415, and temporary admission overload 503. SDKs drop an envelope that
+gets 413 without retrying, so `local run` and `local serve` print a warning in
+their tail when that happens, at most one line every five seconds. Session tails
+get the notice from the daemon as a `sentry.local.oversized` stream event. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
 Clearing a capture invalidates pending admissions, and closing a session drains
 accepted work before its final stream event.
