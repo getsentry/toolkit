@@ -25,9 +25,12 @@ function onPath(...commands: string[]): void {
   );
 }
 
-/** Detect with an empty env, so the runner's VIRTUAL_ENV or FLASK_APP never leaks in. */
+/**
+ * Detect as on Linux with an empty env, so the runner's OS, VIRTUAL_ENV, or
+ * FLASK_APP never leaks in. Windows cases pass `platform: "win32"`.
+ */
 function detectDevCommand(cwd: string, options: DetectOptions = {}) {
-  return detectWithEnv(cwd, { env: {}, ...options });
+  return detectWithEnv(cwd, { env: {}, platform: "linux", ...options });
 }
 
 /** Create an empty executable stand-in inside the temp project. */
