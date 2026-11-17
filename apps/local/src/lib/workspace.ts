@@ -88,6 +88,41 @@ export function workspaceForItem(item: LocalFeedItem): WorkspaceView {
   return "live";
 }
 
+/**
+ * Badge and title for an event list entry. Request transactions and spans
+ * read best as method and route. A custom transaction (op `task`, …) started
+ * inside a request also carries that request, but is labelled by its own
+ * operation and name.
+ */
+export function eventListLabel(item: LocalFeedItem): {
+  badge: string;
+  title: string;
+} {
+  const metadata = getMetadata(item);
+  if (item.type === "event")
+    return {
+      badge: isErrorEvent(item) ? "Exception" : "Event",
+      title: metadata.title,
+    };
+  const { operation } = metadata;
+  if (
+    item.type === "transaction" &&
+    operation &&
+    !/^http\.server(?:\.|$)/.test(operation)
+  )
+    return { badge: operation, title: metadata.title };
+  return {
+    badge:
+      metadata.method ??
+      (item.type === "transaction"
+        ? "Request"
+        : item.type === "log"
+          ? "Log"
+          : (operation ?? item.type)),
+    title: metadata.route ?? metadata.title,
+  };
+}
+
 export function matchesSearch(item: LocalFeedItem, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {

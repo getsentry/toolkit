@@ -439,6 +439,17 @@ export function buildTraceGroups(
     })
     .map((trace) => addProfileSpans(trace, profiles))
     .sort(
-      (left, right) => (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
+      (left, right) =>
+        Number(isLogOnlyTrace(left)) - Number(isLogOnlyTrace(right)) ||
+        (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
     );
+}
+
+/**
+ * Logs without spans, such as server startup and access logs that share a
+ * process-wide trace ID. They keep receiving logs, so they are listed after
+ * traces with spans instead of staying on top.
+ */
+export function isLogOnlyTrace(trace: TraceGroup): boolean {
+  return trace.spans.length === 0 && trace.logCount === trace.itemCount;
 }

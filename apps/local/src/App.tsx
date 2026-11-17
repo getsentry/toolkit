@@ -98,6 +98,7 @@ import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
 import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
 import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
 import {
+  eventListLabel,
   isErrorEvent,
   matchesSearch,
   type WorkspaceView,
@@ -206,17 +207,7 @@ function EventEntry({
   const metadata = getMetadata(item);
   const duration = formatDuration(metadata.durationMs);
   const isError = isErrorEvent(item);
-  const typeLabel =
-    item.type === "event"
-      ? isError
-        ? "Exception"
-        : "Event"
-      : (metadata.method ??
-        (item.type === "transaction"
-          ? "Request"
-          : item.type === "log"
-            ? "Log"
-            : (metadata.operation ?? item.type)));
+  const label = eventListLabel(item);
 
   return (
     <li>
@@ -233,13 +224,11 @@ function EventEntry({
           <div className="flex min-w-0 items-center gap-2">
             {showTypeBadge && columns.includes("type") ? (
               <Badge variant={isError ? "destructive" : "default"}>
-                {typeLabel}
+                {label.badge}
               </Badge>
             ) : null}
             <span className="line-clamp-2 min-w-0 break-words text-sm [overflow-wrap:anywhere]">
-              {item.type === "event"
-                ? metadata.title
-                : (metadata.route ?? metadata.title)}
+              {label.title}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground">
