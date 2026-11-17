@@ -22,6 +22,17 @@ export function formatUtcTimestamp(timestamp: number): string {
     .replace(/\.\d{3}Z$/, "");
 }
 
+/** Parse epoch milliseconds or an ISO date string, or undefined when invalid. */
+function parseTimestamp(
+  timestamp: number | string | null | undefined,
+): Date | undefined {
+  if (timestamp === null || timestamp === undefined || timestamp === "") {
+    return;
+  }
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 /**
  * Format an epoch-millisecond timestamp or ISO date string as a full date and
  * time in the machine's locale and timezone.
@@ -34,14 +45,20 @@ export function formatUtcTimestamp(timestamp: number): string {
 export function formatLocalDateTime(
   timestamp: number | string | null | undefined,
 ): string {
-  if (timestamp === null || timestamp === undefined || timestamp === "") {
-    return "—";
-  }
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-  return date.toLocaleString();
+  return parseTimestamp(timestamp)?.toLocaleString() ?? "—";
+}
+
+/**
+ * Format an epoch-millisecond timestamp or ISO date string as a time of day in
+ * the machine's locale and timezone. Takes the same input as
+ * {@link formatLocalDateTime}.
+ *
+ * Returns "—" when the input is missing or not a valid date.
+ */
+export function formatLocalTime(
+  timestamp: number | string | null | undefined,
+): string {
+  return parseTimestamp(timestamp)?.toLocaleTimeString() ?? "—";
 }
 
 const SHORT_MONTHS = [

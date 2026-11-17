@@ -60,6 +60,7 @@ import { type Column, writeTable } from "./table.js";
 import {
   computeSpanDurationMs,
   formatLocalDateTime,
+  formatLocalTime,
   formatRelativeTime,
 } from "./time-utils.js";
 
@@ -1168,7 +1169,7 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
 
   for (const breadcrumb of breadcrumbs) {
     const timestamp = breadcrumb.timestamp
-      ? new Date(breadcrumb.timestamp).toLocaleTimeString()
+      ? formatLocalTime(breadcrumb.timestamp)
       : "??:??:??";
 
     const level = breadcrumb.level ?? "info";

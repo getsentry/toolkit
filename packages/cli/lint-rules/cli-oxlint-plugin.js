@@ -533,6 +533,12 @@ function topLevelName(node) {
   return undefined;
 }
 
+const LOCALE_DATE_METHODS = [
+  "toLocaleString",
+  "toLocaleDateString",
+  "toLocaleTimeString",
+];
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -1051,6 +1057,25 @@ const rules = {
         },
       };
     },
+  ),
+  "no-inline-date-format": rule(
+    "Format dates with formatLocalDateTime() or formatLocalTime() from " +
+      "src/lib/formatters/time-utils.ts instead of calling toLocale*String() " +
+      "on a new Date. The helpers name the timestamp unit and render a dash " +
+      "for missing or invalid dates.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/formatters/time-utils.ts")
+        ? {
+            CallExpression(node) {
+              if (
+                LOCALE_DATE_METHODS.some((method) => call(node, method)) &&
+                node.callee.object.type === "NewExpression" &&
+                node.callee.object.callee.name === "Date"
+              )
+                report(node);
+            },
+          }
+        : {},
   ),
   "no-skipped-tests": rule(
     "Do not leave disabled tests in the suite.",
