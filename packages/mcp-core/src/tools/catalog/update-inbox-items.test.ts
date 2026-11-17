@@ -71,6 +71,7 @@ describe("update_inbox_items", () => {
       {
         organizationSlug: "sentry-mcp-evals",
         regionUrl: null,
+        all: false,
         itemIds: ["101", "102"],
         action: "mark_read",
       },
@@ -89,11 +90,11 @@ describe("update_inbox_items", () => {
     expect(parse(result)).toMatchInlineSnapshot(`
       {
         "action": "mark_read",
-        "itemIds": [
+        "matchedCount": 2,
+        "selection": [
           "101",
           "102",
         ],
-        "matchedCount": 2,
       }
     `);
   });
@@ -105,6 +106,7 @@ describe("update_inbox_items", () => {
       {
         organizationSlug: "sentry-mcp-evals",
         regionUrl: null,
+        all: false,
         itemIds: ["101"],
         action: "mark_unread",
       },
@@ -122,7 +124,7 @@ describe("update_inbox_items", () => {
     ]);
     expect(parse(result)).toEqual({
       action: "mark_unread",
-      itemIds: ["101"],
+      selection: ["101"],
       matchedCount: 1,
     });
   });
@@ -134,6 +136,7 @@ describe("update_inbox_items", () => {
       {
         organizationSlug: "sentry-mcp-evals",
         regionUrl: null,
+        all: false,
         itemIds: ["101", "101", "103"],
         action: "remove",
       },
@@ -151,32 +154,60 @@ describe("update_inbox_items", () => {
     ]);
     expect(parse(result)).toEqual({
       action: "remove",
-      itemIds: ["101", "103"],
+      selection: ["101", "103"],
     });
   });
 
-  it("rejects an empty or missing selection before sending a mutation", async () => {
+  it.each([
+    ["mark_read", "PUT", { isRead: true }],
+    ["remove", "DELETE", null],
+  ] as const)(
+    "applies %s to every item only with all: true",
+    async (action, method, body) => {
+      const requests = captureInboxRequests(7);
+
+      const result = await updateInboxItems.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          all: true,
+          itemIds: null,
+          action,
+        },
+        context,
+      );
+
+      expect(requests).toEqual([
+        {
+          method,
+          path: "/api/0/organizations/sentry-mcp-evals/inbox/",
+          ids: [],
+          otherParams: [],
+          body,
+        },
+      ]);
+      expect(parse(result)).toMatchObject({ action, selection: "all" });
+    },
+  );
+
+  it.each([
+    ["no selection", { all: false, itemIds: null }],
+    ["an empty selection", { all: false, itemIds: [] }],
+    ["item IDs with all", { all: true, itemIds: ["101"] }],
+  ])("rejects %s before sending a mutation", async (_case, selection) => {
     const requests = captureInboxRequests();
 
-    expect(updateInboxItems.inputSchema.itemIds.safeParse([]).success).toBe(
-      false,
-    );
-    expect(
-      updateInboxItems.inputSchema.itemIds.safeParse(undefined).success,
-    ).toBe(false);
-    for (const itemIds of [[], undefined]) {
-      await expect(
-        updateInboxItems.handler(
-          {
-            organizationSlug: "sentry-mcp-evals",
-            regionUrl: null,
-            itemIds: itemIds as unknown as string[],
-            action: "remove",
-          },
-          context,
-        ),
-      ).rejects.toThrow(UserInputError);
-    }
+    await expect(
+      updateInboxItems.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          ...selection,
+          action: "remove",
+        },
+        context,
+      ),
+    ).rejects.toThrow(UserInputError);
     expect(requests).toEqual([]);
   });
 
@@ -201,6 +232,7 @@ describe("update_inbox_items", () => {
         {
           organizationSlug: "sentry-mcp-evals",
           regionUrl: null,
+          all: false,
           itemIds: ["101"],
           action: "mark_read",
         },
@@ -228,6 +260,7 @@ describe("update_inbox_items", () => {
         {
           organizationSlug: "sentry-mcp-evals",
           regionUrl: null,
+          all: false,
           itemIds: ["101"],
           action: "remove",
         },

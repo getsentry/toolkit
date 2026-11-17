@@ -234,6 +234,26 @@ describe("API bearer token validation", () => {
     );
     expect(requests).toBe(0);
   });
+
+  it("sends no ID filter only for an explicit all selection", async () => {
+    let url: URL | undefined;
+    mswServer.use(
+      http.delete(
+        "https://sentry.io/api/0/organizations/test-org/inbox/",
+        ({ request }) => {
+          url = new URL(request.url);
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).removeInboxItems({
+      organizationSlug: "test-org",
+      selection: "all",
+    });
+
+    expect(url?.search).toBe("");
+  });
 });
 
 describe("single-tenant web URLs", () => {
@@ -2384,17 +2404,17 @@ describe("inbox mutations", () => {
     const api = new SentryApiService({ accessToken: "test-token" });
 
     await expect(
-      api.removeInboxItems({ organizationSlug: "test-org", itemIds: [] }),
+      api.removeInboxItems({ organizationSlug: "test-org", selection: [] }),
     ).rejects.toThrow("Select at least one inbox item ID.");
     await expect(
       api.updateInboxItems({
         organizationSlug: "test-org",
-        itemIds: [],
+        selection: [],
         body: { isRead: true },
       }),
     ).rejects.toThrow("Select at least one inbox item ID.");
     await expect(
-      api.removeInboxItems({ organizationSlug: "test-org", itemIds: [""] }),
+      api.removeInboxItems({ organizationSlug: "test-org", selection: [""] }),
     ).rejects.toThrow("Inbox item ID must be numeric");
     expect(requests).toBe(0);
   });

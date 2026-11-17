@@ -377,18 +377,29 @@ function inboxFilterSearchParams(filters: InboxFilters): URLSearchParams {
 }
 
 /**
- * The `id` filter for an inbox mutation. Sentry applies a PUT or DELETE
- * without filters to every inbox item, so an empty selection is refused here
- * before any request is sent.
+ * Which items an inbox mutation changes: these item IDs, or `"all"` for every
+ * active item.
  */
-function inboxSelectionSearchParams(
-  itemIds: readonly string[],
-): URLSearchParams {
-  if (itemIds.length === 0) {
+export type InboxSelection = readonly string[] | "all";
+
+/**
+ * The inbox mutation path for a selection. Sentry applies a PUT or DELETE
+ * without an `id` filter to every item, so only an explicit `"all"` sends one;
+ * an empty ID list is refused before any request is sent.
+ */
+function inboxMutationPath(
+  organizationSlug: string,
+  selection: InboxSelection,
+): string {
+  const path = apiPath`/organizations/${organizationSlug}/inbox/`;
+  if (selection === "all") {
+    return path;
+  }
+  if (selection.length === 0) {
     throw new UserInputError("Select at least one inbox item ID.");
   }
   const search = new URLSearchParams();
-  for (const itemId of itemIds) {
+  for (const itemId of selection) {
     if (!/^\d+$/.test(itemId)) {
       throw new UserInputError(
         `Inbox item ID must be numeric, got ${JSON.stringify(itemId)}.`,
@@ -396,7 +407,7 @@ function inboxSelectionSearchParams(
     }
     search.append("id", itemId);
   }
-  return search;
+  return `${path}?${search}`;
 }
 
 /**
@@ -4970,27 +4981,23 @@ export class SentryApiService {
   }
 
   /**
-   * Sets read state for the selected active inbox items. Returns how many items matched, including items already in the
-   * requested state.
-   *
-   * Sentry applies the update to every inbox item when no filter is sent, so
-   * this method refuses an empty selection.
+   * Sets read state for the selected active inbox items. Returns how many
+   * items matched, including items already in the requested state.
    */
   async updateInboxItems(
     {
       organizationSlug,
-      itemIds,
+      selection,
       body,
     }: {
       organizationSlug: string;
-      itemIds: readonly string[];
+      selection: InboxSelection;
       body: { isRead: boolean };
     },
     opts?: RequestOptions,
   ): Promise<{ updatedCount: number }> {
-    const search = inboxSelectionSearchParams(itemIds);
     const response = await this.requestJSON(
-      `${apiPath`/organizations/${organizationSlug}/inbox/`}?${search}`,
+      inboxMutationPath(organizationSlug, selection),
       { method: "PUT", body: JSON.stringify(body) },
       opts,
     );
@@ -5000,23 +5007,19 @@ export class SentryApiService {
   /**
    * Removes the selected active inbox items at once. Sentry deletes them one
    * hour later.
-   *
-   * Sentry removes every inbox item when no filter is sent, so this method
-   * refuses an empty selection.
    */
   async removeInboxItems(
     {
       organizationSlug,
-      itemIds,
+      selection,
     }: {
       organizationSlug: string;
-      itemIds: readonly string[];
+      selection: InboxSelection;
     },
     opts?: RequestOptions,
   ): Promise<void> {
-    const search = inboxSelectionSearchParams(itemIds);
     await this.request(
-      `${apiPath`/organizations/${organizationSlug}/inbox/`}?${search}`,
+      inboxMutationPath(organizationSlug, selection),
       { method: "DELETE" },
       opts,
     );
