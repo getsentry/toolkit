@@ -21,6 +21,7 @@ import { mdKvTable, renderMarkdown } from "./markdown.js";
 import {
   formatDurationCompactMs,
   formatDurationVerbose,
+  formatLocalDateTime,
 } from "./time-utils.js";
 import type { ReplayViewOutputFields } from "../../output-schemas/replay.js";
 
@@ -316,16 +317,12 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Started",
-    replay.started_at
-      ? new Date(replay.started_at).toLocaleString()
-      : undefined,
+    replay.started_at ? formatLocalDateTime(replay.started_at) : undefined,
   );
   pushMarkdownRow(
     rows,
     "Finished",
-    replay.finished_at
-      ? new Date(replay.finished_at).toLocaleString()
-      : undefined,
+    replay.finished_at ? formatLocalDateTime(replay.finished_at) : undefined,
   );
   pushMarkdownRow(
     rows,
