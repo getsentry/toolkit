@@ -687,7 +687,9 @@ const KILL_GRACE_MS = 5000;
 
 /** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
 async function gracefulKill(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) {
+  // No pid means the spawn failed: there is nothing to kill, and `close` may
+  // never fire, so waiting for it would hang.
+  if (child.exitCode !== null || child.pid === undefined) {
     return;
   }
   try {
