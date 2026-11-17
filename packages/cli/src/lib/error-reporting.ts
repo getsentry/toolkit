@@ -54,6 +54,7 @@ import {
   TimeoutError,
   UpgradeError,
   ValidationError,
+  VerifyFailedError,
 } from "./errors.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
@@ -71,6 +72,7 @@ type SilenceReason =
   | "api_user_error"
   | "network_error"
   | "process_exit"
+  | "verify_failed"
   | "user_validation"
   | "user_input_error"
   | "seer_unavailable_self_hosted"
@@ -174,6 +176,18 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
+  // `sentry local` input the user has to fix: `local run` with no command and
+  // nothing to auto-detect (CLI-1YT), a session or envelope command with no
+  // ID (CLI-4GP), and `--open` with a non-loopback `--host` (CLI-3XY). The
+  // user sees what to pass.
+  if (
+    error instanceof ValidationError &&
+    (error.field === "local.command" ||
+      error.field === "local.id" ||
+      error.field === "local.open_host")
+  ) {
+    return "user_input_error";
+  }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not
   // a CLI bug — the user sees a clear "not found" message (CLI-RP).
@@ -212,6 +226,12 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     error.message.startsWith("Process exited with code")
   ) {
     return "process_exit";
+  }
+  // `sentry local run --verify` reports that the user's app exited, crashed,
+  // or timed out before it sent an event (CLI-34S, CLI-4NV, CLI-293,
+  // CLI-46T). That is the answer `--verify` exists to give, not a CLI bug.
+  if (error instanceof VerifyFailedError) {
+    return "verify_failed";
   }
   // A 400 (Bad Request) signals a malformed request the CLI built — a code
   // defect — so it is always captured. 400s caused by user input are

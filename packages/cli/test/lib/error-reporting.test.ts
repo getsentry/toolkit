@@ -34,6 +34,7 @@ import {
   ResolutionError,
   SeerError,
   ValidationError,
+  VerifyFailedError,
 } from "../../src/lib/errors.js";
 
 // ---------------------------------------------------------------------------
@@ -426,6 +427,33 @@ describe("classifySilenced", () => {
     },
   );
 
+  test.each([
+    ["local.command", "No dev command found."],
+    ["local.id", "Provide a Local session or envelope ID."],
+    [
+      "local.open_host",
+      "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
+    ],
+  ])(
+    "silences sentry local ValidationError with field '%s' (CLI-1YT, CLI-4GP, CLI-3XY)",
+    (field, message) => {
+      expect(classifySilenced(new ValidationError(message, field))).toBe(
+        "user_input_error",
+      );
+    },
+  );
+
+  test.each([
+    new VerifyFailedError("Process exited before sending any events"),
+    new VerifyFailedError("Process crashed with code 3", 3),
+    new VerifyFailedError("Verification timed out after 30s"),
+  ])(
+    "silences a sentry local run --verify outcome: $message (CLI-34S, CLI-293, CLI-46T)",
+    (error) => {
+      expect(classifySilenced(error)).toBe("verify_failed");
+    },
+  );
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -438,6 +466,13 @@ describe("classifySilenced", () => {
     [
       "ValidationError (other field)",
       new ValidationError("Invalid trace ID", "trace_id"),
+    ],
+    // Only the namespaced `sentry local` fields are silenced.
+    ["ValidationError (field 'host')", new ValidationError("bad", "host")],
+    ["ValidationError (field 'id')", new ValidationError("bad", "id")],
+    [
+      "CliError with a verify message",
+      new CliError("Process crashed with code 3", 3),
     ],
     ["SeerError", new SeerError("not_enabled")],
     ["ConfigError", new ConfigError("bad")],
@@ -746,6 +781,23 @@ describe("reportCliError integration", () => {
           error_class: "ValidationError",
           reason: "user_validation",
           validation_field: "repository",
+        }),
+      }),
+    );
+  });
+
+  test("silences a --verify outcome and keeps it in the metric", () => {
+    reportCliError(
+      new VerifyFailedError("Process exited before sending any events"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "VerifyFailedError",
+          reason: "verify_failed",
         }),
       }),
     );

@@ -18,7 +18,11 @@ import {
 import { buildApp, tryListen } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
 import { logger } from "../../../src/lib/logger.js";
-import { CliError, ValidationError } from "../../../src/lib/errors.js";
+import {
+  CliError,
+  ValidationError,
+  VerifyFailedError,
+} from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 
@@ -280,7 +284,7 @@ describe("sentry local run", () => {
         "true",
       ),
     ).rejects.toMatchObject({
-      field: "host",
+      field: "local.open_host",
       message:
         "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
     });
@@ -382,7 +386,7 @@ describe("sentry local run", () => {
       );
       expect.unreachable("should have thrown");
     } catch (err) {
-      expect(err).toBeInstanceOf(CliError);
+      expect(err).toBeInstanceOf(VerifyFailedError);
       expect((err as CliError).message).toContain(
         "Process exited before sending any events",
       );
@@ -403,7 +407,7 @@ describe("sentry local run", () => {
       );
       expect.unreachable("should have thrown");
     } catch (err) {
-      expect(err).toBeInstanceOf(CliError);
+      expect(err).toBeInstanceOf(VerifyFailedError);
       expect((err as CliError).message).toContain("Verification timed out");
       expect((err as CliError).exitCode).toBe(64);
     }

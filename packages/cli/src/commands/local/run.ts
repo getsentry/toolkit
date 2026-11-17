@@ -30,7 +30,12 @@ import {
   textParser,
 } from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
-import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
+import {
+  CliError,
+  EXIT,
+  ValidationError,
+  VerifyFailedError,
+} from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
   FILTER_VALUES,
@@ -383,7 +388,7 @@ async function resolveArgs(
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
-    throw new ValidationError(autoDetectErrorMessage(), "command");
+    throw new ValidationError(autoDetectErrorMessage(), "local.command");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
   return { args: detected.args, commandSource: detected.source };
@@ -857,21 +862,17 @@ async function* runWithVerify(
       logger.warn(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
-      throw new CliError(
+      throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s`,
-        EXIT.VERIFY_FAILED,
       );
     }
     case "exited": {
       if (outcome.code === 0) {
         logger.warn("Process exited before sending any events");
-        throw new CliError(
-          "Process exited before sending any events",
-          EXIT.VERIFY_FAILED,
-        );
+        throw new VerifyFailedError("Process exited before sending any events");
       }
       logger.warn(`Process crashed with code ${outcome.code}`);
-      throw new CliError(
+      throw new VerifyFailedError(
         `Process crashed with code ${outcome.code}`,
         outcome.code,
       );

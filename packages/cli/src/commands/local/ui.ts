@@ -15,7 +15,7 @@ export function assertLoopbackHostForUi(host: string): void {
   if (!isLoopbackHost(host)) {
     throw new ValidationError(
       "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
-      "host",
+      "local.open_host",
     );
   }
 }

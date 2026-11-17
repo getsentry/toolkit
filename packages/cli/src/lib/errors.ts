@@ -704,6 +704,21 @@ export class ValidationError extends CliError {
 }
 
 /**
+ * `sentry local run --verify` saw no event from the user's app: it exited,
+ * crashed, or timed out first. This reports on the app's Sentry setup, not a
+ * CLI failure.
+ *
+ * @param message - What the app did instead of sending an event
+ * @param exitCode - `EXIT.VERIFY_FAILED`, or the crashed app's exit code
+ */
+export class VerifyFailedError extends CliError {
+  constructor(message: string, exitCode: number = EXIT.VERIFY_FAILED) {
+    super(message, exitCode);
+    this.name = "VerifyFailedError";
+  }
+}
+
+/**
  * OAuth device flow errors (RFC 8628).
  *
  * @param code - OAuth error code (e.g., "authorization_pending", "slow_down")

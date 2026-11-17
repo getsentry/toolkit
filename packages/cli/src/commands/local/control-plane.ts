@@ -28,6 +28,7 @@ import {
 } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
+  AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
   AmbiguousLocalSessionError,
   type LocalSessionStore,
@@ -143,7 +144,15 @@ export function createLocalControlPlane({
     } catch (error) {
       if (error instanceof AmbiguousLocalSessionError) {
         throw new HTTPException(409, {
-          res: Response.json({ error: error.message }, { status: 409 }),
+          res: Response.json(
+            {
+              error: error.message,
+              code: AMBIGUOUS_SESSION_CODE,
+              reference: error.reference,
+              sessionIds: error.sessionIds,
+            },
+            { status: 409 },
+          ),
         });
       }
       logger.debug("Local session was not found", error);
