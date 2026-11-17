@@ -4,6 +4,7 @@ import {
   prepareReceiverEnvelope,
   receiverEnvelopeId,
 } from "../../../src/commands/local/receiver-ingest.js";
+import { envelopeReceivedAt } from "../../../src/commands/local/viewer-protocol.js";
 
 describe("receiver envelope codec", () => {
   test("preserves binary framing and JSON byte lengths across multiple items", () => {
@@ -75,6 +76,15 @@ describe("receiver envelope codec", () => {
     const id = receiverEnvelopeId(container);
     expect(id).toMatch(/^[a-f\d-]{36}$/);
     expect(prepareReceiverEnvelope(container)).toBe(id);
+  });
+
+  test("IDs record when the receiver accepted the envelope", () => {
+    const container = createReceiverEnvelope({ body: Buffer.from("{}\n") });
+    const before = Date.now();
+    const receivedAt = envelopeReceivedAt(prepareReceiverEnvelope(container));
+    expect(receivedAt).toBeGreaterThanOrEqual(before);
+    expect(receivedAt).toBeLessThanOrEqual(Date.now());
+    expect(envelopeReceivedAt("not-a-uuid")).toBeUndefined();
   });
 
   test("assigns independent stable IDs before parsing untrusted headers", () => {

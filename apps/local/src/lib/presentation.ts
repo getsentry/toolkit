@@ -93,3 +93,18 @@ export function getWorkspaceEmptyState({
   };
   return { title: `No ${items} captured`, description: triggers[view] };
 }
+
+/** Show an SDK timestamp (epoch seconds or milliseconds, or ISO) in local time. */
+export function formatTimestamp(
+  timestamp: number | string | undefined,
+): string {
+  if (timestamp === undefined) return "unknown time";
+  const date = new Date(
+    typeof timestamp === "number" && timestamp < 1_000_000_000_000
+      ? timestamp * 1_000
+      : timestamp,
+  );
+  return Number.isNaN(date.getTime())
+    ? String(timestamp)
+    : date.toLocaleTimeString();
+}

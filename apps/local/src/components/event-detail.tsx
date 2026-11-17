@@ -13,6 +13,7 @@ import {
 } from "./inspector-data.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import { getEventMetadata } from "@/lib/spotlight.ts";
+import { formatTimestamp } from "@/lib/presentation.ts";
 import { getEventExceptions } from "@/lib/exceptions.ts";
 import type { TraceGroup } from "@/lib/trace-model.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -31,18 +32,6 @@ type EventDetailProps = {
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 };
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]) {
-  if (timestamp === undefined) return "unknown time";
-  const date = new Date(
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp,
-  );
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
-}
 
 function CompactSummary({
   label,

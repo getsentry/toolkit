@@ -264,6 +264,10 @@ metadata and related telemetry. Waterfall spans are keyboard-selectable and open
 their own timing, attributes, original payload, and trace-related errors/logs in
 the inspector; **Back to trace** returns to the waterfall and its selected span.
 Raw envelopes and other diagnostic types open directly in JSON.
+Envelope rows list their item types and show when the receiver accepted them,
+read from the receiver's UUIDv7 SSE event ID, so reloaded history keeps its
+original times. Envelopes without that ID use their `sent_at` header.
+Breadcrumb and SDK last-seen times use the same local time format as the lists.
 
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.

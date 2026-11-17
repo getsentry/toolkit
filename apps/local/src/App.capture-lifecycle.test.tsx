@@ -625,3 +625,50 @@ test.each(["filtered", "saved", "offline"] as const)(
     ).toBeNull();
   },
 );
+
+test("envelope times use the receiver's time, not when the viewer loaded them", async () => {
+  // The receiver assigns each envelope a UUIDv7 SSE id at ingest.
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:30:30.000Z" },
+          [
+            [{ type: "event" }, { message: "Checkout failed" }],
+            [{ type: "attachment", filename: "log.txt" }, "log"],
+          ],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /^View envelope/ });
+  expect(row.textContent).toContain(new Date(receivedAt).toLocaleTimeString());
+  expect(row.textContent).toContain("event, attachment");
+  expect(
+    screen.getByText(/Last received/).querySelector("time")?.dateTime,
+  ).toBe(new Date(receivedAt).toISOString());
+});
+
+test("envelopes without a receiver time fall back to their sent_at header", async () => {
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:30:30.000Z" },
+          [[{ type: "event" }, { message: "Checkout failed" }]],
+        ]),
+        lastEventId: "legacy-envelope",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /^View envelope/ });
+  expect(row.textContent).toContain(
+    new Date("2026-11-17T20:30:30.000Z").toLocaleTimeString(),
+  );
+});
