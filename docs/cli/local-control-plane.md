@@ -46,6 +46,13 @@ Both stop and restart wait for the previous daemon to release its state and owne
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
 A temporarily unreachable live daemon keeps its discovery state for retries.
+Discovery is stale when its recorded port refuses connections, or when a server
+that is not a Local daemon answers there, even if its PID is alive. That happens
+after an unclean exit with PID reuse, or while a daemon shuts down. Commands then
+clear it, and the owner lock the same daemon left, and start a new daemon. A live
+daemon that does not answer keeps its discovery. The error then names both
+`local-control-plane.json` and `local-control-plane.owner`; delete them only after
+checking that the PID is not a Sentry Local daemon.
 A short ownership guard serializes claiming, stale recovery and release. If a
 process dies during that critical section, startup preserves the guard and reports
 its path; confirm the owning process has stopped before removing the guard and
