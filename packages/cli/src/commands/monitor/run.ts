@@ -333,10 +333,7 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
 
     const [cmd = "", ...cmdArgs] = command;
     const childEnv = { ...process.env, SENTRY_MONITOR_SLUG: monitorSlug };
-    const target = resolveSpawnTarget(cmd, cmdArgs, {
-      cwd: process.cwd(),
-      env: childEnv,
-    });
+    const target = resolveSpawnTarget(cmd, cmdArgs, { cwd, env: childEnv });
     const child = spawn(target.command, target.args, {
       env: childEnv,
       stdio: "inherit",

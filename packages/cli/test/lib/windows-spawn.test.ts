@@ -79,6 +79,18 @@ describe("resolveSpawnTarget", () => {
     expect(target.args.at(-1)).toContain(join(binDir, "next.cmd"));
   });
 
+  test("reads the PATH key Node gives the child when both Path and PATH exist", () => {
+    // local run spreads process.env (`Path` on Windows), then adds `PATH`
+    // with node_modules/.bin; Node keeps the key that sorts first (`PATH`).
+    const target = resolveSpawnTarget(
+      "next",
+      ["dev"],
+      { cwd: tmpDir, env: { Path: nodeDir, PATH: `${binDir};${nodeDir}` } },
+      "win32",
+    );
+    expect(target.args.at(-1)).toContain(join(binDir, "next.cmd"));
+  });
+
   test("returns an unknown command unchanged so spawn reports ENOENT", () => {
     expect(onWindows("nosuchbinary123", ["x"])).toEqual({
       command: "nosuchbinary123",

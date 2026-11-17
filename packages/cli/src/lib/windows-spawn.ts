@@ -48,11 +48,17 @@ const TRAILING_BACKSLASHES_RE = /(\\*)$/;
 /** A command given as a path, not a bare name to look up on PATH. */
 const HAS_PATH_SEPARATOR_RE = /[\\/]/;
 
-/** Read an environment variable by name, ignoring case like Windows does. */
+/**
+ * Read an environment variable by name, ignoring case like Windows does.
+ *
+ * A copy of `process.env` can hold both `Path` and `PATH` (local run adds
+ * `PATH` with `node_modules/.bin`). Node keeps the key that sorts first, so
+ * the child gets `PATH`; read the same one.
+ */
 function getEnv(env: SpawnEnv, name: string): string | undefined {
-  const key = Object.keys(env).find(
-    (k) => k.toUpperCase() === name.toUpperCase(),
-  );
+  const key = Object.keys(env)
+    .sort()
+    .find((k) => k.toUpperCase() === name.toUpperCase());
   return key === undefined ? undefined : env[key];
 }
 
