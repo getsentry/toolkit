@@ -688,6 +688,12 @@ export function validationError(
 }
 
 /**
+ * `ValidationError` field for `--open` with a non-loopback `--host`: the
+ * browser UI only connects to a loopback receiver (CLI-3XY).
+ */
+export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
+
+/**
  * Input validation errors.
  *
  * @param message - Validation failure description

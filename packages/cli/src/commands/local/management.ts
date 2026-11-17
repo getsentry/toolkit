@@ -154,7 +154,7 @@ function singleReference(parts: string[]): string {
   if (!reference) {
     throw new ValidationError(
       "Provide a Local session or envelope ID.",
-      "local.id",
+      "session.id_missing",
     );
   }
   return reference;

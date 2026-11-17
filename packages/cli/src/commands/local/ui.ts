@@ -2,7 +2,7 @@ import { sentry } from "../../lib/app-identity.js";
 import { isLoopbackHost, normalizeLocalHostname } from "./loopback.js";
 import { openBrowser } from "../../lib/browser.js";
 import { getCliEnvironment } from "../../lib/constants.js";
-import { ValidationError } from "../../lib/errors.js";
+import { HOST_NOT_LOOPBACK_FIELD, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 
 const DEVELOPMENT_UI_URL = "http://localhost:5173";
@@ -10,12 +10,17 @@ const PRODUCTION_UI_URL = "https://local.sentry.dev";
 
 export { isLoopbackHost } from "./loopback.js";
 
-/** Reject a host that the browser-only UI cannot safely reach. */
-export function assertLoopbackHostForUi(host: string): void {
+/**
+ * Reject a host that the browser-only UI cannot safely reach.
+ *
+ * @param field - `HOST_NOT_LOOPBACK_FIELD` when the host is the user's
+ *   `--host`; the default marks a URL the CLI built itself
+ */
+export function assertLoopbackHostForUi(host: string, field = "host"): void {
   if (!isLoopbackHost(host)) {
     throw new ValidationError(
       "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
-      "local.open_host",
+      field,
     );
   }
 }
@@ -23,7 +28,7 @@ export function assertLoopbackHostForUi(host: string): void {
 /** Validate an --open host before the caller creates or attaches a receiver. */
 export function validateOpenHost(requested: boolean, host: string): void {
   if (requested) {
-    assertLoopbackHostForUi(host);
+    assertLoopbackHostForUi(host, HOST_NOT_LOOPBACK_FIELD);
   }
 }
 
@@ -66,7 +71,7 @@ export function buildLocalUiUrl(
     ) {
       throw new ValidationError(
         "Session discovery must use the same loopback receiver.",
-        "directory",
+        "session.receiver_mismatch",
       );
     }
     fragment.set("directory", directory.toString());

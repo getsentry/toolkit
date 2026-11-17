@@ -284,7 +284,7 @@ describe("sentry local run", () => {
         "true",
       ),
     ).rejects.toMatchObject({
-      field: "local.open_host",
+      field: "host.not_loopback",
       message:
         "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
     });

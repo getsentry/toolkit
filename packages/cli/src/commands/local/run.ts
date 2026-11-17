@@ -388,7 +388,7 @@ async function resolveArgs(
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
-    throw new ValidationError(autoDetectErrorMessage(), "local.command");
+    throw new ValidationError(autoDetectErrorMessage(), "command.missing");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
   return { args: detected.args, commandSource: detected.source };

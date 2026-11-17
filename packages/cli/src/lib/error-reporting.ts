@@ -45,6 +45,7 @@ import {
   CliError,
   ContextError,
   DeviceFlowError,
+  HOST_NOT_LOOPBACK_FIELD,
   HostScopeError,
   isNetworkError,
   MalformedAuthTokenError,
@@ -176,15 +177,12 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
-  // `sentry local` input the user has to fix: `local run` with no command and
-  // nothing to auto-detect (CLI-1YT), a session or envelope command with no
-  // ID (CLI-4GP), and `--open` with a non-loopback `--host` (CLI-3XY). The
-  // user sees what to pass.
+  // A ValidationError with field "host.not_loopback" means the user passed
+  // `--open` with a `--host` the browser UI cannot reach, such as 0.0.0.0.
+  // The user sees which hosts work (CLI-3XY).
   if (
     error instanceof ValidationError &&
-    (error.field === "local.command" ||
-      error.field === "local.id" ||
-      error.field === "local.open_host")
+    error.field === HOST_NOT_LOOPBACK_FIELD
   ) {
     return "user_input_error";
   }

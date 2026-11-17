@@ -14,6 +14,10 @@ import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import {
+  buildLocalUiUrl,
+  validateOpenHost,
+} from "../../src/commands/local/ui.js";
+import {
   classifySilenced,
   enrichEventWithGroupingTags,
   extractMessagePrefix,
@@ -245,6 +249,16 @@ describe("normalizeEndpoint", () => {
 // classifySilenced
 // ---------------------------------------------------------------------------
 
+/** The value that `fn` throws, or undefined when it returns. */
+function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
 describe("classifySilenced", () => {
   test("silences OutputError", () => {
     expect(classifySilenced(new OutputError(null))).toBe("output_error");
@@ -427,21 +441,31 @@ describe("classifySilenced", () => {
     },
   );
 
+  test("silences --open with a non-loopback --host (CLI-3XY)", () => {
+    const error = thrownBy(() => validateOpenHost(true, "0.0.0.0"));
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
   test.each([
-    ["local.command", "No dev command found."],
-    ["local.id", "Provide a Local session or envelope ID."],
+    // The CLI built these UI URLs itself, so a failure is a CLI bug.
     [
-      "local.open_host",
-      "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
+      "a non-loopback receiver",
+      () => buildLocalUiUrl("http://10.1.2.3:8969/stream"),
     ],
-  ])(
-    "silences sentry local ValidationError with field '%s' (CLI-1YT, CLI-4GP, CLI-3XY)",
-    (field, message) => {
-      expect(classifySilenced(new ValidationError(message, field))).toBe(
-        "user_input_error",
-      );
-    },
-  );
+    [
+      "a discovery URL on another receiver",
+      () =>
+        buildLocalUiUrl(
+          "http://localhost:8969/stream",
+          "http://localhost:9999/_local/v1/ui/sessions?cap=x",
+        ),
+    ],
+  ])("does NOT silence a Local UI URL with %s", (_label, build) => {
+    const error = thrownBy(build);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBeNull();
+  });
 
   test.each([
     new VerifyFailedError("Process exited before sending any events"),
@@ -467,9 +491,18 @@ describe("classifySilenced", () => {
       "ValidationError (other field)",
       new ValidationError("Invalid trace ID", "trace_id"),
     ],
-    // Only the namespaced `sentry local` fields are silenced.
-    ["ValidationError (field 'host')", new ValidationError("bad", "host")],
-    ["ValidationError (field 'id')", new ValidationError("bad", "id")],
+    // An omitted value stays captured, like ContextError (CLI-3B).
+    [
+      "ValidationError (field 'command.missing', CLI-1YT)",
+      new ValidationError("No command provided", "command.missing"),
+    ],
+    [
+      "ValidationError (field 'session.id_missing', CLI-4GP)",
+      new ValidationError(
+        "Provide a Local session or envelope ID.",
+        "session.id_missing",
+      ),
+    ],
     [
       "CliError with a verify message",
       new CliError("Process crashed with code 3", 3),
