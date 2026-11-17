@@ -29,13 +29,13 @@ export const getInboxOutputSchema = z.object({
 export default defineTool({
   name: "get_inbox",
   title: "Get Inbox",
-  // Universal Inbox is behind the organizations:universal-inbox feature flag.
+  // Inbox is behind the organizations:universal-inbox feature flag.
   experimental: true,
   includeInSkillDefinitions: false,
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description:
-    "List your Sentry Universal Inbox: issue assignments, mentions, pull requests ready for review, and Seer investigation updates, newest activity first, with read state and summaries. Can also return one inbox item's event history. Reading does not mark items read; triage them with update_inbox_items.",
+    "List your Sentry Inbox: issue assignments, mentions, pull requests ready for review, and Seer investigation updates, newest activity first, with read state and summaries. Can also return one inbox item's event history. Reading does not mark items read; triage them with update_inbox_items.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),

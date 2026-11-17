@@ -186,7 +186,7 @@ describe("update_inbox_items", () => {
     ).toBe(false);
   });
 
-  it("explains a 404 as Universal Inbox not being enabled", async () => {
+  it("explains a 404 as Inbox not being enabled", async () => {
     mswServer.use(
       http.put(INBOX_URL, () =>
         HttpResponse.json(
@@ -209,7 +209,7 @@ describe("update_inbox_items", () => {
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiNotFoundError);
     expect((error as Error).message).toBe(
-      "Universal Inbox is not enabled for organization 'sentry-mcp-evals', or you cannot access it.",
+      "Inbox is not enabled for organization 'sentry-mcp-evals', or you cannot access it.",
     );
   });
 

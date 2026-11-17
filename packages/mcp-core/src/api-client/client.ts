@@ -344,7 +344,7 @@ type RequestOptions = {
 };
 
 /**
- * Universal Inbox list filters, as `InboxFilterSerializer` in
+ * Inbox list filters, as `InboxFilterSerializer` in
  * `src/sentry/inbox/filters.py` accepts them. Omitted filters match all items.
  */
 export type InboxFilters = {
@@ -4903,7 +4903,7 @@ export class SentryApiService {
   }
 
   /**
-   * Lists the authenticated user's active Universal Inbox items, newest
+   * Lists the authenticated user's active Inbox items, newest
    * activity first. Requires a user token and the organization's
    * `organizations:universal-inbox` feature; otherwise Sentry returns 404.
    */

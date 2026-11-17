@@ -2740,7 +2740,7 @@ export const DroppedEventsResponseSchema = z
   .passthrough();
 
 /**
- * Who caused a Universal Inbox event: a user, or Sentry itself (`system`,
+ * Who caused a Inbox event: a user, or Sentry itself (`system`,
  * with a null ID). See `src/sentry/inbox/response_types.py`.
  */
 export const InboxActorSchema = z
@@ -2751,7 +2751,7 @@ export const InboxActorSchema = z
   })
   .passthrough();
 
-/** One event in a Universal Inbox item's history. */
+/** One event in a Inbox item's history. */
 export const InboxItemEventSchema = z
   .object({
     id: z.string(),
@@ -2768,7 +2768,7 @@ export const InboxItemEventSchema = z
 export const InboxItemEventListSchema = z.array(InboxItemEventSchema);
 
 /**
- * One item in the authenticated user's personal Universal Inbox, grouping the
+ * One item in the authenticated user's personal Inbox, grouping the
  * events for one subject (an issue or a Seer investigation notebook).
  */
 export const InboxItemSchema = z

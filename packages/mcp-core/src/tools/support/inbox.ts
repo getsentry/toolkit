@@ -101,8 +101,8 @@ export async function withInboxNotFoundHint<T>(
       throw error;
     }
     const hint = itemId
-      ? `Inbox item ${itemId} is not an active item in your Universal Inbox in organization '${organizationSlug}', or Universal Inbox is not enabled for that organization. Removed items no longer appear; list current items with get_inbox.`
-      : `Universal Inbox is not enabled for organization '${organizationSlug}', or you cannot access it.`;
+      ? `Inbox item ${itemId} is not an active item in your Inbox in organization '${organizationSlug}', or Inbox is not enabled for that organization. Removed items no longer appear; list current items with get_inbox.`
+      : `Inbox is not enabled for organization '${organizationSlug}', or you cannot access it.`;
     throw new ApiNotFoundError(hint, error.detail, error.responseBody);
   }
 }

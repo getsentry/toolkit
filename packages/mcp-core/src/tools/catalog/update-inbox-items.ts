@@ -46,13 +46,13 @@ async function applyInboxAction(
 export default defineTool({
   name: "update_inbox_items",
   title: "Update Inbox Items",
-  // Universal Inbox is behind the organizations:universal-inbox feature flag.
+  // Inbox is behind the organizations:universal-inbox feature flag.
   experimental: true,
   includeInSkillDefinitions: false,
   skills: ["triage"],
   requiredScopes: ["org:read"],
   description:
-    "Triage your Sentry Universal Inbox: mark selected items read or unread, or remove them. Changes only your personal inbox, never the underlying issues or Seer investigations. Removal hides an item at once, and Sentry deletes it after one hour.",
+    "Triage your Sentry Inbox: mark selected items read or unread, or remove them. Changes only your personal inbox, never the underlying issues or Seer investigations. Removal hides an item at once, and Sentry deletes it after one hour.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
