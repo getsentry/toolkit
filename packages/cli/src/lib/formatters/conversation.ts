@@ -13,6 +13,7 @@ import type {
 } from "../../types/conversation.js";
 import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 import { type Column, formatTable } from "./table.js";
+import { formatLocalDateTime } from "./time-utils.js";
 
 // ---------------------------------------------------------------------------
 // List formatter
@@ -23,13 +24,6 @@ function truncate(value: string, max = 60): string {
     return value;
   }
   return `${value.slice(0, max - 1)}…`;
-}
-
-function formatTimestamp(epochMilliseconds: number): string {
-  if (epochMilliseconds === 0) {
-    return "—";
-  }
-  return new Date(epochMilliseconds).toLocaleString();
 }
 
 const USD_FORMAT = new Intl.NumberFormat("en-US", {
@@ -67,7 +61,9 @@ const TITLE_COLUMN: Column<ConversationListItem> = {
 
 const STARTED_COLUMN: Column<ConversationListItem> = {
   header: "Started",
-  value: (c) => formatTimestamp(c.startTimestamp),
+  // The API sends 0 for a conversation with no start time.
+  value: (c) =>
+    c.startTimestamp === 0 ? "—" : formatLocalDateTime(c.startTimestamp),
 };
 
 const TOKENS_COLUMN: Column<ConversationListItem> = {

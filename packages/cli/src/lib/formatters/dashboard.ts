@@ -38,6 +38,7 @@ import { isPlainOutput } from "./plain-detect.js";
 import { formatDashboardSavedTransformations } from "./saved-transformations.js";
 import { renderDashboardAsSixel } from "./sixel-dashboard.js";
 import { downsample, downsampleFlags, sparkline } from "./sparkline.js";
+import { formatAxisTimestamp } from "./time-utils.js";
 
 // ---------------------------------------------------------------------------
 // Data type yielded by dashboard view command
@@ -1510,43 +1511,6 @@ function downsampleTimestamps(
 }
 
 /**
- * Format a Unix timestamp for a time-axis label.
- *
- * Adapts to the time span:
- * - < 2 days: "HH:MM"
- * - 2-30 days: "MM/DD"
- * - > 30 days: "Mon DD"
- */
-function formatTimestamp(ts: number, spanDays: number): string {
-  const d = new Date(ts * 1000);
-  if (spanDays < 2) {
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
-  }
-  if (spanDays <= 30) {
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${mm}/${dd}`;
-  }
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return `${months[d.getMonth()] ?? "???"} ${d.getDate()}`;
-}
-
-/**
  * Build the bottom axis line (with ┬ tick marks) and time label line.
  *
  * Returns 2 lines:
@@ -1612,7 +1576,7 @@ function buildTimeAxis(opts: {
     const ts = timestamps[idx] ?? 0;
     labels.push({
       pos: Math.round((idx / (timestamps.length - 1)) * (chartWidth - 1)),
-      text: formatTimestamp(ts, spanDays),
+      text: formatAxisTimestamp(ts, spanDays),
     });
   }
 

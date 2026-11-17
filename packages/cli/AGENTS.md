@@ -1060,6 +1060,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Duration formatting | `src/lib/formatters/time-utils.ts` (`formatDurationCompact`, `formatDurationVerbose`) |
 | Hex ID validation/normalization | `src/lib/hex-id.ts` (`validateHexId`, `tryNormalizeHexId`, `normalizeHexId`) |
 | Relative time display | `src/lib/formatters/time-utils.ts` (`formatRelativeTime`) |
+| Absolute date/time display | `src/lib/formatters/time-utils.ts` (`formatLocalDateTime` for epoch ms or ISO strings, `formatUtcTimestamp`, `formatAxisTimestamp` for chart axes) |
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |
