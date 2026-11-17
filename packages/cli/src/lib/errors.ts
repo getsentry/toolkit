@@ -727,6 +727,12 @@ export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
 export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
 
 /**
+ * `ValidationError` field for a command the user asked the CLI to run that is
+ * not installed or not on PATH (spawn ENOENT, CLI-3NK).
+ */
+export const COMMAND_NOT_FOUND_FIELD = "command.not_found";
+
+/**
  * `ValidationError` field for a port that another process holds, such as a
  * foreground `sentry local serve`. Error reporting silences it.
  */

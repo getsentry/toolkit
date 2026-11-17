@@ -6,6 +6,8 @@ import { createLocalRetentionBuffer } from "../../../src/commands/local/retentio
  * exit code propagation, auto-detection, --verify, --timeout, and error cases.
  */
 
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -20,10 +22,13 @@ import { openBrowser } from "../../../src/lib/browser.js";
 import { logger } from "../../../src/lib/logger.js";
 import {
   CliError,
+  COMMAND_NOT_FOUND_FIELD,
   ValidationError,
   VerifyFailedError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 
 /**
@@ -413,22 +418,57 @@ describe("sentry local run", () => {
     }
   });
 
-  test("throws on ENOENT (command not found)", async () => {
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    const ctx = makeContext();
+  test.each([false, true])(
+    "reports a missing command as command not found (verify: %s, CLI-3NK)",
+    async (verify) => {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify, timeout: 5 },
+          "nonexistent-command-that-does-not-exist",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).field).toBe(COMMAND_NOT_FOUND_FIELD);
+      expect((error as Error).message).toMatch(
+        /^Command not found: nonexistent-command-that-does-not-exist\n/,
+      );
+    },
+  );
 
+  test("--verify does not hang when the spawn fails and close never fires", async () => {
+    // A failed spawn has no pid and may emit `error` without `close`.
+    const child = Object.assign(new EventEmitter(), {
+      pid: undefined,
+      exitCode: null,
+      stdout: null,
+      stderr: null,
+      kill: vi.fn(() => false),
+    });
+    const spawnSpy = vi
+      .spyOn(windowsSpawn, "spawnUserCommand")
+      .mockImplementation(() => {
+        setImmediate(() =>
+          child.emit(
+            "error",
+            Object.assign(new Error("spawn EACCES"), { code: "EACCES" }),
+          ),
+        );
+        return child as unknown as ChildProcess;
+      });
     try {
-      await func.call(
-        ctx,
-        { port: 19_879, host: "127.0.0.1", verify: false, timeout: 0 },
-        "nonexistent-command-that-does-not-exist",
-      );
-      expect.unreachable("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toMatch(
-        /exited with code|Failed to start|ENOENT|spawn/i,
-      );
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await expect(
+        func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 60 },
+          "some-tool",
+        ),
+      ).rejects.toThrow('Failed to start "some-tool": spawn EACCES');
+      expect(child.kill).not.toHaveBeenCalled();
+    } finally {
+      spawnSpy.mockRestore();
     }
   });
 

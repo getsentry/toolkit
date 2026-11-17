@@ -8,14 +8,25 @@
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { detectDevCommand } from "../../src/lib/dev-script.js";
+import { whichSync } from "../../src/lib/which.js";
 import { TEST_TMP_DIR } from "../constants.js";
+
+vi.mock("../../src/lib/which.js", () => ({ whichSync: vi.fn() }));
+
+/** Make only these commands resolvable on the mocked PATH. */
+function onPath(...commands: string[]): void {
+  vi.mocked(whichSync).mockImplementation((cmd) =>
+    commands.includes(cmd) ? `/usr/bin/${cmd}` : null,
+  );
+}
 
 let tmpDir: string;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "dev-script-test-"));
+  onPath("python", "python3");
 });
 
 afterEach(async () => {
@@ -81,6 +92,21 @@ describe("detectDevCommand", () => {
     expect(result!.args).toEqual(["python", "main.py"]);
     expect(result!.source).toBe("main.py");
   });
+
+  test.each([
+    ["python3 only", ["python3"], "python3"],
+    ["python only", ["python"], "python"],
+    ["neither", [], "python"],
+  ])(
+    "uses the Python on PATH for manage.py (%s)",
+    async (_label, commands, expected) => {
+      // Ubuntu and Debian ship only python3 (CLI-3NK).
+      onPath(...commands);
+      await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
+      const result = await detectDevCommand(tmpDir);
+      expect(result!.args).toEqual([expected, "manage.py", "runserver"]);
+    },
+  );
 
   test("detects go.mod", async () => {
     await writeFile(join(tmpDir, "go.mod"), "module example.com/myapp");

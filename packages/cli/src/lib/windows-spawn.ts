@@ -20,6 +20,9 @@ import {
 import { statSync } from "node:fs";
 import { extname, isAbsolute, join, resolve } from "node:path";
 import { COMMAND_LINE_BREAK_FIELD, ValidationError } from "./errors.js";
+import { logger } from "./logger.js";
+
+const log = logger.withTag("windows-spawn");
 
 /** What to pass to `spawn()`. */
 export type SpawnTarget = {
@@ -72,9 +75,18 @@ function getEnv(env: SpawnEnv, name: string): string | undefined {
   return key === undefined ? undefined : env[key];
 }
 
-/** Whether a regular file exists at `path`. */
+/**
+ * Whether a regular file exists at `path`. A path Node cannot stat (EACCES,
+ * EPERM, ENAMETOOLONG) counts as no file, so one bad PATH entry does not stop
+ * the search.
+ */
 function isFile(path: string): boolean {
-  return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  try {
+    return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch (error) {
+    log.debug(`Skipping unreadable PATH candidate ${path}`, error);
+    return false;
+  }
 }
 
 /**
