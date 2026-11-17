@@ -1110,6 +1110,84 @@ describe("Local foreground commands", () => {
     30000,
   );
 
+  test.skipIf(process.platform === "win32")(
+    "passes a SIGINT sent only to the CLI on to the app once and exits like the app",
+    async () => {
+      const { spawn } = await import("node:child_process");
+      const { getCliCommand } = await import("../fixture.js");
+      const dir = getConfigDir();
+      const count = join(dir, "sigint-count");
+      const script = join(dir, "sigint-app.cjs");
+      // Counts SIGINTs, then dies from SIGINT half a second after the first,
+      // which leaves time for a duplicate to arrive.
+      await writeFile(
+        script,
+        `const fs = require("node:fs");
+let n = 0;
+fs.writeFileSync(${JSON.stringify(count)}, "0");
+process.on("SIGINT", () => {
+  fs.writeFileSync(${JSON.stringify(count)}, String(++n));
+  if (n === 1) setTimeout(() => { process.removeAllListeners("SIGINT"); process.kill(process.pid, "SIGINT"); }, 500);
+});
+setInterval(() => {}, 1000);
+`,
+      );
+      const [executable, ...prefix] = getCliCommand();
+      if (!executable) throw new Error("Missing CLI executable");
+      // Detached: its own session with no terminal, so a Ctrl-C in the
+      // terminal running the tests can't reach the app.
+      const cli = spawn(
+        executable,
+        [
+          ...prefix,
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(await availablePort()),
+          "--",
+          process.execPath,
+          script,
+        ],
+        {
+          cwd: join(import.meta.dirname, "../.."),
+          detached: true,
+          env: {
+            ...process.env,
+            SENTRY_CONFIG_DIR: dir,
+            SENTRY_CLI_NO_TELEMETRY: "1",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let stderr = "";
+      cli.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      cli.stdout.resume();
+      const closed = new Promise<number | null>((resolve, reject) => {
+        cli.once("close", (code) => resolve(code));
+        cli.once("error", reject);
+      });
+      try {
+        await expect
+          .poll(() => readFile(count, "utf8").catch(() => ""), {
+            timeout: 15000,
+          })
+          .toBe("0");
+        // Only the CLI's own pid, never its process group.
+        cli.kill("SIGINT");
+        expect(await closed, stderr).toBe(130);
+        expect(await readFile(count, "utf8")).toBe("1");
+        expect(stderr).not.toContain("Error:");
+      } finally {
+        cli.kill("SIGKILL");
+      }
+    },
+    30000,
+  );
+
   test("rejects verification with a retained session before running the application", async () => {
     const marker = join(getConfigDir(), "verify-session-child-ran");
     const script = join(getConfigDir(), "verify-session-child.cjs");

@@ -18,6 +18,7 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
+import { terminalSignalsProcess } from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -30,6 +31,7 @@ import {
   CliError,
   EXIT,
   PORT_IN_USE_FIELD,
+  signalExitCode,
   ValidationError,
   VerifyFailedError,
 } from "../../lib/errors.js";
@@ -636,8 +638,15 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const onSigint = () => child.kill("SIGINT");
-    const onSigterm = () => child.kill("SIGTERM");
+    let interrupted = false;
+    const onSigint = () => {
+      interrupted = true;
+      forwardInterrupt(child);
+    };
+    const onSigterm = () => {
+      interrupted = true;
+      child.kill("SIGTERM");
+    };
     process.once("SIGINT", onSigint);
     process.once("SIGTERM", onSigterm);
 
@@ -649,14 +658,14 @@ export const runCommand = buildCommand({
       }, flags.timeout * 1000);
     }
 
-    let exitCode: number;
+    let exit: ChildExit;
     try {
-      exitCode = await new Promise<number>((done, fail) => {
+      exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
-        child.on("close", (code) => {
+        child.on("close", (code, signal) => {
           if (!settled) {
             settled = true;
-            done(code ?? 1);
+            done({ code, signal });
           }
         });
         child.on("error", (err) => {
@@ -679,11 +688,49 @@ export const runCommand = buildCommand({
       }
     }
 
-    if (exitCode !== 0) {
-      throw new CliError(`Process exited with code ${exitCode}`, exitCode);
+    const exitCode = exit.signal
+      ? signalExitCode(exit.signal)
+      : (exit.code ?? EXIT.GENERAL);
+    if (exitCode === 0) {
+      return;
     }
+    // The user stopped the app: however it ended is what they asked for, so
+    // exit with its code and print no error.
+    if (interrupted) {
+      this.process.exitCode = exitCode;
+      return;
+    }
+    throw new CliError(
+      exit.signal
+        ? `Process exited with code ${exitCode} (killed by ${exit.signal})`
+        : `Process exited with code ${exitCode}`,
+      exitCode,
+    );
   },
 });
+
+/** How the wrapped app ended, from the child's `close` event. */
+type ChildExit = {
+  /** Exit code, or `null` when a signal killed it. */
+  code: number | null;
+  /** The signal that killed it, or `null` when it exited. */
+  signal: NodeJS.Signals | null;
+};
+
+/**
+ * Pass a SIGINT the CLI received on to the child, unless the terminal already
+ * sent it there: Ctrl-C signals the whole foreground process group, which
+ * holds the child too. Sending it twice made apps such as Flask run their
+ * shutdown twice. It is still sent when only the CLI was signalled, e.g.
+ * `kill -INT <pid>` from a script.
+ */
+function forwardInterrupt(child: ChildProcess): void {
+  if (terminalSignalsProcess(child.pid)) {
+    logger.debug("The terminal already sent SIGINT to the app");
+    return;
+  }
+  child.kill("SIGINT");
+}
 
 /** Default timeout for --verify when no explicit --timeout is given. */
 const DEFAULT_VERIFY_TIMEOUT_S = 30;
@@ -792,7 +839,7 @@ async function* runWithVerify(
   let signalReceived: NodeJS.Signals | null = null;
   const onSigint = () => {
     signalReceived = "SIGINT";
-    child.kill("SIGINT");
+    forwardInterrupt(child);
   };
   const onSigterm = () => {
     signalReceived = "SIGTERM";
