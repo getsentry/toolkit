@@ -5,8 +5,8 @@
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { join, sep } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { augmentPathForNode } from "../../src/commands/local/run.js";
 import {
   COMMAND_LINE_BREAK_FIELD,
@@ -14,6 +14,22 @@ import {
 } from "../../src/lib/errors.js";
 import { resolveSpawnTarget } from "../../src/lib/windows-spawn.js";
 import { TEST_TMP_DIR } from "../constants.js";
+
+// A PATH entry Node cannot stat (EACCES, EPERM, ENAMETOOLONG) throws even with
+// throwIfNoEntry: false. Simulate that for any path under a `locked` dir.
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  const statSync = ((path: string, options?: object) => {
+    if (String(path).includes(`${sep}locked${sep}`)) {
+      throw Object.assign(
+        new Error(`EACCES: permission denied, stat '${path}'`),
+        { code: "EACCES" },
+      );
+    }
+    return fs.statSync(path, options);
+  }) as typeof fs.statSync;
+  return { ...fs, statSync };
+});
 
 let tmpDir: string;
 let nodeDir: string;
@@ -121,6 +137,13 @@ describe("resolveSpawnTarget", () => {
     expect(
       resolveSpawnTarget("node", [], { cwd: tmpDir, env }, "win32").command,
     ).toBe(join(nodeDir, "node.exe"));
+  });
+
+  test("skips a PATH entry it cannot read and keeps searching", () => {
+    const locked = join(tmpDir, "locked");
+    expect(onWindows("npm", [], `${locked};${nodeDir}`).args.at(-1)).toBe(
+      `""${join(nodeDir, "npm.cmd")}""`,
+    );
   });
 
   test("returns an unknown command unchanged so spawn reports ENOENT", () => {
