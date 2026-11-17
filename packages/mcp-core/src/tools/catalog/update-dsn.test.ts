@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { clientKeyFixture, mswServer } from "@sentry/mcp-server-mocks";
 import {
@@ -17,6 +17,8 @@ function getDsn(result: unknown) {
 import { UserInputError } from "../../errors.js";
 
 describe("update_dsn", () => {
+  afterEach(() => mswServer.resetHandlers());
+
   it("updates name and active status", async () => {
     const result = await updateDsn.handler(
       {
@@ -137,8 +139,7 @@ describe("update_dsn", () => {
         organizationSlug: "sentry-mcp-evals",
         projectSlug: "cloudflare-mcp",
         keyId: "d20df0a1ab5031c7f3c7edca9c02814d",
-        rateLimitWindow: 3600,
-        rateLimitCount: 100,
+        name: "Default",
         regionUrl: null,
       },
       {
@@ -152,6 +153,47 @@ describe("update_dsn", () => {
     );
 
     expect(getDsn(result).rateLimit).toBeNull();
+  });
+
+  it("errors when Sentry keeps the old rate limit", async () => {
+    // Sentry returns 200 with the previous limit when the project's plan does
+    // not include DSN rate limits.
+    mswServer.use(
+      http.put(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/keys/:keyId/",
+        ({ params }) =>
+          HttpResponse.json({
+            ...clientKeyFixture,
+            id: String(params.keyId),
+            rateLimit: { count: 100, window: 3600 },
+          }),
+      ),
+    );
+    const context = {
+      constraints: { organizationSlug: null, projectSlug: null },
+      accessToken: "access-token",
+      userId: "1",
+    };
+    const params = {
+      organizationSlug: "sentry-mcp-evals",
+      projectSlug: "cloudflare-mcp",
+      keyId: "d20df0a1ab5031c7f3c7edca9c02814d",
+      regionUrl: null,
+    };
+
+    await expect(
+      updateDsn.handler(
+        { ...params, rateLimitWindow: 86400, rateLimitCount: 50 },
+        context,
+      ),
+    ).rejects.toThrow(
+      new UserInputError(
+        "Sentry did not save the requested rate limit: the key still has 100 events per 3600 seconds. Sentry ignores rate limit changes when the project's plan does not include DSN rate limits. Any other settings in this call were saved.",
+      ),
+    );
+    await expect(
+      updateDsn.handler({ ...params, disableRateLimit: true }, context),
+    ).rejects.toThrow(UserInputError);
   });
 
   it("disables rate limit entirely", async () => {

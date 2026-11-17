@@ -224,23 +224,37 @@ export default defineTool({
       dynamicSdkLoaderOptions,
     });
 
-    const { rateLimit: appliedRateLimit, dynamicSdkLoaderOptions: loader } =
+    const { rateLimit: savedRateLimit, dynamicSdkLoaderOptions: loader } =
       clientKey;
+    const appliedRateLimit =
+      savedRateLimit && savedRateLimit.count > 0 && savedRateLimit.window > 0
+        ? { count: savedRateLimit.count, windowSeconds: savedRateLimit.window }
+        : null;
+
+    // Sentry answers 200 and keeps the old limit when the project's plan does
+    // not include per-key rate limits, so compare what it saved.
+    if (
+      rateLimit !== undefined &&
+      (rateLimit === null
+        ? appliedRateLimit !== null
+        : appliedRateLimit?.count !== rateLimit.count ||
+          appliedRateLimit.windowSeconds !== rateLimit.window)
+    ) {
+      const saved = appliedRateLimit
+        ? `${appliedRateLimit.count} events per ${appliedRateLimit.windowSeconds} seconds`
+        : "no rate limit";
+      throw new UserInputError(
+        `Sentry did not save the requested rate limit: the key still has ${saved}. Sentry ignores rate limit changes when the project's plan does not include DSN rate limits. Any other settings in this call were saved.`,
+      );
+    }
+
     return structuredResult({
       dsn: {
         id: String(clientKey.id),
         name: clientKey.name,
         dsn: clientKey.dsn.public,
         isActive: clientKey.isActive,
-        rateLimit:
-          appliedRateLimit &&
-          appliedRateLimit.count > 0 &&
-          appliedRateLimit.window > 0
-            ? {
-                count: appliedRateLimit.count,
-                windowSeconds: appliedRateLimit.window,
-              }
-            : null,
+        rateLimit: appliedRateLimit,
         browserSdkVersion: clientKey.browserSdkVersion || null,
         loaderOptions: loader
           ? {
