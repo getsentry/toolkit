@@ -63,7 +63,7 @@
     "@sentry/react": "catalog:",
     "agents": "catalog:",
     "ai": "catalog:",
-    "asciinema-player": "^3.17.0",
+    "asciinema-player": "^3.18.1",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "hono": "catalog:",
@@ -71,12 +71,11 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-markdown": "catalog:",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.18.2",
     "react-scroll-to-bottom": "^4.2.0",
     "remark-gfm": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:",
-    "workers-mcp": "catalog:",
     "zod": "catalog:"
   }
 }
