@@ -20,6 +20,8 @@ directories below; the MCP index explains which guides apply to that product.
 
 ## Shared Contributor Guides
 
+- [Design docs](../design/README.md) — the goals and rules of each major
+  system. Read the owning file before you change a system.
 - [Coding guidelines](contributing/coding-guidelines.md) — repository-wide style
   and the separate CLI and MCP patterns.
 - [Documentation style](contributing/documentation-style-guide.md) — how to
