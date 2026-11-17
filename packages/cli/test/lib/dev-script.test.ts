@@ -6,10 +6,13 @@
  * tests focus on filesystem integration, fallback chains, and priority ordering.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { detectDevCommand } from "../../src/lib/dev-script.js";
+import {
+  type DetectOptions,
+  detectDevCommand as detectWithEnv,
+} from "../../src/lib/dev-script.js";
 import { whichSync } from "../../src/lib/which.js";
 import { TEST_TMP_DIR } from "../constants.js";
 
@@ -20,6 +23,19 @@ function onPath(...commands: string[]): void {
   vi.mocked(whichSync).mockImplementation((cmd) =>
     commands.includes(cmd) ? `/usr/bin/${cmd}` : null,
   );
+}
+
+/** Detect with an empty env, so the runner's VIRTUAL_ENV or FLASK_APP never leaks in. */
+function detectDevCommand(cwd: string, options: DetectOptions = {}) {
+  return detectWithEnv(cwd, { env: {}, ...options });
+}
+
+/** Create an empty executable stand-in inside the temp project. */
+async function touch(...segments: string[]): Promise<string> {
+  const path = join(tmpDir, ...segments);
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, "");
+  return path;
 }
 
 let tmpDir: string;
@@ -169,5 +185,199 @@ describe("detectDevCommand", () => {
     const result = await detectDevCommand(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.source).toBe("package.json scripts.develop");
+  });
+
+  test("falls back to python file for a script that runs itself", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      'from fastapi import FastAPI\napp = FastAPI()\nif __name__ == "__main__":\n    import uvicorn\n    uvicorn.run(app)\n',
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({ args: ["python", "main.py"], source: "main.py" });
+  });
+});
+
+describe("detectDevCommand: Python virtualenv", () => {
+  test("uses .venv/bin/python when the venv is not activated", async () => {
+    const python = await touch(".venv", "bin", "python");
+    await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([python, "manage.py", "runserver"]);
+  });
+
+  test("falls back to venv/ when there is no .venv/", async () => {
+    const python = await touch("venv", "bin", "python");
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([python, "main.py"]);
+  });
+
+  test("prefers .venv/ over venv/", async () => {
+    const python = await touch(".venv", "bin", "python");
+    await touch("venv", "bin", "python");
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args[0]).toBe(python);
+  });
+
+  test("prefers the activated VIRTUAL_ENV", async () => {
+    const python = await touch("elsewhere", "bin", "python");
+    await touch(".venv", "bin", "python");
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir, {
+      env: { VIRTUAL_ENV: join(tmpDir, "elsewhere") },
+    });
+    expect(result!.args[0]).toBe(python);
+  });
+
+  test("uses Scripts\\python.exe on Windows", async () => {
+    const python = await touch(".venv", "Scripts", "python.exe");
+    await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
+    const result = await detectDevCommand(tmpDir, { platform: "win32" });
+    expect(result!.args).toEqual([python, "manage.py", "runserver"]);
+  });
+
+  test("ignores a venv directory with no interpreter", async () => {
+    await mkdir(join(tmpDir, ".venv"));
+    await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual(["python", "manage.py", "runserver"]);
+  });
+});
+
+describe("detectDevCommand: FastAPI", () => {
+  const FASTAPI_APP = "from fastapi import FastAPI\n\napp = FastAPI()\n";
+
+  test("runs main.py through uvicorn", async () => {
+    await writeFile(join(tmpDir, "main.py"), FASTAPI_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: ["python", "-m", "uvicorn", "main:app", "--reload"],
+      source: "main.py (FastAPI)",
+    });
+  });
+
+  test("uses the venv interpreter for uvicorn", async () => {
+    const python = await touch(".venv", "bin", "python");
+    await writeFile(join(tmpDir, "app.py"), FASTAPI_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      python,
+      "-m",
+      "uvicorn",
+      "app:app",
+      "--reload",
+    ]);
+  });
+
+  test("uses the name the app is assigned to", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "import fastapi\napi: fastapi.FastAPI = fastapi.FastAPI()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toContain("main:api");
+  });
+
+  test("uses uvicorn even when the venv has a fastapi script", async () => {
+    // Plain `fastapi` installs a `fastapi` script that fails without
+    // `fastapi[standard]`, so its presence does not mean `fastapi dev` works.
+    const python = await touch(".venv", "bin", "python");
+    await touch(".venv", "bin", "fastapi");
+    await writeFile(join(tmpDir, "main.py"), FASTAPI_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      python,
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--reload",
+    ]);
+  });
+
+  test("uses the Windows venv interpreter for uvicorn", async () => {
+    const python = await touch(".venv", "Scripts", "python.exe");
+    await writeFile(join(tmpDir, "main.py"), FASTAPI_APP);
+    const result = await detectDevCommand(tmpDir, { platform: "win32" });
+    expect(result!.args[0]).toBe(python);
+  });
+
+  test.each([
+    [
+      "pyproject.toml",
+      '[project]\ndependencies = ["fastapi[standard]>=0.110"]\n',
+    ],
+    ["requirements.txt", "fastapi==0.115.0\nuvicorn\n"],
+  ])("detects FastAPI declared in %s", async (manifest, contents) => {
+    await writeFile(join(tmpDir, manifest), contents);
+    await writeFile(join(tmpDir, "main.py"), "from .api import app\n");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py (FastAPI)");
+  });
+
+  test("does not mistake fastapi-users for FastAPI", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "fastapi-users\n");
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py");
+  });
+});
+
+describe("detectDevCommand: Flask", () => {
+  const FLASK_APP = "from flask import Flask\n\napp = Flask(__name__)\n";
+
+  test("runs app.py through flask run", async () => {
+    await writeFile(join(tmpDir, "app.py"), FLASK_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: ["python", "-m", "flask", "--app", "app", "run"],
+      source: "app.py (Flask)",
+    });
+  });
+
+  test("runs wsgi.py through flask run", async () => {
+    const python = await touch(".venv", "bin", "python");
+    await writeFile(join(tmpDir, "wsgi.py"), FLASK_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: [python, "-m", "flask", "--app", "wsgi", "run"],
+      source: "wsgi.py (Flask)",
+    });
+  });
+
+  test("detects an app factory from the declared dependency", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "Flask>=3\n");
+    await writeFile(
+      join(tmpDir, "app.py"),
+      "from myapp import create_app\napp = create_app()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("app.py (Flask)");
+  });
+
+  test("lets FLASK_APP pick the app", async () => {
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir, {
+      env: { FLASK_APP: "myapp:create_app()" },
+    });
+    expect(result).toEqual({
+      args: ["python", "-m", "flask", "run"],
+      source: "FLASK_APP (Flask)",
+    });
+  });
+
+  test("ignores a wsgi.py that is not Flask", async () => {
+    await writeFile(join(tmpDir, "wsgi.py"), "application = make_app()\n");
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toBeNull();
+  });
+
+  test("manage.py still wins over Flask markers", async () => {
+    await writeFile(join(tmpDir, "manage.py"), "#!/usr/bin/env python");
+    await writeFile(join(tmpDir, "app.py"), FLASK_APP);
+    const result = await detectDevCommand(tmpDir, {
+      env: { FLASK_APP: "app" },
+    });
+    expect(result!.source).toBe("manage.py");
   });
 });

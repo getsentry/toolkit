@@ -12,6 +12,18 @@ Runs a command with `SENTRY_SPOTLIGHT` injected into the environment. The Sentry
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
+With no command, `local run` picks one from the project, in this order:
+
+1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
+2. `manage.py`: `python manage.py runserver` (Django)
+3. `FLASK_APP` set: `python -m flask run`
+4. `app.py`, then `main.py`: a FastAPI app runs with `python -m uvicorn <module>:app --reload`. A Flask app runs with `python -m flask --app <module> run`. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
+5. `wsgi.py` with a Flask app: `python -m flask --app wsgi run`
+6. `go.mod`: `go run .`
+7. `docker-compose.yml` or `compose.yml`: `docker compose up`
+
+Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. Pass a command after `--` to skip detection.
+
 Env vars injected into the child process:
 
 | Variable | Value |
