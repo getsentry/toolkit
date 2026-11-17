@@ -456,16 +456,16 @@ async function discoverLocalDaemon(
   }
   if (probe === "ok") return state;
   if (!isProcessRunning(state.pid)) return;
-  if (await isStaleProbe(state, probe)) {
-    const outcome = await releaseStaleLocalDaemon(directory, state);
-    if (outcome === "released") return;
-    // A daemon can replace discovery during the stale recheck.
-    const latest = await readLocalDaemonState(directory);
-    if (!latest) return;
-    if (!isSameDaemonState(latest, state))
-      return await discoverLocalDaemon(waitForResponse);
-    if (outcome === "ok") return state;
-  }
+  const outcome = (await isStaleProbe(state, probe))
+    ? await releaseStaleLocalDaemon(directory, state)
+    : "kept";
+  if (outcome === "released") return;
+  // A daemon can replace discovery during the health check or stale recheck.
+  const latest = await readLocalDaemonState(directory);
+  if (!latest) return;
+  if (!isSameDaemonState(latest, state))
+    return await discoverLocalDaemon(waitForResponse);
+  if (outcome === "ok") return state;
   if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
     return;
   throw new CliError(

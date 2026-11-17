@@ -284,6 +284,26 @@ describe("Local daemon discovery after PID reuse", () => {
     }
   });
 
+  test("finds a daemon that replaces discovery during the health check", async () => {
+    const state = await reusedState();
+    const replacement = { ...state, port: state.port + 1, token: "new" };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("timeout"))
+        .mockImplementationOnce(async () => {
+          await writeLocalDaemonState(getConfigDir(), replacement);
+          return new Response("OK", {
+            headers: { "X-Sentry-Local-Mode": "daemon" },
+          });
+        })
+        .mockResolvedValueOnce(Response.json({ sessions: [] })),
+    );
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toEqual(replacement);
+  });
+
   test("uses a daemon that answers the stale recheck", async () => {
     const originalFetch = (globalThis as { __originalFetch: typeof fetch })
       .__originalFetch;
