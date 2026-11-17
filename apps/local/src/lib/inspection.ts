@@ -284,7 +284,50 @@ export function errorMarkdown(item: LocalFeedItem): string {
     .join("\n\n");
 }
 
+/** Name an event by what it carries; severity alone does not make it an exception. */
+export function eventKind(payload: unknown): "Exception" | "Message" | "Event" {
+  const p = record(payload);
+  const exceptions = record(p.exception).values;
+  if (Array.isArray(exceptions) && exceptions.length) return "Exception";
+  return p.message !== undefined || p.logentry !== undefined
+    ? "Message"
+    : "Event";
+}
+
+/** Top-level event fields that otherwise only appear in the raw JSON. */
+export function eventSummaryFields(
+  payload: unknown,
+): { label: string; value: string }[] {
+  const p = record(payload);
+  const exceptions = record(p.exception).values;
+  const handled = (Array.isArray(exceptions) ? exceptions : [])
+    .map((exception) => record(record(exception).mechanism).handled)
+    .filter((value): value is boolean => typeof value === "boolean");
+  return Object.entries({
+    Level: text(p.level),
+    Handled: handled.length
+      ? handled.every(Boolean)
+        ? "Yes"
+        : "No"
+      : undefined,
+    Environment: text(p.environment),
+    Release: text(p.release),
+    Server: text(p.server_name),
+  }).flatMap(([label, value]) => (value ? [{ label, value }] : []));
+}
+
+const CONTEXT_LABELS: Record<string, string> = {
+  os: "OS",
+  client_os: "Client OS",
+  gpu: "GPU",
+};
+export function contextLabel(name: string): string {
+  const label = CONTEXT_LABELS[name] ?? name.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export const EVENT_CONTEXT_SECTIONS = [
+  "user",
   "request",
   "contexts",
   "tags",

@@ -103,6 +103,7 @@ import {
   type WorkspaceView,
   workspaceForItem,
 } from "@/lib/workspace.ts";
+import { eventKind, feedbackData, text } from "@/lib/inspection.ts";
 import { useLocalWorkspaceRoute } from "@/routes/local-workspace-context.ts";
 
 type EventEntryProps = {
@@ -196,6 +197,11 @@ function saveRemoteStreamUrl(streamUrl: string): void {
   }
 }
 
+function feedbackMessage(payload: unknown): string | undefined {
+  const feedback = feedbackData(payload);
+  return text(feedback.message) ?? text(feedback.comments);
+}
+
 function EventEntry({
   item,
   isSelected,
@@ -208,21 +214,25 @@ function EventEntry({
   const isError = isErrorEvent(item);
   const typeLabel =
     item.type === "event"
-      ? isError
-        ? "Exception"
-        : "Event"
+      ? eventKind(item.payload)
       : (metadata.method ??
         (item.type === "transaction"
           ? "Request"
           : item.type === "log"
             ? "Log"
             : (metadata.operation ?? item.type)));
+  const title =
+    item.type === "event"
+      ? metadata.title
+      : item.type === "feedback" || item.type === "user_report"
+        ? (feedbackMessage(item.payload) ?? metadata.title)
+        : (metadata.route ?? metadata.title);
 
   return (
     <li>
       <button
         type="button"
-        aria-label={`View ${item.type} event`}
+        aria-label={`View ${item.type.replaceAll("_", " ")}: ${title}`}
         aria-current={isSelected ? "true" : undefined}
         className={`flex w-full cursor-pointer items-center justify-between gap-3 px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
           isSelected ? "bg-muted text-foreground" : "hover:bg-muted/60"
@@ -237,9 +247,7 @@ function EventEntry({
               </Badge>
             ) : null}
             <span className="line-clamp-2 min-w-0 break-words text-sm [overflow-wrap:anywhere]">
-              {item.type === "event"
-                ? metadata.title
-                : (metadata.route ?? metadata.title)}
+              {title}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground">

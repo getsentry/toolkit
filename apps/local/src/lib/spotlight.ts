@@ -81,6 +81,13 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+/** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
+function getLogEntry(value: unknown): string | undefined {
+  return isRecord(value)
+    ? (getString(value.formatted) ?? getString(value.message))
+    : undefined;
+}
+
 function contextFeedback(
   event: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -100,6 +107,8 @@ export function getEventMetadata(
   const description = getString(event.description);
   const message =
     getString(event.message) ??
+    getLogEntry(event.message) ??
+    getLogEntry(event.logentry) ??
     getString(event.body) ??
     getString(event.name) ??
     getString(

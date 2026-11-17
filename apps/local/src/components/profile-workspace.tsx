@@ -487,28 +487,27 @@ export function ProfileWorkspace({
             Profiles · {profiles.length}
           </h1>
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {profiles.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  aria-label={`View ${item.type} event`}
-                  aria-current={selected.id === item.id ? "true" : undefined}
-                  className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span className="block">
-                    {item.type === "profile_chunk" ? "Chunk" : "Profile"}{" "}
-                    {index + 1} ·{" "}
-                    {text(record(item.payload).platform) ?? "Unknown platform"}
-                  </span>
-                  <code className="block break-all text-xs text-muted-foreground">
-                    {text(record(item.payload).event_id) ??
-                      text(record(item.payload).chunk_id) ??
-                      item.id}
-                  </code>
-                </button>
-              </li>
-            ))}
+            {profiles.map((item, index) => {
+              const label = `${item.type === "profile_chunk" ? "Chunk" : "Profile"} ${index + 1} · ${text(record(item.payload).platform) ?? "Unknown platform"}`;
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-label={`View ${item.type.replaceAll("_", " ")}: ${label}`}
+                    aria-current={selected.id === item.id ? "true" : undefined}
+                    className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span className="block">{label}</span>
+                    <code className="block break-all text-xs text-muted-foreground">
+                      {text(record(item.payload).event_id) ??
+                        text(record(item.payload).chunk_id) ??
+                        item.id}
+                    </code>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </section>
       }
