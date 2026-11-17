@@ -8,7 +8,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { augmentPathForNode } from "../../src/commands/local/run.js";
-import { ValidationError } from "../../src/lib/errors.js";
+import {
+  COMMAND_LINE_BREAK_FIELD,
+  ValidationError,
+} from "../../src/lib/errors.js";
 import { resolveSpawnTarget } from "../../src/lib/windows-spawn.js";
 import { TEST_TMP_DIR } from "../constants.js";
 
@@ -164,7 +167,12 @@ describe("resolveSpawnTarget", () => {
   test.each(["a\nb", "a\rb"])(
     "rejects a line break in a batch argument (%j)",
     (arg) => {
-      expect(() => onWindows("npm", [arg])).toThrow(ValidationError);
+      expect(() => onWindows("npm", [arg])).toThrow(
+        expect.objectContaining({
+          constructor: ValidationError,
+          field: COMMAND_LINE_BREAK_FIELD,
+        }),
+      );
     },
   );
 });

@@ -19,7 +19,7 @@ import {
 } from "node:child_process";
 import { statSync } from "node:fs";
 import { extname, isAbsolute, join, resolve } from "node:path";
-import { ValidationError } from "./errors.js";
+import { COMMAND_LINE_BREAK_FIELD, ValidationError } from "./errors.js";
 
 /** What to pass to `spawn()`. */
 export type SpawnTarget = {
@@ -134,7 +134,7 @@ function quoteBatchArgument(arg: string): string {
   if (LINE_BREAK_RE.test(arg)) {
     throw new ValidationError(
       "Arguments to a .cmd or .bat command cannot contain line breaks.",
-      "command",
+      COMMAND_LINE_BREAK_FIELD,
     );
   }
   let quoted = '"';
