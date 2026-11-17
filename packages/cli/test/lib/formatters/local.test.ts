@@ -1302,8 +1302,39 @@ describe("sentry-python ISO 8601 timestamps", () => {
       Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134,
       6,
     );
-    for (const invalid of [undefined, null, "", "soon", Number.NaN, {}]) {
+    for (const invalid of [
+      undefined,
+      null,
+      "",
+      "soon",
+      "0x10",
+      " 12 ",
+      Number.NaN,
+      {},
+    ]) {
       expect(parseEventTimestamp(invalid)).toBeUndefined();
+    }
+  });
+
+  test("reads ISO strings without a timezone as UTC, like Relay", () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "Asia/Kolkata";
+    try {
+      const utc = Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134;
+      expect(parseEventTimestamp("2026-11-17T20:25:06.425134")).toBeCloseTo(
+        utc,
+        6,
+      );
+      expect(parseEventTimestamp("2026-11-17 20:25:06.425134")).toBeCloseTo(
+        utc,
+        6,
+      );
+      expect(
+        parseEventTimestamp("2026-11-17T20:25:06.425134+05:30"),
+      ).toBeCloseTo(utc - 5.5 * 3600, 6);
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
     }
   });
 
