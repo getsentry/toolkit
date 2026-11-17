@@ -301,13 +301,23 @@ describe("sentry local run", () => {
     await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
     await chmod(fakeWrangler, 0o755);
 
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    await func.call(
-      makeContext(),
-      { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
-      fakeWrangler,
-      "dev",
-    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        fakeWrangler,
+        "dev",
+      );
+      // The binding alone captures nothing with @sentry/cloudflare, so the
+      // notice must name the Worker setup that does.
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("tunnel: env.SENTRY_SPOTLIGHT"),
+      );
+    } finally {
+      info.mockRestore();
+    }
 
     expect(spawnCapture.args).toEqual([
       "dev",

@@ -2,9 +2,16 @@
  * Wrangler-specific command augmentation for Cloudflare Workers local dev.
  *
  * Process environment variables inherited by `wrangler dev` are not exposed
- * as Worker bindings. The Cloudflare Sentry SDK reads `SENTRY_SPOTLIGHT` from
- * the Worker `env` object, so `sentry local run` must pass it through
+ * as Worker bindings, so `sentry local run` passes `SENTRY_SPOTLIGHT` through
  * Wrangler's `--var` flag rather than relying on child-process inheritance.
+ *
+ * The binding alone captures nothing. `@sentry/cloudflare` reads
+ * `SENTRY_SPOTLIGHT` and the `spotlight` option only in its development
+ * build, and Wrangler bundles the production build. Forcing the development
+ * build (`WRANGLER_BUILD_CONDITIONS`) still delivered no Worker events without
+ * a DSN; its Spotlight fetch is not held open with `waitUntil`. What
+ * works is the SDK's `tunnel` option set to the binding, with a DSN set, so
+ * the CLI prints that hint.
  */
 
 import { access, readFile } from "node:fs/promises";
@@ -54,6 +61,11 @@ const PACKAGE_MANAGER_NON_SCRIPT_COMMANDS = new Set([
   "uninstall",
   "x",
 ]);
+
+/** Notice for an injected binding, with the setup the Worker still needs. */
+export function wranglerInjectedMessage(): string {
+  return `Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding. @sentry/cloudflare sends here only with \`tunnel: env.SENTRY_SPOTLIGHT\` and a DSN set (details: ${sentry`help local run`})`;
+}
 
 /** Result of attempting to augment a command for Wrangler. */
 export type WranglerCommandAugmentation = {
