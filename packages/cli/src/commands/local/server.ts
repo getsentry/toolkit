@@ -555,13 +555,15 @@ export const PORT_RETRY_TIMEOUT_MS = MAX_PORT_RETRIES * PORT_RETRY_DELAY_MS;
 /**
  * Try to start the HTTP server, retrying with backoff on EADDRINUSE.
  *
- * Retries up to {@link MAX_PORT_RETRIES} times with a {@link PORT_RETRY_DELAY_MS}
- * delay between attempts.
+ * Retries up to `retries` times ({@link MAX_PORT_RETRIES} by default) with a
+ * {@link PORT_RETRY_DELAY_MS} delay between attempts. Pass `retries: 0` to
+ * fail on the first EADDRINUSE.
  */
 export function tryListen(
   app: Hono,
   port: number,
   hostname: string,
+  { retries = MAX_PORT_RETRIES }: { retries?: number } = {},
 ): Promise<{ server: Server; port: number }> {
   let attempts = 0;
 
@@ -582,12 +584,12 @@ export function tryListen(
         server.close();
         if (err.code === "EADDRINUSE") {
           attempts += 1;
-          if (attempts > MAX_PORT_RETRIES) {
+          if (attempts > retries) {
             reject(portInUseError(port));
             return;
           }
           logger.warn(
-            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${MAX_PORT_RETRIES})...`,
+            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${retries})...`,
           );
           await sleep(PORT_RETRY_DELAY_MS);
           resolve(attempt());

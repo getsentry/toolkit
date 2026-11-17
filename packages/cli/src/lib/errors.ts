@@ -733,8 +733,9 @@ export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
 export const COMMAND_NOT_FOUND_FIELD = "command.not_found";
 
 /**
- * `ValidationError` field for a port that another process holds, such as a
- * foreground `sentry local serve`. Error reporting silences it.
+ * `ValidationError` field for a port that another process holds, such as
+ * `sentry local serve` or a plain `sentry local run`. Error reporting
+ * silences it.
  */
 export const PORT_IN_USE_FIELD = "port.in_use";
 
