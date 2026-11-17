@@ -18,6 +18,7 @@ import {
   getOrgSdkConfig,
   rawApiRequest,
 } from "../../../src/lib/api/infrastructure.js";
+import { getIntegration } from "../../../src/lib/api/integrations.js";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
@@ -544,6 +545,21 @@ describe("requests whose path names an organization", () => {
 
     expect(sent).toEqual(["Bearer acme-token"]);
     expect(urls).toEqual([`${ACME}/api/0/organizations/acme-org/`]);
+    expect(getEffectiveAccountRow()?.host).toBe(ACME);
+  });
+
+  test("reach an org whose account is on another server through a control operation", async () => {
+    login("acme-token", ACME, "acme");
+    seeOrg("acme-org", ACME);
+    login("saas-token", SAAS, "saas");
+    seeOrgList(SAAS, ["saas-org"]);
+
+    await getIntegration("acme-org", "1");
+
+    expect(sent).toEqual(["Bearer acme-token"]);
+    expect(urls).toEqual([
+      `${ACME}/api/0/organizations/acme-org/integrations/1/`,
+    ]);
     expect(getEffectiveAccountRow()?.host).toBe(ACME);
   });
 

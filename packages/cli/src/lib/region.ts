@@ -82,8 +82,12 @@ const NUMERIC_ORG_ID = /^\d+$/;
  * Switch this invocation to the stored account that knows the org, if the
  * current one doesn't. Accepts DSN-style `oNNNN` identifiers and the bare
  * numeric ids DSN resolution can yield too.
+ *
+ * {@link resolveOrgRegion} does this before its lookup. Control-silo
+ * requests, which skip the region lookup, call it directly so the configured
+ * base URL is the server of the org's account.
  */
-function useAccountForOrg(orgSlug: string): void {
+export function useAccountForOrg(orgSlug: string): void {
   const numericId = stripDsnOrgPrefix(orgSlug);
   const orgId =
     numericId !== orgSlug || NUMERIC_ORG_ID.test(orgSlug)
