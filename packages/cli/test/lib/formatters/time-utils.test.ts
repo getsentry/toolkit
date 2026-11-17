@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   formatAxisTimestamp,
   formatLocalDateTime,
+  formatLocalTime,
 } from "../../../src/lib/formatters/time-utils.js";
 
 describe("formatLocalDateTime", () => {
@@ -27,6 +28,23 @@ describe("formatLocalDateTime", () => {
     expect(formatLocalDateTime("")).toBe("—");
     expect(formatLocalDateTime("not-a-date")).toBe("—");
     expect(formatLocalDateTime(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatLocalTime", () => {
+  const epochMilliseconds = 1_763_294_400_000;
+
+  test("formats epoch milliseconds and ISO strings as a time of day", () => {
+    const expected = new Date(epochMilliseconds).toLocaleTimeString();
+    expect(formatLocalTime(epochMilliseconds)).toBe(expected);
+    expect(formatLocalTime(new Date(epochMilliseconds).toISOString())).toBe(
+      expected,
+    );
+  });
+
+  test("returns a dash for missing or invalid input", () => {
+    expect(formatLocalTime(undefined)).toBe("—");
+    expect(formatLocalTime("not-a-date")).toBe("—");
   });
 });
 
