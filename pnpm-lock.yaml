@@ -8,7 +8,7 @@ catalogs:
   default:
     '@ai-sdk/anthropic':
       specifier: ^3.0.137
-      version: 3.0.142
+      version: 3.0.137
     '@ai-sdk/mcp':
       specifier: ^1.0.16
       version: 1.0.16
@@ -823,7 +823,7 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: 'catalog:'
-        version: 3.0.142(zod@4.6.7)
+        version: 3.0.137(zod@4.6.7)
       '@ai-sdk/mcp':
         specifier: 'catalog:'
         version: 1.0.16(zod@4.6.7)
@@ -1080,8 +1080,8 @@ packages:
   '@acemir/cssom@0.9.32':
     resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
 
-  '@ai-sdk/anthropic@3.0.142':
-    resolution: {integrity: sha512-EJeOzLcsE6dZ5ilJ6TSXkj7/XJ+o/6197XAlUSMrxcbVYYi4BMJRSkzx5Ah+UYt/aUSN5fGMelEbUlH/edkBxg==}
+  '@ai-sdk/anthropic@3.0.137':
+    resolution: {integrity: sha512-ROzkSDAl43OisGK7cWFySZ1jYQ8kjjE5Q0shDU5zPk5/8GatpQ5QEZ3TmSzJ2sCWzMxb1V1XdAvOslsSEhp2nQ==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^4.6.6
@@ -8578,7 +8578,7 @@ snapshots:
 
   '@acemir/cssom@0.9.32': {}
 
-  '@ai-sdk/anthropic@3.0.142(zod@4.6.7)':
+  '@ai-sdk/anthropic@3.0.137(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 3.0.19
       '@ai-sdk/provider-utils': 4.0.63(zod@4.6.7)
@@ -12010,7 +12010,7 @@ snapshots:
     dependencies:
       '@ai-sdk/gateway': 3.0.153(zod@4.6.7)
       '@ai-sdk/provider': 3.0.14
-      '@ai-sdk/provider-utils': 4.0.40(zod@4.6.7)
+      '@ai-sdk/provider-utils': 4.0.63(zod@4.6.7)
       '@opentelemetry/api': 1.9.1
       zod: 4.6.7
 
