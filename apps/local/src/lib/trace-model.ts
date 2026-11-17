@@ -5,6 +5,7 @@ import {
 } from "./spotlight.js";
 import { isErrorEvent } from "./workspace.js";
 import { addProfileSpans, profileSources } from "./profile-spans.ts";
+import { spanData } from "./inspection.ts";
 
 export type TraceSpan = {
   sampled?: boolean;
@@ -86,12 +87,14 @@ function getPayloadSpan(
     getTimestamp(item.timestamp);
   const operation = getString(trace.op) ?? item.metadata?.operation;
   const title = item.metadata?.title?.trim();
-  const description =
+  const description = withCapturedUrl(
     getString(event.transaction) ??
-    (title && title !== item.type ? title : undefined) ??
-    item.metadata?.route ??
-    operation ??
-    item.type;
+      (title && title !== item.type ? title : undefined) ??
+      item.metadata?.route ??
+      operation ??
+      item.type,
+    payload,
+  );
 
   return {
     id,
@@ -107,6 +110,26 @@ function getPayloadSpan(
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
   };
+}
+
+/**
+ * Streamed browser resource and fetch spans are named by host only
+ * ("localhost", "GET localhost"), with the resource in `url.full`.
+ * Show the captured URL so rows can be told apart, grouped and searched.
+ */
+function withCapturedUrl(description: string, payload: unknown): string {
+  const url = getString(spanData(payload)["url.full"]);
+  if (!url) return description;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return description;
+  }
+  const [, method = "", target] = description.match(/^([A-Z]+ )?(.*)$/)!;
+  return target === parsed.hostname || target === parsed.host
+    ? `${method}${url}`
+    : description;
 }
 
 function defined(value: Record<string, unknown>): Record<string, unknown> {

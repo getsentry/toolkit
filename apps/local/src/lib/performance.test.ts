@@ -3,6 +3,11 @@ import { decodeEnvelope } from "./spotlight.ts";
 import { buildTraceGroups } from "./trace-model.ts";
 import { spanInsights, webVitalPages } from "./performance.ts";
 import { parseProfile, profileMatchesTrace } from "./profiles.ts";
+import {
+  spanEnvelope,
+  streamedPageloadSpans,
+  streamedWebVitalSpans,
+} from "../test-fixtures/streamed-pageload.ts";
 const decode = (type: string, payload: unknown) =>
   decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), "fixture")[0]!;
 test("query analysis groups embedded and standalone executions without counting a copied span twice", () => {
@@ -259,4 +264,35 @@ test("resource sizes skip invalid aliases before using captured nonnegative size
   expect(spanInsights(buildTraceGroups(items), "resources")).toMatchObject([
     { count: 3, averageBytes: 300 },
   ]);
+});
+test("Web Vitals read streamed pageload segments and their web vital spans", () => {
+  const items = [
+    ...decodeEnvelope(spanEnvelope(streamedPageloadSpans), "pageload"),
+    ...decodeEnvelope(spanEnvelope(streamedWebVitalSpans), "vitals"),
+  ];
+  const pages = webVitalPages(items);
+  expect(pages.map((page) => page.name)).toEqual(["/"]);
+  expect(pages[0]?.visits).toHaveLength(1);
+  expect(pages[0]?.visits[0]?.item.id).toBe("pageload:0:0");
+  expect(pages[0]?.visits[0]?.metrics).toEqual({
+    ttfb: { value: 24.4, rating: "Good" },
+    fcp: { value: 252, rating: "Good" },
+    lcp: { value: 3200, rating: "Needs improvement" },
+    cls: { value: 0.3, rating: "Poor" },
+    inp: { value: 16, rating: "Good" },
+  });
+});
+test("resource analysis groups streamed spans by URL instead of their host name", () => {
+  const groups = spanInsights(
+    buildTraceGroups(
+      decodeEnvelope(spanEnvelope(streamedPageloadSpans), "pageload"),
+    ),
+    "resources",
+  );
+  expect(groups.map((group) => group.name).sort()).toEqual([
+    "http://localhost:4000/app.js",
+    "http://localhost:4000/js/mod1.js",
+    "http://localhost:4000/style1.css",
+  ]);
+  expect(groups.every((group) => group.averageBytes === 1200)).toBe(true);
 });
