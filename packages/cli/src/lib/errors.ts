@@ -694,6 +694,12 @@ export function validationError(
 export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
 
 /**
+ * `ValidationError` field for a port that another process holds, such as a
+ * foreground `sentry local serve`. Error reporting silences it.
+ */
+export const PORT_IN_USE_FIELD = "port.in_use";
+
+/**
  * Input validation errors.
  *
  * @param message - Validation failure description

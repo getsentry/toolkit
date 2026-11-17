@@ -26,7 +26,12 @@ import {
   textParser,
 } from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
-import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
+import {
+  CliError,
+  EXIT,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
   FILTER_VALUES,
@@ -54,7 +59,6 @@ import {
   parseFilter,
   parseFormat,
   parsePort,
-  PORT_IN_USE_FIELD,
   tryListen,
 } from "./server.js";
 import {

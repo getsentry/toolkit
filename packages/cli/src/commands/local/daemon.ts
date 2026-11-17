@@ -191,29 +191,6 @@ function isSameDaemonState(a: LocalDaemonState, b: LocalDaemonState): boolean {
   );
 }
 
-/**
- * Whether a server that is not a Local daemon answers on the daemon's address,
- * such as a foreground `sentry local serve`. A daemon child would only wait out
- * the listener retries there. A Local daemon answers `/health` with
- * `X-Sentry-Local-Mode: daemon`; it may be a foreground owner that is still
- * publishing discovery, so startup keeps waiting for it.
- */
-async function isPortHeldByOtherServer(
-  host: string,
-  port: number,
-): Promise<boolean> {
-  try {
-    const response = await fetch(`${formatLocalServerUrl(host, port)}/health`, {
-      signal: AbortSignal.timeout(500),
-    });
-    await response.body?.cancel();
-    return response.headers.get("X-Sentry-Local-Mode") !== "daemon";
-  } catch (error) {
-    logger.debug("No server answered on the Local daemon port", error);
-    return false;
-  }
-}
-
 /** Arguments for re-executing this CLI as a native binary or Node entrypoint. */
 export function buildLocalDaemonArgs(host: string, port: number): string[] {
   const prefix: string[] = [];
@@ -596,7 +573,13 @@ export async function ensureLocalDaemon({
       join(directory, "local-control-plane.owner"),
     );
     if (!isProcessRunning(owner)) {
-      if (await isPortHeldByOtherServer(host, port)) {
+      // A daemon child would only wait out the listener retries behind a
+      // server that is not a Local daemon. A Local daemon there may be a
+      // foreground owner still publishing discovery, so startup waits for it.
+      if (
+        (await probeLocalHealth(formatLocalServerUrl(host, port), 500)) ===
+        "other"
+      ) {
         throw portInUseError(
           port,
           `another server, such as a foreground '${sentry`local serve`}'`,
@@ -611,12 +594,17 @@ export async function ensureLocalDaemon({
         startupError = error;
       });
       child.once("exit", (code, signal) => {
-        // The child's only validation failure after these checks is a busy port.
+        // Exit 21 (EXIT.VALIDATION) means the child's port is in use: its
+        // arguments are this loopback host and nonzero port, which its flag
+        // parsing accepts, and its other startup failures are plain Errors
+        // that exit 1. tryListen's port-in-use error is its only
+        // ValidationError.
+        const hostFlag = host === "localhost" ? "" : ` --host ${host}`;
         startupError =
           code === EXIT.VALIDATION
             ? portInUseError(port)
             : new CliError(
-                `Local daemon exited before startup (status ${code ?? signal}). Run '${sentry`local daemon start --foreground --port ${port}`}' to see why.`,
+                `Local daemon exited before startup (status ${code ?? signal}). Run '${sentry`local daemon start --foreground${hostFlag} --port ${port}`}' to see why.`,
               );
       });
       child.unref();

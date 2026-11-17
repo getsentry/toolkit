@@ -31,6 +31,7 @@ import {
   HostScopeError,
   MalformedAuthTokenError,
   OutputError,
+  PORT_IN_USE_FIELD,
   ResolutionError,
   SeerError,
   ValidationError,
@@ -426,11 +427,11 @@ describe("classifySilenced", () => {
     },
   );
 
-  test("silences ValidationError with field 'port.in_use' (CLI-4R9, CLI-23H)", () => {
+  test("silences a port-in-use ValidationError (CLI-4R9, CLI-23H)", () => {
     // Another process, such as a foreground `local serve`, holds the port.
     expect(
       classifySilenced(
-        new ValidationError("Port 8969 is already in use.", "port.in_use"),
+        new ValidationError("Port 8969 is already in use.", PORT_IN_USE_FIELD),
       ),
     ).toBe("user_validation");
   });

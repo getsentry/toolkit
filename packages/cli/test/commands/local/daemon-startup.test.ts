@@ -13,8 +13,14 @@ import { afterEach, expect, test, vi } from "vitest";
 import { useTestConfigDir } from "../../helpers.js";
 import {
   ensureLocalDaemon,
+  runLocalDaemonForeground,
   writeLocalDaemonState,
 } from "../../../src/commands/local/daemon.js";
+import {
+  EXIT,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const cp = await importOriginal<typeof import("node:child_process")>();
@@ -120,7 +126,7 @@ test("fails fast with a port-in-use error when a foreground `local serve` holds 
       ensureLocalDaemon({ host: "127.0.0.1", port }),
     ).rejects.toMatchObject({
       name: "ValidationError",
-      field: "port.in_use",
+      field: PORT_IN_USE_FIELD,
       message: expect.stringContaining(`Port ${port} is already in use`),
     });
     expect(spawn).not.toHaveBeenCalled();
@@ -140,15 +146,52 @@ test("reports a port-in-use error when the daemon child exits with a validation 
       kill: vi.fn(() => true),
       unref: vi.fn(),
     }) as unknown as ChildProcess;
-    queueMicrotask(() => child.emit("exit", 21, null));
+    queueMicrotask(() => child.emit("exit", EXIT.VALIDATION, null));
     return child;
   });
   await expect(
     ensureLocalDaemon({ host: "127.0.0.1", port: 8969 }),
   ).rejects.toMatchObject({
     name: "ValidationError",
-    field: "port.in_use",
+    field: PORT_IN_USE_FIELD,
     message: expect.stringContaining("Port 8969 is already in use"),
   });
   await expectStartupLockReleased();
 });
+
+test("names the foreground command, with its host, when the daemon child exits otherwise", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new TypeError("fetch failed")),
+  );
+  vi.mocked(spawn).mockImplementation(() => {
+    const child = Object.assign(new EventEmitter(), {
+      kill: vi.fn(() => true),
+      unref: vi.fn(),
+    }) as unknown as ChildProcess;
+    queueMicrotask(() => child.emit("exit", EXIT.GENERAL, null));
+    return child;
+  });
+  await expect(
+    ensureLocalDaemon({ host: "127.0.0.1", port: 8969 }),
+  ).rejects.toMatchObject({
+    name: "CliError",
+    message: expect.stringContaining(
+      "local daemon start --foreground --host 127.0.0.1 --port 8969",
+    ),
+  });
+  await expectStartupLockReleased();
+});
+
+// Startup maps a child exit of EXIT.VALIDATION to a busy port, so the
+// foreground daemon's other startup failures must not be ValidationErrors.
+test.each([{ host: "example.com" }, { port: 0 }])(
+  "keeps foreground startup failure %o out of the port-in-use exit status",
+  async (options) => {
+    const error = await runLocalDaemonForeground(options).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ValidationError);
+  },
+);
