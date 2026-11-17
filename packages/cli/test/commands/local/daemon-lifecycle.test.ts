@@ -237,6 +237,46 @@ describe("Local daemon discovery after PID reuse", () => {
     expect(await readFile(ownerPath(), "utf8")).toBe(String(process.ppid));
   });
 
+  test("finds a daemon that replaces discovery during the stale recheck", async () => {
+    const originalFetch = (globalThis as { __originalFetch: typeof fetch })
+      .__originalFetch;
+    const server = createServer((request, response) => {
+      response.statusCode =
+        request.headers.authorization === "Bearer replacement" ? 200 : 401;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ sessions: [] }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const replacement = {
+      host: "127.0.0.1",
+      port: address.port,
+      pid: process.pid,
+      token: "replacement",
+      version: 1,
+    };
+    let calls = 0;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      // The replacement lands after the first probe, before the recheck.
+      calls += 1;
+      if (calls === 2) await writeLocalDaemonState(getConfigDir(), replacement);
+      return await originalFetch(...args);
+    });
+    try {
+      await writeLocalDaemonState(getConfigDir(), await reusedState());
+      await expect(getRunningLocalDaemon()).resolves.toEqual(replacement);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
+  });
+
   test("names the next step when a live daemon does not answer", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
     await writeLocalDaemonState(getConfigDir(), await reusedState());

@@ -424,8 +424,14 @@ async function discoverLocalDaemon(
   }
   if (probe === "ok") return state;
   if (!isProcessRunning(state.pid)) return;
-  if (probe === "refused" && (await releaseStaleLocalDaemon(directory, state)))
-    return;
+  if (probe === "refused") {
+    if (await releaseStaleLocalDaemon(directory, state)) return;
+    // A daemon can replace discovery during the stale recheck.
+    const latest = await readLocalDaemonState(directory);
+    if (!latest) return;
+    if (!isSameDaemonState(latest, state))
+      return await discoverLocalDaemon(waitForResponse);
+  }
   if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
     return;
   throw new CliError(
