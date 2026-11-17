@@ -49,7 +49,7 @@ let dbOpenedPath: string | null = null;
  * in-memory database. {@link getRawDatabase} throws it so repair and backup
  * code never mistake the in-memory database for `cli.db`.
  */
-let openError: unknown;
+let openError: Error | undefined;
 /**
  * Set once {@link detachDatabase} hands `cli.db` to another CLI version.
  * Later reads in this process use a throwaway in-memory database instead.
@@ -201,7 +201,7 @@ function getSharedDatabase({ fallback }: { fallback: boolean }): Database {
     } else {
       log.warn(message);
     }
-    openError = error;
+    openError = error instanceof Error ? error : new Error(String(error));
     db = openDatabase(":memory:");
   }
   dbOpenedPath = dbPath;

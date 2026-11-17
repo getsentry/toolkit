@@ -109,6 +109,7 @@ describe("SDK error compatibility", () => {
         baseUrl: "https://sentry.example",
         path: { organization_id_or_slug: "example-org" },
         fetch: async () => {
+          // oxlint-disable-next-line typescript/only-throw-error -- exercises falsy non-Error throws
           throw cause;
         },
       });

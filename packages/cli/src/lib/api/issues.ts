@@ -360,7 +360,7 @@ export async function findIssueInOrgs(
 ): Promise<{ org: string; issue: SentryIssue } | null> {
   const limit = pLimit(ORG_FANOUT_CONCURRENCY);
   let found: { org: string; issue: SentryIssue } | null = null;
-  let failure: unknown;
+  let failure: Error | undefined;
   await Promise.all(
     orgSlugs.map((org) =>
       limit(async () => {
@@ -377,7 +377,7 @@ export async function findIssueInOrgs(
           ) {
             return;
           }
-          failure ??= error;
+          failure ??= error instanceof Error ? error : new Error(String(error));
         }
       }),
     ),

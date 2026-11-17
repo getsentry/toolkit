@@ -56,7 +56,7 @@ export async function extractZipStream(
   mkdirSync(root, { recursive: true });
 
   let written = 0;
-  let failure: Error | null = null;
+  let failure: Error | undefined;
   let completed = false;
   const writes: Promise<void>[] = [];
   const openStreams: ReturnType<typeof createWriteStream>[] = [];

@@ -253,7 +253,7 @@ async function fetchOrgsAcrossAccounts(
 ): Promise<AccountOrgs[]> {
   const settled = await Promise.allSettled(accounts.map(fetchAccountOrgs));
   const fetched: AccountOrgs[] = [];
-  let firstError: unknown;
+  let firstError: AuthError | ApiError | TimeoutError | undefined;
   for (const [i, result] of settled.entries()) {
     if (result.status === "fulfilled") {
       fetched.push(result.value);
