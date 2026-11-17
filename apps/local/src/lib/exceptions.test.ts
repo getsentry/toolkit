@@ -56,7 +56,7 @@ describe("getEventExceptions", () => {
         ],
       },
     });
-    expect(exception?.frames).toEqual([
+    expect(exception.frames).toEqual([
       {
         filename: "worker",
         function: "process",

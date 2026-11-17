@@ -61,13 +61,11 @@ function flattenSpans(spans: TraceSpan[]): PositionedSpan[] {
     positioned.push(current);
     const children = current.span.children;
     for (let index = children.length - 1; index >= 0; index -= 1) {
-      const child = children[index];
-      if (child)
-        pending.push({
-          span: child,
-          depth: current.depth + 1,
-          isLastChild: index === children.length - 1,
-        });
+      pending.push({
+        span: children[index],
+        depth: current.depth + 1,
+        isLastChild: index === children.length - 1,
+      });
     }
   }
   return positioned;

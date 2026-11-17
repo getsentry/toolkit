@@ -48,7 +48,7 @@ export function TraceWorkspace({
   onSelectProfile,
 }: TraceWorkspaceProps) {
   const selectedTrace =
-    traces.find((trace) => trace.id === selectedTraceId) ?? traces[0];
+    traces.find((trace) => trace.id === selectedTraceId) ?? traces.at(0);
 
   const selectedSpan =
     selectedTrace?.id === selectedTraceId

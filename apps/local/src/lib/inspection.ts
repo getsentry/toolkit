@@ -1,4 +1,8 @@
-import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
+import {
+  getEventMetadata,
+  stringifyJson,
+  type LocalFeedItem,
+} from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
 export function record(value: unknown): Record<string, unknown> {
@@ -17,7 +21,7 @@ export function finite(value: unknown): number | undefined {
 export function display(value: unknown): string {
   return typeof value === "string"
     ? value
-    : (JSON.stringify(value, null, 2) ?? String(value));
+    : (stringifyJson(value, 2) ?? String(value));
 }
 export function parsed(value: unknown): unknown {
   if (typeof value !== "string") return value;

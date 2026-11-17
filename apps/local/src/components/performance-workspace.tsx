@@ -51,7 +51,8 @@ export function SpanAnalysis({
         ),
     [traces, kind, query, sort, ascending],
   );
-  const selected = groups.find((group) => group.id === selectedId) ?? groups[0];
+  const selected =
+    groups.find((group) => group.id === selectedId) ?? groups.at(0);
   const label = kind === "queries" ? "Database queries" : "Resources";
   if (!selected)
     return (
@@ -203,7 +204,8 @@ export function WebVitalsWorkspace({
   );
   const [selectedName, setSelectedName] = useState<string>();
   const [chosenMetric, setChosenMetric] = useState<VitalName>("lcp");
-  const selected = pages.find((page) => page.name === selectedName) ?? pages[0];
+  const selected =
+    pages.find((page) => page.name === selectedName) ?? pages.at(0);
   if (!selected)
     return (
       <Empty>
