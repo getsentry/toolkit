@@ -2369,6 +2369,37 @@ describe("listIssues request", () => {
   });
 });
 
+describe("inbox mutations", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  // Sentry applies an unfiltered inbox PUT or DELETE to every item.
+  it("refuses an empty or non-numeric selection without sending a request", async () => {
+    let requests = 0;
+    mswServer.use(
+      http.all("https://sentry.io/api/0/organizations/test-org/inbox/", () => {
+        requests += 1;
+        return HttpResponse.json({ updatedCount: 0 });
+      }),
+    );
+    const api = new SentryApiService({ accessToken: "test-token" });
+
+    await expect(
+      api.removeInboxItems({ organizationSlug: "test-org", itemIds: [] }),
+    ).rejects.toThrow("Select at least one inbox item ID.");
+    await expect(
+      api.updateInboxItems({
+        organizationSlug: "test-org",
+        itemIds: [],
+        body: { isRead: true },
+      }),
+    ).rejects.toThrow("Select at least one inbox item ID.");
+    await expect(
+      api.removeInboxItems({ organizationSlug: "test-org", itemIds: [""] }),
+    ).rejects.toThrow("Inbox item ID must be numeric");
+    expect(requests).toBe(0);
+  });
+});
+
 describe("host configuration", () => {
   it("should handle hostname without protocol", () => {
     const apiService = new SentryApiService({ host: "sentry.io" });

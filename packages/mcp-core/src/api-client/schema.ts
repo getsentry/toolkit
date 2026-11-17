@@ -2738,3 +2738,66 @@ export const DroppedEventsResponseSchema = z
     acceptedEvents: z.array(DroppedEventsBucketSchema),
   })
   .passthrough();
+
+/**
+ * Who caused a Universal Inbox event: a user, or Sentry itself (`system`,
+ * with a null ID). See `src/sentry/inbox/response_types.py`.
+ */
+export const InboxActorSchema = z
+  .object({
+    type: z.string(),
+    id: z.string().nullable(),
+    name: z.string(),
+  })
+  .passthrough();
+
+/** One event in a Universal Inbox item's history. */
+export const InboxItemEventSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    actor: InboxActorSchema,
+    // Event-specific keys, camelCase, with IDs as strings.
+    data: z.record(z.string(), z.unknown()),
+    summary: z.string(),
+    isUnread: z.boolean(),
+    dateAdded: z.string(),
+  })
+  .passthrough();
+
+export const InboxItemEventListSchema = z.array(InboxItemEventSchema);
+
+/**
+ * One item in the authenticated user's personal Universal Inbox, grouping the
+ * events for one subject (an issue or a Seer investigation notebook).
+ */
+export const InboxItemSchema = z
+  .object({
+    id: z.string(),
+    subjectType: z.string(),
+    subjectId: z.string(),
+    // Null when the subject is no longer available.
+    title: z.string().nullable(),
+    // The latest event's URL, falling back to the subject's inbox URL.
+    // Optional until every Sentry deploy returns it (getsentry/sentry#131406).
+    url: z.string().optional(),
+    // The latest event's summary.
+    subtitle: z.string(),
+    eventTypes: z.array(z.string()),
+    eventCount: z.number(),
+    unreadEventCount: z.number(),
+    latestEvent: InboxItemEventSchema,
+    isUnread: z.boolean(),
+    lastActivityAt: z.string(),
+    lastReadAt: z.string().nullable(),
+  })
+  .passthrough();
+
+export const InboxItemListSchema = z.array(InboxItemSchema);
+
+/** Items matching a bulk inbox update, including items already in that state. */
+export const InboxUpdateResponseSchema = z
+  .object({
+    updatedCount: z.number(),
+  })
+  .passthrough();
