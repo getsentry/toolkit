@@ -23,7 +23,8 @@ import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { CliError } from "../../lib/errors.js";
+import { sentry } from "../../lib/app-identity.js";
+import { CliError, EXIT } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import {
   CONTROL_PLANE_PREFIX,
@@ -34,6 +35,7 @@ import {
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
   probeLocalHealth,
+  portInUseError,
   tryListen,
 } from "./server.js";
 import {
@@ -187,6 +189,29 @@ function isSameDaemonState(a: LocalDaemonState, b: LocalDaemonState): boolean {
     a.port === b.port &&
     a.version === b.version
   );
+}
+
+/**
+ * Whether a server that is not a Local daemon answers on the daemon's address,
+ * such as a foreground `sentry local serve`. A daemon child would only wait out
+ * the listener retries there. A Local daemon answers `/health` with
+ * `X-Sentry-Local-Mode: daemon`; it may be a foreground owner that is still
+ * publishing discovery, so startup keeps waiting for it.
+ */
+async function isPortHeldByOtherServer(
+  host: string,
+  port: number,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${formatLocalServerUrl(host, port)}/health`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    await response.body?.cancel();
+    return response.headers.get("X-Sentry-Local-Mode") !== "daemon";
+  } catch (error) {
+    logger.debug("No server answered on the Local daemon port", error);
+    return false;
+  }
 }
 
 /** Arguments for re-executing this CLI as a native binary or Node entrypoint. */
@@ -571,6 +596,12 @@ export async function ensureLocalDaemon({
       join(directory, "local-control-plane.owner"),
     );
     if (!isProcessRunning(owner)) {
+      if (await isPortHeldByOtherServer(host, port)) {
+        throw portInUseError(
+          port,
+          `another server, such as a foreground '${sentry`local serve`}'`,
+        );
+      }
       child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
         detached: true,
         env: process.env,
@@ -580,9 +611,13 @@ export async function ensureLocalDaemon({
         startupError = error;
       });
       child.once("exit", (code, signal) => {
-        startupError = new Error(
-          `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
-        );
+        // The child's only validation failure after these checks is a busy port.
+        startupError =
+          code === EXIT.VALIDATION
+            ? portInUseError(port)
+            : new CliError(
+                `Local daemon exited before startup (status ${code ?? signal}). Run '${sentry`local daemon start --foreground --port ${port}`}' to see why.`,
+              );
       });
       child.unref();
     }

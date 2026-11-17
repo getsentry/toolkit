@@ -58,6 +58,8 @@ process dies during that critical section, startup preserves the guard and repor
 its path; confirm the owning process has stopped before removing the guard and
 retrying.
 Startup waits through the listener retry window and preserves active startup locks.
+If a server that is not a Local daemon, such as a foreground `local serve`, already
+answers on the port, startup fails right away and asks you to stop it or pass `--port`.
 Concurrent foreground and managed starts join the same daemon: session creation
 waits for a live foreground owner to publish authenticated discovery, even if a
 competing child exits before that owner finishes binding.

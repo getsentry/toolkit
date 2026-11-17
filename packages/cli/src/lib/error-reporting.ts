@@ -174,6 +174,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
+  // A ValidationError with field "port.in_use" means another process, often
+  // a foreground `sentry local serve`, holds the port a Local receiver or
+  // daemon needs (CLI-4R9, CLI-23H). The user's setup has to change, and the
+  // message says how (`portInUseError` in `commands/local/server.ts`).
+  if (error instanceof ValidationError && error.field === "port.in_use") {
+    return "user_validation";
+  }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not
   // a CLI bug — the user sees a clear "not found" message (CLI-RP).

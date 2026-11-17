@@ -525,6 +525,23 @@ function waitForShutdown(server: Server): Promise<void> {
   });
 }
 
+/** `ValidationError` field for a port that another process holds. */
+export const PORT_IN_USE_FIELD = "port.in_use";
+
+/**
+ * Error for a listener port that another process holds. It is the user's
+ * setup, not a CLI bug, so error reporting silences its field.
+ */
+export function portInUseError(
+  port: number,
+  holder = "another process",
+): ValidationError {
+  return new ValidationError(
+    `Port ${port} is already in use by ${holder}. Stop it, or pass --port to use a different port.`,
+    PORT_IN_USE_FIELD,
+  );
+}
+
 /** Maximum retries on EADDRINUSE before giving up. */
 const MAX_PORT_RETRIES = 3;
 
@@ -565,12 +582,7 @@ export function tryListen(
         if (err.code === "EADDRINUSE") {
           attempts += 1;
           if (attempts > MAX_PORT_RETRIES) {
-            reject(
-              new ValidationError(
-                `Port ${port} is in use after ${MAX_PORT_RETRIES} retries`,
-                "port",
-              ),
-            );
+            reject(portInUseError(port));
             return;
           }
           logger.warn(

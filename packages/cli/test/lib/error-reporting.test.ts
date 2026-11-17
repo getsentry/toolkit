@@ -426,6 +426,15 @@ describe("classifySilenced", () => {
     },
   );
 
+  test("silences ValidationError with field 'port.in_use' (CLI-4R9, CLI-23H)", () => {
+    // Another process, such as a foreground `local serve`, holds the port.
+    expect(
+      classifySilenced(
+        new ValidationError("Port 8969 is already in use.", "port.in_use"),
+      ),
+    ).toBe("user_validation");
+  });
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
