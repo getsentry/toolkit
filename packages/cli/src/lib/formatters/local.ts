@@ -161,6 +161,8 @@ const MOBILE_MARKERS = ["cocoa", "android", "react-native", "flutter"];
  * doesn't say where it ran (logs, spans, sessions). Meta-framework SDKs send
  * the same name from the browser and the server, so their events are told
  * apart by platform and runtime instead (see {@link inferSourceName}).
+ * Envelope headers carry only the SDK name and version, not `sdk.packages`,
+ * so server-only SDKs have to be listed here by name.
  */
 const SERVER_JS_MARKERS = [
   "node",
@@ -180,6 +182,8 @@ const SERVER_JS_MARKERS = [
   "aws-serverless",
   "google-cloud-serverless",
   "nestjs",
+  "elysia",
+  "nitro",
 ];
 
 /** Source → color map for tail output. */

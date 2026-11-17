@@ -63,12 +63,13 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes; add `--attributes` (`-a`) to list the SDK attributes under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
-repeatable, so `-f error -f log` shows only errors and logs.
+repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
+covers every event item, so it includes messages too.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
@@ -105,6 +106,11 @@ without SDK housekeeping envelopes, filter to `error`, `transaction`, `log`, and
 ```
 
 This is useful for AI coding agents and automation tools that need to consume Sentry events programmatically.
+
+Events with an exception type are `"type":"error"` records. Events without one,
+such as `captureMessage` calls and Python `logging` records, are
+`"type":"message"`. `-f error` returns both, so a script that keeps errors with
+`jq 'select(.type=="error")'` should also keep `"message"` if it wants them.
 
 In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe

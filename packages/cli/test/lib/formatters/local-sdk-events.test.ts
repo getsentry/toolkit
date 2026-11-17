@@ -308,6 +308,34 @@ describe("message events", () => {
 });
 
 describe("exception events", () => {
+  test("captureException with a string is an Error, not a message", () => {
+    // SDK 11 wraps the string in a synthetic exception and fills in the
+    // "Error" type (addExceptionTypeValue), so it stays an error record.
+    const event = {
+      ...nextjsBrowserMessage,
+      level: "error",
+      message: "Checkout failed",
+      exception: {
+        values: [
+          {
+            type: "Error",
+            value: "Checkout failed",
+            stacktrace: { frames: browserClickFrames },
+            mechanism: { type: "generic", handled: true, synthetic: true },
+          },
+        ],
+      },
+    };
+    expect(tail(event, nextjsHeader)).toContain(
+      "[ERROR]   [BROWSER] Error: Checkout failed",
+    );
+    expect(json(event, nextjsHeader)).toMatchObject({
+      type: "error",
+      error_type: "Error",
+      message: "Checkout failed",
+    });
+  });
+
   test("keep the exception type and use the event level", () => {
     const line = tail(nextjsServerError, nextjsHeader);
     expect(line).toContain(
@@ -370,6 +398,8 @@ describe("source tag", () => {
     "sentry.javascript.solidstart",
     "sentry.javascript.react-router",
     "sentry.javascript.tanstackstart-react",
+    "sentry.javascript.elysia",
+    "sentry.javascript.nitro",
   ])("%s logs without event contexts are a server", (sdkName) => {
     const lines = formatItem(
       "log",
