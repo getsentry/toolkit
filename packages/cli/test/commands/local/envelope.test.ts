@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
 import { createReceiverEnvelope } from "../../../src/commands/local/envelope.js";
 import {
@@ -75,6 +76,80 @@ describe("receiver envelope codec", () => {
     const id = receiverEnvelopeId(container);
     expect(id).toMatch(/^[a-f\d-]{36}$/);
     expect(prepareReceiverEnvelope(container)).toBe(id);
+  });
+
+  test("decodes a browser replay segment around its gzip recording", () => {
+    // Shape from @sentry-internal/replay: a JSON replay_event, then a
+    // replay_recording of `{"segment_id":N}\n` followed by gzip bytes.
+    const replayId = "4d1c5b0e9a3f4c7e8b2a6f1d0c9e8b7a";
+    const replayEvent = Buffer.from(
+      JSON.stringify({
+        type: "replay_event",
+        replay_id: replayId,
+        event_id: replayId,
+        replay_type: "session",
+        segment_id: 0,
+        timestamp: 1_767_225_605.1,
+        replay_start_timestamp: 1_767_225_600.2,
+        urls: ["http://localhost:5173/"],
+        platform: "javascript",
+      }),
+    );
+    const recording = Buffer.concat([
+      Buffer.from('{"segment_id":0}\n'),
+      gzipSync(
+        JSON.stringify([
+          { type: 4, timestamp: 1_767_225_600_200, data: { href: "/" } },
+        ]),
+      ),
+    ]);
+    const body = Buffer.concat([
+      Buffer.from(
+        `{"event_id":"${replayId}","sent_at":"2026-01-01T00:00:05.100Z","sdk":{"name":"sentry.javascript.react","version":"11.14.0"}}\n`,
+      ),
+      Buffer.from('{"type":"replay_event"}\n'),
+      replayEvent,
+      Buffer.from(
+        `\n{"type":"replay_recording","length":${recording.length}}\n`,
+      ),
+      recording,
+    ]);
+    const container = createReceiverEnvelope({ body });
+    expect(container.getEventTypes()).toEqual([
+      "replay_event",
+      "replay_recording",
+    ]);
+    const [event, raw] = container.getParsedEnvelope()?.envelope[1] ?? [];
+    expect(event?.[1]).toMatchObject({ replay_id: replayId, segment_id: 0 });
+    expect(raw?.[1]).toEqual({ data: recording.toString("base64") });
+  });
+
+  test("keeps Android Perfetto profile chunks as binary", () => {
+    // sentry-java sends `[JSON metadata][raw .pftrace bytes]` with this
+    // content type; JSON-only chunks from other SDKs still decode as JSON.
+    const metadata = Buffer.from(
+      '{"chunk_id":"a1b2c3d4e5f60718293a4b5c6d7e8f90","profiler_id":"0f1e2d3c4b5a69788796a5b4c3d2e1f0","platform":"android","version":"2"}',
+    );
+    const trace = Buffer.from([0x0a, 0x8b, 0x01, 0x12, 0x00, 0xff, 0x10, 0x7b]);
+    const chunk = Buffer.concat([metadata, trace]);
+    const json = Buffer.from(
+      '{"chunk_id":"cccccccccccccccccccccccccccccccc","platform":"javascript","profile":{"samples":[]}}',
+    );
+    const body = Buffer.concat([
+      Buffer.from(
+        `{}\n{"type":"profile_chunk","length":${chunk.length},"content_type":"application/x-perfetto-trace","filename":"profile.pftrace","platform":"android","meta_length":${metadata.length}}\n`,
+      ),
+      chunk,
+      Buffer.from(`\n{"type":"profile_chunk","length":${json.length}}\n`),
+      json,
+    ]);
+    const container = createReceiverEnvelope({ body });
+    const items = container.getParsedEnvelope()?.envelope[1];
+    expect(items?.[0]?.[1]).toEqual({ data: chunk.toString("base64") });
+    expect(items?.[1]?.[1]).toMatchObject({
+      chunk_id: "cccccccccccccccccccccccccccccccc",
+      type: "profile_chunk",
+    });
   });
 
   test("assigns independent stable IDs before parsing untrusted headers", () => {

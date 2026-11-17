@@ -53,7 +53,16 @@ export type ReceiverBuffer = {
 };
 
 const identities = new WeakMap<ReceiverEnvelope, string>();
-const RAW_TYPES = new Set(["attachment", "replay_video", "statsd"]);
+// Item payloads that are not one JSON document: replay recordings are a JSON
+// line plus (usually gzip) rrweb bytes, and Android Perfetto profile chunks
+// are JSON metadata followed by a binary trace.
+const RAW_TYPES = new Set([
+  "attachment",
+  "replay_recording",
+  "replay_video",
+  "statsd",
+]);
+const PERFETTO_CONTENT_TYPE = "application/x-perfetto-trace";
 const TEXT_CONTENT_TYPES = new Set([
   "text/plain",
   "text/css",
@@ -163,7 +172,10 @@ function decode(
       bytes = line();
     }
     let payload: unknown;
-    if (RAW_TYPES.has(itemHeader.type ?? "")) {
+    if (
+      RAW_TYPES.has(itemHeader.type ?? "") ||
+      itemHeader.content_type === PERFETTO_CONTENT_TYPE
+    ) {
       if (itemHeader.type === "statsd" && !itemHeader.content_type)
         itemHeader.content_type = "text/plain";
       payload = {
