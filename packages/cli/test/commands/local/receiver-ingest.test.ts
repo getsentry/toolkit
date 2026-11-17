@@ -215,26 +215,32 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
     type: typeof value === "number" ? "integer" : "string",
     value,
   });
-  const fetchSpan = (spanId: string, url: string) => ({
-    trace_id: traceId,
-    span_id: spanId,
-    parent_span_id: "1111111111111111",
-    name: `POST ${url}`,
-    start_timestamp: 1_767_225_600.1,
-    end_timestamp: 1_767_225_600.15,
-    status: "ok",
-    is_segment: false,
-    attributes: {
-      "sentry.op": attr("http.client"),
-      "sentry.origin": attr("auto.http.browser"),
-      "http.method": attr("POST"),
-      url: attr(url),
-      "http.url": attr(url),
-      "server.address": attr(new URL(url).host),
-      type: attr("fetch"),
-      "http.response.status_code": attr(204),
-    },
-  });
+  // Shape of @sentry/core 11.14 fetch spans with span streaming: the name
+  // carries only the domain, and the URL is in `url.full`.
+  const fetchSpan = (spanId: string, url: string) => {
+    const { hostname, port } = new URL(url);
+    return {
+      trace_id: traceId,
+      span_id: spanId,
+      parent_span_id: "1111111111111111",
+      name: `POST ${hostname}`,
+      start_timestamp: 1_767_225_600.1,
+      end_timestamp: 1_767_225_600.15,
+      status: "ok",
+      is_segment: false,
+      attributes: {
+        "sentry.op": attr("http.client"),
+        "sentry.origin": attr("auto.http.browser"),
+        "url.full": attr(url),
+        type: attr("fetch"),
+        "http.request.method": attr("POST"),
+        "server.address": attr(hostname),
+        "server.port": attr(Number(port)),
+        "url.domain": attr(hostname),
+        "http.response.status_code": attr(204),
+      },
+    };
+  };
   const spanEnvelope = (spans: unknown[]) =>
     [
       JSON.stringify({
@@ -269,6 +275,17 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       spanEnvelope([fetchSpan("2222222222222222", self)]),
     );
     expect(response.status).toBe(204);
+    // Legacy standalone spans name the full URL and keep it in `data`.
+    const legacy = JSON.stringify({
+      op: "http.client",
+      description: `POST ${self}`,
+      span_id: "5555555555555555",
+      trace_id: traceId,
+      data: { "http.method": "POST", url: self },
+    });
+    expect((await post(fixture, `{}\n{"type":"span"}\n${legacy}`)).status).toBe(
+      204,
+    );
     expect(fixture.buffer.read({ all: true })).toHaveLength(0);
   });
 

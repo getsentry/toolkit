@@ -214,7 +214,11 @@ function effectivePort(url: URL): string {
   return url.port || (url.protocol === "https:" ? "443" : "80");
 }
 
-/** Match URLs of this receiver's own ingest and stream routes. */
+/**
+ * Match URLs of this receiver's own ingest and stream routes. The port comes
+ * from the request URL (its Host header), which is direct on Local's
+ * loopback-only listeners; a port-stripping proxy would make it match `:80`.
+ */
 function ownRouteMatcher(receiverUrl: string): (value: unknown) => boolean {
   const port = effectivePort(new URL(receiverUrl));
   return (value) => {
@@ -318,6 +322,8 @@ export function withoutOwnDeliveries(
   body: Buffer,
   receiverUrl: string,
 ): Buffer | null {
+  // Matching envelopes are parsed here and again by lazy decode; that costs
+  // a few hundred milliseconds only for tens of thousands of spans.
   if (!body.includes("/_local/") && !body.includes("/stream")) return body;
   let framed: ReturnType<typeof frame>;
   let items: (FramedItem | null)[];
