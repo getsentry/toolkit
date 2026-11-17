@@ -6,6 +6,17 @@ import {
   type CacheOptions,
 } from "./constraint-utils";
 
+const { logIssue, logWarn } = vi.hoisted(() => ({
+  logIssue: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
+  logIssue,
+  logWarn,
+}));
+
 /**
  * Create a mock KVNamespace for testing cache behavior.
  */
@@ -45,7 +56,7 @@ function createMockKV(options?: {
     delete: vi.fn(),
     list: vi.fn(),
     getWithMetadata: vi.fn(),
-  } as unknown as KVNamespace;
+  };
 }
 
 /**
@@ -73,6 +84,7 @@ describe("verifyConstraintsAccess", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.useRealTimers();
   });
 
@@ -98,7 +110,7 @@ describe("verifyConstraintsAccess", () => {
       { accessToken: undefined, label: "undefined" },
     ];
 
-    for (const { accessToken, label } of testCases) {
+    for (const { accessToken } of testCases) {
       const result = await verifyConstraintsAccess(
         { organizationSlug: "org", projectSlug: null },
         { accessToken, sentryHost: host },
@@ -188,6 +200,25 @@ describe("verifyConstraintsAccess", () => {
     });
   });
 
+  it("requests the organization without its projects and teams", async () => {
+    const requested: URL[] = [];
+    const originalFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      requested.push(new URL(input instanceof Request ? input.url : input));
+      return originalFetch(input, init);
+    });
+
+    const result = await verifyConstraintsAccess(
+      { organizationSlug: "sentry-mcp-evals", projectSlug: null },
+      { accessToken: token, sentryHost: host },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(requested.map((url) => `${url.pathname}${url.search}`)).toEqual([
+      "/api/0/organizations/sentry-mcp-evals/?detailed=0",
+    ]);
+  });
+
   it("fails when org does not exist", async () => {
     const result = await verifyConstraintsAccess(
       { organizationSlug: "nonexistent-org", projectSlug: null },
@@ -215,6 +246,58 @@ describe("verifyConstraintsAccess", () => {
         "Project 'nonexistent-project' not found in organization 'sentry-mcp-evals'",
       );
     }
+  });
+
+  describe("project host", () => {
+    /** Answer the org with `regionUrl`, recording each requested URL. */
+    function mockOrgRegion(regionUrl: string) {
+      const requested: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        requested.push(`${url.host}${url.pathname}`);
+        if (url.pathname === "/api/0/organizations/acme/") {
+          return Response.json({
+            id: "1",
+            slug: "acme",
+            name: "Acme",
+            links: { regionUrl, organizationUrl: "https://acme.sentry.io" },
+          });
+        }
+        return Response.json({ id: "2", slug: "web", name: "web" });
+      });
+      return requested;
+    }
+
+    it("asks for the project on the region URL's host as given", async () => {
+      const requested = mockOrgRegion("https://region.example.com");
+      const result = await verifyConstraintsAccess(
+        { organizationSlug: "acme", projectSlug: "web" },
+        { accessToken: token, sentryHost: host },
+      );
+      expect(result.ok).toBe(true);
+      expect(requested).toEqual([
+        "sentry.io/api/0/organizations/acme/",
+        "region.example.com/api/0/projects/acme/web/",
+      ]);
+    });
+
+    // The organization schema rejects an invalid region URL, so it fails
+    // before the project lookup, as it did before the shared lookup.
+    it("fails with 502 when the region URL is invalid", async () => {
+      const requested = mockOrgRegion("not a url");
+      const result = await verifyConstraintsAccess(
+        { organizationSlug: "acme", projectSlug: "web" },
+        { accessToken: token, sentryHost: host },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: "Failed to verify organization",
+      });
+      expect(requested).toEqual(["sentry.io/api/0/organizations/acme/"]);
+    });
   });
 
   describe("caching", () => {
@@ -310,6 +393,16 @@ describe("verifyConstraintsAccess", () => {
           ...constraints,
           regionUrl: "https://us.sentry.io",
           projectCapabilities: null,
+        },
+      });
+      // Upstream slowness is a handled fail-open: a warning log, not an issue.
+      expect(logIssue).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledWith("Project verification timed out", {
+        loggerScope: ["cloudflare", "constraint-utils"],
+        extra: {
+          ...constraints,
+          regionUrl: "https://us.sentry.io",
+          timeoutMs: 5000,
         },
       });
       expect(cache.waitUntil).toHaveBeenCalledOnce();

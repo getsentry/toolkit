@@ -15,7 +15,6 @@ import type {
 const TextPart = memo(function TextPart({
   text,
   role,
-  messageId,
   isStreaming,
   messageData,
   onSlashCommand,
@@ -162,8 +161,8 @@ const convertToolOutput = (
   // If output is already in MCP format with content array
   if (
     typeof output === "object" &&
-    "content" in (output as object) &&
-    Array.isArray((output as { content: unknown }).content)
+    "content" in output &&
+    Array.isArray(output.content)
   ) {
     return output as { content: Array<{ type: "text"; text: string }> };
   }

@@ -6,7 +6,6 @@
  */
 import { Hono } from "hono";
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Env } from "../types";
 import { logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
 import { AuthDataSchema } from "../types/chat";
@@ -58,17 +57,15 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
       const requestUrl = new URL(c.req.url);
       const mcpUrl = `${requestUrl.protocol}//${requestUrl.host}/mcp`;
 
-      const httpTransport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-        requestInit: {
+      mcpClient = await experimental_createMCPClient({
+        name: "sentry",
+        transport: {
+          type: "http",
+          url: mcpUrl,
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         },
-      });
-
-      mcpClient = await experimental_createMCPClient({
-        name: "sentry",
-        transport: httpTransport,
       });
 
       const mcpTools = await mcpClient.tools();

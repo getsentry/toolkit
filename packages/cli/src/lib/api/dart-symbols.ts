@@ -11,7 +11,6 @@
  * debug file (dSYM/ELF).
  */
 
-import { type InferOutput, record, string } from "valibot";
 import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
@@ -19,14 +18,14 @@ import {
   ASSEMBLE_MAX_WAIT_MS,
   ASSEMBLE_POLL_INTERVAL_MS,
   type AssembleResponse,
-  AssembleResponseSchema,
+  assembleDebugFiles,
   type ChunkInfo,
+  type DifAssembleResponse,
   getChunkUploadOptions,
   hashBuffer,
   pickUploadEncoding,
   uploadMissingBufferChunks,
 } from "./chunk-upload.js";
-import { apiRequestToRegion } from "./infrastructure.js";
 
 const log = logger.withTag("api.dart-symbols");
 
@@ -51,16 +50,6 @@ export type DartSymbolMapUploadOptions = {
   /** The mapping file to upload. */
   mapping: DartSymbolMap;
 };
-
-// Schemas
-
-/**
- * DIF assemble response — keyed by overall checksum, each value has
- * the same shape as the standard assemble response.
- */
-const DifAssembleResponseSchema = record(string(), AssembleResponseSchema);
-
-type DifAssembleResponse = InferOutput<typeof DifAssembleResponseSchema>;
 
 // Helpers
 
@@ -152,15 +141,7 @@ export async function uploadDartSymbolMap(
   };
 
   // Step 4: Request DIF assembly
-  const { data: firstAssemble } = await apiRequestToRegion<DifAssembleResponse>(
-    regionUrl,
-    assembleEndpoint,
-    {
-      method: "POST",
-      body: assembleBody,
-      schema: DifAssembleResponseSchema,
-    },
-  );
+  const firstAssemble = await assembleDebugFiles(org, project, assembleBody);
 
   const { allDone, missingChecksums } = checkAssembleResponse(
     firstAssemble,
@@ -187,15 +168,7 @@ export async function uploadDartSymbolMap(
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, ASSEMBLE_POLL_INTERVAL_MS));
 
-    const { data: pollResult } = await apiRequestToRegion<DifAssembleResponse>(
-      regionUrl,
-      assembleEndpoint,
-      {
-        method: "POST",
-        body: assembleBody,
-        schema: DifAssembleResponseSchema,
-      },
-    );
+    const pollResult = await assembleDebugFiles(org, project, assembleBody);
 
     const { allDone: done } = checkAssembleResponse(
       pollResult,

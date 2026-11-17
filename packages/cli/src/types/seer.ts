@@ -88,6 +88,7 @@ export type ReproductionStep = InferOutput<typeof ReproductionStepSchema>;
 export const RootCauseSchema = object({
   id: number(),
   description: string(),
+  cause: optional(string()),
   relevant_repos: optional(array(string())),
   reproduction_urls: optional(array(string())),
   root_cause_reproduction: optional(array(ReproductionStepSchema)),
@@ -189,6 +190,11 @@ export const AutofixStateSchema = looseObject({
   /** Null for legacy runs predating this field. */
   sentry_run_id: optional(nullable(string())),
   status: string(),
+  /**
+   * Why a failed run stopped, e.g. `out_of_credits`. Null when the run didn't
+   * fail, and also when it failed for a reason Seer doesn't classify.
+   */
+  failure_reason: optional(nullable(string())),
   updated_at: optional(string()),
   request: optional(
     object({
@@ -297,7 +303,9 @@ function searchContainersForRootCauses(
 
 /** Agent root cause artifact data from the explorer endpoint */
 type AgentRootCauseData = {
-  one_line_description: string;
+  one_line_description?: string;
+  headline?: string;
+  cause?: string;
   five_whys?: string[];
   reproduction_steps?: string[];
   relevant_repo?: string | null;
@@ -320,9 +328,15 @@ function searchBlocksForAgentRootCause(
     for (const artifact of block.artifacts) {
       if (artifact.key === "root_cause" && artifact.data) {
         const agentData = artifact.data as AgentRootCauseData;
+        const description =
+          agentData.one_line_description || agentData.headline;
+        if (!description) {
+          continue;
+        }
         const cause: RootCause = {
           id: 0,
-          description: agentData.one_line_description,
+          description,
+          cause: agentData.cause,
           relevant_repos: agentData.relevant_repo
             ? [agentData.relevant_repo]
             : undefined,

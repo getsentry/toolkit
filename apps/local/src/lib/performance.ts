@@ -24,10 +24,11 @@ export function spanInsights(
         )
       )
         continue;
-      const id = `${span.operation}:${span.description}`;
+      const name = span.description.trim() || span.operation?.trim() || span.id;
+      const id = `${span.operation}:${name}`;
       const group = groups.get(id) ?? {
         id,
-        name: span.description,
+        name,
         operation: span.operation ?? "",
         count: 0,
         executions: [],
@@ -50,11 +51,15 @@ export function spanInsights(
     }
     const sizes = group.executions.flatMap((entry) => {
       const data = spanData(entry.span.payload);
-      const size =
-        finite(data["http.response_content_length"]) ??
-        finite(data["http.response.body.size"]) ??
-        finite(data["http.decoded_response_content_length"]);
-      return size === undefined || size < 0 ? [] : [size];
+      for (const key of [
+        "http.response_content_length",
+        "http.response.body.size",
+        "http.decoded_response_content_length",
+      ]) {
+        const size = finite(data[key]);
+        if (size !== undefined && size >= 0) return [size];
+      }
+      return [];
     });
     if (sizes.length)
       group.averageBytes = sizes.reduce((a, b) => a + b, 0) / sizes.length;

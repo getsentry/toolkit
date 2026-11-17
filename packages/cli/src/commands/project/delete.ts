@@ -25,12 +25,14 @@ import {
   getOrganization,
   getProject,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { getCachedOrgRole } from "../../lib/db/regions.js";
 import { ApiError } from "../../lib/errors.js";
 import {
   formatProjectDeleted,
   type ProjectDeleteResult,
 } from "../../lib/formatters/human.js";
+import { filterFieldsIfSet } from "../../lib/formatters/json.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -100,7 +102,7 @@ async function buildPermissionError(
   return new ApiError(
     `Permission denied: cannot delete ${label}.\n\n` +
       `This requires a ${rolesWithAccess} role, or a token with the 'project:admin' scope.\n` +
-      `  Check your role:  sentry org view ${orgSlug}`,
+      `  Check your role:  ${sentry`org view ${orgSlug}`}`,
     403,
   );
 }
@@ -137,36 +139,37 @@ export const deleteCommand = buildDeleteCommand({
     examples: [
       {
         description: "Delete a project (prompts for confirmation)",
-        command: "sentry project delete my-org/old-project",
+        run: "project delete my-org/old-project",
       },
       {
         description: "Delete without confirmation",
-        command: "sentry project delete my-org/old-project --yes",
+        run: "project delete my-org/old-project --yes",
       },
       {
         description: "Preview the deletion",
-        command: "sentry project delete my-org/old-project --dry-run",
+        run: "project delete my-org/old-project --dry-run",
       },
     ],
   },
   output: {
     human: formatProjectDeleted,
-    jsonTransform: (result: ProjectDeleteResult) => {
-      if (result.dryRun) {
-        return {
-          dryRun: true,
-          org: result.orgSlug,
-          project: result.projectSlug,
-          name: result.projectName,
-          url: result.url,
-        };
-      }
-      return {
-        deleted: true,
-        org: result.orgSlug,
-        project: result.projectSlug,
-      };
-    },
+    jsonTransform: (result: ProjectDeleteResult, fields?: string[]) =>
+      filterFieldsIfSet(
+        result.dryRun
+          ? {
+              dryRun: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+              name: result.projectName,
+              url: result.url,
+            }
+          : {
+              deleted: true,
+              org: result.orgSlug,
+              project: result.projectSlug,
+            },
+        fields,
+      ),
   },
   parameters: {
     positional: {

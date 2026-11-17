@@ -9,6 +9,7 @@ import {
   pointDefaultUrlAtAccount,
   resolveAccountSelector,
 } from "../../lib/account-selection.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   ACCOUNT_SERVER_TARGET,
@@ -58,8 +59,6 @@ type LogoutFlags = {
   readonly fields?: string[];
 };
 
-const COMMAND = "sentry auth logout";
-
 /** Selector that logs out of every stored account. */
 const ALL_ACCOUNTS = "all";
 
@@ -101,25 +100,24 @@ export const logoutCommand = buildCommand({
       {
         description:
           "Log out of the active account (the most recently used other account becomes active)",
-        command: "sentry auth logout",
+        run: "auth logout",
       },
       {
         description: "Log out of a specific account",
-        command: "sentry auth logout jane@example.com",
+        run: "auth logout jane@example.com",
       },
       {
         description: "Log out of several accounts (space- or comma-separated)",
-        command: "sentry auth logout jane@example.com,jane@personal.dev",
+        run: "auth logout jane@example.com,jane@personal.dev",
       },
       {
         description:
           "Pick the account on one server when the same email is stored twice",
-        command:
-          "sentry auth logout jane@example.com --url https://sentry.example.com",
+        run: "auth logout jane@example.com --url https://sentry.example.com",
       },
       {
         description: "Log out of every stored account",
-        command: "sentry auth logout all",
+        run: "auth logout all",
       },
     ],
   },
@@ -152,7 +150,7 @@ export const logoutCommand = buildCommand({
     const accounts = listAccounts();
     if (accounts.length === 0) {
       assertNotEnvOnly();
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
         message: "Not currently authenticated.",
       });
@@ -178,7 +176,7 @@ export const logoutCommand = buildCommand({
     if (selectors.length > 0) {
       targets = uniqueAccounts(
         selectors.map((sel) =>
-          resolveAccountSelector(sel, COMMAND, { url: flags.url }),
+          resolveAccountSelector(sel, sentry`auth logout`, { url: flags.url }),
         ),
       );
     } else {
@@ -186,10 +184,9 @@ export const logoutCommand = buildCommand({
       targets = active ? [active] : [];
     }
     if (targets.length === 0) {
-      return yield new CommandOutput<LogoutResult>({
+      return yield new CommandOutput({
         loggedOut: false,
-        message:
-          "No account is active. Run 'sentry auth list' and pass an account to log out of, or 'all'.",
+        message: `No account is active. Run '${sentry`auth list`}' and pass an account to log out of, or 'all'.`,
       });
     }
 
@@ -232,7 +229,7 @@ async function* finishLogout(
   if (removed.some((a) => a.active) && activeAccount) {
     pointDefaultUrlAtAccount(activeAccount.host);
   }
-  yield new CommandOutput<LogoutResult>({
+  yield new CommandOutput({
     loggedOut: removed.length > 0,
     ...(removed.length === 0 ? { message: "No stored account matched." } : {}),
     configPath,

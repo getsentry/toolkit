@@ -1,4 +1,5 @@
 import {
+  autofixStateFixture,
   createCspEvent,
   createCspIssue,
   createDefaultEvent,
@@ -14,12 +15,10 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { Skill } from "../../skills";
 import * as logging from "../../telem/logging";
-import {
-  getStructuredContent,
-  getTextContent,
-} from "../../test-utils/structured-content";
+import { getStructuredContent } from "../../test-utils/structured-content";
 import getIssueDetails, {
   getIssueDetailsOutputSchema,
 } from "./get-issue-details.js";
@@ -31,6 +30,10 @@ const baseContext = {
   accessToken: "access-token",
   userId: "1",
 };
+
+function parsePayload(result: unknown) {
+  return getIssueDetailsOutputSchema.parse(getStructuredContent(result));
+}
 
 // Removed - now using createPerformanceIssue() factory from mocks
 
@@ -215,98 +218,189 @@ describe("get_issue_details", () => {
       },
     );
     expect(stacktraceLinkRequested).toBe(true);
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      **Description**: Error: Tool list_organizations is already registered
-      **Culprit**: Object.fetch(index)
-      **First Seen**: 2025-04-03T22:51:19.403Z
-      **Last Seen**: 2025-04-12T11:34:11.000Z
-      **Occurrences**: 25
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Substatus**: ongoing
-      **Assigned To**: Jane Developer (User)
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: javascript
-      **Project**: CLOUDFLARE-MCP
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Code Location
-
-      **Repository**: getsentry/sentry-mcp
-      **Path**: packages/mcp-cloudflare/src/index.ts
-      **Line**: 19631
-      **Source**: https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-cloudflare/src/index.ts#L19631
-
-      ## Event Details
-
-      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-      **Type**: error
-      **Occurred At**: 2025-04-08T21:15:04.000Z
-
-      ### Error
-
-      \`\`\`
-      Error: Tool list_organizations is already registered
-      \`\`\`
-
-      **Stacktrace:**
-      \`\`\`
-      index.js:7809:27
-      index.js:8029:24 (OAuthProviderImpl.fetch)
-      index.js:19631:28 (Object.fetch)
-      \`\`\`
-
-      ### HTTP Request
-
-      **Method:** GET
-      **URL:** https://mcp.sentry.dev/sse
-
-      ### User
-
-      **user**: ip:2a06:98c0:3600::103
-      **user.geo**: US, United States
-
-      ### Tags
-
-      **environment**: \`development\`
-      **handled**: \`no\`
-      **level**: \`error\`
-      **mechanism**: \`cloudflare\`
-      **runtime.name**: \`cloudflare\`
-      **url**: \`https://mcp.sentry.dev/sse\`
-
-      ### Additional Context
-
-      These are additional context provided by the user when they're instrumenting their application.
-
-      **cloud_resource**
-      cloud.provider: "cloudflare"
-
-      **culture**
-      timezone: "Europe/London"
-
-      **runtime**
-      name: "cloudflare"
-
-      **trace**
-      trace_id: "3032af8bcdfe4423b937fc5c041d5d82"
-      span_id: "953da703d2a6f4c7"
-      status: "unknown"
-      client_sample_rate: 1
-      sampled: true
-
-      ## Response Notes
-
-      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
-      - Related span search: Use the Sentry tool \`search_traces\`
-      - Related log search: Use the Sentry tool \`search_logs\`
-      "
+    expect(parsePayload(result)).toMatchInlineSnapshot(`
+      {
+        "aiConversations": null,
+        "codeLocation": {
+          "line": 19631,
+          "path": "packages/mcp-cloudflare/src/index.ts",
+          "repository": "getsentry/sentry-mcp",
+          "url": "https://github.com/getsentry/sentry-mcp/blob/main/packages/mcp-cloudflare/src/index.ts#L19631",
+        },
+        "event": {
+          "contexts": {
+            "cloud_resource": {
+              "cloud.provider": "cloudflare",
+            },
+            "culture": {
+              "timezone": "Europe/London",
+            },
+            "runtime": {
+              "name": "cloudflare",
+            },
+            "trace": {
+              "client_sample_rate": 1,
+              "sampled": true,
+              "span_id": "953da703d2a6f4c7",
+              "status": "unknown",
+              "trace_id": "3032af8bcdfe4423b937fc5c041d5d82",
+            },
+          },
+          "crashedThread": null,
+          "csp": null,
+          "evidence": null,
+          "exceptions": [
+            {
+              "mechanism": {
+                "handled": false,
+                "type": "cloudflare",
+              },
+              "module": null,
+              "stacktrace": {
+                "frames": [
+                  {
+                    "absPath": "/index.js",
+                    "colNo": 27,
+                    "filename": "index.js",
+                    "inApp": true,
+                    "lineNo": 7809,
+                    "module": "index",
+                  },
+                  {
+                    "absPath": "/index.js",
+                    "colNo": 24,
+                    "filename": "index.js",
+                    "function": "OAuthProviderImpl.fetch",
+                    "inApp": true,
+                    "lineNo": 8029,
+                    "module": "index",
+                  },
+                  {
+                    "absPath": "/index.js",
+                    "colNo": 28,
+                    "filename": "index.js",
+                    "function": "Object.fetch",
+                    "inApp": true,
+                    "lineNo": 19631,
+                    "module": "index",
+                  },
+                ],
+                "framesOmitted": null,
+              },
+              "type": "Error",
+              "value": "Tool list_organizations is already registered",
+            },
+          ],
+          "extra": null,
+          "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
+          "message": null,
+          "metricAlert": null,
+          "occurredAt": "2025-04-08T21:15:04.000Z",
+          "performance": null,
+          "platform": "javascript",
+          "request": {
+            "method": "GET",
+            "url": "https://mcp.sentry.dev/sse",
+          },
+          "tags": [
+            {
+              "key": "environment",
+              "value": "development",
+            },
+            {
+              "key": "handled",
+              "value": "no",
+            },
+            {
+              "key": "level",
+              "value": "error",
+            },
+            {
+              "key": "mechanism",
+              "value": "cloudflare",
+            },
+            {
+              "key": "runtime.name",
+              "value": "cloudflare",
+            },
+            {
+              "key": "url",
+              "value": "https://mcp.sentry.dev/sse",
+            },
+          ],
+          "threadCount": 0,
+          "threads": null,
+          "type": "error",
+          "user": {
+            "data": null,
+            "email": null,
+            "geo": {
+              "city": null,
+              "countryCode": "US",
+              "region": "United States",
+            },
+            "id": null,
+            "ipAddress": "2a06:98c0:3600::103",
+            "name": null,
+            "username": null,
+          },
+        },
+        "externalIssues": null,
+        "issue": {
+          "assignedTo": "Jane Developer",
+          "culprit": "Object.fetch(index)",
+          "firstSeen": "2025-04-03T22:51:19.403000Z",
+          "issueCategory": "error",
+          "issueType": "error",
+          "lastSeen": "2025-04-12T11:34:11Z",
+          "location": null,
+          "occurrences": 25,
+          "platform": "javascript",
+          "project": "CLOUDFLARE-MCP",
+          "queryPattern": null,
+          "seerActionability": null,
+          "shortId": "CLOUDFLARE-MCP-41",
+          "status": "unresolved",
+          "substatus": "ongoing",
+          "title": "Error: Tool list_organizations is already registered",
+          "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+          "usersImpacted": 1,
+        },
+        "replays": null,
+        "seer": null,
+        "sideQuests": [
+          {
+            "docs": "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+            "id": "js_source_maps",
+            "tip": "Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files.",
+          },
+          {
+            "docs": "https://docs.sentry.io/platforms/javascript/configuration/apis/",
+            "id": "missing_user_identity",
+            "tip": "The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough.",
+          },
+        ],
+        "suggestedActions": [
+          {
+            "arguments": {
+              "organizationSlug": "sentry-mcp-evals",
+              "traceId": "3032af8bcdfe4423b937fc5c041d5d82",
+            },
+            "reason": "Inspect the distributed trace this event belongs to.",
+            "toolName": "get_trace_details",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
+              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+            },
+            "reason": "Read the breadcrumb trail leading up to this event.",
+            "toolName": "get_issue_breadcrumbs",
+            "type": "tool_call",
+          },
+        ],
+        "suspectCommit": null,
+      }
     `);
   });
 
@@ -330,11 +424,11 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).toContain(
-      "**Description**: Error: Tool list_issues is already registered",
+    const payload = parsePayload(result);
+    expect(payload.issue.title).toBe(
+      "Error: Tool list_issues is already registered",
     );
-    expect(result).not.toContain("**Culprit**:");
-    expect(result).not.toContain("**Culprit**: null");
+    expect(payload.issue.culprit).toBeNull();
   });
 
   it("surfaces agent conversation IDs found by bounded span lookup", async () => {
@@ -400,73 +494,19 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    const text = typeof result === "string" ? result : getTextContent(result);
-    expect(text).toContain(
-      "- Agent conversation found in this trace: `conv-123`. Matching span: `span-123`.",
+    const payload = parsePayload(result);
+    expect(payload.aiConversations).toEqual([
+      { conversationId: "conv-123", spanId: "span-123" },
+    ]);
+    expect(payload.suggestedActions).toContainEqual(
+      expect.objectContaining({
+        toolName: "get_agent_conversation_details",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          conversationId: "conv-123",
+        },
+      }),
     );
-    expect(text).toContain(
-      '- Use the Sentry tool `execute_sentry_tool(name=\'get_agent_conversation_details\', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})` to fetch the full transcript.',
-    );
-    expect(
-      (result as { structuredContent?: unknown }).structuredContent,
-    ).toBeUndefined();
-    expect(text).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      **Description**: Error: Tool list_organizations is already registered
-      **Culprit**: Object.fetch(index)
-      **First Seen**: 2025-04-03T22:51:19.403Z
-      **Last Seen**: 2025-04-12T11:34:11.000Z
-      **Occurrences**: 25
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Substatus**: ongoing
-      **Assigned To**: Jane Developer (User)
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: javascript
-      **Project**: CLOUDFLARE-MCP
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Event Details
-
-      **Event ID**: abc123def456
-      **Type**: default
-      **Occurred At**: 2025-10-02T12:00:00.000Z
-      **Message**:
-      Something went wrong
-
-      ### Error
-
-      \`\`\`
-      Something went wrong
-      \`\`\`
-
-      ### Tags
-
-      **level**: \`error\`
-      **environment**: \`production\`
-
-      ### Additional Context
-
-      These are additional context provided by the user when they're instrumenting their application.
-
-      **trace**
-      trace_id: "11112222333344445555666677778888"
-      span_id: "error-span"
-
-      ## Response Notes
-
-      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Agent conversation found in this trace: \`conv-123\`. Matching span: \`span-123\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-123"})\` to fetch the full transcript.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
-      - Related span search: Use the Sentry tool \`search_traces\`
-      - Related log search: Use the Sentry tool \`search_logs\`
-      "
-    `);
   });
 
   it("omits agent conversation guidance when bounded span lookup finds no match", async () => {
@@ -505,8 +545,11 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).not.toContain("Agent conversation found");
-    expect(result).not.toContain("get_agent_conversation_details");
+    const payload = parsePayload(result);
+    expect(payload.aiConversations).toBeNull();
+    expect(
+      payload.suggestedActions.map((action) => action.toolName),
+    ).not.toContain("get_agent_conversation_details");
   });
 
   it("does not query spans for an invalid event trace ID", async () => {
@@ -550,7 +593,7 @@ describe("get_issue_details", () => {
     expect(spanLookupAttempts).toBe(0);
   });
 
-  it("displays team assignment correctly", async () => {
+  it("returns the assigned team's name", async () => {
     // Override the issue fixture with a team assignment
     mswServer.use(
       http.get(
@@ -604,11 +647,10 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    // Verify that team assignment is displayed with "(Team)" suffix
-    expect(result).toContain("**Assigned To**: Platform Team (Team)");
+    expect(parsePayload(result).issue.assignedTo).toBe("Platform Team");
   });
 
-  it("lists threads and stacktrace lookup guidance only for multi-thread events", async () => {
+  it("lists threads and offers the stacktrace lookup only for multi-thread events", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
@@ -685,26 +727,131 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    const text = typeof result === "string" ? result : getTextContent(result);
-    const threadSection = text
-      .slice(text.indexOf("### Threads"), text.indexOf("### Tags"))
-      .trim();
-    expect(threadSection).toMatchInlineSnapshot(`
-      "### Threads
-
-      Found 2 threads in this event.
-
-      | Thread ID | Name | State | Flags | Frames |
-      | --- | --- | --- | --- | ---: |
-      | 11 | worker | WAITING | - | 1 |
-      | 259 | main | RUNNABLE | crashed, current | 2 |"
-    `);
-    expect(text).toContain(
-      "- Thread stacktrace lookup: Use the Sentry tool `get_event_stacktrace` to fetch a full thread stacktrace by numeric Thread ID or exact thread Name. Omit `thread` to use Sentry's default selected thread",
+    const payload = parsePayload(result);
+    expect(payload.event.threads).toEqual([
+      {
+        id: 11,
+        name: "worker",
+        state: "WAITING",
+        crashed: false,
+        current: false,
+        frameCount: 1,
+      },
+      {
+        id: 259,
+        name: "main",
+        state: "RUNNABLE",
+        crashed: true,
+        current: true,
+        frameCount: 2,
+      },
+    ]);
+    expect(payload.suggestedActions).toContainEqual(
+      expect.objectContaining({
+        toolName: "get_event_stacktrace",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          eventId: "event-with-multiple-threads",
+          thread: 11,
+        },
+      }),
     );
   });
 
-  it("omits thread list and stacktrace lookup guidance for single-thread events", async () => {
+  it("skips idle threads without frames when suggesting a stacktrace", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () =>
+          HttpResponse.json(
+            createDefaultEvent({
+              id: "event-with-empty-idle-thread",
+              entries: [
+                {
+                  type: "message",
+                  data: {
+                    formatted: "Application crashed",
+                  },
+                },
+                {
+                  type: "threads",
+                  data: {
+                    values: [
+                      {
+                        id: 7,
+                        name: "Signal Catcher",
+                        state: "WAITING",
+                        crashed: false,
+                        current: false,
+                        stacktrace: null,
+                      },
+                      {
+                        id: 11,
+                        name: "worker",
+                        state: "WAITING",
+                        crashed: false,
+                        current: false,
+                        stacktrace: {
+                          frames: [
+                            {
+                              filename: "Thread.java",
+                              function: "run",
+                              lineNo: 833,
+                            },
+                          ],
+                        },
+                      },
+                      {
+                        id: 259,
+                        name: "main",
+                        state: "RUNNABLE",
+                        crashed: true,
+                        current: true,
+                        stacktrace: {
+                          frames: [
+                            {
+                              filename: "CheckoutActivity.java",
+                              function: "submitOrder",
+                              lineNo: 42,
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            }),
+          ),
+        { once: true },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        eventId: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      baseContext,
+    );
+
+    const payload = parsePayload(result);
+    expect(payload.event.threads?.[0]).toMatchObject({ id: 7, frameCount: 0 });
+    const stacktraceActions = payload.suggestedActions.filter(
+      (action) => action.toolName === "get_event_stacktrace",
+    );
+    expect(stacktraceActions).toEqual([
+      expect.objectContaining({
+        arguments: expect.objectContaining({ thread: 11 }),
+      }),
+    ]);
+  });
+
+  it("omits the stacktrace lookup when no thread is idle", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
@@ -760,8 +907,11 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).not.toContain("### Threads");
-    expect(result).not.toContain("Thread stacktrace lookup");
+    const payload = parsePayload(result);
+    expect(payload.event.threads).toHaveLength(1);
+    expect(
+      payload.suggestedActions.map((action) => action.toolName),
+    ).not.toContain("get_event_stacktrace");
   });
 
   it("includes attached and related replays when available", async () => {
@@ -809,27 +959,14 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    if (typeof result !== "string") {
-      throw new Error("Expected string result");
-    }
-
-    const replaySection = result
-      .slice(result.indexOf("## Session Replay"), result.indexOf("### Error"))
-      .trim();
-
-    expect(replaySection).toMatchInlineSnapshot(`
-      "## Session Replay
-
-      **Attached Replay**: https://sentry-mcp-evals.sentry.io/explore/replays/7e07485f12f9416b8b1426260799b51f/
-      **Related Replay Count**: 2
-
-      ### Other Related Replays
-
-      - https://sentry-mcp-evals.sentry.io/explore/replays/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/
-
-      Use the Sentry tool \`get_replay_details\` to inspect a replay in detail."
-    `);
-    expect(result).not.toContain("**replayId**:");
+    const payload = parsePayload(result);
+    expect(payload.replays).toEqual({
+      attached: "7e07485f12f9416b8b1426260799b51f",
+      related: ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      relatedCount: 1,
+    });
+    // the replay tag is reported as replays.attached, not again among the tags
+    expect(payload.event.tags.map((tag) => tag.key)).not.toContain("replayId");
   });
 
   it("serializes with issueUrl", async () => {
@@ -850,95 +987,12 @@ describe("get_issue_details", () => {
       },
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      **Description**: Error: Tool list_organizations is already registered
-      **Culprit**: Object.fetch(index)
-      **First Seen**: 2025-04-03T22:51:19.403Z
-      **Last Seen**: 2025-04-12T11:34:11.000Z
-      **Occurrences**: 25
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Substatus**: ongoing
-      **Assigned To**: Jane Developer (User)
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: javascript
-      **Project**: CLOUDFLARE-MCP
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Event Details
-
-      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-      **Type**: error
-      **Occurred At**: 2025-04-08T21:15:04.000Z
-
-      ### Error
-
-      \`\`\`
-      Error: Tool list_organizations is already registered
-      \`\`\`
-
-      **Stacktrace:**
-      \`\`\`
-      index.js:7809:27
-      index.js:8029:24 (OAuthProviderImpl.fetch)
-      index.js:19631:28 (Object.fetch)
-      \`\`\`
-
-      ### HTTP Request
-
-      **Method:** GET
-      **URL:** https://mcp.sentry.dev/sse
-
-      ### User
-
-      **user**: ip:2a06:98c0:3600::103
-      **user.geo**: US, United States
-
-      ### Tags
-
-      **environment**: \`development\`
-      **handled**: \`no\`
-      **level**: \`error\`
-      **mechanism**: \`cloudflare\`
-      **runtime.name**: \`cloudflare\`
-      **url**: \`https://mcp.sentry.dev/sse\`
-
-      ### Additional Context
-
-      These are additional context provided by the user when they're instrumenting their application.
-
-      **cloud_resource**
-      cloud.provider: "cloudflare"
-
-      **culture**
-      timezone: "Europe/London"
-
-      **runtime**
-      name: "cloudflare"
-
-      **trace**
-      trace_id: "3032af8bcdfe4423b937fc5c041d5d82"
-      span_id: "953da703d2a6f4c7"
-      status: "unknown"
-      client_sample_rate: 1
-      sampled: true
-
-      ## Response Notes
-
-      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
-      - Related span search: Use the Sentry tool \`search_traces\`
-      - Related log search: Use the Sentry tool \`search_logs\`
-      "
-    `);
+    const payload = parsePayload(result);
+    expect(payload.issue.shortId).toBe("CLOUDFLARE-MCP-41");
+    expect(payload.event.id).toBe("7ca573c0f4814912aaa9bdc77d1a7d51");
   });
 
-  it("renders related trace spans when trace fetch succeeds", async () => {
+  it("maps the related trace spans when the trace fetch succeeds", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -990,45 +1044,56 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    if (typeof result !== "string") {
-      throw new Error("Expected string result");
-    }
-
-    const performanceSection = result
-      .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
-      .trim();
-
-    expect(performanceSection).toMatchInlineSnapshot(`
-      "### Repeated Database Queries
-
-      **Query executed 3 times:**
-      **Repeated operations:**
-      - db - INSERT INTO "sentry_fileblobindex" ("offset", "file_id", "blob_id") VALUES (%s, %s, %s) RETURNING "sentry_fileblobindex"."id"
-      - function - sentry.models.files.abstractfileblob.AbstractFileBlob.from_file
-      - db - SELECT "sentry_fileblob"."id", "sentry_fileblob"."path", "sentry_fileblob"."size", "sentry_fileblob"."checksum", "sentry_fileblob"."timestamp" FROM "sentry_fileblob" WHERE "sentry_fileblob"."checksum" = %s LIMIT 21
-
-      ### Span Tree (Limited to 10 spans)
-
-      \`\`\`
-      GET /api/users [http.server · 250ms · parent123]
-         ├─ SELECT * FROM users WHERE id = 1 [db.query · 5ms · span001] [N+1]
-         ├─ SELECT * FROM users WHERE id = 2 [db.query · 5ms · span002] [N+1]
-         └─ SELECT * FROM users WHERE id = 3 [db.query · 5ms · span003] [N+1]
-      \`\`\`
-
-      **Transaction:**
-      /api/users
-
-      **Offending Spans:**
-      SELECT * FROM users WHERE id = %s
-
-      **Repeated:**
-      3 times"
+    expect(parsePayload(result).event.performance).toMatchInlineSnapshot(`
+      {
+        "issueType": "performance_n_plus_one_db_queries",
+        "parentOperation": "GET /api/users",
+        "repeatCount": 3,
+        "repeatedOperations": [
+          "db - INSERT INTO "sentry_fileblobindex" ("offset", "file_id", "blob_id") VALUES (%s, %s, %s) RETURNING "sentry_fileblobindex"."id"",
+          "function - sentry.models.files.abstractfileblob.AbstractFileBlob.from_file",
+          "db - SELECT "sentry_fileblob"."id", "sentry_fileblob"."path", "sentry_fileblob"."size", "sentry_fileblob"."checksum", "sentry_fileblob"."timestamp" FROM "sentry_fileblob" WHERE "sentry_fileblob"."checksum" = %s LIMIT 21",
+        ],
+        "spans": [
+          {
+            "description": "GET /api/users",
+            "durationMs": 250,
+            "isOffender": false,
+            "op": "http.server",
+            "parentSpanId": null,
+            "spanId": "parent123",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 1",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span001",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 2",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span002",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 3",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span003",
+          },
+        ],
+        "transactionName": "/api/users",
+      }
     `);
   });
 
-  it("falls back to offending span list when trace fetch fails", async () => {
+  it("falls back to the offending spans when the trace fetch fails", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -1080,41 +1145,52 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    if (typeof result !== "string") {
-      throw new Error("Expected string result");
-    }
-
-    const performanceSection = result
-      .slice(result.indexOf("### Repeated Database Queries"))
-      .split("### Tags")[0]
-      .trim();
-
-    expect(performanceSection).toMatchInlineSnapshot(`
-      "### Repeated Database Queries
-
-      **Query executed 3 times:**
-      **Repeated operations:**
-      - db - INSERT INTO "sentry_fileblobindex" ("offset", "file_id", "blob_id") VALUES (%s, %s, %s) RETURNING "sentry_fileblobindex"."id"
-      - function - sentry.models.files.abstractfileblob.AbstractFileBlob.from_file
-      - db - SELECT "sentry_fileblob"."id", "sentry_fileblob"."path", "sentry_fileblob"."size", "sentry_fileblob"."checksum", "sentry_fileblob"."timestamp" FROM "sentry_fileblob" WHERE "sentry_fileblob"."checksum" = %s LIMIT 21
-
-      ### Span Tree (Limited to 10 spans)
-
-      \`\`\`
-      GET /api/users [http.server · 250ms · parent123]
-         ├─ SELECT * FROM users WHERE id = 1 [db.query · 5ms · span001] [N+1]
-         ├─ SELECT * FROM users WHERE id = 2 [db.query · 5ms · span002] [N+1]
-         └─ SELECT * FROM users WHERE id = 3 [db.query · 5ms · span003] [N+1]
-      \`\`\`
-
-      **Transaction:**
-      /api/users
-
-      **Offending Spans:**
-      SELECT * FROM users WHERE id = %s
-
-      **Repeated:**
-      3 times"
+    expect(parsePayload(result).event.performance).toMatchInlineSnapshot(`
+      {
+        "issueType": "performance_n_plus_one_db_queries",
+        "parentOperation": "GET /api/users",
+        "repeatCount": 3,
+        "repeatedOperations": [
+          "db - INSERT INTO "sentry_fileblobindex" ("offset", "file_id", "blob_id") VALUES (%s, %s, %s) RETURNING "sentry_fileblobindex"."id"",
+          "function - sentry.models.files.abstractfileblob.AbstractFileBlob.from_file",
+          "db - SELECT "sentry_fileblob"."id", "sentry_fileblob"."path", "sentry_fileblob"."size", "sentry_fileblob"."checksum", "sentry_fileblob"."timestamp" FROM "sentry_fileblob" WHERE "sentry_fileblob"."checksum" = %s LIMIT 21",
+        ],
+        "spans": [
+          {
+            "description": "GET /api/users",
+            "durationMs": 250,
+            "isOffender": false,
+            "op": "http.server",
+            "parentSpanId": null,
+            "spanId": "parent123",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 1",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span001",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 2",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span002",
+          },
+          {
+            "description": "SELECT * FROM users WHERE id = 3",
+            "durationMs": 5,
+            "isOffender": true,
+            "op": "db.query",
+            "parentSpanId": "parent123",
+            "spanId": "span003",
+          },
+        ],
+        "transactionName": "/api/users",
+      }
     `);
   });
 
@@ -1135,92 +1211,10 @@ describe("get_issue_details", () => {
         userId: "1",
       },
     );
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
 
-      **Description**: Error: Tool list_organizations is already registered
-      **Culprit**: Object.fetch(index)
-      **First Seen**: 2025-04-03T22:51:19.403Z
-      **Last Seen**: 2025-04-12T11:34:11.000Z
-      **Occurrences**: 25
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Substatus**: ongoing
-      **Assigned To**: Jane Developer (User)
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: javascript
-      **Project**: CLOUDFLARE-MCP
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-      ## Event Details
-
-      **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-      **Type**: error
-      **Occurred At**: 2025-04-08T21:15:04.000Z
-
-      ### Error
-
-      \`\`\`
-      Error: Tool list_organizations is already registered
-      \`\`\`
-
-      **Stacktrace:**
-      \`\`\`
-      index.js:7809:27
-      index.js:8029:24 (OAuthProviderImpl.fetch)
-      index.js:19631:28 (Object.fetch)
-      \`\`\`
-
-      ### HTTP Request
-
-      **Method:** GET
-      **URL:** https://mcp.sentry.dev/sse
-
-      ### User
-
-      **user**: ip:2a06:98c0:3600::103
-      **user.geo**: US, United States
-
-      ### Tags
-
-      **environment**: \`development\`
-      **handled**: \`no\`
-      **level**: \`error\`
-      **mechanism**: \`cloudflare\`
-      **runtime.name**: \`cloudflare\`
-      **url**: \`https://mcp.sentry.dev/sse\`
-
-      ### Additional Context
-
-      These are additional context provided by the user when they're instrumenting their application.
-
-      **cloud_resource**
-      cloud.provider: "cloudflare"
-
-      **culture**
-      timezone: "Europe/London"
-
-      **runtime**
-      name: "cloudflare"
-
-      **trace**
-      trace_id: "3032af8bcdfe4423b937fc5c041d5d82"
-      span_id: "953da703d2a6f4c7"
-      status: "unknown"
-      client_sample_rate: 1
-      sampled: true
-
-      ## Response Notes
-
-      - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      - Full distributed trace and span tree: Use the Sentry tool \`get_sentry_resource\`
-      - Related span search: Use the Sentry tool \`search_traces\`
-      - Related log search: Use the Sentry tool \`search_logs\`
-      "
-    `);
+    const payload = parsePayload(result);
+    expect(payload.issue.shortId).toBe("CLOUDFLARE-MCP-41");
+    expect(payload.event.id).toBe("7ca573c0f4814912aaa9bdc77d1a7d51");
   });
 
   it("throws error for malformed regionUrl", async () => {
@@ -1291,7 +1285,7 @@ describe("get_issue_details", () => {
   // These tests verify that Seer analysis is properly formatted when available
   // Note: The autofix endpoint needs to be mocked for each test
 
-  it("includes Seer analysis when available - completed state", async () => {
+  it("reports no Seer analysis when the issue has no run", async () => {
     // This test currently passes without Seer data since the autofix endpoint
     // returns an error that is caught silently. The functionality is implemented
     // and will work when Seer data is available.
@@ -1312,13 +1306,11 @@ describe("get_issue_details", () => {
       },
     );
 
-    // Verify the basic issue output is present
-    expect(result).toContain("# Issue CLOUDFLARE-MCP-41");
-    expect(result).toContain(
+    const payload = parsePayload(result);
+    expect(payload.issue.title).toBe(
       "Error: Tool list_organizations is already registered",
     );
-    // When Seer data is available, these would pass:
-    // expect(result).toContain("## Seer AI Analysis");
+    expect(payload.seer).toBeNull();
   });
 
   it("skips the autofix request when the seer skill is not granted", async () => {
@@ -1348,7 +1340,7 @@ describe("get_issue_details", () => {
     );
 
     expect(autofixRequested).toBe(false);
-    expect(result).toContain("# Issue CLOUDFLARE-MCP-41");
+    expect(parsePayload(result).seer).toBeNull();
   });
 
   it("requests autofix state when the seer skill is granted", async () => {
@@ -1380,81 +1372,11 @@ describe("get_issue_details", () => {
     expect(autofixRequested).toBe(true);
   });
 
-  it.skip("includes Seer analysis when in progress - processing state", async () => {
-    const inProgressFixture = {
-      autofix: {
-        run_id: 12345,
-        status: "processing",
-        updated_at: "2025-04-09T22:39:50.778146",
-        blocks: [
-          {
-            id: "block-1",
-            artifacts: [
-              {
-                key: "root_cause",
-                reason: "Root cause analysis completed",
-                data: {
-                  one_line_description:
-                    "The bottleById query fails because the input ID doesn't exist in the database.",
-                  five_whys: [],
-                  reproduction_steps: [],
-                },
-              },
-            ],
-            todos: [{ content: "Generating solution", status: "in_progress" }],
-          },
-        ],
-      },
-    };
-
-    // Use mswServer.use to prepend a handler - MSW uses LIFO order
+  it("maps the Seer run's status, root cause and solution", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/autofix/",
-        () => HttpResponse.json(inProgressFixture),
-        { once: true }, // Ensure this handler is only used once for this test
-      ),
-    );
-
-    const result = await getIssueDetails.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        issueId: "CLOUDFLARE-MCP-41",
-        eventId: undefined,
-        issueUrl: undefined,
-        regionUrl: null,
-      },
-      {
-        constraints: {
-          organizationSlug: undefined,
-        },
-        accessToken: "access-token",
-        userId: "1",
-      },
-    );
-
-    expect(result).toContain("## Seer Analysis");
-    expect(result).toContain("**Status:** Processing");
-    expect(result).toContain("**Root Cause Identified:**");
-    expect(result).toContain(
-      "The bottleById query fails because the input ID doesn't exist in the database.",
-    );
-  });
-
-  it.skip("includes Seer analysis when failed - error state", async () => {
-    const failedFixture = {
-      autofix: {
-        run_id: 12346,
-        status: "error",
-        updated_at: "2025-04-09T22:39:50.778146",
-        blocks: [],
-      },
-    };
-
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/autofix/",
-        () => HttpResponse.json(failedFixture),
+        () => HttpResponse.json(autofixStateFixture),
         { once: true },
       ),
     );
@@ -1468,80 +1390,70 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
-        accessToken: "access-token",
-        userId: "1",
+        ...baseContext,
+        grantedSkills: new Set<Skill>(["inspect", "seer"]),
       },
     );
 
-    expect(result).toContain("## Seer Analysis");
-    expect(result).toContain("**Status:** Analysis failed.");
+    expect(parsePayload(result).seer).toMatchInlineSnapshot(`
+      {
+        "failureReason": null,
+        "rootCause": "The \`bottleById\` query fails because the input ID (3216) doesn't exist in the database.",
+        "solution": "Use the canonical bottle ID for both batched TRPC calls.",
+        "status": "Complete",
+      }
+    `);
   });
 
-  it.skip("includes Seer analysis when needs information - awaiting_user_input state", async () => {
-    const needsInfoFixture = {
-      autofix: {
-        run_id: 12347,
-        status: "awaiting_user_input",
-        updated_at: "2025-04-09T22:39:50.778146",
-        blocks: [
-          {
-            id: "block-1",
-            artifacts: [
-              {
-                key: "root_cause",
-                reason: "Partial root cause analysis",
-                data: {
-                  one_line_description:
-                    "Partial analysis completed but more context needed.",
-                  five_whys: [],
-                  reproduction_steps: [],
-                },
-              },
-            ],
-          },
-        ],
-      },
-    };
+  it.each([
+    {
+      name: "a run that ran out of credits",
+      autofix: { status: "error", failure_reason: "out_of_credits" },
+      expected: "out_of_credits",
+    },
+    {
+      name: "a run that failed for another reason",
+      autofix: { status: "error", failure_reason: "internal_error" },
+      expected: null,
+    },
+    {
+      name: "a run that is still processing",
+      autofix: { status: "processing", failure_reason: "out_of_credits" },
+      expected: null,
+    },
+  ])(
+    "reports the Seer failure reason for $name",
+    async ({ autofix, expected }) => {
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/autofix/",
+          () =>
+            HttpResponse.json({
+              autofix: { run_id: 456, blocks: [], ...autofix },
+            }),
+          { once: true },
+        ),
+      );
 
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/autofix/",
-        () => HttpResponse.json(needsInfoFixture),
-        { once: true },
-      ),
-    );
-
-    const result = await getIssueDetails.handler(
-      {
-        organizationSlug: "sentry-mcp-evals",
-        issueId: "CLOUDFLARE-MCP-41",
-        eventId: undefined,
-        issueUrl: undefined,
-        regionUrl: null,
-      },
-      {
-        constraints: {
-          organizationSlug: undefined,
+      const result = await getIssueDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          eventId: undefined,
+          issueUrl: undefined,
+          regionUrl: null,
         },
-        accessToken: "access-token",
-        userId: "1",
-      },
-    );
+        {
+          ...baseContext,
+          grantedSkills: new Set<Skill>(["inspect", "seer"]),
+        },
+      );
 
-    expect(result).toContain("## Seer Analysis");
-    expect(result).toContain("**Root Cause Identified:**");
-    expect(result).toContain(
-      "Partial analysis completed but more context needed.",
-    );
-    expect(result).toContain(
-      "**Status:** Analysis paused - additional information needed.",
-    );
-  });
+      expect(parsePayload(result).seer?.failureReason).toBe(expected);
+    },
+  );
 
-  it("handles default event type (error without exception data)", async () => {
+  it("maps a default event, which has no exception", async () => {
     // Mock a "default" event type - represents errors without exception data
     const defaultEvent = createDefaultEvent();
 
@@ -1594,17 +1506,19 @@ describe("get_issue_details", () => {
       },
     );
 
-    // Verify the event was processed successfully
-    expect(result).toContain("# Issue DEFAULT-001 in **sentry-mcp-evals**");
-    expect(result).toContain("Error without exception data");
-    expect(result).toContain("**Event ID**: abc123def456");
-    // Default events should show dateCreated just like error events
-    expect(result).toContain("**Occurred At**: 2025-10-02T12:00:00.000Z");
-    expect(result).toContain("### Error");
-    expect(result).toContain("Something went wrong");
+    const payload = parsePayload(result);
+    expect(payload.issue.shortId).toBe("DEFAULT-001");
+    expect(payload.event).toMatchObject({
+      id: "abc123def456",
+      type: "default",
+      // default events carry dateCreated just like error events
+      occurredAt: "2025-10-02T12:00:00.000Z",
+      message: "Something went wrong",
+      exceptions: null,
+    });
   });
 
-  it("handles CSP (Content Security Policy) violation events", async () => {
+  it("maps a CSP violation report", async () => {
     // Mock a CSP violation event and issue
     const cspEvent = createCspEvent();
     const cspIssue = createCspIssue();
@@ -1631,19 +1545,21 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    // Verify CSP-specific content is included
-    expect(result).toContain("# Issue BLOG-CSP-4XC in **sentry-mcp-evals**");
-    expect(result).toContain("Blocked 'image' from 'blob:'");
-    expect(result).toContain("**Event ID**: bf5b6c7fd49f4f8da94085a43393051d");
-    expect(result).toContain("**Type**: csp");
-    // Should show the CSP entry data
-    expect(result).toContain("### CSP Violation");
-    expect(result).toContain("**Blocked URI**: blob");
-    expect(result).toContain("**Violated Directive**: img-src");
-    expect(result).toContain("**Document URI**: https://blog.sentry.io");
+    const payload = parsePayload(result);
+    expect(payload.issue.shortId).toBe("BLOG-CSP-4XC");
+    expect(payload.event).toMatchObject({
+      id: "bf5b6c7fd49f4f8da94085a43393051d",
+      type: "csp",
+      message: "Blocked 'image' from 'blob:'",
+      csp: {
+        blockedUri: "blob",
+        effectiveDirective: "img-src",
+        documentUri: expect.stringContaining("https://blog.sentry.io"),
+      },
+    });
   });
 
-  it("handles malformed event tags with null keys", async () => {
+  it("drops event tags with null keys", async () => {
     const eventWithMalformedTags = {
       id: "abc123def456",
       type: "error",
@@ -1709,15 +1625,12 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).toContain(
-      "# Issue MALFORMED-TAGS-001 in **sentry-mcp-evals**",
-    );
-    expect(result).toContain("### Tags");
-    expect(result).toContain("**level**: `error`");
-    expect(result).not.toContain("**null**");
+    expect(parsePayload(result).event.tags).toEqual([
+      { key: "level", value: "error" },
+    ]);
   });
 
-  it("displays context (extra) data when present", async () => {
+  it("returns the extra data and contexts", async () => {
     const eventWithContext = {
       id: "abc123def456",
       type: "error",
@@ -1807,17 +1720,16 @@ describe("get_issue_details", () => {
       },
     );
 
-    // Verify the context (extra) data is displayed
-    expect(result).toContain("### Extra Data");
-    expect(result).toContain("Additional data attached to this event");
-    expect(result).toContain('**custom_field**: "custom_value"');
-    expect(result).toContain('**user_action**: "submit_form"');
-    expect(result).toContain("**session_data**:");
-    expect(result).toContain('"session_id": "sess_12345"');
-    expect(result).toContain('"user_id": "user_67890"');
-    expect(result).toContain('**environment_info**: "production"');
-    // Verify contexts are still displayed
-    expect(result).toContain("### Additional Context");
+    const payload = parsePayload(result);
+    expect(payload.event.extra).toEqual({
+      custom_field: "custom_value",
+      user_action: "submit_form",
+      session_data: { session_id: "sess_12345", user_id: "user_67890" },
+      environment_info: "production",
+    });
+    expect(payload.event.contexts).toEqual({
+      runtime: { name: "node", version: "18.0.0" },
+    });
   });
 
   it("returns event details when legacy context is null", async () => {
@@ -1840,18 +1752,17 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).toContain("## Event Details");
-    expect(result).toContain(`**Event ID**: ${eventFixture.id}`);
-    expect(result).toContain(
-      "Error: Tool list_organizations is already registered",
-    );
-    expect(result).toContain("index.js:19631:28 (Object.fetch)");
-    expect(result).toContain("### Additional Context");
-    expect(result).toContain('name: "cloudflare"');
-    expect(result).not.toContain("### Extra Data");
+    const payload = parsePayload(result);
+    expect(payload.event.id).toBe(eventFixture.id);
+    expect(payload.event.extra).toBeNull();
+    expect(payload.event.exceptions?.[0]).toMatchObject({
+      type: "Error",
+      value: "Tool list_organizations is already registered",
+    });
+    expect(payload.event.contexts).toHaveProperty("cloud_resource");
   });
 
-  it("handles regressed performance issues (generic type with empty entries)", async () => {
+  it("maps a regressed performance issue, a generic event with no entries", async () => {
     // This tests the actual structure from issue #633
     // Regressed performance issues have:
     // - type: "generic"
@@ -1887,52 +1798,23 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Issue MCP-SERVER-EQE in **sentry-mcp-evals**
-
-      **Description**: Endpoint Regression
-      **Query Pattern**: \`Increased from 909.77ms to 1711.36ms (P95)\`
-      **First Seen**: 2025-09-24T03:02:10.919Z
-      **Last Seen**: 2025-11-18T06:01:20.000Z
-      **Occurrences**: 3
-      **Users Impacted**: 0
-      **Status**: unresolved
-      **Substatus**: regressed
-      **Issue Type**: performance_p95_endpoint_regression
-      **Issue Category**: metric
-      **Platform**: python
-      **Project**: mcp-server
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/MCP-SERVER-EQE
-
-      ## Event Details
-
-      **Event ID**: a6251c18f0194b8e8158518b8ee99545
-      **Type**: generic
-      **Occurred At**: 2025-11-18T06:01:20.000Z
-
-      ### Performance Regression Details
-
-      **Regression:**
-      POST /oauth/token duration increased from 909.77ms to 1711.36ms (P95)
-
-      **Transaction:**
-      POST /oauth/token
-
-      ### Tags
-
-      **level**: \`info\`
-      **transaction**: \`POST /oauth/token\`
-
-      ## Response Notes
-
-      - Commit message issue reference: \`Fixes MCP-SERVER-EQE\` automatically closes the issue when the commit is merged.
-      - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-      - Issue event search: Use the Sentry tool \`search_issue_events\`
-      "
+    const payload = parsePayload(result);
+    expect(payload.event.type).toBe("generic");
+    expect(payload.event.evidence).toMatchInlineSnapshot(`
+      [
+        {
+          "name": "Regression",
+          "value": "POST /oauth/token duration increased from 909.77ms to 1711.36ms (P95)",
+        },
+        {
+          "name": "Transaction",
+          "value": "POST /oauth/token",
+        },
+      ]
     `);
   });
 
-  it("includes external issue links when available", async () => {
+  it("returns the external issue links", async () => {
     const mockExternalIssues = [
       {
         id: "123",
@@ -1969,16 +1851,21 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).toContain("## External Issue Links");
-    expect(result).toContain(
-      "**AMP-12345** (jira): https://amplitude.atlassian.net/browse/AMP-12345",
-    );
-    expect(result).toContain(
-      "**getsentry/sentry#12345** (github): https://github.com/getsentry/sentry/issues/12345",
-    );
+    expect(parsePayload(result).externalIssues).toEqual([
+      {
+        serviceType: "jira",
+        displayName: "AMP-12345",
+        webUrl: "https://amplitude.atlassian.net/browse/AMP-12345",
+      },
+      {
+        serviceType: "github",
+        displayName: "getsentry/sentry#12345",
+        webUrl: "https://github.com/getsentry/sentry/issues/12345",
+      },
+    ]);
   });
 
-  it("omits external issue links section when none exist", async () => {
+  it("reports no external issue links when there are none", async () => {
     const result = await getIssueDetails.handler(
       {
         organizationSlug: "sentry-mcp-evals",
@@ -1990,10 +1877,10 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    expect(result).not.toContain("## External Issue Links");
+    expect(parsePayload(result).externalIssues).toBeNull();
   });
 
-  it("handles unsupported event types gracefully", async () => {
+  it("returns the issue and event identity for an unsupported event type", async () => {
     // This tests that unknown event types don't crash the tool
     // Instead, we should show the issue info and a warning about the unsupported event type
 
@@ -2046,6 +1933,7 @@ describe("get_issue_details", () => {
       ),
     );
 
+    const logIssueSpy = vi.spyOn(logging, "logIssue");
     const result = await getIssueDetails.handler(
       {
         organizationSlug: "sentry-mcp-evals",
@@ -2057,55 +1945,18 @@ describe("get_issue_details", () => {
       baseContext,
     );
 
-    const text = typeof result === "string" ? result : getTextContent(result);
-
-    // Extract the Sentry Event ID from the result (it varies per run)
-    const sentryEventIdMatch = text.match(
-      /Sentry Event ID \*\*([a-f0-9]{32})\*\*/,
+    const payload = parsePayload(result);
+    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.aiConversations).toEqual([
+      { conversationId: "conv-unsupported", spanId: "span-unsupported" },
+    ]);
+    // still reported, so support for the type gets added
+    expect(logIssueSpy).toHaveBeenCalledWith(
+      "Unsupported event type encountered: future_ai_agent_trace",
+      expect.anything(),
     );
-    const sentryEventId = sentryEventIdMatch
-      ? sentryEventIdMatch[1]
-      : "SENTRY_EVENT_ID";
-
-    // Replace the dynamic Sentry Event ID with a placeholder for snapshot testing
-    const normalizedResult = text.replace(
-      /Sentry Event ID \*\*[a-f0-9]{32}\*\*/,
-      "Sentry Event ID **<SENTRY_EVENT_ID>**",
-    );
-
-    expect(normalizedResult).toMatchInlineSnapshot(`
-      "# Issue FUTURE-TYPE-001 in **sentry-mcp-evals**
-
-      **Description**: Future Event Type Issue
-      **Culprit**: some.module
-      **First Seen**: 2025-01-01T00:00:00.000Z
-      **Last Seen**: 2025-01-01T01:00:00.000Z
-      **Occurrences**: 1
-      **Users Impacted**: 1
-      **Status**: unresolved
-      **Issue Type**: error
-      **Issue Category**: error
-      **Platform**: python
-      **Project**: mcp-server
-      **URL**: https://sentry-mcp-evals.sentry.io/issues/FUTURE-TYPE-001
-
-      ## Event Details
-
-      ⚠️  **Warning**: Unsupported event type "future_ai_agent_trace"
-
-      This event type is not yet fully supported by the MCP server. Only basic issue information is shown above.
-
-      **Please report this**: Open a GitHub issue at https://github.com/getsentry/sentry-mcp/issues/new and include Event ID **ffffffffffffffffffffffffffffffff** and Sentry Event ID **<SENTRY_EVENT_ID>** to help us add support for this event type.
-
-      ## Response Notes
-
-      - Agent conversation found in this trace: \`conv-unsupported\`. Matching span: \`span-unsupported\`.
-      - Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-unsupported"})\` to fetch the full transcript.
-      "
-    `);
-
-    // Verify we actually got a Sentry Event ID
-    expect(sentryEventId).toMatch(/^[a-f0-9]{32}$/);
+    logIssueSpy.mockRestore();
   });
 
   it("rejects issues outside the active project constraint", async () => {
@@ -2179,39 +2030,51 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns markdown outside experimental mode", async () => {
+  it("returns the same structured payload outside experimental mode", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
 
-    expect(result).not.toHaveProperty("structuredContent");
-    expect(result).toContain("CLOUDFLARE-MCP-41");
+    mockLatestEvent();
+    const experimental = await getIssueDetails.handler(
+      params,
+      experimentalContext,
+    );
+
+    expect(parsePayload(result)).toEqual(parsePayload(experimental));
   });
 
-  it("renders the event body itself rather than asking the api for one", async () => {
+  it("maps the event entries into fields rather than rendering markdown", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(typeof payload.event.body).toBe("string");
-    expect(payload.event.body).toContain("### Error");
-    expect(payload.event.body).toContain("Something went wrong");
-    expect(payload.event.body).toContain("### Tags");
+    expect(payload.event).not.toHaveProperty("body");
+    expect(payload.event.message).toBe("Something went wrong");
+    expect(payload.event.tags).toEqual([
+      { key: "level", value: "error" },
+      { key: "environment", value: "production" },
+    ]);
   });
 
-  it("carries the response notes, which say which tool to call next", async () => {
+  it("offers the follow-up calls the markdown notes describe as actions", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.responseNotes.length).toBeGreaterThan(0);
-    const notes = payload.responseNotes.join("\n");
-    expect(notes).toContain("Fixes CLOUDFLARE-MCP-41");
-    expect(notes).toContain("search_issue_events");
+    expect(payload).not.toHaveProperty("responseNotes");
+    expect(payload.suggestedActions).toContainEqual(
+      expect.objectContaining({
+        toolName: "get_issue_breadcrumbs",
+        arguments: {
+          issueUrl: expect.stringContaining("CLOUDFLARE-MCP-41"),
+        },
+      }),
+    );
   });
 
   it("carries the top level message, which the body does not render", async () => {
@@ -2224,7 +2087,95 @@ describe("structuredContent", () => {
     expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
   });
 
-  it("keeps an unsupported event type on the markdown path", async () => {
+  it("returns structured content for an unsupported event type", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
+        () => HttpResponse.json(createUnknownEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/FUTURE-TYPE-001",
+        () => HttpResponse.json(createUnsupportedIssue()),
+      ),
+    );
+
+    const logIssueSpy = vi.spyOn(logging, "logIssue");
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "FUTURE-TYPE-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.exceptions).toBeNull();
+    expect(payload.event.tags).toEqual([{ key: "level", value: "error" }]);
+    // still reported, so support for the type gets added
+    expect(logIssueSpy).toHaveBeenCalledWith(
+      "Unsupported event type encountered: future_ai_agent_trace",
+      expect.anything(),
+    );
+    logIssueSpy.mockRestore();
+  });
+
+  // Sentry's event serializer sends dateCreated and dateReceived on every
+  // event, but the transaction and unknown (CSP and others) event schemas
+  // drop dateCreated, so occurredAt comes from dateReceived.
+  it("takes occurredAt from dateReceived for a transaction event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () =>
+          HttpResponse.json(
+            createPerformanceEvent({
+              dateReceived: "2025-08-06T18:00:01.250000Z",
+            }),
+          ),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "PERF-N1-001" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("transaction");
+    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+  });
+
+  it("takes occurredAt from dateReceived for a CSP event", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/4256774711/events/latest/",
+        () => HttpResponse.json(createCspEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/BLOG-CSP-4XC/",
+        () => HttpResponse.json(createCspIssue()),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(
+      { ...params, issueId: "BLOG-CSP-4XC" },
+      experimentalContext,
+    );
+    const payload = getStructuredContent<Record<string, any>>(result);
+
+    expect(payload.event.type).toBe("csp");
+    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+  });
+
+  it("takes occurredAt from dateReceived for an unknown event type", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/*/issues/7777777777/events/latest/",
@@ -2240,12 +2191,13 @@ describe("structuredContent", () => {
       { ...params, issueId: "FUTURE-TYPE-001" },
       experimentalContext,
     );
+    const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(result).not.toHaveProperty("structuredContent");
-    expect(result).toContain('Unsupported event type "future_ai_agent_trace"');
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
   });
 
-  it("renders a transaction, whose body carries the performance trace", async () => {
+  it("maps a transaction's N+1 evidence and its spans", async () => {
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
@@ -2254,6 +2206,10 @@ describe("structuredContent", () => {
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
         () => HttpResponse.json(createPerformanceEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/abcdef1234567890abcdef1234567890/",
+        () => HttpResponse.json(createTraceResponseFixture()),
       ),
     );
 
@@ -2265,7 +2221,51 @@ describe("structuredContent", () => {
       .structuredContent;
 
     expect(payload.event.type).toBe("transaction");
-    expect(payload.event.body).toContain("Span");
+    expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    expect(payload.event.performance).toMatchObject({
+      issueType: "performance_n_plus_one_db_queries",
+      transactionName: "/api/users",
+      parentOperation: "GET /api/users",
+      repeatCount: 3,
+      repeatedOperations: expect.arrayContaining([
+        expect.stringContaining("SELECT"),
+      ]),
+    });
+    // the span tree from the fetched trace, parents linked by id
+    expect(payload.event.performance.spans).toEqual([
+      {
+        spanId: "parent123",
+        parentSpanId: null,
+        op: "http.server",
+        description: "GET /api/users",
+        durationMs: 250,
+        isOffender: false,
+      },
+      {
+        spanId: "span001",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 1",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span002",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 2",
+        durationMs: 5,
+        isOffender: true,
+      },
+      {
+        spanId: "span003",
+        parentSpanId: "parent123",
+        op: "db.query",
+        description: "SELECT * FROM users WHERE id = 3",
+        durationMs: 5,
+        isOffender: true,
+      },
+    ]);
   });
 
   it("keeps the attached replay, which lives on the event not the related list", async () => {
@@ -2295,7 +2295,7 @@ describe("structuredContent", () => {
     expect(payload.replays?.related).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
-    expect(payload.event.body).not.toContain(
+    expect(JSON.stringify(payload.event)).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
   });
@@ -2506,7 +2506,6 @@ describe("suspect commits", () => {
     issueUrl: undefined,
     regionUrl: null,
   };
-  const experimentalContext = { ...baseContext, experimentalMode: true };
   const committersUrl = `https://sentry.io/api/0/projects/sentry-mcp-evals/CLOUDFLARE-MCP/events/${fixtureEventId}/committers/`;
 
   function mockEvent(eventSelector = "latest") {
@@ -2530,69 +2529,47 @@ describe("suspect commits", () => {
     vi.restoreAllMocks();
   });
 
-  describe.each([
-    { mode: "structured JSON", context: experimentalContext, structured: true },
-    { mode: "Markdown", context: baseContext, structured: false },
-  ])("$mode", ({ context, structured }) => {
-    it.each([
-      { selection: "latest event", eventId: undefined },
-      {
-        selection: "explicit event ID",
-        eventId: fixtureEventId,
-      },
-    ])(
-      "includes the suspect commit for the $selection",
-      async ({ eventId }) => {
-        mockEvent(eventId);
-        mswServer.use(
-          http.get(committersUrl, () =>
-            HttpResponse.json({
-              committers: [
+  it.each([
+    { selection: "latest event", eventId: undefined },
+    {
+      selection: "explicit event ID",
+      eventId: fixtureEventId,
+    },
+  ])("includes the suspect commit for the $selection", async ({ eventId }) => {
+    mockEvent(eventId);
+    mswServer.use(
+      http.get(committersUrl, () =>
+        HttpResponse.json({
+          committers: [
+            {
+              author: { name: "Jane Developer", email: "jane@example.com" },
+              commits: [
                 {
-                  author: { name: "Jane Developer", email: "jane@example.com" },
-                  commits: [
-                    {
-                      id: sha,
-                      message: "Fix duplicate tool registration",
-                      suspectCommitType: "via SCM integration",
-                    },
-                  ],
+                  id: sha,
+                  message: "Fix duplicate tool registration",
+                  suspectCommitType: "via SCM integration",
                 },
               ],
-            }),
-          ),
-        );
-
-        const result = await getIssueDetails.handler(
-          { ...params, eventId },
-          context,
-        );
-
-        if (structured) {
-          const payload = getIssueDetailsOutputSchema.parse(
-            getStructuredContent(result),
-          );
-          expect(payload.suspectCommit).toEqual({
-            id: sha,
-            message: "Fix duplicate tool registration",
-            author: "Jane Developer",
-            suspectCommitType: "via SCM integration",
-          });
-        } else {
-          expect(result).toContain(`## Suspect Commit
-
-**SHA**: \`${sha}\`
-**Message**: Fix duplicate tool registration
-**Author**: Jane Developer
-**Source**: via SCM integration
-
-## Event Details`);
-        }
-      },
+            },
+          ],
+        }),
+      ),
     );
+
+    const result = await getIssueDetails.handler(
+      { ...params, eventId },
+      baseContext,
+    );
+
+    expect(parsePayload(result).suspectCommit).toEqual({
+      id: sha,
+      message: "Fix duplicate tool registration",
+      author: "Jane Developer",
+      suspectCommitType: "via SCM integration",
+    });
   });
 
-  it("uses the author's email and omits a null commit message from Markdown", async () => {
+  it("uses the author's email when the commit has no message", async () => {
     mockEvent();
     mswServer.use(
       http.get(committersUrl, () =>
@@ -2615,13 +2592,12 @@ describe("suspect commits", () => {
 
     const result = await getIssueDetails.handler(params, baseContext);
 
-    expect(result).toContain(`## Suspect Commit
-
-**SHA**: \`${sha}\`
-**Author**: dev@example.com
-**Source**: via commit in release
-
-## Event Details`);
+    expect(parsePayload(result).suspectCommit).toEqual({
+      id: sha,
+      message: null,
+      author: "dev@example.com",
+      suspectCommitType: "via commit in release",
+    });
   });
 
   it.each([
@@ -2658,7 +2634,7 @@ describe("suspect commits", () => {
         http.get(committersUrl, () => HttpResponse.json(body, { status })),
       );
 
-      const result = await getIssueDetails.handler(params, experimentalContext);
+      const result = await getIssueDetails.handler(params, baseContext);
       const payload = getIssueDetailsOutputSchema.parse(
         getStructuredContent(result),
       );
@@ -2677,4 +2653,840 @@ describe("suspect commits", () => {
       }
     },
   );
+});
+
+describe("selected event package versions", () => {
+  beforeEach(() => mswServer.resetHandlers());
+  afterEach(() => mswServer.resetHandlers());
+  const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+  const params = {
+    organizationSlug: "sentry-mcp-evals",
+    issueId: "CLOUDFLARE-MCP-41",
+    eventId,
+    regionUrl: null,
+    packageNames: ["example", "@example/client", "missing"],
+  };
+
+  function mockPackages(
+    packages: unknown,
+    suppliedFormatting: boolean | "json" = true,
+  ) {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        ({ request }) => {
+          expect(new URL(request.url).searchParams.get("llmFormat")).toBeNull();
+          return HttpResponse.json({
+            ...createDefaultEvent({ id: eventId, contexts: {} }),
+            packages,
+            formatted:
+              suppliedFormatting === "json"
+                ? {
+                    format: "json",
+                    content: JSON.stringify({ message: "Synthetic event" }),
+                  }
+                : suppliedFormatting
+                  ? {
+                      format: "markdown",
+                      content: "### Message\n\nSynthetic event",
+                    }
+                  : undefined,
+          });
+        },
+      ),
+    );
+  }
+
+  it("retains only selected packages in structured event output", async () => {
+    mockPackages(
+      { example: "1.2.3", "@example/client": "2.0.0", unrelated: "9.9.9" },
+      "json",
+    );
+    const result = await getIssueDetails.handler(params, baseContext);
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event).toHaveProperty("packageVersions", {
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "recorded",
+          version: "1.2.3",
+          truncated: false,
+        },
+        {
+          name: "@example/client",
+          status: "recorded",
+          version: "2.0.0",
+          truncated: false,
+        },
+        {
+          name: "missing",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("unrelated");
+    expect(payload.event.message).toBe("Something went wrong");
+    expect(payload).toMatchInlineSnapshot(`
+      {
+        "aiConversations": null,
+        "codeLocation": null,
+        "event": {
+          "contexts": null,
+          "crashedThread": null,
+          "csp": null,
+          "evidence": null,
+          "exceptions": null,
+          "extra": null,
+          "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
+          "message": "Something went wrong",
+          "metricAlert": null,
+          "occurredAt": "2025-10-02T12:00:00.000Z",
+          "packageVersions": {
+            "metadataAvailable": true,
+            "packages": [
+              {
+                "name": "example",
+                "status": "recorded",
+                "truncated": false,
+                "version": "1.2.3",
+              },
+              {
+                "name": "@example/client",
+                "status": "recorded",
+                "truncated": false,
+                "version": "2.0.0",
+              },
+              {
+                "name": "missing",
+                "status": "not_listed",
+                "truncated": false,
+                "version": null,
+              },
+            ],
+          },
+          "performance": null,
+          "platform": "python",
+          "request": null,
+          "tags": [
+            {
+              "key": "level",
+              "value": "error",
+            },
+            {
+              "key": "environment",
+              "value": "production",
+            },
+          ],
+          "threadCount": 0,
+          "threads": null,
+          "type": "default",
+          "user": null,
+        },
+        "externalIssues": null,
+        "issue": {
+          "assignedTo": "Jane Developer",
+          "culprit": "Object.fetch(index)",
+          "firstSeen": "2025-04-03T22:51:19.403000Z",
+          "issueCategory": "error",
+          "issueType": "error",
+          "lastSeen": "2025-04-12T11:34:11Z",
+          "location": null,
+          "occurrences": 25,
+          "platform": "javascript",
+          "project": "CLOUDFLARE-MCP",
+          "queryPattern": null,
+          "seerActionability": null,
+          "shortId": "CLOUDFLARE-MCP-41",
+          "status": "unresolved",
+          "substatus": "ongoing",
+          "title": "Error: Tool list_organizations is already registered",
+          "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+          "usersImpacted": 1,
+        },
+        "replays": null,
+        "seer": null,
+        "sideQuests": [
+          {
+            "docs": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+            "id": "missing_stack_trace",
+            "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+          },
+          {
+            "docs": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+            "id": "missing_user_identity",
+            "tip": "The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough.",
+          },
+        ],
+        "suggestedActions": [
+          {
+            "arguments": {
+              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+            },
+            "reason": "Read the breadcrumb trail leading up to this event.",
+            "toolName": "get_issue_breadcrumbs",
+            "type": "tool_call",
+          },
+        ],
+        "suspectCommit": null,
+      }
+    `);
+  });
+
+  it.each([undefined, null, {}])(
+    "reports unavailable structured metadata for %j",
+    async (packages) => {
+      mockPackages(packages, "json");
+      const payload = getIssueDetailsOutputSchema.parse(
+        getStructuredContent(
+          await getIssueDetails.handler(params, baseContext),
+        ),
+      );
+      expect(payload.event.packageVersions).toEqual({
+        metadataAvailable: false,
+        packages: [],
+      });
+    },
+  );
+
+  it("preserves package states, exact names, bounds, and raw strings in structured output", async () => {
+    const specialName = "<example>\n*client*";
+    const specialVersion = "<version>\n`1.0`";
+    mockPackages(
+      {
+        example: null,
+        blank: " ",
+        long: "v".repeat(300),
+        [specialName]: specialVersion,
+      },
+      "json",
+    );
+    const result = await getIssueDetails.handler(
+      {
+        ...params,
+        packageNames: [
+          "example",
+          "blank",
+          "Example",
+          "constructor",
+          "long",
+          specialName,
+          "long",
+        ],
+      },
+      baseContext,
+    );
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+    expect(payload.event.packageVersions).toEqual({
+      metadataAvailable: true,
+      packages: [
+        {
+          name: "example",
+          status: "version_not_recorded",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "blank",
+          status: "version_not_recorded",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "Example",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "constructor",
+          status: "not_listed",
+          version: null,
+          truncated: false,
+        },
+        {
+          name: "long",
+          status: "recorded",
+          version: "v".repeat(256),
+          truncated: true,
+        },
+        {
+          name: specialName,
+          status: "recorded",
+          version: specialVersion,
+          truncated: false,
+        },
+      ],
+    });
+  });
+
+  it("preserves structured output when package selection is omitted", async () => {
+    mockPackages({ example: "1.2.3" }, "json");
+    const withMetadata = await getIssueDetails.handler(
+      { ...params, packageNames: undefined },
+      baseContext,
+    );
+    mockPackages(undefined, "json");
+    const withoutMetadata = await getIssueDetails.handler(
+      { ...params, packageNames: undefined },
+      baseContext,
+    );
+    expect(withMetadata).toEqual(withoutMetadata);
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(withMetadata),
+    );
+    expect(payload.event).not.toHaveProperty("packageVersions");
+  });
+
+  it("ignores supplied markdown formatting and keeps unrelated packages out", async () => {
+    mockPackages({
+      example: "1.2.3",
+      "@example/client": "2.0.0",
+      unrelated: "9.9.9",
+    });
+    const result = await getIssueDetails.handler(params, baseContext);
+    const payload = parsePayload(result);
+    expect(payload.event.packageVersions?.packages.map((p) => p.name)).toEqual([
+      "example",
+      "@example/client",
+      "missing",
+    ]);
+    expect(JSON.stringify(result)).not.toContain("unrelated");
+    expect(JSON.stringify(result)).not.toContain("Synthetic event");
+  });
+
+  it("distinguishes absent names and unrecorded versions", async () => {
+    mockPackages({ example: null, "@example/client": "" });
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(
+      parsePayload(result).event.packageVersions?.packages.map(
+        ({ name, status }) => ({ name, status }),
+      ),
+    ).toEqual([
+      { name: "example", status: "version_not_recorded" },
+      { name: "@example/client", status: "version_not_recorded" },
+      { name: "missing", status: "not_listed" },
+    ]);
+  });
+
+  it("matches exact names, deduplicates selections, and ignores inherited properties", async () => {
+    mockPackages({ example: "1" });
+    const result = await getIssueDetails.handler(
+      {
+        ...params,
+        packageNames: ["example", "example", "Example", "constructor"],
+      },
+      baseContext,
+    );
+    expect(
+      parsePayload(result).event.packageVersions?.packages.map(
+        ({ name, status }) => ({ name, status }),
+      ),
+    ).toEqual([
+      { name: "example", status: "recorded" },
+      { name: "Example", status: "not_listed" },
+      { name: "constructor", status: "not_listed" },
+    ]);
+  });
+
+  it("preserves surrounding spaces in selected package names and versions", async () => {
+    mockPackages({ " example ": " 1.2.3 " });
+    const result = await getIssueDetails.handler(
+      { ...params, packageNames: [" example "] },
+      baseContext,
+    );
+    expect(parsePayload(result).event.packageVersions?.packages).toEqual([
+      {
+        name: " example ",
+        status: "recorded",
+        version: " 1.2.3 ",
+        truncated: false,
+      },
+    ]);
+  });
+
+  it.each(
+    [
+      [],
+      Array.from({ length: 11 }, (_, i) => `package${i}`),
+      [""],
+      ["x".repeat(257)],
+    ].map((packageNames) => ({ packageNames })),
+  )("rejects out-of-bounds selection %j", ({ packageNames }) => {
+    expect(
+      z
+        .object(getIssueDetails.inputSchema)
+        .safeParse({ ...params, packageNames }).success,
+    ).toBe(false);
+  });
+
+  it("accepts the maximum bounded selection", async () => {
+    const packageNames = Array.from(
+      { length: 10 },
+      (_, i) => `${i}${"x".repeat(255)}`,
+    );
+    mockPackages(
+      Object.fromEntries(packageNames.map((name) => [name, "v".repeat(256)])),
+    );
+    const input = z
+      .object(getIssueDetails.inputSchema)
+      .parse({ ...params, packageNames });
+    const result = await getIssueDetails.handler(input, baseContext);
+    const packages = parsePayload(result).event.packageVersions?.packages;
+    expect(packages).toHaveLength(10);
+    expect(
+      packages?.every(
+        (entry) =>
+          entry.status === "recorded" &&
+          entry.version === "v".repeat(256) &&
+          !entry.truncated,
+      ),
+    ).toBe(true);
+  });
+
+  it("retains selected packages even for an unsupported event type", async () => {
+    mswServer.use(
+      http.get(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+        () =>
+          HttpResponse.json({
+            ...createUnknownEvent({ id: eventId, contexts: {} }),
+            packages: { example: "1.2.3" },
+          }),
+      ),
+    );
+    const result = await getIssueDetails.handler(params, baseContext);
+    const payload = parsePayload(result);
+    expect(payload.event.type).toBe("future_ai_agent_trace");
+    expect(payload.event.packageVersions?.packages[0]).toEqual({
+      name: "example",
+      status: "recorded",
+      version: "1.2.3",
+      truncated: false,
+    });
+  });
+
+  it("requires an exact event", async () => {
+    await expect(
+      getIssueDetails.handler({ ...params, eventId: undefined }, baseContext),
+    ).rejects.toThrow("requires an explicit `eventId`");
+  });
+});
+
+describe("side quests", () => {
+  const params = {
+    organizationSlug: "sentry-mcp-evals",
+    issueId: "CLOUDFLARE-MCP-41",
+    eventId: undefined,
+    issueUrl: undefined,
+    regionUrl: null,
+  };
+  const experimentalContext = { ...baseContext, experimentalMode: true };
+
+  function mockLatestEvent(event: Record<string, unknown>) {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/latest/",
+        () => HttpResponse.json(event),
+      ),
+    );
+  }
+
+  // the fixture's user has only an IP address; give it an id to isolate other quests
+  const identifiedUser = { ...eventFixture.user, id: "8f3c2a" };
+
+  type SideQuests = { sideQuests?: { id: string; tip: string }[] };
+
+  async function getSideQuestIds(issueId = params.issueId) {
+    const result = await getIssueDetails.handler(
+      { ...params, issueId },
+      experimentalContext,
+    );
+    return (getStructuredContent<SideQuests>(result).sideQuests ?? []).map(
+      ({ id }) => id,
+    );
+  }
+
+  afterEach(() => mswServer.resetHandlers());
+
+  it("suggests fixing source maps and identifying users in structured output", async () => {
+    // the fixture's own js_no_source error and IP-only user, with no override
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getStructuredContent<SideQuests>(result);
+
+    expect(payload.sideQuests).toMatchInlineSnapshot(`
+      [
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+          "id": "js_source_maps",
+          "tip": "Source maps weren't applied, so frames may be minified: \`/index.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files.",
+        },
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/configuration/apis/",
+          "id": "missing_user_identity",
+          "tip": "The user is identified only by IP, so Users Impacted is approximate. Call \`Sentry.setUser({ id: user.id })\` after sign-in; an opaque ID is enough.",
+        },
+      ]
+    `);
+  });
+
+  it("dedupes source map errors by type and caps the files", async () => {
+    mockLatestEvent({
+      ...eventFixture,
+      user: identifiedUser,
+      errors: [
+        ...["a", "b", "c", "d"].map((name) => ({
+          type: "js_no_source",
+          message: "Source code was not found",
+          data: { symbolicator_type: "missing_source", url: `/${name}.js` },
+        })),
+        {
+          type: "js_invalid_sourcemap_location",
+          message: "Invalid location in sourcemap",
+          data: { column: 27, row: 7809, source: "/a.js" },
+        },
+        // not a source map problem
+        { type: "invalid_data", message: "Discarded invalid value", data: {} },
+        // malformed entries must not fail the event
+        { message: "no type" },
+        null,
+      ],
+    });
+
+    const result = await getIssueDetails.handler(params, baseContext);
+    const payload = getStructuredContent<SideQuests>(result);
+
+    // the warning lives in the tip, not inline next to the stacktrace
+    expect(JSON.stringify(result)).not.toContain("⚠️");
+    // one side quest for the whole event, however many error types it has
+    expect(payload.sideQuests).toMatchInlineSnapshot(`
+      [
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+          "id": "js_source_maps",
+          "tip": "Source maps weren't applied to \`/a.js\`, \`/b.js\`, \`/c.js\`, and 1 more, so frames may be minified: the source file or its source map was not found; the source map does not match the minified file. Upload source maps for this release from the same build that was deployed.",
+        },
+      ]
+    `);
+  });
+
+  it("falls back to the fix for the error types when the source map check fails", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/:project/events/:eventId/source-map-debug/",
+        () => HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      ),
+    );
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const [quest] = getStructuredContent<SideQuests>(result).sideQuests ?? [];
+
+    expect(quest).toEqual({
+      id: "js_source_maps",
+      tip: "Source maps weren't applied to `/index.js`, so frames may be minified: the source file or its source map was not found. Upload source maps for this release from the same build that was deployed.",
+      docs: "https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/",
+    });
+  });
+
+  it("omits the section and the key when the event has no side quests", async () => {
+    mockLatestEvent({
+      ...eventFixture,
+      user: identifiedUser,
+      errors: [
+        {
+          type: "native_missing_dsym",
+          message: "A required debug information file was missing.",
+          data: {},
+        },
+      ],
+    });
+    let checked = false;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/:project/events/:eventId/source-map-debug/",
+        () => {
+          checked = true;
+          return HttpResponse.json({}, { status: 500 });
+        },
+      ),
+    );
+
+    const result = await getIssueDetails.handler(params, baseContext);
+    expect(getStructuredContent(result)).not.toHaveProperty("sideQuests");
+    // a healthy event needs no source map check
+    expect(checked).toBe(false);
+  });
+
+  it("suggests identifying users after source maps when the user has only an IP address", async () => {
+    // the fixture's own IP-only user and js_no_source error
+    expect(await getSideQuestIds()).toEqual([
+      "js_source_maps",
+      "missing_user_identity",
+    ]);
+  });
+
+  it("suggests identifying users when the event has no user", async () => {
+    // a Python message event with `user: null`
+    mockLatestEvent(createDefaultEvent());
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getStructuredContent<SideQuests>(result);
+
+    expect(payload.sideQuests).toMatchInlineSnapshot(`
+      [
+        {
+          "docs": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+          "id": "missing_stack_trace",
+          "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+        },
+        {
+          "docs": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+          "id": "missing_user_identity",
+          "tip": "The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough.",
+        },
+      ]
+    `);
+  });
+
+  it("does not suggest identifying users when the event has a user id", async () => {
+    mockLatestEvent({ ...eventFixture, user: identifiedUser });
+
+    expect(await getSideQuestIds()).toEqual(["js_source_maps"]);
+  });
+
+  it("does not suggest identifying users for performance or generic issues", async () => {
+    // both events have `user: null`
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+        () => HttpResponse.json(createPerformanceIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/7890123456/events/latest/",
+        () => HttpResponse.json(createPerformanceEvent()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/MCP-SERVER-EQE/",
+        () => HttpResponse.json(createRegressedIssue()),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6898891101/events/latest/",
+        () => HttpResponse.json(createGenericEvent()),
+      ),
+    );
+
+    expect(await getSideQuestIds("PERF-N1-001")).toEqual([]);
+    expect(await getSideQuestIds("MCP-SERVER-EQE")).toEqual([]);
+  });
+
+  describe("missing stack trace", () => {
+    const defaultTags = createDefaultEvent().tags;
+
+    async function getStackQuest() {
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const { sideQuests } = getStructuredContent<SideQuests>(result);
+      return sideQuests?.find(({ id }) => id === "missing_stack_trace") ?? null;
+    }
+
+    // a Python `logger.error("...")` call captured by the logging integration
+    function pythonLogEvent(entries: unknown[] = createDefaultEvent().entries) {
+      return createDefaultEvent({
+        tags: [...defaultTags, { key: "logger", value: "myapp.tasks" }],
+        entries: entries as never,
+      });
+    }
+
+    // a browser event whose only exception has the given value
+    function jsException(value: string, stacktrace: unknown = null) {
+      return {
+        ...eventFixture,
+        user: identifiedUser,
+        errors: [],
+        title: value,
+        entries: [
+          {
+            type: "exception",
+            data: {
+              values: [
+                {
+                  type: "UnhandledRejection",
+                  value,
+                  mechanism: { type: "onunhandledrejection", handled: false },
+                  stacktrace,
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    it("suggests logging with the exception for a logging event", async () => {
+      mockLatestEvent(pythonLogEvent());
+
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
+        {
+          "docs": "https://docs.sentry.io/platforms/python/integrations/logging/",
+          "id": "missing_stack_trace",
+          "tip": "This event came from the \`myapp.tasks\` logger with no exception attached. Log inside the \`except\` block with \`logger.exception(...)\`, or set \`attach_stacktrace=True\` in \`sentry_sdk.init\`.",
+        }
+      `);
+    });
+
+    it("suggests passing the Error to console.error for a console event", async () => {
+      mockLatestEvent(
+        createDefaultEvent({
+          platform: "javascript",
+          tags: [...defaultTags, { key: "logger", value: "console" }],
+        }),
+      );
+
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/configuration/integrations/captureconsole/",
+          "id": "missing_stack_trace",
+          "tip": "This event came from the \`console\` logger with no exception attached. Pass the \`Error\` itself to \`console.error(...)\`, or set \`attachStacktrace: true\` in \`Sentry.init\`.",
+        }
+      `);
+    });
+
+    it("suggests capturing an exception for a message event", async () => {
+      mockLatestEvent(createDefaultEvent({ platform: "node" }));
+
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/guides/node/configuration/options/#attachStacktrace",
+          "id": "missing_stack_trace",
+          "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`Sentry.captureException(err)\` instead, or set \`attachStacktrace: true\` to attach the current stack to messages.",
+        }
+      `);
+    });
+
+    it("suggests throwing Error objects for a non-Error rejection", async () => {
+      mockLatestEvent(
+        jsException(
+          "Non-Error promise rejection captured with value: undefined",
+        ),
+      );
+
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/troubleshooting/#events-with-non-error-exception",
+          "id": "missing_stack_trace",
+          "tip": "The code threw or rejected with a value that is not an \`Error\`, so there was no stack to capture. Wrap the value in \`new Error(...)\` where it is thrown or rejected.",
+        }
+      `);
+    });
+
+    it("suggests CORS headers for a cross-origin script error", async () => {
+      // the browser SDK adds a placeholder frame for the page URL
+      mockLatestEvent(
+        jsException("Script error.", {
+          frames: [
+            {
+              filename: "https://example.com/",
+              function: "?",
+              lineNo: 0,
+              colNo: 0,
+              inApp: true,
+            },
+          ],
+        }),
+      );
+
+      expect(await getStackQuest()).toMatchInlineSnapshot(`
+        {
+          "docs": "https://docs.sentry.io/platforms/javascript/troubleshooting/#cors-attributes-and-headers",
+          "id": "missing_stack_trace",
+          "tip": "The browser hid this error's message and stack because the script came from another origin. Add \`crossorigin="anonymous"\` to its \`<script>\` tag and serve the script with an \`Access-Control-Allow-Origin\` header.",
+        }
+      `);
+    });
+
+    it("raises nothing for an exception without frames and no known cause", async () => {
+      mockLatestEvent(
+        createDefaultEvent({
+          type: "error",
+          title: "ValueError: bad input",
+          entries: [
+            {
+              type: "exception",
+              data: { values: [{ type: "ValueError", value: "bad input" }] },
+            },
+          ] as never,
+        }),
+      );
+
+      expect(await getStackQuest()).toBeNull();
+    });
+
+    it("raises nothing when a thread has the stack", async () => {
+      // a native crash: the exception has no frames, the crashed thread does
+      mockLatestEvent({
+        ...eventFixture,
+        platform: "native",
+        user: identifiedUser,
+        errors: [],
+        entries: [
+          {
+            type: "exception",
+            data: { values: [{ type: "EXC_BAD_ACCESS", value: "crash" }] },
+          },
+          {
+            type: "threads",
+            data: {
+              values: [
+                {
+                  id: 1,
+                  crashed: true,
+                  stacktrace: {
+                    frames: [
+                      { function: "main", filename: "main.c", lineNo: 3 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      expect(await getStackQuest()).toBeNull();
+
+      // a Python logging call with `stack_info=True` puts it on the current thread
+      mockLatestEvent(
+        pythonLogEvent([
+          ...createDefaultEvent().entries,
+          {
+            type: "threads",
+            data: {
+              values: [
+                {
+                  current: true,
+                  crashed: false,
+                  stacktrace: {
+                    frames: [
+                      { function: "run", filename: "tasks.py", lineNo: 12 },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ]),
+      );
+      expect(await getStackQuest()).toBeNull();
+    });
+
+    it("raises nothing when the event has a stack", async () => {
+      mockLatestEvent({ ...eventFixture, user: identifiedUser });
+
+      expect(await getStackQuest()).toBeNull();
+    });
+  });
 });

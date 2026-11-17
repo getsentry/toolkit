@@ -5,30 +5,20 @@ import {
   runSearchEvents,
   searchToolBase,
 } from "../support/search-events/search";
+import { searchReplaysOutputSchema } from "../support/search-events/replays";
 
 export default defineTool({
   ...searchToolBase("search_replays"),
   name: "search_replays",
-  description: [
-    "Search Sentry session replays: rage clicks, dead clicks, visited pages, errors seen, and replay users.",
-    "",
-    "`query` is natural language (preferred) or replay search syntax; a configured agent translates it into a replay search.",
-    "",
-    "Returns replay lists only; count()/avg()/sum() are not supported. Use get_replay_details on a result for one replay.",
-    "",
-    "<examples>",
-    "search_replays(organizationSlug='my-org', query='replays with rage clicks on checkout in the last day')",
-    "search_replays(organizationSlug='my-org', query='count_errors:>0', sort='-count_errors')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- name/otherName notation means <organizationSlug>/<projectSlug>; parse it directly, don't call find_organizations/find_projects.",
-    "</hints>",
-  ].join("\n"),
+  title: "Search Replays",
+  description:
+    "Search Sentry session replays by rage clicks, dead clicks, visited pages, errors seen, and users. Returns replay lists, not counts or aggregates.",
   inputSchema: buildReplaySearchInputSchema(),
+  outputSchema: searchReplaysOutputSchema,
   async handler(params, context: ServerContext) {
     return await runSearchEvents({ ...params, dataset: "replays" }, context, {
       lockDataset: true,
+      output: "structured",
     });
   },
 });

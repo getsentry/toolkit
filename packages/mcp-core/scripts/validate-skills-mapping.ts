@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Validation script for skills-to-scopes mapping
  *

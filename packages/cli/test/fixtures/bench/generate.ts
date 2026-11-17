@@ -105,7 +105,7 @@ class XorShift32 {
 
   /** Pick one element from `arr`. */
   pick<T>(arr: readonly T[]): T {
-    return arr[this.int(arr.length)] as T;
+    return arr[this.int(arr.length)];
   }
 
   /** Boolean true with probability `p`. */

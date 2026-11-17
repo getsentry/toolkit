@@ -12,17 +12,14 @@ import {
 } from "./logger.js";
 
 describe("Logger", () => {
-  let processStdoutWriteSpy: ReturnType<typeof vi.spyOn>;
   let capturedOutput: string;
 
   beforeEach(() => {
     capturedOutput = "";
-    processStdoutWriteSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation((chunk) => {
-        capturedOutput += chunk;
-        return true;
-      });
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      capturedOutput += chunk;
+      return true;
+    });
   });
 
   afterEach(() => {

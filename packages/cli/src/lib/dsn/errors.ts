@@ -5,6 +5,7 @@
  * Provides helpful context and suggestions for resolving issues.
  */
 
+import { sentry } from "../app-identity.js";
 import { getDsnSourceDescription } from "./detector.js";
 import { SENTRY_DSN_ENV } from "./env.js";
 import { getAccessibleProjects } from "./resolver.js";
@@ -31,11 +32,11 @@ export function formatConflictError(result: DsnDetectionResult): string {
   });
 
   lines.push("To resolve, specify which project to use:");
-  lines.push("  sentry <command> <org>/<project>");
+  lines.push(`  ${sentry`<command> <org>/<project>`}`);
   lines.push("");
   lines.push("Or set a default project:");
-  lines.push("  sentry config set defaults.org <org>");
-  lines.push("  sentry config set defaults.project <project>");
+  lines.push(`  ${sentry`cli defaults org <org>`}`);
+  lines.push(`  ${sentry`cli defaults project <project>`}`);
 
   return lines.join("\n");
 }
@@ -84,19 +85,21 @@ export async function formatNoDsnError(
   lines.push("To use this command, either:");
   lines.push("");
   lines.push("1. Add SENTRY_DSN to your environment:");
-  lines.push("   export SENTRY_DSN=https://key@o123.ingest.sentry.io/456");
+  lines.push(
+    "   export SENTRY_DSN=https://<key>@o<org-id>.ingest.sentry.io/<project-id>",
+  );
   lines.push("");
   lines.push("2. Add SENTRY_DSN to a .env file:");
   lines.push(
-    "   echo 'SENTRY_DSN=https://key@o123.ingest.sentry.io/456' >> .env",
+    "   echo 'SENTRY_DSN=https://<key>@o<org-id>.ingest.sentry.io/<project-id>' >> .env",
   );
   lines.push("");
   lines.push("3. Specify project explicitly:");
-  lines.push("   sentry <command> <org>/<project>");
+  lines.push(`   ${sentry`<command> <org>/<project>`}`);
   lines.push("");
   lines.push("4. Set default project:");
-  lines.push("   sentry config set defaults.org <org>");
-  lines.push("   sentry config set defaults.project <project>");
+  lines.push(`   ${sentry`cli defaults org <org>`}`);
+  lines.push(`   ${sentry`cli defaults project <project>`}`);
 
   return lines.join("\n");
 }
@@ -120,7 +123,7 @@ export function formatResolutionError(error: Error, dsnRaw: string): string {
     "  - The DSN is invalid or expired",
     "",
     "Try specifying the project explicitly:",
-    "  sentry <command> <org>/<project>",
+    `  ${sentry`<command> <org>/<project>`}`,
   ];
 
   return lines.join("\n");

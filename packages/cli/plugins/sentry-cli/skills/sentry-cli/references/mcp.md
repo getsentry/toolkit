@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-mcp
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Start a local Sentry MCP server
 requires:
   bins: ["sentry"]
@@ -11,12 +11,17 @@ requires:
 
 Start a local Sentry MCP server
 
-### `sentry mcp`
+### `sentry mcp [<org/project>]`
 
 Start a local Sentry MCP server
 
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `[<org/project>]` | &lt;org&gt;/ (an organization) or &lt;org&gt;/&lt;project&gt; to limit calls to |
+
 **Flags:**
-- `--access-token <value> - Deprecated: set SENTRY_AUTH_TOKEN instead`
 - `--org <value> - Limit every call to this organization`
 - `--project <value> - Limit calls to this project`
 - `--skills <value> - Skills to grant, comma-separated (default: active skills; seer is left out on self-hosted)`
@@ -29,13 +34,18 @@ Start a local Sentry MCP server
 - `--anthropic-base-url <value> - Anthropic API base URL`
 - `--anthropic-model <value> - Anthropic model (default: claude-sonnet-5-5)`
 - `--mcp-url <value> - MCP server URL reported in telemetry`
-- `--sentry-dsn <value> - DSN for the server's own telemetry`
 
 **Examples:**
 
 ```bash
 # Start the server with the current CLI login
 sentry mcp
+
+# Limit every call to one organization
+sentry mcp acme/
+
+# Limit calls to one project
+sentry mcp acme/web
 
 # Grant every skill, including seer on self-hosted
 sentry mcp --all-skills

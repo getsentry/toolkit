@@ -10,6 +10,8 @@ you are working on:
   MCP-specific tests and specs.
 - [Docs MCP](../apps/docs-mcp/README.md) — the independent private documentation
   Worker, local development, and deployment ownership.
+- [Games API](../apps/games-api/README.md) — the public Worker behind the hidden
+  `sentry games leaderboard` command, and its deployment ownership.
 
 The published CLI site lives in `apps/cli-docs/` because CLI releases build
 and package it from that workspace. The contributor index here links to its
@@ -18,6 +20,8 @@ directories below; the MCP index explains which guides apply to that product.
 
 ## Shared Contributor Guides
 
+- [Design docs](../design/README.md) — the goals and rules of each major
+  system. Read the owning file before you change a system.
 - [Coding guidelines](contributing/coding-guidelines.md) — repository-wide style
   and the separate CLI and MCP patterns.
 - [Documentation style](contributing/documentation-style-guide.md) — how to

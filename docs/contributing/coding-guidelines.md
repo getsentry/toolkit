@@ -30,6 +30,10 @@ product-specific implementation patterns.
 - Root, MCP, and CLI files use Oxlint and Oxfmt. The CLI-specific rules live in
   `packages/cli/lint-rules/cli-oxlint-plugin.js`, with inline Oxlint suppressions
   for intentional exceptions.
+- Write new lint rules for Oxlint: turn on a built-in rule in `.oxlintrc.json`
+  (for example `no-restricted-imports`), or add a custom rule to the Oxlint JS
+  plugin above and register it in `.oxlintrc.json`. Do not add new ast-grep
+  rules; the few left in `ast-grep-rules/` predate this.
 - Oxlint runs type-aware (`options.typeAware` in `.oxlintrc.json`, backed by
   `oxlint-tsgolint`). `typescript/return-await` (`always`) is on repo-wide:
   write `return await` in async functions so callers stay in async stack

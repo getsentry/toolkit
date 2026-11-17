@@ -13,6 +13,21 @@ numeric ID, pass the organization separately to select it by title:
 Use `sentry dashboard revisions` to find a revision number before running
 `sentry dashboard restore`.
 
+## Saved transformations
+
+Widget add, edit, and delete commands retain saved transformations on untouched
+widgets. Title, layout, and filter edits preserve transformation order and
+aggregate positions, including separate transformation lists for duplicate
+aggregates.
+Query flags edit the first query and retain the remaining queries.
+
+`dashboard view` and `dashboard widget edit` list each query's saved
+transformations by aggregate position, in the order Sentry applies them. JSON
+output keeps the saved `transformations` map, keyed by zero-based aggregate
+position. Explicitly saved empty transformation lists appear as `none`.
+Servers that omit transformation settings show an unavailable notice for each
+query. Widgets whose queries report no saved transformations show no extra output.
+
 ## Query Shorthand
 
 The `--query` flag supports shorthand for aggregate functions:

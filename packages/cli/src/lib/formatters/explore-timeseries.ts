@@ -3,11 +3,12 @@
  * Keeps response metadata and bucket values intact for machine consumers.
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
 import type { EventsTimeSeriesResponse } from "../api/explore.js";
 import { formatLegendLabel } from "./chart-presentation.js";
 import { formatExploreTimeSeriesChart } from "./explore-timeseries-chart.js";
 import { filterFields } from "./json.js";
-import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "./markdown.js";
 import { buildMetaColumns } from "./meta-table.js";
 import { formatTable } from "./table.js";
 import {
@@ -54,9 +55,7 @@ function formatSeries(series: TimeSeries): string {
   // Every admitted Explore chart has room for its single fitted legend label.
   // Keep the original expression when its fitted label omits more than syntax.
   if (!chart || formatLegendLabel(series.yAxis).abbreviated) {
-    details.push(
-      `**${escapeMarkdownInline(series.yAxis)}${chart ? "" : " over time"}**`,
-    );
+    details.push(`**${text(series.yAxis)}${chart ? "" : " over time"}**`);
   }
   details.push(`Interval: ${formatDurationCompactMs(series.meta.interval)}`);
   // The typed axis formatter appends units only for duration and size values.
@@ -68,7 +67,7 @@ function formatSeries(series: TimeSeries): string {
     series.meta.valueUnit &&
     series.meta.valueUnit !== "none"
   ) {
-    details.push(`Unit: ${escapeMarkdownInline(series.meta.valueUnit)}`);
+    details.push(`Unit: ${text(series.meta.valueUnit)}`);
   }
 
   if (series.meta.dataScanned === "partial") {
@@ -123,7 +122,7 @@ function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
           ...column,
           value: (row: Record<string, unknown>) =>
             typeof row.value === "string"
-              ? escapeMarkdownInline(row.value.replace(/\n/g, " "))
+              ? text(row.value.replace(/\n/g, " "))
               : column.value(row),
         },
   );
@@ -142,9 +141,7 @@ export function formatExploreTimeSeriesHuman(
   data: ExploreTimeSeriesData,
 ): string {
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
-  const details = [
-    `Querying ${escapeMarkdownInline(data.dataset)} in ${escapeMarkdownInline(scope)}`,
-  ];
+  const details = [`Querying ${text(data.dataset)} in ${text(scope)}`];
   if (data.meta?.start !== undefined && data.meta.end !== undefined) {
     details.push(
       `Range (UTC): ${formatUtcTimestamp(data.meta.start)} to ${formatUtcTimestamp(data.meta.end)}`,
@@ -160,9 +157,7 @@ export function formatExploreTimeSeriesHuman(
     ),
   );
   if (ingestion && (hasPendingIngestion || ingestion.status === "stalled")) {
-    ingestionDetails.push(
-      `Ingestion status: ${escapeMarkdownInline(ingestion.status)}.`,
-    );
+    ingestionDetails.push(`Ingestion status: ${text(ingestion.status)}.`);
     if (ingestion.delaySeconds != null) {
       ingestionDetails.push(
         `Reported ingestion delay: ${formatDurationCompact(ingestion.delaySeconds)}.`,

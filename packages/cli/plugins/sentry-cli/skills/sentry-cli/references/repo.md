@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-repo
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry repositories
 requires:
   bins: ["sentry"]
@@ -39,6 +39,7 @@ List repositories
 | `integrationId` | string | Integration ID |
 | `externalSlug` | string \| null | External slug (e.g. org/repo) |
 | `externalId` | string \| null | External ID |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

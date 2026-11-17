@@ -1,7 +1,8 @@
+import { CLI_MCP_SNIPPET } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface CodexCLIInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "cli";
 }
 
 export function CodexCLIInstructions({ transport }: CodexCLIInstructionsProps) {
@@ -48,32 +49,19 @@ export function CodexCLIInstructions({ transport }: CodexCLIInstructionsProps) {
     );
   }
 
-  // Stdio transport
-  const codexConfigToml = [
-    "[mcp_servers.sentry]",
-    'command = "npx"',
-    'args = ["@sentry/mcp-server@latest"]',
-    'env = { SENTRY_ACCESS_TOKEN = "sentry-user-token", OPENAI_API_KEY = "your-openai-key" }',
-  ].join("\n");
-  const selfHostedEnvLine =
-    'env = { SENTRY_ACCESS_TOKEN = "sentry-user-token", SENTRY_HOST = "sentry.example.com", OPENAI_API_KEY = "your-openai-key" }';
-
   return (
     <>
       <ol>
+        <li>Open your terminal to access the CLI.</li>
         <li>
-          Edit <code>~/.codex/config.toml</code> and add the MCP server
-          configuration:
-          <CodeSnippet noMargin snippet={codexConfigToml} />
+          <CodeSnippet
+            noMargin
+            snippet={`codex mcp add sentry -- ${CLI_MCP_SNIPPET}`}
+          />
         </li>
         <li>
-          Replace <code>sentry-user-token</code> with your Sentry User Auth
-          Token. Add <code>SENTRY_HOST</code> if you run self-hosted Sentry.
-          <CodeSnippet noMargin snippet={selfHostedEnvLine} />
-        </li>
-        <li>
-          Restart any running <code>codex</code> session to load the new MCP
-          configuration.
+          Next time you run <code>codex</code>, the Sentry MCP server will be
+          available, using your Sentry CLI login.
         </li>
       </ol>
     </>

@@ -215,7 +215,7 @@ export function resolveScopes(options: {
     return expandScopes(override);
   }
   if (add) {
-    const base = new Set<Scope>(defaults as ReadonlyArray<Scope>);
+    const base = new Set<Scope>(defaults);
     for (const s of add) base.add(s);
     return expandScopes(base);
   }

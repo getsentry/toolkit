@@ -45,6 +45,7 @@ import type {
   ListProjectTeamsData,
   ResolveOrganizationShortIdData,
 } from "@sentry/api";
+import { API_BASE_PATH } from "@sentry/api/client";
 import {
   type CompletionEntity,
   type CompletionEntityKind,
@@ -52,7 +53,6 @@ import {
 } from "../db/completion-cache.js";
 import { reportCliError } from "../error-reporting.js";
 import { logger } from "../logger.js";
-import { parseSentryUrl } from "../sentry-url-parser.js";
 import { isAllDigits } from "../utils.js";
 
 const log = logger.withTag("completion-seed");
@@ -72,8 +72,6 @@ type CompletionSource = {
   query?: Readonly<Record<string, string>>;
   /** Entities in the parsed JSON body, in display order. */
   extract: (body: unknown) => CompletionEntity[];
-  /** Organization of a body whose path names none (unscoped endpoints). */
-  org?: (body: unknown) => string | undefined;
 };
 
 /** Read a string property of an untyped JSON value. */
@@ -235,12 +233,6 @@ function tagKeyEntities(body: unknown): CompletionEntity[] {
   return Array.isArray(tags) ? fieldEntities("key", "name")(tags) : [];
 }
 
-/** The organization of an issue, from its permalink. */
-function permalinkOrg(body: unknown): string | undefined {
-  const permalink = stringField(body, "permalink");
-  return permalink ? parseSentryUrl(permalink)?.org : undefined;
-}
-
 /** Public DSNs of client keys, described by the key name. */
 function dsnEntities(body: unknown): CompletionEntity[] {
   return items(body).flatMap((key) => {
@@ -309,22 +301,22 @@ export const ATTRIBUTE_KINDS = {
 const COMPLETION_SOURCES: readonly CompletionSource[] = [
   {
     kind: "issue",
-    url: "/api/0/organizations/{organization_id_or_slug}/issues/" satisfies ListOrganizationIssuesData["url"],
+    url: "/organizations/{organization_id_or_slug}/issues/" satisfies ListOrganizationIssuesData["url"],
     extract: issueEntities,
   },
   {
     kind: "issue",
-    url: "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
+    url: "/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
     extract: issueEntities,
   },
   {
     kind: "tag-key",
-    url: "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
+    url: "/organizations/{organization_id_or_slug}/issues/{issue_id}/" satisfies GetOrganizationIssueData["url"],
     extract: tagKeyEntities,
   },
   {
     kind: "issue",
-    url: "/api/0/organizations/{organization_id_or_slug}/shortids/{issue_id}/" satisfies ResolveOrganizationShortIdData["url"],
+    url: "/organizations/{organization_id_or_slug}/shortids/{issue_id}/" satisfies ResolveOrganizationShortIdData["url"],
     extract: (body) =>
       issueEntities(
         typeof body === "object" && body !== null
@@ -333,123 +325,108 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
       ),
   },
   {
-    // The deprecated unscoped lookup (`getIssue`, `updateIssueStatus`
-    // without an org) is not in `@sentry/api`. Its path names no org, so
-    // the org comes from the issue's permalink.
-    kind: "issue",
-    url: "/api/0/issues/{issue_id}/",
-    extract: issueEntities,
-    org: permalinkOrg,
-  },
-  {
-    kind: "tag-key",
-    url: "/api/0/issues/{issue_id}/",
-    extract: tagKeyEntities,
-    org: permalinkOrg,
-  },
-  {
     kind: "dashboard",
-    url: "/api/0/organizations/{organization_id_or_slug}/dashboards/" satisfies ListOrganizationDashboardsData["url"],
+    url: "/organizations/{organization_id_or_slug}/dashboards/" satisfies ListOrganizationDashboardsData["url"],
     extract: dashboardEntities,
   },
   {
     kind: "dashboard",
-    url: "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
+    url: "/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/" satisfies GetOrganizationDashboardData["url"],
     extract: dashboardEntities,
   },
   {
     kind: "environment",
-    url: "/api/0/organizations/{organization_id_or_slug}/environments/" satisfies ListOrganizationEnvironmentsData["url"],
+    url: "/organizations/{organization_id_or_slug}/environments/" satisfies ListOrganizationEnvironmentsData["url"],
     extract: fieldEntities("name"),
   },
   {
     kind: "environment",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/environments/" satisfies ListProjectEnvironmentsData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/environments/" satisfies ListProjectEnvironmentsData["url"],
     extract: fieldEntities("name"),
   },
   {
     kind: "release",
-    url: "/api/0/organizations/{organization_id_or_slug}/releases/" satisfies ListOrganizationReleasesData["url"],
+    url: "/organizations/{organization_id_or_slug}/releases/" satisfies ListOrganizationReleasesData["url"],
     extract: fieldEntities("version", "shortVersion"),
   },
   {
     kind: "release",
-    url: "/api/0/organizations/{organization_id_or_slug}/releases/{version}/" satisfies GetOrganizationReleaseData["url"],
+    url: "/organizations/{organization_id_or_slug}/releases/{version}/" satisfies GetOrganizationReleaseData["url"],
     extract: fieldEntities("version", "shortVersion"),
   },
   {
     kind: "release",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/" satisfies ListProjectReleasesData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/releases/" satisfies ListProjectReleasesData["url"],
     extract: fieldEntities("version", "shortVersion"),
   },
   {
     kind: "team",
-    url: "/api/0/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
+    url: "/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
     extract: fieldEntities("slug", "name"),
   },
   {
     kind: "team",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
     extract: fieldEntities("slug", "name"),
   },
   {
     kind: "owner",
-    url: "/api/0/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
+    url: "/organizations/{organization_id_or_slug}/teams/" satisfies ListOrganizationTeamsData["url"],
     extract: teamOwnerEntities,
   },
   {
     kind: "owner",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/teams/" satisfies ListProjectTeamsData["url"],
     extract: teamOwnerEntities,
   },
   {
     kind: "monitor",
-    url: "/api/0/organizations/{organization_id_or_slug}/monitors/" satisfies ListOrganizationMonitorsData["url"],
+    url: "/organizations/{organization_id_or_slug}/monitors/" satisfies ListOrganizationMonitorsData["url"],
     extract: fieldEntities("slug", "name"),
   },
   {
     kind: "monitor",
-    url: "/api/0/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetOrganizationMonitorData["url"],
+    url: "/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetOrganizationMonitorData["url"],
     extract: fieldEntities("slug", "name"),
   },
   {
     kind: "monitor",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetProjectMonitorData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/monitors/{monitor_id_or_slug}/" satisfies GetProjectMonitorData["url"],
     extract: fieldEntities("slug", "name"),
   },
   {
     kind: "workflow",
-    url: "/api/0/organizations/{organization_id_or_slug}/workflows/" satisfies ListOrganizationWorkflowsData["url"],
+    url: "/organizations/{organization_id_or_slug}/workflows/" satisfies ListOrganizationWorkflowsData["url"],
     extract: fieldEntities("id", "name"),
   },
   {
     kind: "workflow",
-    url: "/api/0/organizations/{organization_id_or_slug}/workflows/{workflow_id}/" satisfies GetOrganizationWorkflowData["url"],
+    url: "/organizations/{organization_id_or_slug}/workflows/{workflow_id}/" satisfies GetOrganizationWorkflowData["url"],
     extract: fieldEntities("id", "name"),
   },
   {
     kind: "integration",
-    url: "/api/0/organizations/{organization_id_or_slug}/integrations/" satisfies ListOrganizationIntegrationsData["url"],
+    url: "/organizations/{organization_id_or_slug}/integrations/" satisfies ListOrganizationIntegrationsData["url"],
     extract: integrationEntities,
   },
   {
     kind: "sentry-app",
-    url: "/api/0/organizations/{organization_id_or_slug}/sentry-app-installations/" satisfies ListOrganizationSentryAppInstallationsData["url"],
+    url: "/organizations/{organization_id_or_slug}/sentry-app-installations/" satisfies ListOrganizationSentryAppInstallationsData["url"],
     extract: sentryAppEntities,
   },
   {
     kind: "app-link-field",
-    url: "/api/0/organizations/{organization_id_or_slug}/sentry-app-components/" satisfies ListOrganizationSentryAppComponentsData["url"],
+    url: "/organizations/{organization_id_or_slug}/sentry-app-components/" satisfies ListOrganizationSentryAppComponentsData["url"],
     extract: appLinkFieldEntities,
   },
   {
     kind: "dsn",
-    url: "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/" satisfies ListProjectKeysData["url"],
+    url: "/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/" satisfies ListProjectKeysData["url"],
     extract: dsnEntities,
   },
   ...Object.entries(ATTRIBUTE_KINDS).map(([dataset, kind]) => ({
     kind,
-    url: "/api/0/organizations/{organization_id_or_slug}/trace-items/attributes/" satisfies ListOrganizationTraceItemAttributesData["url"],
+    url: "/organizations/{organization_id_or_slug}/trace-items/attributes/" satisfies ListOrganizationTraceItemAttributesData["url"],
     query: { dataset },
     extract: attributeEntities,
   })),
@@ -459,13 +436,14 @@ const COMPLETION_SOURCES: readonly CompletionSource[] = [
 const TEMPLATE_PARAM_RE = /\{(\w+)\}/g;
 
 /**
- * A regex matching paths that end in `template`. The organization
+ * A regex matching paths that end in the API base path and `template`. The organization
  * parameter is the first capture group; other parameters match any
  * segment.
  */
 function templatePattern(template: string): RegExp {
-  const pattern = template.replace(TEMPLATE_PARAM_RE, (_, name) =>
-    name === "organization_id_or_slug" ? "([^/]+)" : "[^/]+",
+  const pattern = `${API_BASE_PATH}${template}`.replace(
+    TEMPLATE_PARAM_RE,
+    (_, name) => (name === "organization_id_or_slug" ? "([^/]+)" : "[^/]+"),
   );
   return new RegExp(`${pattern}$`);
 }
@@ -544,8 +522,7 @@ async function seedFromBody(
     log.debug(`Not seeding completions from '${url}'`, error);
     return;
   }
-  for (const { source, orgSlug: pathOrg } of matches) {
-    const orgSlug = pathOrg ?? source.org?.(body);
+  for (const { source, orgSlug } of matches) {
     if (!orgSlug) {
       log.debug(
         `Not seeding ${source.kind} completions without an org: '${url}'`,

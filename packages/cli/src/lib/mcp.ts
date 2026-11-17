@@ -1,25 +1,40 @@
 import { normalizeAuthToken } from "./auth-header.js";
 import { getConfiguredSentryUrl } from "./constants.js";
 import { getAccountScope } from "./db/account-scope.js";
-import { accountIdentity, getAccountRow } from "./db/accounts.js";
+import type { CredentialRouter } from "@sentry/mcp-core/types";
 import {
+  type AccountRow,
+  accountIdentity,
+  getAccountRow,
+} from "./db/accounts.js";
+import {
+  getCredentialContext,
   getEffectiveAccountRow,
   type RefreshTokenResult,
   refreshToken,
+  withStoredAccount,
 } from "./db/auth.js";
-import { inheritEnvTokenHost } from "./env-token-host.js";
+import {
+  getBootConfiguredSentryUrl,
+  inheritEnvTokenHost,
+  scopeEnvTokenToBootHost,
+} from "./env-token-host.js";
 import { getEnv, withEnv } from "./env.js";
-import { AuthError, HostScopeError } from "./errors.js";
+import { AuthError } from "./errors.js";
 import {
   deprecatedFlags,
   type McpFlags,
+  type McpScope,
   mergeMcpArgs,
   parseMcpEnv,
 } from "./mcp/args.js";
+import {
+  createMcpAccountRouter,
+  type StoredAccountPin,
+} from "./mcp/account-router.js";
 import { finalizeMcpConfig } from "./mcp/config.js";
 import { assertRcUrlTrusted, getRcInjectedTokenSource } from "./sentryclirc.js";
-import { parseSntrysClaim } from "./token-claims.js";
-import { getActiveTokenHost, isHostTrusted } from "./token-host.js";
+import { assertCredentialScope } from "./token-host.js";
 
 type McpTarget = {
   sentryHost: string;
@@ -79,6 +94,18 @@ const ACCOUNT_CHANGED_MESSAGE =
 const ENV_PIN: McpCredentialPin = { kind: "env" };
 
 /**
+ * Whether `row` still belongs to the pinned user. A login can replace an
+ * account's credentials in place, so the account ID alone is not enough when
+ * the account recorded a user.
+ */
+function isPinnedUser(
+  row: AccountRow,
+  pin: Extract<McpCredentialPin, { kind: "stored" }>,
+): boolean {
+  return !pin.userId || row.user_id === pin.userId;
+}
+
+/**
  * Point this process's credential reads at the pinned credential, or fail
  * closed when it is gone. The host check alone cannot tell two accounts on
  * the same server apart.
@@ -91,9 +118,7 @@ function applyCredentialPin(pin: McpCredentialPin): void {
     return;
   }
   const row = getAccountRow(pin.accountId);
-  // A login can replace an account's credentials in place, so also require
-  // the same user when the account recorded one.
-  if (!row?.token || (pin.userId && row.user_id !== pin.userId)) {
+  if (!(row?.token && isPinnedUser(row, pin))) {
     throw new AuthError("expired", ACCOUNT_CHANGED_MESSAGE, {
       skipAutoAuth: true,
     });
@@ -116,7 +141,9 @@ function startupPin(): McpCredentialPin | undefined {
 /**
  * Whether `result` is the pinned credential. A stored pin must match the
  * account row's current credential: if the row vanished mid-refresh, the
- * CLI falls back to another account, and that token must not be used.
+ * CLI falls back to another account, and that token must not be used. The
+ * row must also still belong to the pinned user, in case a login replaced it
+ * between the pin and the credential read.
  */
 function isPinnedCredential(
   result: RefreshTokenResult,
@@ -130,7 +157,9 @@ function isPinnedCredential(
   }
   // SQLite yields null, not undefined, for a missing row.
   const row = getAccountRow(pin.accountId);
-  return row ? accountIdentity(row) === result.identity : false;
+  return row
+    ? isPinnedUser(row, pin) && accountIdentity(row) === result.identity
+    : false;
 }
 
 /**
@@ -152,15 +181,13 @@ export async function resolveCliMcpCredential(
     applyCredentialPin(requested);
   }
   const result = await refreshToken({ force: options.force });
-  const tokenHost = getActiveTokenHost();
-
-  if (!(tokenHost && isHostTrusted(targetUrl, tokenHost))) {
-    throw new HostScopeError(
-      "Cannot start MCP server with the active CLI credentials",
-      targetUrl,
-      tokenHost,
-    );
-  }
+  // The same host guard the CLI applies to each of its own requests: the
+  // server sends this token to the target.
+  assertCredentialScope(
+    targetUrl,
+    getCredentialContext(),
+    "Cannot start MCP server with the active CLI credentials",
+  );
 
   // At startup, an unusable stored credential falls back to the env token,
   // the same as other CLI commands. Later, that fallback is a different
@@ -270,33 +297,6 @@ function warnDeprecatedAccessToken(source: DeprecatedAccessToken["source"]) {
 }
 
 /**
- * The environment the deprecated token runs under: the same as
- * `SENTRY_AUTH_TOKEN=<token> SENTRY_FORCE_ENV_TOKEN=1`, so it takes the CLI's
- * env-token path and wins over any stored login. It also replaces an env
- * token that is already set, since the flag (or `SENTRY_ACCESS_TOKEN`) is the
- * more explicit choice for this server.
- *
- * The URL is pinned to the MCP target: `--host`/`--url` have always told the
- * MCP server where to send this token, and the env-token snapshot for this
- * copy then scopes the token to that server. An org auth token's own URL
- * claim still wins, so it cannot be sent anywhere else.
- */
-function deprecatedTokenEnv(
-  env: NodeJS.ProcessEnv,
-  token: string,
-  target: McpTarget,
-): NodeJS.ProcessEnv {
-  const aliased: NodeJS.ProcessEnv = { ...env };
-  delete aliased.SENTRY_ACCESS_TOKEN;
-  delete aliased.SENTRY_TOKEN;
-  aliased.SENTRY_AUTH_TOKEN = token;
-  aliased.SENTRY_FORCE_ENV_TOKEN = "1";
-  delete aliased.SENTRY_HOST;
-  aliased.SENTRY_URL = `${target.sentryProtocol}://${target.sentryHost}`;
-  return aliased;
-}
-
-/**
  * The environment with the deprecated `--host`/`--url`/`--insecure-http`
  * target applied as `SENTRY_URL`, the setting they stand in for. The
  * credential check, an env token's host scope, and the fallback login all read
@@ -319,20 +319,65 @@ function withTargetEnv(
 }
 
 /**
- * The environment a `SENTRY_AUTH_TOKEN` (or `SENTRY_TOKEN`) runs under: forced
- * over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1` were set. An MCP
- * client passes the token in its server config to pick the account, so a
- * stored CLI login must not silently replace it. Other commands keep
- * preferring the stored login.
+ * Whether the env token may be scoped to the server's target instead of its
+ * startup host: for an explicit `--host`/`--url`, or for `--insecure-http` on
+ * the host the startup `SENTRY_HOST`/`SENTRY_URL` named, which only changes the
+ * protocol. `--insecure-http` on any other configured host (a `.sentryclirc`
+ * URL or the persisted default) must not.
+ */
+function mayRescopeEnvToken(flags: McpFlags, target: McpTarget): boolean {
+  if (hasSentryTarget(flags)) {
+    return true;
+  }
+  const bootUrl = getBootConfiguredSentryUrl();
+  return (
+    !!flags["insecure-http"] &&
+    bootUrl !== undefined &&
+    new URL(bootUrl).host === target.sentryHost
+  );
+}
+
+/**
+ * The environment the client's token runs under: `SENTRY_AUTH_TOKEN` (or
+ * `SENTRY_TOKEN`) forced over any stored login, as if `SENTRY_FORCE_ENV_TOKEN=1`
+ * were set. An MCP client passes the token in its server config to pick the
+ * account, so a stored CLI login must not silently replace it. Other commands
+ * keep preferring the stored login.
+ *
+ * The deprecated `--access-token` / `SENTRY_ACCESS_TOKEN` is an alias for it:
+ * it replaces any env token, as the more explicit choice for this server, and
+ * then takes the same path, with the same host scoping.
  *
  * A token the `.sentryclirc` shim copied in is not forced: it comes from the
  * repository, not the client, so it must not replace the user's login.
+ *
+ * With `keepStartupHost`, the token is scoped as if set at startup (see
+ * `scopeEnvTokenToBootHost`): by now `SENTRY_URL` can come from a
+ * `.sentryclirc` or the persisted default, which must not scope it. See
+ * {@link mayRescopeEnvToken} for when the server's target may scope it.
  */
-function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return (env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) &&
-    !getRcInjectedTokenSource()
-    ? { ...env, SENTRY_FORCE_ENV_TOKEN: "1" }
-    : env;
+function clientTokenEnv(
+  env: NodeJS.ProcessEnv,
+  deprecatedToken: string | undefined,
+  keepStartupHost: boolean,
+): NodeJS.ProcessEnv {
+  if (
+    !deprecatedToken &&
+    (!(env.SENTRY_AUTH_TOKEN?.trim() || env.SENTRY_TOKEN?.trim()) ||
+      getRcInjectedTokenSource())
+  ) {
+    return env;
+  }
+  const forced: NodeJS.ProcessEnv = { ...env, SENTRY_FORCE_ENV_TOKEN: "1" };
+  if (deprecatedToken) {
+    delete forced.SENTRY_ACCESS_TOKEN;
+    delete forced.SENTRY_TOKEN;
+    forced.SENTRY_AUTH_TOKEN = deprecatedToken;
+  }
+  if (keepStartupHost) {
+    scopeEnvTokenToBootHost(forced);
+  }
+  return forced;
 }
 
 /**
@@ -343,11 +388,17 @@ function preferEnvToken(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  * @param cwd - The command context's working directory, where a repo-local
  *   `.sentryclirc` is looked up. Unlike `process.cwd()`, it survives a deleted
  *   working directory (see `resolveCwd` in `context.ts`).
+ * @param scope - The organization and project of the `[<org>/[<project>]]`
+ *   positional, if one was passed
  */
-export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
+export async function serveMcp(
+  flags: McpFlags,
+  cwd: string,
+  scope?: McpScope,
+): Promise<void> {
   const env = getEnv();
   const config = finalizeMcpConfig(
-    mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env)),
+    mergeMcpArgs(withConfiguredTarget(flags), parseMcpEnv(env), scope),
   );
   for (const { flag, replacement } of deprecatedFlags(flags)) {
     // stderr only: stdout carries the stdio MCP transport.
@@ -369,27 +420,19 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   // source: without this gate, a token with no host claim would be sent to
   // whatever server the file names. Apply the same rc-URL check as every
   // other CLI command, unless an explicit `--host`/`--url` flag overrides the
-  // target, or the deprecated token is an org token, whose host claim the
-  // credential check below matches against the target. Checked against the
-  // invocation's own credentials, before the deprecated token replaces them:
-  // an env token from the client wins over a stored login, as it does for
-  // serving, but keeps the host snapshotted at startup, so the rc URL cannot
-  // scope it.
-  if (
-    !(
-      hasSentryTarget(flags) ||
-      (deprecatedToken && parseSntrysClaim(deprecatedToken))
-    )
-  ) {
-    const checkEnv = preferEnvToken(env);
-    inheritEnvTokenHost(checkEnv);
-    await withEnv(checkEnv, () => assertRcUrlTrusted(cwd));
+  // target. Checked against the credential this server will use, scoped to
+  // its startup host, so the rc URL cannot scope it.
+  if (!hasSentryTarget(flags)) {
+    await withEnv(clientTokenEnv(env, deprecatedToken, true), () =>
+      assertRcUrlTrusted(cwd),
+    );
   }
 
-  const targetEnv = withTargetEnv(env, flags, config);
-  const credentialEnv = deprecatedToken
-    ? deprecatedTokenEnv(targetEnv, deprecatedToken, config)
-    : preferEnvToken(targetEnv);
+  const credentialEnv = clientTokenEnv(
+    withTargetEnv(env, flags, config),
+    deprecatedToken,
+    !mayRescopeEnvToken(flags, config),
+  );
 
   // Loaded only now: mcp-core's server, the agent providers, and the MCP
   // telemetry are not needed for --help or setup errors.
@@ -397,20 +440,87 @@ export async function serveMcp(flags: McpFlags, cwd: string): Promise<void> {
   const { token, pin } = await withEnv(credentialEnv, () =>
     resolveMcpCredentialWithLogin(config),
   );
+  // A static token (`--access-token`, `SENTRY_AUTH_TOKEN`) is the only
+  // credential; a stored login can route calls to the other stored logins.
+  const router =
+    pin.kind === "stored" && !deprecatedToken
+      ? createRouter(config, credentialEnv, pin)
+      : undefined;
+
+  if (router && !config.organizationSlug) {
+    await serveMcpStdio(config, {
+      accessToken: token,
+      credentialRouter: router,
+      env,
+    });
+    return;
+  }
+
+  // `--organization-slug` picks the account once: the one that knows the
+  // organization, else the startup account.
+  const credential = router
+    ? await router.resolve({
+        organizationSlug: config.organizationSlug ?? null,
+      })
+    : undefined;
+  const accessToken = credential?.accessToken ?? token;
+  // Every call carries the scope, so report one that does not exist now,
+  // naming it, instead of as a generic 404 on each call.
+  const { assertMcpScopeExists } = await import("./mcp/scope-check.js");
+  await assertMcpScopeExists(config, accessToken);
   await serveMcpStdio(config, {
-    accessToken: token,
+    accessToken,
     // Force a refresh past the usual threshold: the upstream already rejected
     // the current token, so mirror `--follow`'s refresh-on-401 behavior. The
     // pin keeps the refresh on the startup account. Requests can arrive
     // outside this call's async context, so the credential env is explicit.
-    refreshAccessToken: () =>
-      withEnv(credentialEnv, async () => {
-        const refreshed = await resolveCliMcpCredential(config, {
-          force: true,
-          pin,
-        });
-        return refreshed.token;
-      }),
+    refreshAccessToken:
+      credential?.refresh ??
+      (() =>
+        withEnv(credentialEnv, async () => {
+          const refreshed = await resolveCliMcpCredential(config, {
+            force: true,
+            pin,
+          });
+          return refreshed.token;
+        })),
     env,
+  });
+}
+
+/**
+ * Route tool calls between the stored logins on the MCP server's target
+ * server, defaulting to `pin`, the account the server started with.
+ */
+function createRouter(
+  config: McpTarget,
+  credentialEnv: NodeJS.ProcessEnv,
+  pin: StoredAccountPin,
+): CredentialRouter {
+  // Each read gets its own env copy, so its account scope and memoized
+  // credentials are its own while other calls overlap.
+  const withCredentialEnv = <T>(fn: () => T): T => {
+    const copy: NodeJS.ProcessEnv = { ...credentialEnv };
+    withEnv(credentialEnv, () => inheritEnvTokenHost(copy));
+    return withEnv(copy, fn);
+  };
+  return createMcpAccountRouter({
+    targetUrl: `${config.sentryProtocol}://${config.sentryHost}`,
+    defaultPin: pin,
+    withCredentialEnv,
+    resolvePin: async (accountPin, { force }) => {
+      const resolved = await withCredentialEnv(() =>
+        resolveCliMcpCredential(config, { force, pin: accountPin }),
+      );
+      return resolved.token;
+    },
+    cacheOrgList: (account) =>
+      withEnv(credentialEnv, () =>
+        withStoredAccount(account, async () => {
+          const { listOrganizationsUncached } =
+            await import("./api/organizations.js");
+          await listOrganizationsUncached();
+        }),
+      ),
   });
 }

@@ -34,33 +34,27 @@ export const linkCommand = buildCommand({
     examples: [
       {
         description: "Link a GitHub issue",
-        command:
-          "sentry issue link FRONT-123 https://github.com/example/app/issues/42",
+        run: "issue link FRONT-123 https://github.com/example/app/issues/42",
       },
       {
         description: "Link a GitHub pull request",
-        command:
-          "sentry issue link FRONT-123 https://github.com/example/app/pull/43",
+        run: "issue link FRONT-123 https://github.com/example/app/pull/43",
       },
       {
         description: "Link a Jira issue in an explicit organization",
-        command:
-          "sentry issue link my-org/FRONT-123 https://example.atlassian.net/browse/APP-42",
+        run: "issue link my-org/FRONT-123 https://example.atlassian.net/browse/APP-42",
       },
       {
         description: "Link a Linear issue",
-        command:
-          "sentry issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error",
+        run: "issue link FRONT-123 https://linear.app/example/issue/APP-42/fix-error",
       },
       {
         description: "Prepare the link without submitting it",
-        command:
-          "sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run",
+        run: "issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --dry-run",
       },
       {
         description: "Output the result as JSON",
-        command:
-          "sentry issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json",
+        run: "issue link my-org/FRONT-123 https://github.com/example/app/issues/42 --json",
       },
     ],
   },

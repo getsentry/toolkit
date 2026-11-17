@@ -26,6 +26,7 @@ import {
   listTeams,
   MEMBER_PROJECT_CREATION_DISABLED_DETAIL,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { parseOrgProjectInput } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseTeam, PROJECT_SPEC_TARGET } from "../../lib/completion-target.js";
@@ -58,7 +59,7 @@ import {
 import { type ResolvedOrg, resolveOrg } from "../../lib/resolve-target.js";
 import {
   buildOrgNotFoundError,
-  type ResolvedConcreteTeam,
+  type ResolvedTeam,
   resolveOrCreateTeam,
 } from "../../lib/resolve-team.js";
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
@@ -68,7 +69,7 @@ const log = logger.withTag("project.create");
 const WHITESPACE_RE = /\s/;
 
 /** Full usage hint shown in errors and help text. */
-const USAGE_HINT = "sentry project create [<org>/]<name>:<platform>...";
+const usageHint = () => sentry`project create [<org>/]<name>:<platform>...`;
 
 type CreateFlags = {
   readonly team?: string;
@@ -134,10 +135,10 @@ function buildPlatformError(nameArg: string, platform?: string): string {
     `${heading}\n` +
     didYouMean +
     "\nUsage:\n" +
-    `  sentry project create ${nameArg}:<platform>\n\n` +
+    `  ${sentry`project create ${nameArg}:<platform>`}\n\n` +
     `Common platforms:\n\n${platformTable}\n` +
-    "Run 'sentry platform list' to see all valid platform identifiers.\n" +
-    "Run 'sentry project create <name>:<platform>' with any valid Sentry platform identifier."
+    `Run '${sentry`platform list`}' to see all valid platform identifiers.\n` +
+    `Run '${sentry`project create <name>:<platform>`}' with any valid Sentry platform identifier.`
   );
 }
 
@@ -180,7 +181,7 @@ async function handleCreateProject404(opts: {
       throw new ResolutionError(
         `Team '${teamSlug}'`,
         `not found in ${orgSlug}`,
-        `sentry project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
+        sentry`project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
         [`Available teams: ${teams.map((t) => t.slug).join(", ")}`],
       );
     }
@@ -193,17 +194,17 @@ async function handleCreateProject404(opts: {
   // listTeams returned 404 → org doesn't exist
   // Delegates to shared helper that handles DSN org ID resolution and org listing
   if (listTeamsError instanceof ApiError && listTeamsError.status === 404) {
-    return await buildOrgNotFoundError(orgSlug, USAGE_HINT, detectedFrom);
+    return await buildOrgNotFoundError(orgSlug, usageHint(), detectedFrom);
   }
 
   // listTeams failed for other reasons (403, 5xx, network) — can't disambiguate
   throw new ResolutionError(
     `Project '${name}' in ${orgSlug}`,
     "could not be created",
-    `sentry project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
+    sentry`project create ${orgSlug}/${name}:${platform} --team <team-slug>`,
     [
       "The organization or team may not exist, or you may lack access",
-      `List teams: sentry team list ${orgSlug}/`,
+      `List teams: ${sentry`team list ${orgSlug}/`}`,
     ],
   );
 }
@@ -222,12 +223,12 @@ async function resolveDryRunTeam(
     detectedFrom?: string;
     autoCreateSlug: string;
   },
-): Promise<ResolvedConcreteTeam> {
+): Promise<ResolvedTeam> {
   try {
     return await resolveOrCreateTeam(orgSlug, {
       team: opts.team,
       detectedFrom: opts.detectedFrom,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       autoCreateSlug: opts.autoCreateSlug,
       dryRun: true,
     });
@@ -275,7 +276,7 @@ async function createProjectWithAutoTeamFallback(
 ): Promise<
   CreatedProjectDetails & {
     teamSlug: string;
-    teamSource: ResolvedConcreteTeam["source"];
+    teamSource: ResolvedTeam["source"];
   }
 > {
   const { orgSlug, name, platform } = opts;
@@ -320,7 +321,7 @@ function projectExistsError(orgSlug: string, name: string): CliError {
   const slug = slugify(name);
   return new CliError(
     `A project named '${name}' already exists in ${orgSlug}.\n\n` +
-      `View it: sentry project view ${orgSlug}/${slug}`,
+      `View it: ${sentry`project view ${orgSlug}/${slug}`}`,
   );
 }
 
@@ -437,13 +438,13 @@ function parseProjectName(
         platform,
       };
     case "org-all":
-      throw new ContextError("Project name", USAGE_HINT, [
+      throw new ContextError("Project name", usageHint(), [
         `'${rawName}' looks like an org, not a project name.`,
       ]);
     case "auto-detect":
       throw new ValidationError("Project name cannot be empty.", "name");
     default:
-      throw new ContextError("Project name", USAGE_HINT, []);
+      throw new ContextError("Project name", usageHint(), []);
   }
 }
 
@@ -503,7 +504,7 @@ function parsePairedProjectSpec(
  */
 function parseProjectSpecs(rawSpecs: readonly string[]): ProjectSpecsInput {
   if (rawSpecs.length === 0) {
-    throw new ContextError("Project specification", USAGE_HINT, []);
+    throw new ContextError("Project specification", usageHint(), []);
   }
 
   if (rawSpecs.length === 1 && !rawSpecs[0]?.includes(":")) {
@@ -551,8 +552,8 @@ async function resolveProjectSpecsOrg(
   }
   const resolved = await resolveOrg({ org: input.explicitOrg, cwd });
   if (!resolved) {
-    throw new ContextError("Organization", USAGE_HINT, [
-      `Include org in name: ${USAGE_HINT}`,
+    throw new ContextError("Organization", usageHint(), [
+      `Include org in name: ${usageHint()}`,
     ]);
   }
   return resolved;
@@ -612,14 +613,14 @@ async function createOneProject(opts: {
   }
 
   let teamSlug: string;
-  let teamSource: ResolvedConcreteTeam["source"];
+  let teamSource: ResolvedTeam["source"];
   let projectDetails: CreatedProjectDetails;
 
   try {
-    const team: ResolvedConcreteTeam = await resolveOrCreateTeam(orgSlug, {
+    const team: ResolvedTeam = await resolveOrCreateTeam(orgSlug, {
       team: flags.team,
       detectedFrom,
-      usageHint: USAGE_HINT,
+      usageHint: usageHint(),
       autoCreateSlug,
     });
     teamSlug = team.slug;
@@ -686,25 +687,23 @@ export const createCommand = buildCommand({
     examples: [
       {
         description: "Create a project (every project is a name:platform pair)",
-        command: "sentry project create my-new-app:javascript-nextjs",
+        run: "project create my-new-app:javascript-nextjs",
       },
       {
         description: "Create several projects with their own platforms",
-        command:
-          "sentry project create web:javascript api:python-django worker:node",
+        run: "project create web:javascript api:python-django worker:node",
       },
       {
         description: "Create under a specific organization and team",
-        command:
-          "sentry project create my-org/my-new-app:python --team backend-team",
+        run: "project create my-org/my-new-app:python --team backend-team",
       },
       {
         description: "Preview without creating",
-        command: "sentry project create my-new-app:node --dry-run",
+        run: "project create my-new-app:node --dry-run",
       },
       {
         description: "Output the created project as JSON",
-        command: "sentry project create my-app:go --json",
+        run: "project create my-app:go --json",
       },
     ],
   },

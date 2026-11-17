@@ -1,15 +1,55 @@
+import { z } from "zod";
 import type { SentryApiService } from "../../api-client/index";
 
+const MAX_MESSAGE_LENGTH = 120;
+const MAX_DATA_LENGTH = 200;
+
+export const issueBreadcrumbsOutputSchema = z.object({
+  issueId: z.string(),
+  eventId: z.string(),
+  breadcrumbs: z
+    .array(
+      z.object({
+        timestamp: z.string().nullable(),
+        level: z.string(),
+        category: z.string().nullable(),
+        type: z.string().nullable(),
+        message: z
+          .string()
+          .nullable()
+          .describe(
+            `Single line, truncated after ${MAX_MESSAGE_LENGTH} characters.`,
+          ),
+        data: z
+          .string()
+          .nullable()
+          .describe(
+            `Compact JSON of the breadcrumb data, truncated after ${MAX_DATA_LENGTH} characters.`,
+          ),
+      }),
+    )
+    .describe("The trail of events leading up to the error, oldest first."),
+});
+
+type BreadcrumbValue = {
+  timestamp?: string | null;
+  type?: string | null;
+  category?: string | null;
+  level?: string | null;
+  message?: string | null;
+  data?: Record<string, unknown> | null;
+};
+
 /**
- * Fetches breadcrumbs from an issue event and formats them.
+ * Fetches breadcrumbs from an issue event.
  * Defaults to the latest event when eventId is omitted.
  */
-export async function fetchAndFormatBreadcrumbs(
+export async function fetchIssueBreadcrumbs(
   apiService: SentryApiService,
   organizationSlug: string,
   issueId: string,
   eventId: string = "latest",
-): Promise<string> {
+): Promise<z.infer<typeof issueBreadcrumbsOutputSchema>> {
   const event = await apiService.getEventForIssue({
     organizationSlug,
     issueId,
@@ -18,84 +58,42 @@ export async function fetchAndFormatBreadcrumbs(
 
   const breadcrumbEntry = event.entries.find((e) => e.type === "breadcrumbs");
   const entryData = breadcrumbEntry?.data as
-    | { values?: Array<Record<string, unknown>> }
+    | { values?: BreadcrumbValue[] }
     | undefined;
-  const breadcrumbs = entryData?.values ?? [];
 
-  return formatBreadcrumbs(breadcrumbs, issueId, event.id);
+  return {
+    issueId,
+    eventId: event.id,
+    breadcrumbs: (entryData?.values ?? []).map(mapBreadcrumb),
+  };
 }
 
-export function formatBreadcrumbs(
-  breadcrumbs: Array<{
-    timestamp?: string | null;
-    type?: string | null;
-    category?: string | null;
-    level?: string | null;
-    message?: string | null;
-    data?: Record<string, unknown> | null;
-  }>,
-  issueId: string,
-  eventId: string,
-): string {
-  if (breadcrumbs.length === 0) {
-    return [
-      `# Breadcrumbs for ${issueId}`,
-      "",
-      `**Event ID**: ${eventId}`,
-      "",
-      "No breadcrumbs found in this event for the issue.",
-    ].join("\n");
-  }
-
-  const output: string[] = [
-    `# Breadcrumbs for ${issueId}`,
-    "",
-    `**Event ID**: ${eventId}`,
-    `**Total Breadcrumbs**: ${breadcrumbs.length}`,
-    "",
-    "```",
-  ];
-
-  for (const crumb of breadcrumbs) {
-    const timestamp = crumb.timestamp
-      ? new Date(crumb.timestamp).toISOString()
-      : " ".repeat(24);
-    const level = (crumb.level ?? "info").padEnd(7);
-    const category = crumb.category ?? crumb.type ?? "-";
-    const message = cleanAndTruncate(crumb.message ?? "", 120);
-    const data = formatBreadcrumbData(crumb.data);
-
-    const parts = [`${timestamp} ${level} [${category}]`];
-    if (message) parts.push(message);
-    if (data) parts.push(data);
-    output.push(parts.join(" "));
-  }
-
-  output.push("```");
-
-  output.push(
-    "",
-    "Breadcrumbs show the trail of events leading up to the error, in chronological order.",
-    `Use \`get_sentry_resource(resourceType='issue', organizationSlug='...', resourceId='${issueId}')\` for full issue details.`,
-  );
-
-  return output.join("\n");
+function mapBreadcrumb(crumb: BreadcrumbValue) {
+  return {
+    timestamp: formatTimestamp(crumb.timestamp),
+    level: crumb.level ?? "info",
+    category: crumb.category ?? null,
+    type: crumb.type ?? null,
+    message: crumb.message
+      ? cleanAndTruncate(crumb.message, MAX_MESSAGE_LENGTH)
+      : null,
+    data:
+      crumb.data && Object.keys(crumb.data).length > 0
+        ? cleanAndTruncate(JSON.stringify(crumb.data), MAX_DATA_LENGTH)
+        : null,
+  };
 }
 
-/**
- * Formats breadcrumb data as a compact inline JSON string.
- */
-export function formatBreadcrumbData(
-  data: Record<string, unknown> | null | undefined,
-): string {
-  if (!data || Object.keys(data).length === 0) return "";
-  return cleanAndTruncate(JSON.stringify(data), 200);
+function formatTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
 /**
  * Strips newlines and truncates a string to maxLen characters.
  */
-export function cleanAndTruncate(str: string, maxLen: number): string {
+function cleanAndTruncate(str: string, maxLen: number): string {
   const clean = str.replace(/[\r\n]+/g, " ");
   if (clean.length <= maxLen) return clean;
   return `${clean.slice(0, maxLen)}...`;

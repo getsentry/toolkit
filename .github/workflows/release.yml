@@ -12,14 +12,21 @@ on:
           - cli
           - logger
       bump:
-        description: Version bump type
+        description: "Version bump: auto (from commits), pre (next prerelease), or an explicit bump type"
         required: true
         type: choice
-        default: minor
+        default: auto
         options:
+          - auto
+          - pre
           - patch
           - minor
           - major
+      version:
+        description: Exact version to release, such as 1.2.3 (overrides bump)
+        required: false
+        type: string
+        default: ""
       force:
         description: Force release (bypass blockers)
         required: false
@@ -82,9 +89,10 @@ jobs:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
           workspace: ${{ steps.release.outputs.workspace }}
-          # Craft bumps from the workspace's latest release tag, or from its
-          # package.json version before the first tag.
-          version: ${{ inputs.bump }}
+          # An exact version wins over the bump. Craft bumps from the
+          # workspace's latest release tag, or from its package.json version
+          # before the first tag.
+          version: ${{ inputs.version || inputs.bump }}
           force: ${{ inputs.force && 'true' || '' }}
           # GITHUB_TOKEN above is the release bot token for git/GitHub ops.
           # AI changelog summaries use the workflow token for Copilot requests.

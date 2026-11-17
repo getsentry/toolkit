@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveEvalProvider } from "../eval-common/anthropic-client.js";
 
 /**
- * Provider resolution drives which credential/endpoint the eval frameworks use.
+ * Provider resolution drives which credential/endpoint the skill-eval suite uses.
  * These tests lock in the precedence (OpenRouter over Anthropic), the
  * null-when-unset skip contract, and that the OpenRouter path posts the
  * OpenAI-shaped `/chat/completions` request with the bearer key.

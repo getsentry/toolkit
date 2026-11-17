@@ -1,10 +1,12 @@
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { SCOPES } from "../../constants";
 import type { Env } from "../types";
 import { createErrorPage, createSuccessPage } from "../lib/html-utils";
 import { logIssue, logWarn } from "@sentry/mcp-core/telem/logging";
+import { getOAuthCallbackFailureDetails } from "../oauth/helpers";
 import {
   AuthDataSchema,
   TokenResponseSchema,
@@ -98,10 +100,6 @@ const ClientRegistrationResponseSchema = z.object({
   registration_client_uri: z.string().optional(),
   client_id_issued_at: z.number().optional(),
 });
-
-type ClientRegistrationResponse = z.infer<
-  typeof ClientRegistrationResponseSchema
->;
 
 // Get or register OAuth client with the MCP server
 export async function getOrRegisterChatClient(
@@ -220,6 +218,31 @@ async function exchangeCodeForToken(
 
 // HTML template helpers are now imported from ../lib/html-utils
 
+/**
+ * Error page for the chat OAuth popup. It reports the failure to the opener
+ * window through localStorage and closes itself.
+ */
+function createCallbackErrorPage(
+  title: string,
+  message: string,
+  resultError: string,
+): string {
+  return createErrorPage(title, message, {
+    bodyScript: `
+      // Write error to localStorage
+      try {
+        localStorage.setItem('oauth_result', JSON.stringify({
+          type: 'SENTRY_AUTH_ERROR',
+          timestamp: Date.now(),
+          error: ${JSON.stringify(resultError)}
+        }));
+      } catch (e) {}
+
+      setTimeout(() => { window.close(); }, 3000);
+    `,
+  });
+}
+
 export default new Hono<{
   Bindings: Env;
 }>()
@@ -282,39 +305,37 @@ export default new Hono<{
     const codeVerifier = getCookie(c, "chat_oauth_code_verifier");
 
     // Validate state parameter to prevent CSRF attacks
-    if (!state || !storedState || state !== storedState) {
+    const stateFailure = !state
+      ? "missing_state_param"
+      : !storedState
+        ? "missing_stored_state"
+        : state !== storedState
+          ? "state_mismatch"
+          : undefined;
+    if (stateFailure) {
       deleteCookie(c, "chat_oauth_state", getSecureCookieOptions(c.req.url));
       deleteCookie(
         c,
         "chat_oauth_code_verifier",
         getSecureCookieOptions(c.req.url),
       );
-      logIssue("Invalid state parameter received", {
-        contexts: {
-          oauth: {
-            hasState: Boolean(state),
-            hasExpectedState: Boolean(storedState),
-          },
+      // Stale or replayed callback URLs, expired state cookies, and scanners
+      // probing this route land here. The request is rejected and the user
+      // can retry, so this is not a Sentry issue. Keep attribute keys free of
+      // "auth": Sentry's default scrubbing drops keys that contain it.
+      logWarn("Invalid state parameter received", {
+        loggerScope: ["cloudflare", "chat-oauth", "callback"],
+        extra: {
+          stateFailure,
+          hasCode: Boolean(code),
+          hasUpstreamError: c.req.query("error") !== undefined,
         },
       });
       return c.html(
-        createErrorPage(
+        createCallbackErrorPage(
           "Authentication Failed",
           "Invalid state parameter. Please try again.",
-          {
-            bodyScript: `
-              // Write error to localStorage
-              try {
-                localStorage.setItem('oauth_result', JSON.stringify({
-                  type: 'SENTRY_AUTH_ERROR',
-                  timestamp: Date.now(),
-                  error: 'Invalid state parameter'
-                }));
-              } catch (e) {}
-              
-              setTimeout(() => { window.close(); }, 3000);
-            `,
-          },
+          "Invalid state parameter",
         ),
         400,
       );
@@ -328,26 +349,40 @@ export default new Hono<{
       getSecureCookieOptions(c.req.url),
     );
 
+    const upstreamError = c.req.query("error");
+    if (upstreamError) {
+      // The MCP OAuth provider redirected back with an RFC 6749 error, most
+      // often `access_denied` when the user clicks Deny on the approval page.
+      const failure = getOAuthCallbackFailureDetails({
+        oauthError: upstreamError,
+      });
+      const logMessage = "Chat OAuth callback received an authorization error";
+      const logOptions = {
+        loggerScope: ["cloudflare", "chat-oauth", "callback"],
+        extra: { upstreamError },
+      };
+      if (failure.shouldLogIssue) {
+        logIssue(logMessage, logOptions);
+      } else {
+        logWarn(logMessage, logOptions);
+      }
+      return c.html(
+        createCallbackErrorPage(
+          "Authentication Failed",
+          failure.message,
+          failure.message,
+        ),
+        failure.status as ContentfulStatusCode,
+      );
+    }
+
     if (!code) {
       logIssue("No authorization code received");
       return c.html(
-        createErrorPage(
+        createCallbackErrorPage(
           "Authentication Failed",
           "No authorization code received. Please try again.",
-          {
-            bodyScript: `
-              // Write error to localStorage
-              try {
-                localStorage.setItem('oauth_result', JSON.stringify({
-                  type: 'SENTRY_AUTH_ERROR',
-                  timestamp: Date.now(),
-                  error: 'No authorization code received'
-                }));
-              } catch (e) {}
-              
-              setTimeout(() => { window.close(); }, 3000);
-            `,
-          },
+          "No authorization code received",
         ),
         400,
       );
@@ -356,23 +391,10 @@ export default new Hono<{
     if (!codeVerifier) {
       logIssue("No PKCE code verifier found for chat OAuth callback");
       return c.html(
-        createErrorPage(
+        createCallbackErrorPage(
           "Authentication Failed",
           "Missing PKCE verifier. Please try again.",
-          {
-            bodyScript: `
-              // Write error to localStorage
-              try {
-                localStorage.setItem('oauth_result', JSON.stringify({
-                  type: 'SENTRY_AUTH_ERROR',
-                  timestamp: Date.now(),
-                  error: 'Missing PKCE verifier'
-                }));
-              } catch (e) {}
-              
-              setTimeout(() => { window.close(); }, 3000);
-            `,
-          },
+          "Missing PKCE verifier",
         ),
         400,
       );
@@ -436,23 +458,10 @@ export default new Hono<{
     } catch (error) {
       logIssue(error);
       return c.html(
-        createErrorPage(
+        createCallbackErrorPage(
           "Authentication Error",
           "Failed to complete authentication. Please try again.",
-          {
-            bodyScript: `
-              // Write error to localStorage
-              try {
-                localStorage.setItem('oauth_result', JSON.stringify({
-                  type: 'SENTRY_AUTH_ERROR',
-                  timestamp: Date.now(),
-                  error: 'Authentication failed'
-                }));
-              } catch (e) {}
-              
-              setTimeout(() => { window.close(); }, 3000);
-            `,
-          },
+          "Authentication failed",
         ),
         500,
       );

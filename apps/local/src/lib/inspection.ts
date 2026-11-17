@@ -107,7 +107,18 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
   const pick = (...keys: string[]) =>
     keys
       .map((key) => data[key])
-      .find((value) => value !== undefined && value !== null);
+      .find(
+        (value) =>
+          value !== undefined &&
+          value !== null &&
+          (typeof value !== "string" || value.trim().length > 0),
+      );
+  const meaningful = (value: unknown): boolean => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return typeof value !== "object" || Object.keys(value).length > 0;
+  };
   const definitions: [string, string[]][] = [
     [
       "Model",
@@ -141,13 +152,23 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
     ["Max retries", ["vercel.ai.settings.maxRetries"]],
     ["Max steps", ["vercel.ai.settings.maxSteps"]],
   ];
-  const calls = parsed(
-    pick(
-      "gen_ai.response.tool_calls",
-      "vercel.ai.response.toolCalls",
-      "ai.response.toolCalls",
-    ),
-  );
+  const callKeys = [
+    "gen_ai.response.tool_calls",
+    "vercel.ai.response.toolCalls",
+    "ai.response.toolCalls",
+  ];
+  const calls =
+    callKeys
+      .map((key) => parsed(data[key]))
+      .find(
+        (value) =>
+          Array.isArray(value) &&
+          value.length > 0 &&
+          value.every(
+            (call) =>
+              call !== null && typeof call === "object" && !Array.isArray(call),
+          ),
+      ) ?? parsed(pick(...callKeys));
   const tools = Array.isArray(calls)
     ? [...calls]
     : calls === undefined
@@ -161,6 +182,37 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
       arguments: parsed(pick("gen_ai.tool.input", "ai.toolCall.args")),
       result: parsed(pick("gen_ai.tool.output", "ai.toolCall.result")),
     });
+  const messageKeys = [
+    "gen_ai.request.messages",
+    "gen_ai.input.messages",
+    "vercel.ai.prompt.messages",
+    "vercel.ai.prompt",
+    "gen_ai.prompt",
+    "ai.prompt.messages",
+    "ai.prompt",
+  ];
+  const prompts = messageKeys.map((key) => parsed(data[key]));
+  const hasMessages = (value: unknown) =>
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((message) => typeof record(message).role === "string");
+  // Pick usable content before raw fallback without stripping multimodal blocks
+  // or unknown captured fields from the conversation.
+  const messages =
+    prompts.find(
+      (value) => hasMessages(value) || hasMessages(record(value).messages),
+    ) ??
+    prompts.find(meaningful) ??
+    parsed(pick(...messageKeys));
+  const wrappedSystem = prompts
+    .map((value) => record(value).system)
+    .find(meaningful);
+  const responseKeys = [
+    "gen_ai.response.text",
+    "gen_ai.output.messages",
+    "vercel.ai.response.text",
+    "ai.response.text",
+  ];
   return {
     fields: definitions.flatMap(([label, keys]) => {
       const value = pick(...keys);
@@ -171,27 +223,12 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
         "gen_ai.system_instructions",
         "gen_ai.prompt.system",
         "ai.prompt.system",
-      ),
+      ) ?? wrappedSystem,
     ),
-    messages: parsed(
-      pick(
-        "gen_ai.request.messages",
-        "gen_ai.input.messages",
-        "vercel.ai.prompt.messages",
-        "vercel.ai.prompt",
-        "gen_ai.prompt",
-        "ai.prompt.messages",
-        "ai.prompt",
-      ),
-    ),
-    response: parsed(
-      pick(
-        "gen_ai.response.text",
-        "gen_ai.output.messages",
-        "vercel.ai.response.text",
-        "ai.response.text",
-      ),
-    ),
+    messages,
+    response:
+      responseKeys.map((key) => parsed(data[key])).find(meaningful) ??
+      parsed(pick(...responseKeys)),
     tools,
   };
 }

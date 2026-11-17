@@ -4,36 +4,43 @@
  * Finalize a release by setting its dateReleased to now.
  */
 
+import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { updateRelease } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseText, parseUrl } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownInline,
   mdKvTable,
   renderMarkdown,
-  safeCodeSpan,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { DRY_RUN_ALIASES, DRY_RUN_FLAG } from "../../lib/mutate-command.js";
-import type { SentryRelease } from "../../types/index.js";
+import type { SentryRelease, WithOutputFields } from "../../types/index.js";
 import { type ReleaseTarget, releaseParameter } from "./parse.js";
+import { ReleaseFinalizeOutputSchema } from "../../generated/output-schemas/release.js";
+import type { ReleaseFinalizeOutputFields } from "../../output-schemas/release.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry release finalize [<org>/]<version>";
+const usageHint = () => sentry`release finalize [<org>/]<version>`;
 
-function formatReleaseFinalized(data: Record<string, unknown>): string {
-  if (data.dryRun) {
+/** JSON output: the finalized release, or the `--dry-run` preview. */
+type FinalizeOutput = WithOutputFields<
+  SentryRelease,
+  typeof ReleaseFinalizeOutputFields
+>;
+
+function formatReleaseFinalized(release: FinalizeOutput): string {
+  if (release.dryRun) {
     return renderMarkdown(
-      `Would finalize release ${safeCodeSpan(String(data.version))} (dry run)`,
+      `Would finalize release ${inlineCode(release.version)} (dry run)`,
     );
   }
-  const release = data as unknown as SentryRelease;
   const lines: string[] = [];
-  lines.push(`## Release Finalized: ${escapeMarkdownInline(release.version)}`);
+  lines.push(`## Release Finalized: ${text(release.version)}`);
   lines.push("");
   const kvRows: [string, string][] = [];
-  kvRows.push(["Version", safeCodeSpan(release.version)]);
+  kvRows.push(["Version", inlineCode(release.version)]);
   kvRows.push(["Status", colorTag("green", "Finalized")]);
   kvRows.push(["Released", release.dateReleased || "—"]);
   lines.push(mdKvTable(kvRows));
@@ -47,32 +54,32 @@ export const finalizeCommand = buildCommand({
     examples: [
       {
         description: "Finalize a release",
-        command: "sentry release finalize 1.0.0",
+        run: "release finalize 1.0.0",
       },
       {
         description: "Finalize a release in an explicit organization",
-        command: "sentry release finalize my-org/1.0.0",
+        run: "release finalize my-org/1.0.0",
       },
       {
         description: "Set a custom release timestamp",
-        command:
-          "sentry release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
+        run: "release finalize 1.0.0 --released 2025-01-01T00:00:00Z",
       },
       {
         description: "Preview without finalizing",
-        command: "sentry release finalize 1.0.0 --dry-run",
+        run: "release finalize 1.0.0 --dry-run",
       },
     ],
   },
   output: {
     human: formatReleaseFinalized,
+    schema: ReleaseFinalizeOutputSchema,
   },
   parameters: {
     positional: {
       kind: "tuple",
       parameters: [
         releaseParameter(
-          USAGE_HINT,
+          usageHint,
           "[<org>/]<version> - Release version to finalize",
         ),
       ],

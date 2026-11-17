@@ -7,8 +7,10 @@
  * `sentry-cli sourcemaps resolve` command without mutating any files.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { relative, resolve as resolvePath } from "node:path";
 import type { SentryContext } from "../../context.js";
+import { sentry } from "../../lib/app-identity.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceListParser,
@@ -18,7 +20,6 @@ import {
 } from "../../lib/completion-target.js";
 import {
   colorTag,
-  escapeMarkdownCell,
   mdKvTable,
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
@@ -64,7 +65,7 @@ type ResolveCommandResult = {
  */
 function describeMapStatus(file: ResolveFileEntry): string {
   if (file.mapPath) {
-    return escapeMarkdownCell(file.mapPath);
+    return tableCell(file.mapPath);
   }
   if (file.inline) {
     return colorTag("muted", "inline (data: URL)");
@@ -97,10 +98,10 @@ function formatResolveResult(data: ResolveCommandResult): string {
     lines.push("| --- | --- | --- |");
     for (const file of data.files) {
       const debugId = file.debugId
-        ? escapeMarkdownCell(file.debugId)
+        ? tableCell(file.debugId)
         : colorTag("muted", "—");
       lines.push(
-        `| ${escapeMarkdownCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
+        `| ${tableCell(file.path)} | ${describeMapStatus(file)} | ${debugId} |`,
       );
     }
   }
@@ -122,15 +123,15 @@ export const resolveCommand = buildCommand({
       {
         description:
           "Report how each JS file's sourcemap resolves and whether a debug ID is injected",
-        command: "sentry sourcemap resolve ./dist",
+        run: "sourcemap resolve ./dist",
       },
       {
         description: "Output as JSON",
-        command: "sentry sourcemap resolve ./dist --json",
+        run: "sourcemap resolve ./dist --json",
       },
       {
         description: "Only scan some extensions",
-        command: "sentry sourcemap resolve ./build --ext .js,.mjs",
+        run: "sourcemap resolve ./build --ext .js,.mjs",
       },
     ],
   },
@@ -224,7 +225,7 @@ export const resolveCommand = buildCommand({
       }
     }
 
-    yield new CommandOutput<ResolveCommandResult>({
+    yield new CommandOutput({
       total: files.length,
       resolved,
       withDebugId,
@@ -236,7 +237,7 @@ export const resolveCommand = buildCommand({
     }
     if (withDebugId < files.length) {
       return {
-        hint: "Run `sentry sourcemap inject` to add debug IDs to files missing them.",
+        hint: `Run \`${sentry`sourcemap inject`}\` to add debug IDs to files missing them.`,
       };
     }
     return {};

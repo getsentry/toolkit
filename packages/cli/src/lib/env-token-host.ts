@@ -37,7 +37,7 @@
 import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { DEFAULT_SENTRY_URL, normalizeUrl } from "./constants.js";
 import { getRawEnvToken } from "./db/auth.js";
-import { getEnv } from "./env.js";
+import { getEnv, withEnv } from "./env.js";
 import { ConfigError } from "./errors.js";
 import { parseSntrysClaim } from "./token-claims.js";
 
@@ -132,16 +132,21 @@ export function captureEnvTokenHost(): void {
       env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
       env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
     ) ?? null;
+  snapshotState.byEnv.set(env, snapshotEnvToken(configuredHost));
+}
+
+/** Scope the current env token to its claim, else `configuredHost`, else SaaS. */
+function snapshotEnvToken(configuredHost: string | null): HostSnapshot {
   const token = getRawEnvToken();
   // Claim first: for sntrys_ tokens, the embedded url is authoritative.
   const claim = captureClaimHost(token);
-  snapshotState.byEnv.set(env, {
+  return {
     configuredHost,
     host: claim.host ?? configuredHost ?? DEFAULT_SENTRY_URL,
     hostFromClaim: claim.host !== undefined,
     ...(claim.error ? { claimError: claim.error } : {}),
     ...(token ? { token } : {}),
-  });
+  };
 }
 
 /**
@@ -194,10 +199,26 @@ export function getTrustedEnvTokenHost(): string | undefined {
 }
 
 /**
+ * Scope the env token in `derived`, a copy of the current environment, as if
+ * it had been set at startup: to its `sntrys_` claim, else the
+ * `SENTRY_HOST`/`SENTRY_URL` this environment had at boot, else SaaS. By now
+ * the copy's `SENTRY_HOST`/`SENTRY_URL` can come from a `.sentryclirc` or the
+ * persisted default, which must not scope the token. The copy may carry a
+ * different token than the boot environment did (`sentry mcp`'s deprecated
+ * `--access-token`), so the token is read from the copy.
+ */
+export function scopeEnvTokenToBootHost(derived: NodeJS.ProcessEnv): void {
+  const configuredHost = getBootConfiguredSentryUrl() ?? null;
+  snapshotState.byEnv.set(
+    derived,
+    withEnv(derived, () => snapshotEnvToken(configuredHost)),
+  );
+}
+
+/**
  * Give `derived`, a copy of the current environment, the env-token host this
- * environment snapshotted instead of one re-read from the copy. By now the
- * copy's `SENTRY_HOST`/`SENTRY_URL` can come from a `.sentryclirc`, which must
- * not scope the env token.
+ * environment snapshotted instead of one re-read from the copy, so the copy
+ * scopes its env token the same way.
  */
 export function inheritEnvTokenHost(derived: NodeJS.ProcessEnv): void {
   const env = getEnv();

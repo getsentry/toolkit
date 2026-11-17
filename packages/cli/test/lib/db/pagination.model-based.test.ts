@@ -119,7 +119,7 @@ class AdvanceNextCommand implements AsyncCommand<PaginationModel, RealDb> {
     const real = getPaginationState(CMD_KEY, CTX_KEY);
     expect(real).toBeDefined();
     expect(real!.stack).toEqual(model.stack);
-    expect(real!.index).toBe(model.index!);
+    expect(real!.index).toBe(model.index);
   }
 
   toString(): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParamOrganizationSlug, ParamPeriod } from "./schema";
+import { ParamOrganizationSlug, ParamPeriod, ParamPlatform } from "./schema";
 
 describe("ParamPeriod", () => {
   it.each(["30m", "1h", "24h", "7d", "2w"])("accepts %s", (period) => {
@@ -27,4 +27,26 @@ describe("ParamOrganizationSlug", () => {
       "Invalid input: expected string, received number",
     );
   });
+});
+
+describe("ParamPlatform", () => {
+  // Values agents sent to create_project in production that Sentry rejected
+  // with `{"platform":["Invalid platform"]}`.
+  it.each([
+    ["cocoa", "apple"],
+    ["cocoa-ios", "apple-ios"],
+    ["react", "javascript-react"],
+    ["csharp", "dotnet"],
+    ["javascript-cloudflare", "node-cloudflare-workers"],
+    ["javascript-cloudflare-workers", "node-cloudflare-workers"],
+  ])("maps rejected platform %s to %s", (platform, expected) => {
+    expect(ParamPlatform.parse(platform)).toBe(expected);
+  });
+
+  it.each(["javascript-react", "apple-ios", "dotnet", "python-litestar"])(
+    "keeps the Sentry platform ID %s",
+    (platform) => {
+      expect(ParamPlatform.parse(platform)).toBe(platform);
+    },
+  );
 });

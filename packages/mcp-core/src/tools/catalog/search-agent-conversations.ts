@@ -200,27 +200,18 @@ function buildArtifact(
 
 export default defineTool({
   name: "search_agent_conversations",
+  title: "Search Agent Conversations",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
-  description: [
-    "Search Sentry Agent Conversations, formerly called AI Conversations, and return one summary row per conversation.",
-    "",
-    "Use this tool to find or list Agent Conversations. Results are conversation summaries, not raw span rows.",
-    "Each row includes title (when available), USD cost, tokens, call counts, previews, and other list metadata.",
-    "Use get_agent_conversation_details with a conversationId to fetch the transcript. Use get_sentry_resource for Sentry conversation URLs.",
-    "",
-    "<examples>",
-    "search_agent_conversations(organizationSlug='my-org', query='failed conversations', period='7d')",
-    "search_agent_conversations(organizationSlug='my-org', query='checkout', project='backend')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Search Sentry agent conversations (formerly AI conversations): one summary row per LLM agent conversation with title, cost, tokens, call counts, and previews. For one conversation's transcript, use get_agent_conversation_details.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     query: z
       .string()
       .trim()
       .optional()
-      .describe("Conversation query/filter string."),
+      .describe("Search filter for conversations."),
     project: z
       .union([ParamProjectSlug, z.array(ParamProjectSlug).min(1)])
       .optional()
@@ -232,19 +223,19 @@ export default defineTool({
       ])
       .optional()
       .describe("Environment name, or an array of environments."),
-    period: ParamPeriod.default("30d").describe(
-      "Relative time range. Defaults to 30d.",
-    ),
+    period: ParamPeriod.default("30d"),
     start: z
       .string()
       .trim()
       .optional()
-      .describe("Explicit start time for the search window."),
+      .describe(
+        "Start of the search window; requires end and overrides period.",
+      ),
     end: z
       .string()
       .trim()
       .optional()
-      .describe("Explicit end time for the search window."),
+      .describe("End of the search window; requires start."),
     cursor: z
       .string()
       .trim()
@@ -263,7 +254,7 @@ export default defineTool({
     if ((params.start && !params.end) || (!params.start && params.end)) {
       throw new UserInputError("`start` and `end` must be provided together.");
     }
-    const requestedPeriod = params.period ?? "30d";
+    const requestedPeriod = params.period;
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,

@@ -5,12 +5,12 @@ import { createIsolatedDbContext } from "../../model-based/helpers.js";
 const {
   mockListOrganizations,
   mockListProjects,
-  mockFindProjectByDsnKey,
+  mockFindProjectByDsn,
   mockResolveOrgDisplayName,
 } = vi.hoisted(() => ({
   mockListOrganizations: vi.fn(() => Promise.resolve([])),
   mockListProjects: vi.fn(() => Promise.resolve([])),
-  mockFindProjectByDsnKey: vi.fn(() => Promise.resolve(null)),
+  mockFindProjectByDsn: vi.fn(() => Promise.resolve(null)),
   mockResolveOrgDisplayName: vi.fn(
     (slug: string, name?: string) => name ?? slug,
   ),
@@ -19,7 +19,7 @@ const {
 vi.mock("../../../src/lib/api-client.js", () => ({
   listOrganizations: mockListOrganizations,
   listProjects: mockListProjects,
-  findProjectByDsnKey: mockFindProjectByDsnKey,
+  findProjectByDsn: mockFindProjectByDsn,
   resolveOrgDisplayName: mockResolveOrgDisplayName,
 }));
 
@@ -37,7 +37,7 @@ describe("resolveProject", () => {
     cleanup = createIsolatedDbContext();
     mockListOrganizations.mockClear();
     mockListProjects.mockClear();
-    mockFindProjectByDsnKey.mockClear();
+    mockFindProjectByDsn.mockClear();
   });
 
   afterEach(() => {
@@ -71,10 +71,10 @@ describe("resolveProject", () => {
     expect(result.sourceDescription).toContain("SENTRY_DSN");
     // Should not call API
     expect(mockListOrganizations).not.toHaveBeenCalled();
-    expect(mockFindProjectByDsnKey).not.toHaveBeenCalled();
+    expect(mockFindProjectByDsn).not.toHaveBeenCalled();
   });
 
-  test("resolves DSN without orgId using findProjectByDsnKey", async () => {
+  test("resolves DSN without orgId using findProjectByDsn", async () => {
     const dsn: DetectedDsn = {
       raw: "https://abc123@sentry.io/456",
       protocol: "https",
@@ -86,7 +86,7 @@ describe("resolveProject", () => {
       sourcePath: ".env",
     };
 
-    mockFindProjectByDsnKey.mockResolvedValue({
+    mockFindProjectByDsn.mockResolvedValue({
       id: "456",
       slug: "my-project",
       name: "My Project",
@@ -103,7 +103,10 @@ describe("resolveProject", () => {
     expect(result.orgName).toBe("My Organization");
     expect(result.projectSlug).toBe("my-project");
     expect(result.projectName).toBe("My Project");
-    expect(mockFindProjectByDsnKey).toHaveBeenCalledWith("abc123");
+    expect(mockFindProjectByDsn).toHaveBeenCalledWith(
+      "https://abc123@sentry.io/456",
+      "abc123",
+    );
   });
 
   test("throws when DSN without orgId cannot be resolved", async () => {
@@ -117,7 +120,7 @@ describe("resolveProject", () => {
       sourcePath: "app.js",
     };
 
-    mockFindProjectByDsnKey.mockResolvedValue(null);
+    mockFindProjectByDsn.mockResolvedValue(null);
 
     await expect(resolveProject("/test/path", dsn)).rejects.toThrow(
       /Cannot resolve project.*DSN could not be matched/,
@@ -134,7 +137,7 @@ describe("resolveProject", () => {
       source: "env",
     };
 
-    mockFindProjectByDsnKey.mockResolvedValue({
+    mockFindProjectByDsn.mockResolvedValue({
       id: "456",
       slug: "orphan-project",
       name: "Orphan Project",

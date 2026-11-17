@@ -3,7 +3,7 @@
  * module first in each entry point, before anything loads node:sqlite.
  */
 
-const originalEmit = process.emit.bind(process) as typeof process.emit;
+const originalEmit = process.emit.bind(process);
 process.emit = ((event: string, ...args: unknown[]) => {
   if (
     event === "warning" &&

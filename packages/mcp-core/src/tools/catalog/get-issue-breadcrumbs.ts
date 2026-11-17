@@ -1,12 +1,16 @@
 import { ApiNotFoundError } from "../../api-client";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
-import { fetchAndFormatBreadcrumbs } from "../../internal/tool-helpers/breadcrumbs";
+import {
+  fetchIssueBreadcrumbs,
+  issueBreadcrumbsOutputSchema,
+} from "../../internal/tool-helpers/breadcrumbs";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   ensureIssueWithinProjectConstraint,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamEventIdOrLatest,
   ParamIssueShortId,
@@ -19,24 +23,11 @@ import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "get_issue_breadcrumbs",
+  title: "Get Issue Breadcrumbs",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get the breadcrumb trail from a Sentry issue event.",
-    "Defaults to the latest event when eventId is omitted.",
-    "",
-    "Use this tool when you need to:",
-    "- See the user and application actions leading up to an error",
-    "- Inspect navigation, console, HTTP, and other breadcrumb events",
-    "- Reconstruct the immediate context before an issue occurred",
-    "- Compare breadcrumb trails across multiple events in the same issue",
-    "",
-    "<examples>",
-    "get_issue_breadcrumbs(organizationSlug='my-org', issueId='PROJECT-123')",
-    "get_issue_breadcrumbs(organizationSlug='my-org', issueId='PROJECT-123', eventId='c49541c747cb4d8aa3efb70ca5aba243')",
-    "get_issue_breadcrumbs(issueUrl='https://my-org.sentry.io/issues/PROJECT-123/')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Get the breadcrumb trail of a Sentry issue event: the navigation, console, HTTP, and user actions leading up to the error.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -49,6 +40,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: issueBreadcrumbsOutputSchema,
   async handler(params, context: ServerContext) {
     const parsed = parseIssueParams({
       issueUrl: params.issueUrl,
@@ -72,11 +64,13 @@ export default defineTool({
         issueId: parsed.issueId,
         projectSlug: context.constraints.projectSlug,
       });
-      return await fetchAndFormatBreadcrumbs(
-        apiService,
-        parsed.organizationSlug,
-        parsed.issueId,
-        params.eventId,
+      return structuredResult(
+        await fetchIssueBreadcrumbs(
+          apiService,
+          parsed.organizationSlug,
+          parsed.issueId,
+          params.eventId,
+        ),
       );
     } catch (error) {
       if (error instanceof ApiNotFoundError) {

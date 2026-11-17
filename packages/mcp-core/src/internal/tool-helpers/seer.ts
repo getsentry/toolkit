@@ -1,6 +1,11 @@
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { z } from "zod";
 import type { AutofixRunState } from "../../api-client/index";
 import type { Issue } from "../../api-client/types";
+import { isPlainObject } from "../type-guards";
 
 type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
 
@@ -85,6 +90,117 @@ export function getHumanInterventionGuidance(status: string): string {
   return "";
 }
 
+export const SEER_START_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
+
+export const SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE =
+  "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.";
+
+const SEER_START_DAILY_CAP_MESSAGE =
+  "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.";
+
+const SEER_NO_QUOTA_MESSAGE =
+  "Your organization does not have enough Seer quota to start an Autofix run.";
+
+/**
+ * Whether each 402 `code` in the API schema means out of credits. Keyed by the
+ * generated type, so a code added to the schema fails type-checking until it
+ * is mapped here.
+ */
+const SEER_OUT_OF_CREDITS_CODES: Record<
+  AutofixPaymentRequiredResponse["code"],
+  boolean
+> = {
+  seer_out_of_credits: true,
+  seer_out_of_quota: false,
+};
+
+/** The out-of-credits message for each 402 `denialReason` in the API schema. */
+const SEER_DENIAL_MESSAGES: Record<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  string
+> = {
+  daily_cap_exceeded: SEER_START_DAILY_CAP_MESSAGE,
+  not_enough_credits: SEER_START_OUT_OF_CREDITS_MESSAGE,
+};
+
+/**
+ * Whether each 409 `code` in the API schema means Seer setup is missing.
+ * Exhaustive for the same reason.
+ */
+const SEER_SETUP_REQUIRED_CODES: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  boolean
+> = {
+  scm_integration_required: true,
+  repos_not_linked: true,
+  run_in_flight: false,
+};
+
+/**
+ * `values[key]` when `key` is one of the record's own keys, so an untrusted
+ * value such as `constructor` from an error body matches nothing.
+ */
+function lookupKnownKey<K extends string, V>(
+  values: Record<K, V>,
+  key: unknown,
+): V | undefined {
+  return typeof key === "string" && Object.hasOwn(values, key)
+    ? values[key as K]
+    : undefined;
+}
+
+/**
+ * Explain a 402 from starting a run. Sentry tags the 402 with a `code`. Older
+ * Sentry versions send the out-of-quota 402 as a bare string with no code, so
+ * anything that isn't out of credits is treated as out of quota.
+ */
+export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
+  if (
+    !isPlainObject(responseBody) ||
+    !lookupKnownKey(SEER_OUT_OF_CREDITS_CODES, responseBody.code)
+  ) {
+    return SEER_NO_QUOTA_MESSAGE;
+  }
+  return (
+    lookupKnownKey(SEER_DENIAL_MESSAGES, responseBody.denialReason) ??
+    SEER_START_OUT_OF_CREDITS_MESSAGE
+  );
+}
+
+/**
+ * Explain a 409 from starting a run when Seer is not set up for the issue's
+ * project. Returns null for any other 409, such as a run already in flight.
+ */
+export function getSeerSetupRequiredMessage(
+  responseBody: unknown,
+): string | null {
+  if (
+    !isPlainObject(responseBody) ||
+    !lookupKnownKey(SEER_SETUP_REQUIRED_CODES, responseBody.code) ||
+    typeof responseBody.detail !== "string"
+  ) {
+    return null;
+  }
+  return [
+    responseBody.detail,
+    "",
+    "Retrying won't help until someone sets this up in Sentry. Investigate without Seer by reading the issue and its events.",
+  ].join("\n");
+}
+
+/**
+ * Explain why a failed run stopped, when Seer gives a reason we can explain.
+ */
+export function getFailureReasonGuidance(
+  failureReason: string | null | undefined,
+): string {
+  if (failureReason === "out_of_credits") {
+    return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}\n`;
+  }
+  return "";
+}
+
 function escapeXmlAttribute(value: string | number): string {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -121,6 +237,8 @@ function wrapSeerAnalysisOutput({
 // everything is treated as optional.
 const RootCauseArtifactDataSchema = z.object({
   one_line_description: z.string().optional(),
+  headline: z.string().optional(),
+  cause: z.string().optional(),
   five_whys: z.array(z.string()).default([]),
   reproduction_steps: z.array(z.string()).default([]),
 });
@@ -158,11 +276,21 @@ function formatRootCauseArtifact(data: unknown): string | null {
   if (!parsed.success) {
     return null;
   }
-  const { one_line_description, five_whys, reproduction_steps } = parsed.data;
+  const {
+    one_line_description,
+    headline,
+    cause,
+    five_whys,
+    reproduction_steps,
+  } = parsed.data;
 
   const sections: string[] = [];
-  if (one_line_description) {
-    sections.push(one_line_description);
+  const summary = one_line_description || headline;
+  if (summary) {
+    sections.push(summary);
+  }
+  if (cause) {
+    sections.push(cause);
   }
   if (five_whys.length > 0) {
     sections.push(five_whys.map((why, i) => `${i + 1}. ${why}`).join("\n"));
@@ -251,7 +379,9 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
   const solution = SolutionArtifactDataSchema.safeParse(artifacts.solution);
   return {
     rootCause:
-      (rootCause.success && rootCause.data.one_line_description) || null,
+      (rootCause.success &&
+        (rootCause.data.one_line_description || rootCause.data.headline)) ||
+      null,
     solution: (solution.success && solution.data.one_line_summary) || null,
   };
 }

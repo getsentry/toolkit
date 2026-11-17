@@ -8,7 +8,7 @@
 
 import { safeParse } from "valibot";
 import { describe, expect, test } from "vitest";
-import { SentryMonitorSchema } from "../../../src/types/sentry.js";
+import { SentryMonitorSchema } from "../../../src/output-schemas/monitor.js";
 
 const crontabMonitor = {
   id: "12345",

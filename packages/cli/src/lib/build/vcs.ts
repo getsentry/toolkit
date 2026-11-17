@@ -20,6 +20,8 @@ import {
   getRemoteDefaultBranch,
   getRemoteUrl,
   getRepositoryName,
+  normalizeSha,
+  SHA1_RE,
 } from "../git.js";
 import { logger } from "../logger.js";
 
@@ -45,6 +47,18 @@ export type VcsInfo = {
   prNumber?: number;
 };
 
+/** {@link VcsInfo} as the snake_case fields of build and snapshot request bodies. */
+export type VcsBody = {
+  head_sha?: string;
+  base_sha?: string;
+  provider?: string;
+  head_repo_name?: string;
+  base_repo_name?: string;
+  head_ref?: string;
+  base_ref?: string;
+  pr_number?: number;
+};
+
 /** Git-metadata flags accepted by build/snapshot upload commands. */
 export type VcsFlags = {
   "head-sha"?: string;
@@ -58,18 +72,6 @@ export type VcsFlags = {
   "force-git-metadata"?: boolean;
   "no-git-metadata"?: boolean;
 };
-
-/** A 40-character lowercase hex SHA-1. */
-const SHA1_RE = /^[0-9a-f]{40}$/;
-
-/**
- * Normalize an already-trusted SHA (from git/event payload): lowercase and
- * accept only a valid 40-char hex SHA-1, else undefined.
- */
-function normalizeSha(sha: string | undefined): string | undefined {
-  const trimmed = sha?.trim().toLowerCase();
-  return trimmed && SHA1_RE.test(trimmed) ? trimmed : undefined;
-}
 
 /**
  * Validate a user-supplied `--head-sha`/`--base-sha` value. An empty string is
@@ -321,8 +323,8 @@ export function collectVcsMetadata(
  * Flatten {@link VcsInfo} into the snake_case fields merged into the build
  * assemble body. Empty/undefined values are omitted.
  */
-export function vcsInfoToBody(vcs: VcsInfo): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+export function vcsInfoToBody(vcs: VcsInfo): VcsBody {
+  const body: VcsBody = {};
   if (vcs.headSha) {
     body.head_sha = vcs.headSha;
   }

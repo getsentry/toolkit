@@ -2,17 +2,17 @@
  * Tests for DSN file system utilities.
  *
  * Verifies that handleFileError correctly distinguishes expected filesystem
- * errors (silently ignored) from unexpected ones (reported to Sentry).
+ * errors (ignored, debug-logged) from unexpected ones (reported to Sentry).
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { captureException } = vi.hoisted(() => ({
-  captureException: vi.fn(),
+const { reportCliError } = vi.hoisted(() => ({
+  reportCliError: vi.fn(),
 }));
 
+vi.mock("../../../src/lib/error-reporting.js", () => ({ reportCliError }));
 vi.mock("@sentry/node", () => ({
-  captureException,
   startSpan: (_opts: unknown, fn: () => unknown) => fn(),
 }));
 
@@ -27,11 +27,11 @@ function errnoError(code: string, message?: string): Error {
 
 describe("handleFileError", () => {
   beforeEach(() => {
-    captureException.mockClear();
+    reportCliError.mockClear();
   });
 
   afterEach(() => {
-    captureException.mockClear();
+    reportCliError.mockClear();
   });
 
   describe("ignorable errors (should NOT report to Sentry)", () => {
@@ -40,7 +40,7 @@ describe("handleFileError", () => {
         operation: "test",
         path: "/missing",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("EACCES — permission denied", () => {
@@ -48,7 +48,7 @@ describe("handleFileError", () => {
         operation: "test",
         path: "/secret",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("EPERM — operation not permitted", () => {
@@ -56,7 +56,7 @@ describe("handleFileError", () => {
         operation: "test",
         path: "/locked",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("EISDIR — path is a directory, not a file", () => {
@@ -67,7 +67,7 @@ describe("handleFileError", () => {
           path: "/project/.env",
         },
       );
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("ENOTDIR — path component is not a directory", () => {
@@ -75,7 +75,7 @@ describe("handleFileError", () => {
         operation: "test",
         path: "/file.txt/child",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("ETIMEDOUT — connection timed out on a network mount", () => {
@@ -83,7 +83,7 @@ describe("handleFileError", () => {
         operation: "scandir",
         path: "/mnt/cloud-storage",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("ENOTCONN — scandir on a disconnected network or FUSE mount", () => {
@@ -94,7 +94,7 @@ describe("handleFileError", () => {
           path: "/mnt/remote",
         },
       );
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("UNKNOWN code — non-POSIX error with UNKNOWN code", () => {
@@ -102,7 +102,7 @@ describe("handleFileError", () => {
         operation: "scandir",
         path: "/Users/austin/Documents/app-audit.trace",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
     });
 
     test("Unknown system error — macOS non-POSIX errno with no standard code", () => {
@@ -114,42 +114,71 @@ describe("handleFileError", () => {
         operation: "scandir",
         path: "/Users/austin/Documents/app-audit.trace",
       });
-      expect(captureException).not.toHaveBeenCalled();
+      expect(reportCliError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("unhealthy mounts and virtual filesystems (should NOT report)", () => {
+    // Real readdir failures seen in CLI-1ES: /proc (EINVAL), OneDrive FUSE
+    // (EIO), stale AppImage / FreeRDP mounts under /tmp (ENOTCONN), macOS
+    // .trace bundles (ECANCELED), Bun on cloud-storage dirs (EINTR).
+    test.each([
+      "EINVAL",
+      "EIO",
+      "ECANCELED",
+      "EINTR",
+      "EAGAIN",
+      "EBUSY",
+      "ESTALE",
+      "EHOSTDOWN",
+      "ELOOP",
+    ])("%s from scandir", (code) => {
+      const err = errnoError(code, `${code}: failed, scandir '/mnt/x'`);
+      (err as NodeJS.ErrnoException).syscall = "scandir";
+      handleFileError(err, { operation: "scan.walk.readdir", path: "/mnt/x" });
+      expect(reportCliError).not.toHaveBeenCalled();
     });
   });
 
   describe("unexpected errors (SHOULD report to Sentry)", () => {
-    test("EIO — I/O error", () => {
-      handleFileError(errnoError("EIO"), {
+    test.each(["EMFILE", "ENFILE", "EBADF"])(
+      "%s — descriptor misuse/exhaustion caused by the CLI",
+      (code) => {
+        handleFileError(errnoError(code), { operation: "scan.walk.readdir" });
+        expect(reportCliError).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    test("Node ERR_* codes — API misuse in our own code", () => {
+      handleFileError(errnoError("ERR_INVALID_ARG_TYPE"), {
         operation: "test",
-        path: "/disk-fail",
       });
-      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(reportCliError).toHaveBeenCalledTimes(1);
     });
 
     test("ENOMEM — out of memory", () => {
       handleFileError(errnoError("ENOMEM"), { operation: "test" });
-      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(reportCliError).toHaveBeenCalledTimes(1);
     });
 
     test("generic Error without code", () => {
       handleFileError(new Error("something broke"), { operation: "test" });
-      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(reportCliError).toHaveBeenCalledTimes(1);
     });
 
     test("non-Error value", () => {
       handleFileError("string error", { operation: "test" });
-      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(reportCliError).toHaveBeenCalledTimes(1);
     });
   });
 
   test("passes context tags and extras to Sentry", () => {
-    const error = errnoError("EIO");
+    const error = new Error("unexpected");
     handleFileError(error, {
       operation: "checkEnvForDsn",
       path: "/project/.env",
     });
-    expect(captureException).toHaveBeenCalledWith(error, {
+    expect(reportCliError).toHaveBeenCalledWith(error, {
       tags: { operation: "checkEnvForDsn" },
       extra: { path: "/project/.env" },
     });

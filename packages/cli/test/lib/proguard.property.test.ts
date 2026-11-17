@@ -72,7 +72,7 @@ describe("proguard: computeProguardUuid", () => {
         const original = Buffer.from(bytes);
         const mutated = Buffer.from(bytes);
         // Flip the first byte to guarantee different content.
-        mutated[0] = (mutated[0]! + 1) % 256;
+        mutated[0] = (mutated[0] + 1) % 256;
         expect(computeProguardUuid(original)).not.toBe(
           computeProguardUuid(mutated),
         );

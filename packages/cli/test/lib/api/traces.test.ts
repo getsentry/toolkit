@@ -1,5 +1,6 @@
 /**
- * Tests for the traces API helpers (getDetailedTrace, listTransactions, listSpans).
+ * Tests for the traces API helpers (getDetailedTrace, getTraceMeta,
+ * listTransactions, listSpans).
  *
  * Verifies URL construction, query parameter encoding, schema validation,
  * pagination cursor extraction, auto-pagination, and the 14d→90d empty-trace retry.
@@ -10,6 +11,7 @@ import {
   fetchMultiSpanDetails,
   getDetailedTrace,
   getSpanDetails,
+  getTraceMeta,
   listSpans,
   listTransactions,
 } from "../../../src/lib/api/traces.js";
@@ -38,7 +40,7 @@ describe("listTransactions", () => {
 
   function mockOk(body: unknown, headers: Record<string, string> = {}) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       return new Response(JSON.stringify(body), {
@@ -59,10 +61,10 @@ describe("listTransactions", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex]!;
+      const resp = responses[callIndex];
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -303,7 +305,7 @@ describe("listSpans", () => {
 
   function mockOk(body: unknown, headers: Record<string, string> = {}) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       capturedMethod = req.method;
       return new Response(JSON.stringify(body), {
@@ -320,10 +322,10 @@ describe("listSpans", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex]!;
+      const resp = responses[callIndex];
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -589,7 +591,7 @@ describe("getSpanDetails", () => {
 
   function mockOk(body: unknown) {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrl = req.url;
       const url = new URL(capturedUrl);
       url.searchParams.forEach((v, k) => {
@@ -687,7 +689,7 @@ describe("fetchMultiSpanDetails", () => {
 
   function mockOk() {
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       requestedUrls.push(req.url);
       return new Response(
         JSON.stringify({
@@ -778,7 +780,7 @@ describe("getDetailedTrace", () => {
     let callIndex = 0;
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       capturedUrls.push(req.url);
       const body = bodies[callIndex] ?? [];
       callIndex += 1;
@@ -799,13 +801,13 @@ describe("getDetailedTrace", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.span_id).toBe("span-1");
+    expect(result[0].span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]!);
+    const url = new URL(getCapturedUrls()[0]);
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
     expect(url.searchParams.get("statsPeriod")).toBeNull();
-    expect(url.searchParams.get("limit")).toBe("10000");
-    expect(url.searchParams.get("project")).toBe("-1");
+    expect(url.searchParams.has("limit")).toBe(false);
+    expect(url.searchParams.has("project")).toBe(false);
   });
 
   test("queries 14d and does not retry when spans are returned", async () => {
@@ -815,7 +817,7 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(1);
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]!);
+    const url = new URL(getCapturedUrls()[0]);
     expect(url.searchParams.get("statsPeriod")).toBe("14d");
     expect(url.searchParams.get("timestamp")).toBeNull();
   });
@@ -826,19 +828,19 @@ describe("getDetailedTrace", () => {
     const result = await getDetailedTrace("my-org", "abc123def456");
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.span_id).toBe("span-1");
+    expect(result[0].span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
-    expect(new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod")).toBe(
+    expect(new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod")).toBe(
       "14d",
     );
-    expect(new URL(getCapturedUrls()[1]!).searchParams.get("statsPeriod")).toBe(
+    expect(new URL(getCapturedUrls()[1]).searchParams.get("statsPeriod")).toBe(
       "90d",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("timestamp"),
+      new URL(getCapturedUrls()[0]).searchParams.get("timestamp"),
     ).toBeNull();
     expect(
-      new URL(getCapturedUrls()[1]!).searchParams.get("timestamp"),
+      new URL(getCapturedUrls()[1]).searchParams.get("timestamp"),
     ).toBeNull();
   });
 
@@ -851,29 +853,74 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(0);
     expect(getCapturedUrls()).toHaveLength(1);
-    expect(new URL(getCapturedUrls()[0]!).searchParams.get("timestamp")).toBe(
+    expect(new URL(getCapturedUrls()[0]).searchParams.get("timestamp")).toBe(
       "1700000000",
     );
     expect(
-      new URL(getCapturedUrls()[0]!).searchParams.get("statsPeriod"),
+      new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod"),
     ).toBeNull();
   });
 
-  test("forwards project and additional attributes on both lookups", async () => {
+  test("forwards additional attributes on both lookups", async () => {
     const { getCapturedUrls } = mockSequential([[], [SPAN]]);
 
     await getDetailedTrace("my-org", "abc123def456", {
-      projectId: 42,
       additionalAttributes: ["gen_ai.request.model"],
     });
 
     expect(getCapturedUrls()).toHaveLength(2);
     for (const raw of getCapturedUrls()) {
       const url = new URL(raw);
-      expect(url.searchParams.get("project")).toBe("42");
       expect(url.searchParams.getAll("additional_attributes")).toEqual([
         "gen_ai.request.model",
       ]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getTraceMeta
+// ---------------------------------------------------------------------------
+
+describe("getTraceMeta", () => {
+  useTestConfigDir("traces-meta-test-");
+
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("accepts spans counted under a null transaction.event_id", async () => {
+    const transactionChildCountMap = [
+      {
+        "transaction.event_id": "0daf40dc453a429c8c57e4c215c4e82c",
+        "count()": 10,
+      },
+      { "transaction.event_id": null, "count()": 15 },
+    ];
+    globalThis.fetch = mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            errorsCount: 2,
+            logsCount: 3,
+            metricsCount: 0,
+            performanceIssuesCount: 1,
+            spansCount: 25,
+            transactionChildCountMap,
+            spansCountMap: { "http.client": 25 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const meta = await getTraceMeta("my-org", "abc123def456");
+
+    expect(meta.transactionChildCountMap).toEqual(transactionChildCountMap);
   });
 });

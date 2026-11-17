@@ -27,18 +27,10 @@ export const findTeamsOutputSchema = z.object({
 
 export default defineTool({
   name: "find_teams",
+  title: "Find Teams",
   skills: ["inspect", "triage", "project-management"], // Team viewing and management
   requiredScopes: ["team:read"],
-  description: [
-    "Find teams in an organization in Sentry.",
-    "",
-    "Use this tool when you need to:",
-    "- View teams in a Sentry organization",
-    "- Find a team's slug and numeric ID to aid other tool requests",
-    "- Search for specific teams by name or slug",
-    "",
-    `Returns up to ${RESULT_LIMIT} results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.`,
-  ].join("\n"),
+  description: `List or search teams in a Sentry organization. Returns each team's slug and numeric ID, ${RESULT_LIMIT} per page.`,
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),

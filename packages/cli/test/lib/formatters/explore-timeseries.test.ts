@@ -104,7 +104,7 @@ describe("formatExploreTimeSeriesHuman", () => {
 
   test("renders each measure with its own metadata and distinguishes missing values from zero", () => {
     const data = makeData();
-    data.timeSeries[0]!.values.pop();
+    data.timeSeries[0].values.pop();
     data.timeSeries.push({
       yAxis: "p95(span.duration)",
       meta: {
@@ -138,7 +138,7 @@ describe("formatExploreTimeSeriesHuman", () => {
 
   test("preserves identifier-like and markdown-like strings without coercion", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
+    const series = data.timeSeries[0];
     series.yAxis = "latest_event()";
     series.meta.valueType = "string";
     series.values = [
@@ -165,7 +165,7 @@ describe("formatExploreTimeSeriesHuman", () => {
 
   test("distinguishes retention, unfinished windows, and unavailable scan coverage", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
+    const series = data.timeSeries[0];
     series.meta.dataScanned = "partial";
     series.values[0] = {
       timestamp: Date.UTC(2026, 0, 1),
@@ -176,7 +176,7 @@ describe("formatExploreTimeSeriesHuman", () => {
       sampleRate: 0.1,
       confidence: "low",
     };
-    series.values[2]!.incompleteReason = "NOT_ELAPSED";
+    series.values[2].incompleteReason = "NOT_ELAPSED";
 
     const output = formatExploreTimeSeriesHuman(data);
 
@@ -191,7 +191,7 @@ describe("formatExploreTimeSeriesHuman", () => {
 
   test("does not mistake absent series or buckets for zero-valued results", () => {
     const data = makeData();
-    data.timeSeries[0]!.values = [];
+    data.timeSeries[0].values = [];
     expect(formatExploreTimeSeriesHuman(data)).toContain(
       "No time buckets returned",
     );
@@ -292,8 +292,8 @@ describe("Explore time-series graphics", () => {
       vi.mocked(terminal.selectGraphicsFormat).mockReturnValue(format);
       vi.stubEnv("TZ", "America/Los_Angeles");
       const data = makeData();
-      const count = data.timeSeries[0]!;
-      count.values[2]!.incomplete = false;
+      const count = data.timeSeries[0];
+      count.values[2].incomplete = false;
       data.timeSeries.push({
         yAxis: "p95(span.duration)",
         meta: {
@@ -335,21 +335,19 @@ describe("Explore time-series graphics", () => {
       expect(data).toEqual(original);
       if (format === "kitty") {
         const [countImage, durationImage] = kittyImages(output);
-        expect(textPixels(countImage!, 0, 0, 5)).toEqual(labelPixels("1,234"));
-        expect(textPixels(durationImage!, 0, 0, 4)).toEqual(
-          labelPixels("25ms"),
-        );
-        expect(textPixels(durationImage!, 41, 48, 23)).toEqual(
+        expect(textPixels(countImage, 0, 0, 5)).toEqual(labelPixels("1,234"));
+        expect(textPixels(durationImage, 0, 0, 4)).toEqual(labelPixels("25ms"));
+        expect(textPixels(durationImage, 41, 48, 23)).toEqual(
           labelPixels("2026-01-01 00:00:00 UTC"),
         );
-        expect(textPixels(durationImage!, 449, 48, 23)).toEqual(
+        expect(textPixels(durationImage, 449, 48, 23)).toEqual(
           labelPixels("2026-01-01 00:00:15 UTC"),
         );
-        expect(textPixels(durationImage!, 8, 56, 17)).toEqual(
+        expect(textPixels(durationImage, 8, 56, 17)).toEqual(
           labelPixels("p95 span.duration", [224, 224, 224]),
         );
         expect([
-          ...durationImage!.data.subarray(58 * 640 * 4, 58 * 640 * 4 + 4),
+          ...durationImage.data.subarray(58 * 640 * 4, 58 * 640 * 4 + 4),
         ]).toEqual([117, 83, 255, 255]);
       }
     },
@@ -365,7 +363,7 @@ describe("Explore time-series graphics", () => {
     "retains the complete expression %s below an abbreviated legend",
     (yAxis) => {
       const data = makeData();
-      data.timeSeries[0]!.yAxis = yAxis;
+      data.timeSeries[0].yAxis = yAxis;
 
       const output = formatExploreTimeSeriesHuman(data);
 
@@ -388,10 +386,10 @@ describe("Explore time-series graphics", () => {
     "keeps $valueType units in the caption on a narrow chart (maximum $maximum)",
     ({ valueType, maximum, label }) => {
       const data = makeData();
-      const series = data.timeSeries[0]!;
+      const series = data.timeSeries[0];
       series.meta.valueType = valueType;
       series.meta.valueUnit = "1/second";
-      series.values[0]!.value = maximum;
+      series.values[0].value = maximum;
       // A redundant axis unit would consume the space needed by the UTC labels.
       process.stdout.columns = 56;
       vi.mocked(terminal.terminalPixelWidth).mockReturnValue(448);
@@ -400,7 +398,7 @@ describe("Explore time-series graphics", () => {
       const images = kittyImages(output);
 
       expect(images).toHaveLength(1);
-      expect(textPixels(images[0]!, 0, 0, label.length)).toEqual(
+      expect(textPixels(images[0], 0, 0, label.length)).toEqual(
         labelPixels(label),
       );
       expect(output).toContain("Interval: 5m · Unit: 1/second");
@@ -412,7 +410,7 @@ describe("Explore time-series graphics", () => {
 
   test("keeps gaps in place, distinguishes zero, and retains incomplete values and warnings", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
+    const series = data.timeSeries[0];
     series.meta.dataScanned = "partial";
     series.values = [10_000, null, 0, 90_000, 80_000, 70_000, 5000, 1].map(
       (value, index) => ({
@@ -421,21 +419,21 @@ describe("Explore time-series graphics", () => {
         incomplete: false,
       }),
     );
-    series.values[3]!.incomplete = true;
-    series.values[3]!.incompleteReason = "OUTSIDE_RETENTION";
-    series.values[4]!.incomplete = true;
-    series.values[4]!.incompleteReason = "INGESTION_PENDING";
-    series.values[5]!.incomplete = true;
-    series.values[5]!.incompleteReason = "NOT_ELAPSED";
-    series.values[6]!.sampleRate = 0.1;
-    series.values[6]!.confidence = "low";
+    series.values[3].incomplete = true;
+    series.values[3].incompleteReason = "OUTSIDE_RETENTION";
+    series.values[4].incomplete = true;
+    series.values[4].incompleteReason = "INGESTION_PENDING";
+    series.values[5].incomplete = true;
+    series.values[5].incompleteReason = "NOT_ELAPSED";
+    series.values[6].sampleRate = 0.1;
+    series.values[6].confidence = "low";
     const original = structuredClone(data);
 
     const output = formatExploreTimeSeriesHuman(data);
     const images = kittyImages(output);
 
     expect(images).toHaveLength(1);
-    const image = images[0]!;
+    const image = images[0];
     expect(image.data).toHaveLength(image.width * image.height * 4);
     // Eight slots follow the value-axis gutter. Gaps keep their time positions
     // and the axis below the plot must not turn them into visible data ticks.
@@ -486,7 +484,7 @@ describe("Explore time-series graphics", () => {
 
   test("scales sub-centesimal measurements without labelling them zero", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
+    const series = data.timeSeries[0];
     series.meta.valueType = "duration";
     series.meta.valueUnit = "millisecond";
     series.values = [0.001, 0.002].map((value, index) => ({
@@ -499,23 +497,23 @@ describe("Explore time-series graphics", () => {
     const [image] = kittyImages(output);
 
     expect(image).toBeDefined();
-    expect(textPixels(image!, 0, 0, 7)).toEqual(labelPixels("0.002ms"));
-    expect(alphaAt(image!, 100, 22)).toBe(0);
-    expect(alphaAt(image!, 100, 23)).toBe(255);
-    expect(alphaAt(image!, 400, 0)).toBe(255);
+    expect(textPixels(image, 0, 0, 7)).toEqual(labelPixels("0.002ms"));
+    expect(alphaAt(image, 100, 22)).toBe(0);
+    expect(alphaAt(image, 100, 23)).toBe(255);
+    expect(alphaAt(image, 400, 0)).toBe(255);
   });
 
   test.each(["negative", "string", "irregular", "missing"] as const)(
     "uses the table for a %s series",
     (kind) => {
       const data = makeData();
-      const series = data.timeSeries[0]!;
+      const series = data.timeSeries[0];
       if (kind === "negative") {
-        series.values[0]!.value = -5;
+        series.values[0].value = -5;
       } else if (kind === "string") {
-        series.values[0]!.value = "00123";
+        series.values[0].value = "00123";
       } else if (kind === "irregular") {
-        series.values[1]!.timestamp += 1000;
+        series.values[1].timestamp += 1000;
       } else {
         series.values = series.values.map((bucket) => ({
           ...bucket,
@@ -538,7 +536,7 @@ describe("Explore time-series graphics", () => {
 
   test("uses the full table when axes leave too little plot width for percentile buckets", () => {
     const data = makeData();
-    const series = data.timeSeries[0]!;
+    const series = data.timeSeries[0];
     series.yAxis = "p95(span.duration)";
     series.values = Array.from({ length: 300 }, (_, index) => ({
       timestamp: Date.UTC(2026, 0, 1) + index * series.meta.interval,
@@ -585,7 +583,7 @@ describe("Explore time-series graphics", () => {
     "preserves JSON with fields %j without probing the terminal",
     (fields) => {
       const data = makeData();
-      data.timeSeries[0]!.values[1]!.value = null;
+      data.timeSeries[0].values[1].value = null;
       const original = structuredClone(data);
       const chunks: (string | Uint8Array)[] = [];
       const config = {

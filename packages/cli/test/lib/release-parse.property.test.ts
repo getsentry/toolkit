@@ -146,7 +146,7 @@ describe("unit: releaseParameter", () => {
   });
 
   const USAGE = "sentry release archive [<org>/]<version>";
-  const { parse } = releaseParameter(USAGE, "Release version");
+  const { parse } = releaseParameter(() => USAGE, "Release version");
   const bind = (raw?: string): ReleaseTarget =>
     parse.call({ cwd: "/tmp" }, raw);
 

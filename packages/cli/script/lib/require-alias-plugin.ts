@@ -12,7 +12,7 @@ import type { Plugin } from "esbuild";
  * `formatters/json` loads its generated parser only when --fields is parsed.
  * `formatters/highlight` loads cli-highlight only on the first code block.
  */
-const REQUIRE_ALIAS_FILTER =
+export const REQUIRE_ALIAS_FILTER =
   /(?:db[\\/](?:index|schema|sqlite)|formatters[\\/](?:highlight|json)|telemetry)\.ts$/;
 const REQUIRE_ALIAS_RE = /\b_require\(/g;
 

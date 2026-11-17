@@ -37,7 +37,7 @@ function migrateMessage(msg: LegacyMessage): UIMessage {
       role: msg.role,
       parts: [{ type: "text", text: msg.content }],
       ...(metadata && { metadata }),
-    } as UIMessage;
+    };
   }
 
   // Return as-is if neither format matches (will be filtered by validation)

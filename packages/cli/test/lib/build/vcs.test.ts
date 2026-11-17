@@ -20,7 +20,11 @@ const gitMock = vi.hoisted(() => ({
   getRemoteDefaultBranch: vi.fn(() => "main"),
 }));
 
-vi.mock("../../../src/lib/git.js", () => gitMock);
+vi.mock("../../../src/lib/git.js", async (importOriginal) => {
+  const { normalizeSha, SHA1_RE } =
+    await importOriginal<typeof import("../../../src/lib/git.js")>();
+  return { ...gitMock, normalizeSha, SHA1_RE };
+});
 
 import { ValidationError } from "../../../src/lib/errors.js";
 import {

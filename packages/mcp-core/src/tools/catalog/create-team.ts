@@ -16,29 +16,11 @@ export const createTeamOutputSchema = z.object({
 
 export default defineTool({
   name: "create_team",
+  title: "Create Team",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["team:write"],
-  description: [
-    "Create a new team in Sentry.",
-    "",
-    "USE THIS TOOL WHEN USERS WANT TO:",
-    "- 'Create a new team'",
-    "- 'Set up a team called [X]'",
-    "- 'I need a team for my project'",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "<examples>",
-    "### Create a new team",
-    "```",
-    "create_team(organizationSlug='my-organization', name='the-goats')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If any parameter is ambiguous, you should clarify with the user what they meant.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Create a new team in a Sentry organization. Returns the team's ID, slug, and name.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),

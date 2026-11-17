@@ -88,7 +88,7 @@ describe("login --force --token", () => {
   test("a rejected token keeps the active account and its credentials", async () => {
     const other = addAccount("other-token", "1", "other@example.com");
     const active = addAccount("old-token", "2", "jane@example.com");
-    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(
+    vi.spyOn(apiClient, "checkTokenAccess").mockRejectedValue(
       new ApiError("Unauthorized", 401),
     );
 
@@ -109,7 +109,7 @@ describe("login --force --token", () => {
   test("a valid token replaces the active account with the new identity", async () => {
     const other = addAccount("other-token", "1", "other@example.com");
     addAccount("old-token", "2", "jane@example.com");
-    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "checkTokenAccess").mockResolvedValue(undefined);
     vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
       id: "3",
       email: "bob@example.com",
@@ -131,7 +131,7 @@ describe("login --force --token", () => {
 
   test("--url for another server keeps the active account and adds one there", async () => {
     const saas = addAccount("saas-token", "1", "jane@example.com");
-    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "checkTokenAccess").mockResolvedValue(undefined);
     vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
       id: "7",
       email: "jane@acme.com",
@@ -159,7 +159,7 @@ describe("login --force --token", () => {
     });
     setUserInfo({ userId: "7", email: "jane@acme.com" });
     const saas = addAccount("saas-token", "1", "jane@example.com");
-    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "checkTokenAccess").mockResolvedValue(undefined);
     vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
       id: "8",
       email: "bob@acme.com",
@@ -183,7 +183,7 @@ describe("login --force --token", () => {
   test("a transient validation failure keeps the previous account active", async () => {
     const active = addAccount("old-token", "2", "jane@example.com");
     const cause = new ApiError("Server error", 503);
-    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+    vi.spyOn(apiClient, "checkTokenAccess").mockRejectedValue(cause);
 
     // `--force`, and adding an account by naming it (no re-auth prompt).
     for (const [force, email] of [
@@ -206,7 +206,7 @@ describe("login --force --token", () => {
 
   test("a transient validation failure with no other account keeps the token", async () => {
     const cause = new ApiError("Server error", 503);
-    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+    vi.spyOn(apiClient, "checkTokenAccess").mockRejectedValue(cause);
 
     await expect(
       func.call(createContext(), {
@@ -225,7 +225,7 @@ describe("login --force --token", () => {
       .query("UPDATE accounts SET token = NULL WHERE account_id = ?")
       .run(stale);
     const cause = new ApiError("Server error", 503);
-    vi.spyOn(apiClient, "getUserRegions").mockRejectedValue(cause);
+    vi.spyOn(apiClient, "checkTokenAccess").mockRejectedValue(cause);
 
     await expect(
       func.call(createContext(), {
@@ -240,7 +240,7 @@ describe("login --force --token", () => {
 
   test("re-login as the same user keeps the known username", async () => {
     addAccount("old-token", "2", "jane@example.com", "jane");
-    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "checkTokenAccess").mockResolvedValue(undefined);
     vi.spyOn(apiClient, "getCurrentUser").mockResolvedValue({
       id: "2",
       email: "jane@example.com",
@@ -258,7 +258,7 @@ describe("login --force --token", () => {
 
   test("never shows the previous user when the new user can't be fetched", async () => {
     addAccount("old-token", "2", "jane@example.com");
-    vi.spyOn(apiClient, "getUserRegions").mockResolvedValue([]);
+    vi.spyOn(apiClient, "checkTokenAccess").mockResolvedValue(undefined);
     vi.spyOn(apiClient, "getCurrentUser").mockRejectedValue(
       new Error("network down"),
     );

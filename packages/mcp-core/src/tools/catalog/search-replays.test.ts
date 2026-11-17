@@ -3,10 +3,16 @@ import { inspectDatasetSearchTool } from "../../test-utils/dataset-search-tool";
 import searchReplays from "./search-replays";
 
 // The shared handler is covered by search-events.test.ts.
-vi.mock("../support/search-events/search", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../support/search-events/search")>()),
-  runSearchEvents: vi.fn(async () => "ok"),
-}));
+vi.mock("../support/search-events/search", async (importOriginal) => {
+  const { SEARCH_REPLAYS_STUB } =
+    await import("../../test-utils/search-events-stub");
+  return {
+    ...(await importOriginal<
+      typeof import("../support/search-events/search")
+    >()),
+    runSearchEvents: vi.fn(async () => SEARCH_REPLAYS_STUB),
+  };
+});
 
 it("search_replays runs the shared handler locked to replays", async () => {
   expect(await inspectDatasetSearchTool(searchReplays)).toMatchInlineSnapshot(`
@@ -25,6 +31,7 @@ it("search_replays runs the shared handler locked to replays", async () => {
       ],
       "options": {
         "lockDataset": true,
+        "output": "structured",
       },
     }
   `);

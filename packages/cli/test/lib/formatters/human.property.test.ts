@@ -250,11 +250,7 @@ describe("formatUserIdentity properties", () => {
 const scoreArb = double({ min: 0, max: 1, noNaN: true });
 
 /** Score or null/undefined (full input space for formatFixability) */
-const nullableScoreArb = oneof(
-  scoreArb,
-  constant(null as null),
-  constant(undefined as undefined),
-);
+const nullableScoreArb = oneof(scoreArb, constant(null), constant(undefined));
 
 describe("property: getSeerFixabilityLabel", () => {
   test("always returns one of the three valid tiers", () => {
@@ -272,10 +268,8 @@ describe("property: getSeerFixabilityLabel", () => {
     fcAssert(
       property(scoreArb, scoreArb, (a, b) => {
         if (a <= b) {
-          const rankA =
-            tierRank[getSeerFixabilityLabel(a) as keyof typeof tierRank];
-          const rankB =
-            tierRank[getSeerFixabilityLabel(b) as keyof typeof tierRank];
+          const rankA = tierRank[getSeerFixabilityLabel(a)];
+          const rankB = tierRank[getSeerFixabilityLabel(b)];
           expect(rankA).toBeLessThanOrEqual(rankB);
         }
       }),

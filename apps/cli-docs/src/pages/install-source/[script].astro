@@ -1,0 +1,36 @@
+---
+// Browsers that open /install or /install.ps1 are rewritten here (see the
+// Vercel config in .github/workflows/cli-build.yml); curl, wget, and irm still
+// get the raw script. The markup copies Chrome's text/plain viewer, with color.
+import { codeToHtml } from "shiki";
+import bash from "../../../public/install?raw";
+import powershell from "../../../public/install.ps1?raw";
+
+export function getStaticPaths() {
+  return [
+    { params: { script: "install" }, props: { code: bash, lang: "bash" } },
+    { params: { script: "install.ps1" }, props: { code: powershell, lang: "powershell" } },
+  ];
+}
+
+const { code, lang } = Astro.props;
+const html = await codeToHtml(code, {
+  lang,
+  themes: { light: "github-light", dark: "github-dark" },
+  defaultColor: false,
+});
+// Keep only the colored lines; the browser's defaults style the <pre>.
+const lines = html.match(/<code>([\s\S]*)<\/code>/)?.[1] ?? "";
+---
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <style is:inline>
+      span { color: var(--shiki-light); }
+      @media (prefers-color-scheme: dark) { span { color: var(--shiki-dark); } }
+    </style>
+  </head>
+  <body><pre style="word-wrap: break-word; white-space: pre-wrap;" set:html={lines} /></body>
+</html>

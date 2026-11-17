@@ -18,3 +18,14 @@ it("encodes the client, scope, and device code as form fields", () => {
     ["grant_type", "urn:ietf:params:oauth:grant-type:device_code"],
   ]);
 });
+
+it("sends the login hint only when one is given", () => {
+  expect(
+    deviceCodeRequestBody("client", "org:read", "jane@example.com").get(
+      "login_hint",
+    ),
+  ).toBe("jane@example.com");
+  expect(deviceCodeRequestBody("client", "org:read").has("login_hint")).toBe(
+    false,
+  );
+});

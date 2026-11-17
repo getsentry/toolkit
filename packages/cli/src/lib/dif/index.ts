@@ -10,7 +10,7 @@
  * by esbuild, and the `.wasm` bytes are loaded lazily on first use:
  *   - SEA binary: embedded asset via `node:sea.getRawAsset()`
  *   - npm bundle: the `.wasm` copied next to the bundle at build time
- *   - dev (tsx): resolved from the installed `@sentry/symbolic` package
+ *   - dev (from source): resolved from the installed `@sentry/symbolic` package
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -19,6 +19,7 @@ import {
   Archive,
   il2cppLineMapping,
   initSync,
+  type ObjectFile,
   SourceBundleWriter,
 } from "@sentry/symbolic";
 import { logger } from "../logger.js";
@@ -119,23 +120,67 @@ function ensureInitialized(): void {
  */
 export function parseDebugFile(data: Uint8Array): DifArchiveInfo {
   ensureInitialized();
-  // `using` frees the WASM handle when this returns; the mapped result holds
-  // only plain values, so the archive is safe to release here.
-  using archive = new Archive(data);
+  // The mapped result holds only plain values, so the WASM handle can be
+  // freed when this returns.
+  const archive = new Archive(data);
+  try {
+    return {
+      fileFormat: archive.fileFormat,
+      objects: archive.objects().map(toObjectInfo),
+    };
+  } finally {
+    archive.free();
+  }
+}
+
+/** Copy a WASM object handle's metadata into plain values. */
+function toObjectInfo(o: ObjectFile): DifObjectInfo {
   return {
-    fileFormat: archive.fileFormat,
-    objects: archive.objects().map((o) => ({
-      debugId: o.debugId,
-      codeId: o.codeId ?? null,
-      arch: o.arch,
-      fileFormat: o.fileFormat,
-      kind: o.kind,
-      hasSymbols: o.hasSymbols,
-      hasDebugInfo: o.hasDebugInfo,
-      hasUnwindInfo: o.hasUnwindInfo,
-      hasSources: o.hasSources,
-    })),
+    debugId: o.debugId,
+    codeId: o.codeId ?? null,
+    arch: o.arch,
+    fileFormat: o.fileFormat,
+    kind: o.kind,
+    hasSymbols: o.hasSymbols,
+    hasDebugInfo: o.hasDebugInfo,
+    hasUnwindInfo: o.hasUnwindInfo,
+    hasSources: o.hasSources,
   };
+}
+
+/** One object of a debug information file, as a standalone file. */
+export type DifObjectFile = {
+  /** The object's metadata. */
+  object: DifObjectInfo;
+  /** The bytes of a file that holds only this object. */
+  data: Uint8Array;
+};
+
+/**
+ * Parse a debug information file into one standalone file per object.
+ *
+ * Sentry accepts one object per uploaded debug file, so an archive with more
+ * than one object (e.g. a fat Mach-O with one slice per architecture) must be
+ * uploaded as one file per object. Each object's bytes come from symbolic's
+ * `ObjectFile.data()`, which for a fat Mach-O is the slice the object was
+ * parsed from. A single-object file is returned as-is, without a copy.
+ *
+ * @param data - The full contents of the object file.
+ * @returns One entry per object, in archive order.
+ * @throws If the buffer cannot be parsed as a known object format.
+ */
+export function splitDebugFile(data: Uint8Array): DifObjectFile[] {
+  ensureInitialized();
+  const archive = new Archive(data);
+  try {
+    const objects = archive.objects();
+    return objects.map((o) => ({
+      object: toObjectInfo(o),
+      data: objects.length === 1 ? data : o.data(),
+    }));
+  } finally {
+    archive.free();
+  }
 }
 
 /**
@@ -182,25 +227,31 @@ export function extractEmbeddedPpdb(
   data: Uint8Array,
 ): EmbeddedPpdbResult | null {
   ensureInitialized();
-  using archive = new Archive(data);
-  for (const object of archive.objects()) {
-    using pe = object.asPe();
-    if (!pe) {
-      continue;
-    }
-    try {
-      const ppdb = pe.embeddedPpdb();
-      if (ppdb) {
-        return { ppdb, debugId: object.debugId };
+  const archive = new Archive(data);
+  try {
+    for (const object of archive.objects()) {
+      const pe = object.asPe();
+      if (!pe) {
+        continue;
       }
-    } catch (err) {
-      log.debug(
-        `Failed to extract embedded Portable PDB for ${object.debugId}`,
-        err,
-      );
+      try {
+        const ppdb = pe.embeddedPpdb();
+        if (ppdb) {
+          return { ppdb, debugId: object.debugId };
+        }
+      } catch (err) {
+        log.debug(
+          `Failed to extract embedded Portable PDB for ${object.debugId}`,
+          err,
+        );
+      } finally {
+        pe.free();
+      }
     }
+    return null;
+  } finally {
+    archive.free();
   }
-  return null;
 }
 
 /**
@@ -266,34 +317,38 @@ export function createSourceBundle(
   options?: { collectIl2cppSources?: boolean },
 ): SourceBundleResult {
   ensureInitialized();
-  using archive = new Archive(data);
-  const objects = archive.objects();
-  const objectCount = objects.length;
-  const object = selectBundledObject(objects);
-  if (!object) {
-    return { bundle: null, debugId: null, fileCount: 0, objectCount };
-  }
-
-  let fileCount = 0;
-  const writer = new SourceBundleWriter();
-  // Must be set before the one-shot writeObject() consumes the writer.
-  if (options?.collectIl2cppSources) {
-    writer.collectIl2cppSources = true;
-  }
-  // The filter runs before each file; we include everything the object
-  // references and let the provider decide availability (returning null skips).
-  const filter = (_path: string): boolean => true;
-  const provider = (path: string): Uint8Array | null => {
-    const content = readSource(path);
-    if (content !== null) {
-      fileCount += 1;
+  const archive = new Archive(data);
+  try {
+    const objects = archive.objects();
+    const objectCount = objects.length;
+    const object = selectBundledObject(objects);
+    if (!object) {
+      return { bundle: null, debugId: null, fileCount: 0, objectCount };
     }
-    return content;
-  };
 
-  const bundle =
-    writer.writeObject(object, objectName, filter, provider) ?? null;
-  return { bundle, debugId: object.debugId, fileCount, objectCount };
+    let fileCount = 0;
+    const writer = new SourceBundleWriter();
+    // Must be set before the one-shot writeObject() consumes the writer.
+    if (options?.collectIl2cppSources) {
+      writer.collectIl2cppSources = true;
+    }
+    // The filter runs before each file; we include everything the object
+    // references and let the provider decide availability (returning null skips).
+    const filter = (_path: string): boolean => true;
+    const provider = (path: string): Uint8Array | null => {
+      const content = readSource(path);
+      if (content !== null) {
+        fileCount += 1;
+      }
+      return content;
+    };
+
+    const bundle =
+      writer.writeObject(object, objectName, filter, provider) ?? null;
+    return { bundle, debugId: object.debugId, fileCount, objectCount };
+  } finally {
+    archive.free();
+  }
 }
 
 /** Result of computing a Unity IL2CPP line mapping for a debug information file. */
@@ -337,26 +392,30 @@ export function createIl2cppLineMapping(
   targetDebugId?: string,
 ): Il2cppMappingResult | null {
   ensureInitialized();
-  using archive = new Archive(data);
-  const objects = archive.objects();
-  // Map the caller's targeted object so the mapping content always corresponds
-  // to the debug id the DIF advertises; without this a fat archive plus `--id`
-  // could stamp one slice's id onto another slice's line mappings.
-  const object =
-    (targetDebugId
-      ? objects.find((candidate) => candidate.debugId === targetDebugId)
-      : undefined) ?? selectBundledObject(objects);
-  if (!object) {
-    return null;
+  const archive = new Archive(data);
+  try {
+    const objects = archive.objects();
+    // Map the caller's targeted object so the mapping content always corresponds
+    // to the debug id the DIF advertises; without this a fat archive plus `--id`
+    // could stamp one slice's id onto another slice's line mappings.
+    const object =
+      (targetDebugId
+        ? objects.find((candidate) => candidate.debugId === targetDebugId)
+        : undefined) ?? selectBundledObject(objects);
+    if (!object) {
+      return null;
+    }
+    const mapping = il2cppLineMapping(
+      object,
+      (path: string) => readSource(path) ?? undefined,
+    );
+    if (!mapping) {
+      return null;
+    }
+    return { mapping, debugId: object.debugId };
+  } finally {
+    archive.free();
   }
-  const mapping = il2cppLineMapping(
-    object,
-    (path: string) => readSource(path) ?? undefined,
-  );
-  if (!mapping) {
-    return null;
-  }
-  return { mapping, debugId: object.debugId };
 }
 
 /** A source file referenced by an object, with any resolved descriptor metadata. */
@@ -419,46 +478,50 @@ export type DifSourcesInfo = {
  */
 export function listSources(data: Uint8Array): DifSourcesInfo {
   ensureInitialized();
-  using archive = new Archive(data);
-  const objects = archive.objects().map((object) => {
-    const files: DifSourceFile[] = [];
-    let enumerationError: string | null = null;
-    try {
-      const session = object.debugSession();
-      for (const file of session.files()) {
-        const path = file.abs_path_str;
-        const descriptor = session.sourceByPath(path);
-        // Only cheap descriptor metadata is read here. Reading `contents`
-        // would copy the full source text across the wasm/JS boundary — and
-        // re-encode the Rust UTF-8 string to a JS UTF-16 string — for every
-        // referenced file, which listing references never needs.
-        files.push({
-          path,
-          resolved: descriptor !== undefined,
-          type: descriptor?.type ?? null,
-          url: descriptor?.url ?? null,
-          debugId: descriptor?.debugId ?? null,
-          sourceMappingUrl: descriptor?.sourceMappingUrl ?? null,
-        });
+  const archive = new Archive(data);
+  try {
+    const objects = archive.objects().map((object) => {
+      const files: DifSourceFile[] = [];
+      let enumerationError: string | null = null;
+      try {
+        const session = object.debugSession();
+        for (const file of session.files()) {
+          const path = file.abs_path_str;
+          const descriptor = session.sourceByPath(path);
+          // Only cheap descriptor metadata is read here. Reading `contents`
+          // would copy the full source text across the wasm/JS boundary — and
+          // re-encode the Rust UTF-8 string to a JS UTF-16 string — for every
+          // referenced file, which listing references never needs.
+          files.push({
+            path,
+            resolved: descriptor !== undefined,
+            type: descriptor?.type ?? null,
+            url: descriptor?.url ?? null,
+            debugId: descriptor?.debugId ?? null,
+            sourceMappingUrl: descriptor?.sourceMappingUrl ?? null,
+          });
+        }
+      } catch (err) {
+        // One slice failing to enumerate must not abort the whole listing, but
+        // the failure is recorded so callers can distinguish it from an object
+        // that simply references no sources. Discard any entries collected before
+        // the error so `files` stays empty when enumeration aborted (per the
+        // DifObjectSources contract) — a partial list paired with an error would
+        // mislead consumers and be hidden by the human formatter.
+        files.length = 0;
+        enumerationError = err instanceof Error ? err.message : String(err);
+        log.debug(`Failed to enumerate sources for ${object.debugId}`, err);
       }
-    } catch (err) {
-      // One slice failing to enumerate must not abort the whole listing, but
-      // the failure is recorded so callers can distinguish it from an object
-      // that simply references no sources. Discard any entries collected before
-      // the error so `files` stays empty when enumeration aborted (per the
-      // DifObjectSources contract) — a partial list paired with an error would
-      // mislead consumers and be hidden by the human formatter.
-      files.length = 0;
-      enumerationError = err instanceof Error ? err.message : String(err);
-      log.debug(`Failed to enumerate sources for ${object.debugId}`, err);
-    }
-    return {
-      debugId: object.debugId,
-      fileFormat: object.fileFormat,
-      hasDebugInfo: object.hasDebugInfo,
-      files,
-      enumerationError,
-    };
-  });
-  return { objects };
+      return {
+        debugId: object.debugId,
+        fileFormat: object.fileFormat,
+        hasDebugInfo: object.hasDebugInfo,
+        files,
+        enumerationError,
+      };
+    });
+    return { objects };
+  } finally {
+    archive.free();
+  }
 }

@@ -449,11 +449,11 @@ describe("normalizeFields", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -649,6 +649,27 @@ describe("buildQueryParams", () => {
     expect(buildQueryParams(["tags=[1,2,3]"])).toEqual({
       tags: ["1", "2", "3"],
     });
+  });
+
+  test("appends repeated scalar and array values in order", () => {
+    expect(
+      buildQueryParams([
+        "project=1",
+        "project=[2,3]",
+        "project=4",
+        "project=[]",
+      ]),
+    ).toEqual({ project: ["1", "2", "3", "4"] });
+  });
+
+  test("keeps parameter names that also exist on Object.prototype", () => {
+    expect(
+      buildQueryParams([
+        "constructor=first",
+        "constructor=second",
+        "toString=value",
+      ]),
+    ).toEqual({ constructor: ["first", "second"], toString: "value" });
   });
 
   test("handles arrays of strings", () => {
@@ -1265,11 +1286,11 @@ describe("resolveBinaryTtyOutput", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1423,11 +1444,11 @@ describe("extractJsonBody", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1521,11 +1542,11 @@ describe("buildFromFields", () => {
   beforeEach(() => {
     stderrOutput = "";
     originalWrite = process.stderr.write;
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       stderrOutput +=
         typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       return true;
-    }) as typeof process.stderr.write;
+    };
   });
 
   afterEach(() => {
@@ -1621,7 +1642,7 @@ describe("buildFromFields", () => {
 // This was extracted from the Stricli command handler (func) so that
 // --data, --input, and field flag mutual-exclusivity logic can be unit-tested.
 
-const MOCK_STDIN = process.stdin as unknown as NodeJS.ReadStream & { fd: 0 };
+const MOCK_STDIN = process.stdin;
 
 describe("resolveBody", () => {
   test("--data returns parsed JSON body", async () => {
@@ -1807,6 +1828,54 @@ describe("dataToQueryParams", () => {
 // Dry-run tests
 
 describe("API request preview", () => {
+  test.each(["field", "raw-field"] as const)(
+    "preserves repeated axes and ordered indexed transformations from --%s",
+    async (flag) => {
+      let output = "";
+      const func = await apiCommand.loader();
+      await func.call(
+        {
+          cwd: "/tmp",
+          stdin: createMockStdin(""),
+          stdout: {
+            write(value: string | Uint8Array) {
+              output += String(value);
+              return true;
+            },
+          },
+          stderr: { write: () => true },
+        },
+        {
+          method: "GET",
+          silent: false,
+          verbose: false,
+          "dry-run": true,
+          json: true,
+          [flag]: [
+            "dataset=spans",
+            "yAxis=count()",
+            "yAxis=count()",
+            "transformations[1]=smooth(sma,3)",
+            "transformations[1]=fill(locf)",
+            "interval=5m",
+          ],
+        },
+        "https://de.sentry.io/api/0/organizations/acme/events-timeseries/",
+      );
+
+      const request = JSON.parse(output);
+      expect(request.method).toBe("GET");
+      expect([...new URL(request.url).searchParams]).toEqual([
+        ["dataset", "spans"],
+        ["yAxis", "count()"],
+        ["yAxis", "count()"],
+        ["transformations[1]", "smooth(sma,3)"],
+        ["transformations[1]", "fill(locf)"],
+        ["interval", "5m"],
+      ]);
+    },
+  );
+
   test("absolute URL dry-run preserves the regional origin", async () => {
     let output = "";
     const func = await apiCommand.loader();

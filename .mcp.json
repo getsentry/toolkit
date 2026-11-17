@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp/sentry/mcp-server?experimental=1"
+      "type": "stdio",
+      "command": "sentry",
+      "args": ["mcp", "sentry/mcp-server", "--experimental"]
     },
     "sentry-dev": {
       "type": "http",

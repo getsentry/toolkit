@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { showCommand } from "./show.js";
 
 export const statusRoute = buildRouteMap({
@@ -13,7 +14,7 @@ export const statusRoute = buildRouteMap({
   },
   defaultCommand: "show",
   docs: {
-    brief: "Check Sentry service status",
+    brief: topLevelBrief("status"),
     fullDescription:
       "Report the current status of Sentry's services using the public " +
       "status page (https://status.sentry.io) as the backend.\n\n" +

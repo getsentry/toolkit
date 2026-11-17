@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { logger } from "../../src/lib/logger.js";
 
 function noop(): void {
   // Intentionally empty — absorbs async spawn errors
@@ -109,7 +110,7 @@ async function spawnBundle(): Promise<void> {
     });
     proc.on("close", (code) => {
       if ((code ?? 1) !== 0) {
-        console.error(`Bundle failed with exit code ${code}: ${buildStderr}`);
+        logger.error(`Bundle failed with exit code ${code}: ${buildStderr}`);
       }
       resolve(code ?? 1);
     });

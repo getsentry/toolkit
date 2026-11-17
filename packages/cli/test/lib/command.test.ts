@@ -82,13 +82,13 @@ function createTestContext() {
 }
 
 test("derives prompt availability from parsed flags instead of ambiguous aliases", async () => {
-  type InitPromptFlags = { yes: boolean; "dry-run": boolean };
+  type ApplyFlags = { yes: boolean; "dry-run": boolean };
   type DataFlags = { limit?: number; row?: number };
   const promptStates: boolean[] = [];
 
-  const initCommand = buildCommand<InitPromptFlags, [], TestContext>({
+  const applyCommand = buildCommand<ApplyFlags, [], TestContext>({
     auth: false,
-    docs: { brief: "Init" },
+    docs: { brief: "Apply" },
     parameters: {
       flags: { yes: YES_FLAG, "dry-run": DRY_RUN_FLAG },
       aliases: { y: "yes", n: "dry-run" },
@@ -124,7 +124,7 @@ test("derives prompt availability from parsed flags instead of ambiguous aliases
     },
   });
   const routeMap = buildRouteMap({
-    routes: { init: initCommand, data: dataCommand },
+    routes: { apply: applyCommand, data: dataCommand },
     docs: { brief: "Test app" },
   });
   const app = buildApplication(routeMap, { name: "test" });
@@ -133,9 +133,9 @@ test("derives prompt availability from parsed flags instead of ambiguous aliases
     args: string[];
     expected: boolean;
   }> = [
-    { args: ["init", "-y"], expected: false },
-    { args: ["init", "-n"], expected: false },
-    { args: ["init", "--yes=false"], expected: true },
+    { args: ["apply", "-y"], expected: false },
+    { args: ["apply", "-n"], expected: false },
+    { args: ["apply", "--yes=false"], expected: true },
     { args: ["data", "-n", "10"], expected: true },
     { args: ["data", "-y", "2"], expected: true },
   ];
@@ -1213,7 +1213,7 @@ describe("buildCommand return-based output", () => {
       auth: false,
       docs: { brief: "Test" },
       output: {
-        human: (d: { id: number; name: string; role: string }) => `${d.name}`,
+        human: (d: { id: number; name: string; role: string }) => d.name,
       },
       parameters: {},
       async *func(this: TestContext) {

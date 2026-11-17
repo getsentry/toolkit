@@ -5,6 +5,9 @@
  * and mode mutual exclusivity.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setCommitsCommand } from "../../../src/commands/release/set-commits.js";
 
@@ -110,6 +113,93 @@ describe("release set-commits --commit", () => {
     expect(setCommitsWithRefsSpy).toHaveBeenCalledWith("my-org", "1.0.0", [
       { repository: "owner/repo", commit: "abc123" },
     ]);
+  });
+
+  test("explains a repository the org does not have", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+    const serverError = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: ["Invalid repository names: owner/repo"] }),
+      "organizations/my-org/releases/1.0.0/",
+    );
+    setCommitsWithRefsSpy.mockRejectedValue(serverError);
+    const correctSpy = vi
+      .spyOn(apiClient, "correctRefRepositories")
+      .mockResolvedValue(undefined);
+    const explainSpy = vi
+      .spyOn(apiClient, "explainSetCommitsError")
+      .mockResolvedValue(new ValidationError("explained", "commit.repository"));
+
+    const { context } = createMockContext();
+    const func = await setCommitsCommand.loader();
+    await expect(
+      func.call(
+        context,
+        {
+          auto: false,
+          local: false,
+          clear: false,
+          commit: "owner/repo@abc123",
+          "initial-depth": 20,
+          json: true,
+        },
+        "1.0.0",
+      ),
+    ).rejects.toThrow("explained");
+
+    expect(explainSpy).toHaveBeenCalledWith(
+      "my-org",
+      "1.0.0",
+      [{ repository: "owner/repo", commit: "abc123" }],
+      serverError,
+    );
+    correctSpy.mockRestore();
+    explainSpy.mockRestore();
+  });
+
+  test("retries with Sentry's repository name when only the form differs", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+    const serverError = new ApiError(
+      "API request failed: 400 Bad Request",
+      400,
+      JSON.stringify({ refs: ["Invalid repository names: Owner/Repo"] }),
+      "organizations/my-org/releases/1.0.0/",
+    );
+    setCommitsWithRefsSpy
+      .mockRejectedValueOnce(serverError)
+      .mockResolvedValueOnce(sampleRelease);
+    const corrected = [{ repository: "owner/repo", commit: "abc123" }];
+    const correctSpy = vi
+      .spyOn(apiClient, "correctRefRepositories")
+      .mockResolvedValue(corrected);
+
+    const { context } = createMockContext();
+    const func = await setCommitsCommand.loader();
+    await func.call(
+      context,
+      {
+        auto: false,
+        local: false,
+        clear: false,
+        commit: "Owner/Repo@abc123",
+        "initial-depth": 20,
+        json: true,
+      },
+      "1.0.0",
+    );
+
+    expect(correctSpy).toHaveBeenCalledWith(
+      "my-org",
+      [{ repository: "Owner/Repo", commit: "abc123" }],
+      serverError,
+    );
+    expect(setCommitsWithRefsSpy).toHaveBeenLastCalledWith(
+      "my-org",
+      "1.0.0",
+      corrected,
+    );
+    correctSpy.mockRestore();
   });
 
   test("parses REPO@PREV..SHA range", async () => {
@@ -412,6 +502,67 @@ describe("release set-commits (default mode)", () => {
 
     expect(setCommitsAutoSpy).toHaveBeenCalled();
     expect(setCommitsLocalSpy).toHaveBeenCalled();
+  });
+});
+
+describe("release set-commits without a git checkout", () => {
+  let setCommitsAutoSpy: ReturnType<typeof spyOn>;
+  let setCommitsLocalSpy: ReturnType<typeof spyOn>;
+  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let noGitDir: string;
+
+  beforeEach(() => {
+    setCommitsAutoSpy = vi.spyOn(apiClient, "setCommitsAuto");
+    setCommitsLocalSpy = vi.spyOn(apiClient, "setCommitsLocal");
+    resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+    // Docker and Vercel builds run without .git.
+    noGitDir = mkdtempSync(join(tmpdir(), "set-commits-no-git-"));
+  });
+
+  afterEach(() => {
+    setCommitsAutoSpy.mockRestore();
+    setCommitsLocalSpy.mockRestore();
+    resolveOrgSpy.mockRestore();
+    rmSync(noGitDir, { recursive: true, force: true });
+  });
+
+  const defaultFlags = {
+    auto: false,
+    local: false,
+    clear: false,
+    commit: undefined,
+    "initial-depth": 20,
+    json: true,
+  };
+
+  test("default mode reports the auto-discovery error instead of reading git", async () => {
+    const autoError = new ValidationError(
+      "Could not determine the repository.",
+      "repository",
+    );
+    setCommitsAutoSpy.mockRejectedValue(autoError);
+
+    const { context } = createMockContext(noGitDir);
+    const func = await setCommitsCommand.loader();
+    await expect(func.call(context, defaultFlags, "1.0.0")).rejects.toBe(
+      autoError,
+    );
+    expect(setCommitsLocalSpy).not.toHaveBeenCalled();
+  });
+
+  test("--local explains that it needs a git checkout", async () => {
+    const { context } = createMockContext(noGitDir);
+    const func = await setCommitsCommand.loader();
+    const error = await Promise.resolve(
+      func.call(context, { ...defaultFlags, local: true }, "1.0.0"),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ name: "ValidationError", field: "local" });
+    expect((error as Error).message).toContain(
+      "sentry release set-commits my-org/1.0.0 --commit owner/repo@<commit-sha>",
+    );
+    expect(setCommitsLocalSpy).not.toHaveBeenCalled();
   });
 });
 

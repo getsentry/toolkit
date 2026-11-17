@@ -394,6 +394,19 @@ describe("project delete", () => {
     });
   });
 
+  test("--fields filters the JSON output", async () => {
+    const { context, stdoutWrite } = createMockContext();
+    const func = await deleteCommand.loader();
+    await func.call(
+      context,
+      { ...defaultFlags, json: true, fields: ["project"] },
+      "acme-corp/my-app",
+    );
+
+    const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
+    expect(JSON.parse(output.trim())).toEqual({ project: "my-app" });
+  });
+
   test("rejects auto-detect target", async () => {
     const { context } = createMockContext();
     const func = await deleteCommand.loader();

@@ -286,7 +286,7 @@ export type GrepOptions = {
   /**
    * Subdirectory under `cwd` to narrow the walk root. Path traversal
    * out of `cwd` is the caller's responsibility (the grep engine
-   * trusts this value — use `safePath` at adapter boundaries).
+   * trusts this value).
    */
   path?: string;
 
@@ -385,43 +385,4 @@ export type GrepResult = {
   /** Matches in a stable order: sorted by `[path, lineNum]`. */
   matches: GrepMatch[];
   stats: GrepStats;
-};
-
-/**
- * Options for `globFiles` / `collectGlob`. Globs are post-filters
- * over the walker's yield; there is no stat cost beyond what the
- * walker already pays.
- */
-export type GlobOptions = {
-  cwd: string;
-  /** One or more glob patterns (picomatch syntax). OR semantics. */
-  patterns: string | readonly string[];
-  /** Negative patterns. A file matching any `exclude` is suppressed. */
-  exclude?: string | readonly string[];
-  /** Subdirectory under `cwd` to narrow the walk root. */
-  path?: string;
-
-  // --- WalkOptions pass-through ---
-  alwaysSkipDirs?: readonly string[];
-  respectGitignore?: boolean;
-  nestedGitignore?: boolean;
-  hidden?: boolean;
-  maxDepth?: number;
-  minDepth?: number;
-  descentHook?: WalkOptions["descentHook"];
-  followSymlinks?: boolean;
-
-  // --- Glob-specific ---
-  /** Cap on emitted paths. Default: unlimited. */
-  maxResults?: number;
-  signal?: AbortSignal;
-  timeBudgetMs?: number;
-};
-
-/** Return shape of `collectGlob`. */
-export type GlobResult = {
-  /** Matching paths, POSIX-normalized + relative to cwd, sorted. */
-  files: string[];
-  /** True when `maxResults` was hit mid-walk. */
-  truncated: boolean;
 };

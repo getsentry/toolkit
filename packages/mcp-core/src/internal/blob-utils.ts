@@ -156,7 +156,7 @@ interface PreviewCodec {
   encode: (image: RgbaImage, options: { jpegQuality: number }) => Uint8Array;
 }
 
-const PREVIEW_CODECS: Record<string, PreviewCodec> = {
+const PREVIEW_CODECS: Partial<Record<string, PreviewCodec>> = {
   "image/png": {
     contentType: "image/png",
     readDimensions: readPngDimensions,
@@ -245,7 +245,7 @@ function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
       offset++;
     }
 
-    const marker = bytes[offset];
+    const marker = bytes.at(offset);
     offset++;
 
     if (marker === undefined || marker === 0xd9 || marker === 0xda) {

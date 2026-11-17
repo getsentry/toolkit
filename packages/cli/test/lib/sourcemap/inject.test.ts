@@ -627,20 +627,38 @@ describe.each(["external", "inline"] as const)(
       rmSync(dir, { recursive: true, force: true });
     });
 
-    test.each(["legacy", "formatted"])(
-      "preserves an existing %s registration without an identifier marker",
-      async (format) => {
-        const jsPath = join(dir, "main.js");
-        // Legacy CLI snippets have no _sentryDebugIdIdentifier marker.
-        const snippet =
-          format === "legacy"
-            ? `!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${debugId}")}catch(e){}}();`
-            : `(() => {
+    // Legacy CLI snippets have no _sentryDebugIdIdentifier marker.
+    const snippets: Record<string, string> = {
+      legacy: `!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof globalThis?globalThis:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="${debugId}")}catch(e){}}();`,
+      formatted: `(() => {
   var root = globalThis;
   var stack = new root.Error().stack;
   root['_sentryDebugIds'] = root['_sentryDebugIds'] || {};
   root['_sentryDebugIds'][stack] = '${debugId}';
-})();`;
+})();`,
+      // Emitted by Next.js 16 with `turbopack.debugIds` (getsentry/toolkit#2189).
+      turbopack: `;!function(){try { var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof global?global:"undefined"!=typeof window?window:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&((e._debugIds|| (e._debugIds={}))[n]="${debugId}")}catch(e){}}();`,
+      // A bundler plugin's snippet after Oxc minification in Vite 8, which
+      // rewrites its string literals to template literals
+      // (getsentry/toolkit#2267).
+      templateLiterals: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof window<\`u\`?window:typeof global<\`u\`?global:typeof self<\`u\`?self:{};var t=new e.Error().stack;t&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[t]=\`${debugId}\`,e._sentryDebugIdIdentifier=\`sentry-dbid-${debugId}\`)}catch{}})();`,
+      // Turbopack's snippet after the same minification, which also folds
+      // the inline registry initialization into a logical assignment.
+      turbopackLogicalAssignment: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof global<\`u\`?global:typeof window<\`u\`?window:typeof self<\`u\`?self:{},t=new e.Error().stack;t&&((e._debugIds||={})[t]=\`${debugId}\`)}catch{}})();`,
+      // Emitted by the React Native Metro plugin, which registers on a bare
+      // global instead of a property of the global object.
+      reactNativeMetro: `var _sentryDebugIds,_sentryDebugIdIdentifier;void 0===_sentryDebugIds&&(_sentryDebugIds={});try{var stack=(new Error).stack;stack&&(_sentryDebugIds[stack]="${debugId}",_sentryDebugIdIdentifier="sentry-dbid-${debugId}")}catch(e){}`,
+      // No minifier tested emits these two, but the registration check
+      // accepts them, so they pin those branches.
+      nullishAssignment: `(function(){var e=globalThis,t=new e.Error().stack;t&&((e._debugIds??={})[t]=\`${debugId}\`)})();`,
+      bracketTemplateRegistry: `(function(){var e=globalThis,t=new e.Error().stack;e[\`_sentryDebugIds\`]=e[\`_sentryDebugIds\`]||{};e[\`_sentryDebugIds\`][t]=\`${debugId}\`})();`,
+    };
+
+    test.each(Object.keys(snippets))(
+      "preserves an existing %s registration without an identifier marker",
+      async (format) => {
+        const jsPath = join(dir, "main.js");
+        const snippet = snippets[format];
         const mapContent = JSON.stringify({
           version: 3,
           sources: ["main.ts"],
@@ -668,9 +686,14 @@ describe.each(["external", "inline"] as const)(
             expect(readFileSync(`${jsPath}.map`, "utf-8")).toBe(mapContent);
           }
         }
-        const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+        const sandbox: {
+          _sentryDebugIds?: Record<string, string>;
+          _debugIds?: Record<string, string>;
+        } = {};
         runInNewContext(js, sandbox, { filename: "main.js" });
-        expect(Object.values(sandbox._sentryDebugIds ?? {})).toEqual([debugId]);
+        expect(
+          Object.values({ ...sandbox._sentryDebugIds, ...sandbox._debugIds }),
+        ).toEqual([debugId]);
       },
     );
 
@@ -750,6 +773,53 @@ describe.each(["external", "inline"] as const)(
             injected: false,
           },
         );
+      },
+    );
+
+    // Near misses of the accepted forms that do not register the ID, so
+    // injection must still happen.
+    const nearMisses: Record<string, string> = {
+      interpolatedTemplate: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]=\`\${t}${debugId}\`;`,
+      andAssignment: `var e=globalThis,t="s";try{(e._debugIds&&={})[t]=\`${debugId}\`}catch{}`,
+      comparison: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]==\`${debugId}\`;`,
+      // A different identifier that only ends with the registry name.
+      longerIdentifier: `var my_sentryDebugIds={},t="s";my_sentryDebugIds[t]="${debugId}";`,
+    };
+
+    test.each(Object.keys(nearMisses))(
+      "injects despite a %s near miss",
+      async (format) => {
+        const jsPath = join(dir, "main.js");
+        const mapContent = JSON.stringify({
+          version: 3,
+          sources: ["main.ts"],
+          names: [],
+          mappings: "AAAA",
+          debugId,
+        });
+        const mapUrl =
+          kind === "inline"
+            ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+            : "main.js.map";
+        const js = `${nearMisses[format]}\n//# debugId=${debugId}\n//# sourceMappingURL=${mapUrl}\n`;
+        writeFileSync(jsPath, js);
+        if (kind === "external") {
+          writeFileSync(`${jsPath}.map`, mapContent);
+        }
+
+        expect((await injectDirectory(dir))[0]).toMatchObject({
+          debugId,
+          injected: true,
+        });
+        const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+        runInNewContext(readFileSync(jsPath, "utf-8"), sandbox, {
+          filename: "main.js",
+        });
+        expect(
+          Object.values(sandbox._sentryDebugIds ?? {}).filter(
+            (id) => id === debugId,
+          ),
+        ).toHaveLength(1);
       },
     );
   },
@@ -872,5 +942,88 @@ describe("injectDirectory — Bun bundles", () => {
       (results[0]?.injectedMapContent ?? Buffer.alloc(0)).toString(),
     );
     expect(uploaded.mappings).toBe(";;AAAA");
+  });
+});
+
+describe("injectDirectory — index maps", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "sentry-inject-index-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * A Next.js 16 Turbopack browser chunk built without `turbopack.debugIds`,
+   * and its index map (getsentry/toolkit#2189).
+   */
+  const TURBOPACK_CHUNK =
+    '(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,29615,t=>{"use strict";var o=t.i(43476);function r(){throw Error("SENTRY_SOURCEMAP_PROBE")}t.s(["default",0,function(){return(0,o.jsx)("button",{onClick:r,children:"Run probe"})}])}]);\n\n//# sourceMappingURL=chunk.js.map\n';
+  const PAGE_MAP = {
+    version: 3,
+    sources: ["turbopack:///[project]/app/page.jsx"],
+    names: ["reportProbeFailure", "Error", "Page", "onClick"],
+    mappings:
+      "wJAEA,SAASA,IACP,MAAM,AAAIC,MAAM,yBAClB,kBAEe,SAASC,EACtB,MAAO,CAAA,EAAA,EAAA,GAAA,EAAC,SAAA,CAAOC,QAASH,WAAoB,aAC9C",
+  };
+
+  function writeIndexPair(js: string, sections: unknown[]) {
+    const jsPath = join(dir, "chunk.js");
+    writeFileSync(jsPath, js);
+    writeFileSync(
+      `${jsPath}.map`,
+      JSON.stringify({ version: 3, sources: [], sections }),
+    );
+    return { jsPath, mapPath: `${jsPath}.map` };
+  }
+
+  test("shifts section offsets below the injected snippet", async () => {
+    const { jsPath, mapPath } = writeIndexPair(TURBOPACK_CHUNK, [
+      { offset: { line: 0, column: 0 }, map: PAGE_MAP },
+    ]);
+
+    const results = await injectDirectory(dir);
+    expect(results[0]).toMatchObject({ injected: true });
+
+    const lines = readFileSync(jsPath, "utf-8").split("\n");
+    const map = JSON.parse(readFileSync(mapPath, "utf-8"));
+    expect(map.sections[0]).toEqual({
+      offset: { line: 1, column: 0 },
+      map: PAGE_MAP,
+    });
+    // The section's first generated line still holds the code it maps.
+    expect(lines[map.sections[0].offset.line]).toContain(
+      'throw Error("SENTRY_SOURCEMAP_PROBE")',
+    );
+  });
+
+  test("inserts the snippet line into a section spanning it", async () => {
+    const { mapPath } = writeIndexPair(
+      "#!/usr/bin/env node\na();\nb();\n//# sourceMappingURL=chunk.js.map\n",
+      [
+        {
+          offset: { line: 0, column: 0 },
+          map: { version: 3, sources: ["a.ts"], mappings: "AAAA;AACA" },
+        },
+        {
+          offset: { line: 2, column: 0 },
+          map: { version: 3, sources: ["b.ts"], mappings: "AAAA" },
+        },
+      ],
+    );
+
+    await injectDirectory(dir);
+
+    const map = JSON.parse(readFileSync(mapPath, "utf-8"));
+    // The hashbang stays on line 0; the snippet is line 1.
+    expect(map.sections.map((s: { offset: unknown }) => s.offset)).toEqual([
+      { line: 0, column: 0 },
+      { line: 3, column: 0 },
+    ]);
+    expect(map.sections[0].map.mappings).toBe("AAAA;;AACA");
+    expect(map.sections[1].map.mappings).toBe("AAAA");
   });
 });

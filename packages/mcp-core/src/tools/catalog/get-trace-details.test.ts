@@ -735,7 +735,7 @@ describe("get_trace_details", () => {
       **Conversation ID**: \`conv-trace-snapshot\`
       **Matching Span**: \`c4d1aae7216b47ff\`
 
-      Use the Sentry tool \`execute_sentry_tool(name='get_agent_conversation_details', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-trace-snapshot"})\` to fetch the full transcript.
+      Use the Sentry tool \`get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-trace-snapshot')\` to fetch the full transcript.
 
       ## Next Steps
 
@@ -1147,7 +1147,7 @@ describe("get_trace_details", () => {
     expect(text).toContain("**Conversation ID**: `conv-trace-123`");
     expect(text).toContain("**Matching Span**: `2222222222222222`");
     expect(text).toContain(
-      'Use the Sentry tool `execute_sentry_tool(name=\'get_agent_conversation_details\', arguments={"organizationSlug":"sentry-mcp-evals","conversationId":"conv-trace-123"})` to fetch the full transcript.',
+      "Use the Sentry tool `get_agent_conversation_details(organizationSlug='sentry-mcp-evals', conversationId='conv-trace-123')` to fetch the full transcript.",
     );
     expect(text).toContain(
       "POST api.anthropic.com/v1/messages [http.client · 200 · 21455ms · 3333333333333333]",

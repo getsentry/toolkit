@@ -124,6 +124,21 @@ describe("alert issues delete", () => {
     expect(deleteRuleSpy).not.toHaveBeenCalled();
   });
 
+  test("--fields filters the JSON output", async () => {
+    const { context, stdoutWrite } = createContext();
+    const func = await deleteCommand.loader();
+
+    await func.call(
+      context,
+      { ...defaultFlags, "dry-run": true, json: true, fields: ["id", "name"] },
+      "test-org/test-project/42",
+    );
+
+    expect(
+      JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join("")),
+    ).toEqual({ id: "42", name: "Rule Alpha" });
+  });
+
   test("--yes deletes the resolved rule", async () => {
     const { context, stdoutWrite } = createContext();
     const func = await deleteCommand.loader();

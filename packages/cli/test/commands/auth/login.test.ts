@@ -257,7 +257,7 @@ describe("loginCommand.func --token path", () => {
   let isAuthenticatedSpy: ReturnType<typeof spyOn>;
   let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
   let setAuthTokenSpy: ReturnType<typeof spyOn>;
-  let getUserRegionsSpy: ReturnType<typeof spyOn>;
+  let checkTokenAccessSpy: ReturnType<typeof spyOn>;
   let clearAuthSpy: ReturnType<typeof spyOn>;
   let removeAccountSpy: ReturnType<typeof spyOn>;
   let getCurrentUserSpy: ReturnType<typeof spyOn>;
@@ -271,7 +271,7 @@ describe("loginCommand.func --token path", () => {
     isAuthenticatedSpy = vi.spyOn(dbAuth, "isAuthenticated");
     isEnvTokenActiveSpy = vi.spyOn(dbAuth, "isEnvTokenActive");
     setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
-    getUserRegionsSpy = vi.spyOn(apiClient, "getUserRegions");
+    checkTokenAccessSpy = vi.spyOn(apiClient, "checkTokenAccess");
     clearAuthSpy = vi.spyOn(dbAuth, "clearAuth");
     removeAccountSpy = vi.spyOn(dbAuth, "removeAccount");
     removeAccountSpy.mockResolvedValue(undefined);
@@ -293,7 +293,7 @@ describe("loginCommand.func --token path", () => {
     isAuthenticatedSpy.mockRestore();
     isEnvTokenActiveSpy.mockRestore();
     setAuthTokenSpy.mockRestore();
-    getUserRegionsSpy.mockRestore();
+    checkTokenAccessSpy.mockRestore();
     clearAuthSpy.mockRestore();
     removeAccountSpy.mockRestore();
     getCurrentUserSpy.mockRestore();
@@ -353,7 +353,7 @@ describe("loginCommand.func --token path", () => {
   test("--token with an email for someone else: removes the stored token and fails", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue("new-account");
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({
       ...SAMPLE_USER,
       email: "bob@example.com",
@@ -376,7 +376,7 @@ describe("loginCommand.func --token path", () => {
     isAuthenticatedSpy.mockReturnValue(true);
     vi.spyOn(dbAuth, "getActiveAccountId").mockReturnValue("previous-account");
     setAuthTokenSpy.mockReturnValue("new-account");
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({
       ...SAMPLE_USER,
       email: "bob@example.com",
@@ -416,7 +416,7 @@ describe("loginCommand.func --token path", () => {
   test("--token --url with a matching email: points the default URL at the new host", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue("new-account");
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
     const pointDefaultUrlSpy = vi
@@ -447,7 +447,7 @@ describe("loginCommand.func --token path", () => {
   test("<email>:<server> logs in to that server, like --url", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue("new-account");
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
     const pointDefaultUrlSpy = vi
@@ -536,7 +536,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: stores token, fetches user, writes success", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
 
@@ -591,7 +591,7 @@ describe("loginCommand.func --token path", () => {
         expect(clearAuthSpy).not.toHaveBeenCalled();
         expect(setAuthTokenSpy).not.toHaveBeenCalled();
         expect(setUserInfoSpy).not.toHaveBeenCalled();
-        expect(getUserRegionsSpy).not.toHaveBeenCalled();
+        expect(checkTokenAccessSpy).not.toHaveBeenCalled();
         expect(getCurrentUserSpy).not.toHaveBeenCalled();
         expect(runInteractiveLoginSpy).not.toHaveBeenCalled();
         expect(fetchSpy).not.toHaveBeenCalled();
@@ -609,7 +609,7 @@ describe("loginCommand.func --token path", () => {
     async (token) => {
       isAuthenticatedSpy.mockReturnValue(false);
       setAuthTokenSpy.mockReturnValue(undefined);
-      getUserRegionsSpy.mockResolvedValue([]);
+      checkTokenAccessSpy.mockResolvedValue(undefined);
       getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
       setUserInfoSpy.mockReturnValue(undefined);
 
@@ -624,7 +624,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: null user.name is converted to undefined in setUserInfo", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({
       id: "5",
       name: null,
@@ -655,7 +655,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: 401 from validation removes only the new account and throws AuthError", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue("new-account");
-    getUserRegionsSpy.mockRejectedValue(new ApiError("Unauthorized", 401));
+    checkTokenAccessSpy.mockRejectedValue(new ApiError("Unauthorized", 401));
     clearAuthSpy.mockResolvedValue(undefined);
 
     const { context } = createContext();
@@ -674,7 +674,7 @@ describe("loginCommand.func --token path", () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
     const cause = new ApiError("Server error", 503);
-    getUserRegionsSpy.mockRejectedValue(cause);
+    checkTokenAccessSpy.mockRejectedValue(cause);
     clearAuthSpy.mockResolvedValue(undefined);
 
     const { context } = createContext();
@@ -690,7 +690,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: shows 'Logged in as' when user info fetch succeeds", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({ id: "5", email: "only@email.com" });
     setUserInfoSpy.mockReturnValue(undefined);
 
@@ -708,7 +708,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: login succeeds even when getCurrentUser() fails transiently", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockRejectedValue(new Error("Network error"));
 
     const { context, getStdout } = createContext();
@@ -731,7 +731,7 @@ describe("loginCommand.func --token path", () => {
   test("--token: warms caches once the result is printed", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
     const { context, getStdout } = createContext();
@@ -820,7 +820,7 @@ describe("loginCommand.func --token path", () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
     setAuthTokenSpy.mockReturnValue(undefined);
-    getUserRegionsSpy.mockResolvedValue([]);
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
 
@@ -997,8 +997,8 @@ describe("login re-authentication interactive prompt", () => {
 
     const setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
     setAuthTokenSpy.mockImplementation(noop);
-    const getUserRegionsSpy = vi.spyOn(apiClient, "getUserRegions");
-    getUserRegionsSpy.mockResolvedValue([]);
+    const checkTokenAccessSpy = vi.spyOn(apiClient, "checkTokenAccess");
+    checkTokenAccessSpy.mockResolvedValue(undefined);
     const getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
     getCurrentUserSpy.mockResolvedValue({
       id: "42",
@@ -1022,7 +1022,7 @@ describe("login re-authentication interactive prompt", () => {
       expectTokenStored(setAuthTokenSpy, "new-token");
     } finally {
       setAuthTokenSpy.mockRestore();
-      getUserRegionsSpy.mockRestore();
+      checkTokenAccessSpy.mockRestore();
       getCurrentUserSpy.mockRestore();
       setUserInfoSpy.mockRestore();
     }

@@ -37,7 +37,7 @@ let capturedUrl: URL | undefined;
 
 function mockOk(body: unknown, headers: Record<string, string> = {}) {
   globalThis.fetch = mockFetch(async (input, init) => {
-    capturedUrl = new URL(new Request(input!, init).url);
+    capturedUrl = new URL(new Request(input, init).url);
     return Response.json(body, { headers });
   });
 }

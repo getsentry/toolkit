@@ -15,12 +15,13 @@ function call(node, property) {
   return node.type === "CallExpression" && member(node.callee, property);
 }
 
-function rule(message, visitors, schema = []) {
+/** `packages` lists the workspace directories a rule may run in. */
+function rule(message, visitors, schema = [], packages = ["/packages/cli/"]) {
   return {
     meta: { type: "problem", docs: { description: message }, schema },
     create(context) {
       const filename = context.filename.replaceAll("\\", "/");
-      if (!filename.includes("/packages/cli/")) return {};
+      if (!packages.some((dir) => filename.includes(dir))) return {};
       return visitors(context, filename, (node, override = message) =>
         context.report({ node, message: override }),
       );
@@ -57,6 +58,61 @@ function readsProperty(node, object, property) {
   );
 }
 
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+/**
+ * Top-level functions of a module by name: `function f() {}` and
+ * `const f = () => {}`, exported or not.
+ */
+function moduleFunctions(program) {
+  const functions = new Map();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "FunctionDeclaration" && declaration.id) {
+      functions.set(declaration.id.name, declaration);
+    }
+    if (declaration?.type === "VariableDeclaration") {
+      for (const declarator of declaration.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          FUNCTION_TYPES.has(declarator.init?.type)
+        )
+          functions.set(declarator.id.name, declarator.init);
+      }
+    }
+  }
+  return functions;
+}
+
+/** Whether a function reads its second parameter (the parsed `--fields`). */
+function readsFieldsParameter(fn) {
+  const fields = fn.params[1];
+  const name =
+    fields?.type === "AssignmentPattern" ? fields.left?.name : fields?.name;
+  return Boolean(name) && containsIdentifier(fn.body, name);
+}
+
+/** `jsonTransform: ...` properties anywhere under a node. */
+function jsonTransformProperties(node) {
+  const found = [];
+  someNode(node, (n) => {
+    if (
+      n.type === "Property" &&
+      (n.key?.name ?? n.key?.value) === "jsonTransform"
+    )
+      found.push(n);
+    return false;
+  });
+  return found;
+}
+
 /**
  * Target positional types from `src/lib/target-positional.ts`, and
  * `boundArguments` positionals (`BoundArguments` and the commands' aliases).
@@ -75,7 +131,6 @@ const BOUND_TARGET_TYPES = new Set([
   "DashboardCreateArguments",
   "DashboardListArguments",
   "EventViewArguments",
-  "InitArguments",
   "IntegrationArguments",
   "IssuesArguments",
   "LogListArguments",
@@ -84,6 +139,8 @@ const BOUND_TARGET_TYPES = new Set([
   "ReplayArguments",
   "SpanListArguments",
   "SpanViewArguments",
+  "TokenArguments",
+  "TokenCreateTarget",
   "TraceLogsArguments",
   "TraceViewArguments",
   "TrialStartArguments",
@@ -302,6 +359,186 @@ function untaggedParser(value) {
   return undefined;
 }
 
+/**
+ * Top-level routes of the CLI, read from `src/command-manifest.ts` (one
+ * `name: route(…)` or `name: hidden(…)` entry each). Only `sentry <route>`
+ * is a command; `sentry binary` or `sentry v1.2` is prose.
+ */
+const ROUTE_NAMES = new Set(
+  [
+    ...readFileSync(
+      new URL("../src/command-manifest.ts", import.meta.url),
+      "utf-8",
+    ).matchAll(/^ {2}"?([a-z][a-z0-9-]*)"?: (?:route|hidden)\(/gm),
+  ].map(([, routeName]) => routeName),
+);
+
+/** Stands in for an interpolation, which may be any word. */
+const INTERPOLATION = "\uFFFC";
+
+/**
+ * `sentry` and the word after it: a route, a flag, a `<placeholder>`, or an
+ * interpolation.
+ */
+const SENTRY_WORD_RE =
+  /(?:^|[\s`'"(])sentry (\uFFFC|<|--?[a-z]|[a-z][a-z0-9-]*)/g;
+
+/** Whether `text` names a `sentry <command>`. */
+function namesSentryCommand(text) {
+  for (const [, word] of text.matchAll(SENTRY_WORD_RE)) {
+    if (
+      word === INTERPOLATION ||
+      word === "<" ||
+      word.startsWith("-") ||
+      ROUTE_NAMES.has(word)
+    )
+      return true;
+  }
+  return false;
+}
+
+/** The tag that builds a command hint: `` sentry`issue list` ``. */
+function isSentryTag(node) {
+  return (
+    node.type === "TaggedTemplateExpression" &&
+    node.tag.type === "Identifier" &&
+    node.tag.name === "sentry"
+  );
+}
+
+/** Text of a template literal, each interpolation as one word. */
+function templateText(node) {
+  return node.quasis
+    .map((quasi) => quasi.value.cooked ?? "")
+    .join(INTERPOLATION);
+}
+
+/** Properties whose text is command help, written for the `sentry` binary. */
+const HELP_TEXT_KEYS = new Set([
+  "docs",
+  "fullDescription",
+  "brief",
+  "examples",
+]);
+
+/** Key of a property node, as written. */
+function propertyKey(node) {
+  return node.key?.name ?? node.key?.value;
+}
+
+/**
+ * Whether `node` is a step of a `docs.examples` entry: the `run` value, an
+ * element of a `run` array, or the `args` of a `{ prefix, args }` step.
+ */
+function isExampleStep(node) {
+  let current = node.parent;
+  if (current?.type === "Property" && propertyKey(current) === "args") {
+    current = current.parent?.parent;
+  }
+  if (current?.type === "ArrayExpression") current = current.parent;
+  return current?.type === "Property" && propertyKey(current) === "run";
+}
+
+/** Whether `node` sits inside a function body. */
+function hasFunctionAncestor(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return true;
+  }
+  return false;
+}
+
+/** Whether `node` sits in a command hint helper or in command help text. */
+function isInvocationSafe(node) {
+  for (let current = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) return false;
+    if (isSentryTag(current)) return true;
+    if (
+      current.type === "Property" &&
+      HELP_TEXT_KEYS.has(current.key?.name ?? current.key?.value)
+    )
+      return true;
+    if (
+      current.type === "VariableDeclarator" &&
+      HELP_TEXT_KEYS.has(current.id?.name)
+    )
+      return true;
+  }
+  return false;
+}
+
+/**
+ * Sanctioned raw API transports for `sentry-cli/no-manual-api-request`, keyed by
+ * a path under `packages/cli/src/`. `true` exempts the whole file; a list names
+ * the top-level functions allowed to call the helpers. Each entry needs a reason.
+ */
+const MANUAL_API_REQUEST_EXCEPTIONS = new Map([
+  // Defines apiRequest, apiRequestToRegion and apiRequestToRegionNoContent.
+  ["lib/api/infrastructure.ts", true],
+  // Re-exports the infrastructure helpers.
+  ["lib/api-client.ts", true],
+  // Defines customFetch.
+  ["lib/custom-ca.ts", true],
+  // `/auth/`: private fallback for servers that predate the public `/users/me/` read.
+  ["lib/api/users.ts", ["getCurrentUser"]],
+  // `projects/?query=dsn:`: fallback for servers without the DSN-keyed project lookup.
+  ["lib/api/projects.ts", ["findProjectByDsnKeyOnOldServer"]],
+  // `replay list --json` prints `info_ids`/`warning_ids`, which the generated field enum omits.
+  ["lib/api/replays.ts", ["fetchReplayPage"]],
+  // getsentry billing (`/customers/{org}/`, `/product-trial/`) stays private.
+  ["lib/api/trials.ts", ["getCustomerTrialInfo", "startProductTrial"]],
+  [
+    "lib/api/preprod-artifacts.ts",
+    [
+      // Signed storage URLs, not API routes: the token only goes to the region origin.
+      "downloadBuildArtifact",
+      // `snapshots/upload-options/` is private upload transport config.
+      "fetchSnapshotsUploadOptions",
+      // Archive `?download` streams a ZIP and is excluded from the spec.
+      "openSnapshotArchive",
+    ],
+  ],
+  // Unauthenticated transport for the generated shared-issue call on another host.
+  ["lib/api/issues.ts", ["getSharedIssue"]],
+  // Public status page, not the Sentry API.
+  ["lib/api/status-page.ts", true],
+  // CLI binary downloads from release hosts.
+  ["lib/binary.ts", true],
+  // Delta upgrade patches from release hosts.
+  ["lib/delta-upgrade.ts", true],
+  // GitHub Container Registry, which hosts nightly builds.
+  ["lib/ghcr.ts", true],
+  // GitHub release notes.
+  ["lib/release-notes.ts", true],
+  // Docs service, not the Sentry API.
+  ["lib/docs-service.ts", true],
+  // Games leaderboard Worker, not the Sentry API.
+  ["lib/games/leaderboard-api.ts", true],
+  // Objectstore upload transport, authorized by the upload-options token.
+  ["lib/objectstore.ts", true],
+]);
+
+const MANUAL_API_REQUEST_NAME = /^(?:apiRequest\w*|customFetch)$/;
+
+/** Name of the top-level declaration that contains `node`. */
+function topLevelName(node) {
+  let current = node;
+  while (current.parent && current.parent.type !== "Program") {
+    current = current.parent;
+  }
+  const declaration =
+    current.type === "ExportNamedDeclaration" ? current.declaration : current;
+  if (declaration?.type === "FunctionDeclaration") return declaration.id?.name;
+  if (declaration?.type === "VariableDeclaration")
+    return declaration.declarations[0]?.id?.name;
+  return undefined;
+}
+
+const LOCALE_DATE_METHODS = [
+  "toLocaleString",
+  "toLocaleDateString",
+  "toLocaleTimeString",
+];
+
 const rules = {
   "no-silent-catch": rule(
     "Handle or report caught errors instead of discarding them.",
@@ -321,6 +558,46 @@ const rules = {
               if (
                 handler?.type === "ArrowFunctionExpression" &&
                 silentBody(handler.body, handler.params[0])
+              )
+                report(node);
+            },
+          }
+        : {},
+  ),
+  // A raw capture skips the 4xx silencing and `api_error` context that
+  // reportCliError() applies, so user errors pile into one issue (CLI-10).
+  "no-raw-capture-exception": rule(
+    "Report errors with reportCliError() from lib/error-reporting.js. A raw captureException skips the 4xx silencing and API error context.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/src/lib/error-reporting.ts")
+        ? {
+            ImportDeclaration(node) {
+              if (!String(node.source.value).startsWith("@sentry/")) return;
+              for (const specifier of node.specifiers) {
+                if (specifier.imported?.name === "captureException")
+                  report(specifier);
+              }
+            },
+            CallExpression(node) {
+              if (call(node, "captureException")) report(node);
+            },
+          }
+        : {},
+  ),
+  "no-process-exit": rule(
+    "Do not force the process to exit: it drops pending telemetry and piped " +
+      "output. Release the handle that keeps the event loop alive (see " +
+      "close-dispatcher.ts), or fix it in the dependency that owns it. " +
+      "Signal, fatal error, and broken stream handlers may exit, with a " +
+      "disable comment that says why.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            MemberExpression(node) {
+              if (
+                member(node, "exit") &&
+                (node.object.name === "process" ||
+                  member(node.object, "process"))
               )
                 report(node);
             },
@@ -576,7 +853,7 @@ const rules = {
         : {},
   ),
   "no-manual-pagination": rule(
-    "Use paginate() from infrastructure.js instead of a limit-bounded cursor loop.",
+    "Use the shared pagination helpers instead of a limit-bounded cursor loop: paginate() or fetchAllPages() from infrastructure.js in the CLI; paginate() from @sentry/api/client or fetchEveryPage() from api-client/pagination.ts in mcp-core.",
     (_context, file, report) => {
       if (
         !file.includes("/src/") ||
@@ -595,6 +872,36 @@ const rules = {
         ForStatement: check,
         WhileStatement: check,
         DoWhileStatement: check,
+      };
+    },
+    [],
+    ["/packages/cli/", "/packages/mcp-core/"],
+  ),
+  "no-manual-api-request": rule(
+    "Call the generated @sentry/api operation instead of apiRequest*/customFetch. Sanctioned exceptions live in MANUAL_API_REQUEST_EXCEPTIONS.",
+    (_context, file, report) => {
+      const index = file.indexOf("/packages/cli/src/");
+      if (index === -1) return {};
+      const exception = MANUAL_API_REQUEST_EXCEPTIONS.get(
+        file.slice(index + "/packages/cli/src/".length),
+      );
+      if (exception === true) return {};
+      return {
+        Identifier(node) {
+          if (!MANUAL_API_REQUEST_NAME.test(node.name)) return;
+          const { parent } = node;
+          if (
+            parent.type === "ImportSpecifier" ||
+            parent.type === "ExportSpecifier" ||
+            parent.type === "TSTypeQuery" ||
+            (parent.type === "MemberExpression" &&
+              parent.property === node &&
+              !parent.computed) ||
+            exception?.includes(topLevelName(node))
+          )
+            return;
+          report(node);
+        },
       };
     },
   ),
@@ -635,6 +942,137 @@ const rules = {
             },
             NewExpression(node) {
               if (MARKDOWN_STRUCTURE_RE.test(regexSource(node))) report(node);
+            },
+          }
+        : {},
+  ),
+  // A transform that drops `fields` makes `--fields` a silent no-op:
+  // https://github.com/getsentry/toolkit/issues/1808
+  "json-transform-uses-fields": rule(
+    "A jsonTransform replaces the default --fields filtering, so it must read its fields parameter.",
+    (_context, file, report) =>
+      file.includes("/src/")
+        ? {
+            Program(program) {
+              const functions = moduleFunctions(program);
+              // Exported jsonTransform* helpers are shared by several
+              // commands, so check them where they are defined.
+              for (const [fnName, fn] of functions) {
+                if (
+                  fnName.startsWith("jsonTransform") &&
+                  !readsFieldsParameter(fn)
+                )
+                  report(fn);
+              }
+              for (const property of jsonTransformProperties(program)) {
+                const value = property.value;
+                if (FUNCTION_TYPES.has(value.type)) {
+                  if (!readsFieldsParameter(value)) report(property);
+                } else if (value.type === "Identifier") {
+                  // Imported transforms are checked in their own module.
+                  const fn = functions.get(value.name);
+                  if (
+                    fn &&
+                    !value.name.startsWith("jsonTransform") &&
+                    !readsFieldsParameter(fn)
+                  )
+                    report(property);
+                }
+              }
+            },
+          }
+        : {},
+  ),
+  "no-runtime-output-schema-imports": rule(
+    "src/output-schemas/ is build-only: use `import type` from it, and import the field data from src/generated/output-schemas/.",
+    (_context, file, report) => {
+      if (!file.includes("/src/") || file.includes("/src/output-schemas/"))
+        return {};
+      const buildOnly = (source) =>
+        typeof source === "string" &&
+        /(?:^|\/)output-schemas\//.test(source) &&
+        !/(?:^|\/)generated\/output-schemas\//.test(source);
+      // Only `import type` / `export type` is erased whole. Under
+      // `verbatimModuleSyntax`, `import { type X }` still loads the module.
+      return {
+        ImportDeclaration(node) {
+          if (buildOnly(node.source.value) && node.importKind !== "type")
+            report(node);
+        },
+        ExportNamedDeclaration(node) {
+          if (buildOnly(node.source?.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ExportAllDeclaration(node) {
+          if (buildOnly(node.source.value) && node.exportKind !== "type")
+            report(node);
+        },
+        ImportExpression(node) {
+          if (buildOnly(node.source.value)) report(node);
+        },
+      };
+    },
+  ),
+  "no-hardcoded-sentry-command": rule(
+    "Hints must name the program that is running (`npx sentry`, `sentry-mcp`, ...): write the command with the sentry`…` tag from lib/app-identity.js, as sentry`issue list`.",
+    (_context, file, report) => {
+      if (!file.includes("/src/")) return {};
+      const check = (node, text) => {
+        if (!namesSentryCommand(text) || isInvocationSafe(node)) return;
+        report(node);
+      };
+      // The running program is known only once an entry point has started,
+      // so a hint built at module load would still name `sentry`.
+      const checkModuleLevel = (node) => {
+        if (!hasFunctionAncestor(node))
+          report(
+            node,
+            "Build the hint when it is shown, not at module load: the running program is not known yet. Keep a command in a constant or table as `() => sentry`…``.",
+          );
+      };
+      return {
+        TaggedTemplateExpression(node) {
+          if (!isSentryTag(node)) return;
+          checkModuleLevel(node);
+          if (templateText(node.quasi).startsWith("sentry "))
+            report(
+              node,
+              "The sentry`…` tag adds the program name; leave `sentry` out of the text.",
+            );
+        },
+        Literal(node) {
+          if (typeof node.value !== "string") return;
+          if (isExampleStep(node)) {
+            if (node.value.startsWith("sentry "))
+              report(
+                node,
+                "Write example steps without the program name, as `issue list`: help, docs and skills each add it.",
+              );
+            return;
+          }
+          check(node, node.value);
+        },
+        TemplateLiteral(node) {
+          if (!isSentryTag(node.parent)) check(node, templateText(node));
+        },
+      };
+    },
+  ),
+  "no-inline-date-format": rule(
+    "Format dates with formatLocalDateTime() or formatLocalTime() from " +
+      "src/lib/formatters/time-utils.ts instead of calling toLocale*String() " +
+      "on a new Date. The helpers name the timestamp unit and render a dash " +
+      "for missing or invalid dates.",
+    (_context, file, report) =>
+      file.includes("/src/") && !file.endsWith("/formatters/time-utils.ts")
+        ? {
+            CallExpression(node) {
+              if (
+                LOCALE_DATE_METHODS.some((method) => call(node, method)) &&
+                node.callee.object.type === "NewExpression" &&
+                node.callee.object.callee.name === "Date"
+              )
+                report(node);
             },
           }
         : {},

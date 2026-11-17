@@ -1,11 +1,19 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, setUser, startSpan } from "@sentry/core";
 import {
+  type Span,
+  captureException,
+  getClient,
+  setUser,
+  startSpan,
+} from "@sentry/core";
+import {
+  createDefaultEvent,
   eventFixture,
   issueFixture,
   mswServer,
+  organizationFixture,
   projectFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
@@ -14,6 +22,7 @@ import { z } from "zod";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
+import { apiServiceFromContext } from "./internal/tool-helpers/api";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
 import type { Skill } from "./skills";
@@ -23,10 +32,15 @@ import {
   getStructuredContent,
   getTextContent,
 } from "./test-utils/structured-content";
+import type { GetIssueDetailsPayload } from "./tools/catalog/get-issue-details";
 import { createExecuteTool } from "./tools/special/execute-tool";
 import type { ToolConfig } from "./tools/types";
-import type { ServerContext } from "./types";
+import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
+
+// These tests cover the search_sentry_tools/execute_sentry_tool gateway
+// surface. server.all-tools.test.ts covers the default EXPOSE_ALL_TOOLS surface.
+vi.mock("./tools/exposure", () => ({ EXPOSE_ALL_TOOLS: false }));
 
 // Mock the Sentry core module
 vi.mock("@sentry/core", () => ({
@@ -46,6 +60,7 @@ vi.mock("@sentry/core", () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
   getClient: vi.fn(),
+  metrics: { count: vi.fn() },
 }));
 
 vi.mock("@sentry/core/server", () => ({
@@ -140,15 +155,19 @@ const DEFAULT_DIRECT_TOOL_NAMES = [
 describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // No DSN by default, so submit_feedback_to_sentry_team stays hidden.
+    vi.mocked(getClient).mockReturnValue(undefined);
     startedSpans = [];
-    vi.mocked(startSpan).mockImplementation((<T>(
-      _options: Parameters<typeof startSpan>[0],
-      callback: (span: Span) => T,
-    ) => {
-      const span = createMockSpan();
-      startedSpans.push(span);
-      return callback(span as unknown as Span);
-    }) as typeof startSpan);
+    vi.mocked(startSpan).mockImplementation(
+      <T>(
+        _options: Parameters<typeof startSpan>[0],
+        callback: (span: Span) => T,
+      ) => {
+        const span = createMockSpan();
+        startedSpans.push(span);
+        return callback(span as unknown as Span);
+      },
+    );
   });
 
   const baseContext: ServerContext = {
@@ -166,6 +185,7 @@ describe("buildServer", () => {
     options: Partial<ToolConfig> = {},
   ): ToolConfig => ({
     name,
+    title: `${name} title`,
     description: `${name} description`,
     inputSchema: {},
     skills: ["inspect"],
@@ -218,6 +238,397 @@ describe("buildServer", () => {
       }
 
       expect(seenTokens).toEqual(["expired-token", "fresh-token"]);
+    });
+  });
+
+  describe("credential routing", () => {
+    /**
+     * A router with one account per organization: `<org>-token`, refreshed
+     * to `<org>-fresh`. Calls without an organization use `default`.
+     */
+    function createRouter() {
+      const resolved: Array<string | null> = [];
+      const refreshed: string[] = [];
+      const tokens = new Map<string, string>();
+      const router: CredentialRouter = {
+        async resolve({ organizationSlug }) {
+          resolved.push(organizationSlug);
+          const id = organizationSlug ?? "default";
+          // Resolve out of order so overlapping calls interleave.
+          await new Promise((resolve) =>
+            setTimeout(resolve, id === "org-a" ? 20 : 0),
+          );
+          return {
+            id,
+            accessToken: tokens.get(id) ?? `${id}-token`,
+            refresh: async () => {
+              refreshed.push(id);
+              tokens.set(id, `${id}-fresh`);
+              return `${id}-fresh`;
+            },
+          };
+        },
+        async list() {
+          return [];
+        },
+      };
+      return { router, resolved, refreshed };
+    }
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    const orgTool = (handler: ToolConfig["handler"]) =>
+      createMockTool("org_tool", {
+        inputSchema: {
+          organizationSlug: z.string().optional(),
+          issueUrl: z.string().optional(),
+        },
+        handler,
+      });
+
+    it("sends each overlapping call's request with its own account's token", async () => {
+      const { router } = createRouter();
+      const seen: Array<{ org: string; authorization: string | null }> = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/:org/",
+          ({ params, request }) => {
+            seen.push({
+              org: String(params.org),
+              authorization: request.headers.get("authorization"),
+            });
+            return HttpResponse.json({
+              id: "1",
+              slug: params.org,
+              name: "Org",
+            });
+          },
+        ),
+      );
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (params, context) => {
+            const org = await apiServiceFromContext(context).getOrganization(
+              String(params.organizationSlug),
+            );
+            return org.slug;
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        Promise.all(
+          ["org-a", "org-b", "org-a", "org-b"].map((organizationSlug) =>
+            client.callTool({
+              name: "org_tool",
+              arguments: { organizationSlug },
+            }),
+          ),
+        ),
+      );
+
+      expect(seen).toHaveLength(4);
+      for (const { org, authorization } of seen) {
+        expect(authorization).toBe(`Bearer ${org}-token`);
+      }
+    });
+
+    it("routes by the organization of a Sentry URL parameter", async () => {
+      const { router, resolved } = createRouter();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "org_tool",
+          arguments: { issueUrl: "https://org-b.sentry.io/issues/123/" },
+        }),
+      );
+
+      expect(resolved).toEqual(["org-b"]);
+      expect(tokens).toEqual(["org-b-token"]);
+    });
+
+    it("refreshes only the credential that got the 401", async () => {
+      const { router, refreshed } = createRouter();
+      const onUpstreamUnauthorized = vi.fn();
+      const tokens: string[] = [];
+      const server = buildServer({
+        context: {
+          ...baseContext,
+          credentialRouter: router,
+          onUpstreamUnauthorized,
+        },
+        tools: {
+          org_tool: orgTool(async (_params, context) => {
+            tokens.push(context.accessToken);
+            if (context.accessToken === "org-b-token") {
+              throw new ApiAuthenticationError("Unauthorized");
+            }
+            return "ok";
+          }),
+        },
+      });
+
+      await withClient(server, async (client) => {
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-b" },
+        });
+        await client.callTool({
+          name: "org_tool",
+          arguments: { organizationSlug: "org-a" },
+        });
+      });
+
+      expect(tokens).toEqual(["org-b-token", "org-b-fresh", "org-a-token"]);
+      expect(refreshed).toEqual(["org-b"]);
+      expect(onUpstreamUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it("routes and refreshes the inner tool of execute_sentry_tool", async () => {
+      const { router, resolved, refreshed } = createRouter();
+      const registry: Record<string, ToolConfig> = {
+        org_tool: orgTool(async (_params, context) => {
+          if (context.accessToken === "org-b-token") {
+            throw new ApiAuthenticationError("Unauthorized");
+          }
+          return "ok";
+        }),
+      };
+      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: registry,
+      });
+
+      await withClient(server, (client) =>
+        client.callTool({
+          name: "execute_sentry_tool",
+          arguments: {
+            name: "org_tool",
+            arguments: { organizationSlug: "org-b" },
+          },
+        }),
+      );
+
+      // The outer call targets no organization; the inner call targets org-b.
+      expect(resolved).toEqual([null, "org-b"]);
+      expect(refreshed).toEqual(["org-b"]);
+    });
+  });
+
+  describe("cancellation", () => {
+    const INTEGRATIONS_URL =
+      "https://sentry.io/api/0/organizations/org/issues/1/integrations/";
+    const NEXT_PAGE_LINK =
+      '<https://sentry.io/>; rel="previous"; results="false"; cursor="0:0:1", ' +
+      '<https://sentry.io/>; rel="next"; results="true"; cursor="0:100:0"';
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    /** A tool whose handler outcome the test can await. */
+    function trackedTool(
+      name: string,
+      run: (context: ServerContext) => Promise<unknown>,
+    ) {
+      let settle!: (outcome: PromiseSettledResult<unknown>) => void;
+      const settled = new Promise<PromiseSettledResult<unknown>>((resolve) => {
+        settle = resolve;
+      });
+      const tool = createMockTool(name, {
+        handler: async (_params, context) => {
+          try {
+            const value = await run(context);
+            settle({ status: "fulfilled", value });
+            return "done";
+          } catch (reason) {
+            settle({ status: "rejected", reason });
+            throw reason;
+          }
+        },
+      });
+      return { tool, settled };
+    }
+
+    it("aborts the in-flight request and fetches no further pages", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      let inFlightAborted = false;
+      mswServer.use(
+        http.get(INTEGRATIONS_URL, async ({ request }) => {
+          requests++;
+          if (requests > 1) {
+            // Cancel while the second page is in flight.
+            controller.abort("client cancelled");
+            await new Promise((resolve) => {
+              if (request.signal.aborted) resolve(undefined);
+              request.signal.addEventListener("abort", resolve);
+            });
+            inFlightAborted = true;
+          }
+          return HttpResponse.json([], {
+            headers: { Link: NEXT_PAGE_LINK },
+          });
+        }),
+      );
+      const { tool, settled } = trackedTool("paged_tool", (context) =>
+        apiServiceFromContext(context).listIssueIntegrations({
+          organizationSlug: "org",
+          issueId: "1",
+        }),
+      );
+      const server = buildServer({
+        context: baseContext,
+        tools: { paged_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "paged_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        // MCP cancellation reasons can be strings, not AbortErrors.
+        await expect(settled).resolves.toEqual({
+          status: "rejected",
+          reason: "client cancelled",
+        });
+      });
+
+      expect(inFlightAborted).toBe(true);
+      expect(requests).toBe(2);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("stops retrying a failed request once the call is cancelled", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", () => {
+          requests++;
+          // A 503 GET is retried after a backoff; cancel during it.
+          controller.abort("client cancelled");
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+      const { tool, settled } = trackedTool("retry_tool", (context) =>
+        apiServiceFromContext(context).getOrganization("org"),
+      );
+      const router: CredentialRouter = {
+        resolve: async () => ({ id: "default", accessToken: "routed-token" }),
+        list: async () => [],
+      };
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: { retry_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "retry_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        await expect(settled).resolves.toMatchObject({ status: "rejected" });
+      });
+
+      expect(requests).toBe(1);
+    });
+
+    it("keeps other calls on the session running", async () => {
+      const controller = new AbortController();
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", async () => {
+          requests++;
+          if (requests === 2) {
+            controller.abort("client cancelled");
+            release();
+          }
+          await released;
+          return HttpResponse.json({ ...organizationFixture, slug: "org" });
+        }),
+      );
+      const fetchOrganization = (context: ServerContext) =>
+        apiServiceFromContext(context).getOrganization("org");
+      const cancelled = trackedTool("cancelled_tool", fetchOrganization);
+      const kept = trackedTool("kept_tool", fetchOrganization);
+      const server = buildServer({
+        context: baseContext,
+        tools: { cancelled_tool: cancelled.tool, kept_tool: kept.tool },
+      });
+
+      const keptResult = await withClient(server, async (client) => {
+        const [cancelledResult, keptResult] = await Promise.allSettled([
+          client.callTool(
+            { name: "cancelled_tool", arguments: {} },
+            undefined,
+            {
+              signal: controller.signal,
+            },
+          ),
+          client.callTool({ name: "kept_tool", arguments: {} }),
+        ]);
+        expect(cancelledResult.status).toBe("rejected");
+        await cancelled.settled;
+        return keptResult;
+      });
+
+      expect(keptResult).toMatchObject({
+        status: "fulfilled",
+        value: { content: [{ type: "text", text: "done" }] },
+      });
+      await expect(kept.settled).resolves.toMatchObject({
+        status: "fulfilled",
+      });
     });
   });
 
@@ -290,13 +701,38 @@ describe("buildServer", () => {
 
     expect(registeredTools.v2_tool).toBeDefined();
     await expect(
-      registeredTools.v2_tool?.handler({ value: "ok" }),
+      registeredTools.v2_tool.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
   });
 
-  it("explains how to recover a missing organizationSlug", async () => {
+  it("defaults a missing organizationSlug to the only organization", async () => {
+    const server = buildServer({ context: baseContext });
+
+    const result = await callRegisteredTool(server, "search_issues", {
+      query: "is:unresolved",
+      period: "1h",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain(
+      "https://sentry-mcp-evals.sentry.io/issues/",
+    );
+  });
+
+  it("lists the organizations when a missing organizationSlug is ambiguous", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/",
+        () =>
+          HttpResponse.json([
+            { id: "1", slug: "org-a", name: "A" },
+            { id: "2", slug: "org-b", name: "B" },
+          ]),
+        { once: true },
+      ),
+    );
     const server = buildServer({ context: baseContext });
 
     const result = await callRegisteredTool(server, "search_issues", {
@@ -306,8 +742,10 @@ describe("buildServer", () => {
 
     expect(result).toMatchObject({ isError: true });
     const text = getTextContent(result);
-    expect(text).toContain("Required. Call `find_organizations()`");
-    expect(text).not.toContain("period");
+    expect(text).toContain(
+      "`search_issues(organizationSlug='org-a', period='1h')`",
+    );
+    expect(text).toContain("Other available organizations: org-b");
   });
 
   it("caps tool input elements", async () => {
@@ -396,7 +834,7 @@ describe("buildServer", () => {
       );
 
       const text = getTextContent(result);
-      expect(text).toContain(`[console] ${replacedText}...`);
+      expect(text).toContain(`"message":"${replacedText}..."`);
       expect(text.isWellFormed()).toBe(true);
     });
 
@@ -479,9 +917,11 @@ describe("buildServer", () => {
           "status": "ok",
         }
       `);
-      expect(getTextContent(result)).toBe(
-        getGeneratedTextFromStructuredContent(result),
-      );
+      const text = getTextContent(result);
+      // Compact JSON: indentation costs tokens for clients that send the
+      // text to a model.
+      expect(text).toBe('{"status":"ok","count":2}');
+      expect(JSON.parse(text)).toEqual(payload);
     });
 
     it("sets user ID and IP address together for tool calls", async () => {
@@ -515,12 +955,38 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool?.handler({}, {});
+      await registeredTools.example_tool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
         ip_address: "192.0.2.1",
       });
+    });
+  });
+
+  describe("experimental output schema", () => {
+    const createServer = (experimentalMode: boolean) =>
+      buildServer({
+        context: baseContext,
+        experimentalMode,
+        tools: {
+          graduating_tool: createMockTool("graduating_tool", {
+            experimentalOutputSchema: z.object({ status: z.string() }),
+          }),
+        },
+      });
+
+    it("advertises the schema to experimental sessions", async () => {
+      const [tool] = await listRegisteredTools(createServer(true));
+      expect(tool.outputSchema).toMatchObject({
+        type: "object",
+        properties: { status: { type: "string" } },
+      });
+    });
+
+    it("keeps it from stable sessions, which still get markdown", async () => {
+      const [tool] = await listRegisteredTools(createServer(false));
+      expect(tool.outputSchema).toBeUndefined();
     });
   });
 
@@ -853,12 +1319,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0]![0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0]![0].directToolNames?.has(
+        dynamicDescription.mock.calls[0][0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1079,7 +1545,7 @@ describe("buildServer", () => {
       expect(experimentalToolNames).toEqual(DEFAULT_DIRECT_TOOL_NAMES);
     });
 
-    it("advertises Sentry tool guidance for snapshot image tools", async () => {
+    it("advertises snapshot image resources", async () => {
       const server = buildServer({
         context: baseContext,
       });
@@ -1089,9 +1555,7 @@ describe("buildServer", () => {
         (tool) => tool.name === "get_sentry_resource",
       );
 
-      expect(getSentryResource?.description).toContain(
-        "Use the Sentry tool `get_snapshot_image` for full-resolution image bytes",
-      );
+      expect(getSentryResource?.description).toContain("snapshot images");
     });
 
     it("does not advertise monitor resources when inspect tools are unavailable", async () => {
@@ -1231,8 +1695,9 @@ describe("buildServer", () => {
           properties: {
             query: { type: "string" },
             results: { type: "array" },
+            notes: { type: "array" },
           },
-          required: ["query", "results"],
+          required: ["query", "results", "notes"],
         },
         annotations: {
           readOnlyHint: true,
@@ -1283,8 +1748,8 @@ describe("buildServer", () => {
       );
       expect(getTextContent(result)).not.toContain("# Tool Search Results");
       expect(getTextContent(result)).not.toContain("```json");
-      expect(firstResult?.name).toBe("get_replay_details");
-      expect(Object.keys(firstResult ?? {}).sort()).toEqual([
+      expect(firstResult.name).toBe("get_replay_details");
+      expect(Object.keys(firstResult).sort()).toEqual([
         "annotations",
         "description",
         "inputSchema",
@@ -1293,7 +1758,7 @@ describe("buildServer", () => {
       expect(firstResult).not.toHaveProperty("requiredSkills");
       expect(firstResult).not.toHaveProperty("requiredScopes");
       expect(firstResult).not.toHaveProperty("skills");
-      expect(firstResult?.inputSchema.properties).not.toHaveProperty(
+      expect(firstResult.inputSchema.properties).not.toHaveProperty(
         "organizationSlug",
       );
     });
@@ -1398,6 +1863,47 @@ describe("buildServer", () => {
       }>(result);
 
       expect(payload.results.map((tool) => tool.name)).toContain("whoami");
+    });
+
+    it("search_sentry_tools suggests feedback when no tool matches", async () => {
+      vi.mocked(getClient).mockReturnValue({
+        getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+      } as unknown as ReturnType<typeof getClient>);
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+      const payload = getStructuredContent<{
+        results: unknown[];
+        notes: string[];
+      }>(result);
+
+      expect(payload.results).toEqual([]);
+      expect(payload.notes).toMatchInlineSnapshot(`
+        [
+          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
+        ]
+      `);
+
+      const matched = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "server version",
+      });
+      expect(getStructuredContent<{ notes: string[] }>(matched).notes).toEqual(
+        [],
+      );
+    });
+
+    it("search_sentry_tools omits the feedback note without a Sentry DSN", async () => {
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+
+      expect(getStructuredContent<{ notes: string[] }>(result).notes).toEqual(
+        [],
+      );
     });
 
     it("discovers and executes Sentry MCP server information from the catalog", async () => {
@@ -1662,6 +2168,81 @@ describe("buildServer", () => {
       );
     });
 
+    it.each([
+      ["toolName", "arguments"],
+      ["tool", "params"],
+      ["tool_name", "args"],
+    ])(
+      "execute_sentry_tool accepts %s and %s aliases",
+      async (nameKey, argumentsKey) => {
+        const server = buildServer({
+          context: baseContext,
+        });
+
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          [nameKey]: "get_issue_details",
+          [argumentsKey]: {
+            organizationSlug: "sentry-mcp-evals",
+            issueId: "CLOUDFLARE-MCP-41",
+          },
+        });
+
+        expect(
+          getStructuredContent<{ issue: { shortId: string } }>(result).issue
+            .shortId,
+        ).toBe("CLOUDFLARE-MCP-41");
+      },
+    );
+
+    it("execute_sentry_tool explains a missing name", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        arguments: {},
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        "Missing `name`. Pass the tool to run as `name`",
+      );
+    });
+
+    it("execute_sentry_tool runs search_sentry_tools", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "search_sentry_tools",
+        arguments: { query: "issue details" },
+      });
+
+      const payload = getStructuredContent<{
+        results: Array<{ name: string }>;
+      }>(result);
+      expect(payload.results.map((tool) => tool.name)).toContain(
+        "get_issue_details",
+      );
+    });
+
+    it("execute_sentry_tool does not run itself", async () => {
+      const server = buildServer({
+        context: baseContext,
+      });
+
+      const result = await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "execute_sentry_tool",
+        arguments: { name: "whoami" },
+      });
+
+      expect(result).toMatchObject({ isError: true });
+      expect(getTextContent(result)).toContain(
+        'Tool "execute_sentry_tool" is not available in this session',
+      );
+    });
+
     it("execute_sentry_tool dispatches to a catalog-only tool", async () => {
       const server = buildServer({
         context: baseContext,
@@ -1678,9 +2259,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it.each([
@@ -1727,6 +2309,75 @@ describe("buildServer", () => {
       },
     );
 
+    it.each(["get_sentry_resource", "get_issue_details"])(
+      "dispatches package selection through %s",
+      async (toolName) => {
+        const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+        mswServer.use(
+          http.get(
+            `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+            () =>
+              HttpResponse.json({
+                ...createDefaultEvent({ id: eventId, contexts: {} }),
+                packages: { example: "1.2.3", unrelated: "9.9.9" },
+                formatted: {
+                  format: "json",
+                  content: JSON.stringify({ message: "Synthetic event" }),
+                },
+              }),
+          ),
+        );
+        const server = buildServer({
+          experimentalMode: true,
+          context: {
+            ...baseContext,
+            constraints: {
+              organizationSlug: "sentry-mcp-evals",
+              projectSlug: "CLOUDFLARE-MCP",
+            },
+          },
+        });
+        const result = await callRegisteredTool(server, "execute_sentry_tool", {
+          name: toolName,
+          arguments: {
+            ...(toolName === "get_sentry_resource"
+              ? { resourceType: "event", resourceId: eventId }
+              : { eventId }),
+            packageNames: ["example"],
+          },
+        });
+        const payload = getStructuredContent<GetIssueDetailsPayload>(result);
+        expect(payload.event.packageVersions).toEqual({
+          metadataAvailable: true,
+          packages: [
+            {
+              name: "example",
+              status: "recorded",
+              version: "1.2.3",
+              truncated: false,
+            },
+          ],
+        });
+        expect(JSON.parse(getTextContent(result))).toEqual(payload);
+        expect(result.isError).not.toBe(true);
+        expect(getTextContent(result)).not.toContain("unrelated");
+      },
+    );
+
+    it("rejects excessive package selection at the MCP boundary", async () => {
+      const result = await callRegisteredTool(
+        buildServer({ context: baseContext }),
+        "get_sentry_resource",
+        {
+          resourceType: "event",
+          resourceId: "7ca573c0f4814912aaa9bdc77d1a7d51",
+          organizationSlug: "sentry-mcp-evals",
+          packageNames: Array.from({ length: 11 }, (_, i) => `package${i}`),
+        },
+      );
+      expect(result.isError).toBe(true);
+    });
+
     it("execute_sentry_tool dispatches to catalog-only event stacktrace", async () => {
       const server = buildServer({
         context: baseContext,
@@ -1743,9 +2394,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {
@@ -1764,9 +2416,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue User Reports for Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("discovers and dispatches issue linking with injected constraints", async () => {
@@ -1987,10 +2640,9 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Updated DSN in **sentry-mcp-evals/cloudflare-mcp**",
-      );
-      expect(getTextContent(result)).toContain("**Rate Limit**: Disabled");
+      expect(getStructuredContent(result)).toMatchObject({
+        dsn: { id: "d20df0a1ab5031c7f3c7edca9c02814d", rateLimit: null },
+      });
     });
 
     it.each([
@@ -2622,9 +3274,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span?.recordException).not.toHaveBeenCalled();
+      expect(span.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -2646,9 +3298,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("exposes catalog-only tool safety annotations through search_sentry_tools", async () => {
@@ -2707,10 +3360,20 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool?.name).toBe("get_replay_details");
+      expect(replayTool.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
-      ).toEqual(["regionUrl", "replayId", "replayUrl"]);
+        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
+      ).toEqual([
+        "categories",
+        "endOffsetSeconds",
+        "fresh",
+        "limit",
+        "regionUrl",
+        "replayId",
+        "replayUrl",
+        "skip",
+        "startOffsetSeconds",
+      ]);
     });
   });
 });

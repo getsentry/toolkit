@@ -30,9 +30,7 @@ export const ParamUptimeIntervalSeconds = z
       message: `intervalSeconds must be one of: ${UPTIME_INTERVAL_SECONDS.join(", ")}`,
     },
   )
-  .describe(
-    "Seconds between checks. Allowed values: 60, 300, 600, 1200, 1800, 3600.",
-  );
+  .describe("Seconds between checks: 60, 300, 600, 1200, 1800, or 3600.");
 
 export const ParamUptimeHttpMethod = z
   .enum(UPTIME_HTTP_METHODS)
@@ -49,13 +47,26 @@ export const ParamUptimeTimeoutMs = z
   .int()
   .min(1000)
   .max(60_000)
-  .describe("Request timeout in milliseconds (1000-60000).");
+  .describe("Request timeout in milliseconds.");
 
+/**
+ * Header pairs, matching HEADERS_LIST_SCHEMA in getsentry/sentry
+ * (src/sentry/uptime/endpoints/validators.py).
+ *
+ * Not `z.tuple`: it emits `items: false` plus `prefixItems`, which VS Code
+ * Copilot rejects at registration ("array type must have items").
+ */
 export const ParamUptimeHeaders = z
-  .array(z.tuple([z.string(), z.string()]))
+  .array(z.array(z.string()).length(2))
   .describe(
-    'Optional HTTP headers as an array of [name, value] pairs, e.g. [["Accept","application/json"]].',
+    'HTTP headers as [name, value] pairs, e.g. [["Accept","application/json"]].',
   );
+
+export function toUptimeHeaderPairs(
+  headers: string[][],
+): Array<[string, string]> {
+  return headers.map(([name, value]) => [name, value]);
+}
 
 /** Owner actor for create/update. Empty/whitespace rejected. */
 export const ParamUptimeOwner = z
@@ -66,7 +77,7 @@ export const ParamUptimeOwner = z
     /^(user|team):.+$/,
     "owner must use `user:ID` or `team:ID` format (e.g. `user:123` or `team:456`).",
   )
-  .describe("Owner actor in `user:ID` or `team:ID` format.");
+  .describe("Owner as `user:ID` or `team:ID`.");
 
 const SENSITIVE_HEADER_NAMES = new Set([
   "authorization",
@@ -94,29 +105,37 @@ export function isSensitiveHeaderName(name: string): boolean {
   );
 }
 
+export const uptimeHeaderSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
 /**
- * Format headers for tool output without leaking secrets.
- * Malformed short arrays are skipped. Sensitive values are redacted.
+ * Map configured headers for tool output without leaking secrets.
+ * Malformed entries are skipped. Sensitive values are redacted.
  */
-export function formatUptimeHeadersForOutput(headers: unknown): string[] {
-  if (!Array.isArray(headers) || headers.length === 0) {
+export function toUptimeHeadersForOutput(
+  headers: unknown,
+): Array<z.infer<typeof uptimeHeaderSchema>> {
+  if (!Array.isArray(headers)) {
     return [];
   }
 
-  const lines: string[] = [];
+  const output: Array<z.infer<typeof uptimeHeaderSchema>> = [];
   for (const header of headers) {
     if (!Array.isArray(header) || header.length < 2) {
       continue;
     }
-    const name = header[0];
-    const value = header[1];
+    const [name, value] = header;
     if (typeof name !== "string" || typeof value !== "string") {
       continue;
     }
-    const displayValue = isSensitiveHeaderName(name) ? "[REDACTED]" : value;
-    lines.push(`- ${name}: ${displayValue}`);
+    output.push({
+      name,
+      value: isSensitiveHeaderName(name) ? "[REDACTED]" : value,
+    });
   }
-  return lines;
+  return output;
 }
 
 export const uptimeStatusSchema = z.enum(["ok", "failed", "unknown"]);
@@ -211,19 +230,16 @@ export function toUptimeMonitorSummary(
   return {
     ...toUptimeMonitorListItem(monitor, webUrl),
     timeoutMs: monitor.timeoutMs,
-    ...(monitor.recoveryThreshold !== undefined &&
-    monitor.recoveryThreshold !== null
+    ...(monitor.recoveryThreshold !== undefined
       ? { recoveryThreshold: monitor.recoveryThreshold }
       : {}),
-    ...(monitor.downtimeThreshold !== undefined &&
-    monitor.downtimeThreshold !== null
+    ...(monitor.downtimeThreshold !== undefined
       ? { downtimeThreshold: monitor.downtimeThreshold }
       : {}),
-    ...(monitor.traceSampling !== undefined && monitor.traceSampling !== null
+    ...(monitor.traceSampling !== undefined
       ? { traceSampling: monitor.traceSampling }
       : {}),
-    ...(monitor.responseCaptureEnabled !== undefined &&
-    monitor.responseCaptureEnabled !== null
+    ...(monitor.responseCaptureEnabled !== undefined
       ? { responseCaptureEnabled: monitor.responseCaptureEnabled }
       : {}),
   };

@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-issue
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Manage Sentry issues
 requires:
   bins: ["sentry"]
@@ -37,17 +37,17 @@ List issues in a project
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Issue metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |
@@ -115,18 +115,18 @@ List events for a specific issue
 |-------|------|-------------|
 | `id` | string | Internal event ID |
 | `event.type` | string | Event type (error, default, transaction) |
-| `groupID` | string \| null | Group (issue) ID |
+| `groupID` | string \| null | ID of the issue the event belongs to |
 | `eventID` | string | UUID-format event ID |
-| `projectID` | string | Project ID |
+| `projectID` | string | ID of the project the event belongs to |
 | `message` | string | Event message |
 | `title` | string | Event title |
-| `location` | string \| null | Source location (file:line) |
-| `culprit` | string \| null | Culprit function/module |
-| `user` | object \| null | User context |
-| `tags` | array | Event tags |
-| `platform` | string \| null | Platform (python, javascript, etc.) |
-| `dateCreated` | string | ISO 8601 creation timestamp |
-| `crashFile` | string \| null | Crash file URL |
+| `location` | string \| null | Source location of the event, such as a file and line |
+| `culprit` | string \| null | Function or module that caused the event |
+| `user` | object \| null | User context of the event |
+| `tags` | array | Tags attached to the event |
+| `platform` | string \| null | Platform of the event, such as python or javascript |
+| `dateCreated` | string | When the event occurred (ISO 8601) |
+| `crashFile` | string \| null | Crash report attachment of the event, if any |
 | `metadata` | object | Event metadata |
 
 **Examples:**
@@ -173,11 +173,11 @@ Show the top values of an issue tag
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `uniqueValues` | number \| null |  |
+| `uniqueValues` | number \| null | Number of distinct values seen for the tag key |
 | `totalValues` | number \| null | Total retained events, including missing tag values; not a lifetime count |
 | `topValues` | array \| null | Up to 9 values ordered by count, with nullable counts and first/last seen timestamps |
-| `key` | string |  |
-| `name` | string |  |
+| `key` | string | Tag key, with the `sentry:` prefix removed from built-in keys |
+| `name` | string | Display label of the tag key |
 
 **Examples:**
 
@@ -287,17 +287,17 @@ View details of one or more issues
 | `id` | string | Numeric issue ID |
 | `shortId` | string | Human-readable short ID (e.g. PROJ-ABC) |
 | `title` | string | Issue title |
-| `culprit` | string \| null | Culprit string |
-| `count` | string | Total event count |
-| `userCount` | number | Number of affected users |
-| `firstSeen` | string \| null | First occurrence (ISO 8601) |
-| `lastSeen` | string \| null | Most recent occurrence (ISO 8601) |
-| `level` | string | Severity level |
+| `culprit` | string \| null | Function or module where the issue occurs |
+| `count` | string | Total number of events in the issue |
+| `userCount` | number | Number of users affected by the issue |
+| `firstSeen` | string \| null | When the issue was first seen (ISO 8601) |
+| `lastSeen` | string \| null | When the issue was last seen (ISO 8601) |
+| `level` | string | Severity level of the issue |
 | `status` | string | Issue status |
-| `permalink` | string | URL to the issue in Sentry |
-| `project` | object | Project info |
+| `permalink` | string | URL of the issue in Sentry |
+| `project` | object | Project the issue belongs to |
 | `metadata` | object | Issue metadata |
-| `assignedTo` | object \| null | Assigned user or team |
+| `assignedTo` | object \| null | User or team the issue is assigned to |
 | `priority` | string | Triage priority |
 | `platform` | string | Platform |
 | `substatus` | string \| null | Issue substatus |

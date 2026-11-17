@@ -5,13 +5,10 @@
  * because that endpoint ignores them.
  */
 
-import { vGetOrganizationIssueTagResponse } from "@sentry/api/valibot";
-import { description, object, pipe } from "valibot";
 import type { SentryContext } from "../../context.js";
 import { getIssueTag } from "../../lib/api-client.js";
 import { buildCommand } from "../../lib/command.js";
 import { parseEnvironment, parseTagKey } from "../../lib/completion-target.js";
-import { ContextError } from "../../lib/errors.js";
 import { formatIssueTags } from "../../lib/formatters/issue-tags.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
@@ -25,7 +22,8 @@ import {
   issueParameter,
   requireIssueArgument,
 } from "./positional.js";
-import { buildCommandHint, resolveIssue } from "./utils.js";
+import { resolveIssue } from "./utils.js";
+import { IssueTagsOutputSchema } from "../../generated/output-schemas/issue.js";
 
 type TagsFlags = {
   /** Emit the API response as JSON instead of a human table; defaults to false. */
@@ -52,42 +50,26 @@ export const tagsCommand = buildCommand({
     examples: [
       {
         description: "Show which releases concentrate an issue's events",
-        command: "sentry issue tags my-org/FRONT-ABC release",
+        run: "issue tags my-org/FRONT-ABC release",
       },
       {
         description:
           "Inspect server distribution for the latest issue in production",
-        command:
-          "sentry issue tags @latest server_name --environment production",
+        run: "issue tags @latest server_name --environment production",
       },
       {
         description: "Get browser counts and timestamps as JSON",
-        command: "sentry issue tags FRONT-ABC browser.name --json",
+        run: "issue tags FRONT-ABC browser.name --json",
       },
       {
         description: "Select the aggregate fields for a release distribution",
-        command:
-          "sentry issue tags FRONT-ABC release --json --fields key,totalValues,topValues",
+        run: "issue tags FRONT-ABC release --json --fields key,totalValues,topValues",
       },
     ],
   },
   output: {
     human: formatIssueTags,
-    schema: object({
-      ...vGetOrganizationIssueTagResponse.entries,
-      totalValues: pipe(
-        vGetOrganizationIssueTagResponse.entries.totalValues,
-        description(
-          "Total retained events, including missing tag values; not a lifetime count",
-        ),
-      ),
-      topValues: pipe(
-        vGetOrganizationIssueTagResponse.entries.topValues,
-        description(
-          "Up to 9 values ordered by count, with nullable counts and first/last seen timestamps",
-        ),
-      ),
-    }),
+    schema: IssueTagsOutputSchema,
   },
   parameters: {
     positional: {
@@ -132,12 +114,6 @@ export const tagsCommand = buildCommand({
       command: "tags",
       trailingArgs,
     });
-    if (!org) {
-      throw new ContextError(
-        "Organization",
-        buildCommandHint("tags", issueArg.text, undefined, trailingArgs),
-      );
-    }
 
     const tag = await withProgress(
       { message: "Fetching tag distribution...", json: flags.json },

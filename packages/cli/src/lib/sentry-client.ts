@@ -10,16 +10,18 @@
 
 import type { SentryClient } from "@sentry/api";
 import { getTraceData } from "@sentry/node";
-import type { RetryPolicy } from "@sentry/toolkit-core/api-client/retry";
 import {
+  computeInvalidationPrefixes,
   createApiTransport,
+  type CredentialRequest,
   extractUrlPath,
   getValidatedResponseSource,
   type ResponseBodyMode,
+  type RetryPolicy,
   type TransportCache,
-} from "@sentry/toolkit-core/api-client/transport";
-import { computeInvalidationPrefixes } from "@sentry/toolkit-core/api-client/response-cache";
-import { formatAuthHeader, normalizeAuthToken } from "./auth-header.js";
+} from "@sentry/api/client";
+import { sentry } from "./app-identity.js";
+import { formatAuthHeader } from "./auth-header.js";
 import { seedCompletions } from "./api/completion-seed.js";
 import { maybeWarnEnvTokenIgnored } from "./auth-hint.js";
 import {
@@ -40,6 +42,7 @@ import {
   getRemainingLifetimeRatio,
   REFRESH_THRESHOLD,
   refreshToken,
+  selectAccountForOrg,
 } from "./db/auth.js";
 import {
   ApiError,
@@ -51,17 +54,16 @@ import {
 import { extractInputUrl } from "./fetch-input.js";
 import { isIdempotentOperation } from "./idempotent-operations.js";
 import { logger } from "./logger.js";
+import { isSentrySaasUrl } from "./sentry-urls.js";
 import {
   clearLastCacheHitAge,
   invalidateCachedResponsesMatching,
   lookupCachedResponse,
   storeCachedResponse,
 } from "./response-cache.js";
-import { normalizeOrigin } from "./sentry-urls.js";
 import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
-import { parseSntrysClaim } from "./token-claims.js";
 import {
-  isHostTrustedForClaim,
+  assertCredentialScope,
   isRequestOriginTrustedForContext,
 } from "./token-host.js";
 
@@ -87,7 +89,7 @@ const ENDPOINT_TIMEOUT_OVERRIDES: TimeoutOverride[] = [
 
 /**
  * Caps for automatic retries. Which statuses and methods retry is the shared
- * rule in `@sentry/toolkit-core/api-client/retry`.
+ * rule in `@sentry/api/client`.
  *
  * `maxDelayMs` caps the jittered backoff and the server-requested wait
  * (`Retry-After`, rate-limit reset); a longer server-requested wait is not
@@ -157,29 +159,7 @@ function prepareHeaders(
   // Host-scoping guard (defense in depth). Primary rejection happens at the
   // URL-arg / rc-shim entry points; this catches any code path that mutated
   // SENTRY_HOST/SENTRY_URL without going through those guards.
-  if (!isRequestOriginTrustedForContext(input, credential)) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      credential.host,
-    );
-  }
-
-  // sntrys_ claim check — defense-in-depth for users with access to
-  // multiple Sentry instances. The claim is unsigned (see token-claims.ts);
-  // fail-open on parse errors. Uses isHostTrustedForClaim so multi-region
-  // fan-out via the control silo's region URLs still works.
-  const claimUrl = parseSntrysClaim(normalizeAuthToken(credential.token))?.url;
-  if (
-    claimUrl &&
-    !isHostTrustedForClaim(input, claimUrl, credential.identity)
-  ) {
-    throw new HostScopeError(
-      "Credentials",
-      normalizeOrigin(input) ?? "<unknown host>",
-      claimUrl,
-    );
-  }
+  assertCredentialScope(input, credential);
 
   if (isManualHttpTracing()) {
     const traceData = getTraceData();
@@ -261,10 +241,26 @@ function resolveTimeoutMs(fullUrl: string): number {
   return REQUEST_TIMEOUT_MS;
 }
 
-/** Pass custom TLS options (CA certs for corporate proxies) to each fetch. */
+/** Next steps for a request that got no response in time. */
+function buildTimeoutHint(idempotent: boolean): string {
+  const baseUrl = getApiBaseUrl();
+  const retry = idempotent
+    ? "Try again."
+    : "The change may still have been applied; check before trying again.";
+  const check = isSentrySaasUrl(baseUrl)
+    ? `Check Sentry's status with: ${sentry`status`}`
+    : `Check the server's health with: ${sentry`status --url ${baseUrl}`}`;
+  return `The Sentry API at ${baseUrl} did not respond in time. ${retry}\n  ${check}`;
+}
+
+/**
+ * Pass custom TLS options (CA certs for corporate proxies) and the caller's
+ * undici dispatcher, if any, to each fetch.
+ */
 async function fetchWithCustomTls(
   input: Request | string | URL,
-  init?: RequestInit,
+  init: RequestInit | undefined,
+  dispatcher: RequestInit["dispatcher"],
 ): Promise<Response> {
   // On Bun, this passes `tls: { ca }` to fetch(); on Node, the extra
   // property is harmless (Node honors NODE_EXTRA_CA_CERTS natively).
@@ -272,7 +268,11 @@ async function fetchWithCustomTls(
   if (customTls) {
     warnIfSaasWithEnvCa(extractInputUrl(input));
   }
-  return await fetch(input, { ...init, ...customTls });
+  return await fetch(input, {
+    ...init,
+    ...customTls,
+    ...(dispatcher && { dispatcher }),
+  });
 }
 
 /** Best-effort `detail` from a Sentry error body. */
@@ -328,15 +328,44 @@ async function withHttpSpan(
   );
 }
 
+/** Sentry org slugs are never entirely numeric, so digits are an org id. */
+const NUMERIC_ORG_ID = /^\d+$/;
+
+/**
+ * Use the stored account that knows the organization the request's path
+ * targets (`selectAccountForOrg`), so requests built without an org's
+ * region still reach it. Only accounts on the request's server qualify: its
+ * URL is already built. Requests routed by `resolveOrgBaseUrl` picked an
+ * account, on any server, before their URL was built.
+ */
+function selectAccountForRequest({ url, scope }: CredentialRequest): void {
+  if (!scope) {
+    return;
+  }
+  const { organization } = scope;
+  selectAccountForOrg(
+    organization,
+    NUMERIC_ORG_ID.test(organization) ? organization : undefined,
+    { server: url },
+  );
+}
+
 /**
  * The CLI's transport options: stored credentials, host-scope checks, the
  * response cache, and the CLI's error classes. Retries, timeouts, the 401
- * refresh, and redirect validation are in `@sentry/toolkit-core/api-client/transport`.
+ * refresh, and redirect validation are in `@sentry/api/client`.
  */
-function createCliTransport(credential: CredentialContext | undefined) {
+function createCliTransport({
+  credential,
+  timeoutMs,
+  dispatcher,
+}: AuthenticatedFetchOptions) {
   return createApiTransport<CredentialContext>({
     credentials: {
-      current: async () => {
+      current: async (request) => {
+        if (!credential) {
+          selectAccountForRequest(request);
+        }
         const current = credential ?? getCredentialContext();
         if (!current) {
           await refreshToken();
@@ -351,8 +380,8 @@ function createCliTransport(credential: CredentialContext | undefined) {
       authorization: (current) => formatAuthHeader(current.token),
     },
     retry: RETRY_POLICY,
-    timeoutMs: resolveTimeoutMs,
-    fetch: fetchWithCustomTls,
+    timeoutMs: timeoutMs ?? resolveTimeoutMs,
+    fetch: (input, init) => fetchWithCustomTls(input, init, dispatcher),
     userAgent: getUserAgent(),
     prepareHeaders,
     isIdempotent: isIdempotentOperation,
@@ -366,9 +395,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
       timeout: ({ timeoutMs, idempotent }) =>
         new TimeoutError(
           `Request timed out after ${Math.round(timeoutMs / 1000)}s.`,
-          idempotent
-            ? "The Sentry API did not respond in time. Try again; if the problem persists, check https://status.sentry.io."
-            : "The Sentry API did not respond in time. The change may still have been applied; check before trying again. If the problem persists, check https://status.sentry.io.",
+          buildTimeoutHint(idempotent),
         ),
       // TLS certificate errors are deterministic — don't retry
       fatal: (error) =>
@@ -391,7 +418,7 @@ function createCliTransport(credential: CredentialContext | undefined) {
 /**
  * Create a fetch function with authentication, timeout, retry, caching, and 401 refresh.
  *
- * This wraps the native fetch with `@sentry/toolkit-core/api-client/transport`:
+ * This wraps the native fetch with `@sentry/api/client`:
  * - **Response caching** for GET requests (checked before hitting the network)
  * - Auth token injection (Bearer token)
  * - Request timeout via AbortController
@@ -423,12 +450,20 @@ type AuthenticatedFetchOptions = {
    * cannot match, such as chunk uploads to the server-provided URL.
    */
   idempotent?: boolean;
+  /**
+   * Per-attempt timeout for every request through this fetch, replacing
+   * {@link resolveTimeoutMs}. For callers whose URL comes from the server,
+   * such as chunk uploads, so no path override can match it.
+   */
+  timeoutMs?: number;
+  /** undici dispatcher for every request, such as one from `createHttp1Dispatcher`. */
+  dispatcher?: RequestInit["dispatcher"];
 };
 
 function createAuthenticatedFetch(
   options: AuthenticatedFetchOptions = {},
 ): (input: Request | string | URL, init?: RequestInit) => Promise<Response> {
-  const transport = createCliTransport(options.credential);
+  const transport = createCliTransport(options);
   const authenticatedFetch = async (
     input: Request | string | URL,
     init?: RequestInit,
@@ -482,12 +517,14 @@ function getAuthenticatedFetch(
     options.credential ||
     options.validatedRedirects ||
     options.bufferResponseBody ||
-    options.idempotent
+    options.idempotent ||
+    options.timeoutMs !== undefined ||
+    options.dispatcher
   ) {
-    return createAuthenticatedFetch(options) as unknown as typeof fetch;
+    return createAuthenticatedFetch(options);
   }
   if (!cachedFetch) {
-    cachedFetch = createAuthenticatedFetch(options) as unknown as typeof fetch;
+    cachedFetch = createAuthenticatedFetch(options);
   }
   return cachedFetch;
 }
@@ -535,8 +572,8 @@ export function getSdkConfig(
     : regionUrl;
 
   return {
-    // SDK functions already include /api/0/ in their URL paths,
-    // so baseUrl should be the plain region URL without /api/0.
+    // The SDK adds the API base path to its operation paths, so baseUrl
+    // is the plain region URL.
     baseUrl: normalizedBase,
     fetch: getAuthenticatedFetch(options),
     throwOnError: false as const,
@@ -545,12 +582,15 @@ export function getSdkConfig(
 
 /**
  * Get SDK config for the default API (control silo or self-hosted).
+ *
+ * The credential is not pinned, so the transport can still pick the stored
+ * account that knows the organization a request's path names; it only picks
+ * among accounts on the server this base URL belongs to.
  */
 export function getDefaultSdkConfig(
   options: Pick<AuthenticatedFetchOptions, "bufferResponseBody"> = {},
 ) {
-  const credential = getCredentialContext();
-  return getSdkConfig(getApiBaseUrl(credential), { ...options, credential });
+  return getSdkConfig(getApiBaseUrl(), options);
 }
 
 /**

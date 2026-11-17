@@ -3,6 +3,7 @@
 import { expect, test } from "vitest";
 import { createE2EContext } from "../fixture.js";
 import organizationFixture from "../fixtures/organization.json";
+import projectFixture from "../fixtures/project.json";
 import { useTestConfigDir } from "../helpers.js";
 import { TEST_ORG, TEST_PROJECT, TEST_TOKEN } from "../mocks/routes.js";
 import { createMockServer } from "../mocks/server.js";
@@ -59,6 +60,11 @@ test("combines -b buckets with -t period and preserves metadata when projecting 
       },
       {
         method: "GET",
+        path: `/api/0/projects/${TEST_ORG}/${TEST_PROJECT}/`,
+        response: projectFixture,
+      },
+      {
+        method: "GET",
         path: `/api/0/organizations/${TEST_ORG}/events-timeseries/`,
         response: (request: Request) => {
           requests.push(new URL(request.url));
@@ -95,13 +101,15 @@ test("combines -b buckets with -t period and preserves metadata when projecting 
 
     expect(result.exitCode, result.stderr + result.stdout).toBe(0);
     expect(requests).toHaveLength(1);
-    const params = requests[0]!.searchParams;
+    const params = requests[0].searchParams;
     expect(params.getAll("yAxis")).toEqual(["count()", "latest_event()"]);
     expect(Object.fromEntries(params)).toEqual({
       dataset: "spans",
       yAxis: "latest_event()",
       interval: "2m",
-      query: `project:${TEST_PROJECT} environment:[production,canary] (span.op:http.server OR span.status:internal_error)`,
+      project: projectFixture.id,
+      query:
+        "environment:[production,canary] (span.op:http.server OR span.status:internal_error)",
       start: new Date(start).toISOString(),
       end: new Date(end).toISOString(),
     });

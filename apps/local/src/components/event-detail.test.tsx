@@ -229,3 +229,63 @@ test("a related trace suppresses the empty-details message", () => {
   expect(screen.getByRole("region", { name: "Trace waterfall" })).toBeDefined();
   expect(screen.queryByText("No additional event details.")).toBeNull();
 });
+
+test("errors list their captured attachments collapsed until previewed", () => {
+  const eventId = "a".repeat(32);
+  const attachment = (filename: string, data: string) => [
+    { type: "attachment", filename, content_type: "text/plain" },
+    { data },
+  ];
+  // The bundled fixture shows envelope and payload IDs can differ; match either.
+  const sameEnvelope = decodeEnvelope(
+    JSON.stringify([
+      { event_id: "d".repeat(32) },
+      [
+        [{ type: "event" }, { event_id: eventId, message: "Checkout failed" }],
+        attachment("screen.txt", "captured screen"),
+      ],
+    ]),
+    "error",
+  );
+  const [laterAttachment] = decodeEnvelope(
+    JSON.stringify([
+      { event_id: eventId },
+      [attachment("hierarchy.txt", "view tree")],
+    ]),
+    "later",
+  );
+  const [otherAttachment] = decodeEnvelope(
+    JSON.stringify([
+      { event_id: "b".repeat(32) },
+      [attachment("other.txt", "another event")],
+    ]),
+    "other",
+  );
+  const event = sameEnvelope[0]!;
+  render(
+    <EventDetail
+      item={event}
+      relatedItems={[...sameEnvelope, laterAttachment!, otherAttachment!]}
+    />,
+  );
+  const attachments = screen.getByRole("region", { name: "Event attachments" });
+  expect(attachments.textContent).toContain("screen.txt");
+  expect(attachments.textContent).toContain("hierarchy.txt");
+  expect(attachments.textContent).not.toContain("other.txt");
+  expect(attachments.textContent).not.toContain("captured screen");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Show screen.txt preview" }),
+  );
+  expect(attachments.textContent).toContain("captured screen");
+  expect(attachments.textContent).not.toContain("view tree");
+});
+
+test("errors without captured attachments show no attachment section", () => {
+  const event = item("event", { event_id: "c".repeat(32), message: "Boom" });
+  render(<EventDetail item={event} relatedItems={[event]} />);
+  expect(
+    screen.queryByRole("region", { name: "Event attachments" }),
+  ).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Attachments" })).toBeNull();
+});

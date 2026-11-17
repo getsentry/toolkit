@@ -54,6 +54,10 @@
   files. Combine with `--include-sources` to also bundle the referenced C#
   source files.
 - Upload a JVM bundle separately via `sentry debug-files upload --type jvm`.
+- Compiled shaders (`.dxil` files from an Unreal Engine cook) are uploaded as
+  `dxil` debug files, which let Sentry name the shader that caused a GPU crash.
+  If the Sentry Unreal plugin wrote a `sentry-shader-manifest.tsv` next to them,
+  the shader hash and group from that manifest are uploaded as well.
 - Supported JVM source file extensions: `.java`, `.kt`, `.scala`, `.sc`,
   `.groovy`, `.gvy`, `.gy`, `.gsh`, `.clj`, `.cljc`
 - Build output directories (`build/`, `target/`, `out/`, `bin/`) are

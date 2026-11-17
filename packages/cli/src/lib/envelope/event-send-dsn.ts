@@ -8,6 +8,7 @@
 
 import { isAbsolute } from "node:path";
 import { getProjectKeys } from "../api/projects.js";
+import { sentry } from "../app-identity.js";
 import { getAuthConfig } from "../db/auth.js";
 import { ConfigError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -19,7 +20,9 @@ const log = logger.withTag("event.send");
 const DSN_PREFIX_RE = /^https?:\/\//i;
 
 /** Usage example shown on missing-DSN errors. */
-export const EVENT_SEND_DSN_HINT = "sentry event send <dsn> -m 'My message'";
+function eventSendDsnHint(): string {
+  return sentry`event send <dsn> -m 'My message'`;
+}
 
 /** User-facing missing-DSN message covering every resolution source. */
 export const EVENT_SEND_NO_DSN_MESSAGE =
@@ -85,7 +88,7 @@ export async function resolveEventSendDsn(
   if (scanned) {
     return scanned;
   }
-  throw new ConfigError(EVENT_SEND_NO_DSN_MESSAGE, EVENT_SEND_DSN_HINT);
+  throw new ConfigError(EVENT_SEND_NO_DSN_MESSAGE, eventSendDsnHint());
 }
 
 function looksLikeDsn(value: string): boolean {
@@ -122,8 +125,8 @@ async function dsnFromProjectTarget(
 ): Promise<string> {
   if (!getAuthConfig()) {
     throw new ConfigError(
-      `Cannot resolve project '${target}' without a logged-in session. Pass the DSN as the first argument or run sentry auth login.`,
-      "sentry auth login",
+      `Cannot resolve project '${target}' without a logged-in session. Pass the DSN as the first argument or run ${sentry`auth login`}.`,
+      sentry`auth login`,
     );
   }
   const { org, project } = await resolveProjectBoundFromArg(
@@ -143,14 +146,14 @@ async function dsnFromProjectTarget(
   if (activeDsns.length > 1) {
     throw new ConfigError(
       `Project ${org}/${project} has multiple active DSNs. Pass the desired DSN as the first argument.`,
-      EVENT_SEND_DSN_HINT,
+      eventSendDsnHint(),
     );
   }
   const dsn = activeDsns[0];
   if (!dsn) {
     throw new ConfigError(
       `No active DSN found for ${org}/${project}. Pass a DSN as the first argument.`,
-      EVENT_SEND_DSN_HINT,
+      eventSendDsnHint(),
     );
   }
   log.debug(`Using DSN from ${org}/${project} client keys`);

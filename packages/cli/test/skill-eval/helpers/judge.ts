@@ -137,7 +137,7 @@ or
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as {
-      pass: boolean;
+      pass: unknown;
       reason: string;
     };
     return {

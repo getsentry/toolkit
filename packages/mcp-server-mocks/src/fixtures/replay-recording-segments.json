@@ -2,7 +2,7 @@
   [
     {
       "type": 4,
-      "timestamp": 1744027200000,
+      "timestamp": 1744027200050,
       "data": {
         "href": "https://example.com/login",
         "width": 1440,
@@ -11,14 +11,134 @@
     },
     {
       "type": 5,
-      "timestamp": 1744027210,
+      "timestamp": 1744027200060,
+      "data": {
+        "tag": "options",
+        "payload": {
+          "sessionSampleRate": 1,
+          "errorSampleRate": 1
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027200070,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027200.07,
+          "type": "default",
+          "category": "console",
+          "level": "info",
+          "message": "[Replay] Creating new session",
+          "data": {
+            "logger": "replay"
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027200100,
       "data": {
         "tag": "performanceSpan",
         "payload": {
           "op": "navigation.navigate",
-          "description": "https://example.com/checkout",
+          "description": "https://example.com/login",
+          "startTimestamp": 1744027200.1,
+          "endTimestamp": 1744027200.81,
           "data": {
             "duration": 710
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027200200,
+      "data": {
+        "tag": "performanceSpan",
+        "payload": {
+          "op": "resource.script",
+          "description": "https://example.com/assets/app.js",
+          "startTimestamp": 1744027200.2,
+          "endTimestamp": 1744027200.4,
+          "data": {
+            "size": 120000
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027205000,
+      "data": {
+        "tag": "performanceSpan",
+        "payload": {
+          "op": "memory",
+          "description": "memory",
+          "startTimestamp": 1744027205,
+          "endTimestamp": 1744027205,
+          "data": {
+            "memory": {
+              "usedJSHeapSize": 1000
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027210000,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027210,
+          "type": "default",
+          "category": "ui.click",
+          "message": "form.login > button#sign-in",
+          "data": {
+            "nodeId": 12,
+            "node": {
+              "id": 12,
+              "tagName": "button",
+              "textContent": "Sign in",
+              "attributes": {
+                "id": "sign-in"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027212000,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027212,
+          "type": "default",
+          "category": "navigation",
+          "data": {
+            "from": "/login",
+            "to": "/checkout"
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027212000,
+      "data": {
+        "tag": "performanceSpan",
+        "payload": {
+          "op": "navigation.push",
+          "description": "https://example.com/checkout",
+          "startTimestamp": 1744027212,
+          "endTimestamp": 1744027212,
+          "data": {
+            "previous": "https://example.com/login"
           }
         }
       }
@@ -27,11 +147,167 @@
   [
     {
       "type": 5,
-      "timestamp": 1744027220,
+      "timestamp": 1744027480000,
       "data": {
-        "tag": "ui.click",
+        "tag": "performanceSpan",
         "payload": {
-          "message": "Clicked submit order"
+          "op": "resource.fetch",
+          "description": "https://example.com/api/cart",
+          "startTimestamp": 1744027480,
+          "endTimestamp": 1744027480.12,
+          "data": {
+            "method": "GET",
+            "statusCode": 200
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027490000,
+      "data": {
+        "tag": "performanceSpan",
+        "payload": {
+          "op": "resource.fetch",
+          "description": "https://example.com/api/orders",
+          "startTimestamp": 1744027490,
+          "endTimestamp": 1744027490.812,
+          "data": {
+            "method": "POST",
+            "statusCode": 500
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027490900,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027490.9,
+          "type": "default",
+          "category": "console",
+          "level": "error",
+          "message": "Payment request failed",
+          "data": {
+            "logger": "console"
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027491500,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027491.5,
+          "type": "default",
+          "category": "console",
+          "level": "log",
+          "message": "cart refreshed",
+          "data": {
+            "logger": "console"
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027492000,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027492,
+          "type": "default",
+          "category": "ui.click",
+          "message": "div.modal > button.place-order",
+          "data": {
+            "nodeId": 42,
+            "node": {
+              "id": 42,
+              "tagName": "button",
+              "textContent": "Place order",
+              "attributes": {
+                "class": "place-order"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027492000,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027492,
+          "type": "default",
+          "category": "ui.slowClickDetected",
+          "message": "div.modal > button.place-order",
+          "data": {
+            "endReason": "timeout",
+            "timeAfterClickMs": 7000,
+            "clickCount": 1,
+            "url": "https://example.com/checkout",
+            "nodeId": 42,
+            "node": {
+              "id": 42,
+              "tagName": "button",
+              "textContent": "Place order",
+              "attributes": {
+                "class": "place-order"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027498000,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027498,
+          "type": "default",
+          "category": "ui.focus"
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027498500,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027498.5,
+          "type": "default",
+          "category": "ui.keyDown",
+          "message": "div.modal",
+          "data": {
+            "key": "Escape",
+            "metaKey": false,
+            "shiftKey": false,
+            "ctrlKey": false,
+            "altKey": false,
+            "nodeId": 40
+          }
+        }
+      }
+    },
+    {
+      "type": 5,
+      "timestamp": 1744027498600,
+      "data": {
+        "tag": "breadcrumb",
+        "payload": {
+          "timestamp": 1744027498.6,
+          "type": "default",
+          "category": "dialog",
+          "message": "Checkout dialog closed"
         }
       }
     }

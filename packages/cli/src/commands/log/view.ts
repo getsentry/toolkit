@@ -10,6 +10,7 @@ import pLimit from "p-limit";
 
 import type { SentryContext } from "../../context.js";
 import { getLogItemDetail, getLogs } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import {
   looksLikeIssueShortId,
   type OrgProjectInput,
@@ -69,7 +70,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry log view <org>/<project> <log-id> [<log-id>...]";
+const usageHint = () => sentry`log view <org>/<project> <log-id> [<log-id>...]`;
 
 /**
  * Parse positional arguments for log view.
@@ -98,7 +99,7 @@ export function parsePositionalArgs(args: readonly string[]): {
   suggestion?: string;
 } {
   const { target, ids, warnings } = parseIdArguments(args, ID_KINDS.log, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
     needsProject: true,
     validate: false,
@@ -111,7 +112,7 @@ export function parsePositionalArgs(args: readonly string[]): {
     ...(args.length > 1 &&
       first &&
       looksLikeIssueShortId(first) && {
-        suggestion: `Did you mean: sentry issue view ${first}`,
+        suggestion: `Did you mean: ${sentry`issue view ${first}`}`,
       }),
   };
 }
@@ -139,7 +140,7 @@ async function validateAndRecoverLogId(
     });
     return handleRecoveryResult(result, err, {
       entityType: "log",
-      canonicalCommand: `sentry log view ${target.org}/${target.project}/<id>`,
+      canonicalCommand: sentry`log view ${target.org}/${target.project}/<id>`,
       logTag: "log.view",
     });
   }
@@ -177,8 +178,8 @@ async function resolveTarget(
     case "project-search": {
       const result = await resolveProjectBoundSlug(
         parsed.projectSlug,
-        USAGE_HINT,
-        `sentry log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
+        usageHint(),
+        sentry`log view <org>/${parsed.projectSlug} ${rawLogIds.join(" ")}`,
         parsed.originalSlug,
       );
       if (
@@ -194,10 +195,10 @@ async function resolveTarget(
     }
 
     case "org-all":
-      throw new ContextError("Specific project", USAGE_HINT, []);
+      throw new ContextError("Specific project", usageHint(), []);
 
     case "auto-detect":
-      return await resolveOrgAndProject({ cwd, usageHint: USAGE_HINT });
+      return await resolveOrgAndProject({ cwd, usageHint: usageHint() });
 
     default: {
       const _exhaustiveCheck: never = parsed;
@@ -249,7 +250,7 @@ async function resolveLogViewInput(
     context.cwd,
   );
   if (!target) {
-    throw new ContextError("Organization and project", USAGE_HINT);
+    throw new ContextError("Organization and project", usageHint());
   }
   // `log.warn` preserves emission order regardless of await order, and a
   // throwing recovery (multi-match ResolutionError) exits via
@@ -379,7 +380,7 @@ function throwNotFoundError(
     throw new ResolutionError(
       `Log '${id}'`,
       `not found in ${org}/${project}`,
-      `sentry log view ${org}/${project}/${id}`,
+      sentry`log view ${org}/${project}/${id}`,
       suggestions,
     );
   }
@@ -460,20 +461,19 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a log entry",
-        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view 968c763c740cfda8b6728f27fb9e9b01",
       },
       {
         description: "Specify the project explicitly",
-        command:
-          "sentry log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view my-org/backend 968c763c740cfda8b6728f27fb9e9b01",
       },
       {
         description: "Open in the browser",
-        command: "sentry log view 968c763c740cfda8b6728f27fb9e9b01 -w",
+        run: "log view 968c763c740cfda8b6728f27fb9e9b01 -w",
       },
       {
         description: "Find a project across organizations",
-        command: "sentry log view backend 968c763c740cfda8b6728f27fb9e9b01",
+        run: "log view backend 968c763c740cfda8b6728f27fb9e9b01",
       },
     ],
   },

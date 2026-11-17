@@ -196,7 +196,7 @@ describe("terminalLink", () => {
   test("returns plain text without OSC 8 when piped", () => {
     const savedTTY = process.stdout.isTTY;
     const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.stdout.isTTY = false as unknown as boolean;
+    process.stdout.isTTY = false;
     delete process.env.SENTRY_PLAIN_OUTPUT;
     try {
       const result = terminalLink("click me", "https://example.com");

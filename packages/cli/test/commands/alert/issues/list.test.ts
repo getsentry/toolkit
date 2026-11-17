@@ -313,7 +313,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -444,7 +444,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
-        return Response.json([rule(ruleMatch[1] as string)]);
+        return Response.json([rule(ruleMatch[1])]);
       }
       if (url.pathname === "/api/0/organizations/") {
         return Response.json([
@@ -456,7 +456,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -500,7 +500,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
-        const org = ruleMatch[1] as string;
+        const org = ruleMatch[1];
         if (org === "org-two") {
           return new Response(JSON.stringify({ detail: "boom" }), {
             status: 500,
@@ -533,7 +533,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",
@@ -564,7 +564,7 @@ describe("alert issues list pagination", () => {
       expect.objectContaining({
         project: "org-two/myproj",
         status: 500,
-        message: expect.stringContaining("API request failed"),
+        message: expect.stringContaining("Failed to list issue alert rules"),
       }),
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -574,7 +574,7 @@ describe("alert issues list pagination", () => {
     );
   });
 
-  test("all project failures preserve ApiError status and endpoint", async () => {
+  test("all project failures preserve ApiError status", async () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
       const url = new URL(req.url);
@@ -610,7 +610,6 @@ describe("alert issues list pagination", () => {
     ).rejects.toMatchObject({
       name: "ApiError",
       status: 403,
-      endpoint: "/organizations/test-org/workflows/",
     } satisfies Partial<ApiError>);
   });
 
@@ -642,7 +641,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/workflows\//,
       );
       if (ruleMatch) {
-        const org = ruleMatch[1] as string;
+        const org = ruleMatch[1];
         const perPage = Number(url.searchParams.get("per_page"));
         perPageByOrg.set(org, perPage);
         return new Response(
@@ -671,7 +670,7 @@ describe("alert issues list pagination", () => {
         /\/api\/0\/projects\/([^/]+)\/myproj\//,
       );
       if (projectMatch) {
-        const org = projectMatch[1] as string;
+        const org = projectMatch[1];
         return Response.json({
           id: `${org}-id`,
           slug: "myproj",

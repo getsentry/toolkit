@@ -24,8 +24,9 @@ import {
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { readDebugFile } from "./read-file.js";
+import { sentry } from "../../lib/app-identity.js";
 
-const USAGE_HINT = "sentry debug-files check <path>";
+const usageHint = () => sentry`debug-files check <path>`;
 
 /** Structured result for the check command. */
 type DebugFilesCheckResult = DifArchiveInfo & {
@@ -126,16 +127,15 @@ export const checkCommand = buildCommand({
       {
         description:
           "Inspect a debug information file (auto-detects the format)",
-        command: "sentry debug-files check ./libexample.so",
+        run: "debug-files check ./libexample.so",
       },
       {
         description: "Inspect the DWARF file inside a dSYM",
-        command:
-          "sentry debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp",
+        run: "debug-files check MyApp.dSYM/Contents/Resources/DWARF/MyApp",
       },
       {
         description: "Output the report as JSON",
-        command: "sentry debug-files check ./app.pdb --json",
+        run: "debug-files check ./app.pdb --json",
       },
     ],
   },
@@ -174,7 +174,7 @@ export const checkCommand = buildCommand({
     }
 
     const usable = isUsable(archive);
-    yield new CommandOutput<DebugFilesCheckResult>({
+    yield new CommandOutput({
       path,
       fileFormat: archive.fileFormat,
       objects: archive.objects,
@@ -186,7 +186,7 @@ export const checkCommand = buildCommand({
       // using it here keeps the exit-code observable in tests.
       this.process.exitCode = 1;
       return {
-        hint: `No usable debug information found. Try: ${USAGE_HINT}`,
+        hint: `No usable debug information found. Try: ${usageHint()}`,
       };
     }
   },

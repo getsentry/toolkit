@@ -10,6 +10,7 @@
  * - project-search → find project across orgs, use its org
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../../context.js";
 import type { MetricAlertRule } from "../../../lib/api/alerts.js";
 import { paginate } from "../../../lib/api/infrastructure.js";
@@ -36,10 +37,7 @@ import {
   ValidationError,
   withAuthGuard,
 } from "../../../lib/errors.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-} from "../../../lib/formatters/markdown.js";
+import { colorTag } from "../../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../../lib/formatters/output.js";
 import { type Column, writeTable } from "../../../lib/formatters/table.js";
 import {
@@ -80,11 +78,12 @@ import {
   throwAlertListFetchFailure,
 } from "../list-utils.js";
 import { metricAlertStatusLabel } from "./status.js";
+import { sentry } from "../../../lib/app-identity.js";
 
 /** Command key for pagination cursor storage */
 export const PAGINATION_KEY = "alert-metrics-list";
 
-const USAGE_HINT = "sentry alert metrics list <org>/";
+const usageHint = () => sentry`alert metrics list <org>/`;
 
 const METRIC_ALERT_TARGET_POSITIONAL = {
   kind: "tuple" as const,
@@ -136,7 +135,7 @@ type MetricAlertListResult = ListResult<MetricAlertRule> & {
 const metricAlertListMeta: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "metric alert rules",
-  commandPrefix: "sentry alert metrics list",
+  commandPrefix: () => sentry`alert metrics list`,
 };
 
 // Fetch helpers
@@ -195,7 +194,7 @@ async function resolveOrgs(
   }
   const { targets, footer } = await resolveProjectBoundTargets(parsed, {
     cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution,
   });
   return {
@@ -227,7 +226,7 @@ async function resolveWebUrl(
   const { orgs } = await resolveOrgs(parsed, cwd, projectSearchResolution);
   const uniqueOrgs = [...new Set(orgs)];
   if (uniqueOrgs.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
   if (uniqueOrgs.length !== 1) {
     throw new ValidationError(
@@ -256,7 +255,7 @@ async function handleResolvedOrgs(
   );
 
   if (resolved.length === 0) {
-    throw new ContextError("Organization", USAGE_HINT);
+    throw new ContextError("Organization", usageHint());
   }
 
   const uniqueOrgs = [...new Set(resolved)];
@@ -465,7 +464,7 @@ function formatMetricAlertListHuman(result: MetricAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, orgSlug }) => ({
     id: r.id,
-    name: escapeMarkdownCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name ?? "(untitled)"),
     ...(isMultiOrg && { org: orgSlug }),
     aggregate: r.aggregate,
     dataset: r.dataset,
@@ -513,15 +512,15 @@ export const listCommand = buildListCommand("alert metrics", {
     examples: [
       {
         description: "List metric alert rules (organization auto-detected)",
-        command: "sentry alert metrics list",
+        run: "alert metrics list",
       },
       {
         description: "List metric alert rules for an organization",
-        command: "sentry alert metrics list my-org/",
+        run: "alert metrics list my-org/",
       },
       {
         description: "Fetch the next page",
-        command: "sentry alert metrics list my-org/ -c next",
+        run: "alert metrics list my-org/ -c next",
       },
     ],
   },

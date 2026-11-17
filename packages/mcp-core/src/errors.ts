@@ -1,7 +1,4 @@
-export {
-  ConfigurationError,
-  UserInputError,
-} from "@sentry/toolkit-core/api-client/errors";
+export { ConfigurationError, UserInputError } from "@sentry/api/client";
 
 /**
  * Error thrown when an LLM provider (OpenAI, Anthropic, OpenRouter, etc.) rejects

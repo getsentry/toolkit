@@ -4,9 +4,10 @@ import {
   deprecatedFlags,
   mergeMcpArgs,
   parseMcpEnv,
+  parseMcpTarget,
   splitInlineFlagValues,
 } from "../../../src/lib/mcp/args.js";
-import { parseMcpFlags } from "./parse-flags.js";
+import { parseMcpArgs, parseMcpFlags } from "./parse-flags.js";
 
 describe("sentry mcp flags", () => {
   it("parses known flags", async () => {
@@ -16,7 +17,6 @@ describe("sentry mcp flags", () => {
       "--insecure-http",
       "--url=https://example.com",
       "--mcp-url=https://mcp.example.com",
-      "--sentry-dsn=dsn",
       "--openai-base-url=https://api.example.com/v1",
       "--skills=inspect,triage",
       "--all-skills",
@@ -27,7 +27,6 @@ describe("sentry mcp flags", () => {
       "insecure-http": true,
       url: "https://example.com",
       "mcp-url": "https://mcp.example.com",
-      "sentry-dsn": "dsn",
       "openai-base-url": "https://api.example.com/v1",
       skills: "inspect,triage",
       "all-skills": true,
@@ -56,14 +55,18 @@ describe("sentry mcp flags", () => {
   );
 
   it("accepts empty and multi-line --flag=value forms", async () => {
-    const flags = await parseMcpFlags(["--sentry-dsn=", "--access-token=a\nb"]);
-    expect(flags["sentry-dsn"]).toBe("");
+    const flags = await parseMcpFlags(["--mcp-url=", "--access-token=a\nb"]);
+    expect(flags["mcp-url"]).toBe("");
     expect(flags["access-token"]).toBe("a\nb");
   });
 
-  it("rejects unknown flags and positionals", async () => {
+  it("rejects unknown flags and a second positional", async () => {
     await expect(parseMcpFlags(["--unknown"])).rejects.toThrow(/unknown/);
-    await expect(parseMcpFlags(["extra"])).rejects.toThrow(/extra/);
+    // Removed: MCP telemetry always goes to the CLI's project.
+    await expect(parseMcpFlags(["--sentry-dsn="])).rejects.toThrow(
+      /sentry-dsn/,
+    );
+    await expect(parseMcpFlags(["acme/", "extra"])).rejects.toThrow(/extra/);
   });
 });
 
@@ -71,14 +74,14 @@ describe("splitInlineFlagValues", () => {
   it("splits only the joined forms Stricli does not read", () => {
     expect(
       splitInlineFlagValues([
-        "--sentry-dsn=",
+        "--mcp-url=",
         "--access-token=tok\n",
         "--host=sentry.io",
         "--all-skills",
         "x=",
       ]),
     ).toEqual([
-      "--sentry-dsn",
+      "--mcp-url",
       "",
       "--access-token",
       "tok\n",
@@ -94,11 +97,9 @@ describe("parseMcpEnv", () => {
     const env = parseMcpEnv({
       SENTRY_ACCESS_TOKEN: "envtok",
       MCP_URL: "envmcp",
-      SENTRY_DSN: "envdsn",
       MCP_SKILLS: "inspect,triage",
     });
     expect(env.mcpUrl).toBe("envmcp");
-    expect(env.sentryDsn).toBe("envdsn");
     expect(env.skills).toBe("inspect,triage");
   });
 
@@ -116,21 +117,18 @@ describe("mergeMcpArgs", () => {
     const env = parseMcpEnv({
       SENTRY_ACCESS_TOKEN: "envtok",
       MCP_URL: "envmcp",
-      SENTRY_DSN: "envdsn",
     });
     const flags = await parseMcpFlags([
       "--access-token=clitok",
       "--host=clihost",
       "--insecure-http",
       "--mcp-url=climcp",
-      "--sentry-dsn=clidsn",
       "--openai-base-url=https://api.cli/v1",
     ]);
     const merged = mergeMcpArgs(flags, env);
     expect(merged.host).toBe("clihost");
     expect(merged.insecureHttp).toBe(true);
     expect(merged.mcpUrl).toBe("climcp");
-    expect(merged.sentryDsn).toBe("clidsn");
     expect(merged.openaiBaseUrl).toBe("https://api.cli/v1");
   });
 
@@ -182,7 +180,6 @@ describe("@sentry/mcp-server flag parity", () => {
       "--insecure-http",
       "--url=https://sentry.example.com",
       "--mcp-url=https://mcp.example.com",
-      "--sentry-dsn=dsn",
       "--openai-base-url=https://openai.example.com/v1",
       "--openai-model=gpt-test",
       "--anthropic-base-url=https://anthropic.example.com",
@@ -200,7 +197,6 @@ describe("@sentry/mcp-server flag parity", () => {
       insecureHttp: true,
       url: "https://sentry.example.com",
       mcpUrl: "https://mcp.example.com",
-      sentryDsn: "dsn",
       openaiBaseUrl: "https://openai.example.com/v1",
       openaiModel: "gpt-test",
       anthropicBaseUrl: "https://anthropic.example.com",
@@ -232,7 +228,6 @@ describe("@sentry/mcp-server flag parity", () => {
       parseMcpEnv({
         SENTRY_ACCESS_TOKEN: "envtok",
         MCP_URL: "https://mcp.example.com",
-        SENTRY_DSN: "dsn",
         OPENAI_MODEL: "gpt-test",
         ANTHROPIC_MODEL: "claude-test",
         EMBEDDED_AGENT_PROVIDER: "openrouter",
@@ -241,7 +236,6 @@ describe("@sentry/mcp-server flag parity", () => {
       }),
     ).toEqual({
       mcpUrl: "https://mcp.example.com",
-      sentryDsn: "dsn",
       openaiModel: "gpt-test",
       anthropicModel: "claude-test",
       agentProvider: "openrouter",
@@ -250,10 +244,11 @@ describe("@sentry/mcp-server flag parity", () => {
     });
   });
 
-  it("falls back to DEFAULT_SENTRY_DSN for telemetry", () => {
-    expect(parseMcpEnv({ DEFAULT_SENTRY_DSN: "default" }).sentryDsn).toBe(
-      "default",
-    );
+  // A server started from a project shell or IDE inherits the app's DSN.
+  it("ignores SENTRY_DSN and DEFAULT_SENTRY_DSN", () => {
+    expect(
+      parseMcpEnv({ SENTRY_DSN: "app", DEFAULT_SENTRY_DSN: "default" }),
+    ).toEqual({});
   });
 
   it("leaves the deprecated SENTRY_ACCESS_TOKEN to serveMcp", () => {
@@ -308,6 +303,97 @@ describe("sentry mcp scope flags", () => {
   it("rejects a new flag and its alias with different values", async () => {
     const flags = await parseMcpFlags(["--project=web", "--project-slug=api"]);
     expect(() => mergeMcpArgs(flags, {})).toThrow(ValidationError);
+  });
+});
+
+describe("sentry mcp <org>/<project> target", () => {
+  it("scopes nothing without a target", async () => {
+    const { flags, scope } = await parseMcpArgs([]);
+    expect(scope).toBeUndefined();
+    expect(mergeMcpArgs(flags, {}, scope)).toMatchObject({
+      organizationSlug: undefined,
+      projectSlug: undefined,
+    });
+  });
+
+  it("reads <org>/ as an organization", async () => {
+    const { flags, scope } = await parseMcpArgs(["acme/"]);
+    expect(scope).toEqual({ org: "acme" });
+    expect(mergeMcpArgs(flags, {}, scope)).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: undefined,
+    });
+  });
+
+  it("reads <org>/<project> as an organization and project", async () => {
+    const { flags, scope } = await parseMcpArgs(["acme/web", "--all-skills"]);
+    expect(scope).toEqual({ org: "acme", project: "web" });
+    expect(mergeMcpArgs(flags, {}, scope)).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: "web",
+      allSkills: true,
+    });
+  });
+
+  it("refuses a bare slug, pointing at <slug>/", () => {
+    expect(() => parseMcpTarget("acme")).toThrow(ValidationError);
+    expect(() => parseMcpTarget("acme")).toThrow("pass 'acme/'");
+    expect(() => parseMcpTarget("acme")).toThrow("names no command");
+    expect(() => parseMcpTarget("/web")).toThrow(/no organization/);
+  });
+
+  it("refuses a URL, pointing at SENTRY_URL", () => {
+    for (const url of [
+      "https://sentry.io/organizations/acme/projects/web/",
+      "https://acme.sentry.io/issues/",
+      "http://sentry.example.com/acme/",
+    ]) {
+      expect(() => parseMcpTarget(url)).toThrow(/SENTRY_URL/);
+    }
+  });
+
+  it("refuses more than one project", () => {
+    expect(() => parseMcpTarget("acme/web/api")).toThrow(ValidationError);
+    expect(() => parseMcpTarget("acme/web,api")).toThrow(ValidationError);
+  });
+
+  it("refuses an invalid slug", () => {
+    expect(() => parseMcpTarget("acme/web?x=1")).toThrow(ValidationError);
+  });
+
+  it("rejects a bad target at parse time", async () => {
+    await expect(parseMcpArgs(["acme"])).rejects.toThrow(/acme\//);
+  });
+
+  it("combines <org>/ with --project", async () => {
+    const { flags, scope } = await parseMcpArgs(["acme/", "--project=web"]);
+    expect(mergeMcpArgs(flags, {}, scope)).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
+  });
+
+  it("accepts flags that repeat the target", async () => {
+    const { flags, scope } = await parseMcpArgs([
+      "acme/web",
+      "--org=acme",
+      "--project-slug=web",
+    ]);
+    expect(mergeMcpArgs(flags, {}, scope)).toMatchObject({
+      organizationSlug: "acme",
+      projectSlug: "web",
+    });
+  });
+
+  it("rejects flags that conflict with the target", async () => {
+    for (const args of [
+      ["acme/", "--org=other"],
+      ["acme/web", "--project=api"],
+      ["acme/", "--organization-slug=other"],
+    ]) {
+      const { flags, scope } = await parseMcpArgs(args);
+      expect(() => mergeMcpArgs(flags, {}, scope)).toThrow(ValidationError);
+    }
   });
 });
 

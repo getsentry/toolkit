@@ -1,6 +1,12 @@
 import type { LocalFeedItem } from "./spotlight.ts";
 import type { TraceGroup } from "./trace-model.ts";
 import { record, finite, text } from "./inspection.ts";
+import {
+  mergeProfileChunks,
+  profileSampleEndMs,
+  profileSampleTimeMs,
+  profileThreadId,
+} from "./profile-session.ts";
 export type ProfileNode = {
   id: string;
   name: string;
@@ -40,22 +46,18 @@ function node(
   };
 }
 function sampleTime(sample: Record<string, unknown>): number | undefined {
-  const ns = sample.elapsed_since_start_ns;
-  if (typeof ns === "string" && ns.trim() && Number.isFinite(Number(ns)))
-    return Number(ns) / 1e6;
-  if (finite(ns) !== undefined) return Number(ns) / 1e6;
-  const seconds = finite(sample.timestamp);
-  return seconds === undefined ? undefined : seconds * 1000;
+  return profileSampleTimeMs(sample);
 }
 function sampleThread(value: unknown): string {
-  const number = finite(value);
-  return text(value) ?? (number === undefined ? "main" : String(number));
+  return profileThreadId(value) ?? "main";
 }
 /** SDK stacks are leaf-first; sample intervals are calculated independently per thread. */
 export function parseProfile(
   item: LocalFeedItem,
   selectedThread?: string,
+  retainedItems?: readonly LocalFeedItem[],
 ): ParsedProfile {
+  if (retainedItems) item = mergeProfileChunks(item, retainedItems);
   const payload = record(item.payload),
     profile = Object.keys(record(payload.profile)).length
       ? record(payload.profile)
@@ -69,8 +71,13 @@ export function parseProfile(
   const threads = [
     ...new Set(samples.map((sample) => sampleThread(sample.thread_id))),
   ].map((id) => ({ id, name: text(record(metadata[id]).name) ?? id }));
-  const threadId = threads.some((thread) => thread.id === selectedThread)
-    ? selectedThread
+  const transaction = record(payload.transaction);
+  const preferredThread =
+    selectedThread ??
+    profileThreadId(profile.active_thread_id) ??
+    profileThreadId(transaction.active_thread_id);
+  const threadId = threads.some((thread) => thread.id === preferredThread)
+    ? preferredThread
     : threads[0]?.id;
   const selected = samples
     .filter((sample) => sampleThread(sample.thread_id) === threadId)
@@ -93,9 +100,21 @@ export function parseProfile(
       : [];
     const time = sampleTime(sample),
       next = selected[index + 1] ? sampleTime(selected[index + 1]!) : undefined;
+    const capturedEnd = profileSampleEndMs(sample);
+    const end =
+      capturedEnd === undefined
+        ? next
+        : next === undefined
+          ? capturedEnd
+          : Math.min(next, capturedEnd);
     const weight =
-      time !== undefined && next !== undefined ? Math.max(0, next - time) : 0;
-    if (time !== undefined && next !== undefined) hasTiming = true;
+      time !== undefined && end !== undefined ? Math.max(0, end - time) : 0;
+    if (
+      time !== undefined &&
+      end !== undefined &&
+      (weight > 0 || (capturedEnd === undefined && next !== undefined))
+    )
+      hasTiming = true;
     root.samples++;
     root.totalMs += weight;
     let parent = root;

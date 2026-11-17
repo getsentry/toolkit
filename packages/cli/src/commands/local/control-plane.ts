@@ -7,7 +7,12 @@
 
 import { randomBytes } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import {
+  drainReceiver,
+  ingestReceiverEnvelope,
+  readReceiverBody,
+  receiverEnvelopeId,
+} from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -399,21 +404,9 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
 
-    if (Number(c.req.header("content-length") ?? 0) > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const arrayBuffer = await c.req.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const body = Buffer.from(arrayBuffer);
-    const rawEncoding = c.req.header("content-encoding");
-    const encoding =
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined;
+    const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+    if (typeof body === "number") return c.body(null, body);
+    const encoding = c.req.header("content-encoding");
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
@@ -423,17 +416,20 @@ export function createLocalControlPlane({
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
-    pushToSpotlightBuffer({
-      spotlightBuffer: sessionStore.getBuffer(reference),
-      body,
-      contentType: browserBeacon
-        ? SENTRY_CONTENT_TYPE
-        : (c.req.header("content-type") ?? ""),
-      encoding,
-      userAgent: c.req.header("user-agent"),
-    });
-    sessionStore.recordActivity(reference);
-    return c.body(null, 204);
+    const status = await ingestReceiverEnvelope(
+      sessionStore.getBuffer(reference),
+      {
+        body,
+        contentType: browserBeacon
+          ? SENTRY_CONTENT_TYPE
+          : (c.req.header("content-type") ?? ""),
+        encoding,
+        userAgent: c.req.header("user-agent"),
+      },
+    );
+    if (status === 503) c.header("Retry-After", "1");
+    if (status === 204) sessionStore.recordActivity(reference);
+    return c.body(null, status);
   };
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
@@ -491,9 +487,13 @@ export function createLocalControlPlane({
       });
       const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
         if (event.state === "retained" && event.action !== "reset") {
-          buffer.stream(readerId);
-          buffer.unsubscribe(readerId);
-          void sendSession(event).finally(finish);
+          void drainReceiver(buffer)
+            .then(async () => {
+              buffer.stream(readerId);
+              buffer.unsubscribe(readerId);
+              await sendSession(event);
+            })
+            .finally(finish);
         } else {
           void sendSession(event);
         }
@@ -502,6 +502,7 @@ export function createLocalControlPlane({
       try {
         const { state, expiresAt } = sessionStore.resolve(reference);
         if (state === "retained") {
+          await drainReceiver(buffer);
           buffer.stream(readerId);
           await sendSession({ state, expiresAt });
         } else {
@@ -525,7 +526,7 @@ export function createLocalControlPlane({
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
+      await sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
       return c.json(
         sessionStore.getRetention(c.req.param("id") ?? "").getSettings(),
       );
@@ -587,7 +588,7 @@ export function createLocalControlPlane({
       .map((container) => {
         const parsed = container.getParsedEnvelope();
         return {
-          id: spotlightEnvelopeId(parsed?.envelope[0] ?? {}),
+          id: receiverEnvelopeId(container),
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]

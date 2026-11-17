@@ -172,7 +172,7 @@ describe("dashboard list command", () => {
   const hasPreviousPageSpy = vi.mocked(paginationDb.hasPreviousPage);
 
   beforeEach(() => {
-    openInBrowserSpy.mockResolvedValue(undefined as never);
+    openInBrowserSpy.mockResolvedValue(undefined);
     // Bypass spinner — just run the callback directly
     withProgressSpy.mockImplementation((_opts, fn) =>
       fn(() => {

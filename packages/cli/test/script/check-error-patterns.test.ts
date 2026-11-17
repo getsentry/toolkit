@@ -22,7 +22,7 @@ import {
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function runCheck(args: string[] = []) {
-  return spawnSync("pnpm", ["tsx", "script/check-error-patterns.ts", ...args], {
+  return spawnSync("pnpm", ["ts", "script/check-error-patterns.ts", ...args], {
     cwd: pkgRoot,
     encoding: "utf-8",
   });
@@ -56,6 +56,6 @@ describe("check-error-patterns (subprocess)", () => {
   test("passes against the current source tree", () => {
     const result = runCheck();
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toContain("No error class anti-patterns found");
+    expect(result.stderr).toContain("No error class anti-patterns found");
   });
 });

@@ -284,4 +284,32 @@ describe("alert metrics edit", () => {
       expect.stringContaining("is_transaction:true"),
     );
   });
+  test("reports the status from the updated detector's enabled flag", async () => {
+    const context = createContext();
+    resolveSpy.mockResolvedValue("test-org");
+    getRuleSpy.mockResolvedValue(sampleRule);
+    getDocSpy.mockResolvedValue({
+      id: "9",
+      name: "Metric Rule",
+      status: 0,
+      query: "event.type:error",
+      aggregate: "count()",
+      dataset: "errors",
+      timeWindow: 5,
+    });
+    // The detectors endpoint answers with `enabled`, not `status`
+    putSpy.mockResolvedValue({ id: "9", name: "Metric Rule", enabled: false });
+    const func = (await editCommand.loader()) as unknown as (
+      this: unknown,
+      flags: EditFlags,
+      arg: string,
+    ) => Promise<void>;
+
+    await func.call(context, { status: "disabled", json: true }, "test-org/9");
+
+    const output = JSON.parse(
+      context.stdout.write.mock.calls.map((c) => c[0]).join(""),
+    );
+    expect(output).toMatchObject({ id: "9", status: "disabled" });
+  });
 });

@@ -2,7 +2,7 @@
  * Unit tests for `src/lib/scan/regex.ts`.
  *
  * Tabular coverage of `extractInlineFlags` across the four cases that
- * actually matter for init-wizard patterns:
+ * matter for ripgrep-style patterns:
  *   1. No inline flag group — identity.
  *   2. `(?i)foo` — strip flag group, flags = "i".
  *   3. `(?i:foo)bar` — unwrap scoped group, flag widens to whole pattern.

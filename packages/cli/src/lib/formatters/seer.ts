@@ -6,14 +6,25 @@
  */
 
 import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
+import { text } from "@sentry/toolkit-core/markdown";
+import type {
   AutofixState,
   RootCause,
   SolutionArtifact,
 } from "../../types/seer.js";
-import { ApiError, SeerError } from "../errors.js";
+import {
+  type ApiDenialReason,
+  ApiError,
+  lookupKnownKey,
+  SeerError,
+  type SeerErrorReason,
+} from "../errors.js";
 import { cyan } from "./colors.js";
 import { filterFields } from "./json.js";
-import { escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "./markdown.js";
 
 // Spinner Frames
 
@@ -146,31 +157,34 @@ export type IssueExplainData = {
 /**
  * Build a markdown document for a single root cause.
  *
- * @param cause - Root cause to format
+ * @param rootCause - Root cause to format
  * @param index - Index for display (used as cause ID)
  * @returns Markdown string for this cause
  */
-function buildRootCauseMarkdown(cause: RootCause, index: number): string {
+function buildRootCauseMarkdown(rootCause: RootCause, index: number): string {
   const lines: string[] = [];
 
-  lines.push(
-    `### Cause #${index}: ${escapeMarkdownInline(cause.description ?? "")}`,
-  );
+  lines.push(`### Cause #${index}: ${text(rootCause.description ?? "")}`);
   lines.push("");
 
-  if (cause.relevant_repos && cause.relevant_repos.length > 0) {
-    lines.push(`**Repository:** ${cause.relevant_repos.join(", ")}`);
+  if (rootCause.cause) {
+    lines.push(text(rootCause.cause));
+    lines.push("");
+  }
+
+  if (rootCause.relevant_repos && rootCause.relevant_repos.length > 0) {
+    lines.push(`**Repository:** ${rootCause.relevant_repos.join(", ")}`);
     lines.push("");
   }
 
   if (
-    cause.root_cause_reproduction &&
-    cause.root_cause_reproduction.length > 0
+    rootCause.root_cause_reproduction &&
+    rootCause.root_cause_reproduction.length > 0
   ) {
     lines.push("**Reproduction steps:**");
     lines.push("");
-    for (const step of cause.root_cause_reproduction) {
-      lines.push(`**${escapeMarkdownInline(step.title)}**`);
+    for (const step of rootCause.root_cause_reproduction) {
+      lines.push(`**${text(step.title)}**`);
       lines.push("");
       // code_snippet_and_analysis may itself contain markdown (code fences,
       // inline code, etc.) — pass it through as-is so marked renders it.
@@ -224,7 +238,7 @@ export function formatIssueExplain(data: IssueExplainData): string {
 
   const sections = data.results.map(
     (result) =>
-      `# ${escapeMarkdownInline(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`,
+      `# ${text(result.issue)}\n\n${buildRootCauseListMarkdown(result.rootCauses)}`,
   );
   return renderMarkdown(sections.join("\n\n---\n\n"));
 }
@@ -262,20 +276,58 @@ export function jsonTransformIssueExplain(
 // Error Messages
 
 /**
+ * The SeerError reason for each 402 `code` in the API schema. A 402 with no
+ * code, from a Sentry version that predates the codes, means no budget.
+ * Keyed by the generated type, so a code added to the schema fails
+ * type-checking until it is mapped here.
+ */
+const PAYMENT_REQUIRED_REASONS: Record<
+  AutofixPaymentRequiredResponse["code"],
+  SeerErrorReason
+> = {
+  seer_out_of_credits: "out_of_credits",
+  seer_out_of_quota: "no_budget",
+};
+
+/**
+ * The SeerError reason for each 409 `code` in the API schema, or null to keep
+ * the API error (e.g. a run already in flight). Exhaustive for the same reason.
+ */
+const CONFLICT_REASONS: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  SeerErrorReason | null
+> = {
+  scm_integration_required: "scm_integration_required",
+  repos_not_linked: "repos_not_linked",
+  run_in_flight: null,
+};
+
+/**
  * Create a SeerError from an API error status code and detail.
  *
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError if the status code indicates a Seer-specific error, null otherwise
  */
 export function createSeerError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
+  denialReason?: ApiDenialReason,
 ): SeerError | null {
   if (status === 402) {
-    return new SeerError("no_budget", orgSlug);
+    const reason =
+      lookupKnownKey(PAYMENT_REQUIRED_REASONS, code) ?? "no_budget";
+    return new SeerError(
+      reason === "out_of_credits" && denialReason === "daily_cap_exceeded"
+        ? denialReason
+        : reason,
+      orgSlug,
+    );
   }
   if (status === 403) {
     if (detail?.includes("not enabled")) {
@@ -288,28 +340,43 @@ export function createSeerError(
     // (could be permission denied, rate limiting, etc.)
     return null;
   }
+  if (status === 409) {
+    const reason = lookupKnownKey(CONFLICT_REASONS, code);
+    // Any other 409 (e.g. a run already in flight) keeps its API detail.
+    return reason ? new SeerError(reason, orgSlug) : null;
+  }
   return null;
 }
 
 /**
  * Convert an API error to a Seer-specific error or an ApiError.
  *
- * Returns a SeerError for known Seer issues (402/403 with specific detail),
- * or preserves the error as an ApiError for other failures. Previously
- * returned a plain Error which lost the status code and endpoint — causing
+ * Returns a SeerError for known Seer issues (402/403 with specific detail, or
+ * a 409 setup code), or preserves the error as an ApiError for other failures.
+ * Previously returned a plain Error which lost the status code and endpoint — causing
  * CLI-N (84 users) where unrecognized 403s became untyped errors.
  *
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
+ * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError for Seer-specific errors, or ApiError for other API errors
  */
 export function handleSeerApiError(
   status: number,
   detail?: string,
   orgSlug?: string,
+  code?: string,
+  denialReason?: ApiDenialReason,
 ): Error {
-  const seerError = createSeerError(status, detail, orgSlug);
+  const seerError = createSeerError(
+    status,
+    detail,
+    orgSlug,
+    code,
+    denialReason,
+  );
   if (seerError) {
     return seerError;
   }
@@ -361,9 +428,7 @@ export function formatSolution(solution: SolutionArtifact): string {
   lines.push("## Solution");
   lines.push("");
 
-  lines.push(
-    `**Summary:** ${escapeMarkdownInline(solution.data.one_line_summary ?? "")}`,
-  );
+  lines.push(`**Summary:** ${text(solution.data.one_line_summary ?? "")}`);
   lines.push("");
 
   if (solution.data.steps.length > 0) {
@@ -372,7 +437,7 @@ export function formatSolution(solution: SolutionArtifact): string {
     for (let i = 0; i < solution.data.steps.length; i++) {
       const step = solution.data.steps[i];
       if (step) {
-        lines.push(`${i + 1}. **${escapeMarkdownInline(step.title)}**`);
+        lines.push(`${i + 1}. **${text(step.title)}**`);
         lines.push("");
         // step.description may contain markdown — pass it through as-is
         lines.push(`   ${step.description.split("\n").join("\n   ")}`);

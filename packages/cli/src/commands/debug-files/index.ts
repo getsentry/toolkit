@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { bundleJvmCommand } from "./bundle-jvm.js";
 import { bundleSourcesCommand } from "./bundle-sources.js";
 import { checkCommand } from "./check.js";
@@ -22,7 +23,7 @@ export const debugFilesRoute = buildRouteMap({
     "bundle-jvm": bundleJvmCommand,
   },
   docs: {
-    brief: "Work with debug information files",
+    brief: topLevelBrief("debug-files"),
     fullDescription:
       "Create and manage debug information files (DIFs) for source context " +
       "in Sentry stack traces.",

@@ -181,6 +181,91 @@ describe("search_events", () => {
         grantedSkills: new Set(),
         constraints: {},
         sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    // The query was not rewritten, so an empty result is not a translation bug.
+    expect(result).not.toContain("submit_feedback_to_sentry_team");
+  });
+
+  it("suggests feedback when the agent rewrote the query and nothing matched", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      },
+    );
+
+    expect(result).toContain("No results found");
+    expect(result).toContain(
+      "report it to the Sentry MCP team with `submit_feedback_to_sentry_team`",
+    );
+  });
+
+  it("rewrites numeric issue IDs to issue.id for the errors dataset", async () => {
+    mockGenerateText.mockResolvedValueOnce(
+      mockAIResponse("errors", "issue:7844703743 level:error"),
+    );
+
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          expect(url.searchParams.get("query")).toBe(
+            "issue.id:7844703743 level:error",
+          );
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "issue:7844703743 level:error",
+        fields: null,
+        sort: null,
+        period: "24h",
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
       },
     );
 
@@ -2143,7 +2228,7 @@ describe("search_events", () => {
                 count_dead_clicks: 3,
                 started_at: "2025-01-15T10:00:00Z",
                 browser: { name: "Chrome", version: "131.0.0" },
-                user: { display_name: "Jane Doe" },
+                user: { display_name: "Jane Doe", id: "user-42" },
                 urls: ["/checkout", "/checkout/payment", "/checkout/confirm"],
                 releases: ["frontend@1.2.3"],
                 trace_ids: ["a4d1aae7216b47ff8117cf4e09ce9d0a"],
@@ -2177,7 +2262,7 @@ describe("search_events", () => {
     expect(result).toContain("https://test-org.sentry.io/explore/replays/");
     expect(result).toContain("environment=production&environment=staging");
     expect(result).toContain("Environment: production, staging");
-    expect(result).toContain("Jane Doe");
+    expect(result).toContain("- **User**: Jane Doe (id `user-42`)");
     expect(result).toContain("2 errors");
   });
 
@@ -3417,6 +3502,98 @@ describe("search_events", () => {
     // Final validation must keep the structured filter, not the message rewrite.
     expect(validatedQueries.at(-1)).toBe("conv_id:ZYGC-86ZR");
     expect(validatedQueries.at(-1)).not.toContain("message:");
+  });
+
+  describe("explicit period with an absolute range from the agent", () => {
+    const HOUR_MS = 3_600_000;
+
+    const runWithAgentRange = async (range: { start: string; end: string }) => {
+      // The query names a fixed window in prose next to structured filters,
+      // and the caller also sends `period` as an outer guard.
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          "environment:production is:unresolved",
+          ["count()", "count_unique(user.id)"],
+          undefined,
+          "-count()",
+          range,
+        ),
+      );
+      const requests: URLSearchParams[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: `Between ${range.start} and ${range.end}, environment:production is:unresolved, count() and count_unique(user.id)`,
+          period: "3d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+      expect(requests).toHaveLength(1);
+      return requests[0];
+    };
+
+    it("searches the agent's absolute window inside the period", async () => {
+      const start = new Date(Date.now() - 30 * HOUR_MS).toISOString();
+      const end = new Date(Date.now() - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.get("query")).toBe("environment:production is:unresolved");
+      expect(request.has("statsPeriod")).toBe(false);
+      expect(request.get("start")).toBe(start);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("clips an absolute window that starts before the period", async () => {
+      const before = Date.now();
+      const start = new Date(before - 5 * 24 * HOUR_MS).toISOString();
+      const end = new Date(before - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.has("statsPeriod")).toBe(false);
+      const clippedStart = Date.parse(request.get("start")!);
+      expect(clippedStart).toBeGreaterThanOrEqual(before - 3 * 24 * HOUR_MS);
+      expect(clippedStart).toBeLessThanOrEqual(Date.now() - 3 * 24 * HOUR_MS);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("keeps the period when the absolute window is outside it", async () => {
+      const request = await runWithAgentRange({
+        start: "2020-01-01T00:00:00Z",
+        end: "2020-01-02T00:00:00Z",
+      });
+
+      expect(request.get("statsPeriod")).toBe("3d");
+      expect(request.has("start")).toBe(false);
+      expect(request.has("end")).toBe(false);
+    });
   });
 
   it("rejects partial full-text downgrades when a duplicate structured key remains", async () => {
@@ -4838,6 +5015,64 @@ describe("search_events", () => {
       await searchEvents.handler(seerParams, context);
 
       expect(mockGenerateText).toHaveBeenCalled();
+    });
+
+    describe("without an agent provider", () => {
+      const untranslatedNote =
+        "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
+
+      beforeEach(() => {
+        process.env.OPENAI_API_KEY = "";
+        process.env.ANTHROPIC_API_KEY = "";
+        process.env.OPENROUTER_API_KEY = "";
+        mswServer.use(
+          mockOrganization(["mcp-search-events-seer-translate"]),
+          http.get(
+            "https://sentry.io/api/0/organizations/test-org/search-agent/state/run-uuid/",
+            () => HttpResponse.json({ detail: "Forbidden" }, { status: 403 }),
+          ),
+        );
+      });
+
+      it.each([
+        ["natural language with no results", seerParams.query, [], true],
+        [
+          "natural language with results",
+          seerParams.query,
+          [{ "span.description": "GET /api/users" }],
+          false,
+        ],
+        ["Sentry syntax with no results", "span.op:http.client", [], false],
+      ])(
+        "notes an untranslated query only when it finds nothing: %s",
+        async (_name, query, data, expectNote) => {
+          const sentQueries: Array<string | null> = [];
+          mswServer.use(
+            http.get(
+              "https://sentry.io/api/0/organizations/test-org/events/",
+              ({ request }) => {
+                sentQueries.push(
+                  new URL(request.url).searchParams.get("query"),
+                );
+                return HttpResponse.json({ data });
+              },
+            ),
+          );
+
+          const result = await searchEvents.handler(
+            { ...seerParams, query },
+            context,
+          );
+
+          expect(sentQueries).toEqual([query]);
+          expect(mockGenerateText).not.toHaveBeenCalled();
+          if (expectNote) {
+            expect(result).toContain(untranslatedNote);
+          } else {
+            expect(result).not.toContain("was not translated");
+          }
+        },
+      );
     });
 
     describe("assisted query outcome", () => {

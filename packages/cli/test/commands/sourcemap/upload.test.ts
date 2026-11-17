@@ -15,6 +15,7 @@ import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
+import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -42,6 +43,26 @@ function makeContext() {
     cwd: "/tmp",
   };
 }
+
+describe("buildEmptyDiscoveryError — bundler hint", () => {
+  test.each([
+    ["/app/dist", /vite.*webpack/i],
+    ["/app/.next/static/chunks", /productionBrowserSourceMaps: false/],
+    ["/app/.next/static/immutable/chunks", /productionBrowserSourceMaps/],
+    ["C:\\app\\.next\\static\\chunks", /productionBrowserSourceMaps/],
+    ["/app/.next/server", /serverSourceMaps/],
+    ["/app/not.next/static", /vite.*webpack/i],
+  ])("%s", (dir, hint) => {
+    for (const diag of [
+      { jsFiles: 3, mapFiles: 0 },
+      { jsFiles: 3, mapFiles: 1 },
+    ]) {
+      const msg = buildEmptyDiscoveryError(dir, diag).message;
+      expect(msg).toMatch(hint);
+      expect(msg).toContain("--allow-empty");
+    }
+  });
+});
 
 describe("sourcemap inject command — --allow-empty behavior", () => {
   let dir: string;
@@ -126,7 +147,7 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
       const msg = (err as Error).message;
       expect(msg).toContain("1 JS");
       expect(msg).toContain("1 .map");
-      expect(msg).toContain("matching basename");
+      expect(msg).toContain("sourceMappingURL");
     }
   });
 
@@ -529,8 +550,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.ts"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("other.js"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.ts"))).toBe(true);
+      expect(urls?.some((u) => u.includes("other.js"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -562,8 +583,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       // Only app.js pair should be uploaded (2 files: .js + .map)
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.js"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("vendor"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.js"))).toBe(true);
+      expect(urls?.some((u) => u.includes("vendor"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -595,11 +616,100 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.js"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("vendor"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.js"))).toBe(true);
+      expect(urls?.some((u) => u.includes("vendor"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
+  });
+
+  describe("glob target", () => {
+    const emptyMap = JSON.stringify({
+      version: 3,
+      sources: [],
+      names: [],
+      mappings: "",
+    });
+
+    /** Write `<rel>.js` and `<rel>.js.map` under `dir`. */
+    async function writePair(rel: string): Promise<void> {
+      await mkdir(join(dir, rel, ".."), { recursive: true });
+      await writeFile(join(dir, `${rel}.js`), "console.log(1)\n");
+      await writeFile(join(dir, `${rel}.js.map`), emptyMap);
+    }
+
+    /** Run the upload and return the uploaded artifact URLs. */
+    async function uploadedUrls(target: string): Promise<string[]> {
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        await func.call(makeContext(), {}, target);
+        return (uploadSpy.mock.calls[0]?.[0]?.files ?? []).map((f) => f.url);
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    }
+
+    test("uploads every pair under the glob's base directory", async () => {
+      await writePair("static/chunks/app");
+      await writePair("server/page");
+
+      const urls = await uploadedUrls(join(dir, "static", "**"));
+
+      expect(urls.sort()).toEqual(["~/chunks/app.js", "~/chunks/app.js.map"]);
+    });
+
+    test("filters pairs by the glob, matching JS or map files", async () => {
+      await writePair("static/app");
+      await writePair("static/vendor");
+
+      expect(await uploadedUrls(join(dir, "static", "app*.js"))).toEqual([
+        "~/app.js",
+        "~/app.js.map",
+      ]);
+      expect(await uploadedUrls(join(dir, "static", "**", "app*.map"))).toEqual(
+        ["~/app.js", "~/app.js.map"],
+      );
+    });
+
+    test("matches hidden directories only when the glob names them", async () => {
+      await writePair("app/.next/static/chunk");
+      await writePair("app/dist/main");
+
+      expect(
+        (await uploadedUrls(join(dir, "**", ".next", "**"))).sort(),
+      ).toEqual([
+        "~/app/.next/static/chunk.js",
+        "~/app/.next/static/chunk.js.map",
+      ]);
+      expect((await uploadedUrls(join(dir, "**", "*.js"))).sort()).toEqual([
+        "~/app/dist/main.js",
+        "~/app/dist/main.js.map",
+      ]);
+    });
+
+    test("a directory whose name looks like a glob is used as-is", async () => {
+      await writePair("[locale]/page");
+
+      const urls = await uploadedUrls(join(dir, "[locale]"));
+
+      expect(urls.sort()).toEqual(["~/page.js", "~/page.js.map"]);
+    });
+
+    test("missing glob base: reports the base directory", async () => {
+      await expect(
+        func.call(makeContext(), {}, join(dir, "missing", "**")),
+      ).rejects.toThrow(`Directory '${join(dir, "missing")}' does not exist.`);
+    });
+
+    test("glob that matches no pairs: throws the zero-pairs error", async () => {
+      await writePair("static/app");
+
+      await expect(
+        func.call(makeContext(), {}, join(dir, "static", "*.mjs")),
+      ).rejects.toThrow(/contains no JS or sourcemap files/);
+    });
   });
 
   test("--ignore-file with non-existent file: throws ValidationError", async () => {
@@ -674,7 +784,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       // Common prefix "build/output/" stripped: "~/main.js", "~/vendor.js"
       expect(urls).toContain("~/main.js");
       expect(urls).toContain("~/vendor.js");
-      expect(urls?.some((u) => u?.includes("build"))).toBe(false);
+      expect(urls?.some((u) => u.includes("build"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -727,8 +837,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       // Should have paired concat.js with correct.js.map (last directive)
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("correct.js.map"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("wrong.js.map"))).toBe(false);
+      expect(urls?.some((u) => u.includes("correct.js.map"))).toBe(true);
+      expect(urls?.some((u) => u.includes("wrong.js.map"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }

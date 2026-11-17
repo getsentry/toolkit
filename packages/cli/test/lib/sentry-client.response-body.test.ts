@@ -326,7 +326,7 @@ describe("SDK response body recovery", () => {
             stream.enqueue(new TextEncoder().encode("["));
             init?.signal?.addEventListener(
               "abort",
-              () => stream.error(init?.signal?.reason),
+              () => stream.error(init.signal?.reason),
               { once: true },
             );
           },

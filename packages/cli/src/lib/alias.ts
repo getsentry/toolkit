@@ -353,9 +353,9 @@ export type AliasMapResult = {
  *   `project` slugs of a {@link ResolvedTarget}
  * @returns Alias map and DB entries
  */
-export function buildProjectAliasMap<
-  T extends { target: Pick<ResolvedTarget, "org" | "project"> },
->(results: T[]): AliasMapResult {
+export function buildProjectAliasMap(
+  results: readonly { target: Pick<ResolvedTarget, "org" | "project"> }[],
+): AliasMapResult {
   const entries: Record<string, ProjectAliasEntry> = {};
   const pairs = results.map((r) => ({
     org: r.target.org,

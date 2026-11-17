@@ -122,9 +122,7 @@ describe("property: isItemIncluded", () => {
     fcAssert(
       property(itemTypes, (itemType) => {
         const empty = new Set<FilterValue>();
-        expect(isItemIncluded(itemType as string | undefined, empty)).toBe(
-          true,
-        );
+        expect(isItemIncluded(itemType, empty)).toBe(true);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );

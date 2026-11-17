@@ -5,6 +5,8 @@
  */
 
 import {
+  getOrganizationReplay,
+  getOrganizationReplayCount,
   type ListProjectReplayRecordingSegmentsResponse,
   listProjectReplayRecordingSegments,
 } from "@sentry/api";
@@ -17,8 +19,8 @@ import {
   ReplayDetailsResponseSchema,
   ReplayIdsByResourceSchema,
   type ReplayListItem,
-  type ReplayListResponse,
   ReplayListResponseSchema,
+  type ReplayStringProjectId,
 } from "../../types/index.js";
 
 import { ApiError } from "../errors.js";
@@ -34,6 +36,7 @@ import {
   paginate,
   parseLinkHeader,
   unwrapPaginatedResult,
+  unwrapValidatedResult,
 } from "./infrastructure.js";
 
 const log = logger.withTag("api.replays");
@@ -165,13 +168,14 @@ export type GetReplayRecordingSegmentsOptions = {
  */
 function normalizeReplayProjectId<
   T extends { project_id?: string | number | null },
->(replay: T): T {
+>(replay: T): T & ReplayStringProjectId {
   if (
     replay.project_id === null ||
     replay.project_id === undefined ||
     typeof replay.project_id === "string"
   ) {
-    return replay;
+    // Narrowing `project_id` doesn't narrow `T`.
+    return replay as T & ReplayStringProjectId;
   }
 
   return {
@@ -182,6 +186,10 @@ function normalizeReplayProjectId<
 
 /**
  * Fetch a single page of replays from the organization replay index.
+ *
+ * Stays on the raw transport: the default fields include `info_ids` and
+ * `warning_ids`, which `replay list --json` prints but the generated
+ * `listOrganizationReplays` field enum leaves out.
  */
 async function fetchReplayPage(
   regionUrl: string,
@@ -212,10 +220,7 @@ async function fetchReplayPage(
         start: options.start,
         end: options.end,
       },
-      schema: ReplayListResponseSchema as GenericSchema<
-        unknown,
-        ReplayListResponse
-      >,
+      schema: ReplayListResponseSchema,
     },
   );
 
@@ -251,27 +256,50 @@ export async function getReplay(
   orgSlug: string,
   replayId: string,
 ): Promise<ReplayDetails> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
+  const config = getOrgSdkConfig();
+  const result = await getOrganizationReplay({
+    ...config,
+    path: { organization_id_or_slug: orgSlug, replay_id: replayId },
+  });
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to get replay",
+    ReplayDetailsResponseSchema as GenericSchema<
+      unknown,
+      ReplayDetailsResponse
+    >,
     `/organizations/${orgSlug}/replays/${replayId}/`,
-    {
-      schema: ReplayDetailsResponseSchema as GenericSchema<
-        unknown,
-        ReplayDetailsResponse
-      >,
-    },
   );
   return normalizeReplayProjectId(data.data);
 }
 
 /**
+ * Find the newest stored replay linked to a trace.
+ *
+ * Queries the replay index with `trace:{id}` over 90d, so only replays that
+ * were actually stored match. Org-wide searches send `project=-1` because
+ * omitting the project filter returns empty on large organizations.
+ */
+export async function findTraceReplay(
+  orgSlug: string,
+  traceId: string,
+  options: Pick<ListReplaysOptions, "projectSlugs"> = {},
+): Promise<ReplayListItem | undefined> {
+  const { data } = await listReplays(orgSlug, {
+    query: `trace:${traceId}`,
+    statsPeriod: "90d",
+    limit: 1,
+    projectSlugs: options.projectSlugs,
+    project: options.projectSlugs?.length ? undefined : "-1",
+  });
+  return data[0];
+}
+
+/**
  * Fetch a replay by replay ID, or by a trace ID linked on that replay.
  *
- * `GET /replays/{id}/` only matches replay primary keys. If that 404s, query
- * the replay index with `trace:{id}` over 90d and load the newest hit.
- * Org-wide searches send `project=-1` because omitting the project filter
- * returns empty on large organizations.
+ * `GET /replays/{id}/` only matches replay primary keys. If that 404s, load
+ * the newest replay linked to the ID as a trace ({@link findTraceReplay}).
  */
 export async function resolveReplay(
   orgSlug: string,
@@ -288,14 +316,7 @@ export async function resolveReplay(
     log.debug(
       `Replay ${replayOrTraceId} not found by id; searching by linked trace`,
     );
-    const { data } = await listReplays(orgSlug, {
-      query: `trace:${replayOrTraceId}`,
-      statsPeriod: "90d",
-      limit: 1,
-      projectSlugs: options.projectSlugs,
-      project: options.projectSlugs?.length ? undefined : "-1",
-    });
-    const match = data[0];
+    const match = await findTraceReplay(orgSlug, replayOrTraceId, options);
     if (!match) {
       throw error;
     }
@@ -354,7 +375,7 @@ async function fetchReplayRecordingSegmentsPage(
   options: FetchReplayRecordingSegmentsPageOptions,
 ): Promise<PaginatedResponse<ListProjectReplayRecordingSegmentsResponse>> {
   const { cursor, orgSlug, projectSlugOrId, replayId } = options;
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await listProjectReplayRecordingSegments({
     ...config,
     path: {
@@ -386,20 +407,24 @@ export async function listReplayIdsForIssue(
   issueId: string | number,
 ): Promise<string[]> {
   const normalizedIssueId = String(issueId);
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion(
-    regionUrl,
-    `/organizations/${orgSlug}/replay-count/`,
-    {
-      params: {
-        data_source: "events",
-        project: "-1",
-        query: `issue.id:[${normalizedIssueId}]`,
-        returnIds: true,
-        statsPeriod: "90d",
-      },
-      schema: ReplayIdsByResourceSchema,
+  const result = await getOrganizationReplayCount({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      data_source: "errors",
+      project: [-1],
+      query: `issue.id:[${normalizedIssueId}]`,
+      returnIds: true,
+      statsPeriod: "90d",
     },
+  });
+  // With `returnIds`, the endpoint maps each issue to replay IDs instead of
+  // the counts its documented response describes.
+  const data = unwrapValidatedResult(
+    result,
+    "Failed to list replays for issue",
+    ReplayIdsByResourceSchema,
+    `/organizations/${orgSlug}/replay-count/`,
   );
 
   return data[normalizedIssueId] ?? [];

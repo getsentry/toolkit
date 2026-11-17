@@ -6,9 +6,11 @@ Step-by-step guide for adding new tools to the Sentry MCP server.
 
 Not every tool is exposed to every consumer. We rely on several mechanisms to keep the active tool set manageable:
 
-- **Catalog by default** — Most tools are searchable/executable through `search_sentry_tools` + `execute_sentry_tool` automatically. Search uses the tool's existing name and description.
+- **Every tool is direct by default** — `EXPOSE_ALL_TOOLS` in `packages/mcp-core/src/tools/exposure.ts` is on, so every catalog tool that passes the filters below is listed in MCP `tools/list`, and `search_sentry_tools` + `execute_sentry_tool` are not registered. Tier 1 harnesses defer MCP tool schemas behind their own tool search, which indexes each tool's name and description, so write both with search in mind. The flag is a code constant, not a runtime option; turning it off restores the gateway surface described in the next bullets.
+- **Deprecated tools** — Mark an old name kept for backward compatibility with `deprecated: { replacedBy: ["new_tool"] }` on its tool config. Deprecated tools are never listed in `tools/list`, so harness search does not return them next to the tools that replaced them. With `EXPOSE_ALL_TOOLS` off they stay reachable through `execute_sentry_tool`. `toolDefinitions.json` carries the same field.
+- **Catalog gateway (flag off)** — Tools are searchable/executable through `search_sentry_tools` + `execute_sentry_tool`. Search uses the tool's existing name and description.
 - **Catalog registry** — `packages/mcp-core/src/tools/catalog/index.ts` lists ordinary Sentry operation tools. The catalog directory is intentionally flat: one tool entry per file.
-- **Central direct exposure policy** — `packages/mcp-core/src/tools/surfaces.ts` lists the catalog tools that are also exposed directly through MCP `tools/list`. The direct surface intentionally keeps long-tail tools catalog-only because `search_sentry_tools` + `execute_sentry_tool` are available as primary primitives.
+- **Central direct exposure policy (flag off)** — `packages/mcp-core/src/tools/surfaces.ts` lists the catalog tools that are also exposed directly through MCP `tools/list`. The direct surface intentionally keeps long-tail tools catalog-only because `search_sentry_tools` + `execute_sentry_tool` are available as primary primitives.
 - **`requiredCapabilities`** — Tools declare which project capabilities they need (e.g. `profiles`, `replays`, `traces`). If the upstream project doesn't have a capability enabled, the tool is automatically hidden.
 - **`experimental` / `hideInExperimentalMode`** — Feature flags for tools that are being tested or replaced.
 - **Skills & constraints** — The server filters tools based on granted skills and org/project constraints.
@@ -17,7 +19,9 @@ We also expect upstream consumers (Claude Code plugins, Cursor, etc.) to use **t
 
 ## Tool Count Limits
 
-Target ~20 publicly visible tools. Never exceed 25. AI agents have limited tool slots (Cursor caps at 45 total across all providers), so Sentry MCP cannot consume all available slots.
+With `EXPOSE_ALL_TOOLS` on, harness tool search keeps the full tool list out of the context window, so the limit below applies to the gateway surface (`TOP_LEVEL_TOOL_NAMES`) that the flag falls back to.
+
+Target ~20 tools on the gateway surface. Never exceed 25. AI agents have limited tool slots (Cursor caps at 45 total across all providers), so Sentry MCP cannot consume all available slots.
 
 Before adding a new tool, consider if it could be:
 
@@ -64,29 +68,18 @@ Create `packages/mcp-core/src/tools/catalog/your-tool-name.ts`:
 import { z } from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
+import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import type { ServerContext } from "../../types";
 
 export default defineTool({
   name: "your_tool_name",
-  description: [
-    "One-line summary.",
-    "",
-    "Use this tool when you need to:",
-    "- Specific use case 1",
-    "- Specific use case 2",
-    "",
-    "<examples>",
-    "your_tool_name(organizationSlug='my-org', param='value')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Parameter interpretation hints",
-    "</hints>",
-  ].join("\n"),
+  title: "Your Tool Name",
+  description:
+    "List or search widgets in an organization. Returns each widget's name, owner, and URL.",
   inputSchema: {
-    organizationSlug: z.string().describe("The organization's slug"),
-    regionUrl: z.string().optional().describe("Optional region URL"),
-    yourParam: z.string().describe("What values are expected"),
+    organizationSlug: ParamOrganizationSlug,
+    regionUrl: ParamRegionUrl.nullable().default(null),
+    yourParam: z.string().describe("Widget name or ID."),
   },
   annotations: {
     readOnlyHint: true,
@@ -99,12 +92,22 @@ export default defineTool({
 });
 ```
 
+### Title
+
+**REQUIRED**: Every tool sets `title`, a short Title Case display name such as
+`"Search Issues"`. The server exports it as the MCP tool `title`, which clients
+show instead of the snake_case `name`. Titles must be unique across tools; the
+[metadata linter](tool-responses.md#metadata-linter) enforces this for listed
+tools, and `tools.test.ts` for tools that never appear in tools/list. Deprecated
+aliases add a ` (Deprecated)` suffix, for example
+`"Search AI Conversations (Deprecated)"`.
+
 ### Safety Annotations
 
 **REQUIRED**: Every tool must declare `readOnlyHint`, `destructiveHint`, and
 `openWorldHint` explicitly (each `true` or `false`, never omitted). This is
-enforced at compile time (the `annotations` type requires them) and by
-`tools.test.ts`, because filters and confirmation gates depend on these hints;
+enforced at compile time (the `annotations` type requires them) and by the
+[metadata linter](tool-responses.md#metadata-linter), because filters and confirmation gates depend on these hints;
 an absent hint is a silent gap. Read-only tools must set `destructiveHint: false`
 (not leave it undefined).
 
@@ -141,14 +144,67 @@ annotations: {
 }
 ```
 
-### Writing LLM-Friendly Descriptions
+The catalog gives every tool with `readOnlyHint: true` and
+`openWorldHint: true` a shared `fresh` input (`ParamFresh`), except the docs
+tools, which do not call the Sentry API. Do not declare `fresh` yourself. A
+call with `fresh: true` runs the handler in a request scope where the shared
+transport skips cached reads, and the handler never sees the input.
 
-Critical for LLM success:
+### Descriptions and Params
 
-- Start with "Use this tool when you need to:"
-- Include concrete examples
-- Reference related tools
-- Explain parameter formats in `.describe()`
+Every tool description and param description ships in `tools/list` for every
+session. Spend those tokens only on text that changes what the model does.
+
+**Tool descriptions**
+
+- Say what the tool does to which Sentry object, and what it returns. Write it
+  in the words a user would type ("stack trace", "client key", "cron
+  monitor"). Harness tool search ranks tools by name and description (Codex
+  uses BM25 and returns 8 matches; see docs/mcp/harnesses.md), and some
+  harnesses cut descriptions to about 120 characters, so the first sentence
+  carries the search terms.
+- Name a sibling tool only when the contrast is the contract: two tools that
+  look alike, such as cron, uptime, and metric monitors, or issues versus
+  events. One short line, not a `DO NOT USE` list.
+- Do not name input fields. Field meaning lives in `describe()` on the param.
+- No `<examples>`, `<hints>`, "Use this tool when you need to:" lists, or call
+  samples. The schema already shows the call shape. Keep an example only when
+  it teaches a format the model cannot get from the schema, such as Sentry
+  search syntax, and put it on the param.
+- Not every harness loads the server instructions
+  (`server-instructions.ts`), so tool and param text must work without them.
+  Keep the routing a tool needs, such as "start here for a Sentry URL", in its
+  own description as one short line. The server instructions may repeat it for
+  the harnesses that load them.
+- Do not narrate how the tool works inside, which API it calls, or that its
+  output is markdown.
+- At most `MAX_TOOL_DESCRIPTION_LENGTH` (512) characters.
+
+**Param descriptions**
+
+- Say what the value is, and its format or constraint. Do not repeat the type,
+  the default, the min and max, or a bare list of enum values: JSON Schema
+  already shows them. Explain an enum value only when its name does not.
+- Put a rule that ties fields together ("requires `status: resolved`", "only
+  with `ignoreMode: forDuration`") on the field that depends on the other.
+  Enforce it in the handler too.
+- Reuse the shared params in `schema.ts` for the same kind of value
+  (`ParamOrganizationSlug`, `ParamRegionUrl`, `ParamProjectSlug`, and so on).
+  Add `.optional()`, `.nullable()`, or `.default()` at the use site.
+- At most `MAX_PARAM_DESCRIPTION_LENGTH` (256) characters.
+
+**Steering lives in one place**
+
+- Prefer a schema, an enum, fixed validation, or a repairable
+  `UserInputError` over a prose rule. When the handler enforces a rule, cut
+  the prose that repeats it.
+- Give each rule one home: the param for field meaning, the tool description
+  for what the tool does and its sibling contrast, and response notes for
+  follow-ups that depend on the result. The server instructions are the one
+  allowed second copy, because some harnesses never load them.
+
+`tool-descriptions.test.ts` enforces the limits, rejects `<examples>` and
+`<hints>`, and fails when a tool description names one of its input fields.
 
 ## Step 2: Implement the Handler
 
@@ -320,6 +376,7 @@ pnpm eval your-tool
 - [ ] Unit tests with snapshots
 - [ ] Mock responses
 - [ ] 1-2 eval tests (if critical)
+- [ ] `outputSchema` declared, or a reasoned skip entry in the [metadata linter](tool-responses.md#metadata-linter)
 - [ ] Run quality checks
 
 ## Agent-in-Tool Pattern

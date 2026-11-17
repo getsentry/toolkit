@@ -1,29 +1,16 @@
 # Tool Responses
 
-Tool responses are product UX for agents and users. A response should help an
-assistant answer a real Sentry question without forcing it to understand
-upstream API shapes, internal implementation details, or placeholder values.
+How to build an MCP tool result that meets
+[MCP tool responses](../../design/mcp-tool-responses.md), which owns the goals
+and rules. This guide covers conventions that apply to every tool. It does not
+describe each tool's response: a tool's own output belongs in its description,
+its `outputSchema`, and its tests.
 
-Use this policy when adding a tool, changing formatted handler output, updating
+Use it when adding a tool, changing formatted handler output, updating
 snapshots, or QAing MCP behavior. For the full tool implementation flow, see
 [adding-tools.md](adding-tools.md). For snapshot requirements, see
 [../testing/overview.md](../testing/overview.md). For end-to-end MCP
 validation, see [.agents/skills/mcp-qa/SKILL.md](../../.agents/skills/mcp-qa/SKILL.md).
-
-## Response Contract
-
-Every formatted tool response should optimize for:
-
-- **Usefulness**: Include the fields someone needs to inspect, compare, explain,
-  or act on the resource.
-- **Legibility**: Use Sentry product terms and stable markdown sections.
-- **Actionability**: Include IDs, URLs, pagination cursors, and follow-up tool
-  hints only when they help navigation or the next tool call.
-- **Safety**: Do not expose secrets, credentials, raw tokens, or unrelated
-  internal details. Follow [../operations/security.md](../operations/security.md)
-  for security boundaries.
-- **Agent fit**: The output should be easy for an LLM to quote, summarize, and
-  reason over without post-processing raw API payloads.
 
 ## Markdown Shape
 
@@ -87,6 +74,8 @@ Do not leak implementation details into ordinary tool output:
   `conditionResult` instead of `result`.
 - Empty sections created only because the API has that property.
 - Long opaque payloads that require the model to reverse-engineer meaning.
+- Request headers, cookies, and bodies, and other upstream data that can carry
+  credentials.
 - Broad assistant instructions such as `IMPORTANT`, `MUST`, `CRITICAL`, or
   output that tries to override behavior beyond the current result.
 
@@ -95,6 +84,16 @@ for durable tool-selection guidance. Result text can include light scoped
 guidance, but it should not act like a system prompt. See "Response Formatting"
 in [common-patterns.md](common-patterns.md) for examples of acceptable response
 notes.
+
+## Side Quests
+
+Side quests are things that might help but may not matter for the current
+task, such as configuration issues or follow-ups. Source maps that failed to
+apply are one. List each once, at the end under `## Concerns Identified`, as a
+short tip that names the problem and its fix. When one changes how to read the
+current data, say so in the tip: "Source maps weren't applied, so frames may be
+minified." Raise one only when Sentry's own data shows it unambiguously. Build
+them with `buildSideQuests` in `packages/mcp-core/src/internal/side-quests.ts`.
 
 ## Formatting Upstream Data
 
@@ -111,6 +110,11 @@ Translate upstream API shapes into user-facing terms:
   strict JSON clients such as Codex reject that lone surrogate, so the server
   replaces it with U+FFFD in every tool response. Formatters do not need
   surrogate-aware slicing.
+- Treat optional enrichment, such as a suspect commit, as best effort: when its
+  request fails, keep the main result, and report only unexpected server or
+  validation failures to Sentry.
+- Return an empty result as a success. Return a missing named resource as a
+  user input error that names the tool that can find it.
 - Prefer shared helpers for dates, actors, IDs, and unknown values. If a helper
   emits noisy placeholders for a domain-specific field, filter before calling it.
 - Render untrusted values with `@sentry/toolkit-core/markdown`, chosen by what
@@ -125,20 +129,6 @@ When changing Sentry API endpoint usage, validate the upstream behavior in
 should model what Sentry returns, but tool responses should model what users
 need.
 
-### Issue Details
-
-`get_issue_details` includes the issue's suspect commit when available, with
-its SHA, message, author, and source. Structured responses expose
-`suspectCommit`; Markdown responses include a `Suspect Commit` section with
-the same data. Without a commit, the structured field is `null` and Markdown
-omits the section. Commit lookup is optional: failures do not prevent issue
-details from loading, but unexpected server or response-validation failures
-are reported to Sentry.
-
-The event API's legacy `context` field (extra data) can be `null`. Issue details
-must still load; omit the `Extra Data` section for null or empty values while
-preserving the event's error, stacktrace, and structured `contexts` data.
-
 ## Structured Content
 
 MCP tools may expose `structuredContent` alongside generated text `content`.
@@ -152,17 +142,35 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
 - `structuredContent` is the source of truth when present.
 - `content` text is a compatibility view of that same answer.
 - Never put unique product data in only one side. If both fields are present,
-  they must be equivalent. Form-only differences (JSON vs pretty text of the
-  same payload) are fine; a second answer that exists in only one field is a
-  bug.
+  they must be equivalent. Form-only differences (`structuredContent` vs its
+  serialized JSON text) are fine; a second answer that exists in only one
+  field is a bug.
 - Data tools should use `structuredResult(payload)`. The server generates
-  `content` as pretty JSON of that same payload.
-- Markdown-only tools (for example issue and trace details today) should return
+  `content` as compact JSON (no indentation) of that same payload. Most
+  clients that read the text send it to a model, and indentation adds tokens
+  without adding data.
+- Markdown-only tools (for example trace details today) should return
   markdown and omit `structuredContent` until they have a real structured
   payload. Do not attach sparse structured side-channels such as
   `suggestedActions` alone on top of markdown.
+- A tool whose structured payload is still behind experimental mode declares
+  `experimentalOutputSchema` instead. The server advertises it to experimental
+  sessions only, and tsc cannot check the handler against it. The test guard
+  checks every `structuredContent` result against it, and the tool's tests
+  must cover every structured path.
 - If a tool declares `outputSchema`, every successful `structuredContent` result
-  must conform to that schema.
+  must conform to that schema. `defineTool` enforces this at compile time: the
+  handler must return `structuredResult(...)` typed as the schema's `z.output`,
+  and markdown or raw content fails tsc. The payload type comes from the
+  schema, so missing and mistyped fields are errors at the tool definition,
+  and so are extra fields in an object literal passed to `structuredResult`.
+  Spread or variable payloads (`structuredResult({ ...upstream })`,
+  `structuredResult(payload)`) are not checked for extra fields, so map fields
+  explicitly. A schema tool cannot set its own `content`.
+  Do not add per-tool `satisfies z.infer<...>` checks; they repeat
+  what the framework already checks. Shared builders should declare their
+  return type (`StructuredToolOutput<z.output<typeof schema>>`) so
+  `structuredResult` gets its type from there.
 - Do not duplicate a large structured payload into a markdown artifact block.
 - Treat `structuredContent` as a stable product contract, not a raw upstream API
   passthrough. Map only documented fields that callers should depend on.
@@ -183,6 +191,47 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
 Reference: MCP 2025-11-25 Tools specification, sections "Structured Content"
 and "Output Schema".
 
+## Metadata Linter
+
+`packages/mcp-core/src/server.metadata.test.ts` builds the server with every
+skill granted, in stable and experimental mode, and checks what a client
+receives from `initialize` and `tools/list`:
+
+- `serverInfo` keeps `name: "Sentry MCP"` and sets `title`, `description`, an
+  https `websiteUrl`, and https `icons`.
+- `instructions` are non-empty and at most `MAX_SERVER_INSTRUCTIONS_LENGTH`
+  characters.
+- Every tool name matches `^[A-Za-z0-9_.-]{1,128}$`, its `inputSchema` root is
+  an object, and it advertises no `execution.taskSupport`.
+- Every tool has a unique, non-empty `title`; sets `readOnlyHint`,
+  `destructiveHint`, and `openWorldHint`; and has a description of at most
+  `MAX_TOOL_DESCRIPTION_LENGTH` characters.
+- A tool exports only the `_meta` keys that `ALLOWED_TOOL_META` lists for it.
+- Every tool declares an object `outputSchema`, unless it has a skip entry.
+
+`test-utils/structured-output-guard.ts` wraps `defineTool` for the whole
+mcp-core suite, the same way the SDK validates `tools/call`: a handler with an
+`outputSchema` that returns no `structuredContent`, or `structuredContent` that
+does not match the schema, fails the test that called it. Error results
+(`isError: true`) are skipped. The linter checks that each listed tool with an
+`outputSchema` has a colocated `<name>*.test.ts` that reads its
+`structuredContent`.
+
+To skip the `outputSchema` check, add the tool to one of two maps, with a
+reason:
+
+- `OUTPUT_SCHEMA_EXEMPT` for tools that return no structured content by design,
+  such as the markdown-only tools above.
+- `OUTPUT_SCHEMA_PENDING` for tools whose `outputSchema` has not landed, with
+  the PR, for example `"pending getsentry/toolkit#2004"`.
+
+An `OUTPUT_SCHEMA_EXEMPT` entry fails once any session lists its tool with an
+`outputSchema`. An `OUTPUT_SCHEMA_PENDING` entry fails once every session that
+lists the tool has one, so a tool whose `experimentalOutputSchema` reaches
+experimental sessions first stays pending until it graduates. The PR that
+makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
+with a comment that says which client reads it.
+
 ## Suggested Actions
 
 Use `suggestedActions` when a tool result reveals a concrete follow-up tool call
@@ -201,6 +250,11 @@ interface SuggestedActionsContent {
   suggestedActions: SuggestedToolAction[];
 }
 ```
+
+Build each action with `buildSuggestedToolAction` from
+`packages/mcp-core/src/internal/tool-helpers/suggested-actions.ts`. It returns
+null when the session cannot call the tool, and routes through
+`execute_sentry_tool` when the target is catalog-only.
 
 Guidelines:
 
@@ -236,6 +290,29 @@ Avoid implementation jargon:
 - Avoid: `Inspect detector IDs before constructing workflow payloads.`
 - Avoid: `Display these results exactly as written.`
 
+## Feedback Suggestions
+
+When a result likely means a Sentry MCP bug or gap, add a response note that
+points the agent at `submit_feedback_to_sentry_team`. Build it with
+`formatFeedbackSuggestion` from
+`packages/mcp-core/src/internal/tool-helpers/feedback-suggestion.ts`. It returns
+null when the session cannot call the tool, for example when Sentry has no DSN.
+
+This is a note, not a `suggestedActions` entry: the agent has to write the task
+and description, so the call is never complete. The note only names the tool.
+Do not prefill arguments or event IDs; the feedback event already carries the
+user and client tags and the trace that Sentry MCP sets on every tool call.
+
+Suggest feedback only for:
+
+- Unexpected errors, Sentry API 5xx errors, and embedded agent failures.
+  `formatErrorForUser` adds these.
+- `search_sentry_tools` results with no match.
+- Translated event searches that return nothing.
+
+Do not suggest it for input, validation, permission, auth, rate limit,
+configuration, or AI provider errors, or for empty results that are expected.
+
 ## Snapshot Policy
 
 Every MCP tool test suite must include at least one representative successful
@@ -262,8 +339,12 @@ they do not replace a full-response snapshot.
 For output-format changes:
 
 - Run the normal quality gate from [quality-checks.md](quality-checks.md).
+- Capture the raw result offline with the `verify-toolkit` skill
+  ([.agents/skills/verify-toolkit/SKILL.md](../../.agents/skills/verify-toolkit/SKILL.md));
+  its `mcp-tool-responses` map checks the rules every result follows.
 - Use the stdio MCP QA path in
-  [.agents/skills/mcp-qa/SKILL.md](../../.agents/skills/mcp-qa/SKILL.md).
+  [.agents/skills/mcp-qa/SKILL.md](../../.agents/skills/mcp-qa/SKILL.md)
+  against prod data.
 - Inspect the raw MCP tool result when possible, not only the LLM's final
   answer. The test client's final answer can add model-specific phrasing that is
   not part of the tool response.
@@ -273,11 +354,3 @@ For output-format changes:
 If the raw tool result is clean but the agent final answer adds unrelated
 content, treat that as a client/agent prompt issue rather than a tool response
 formatting issue.
-
-### Cron Monitor Environment Deletion
-
-`delete_monitor_environment` schedules irreversible deletion of one exact
-environment from a project-scoped cron monitor. The structured response
-identifies the project, monitor, and environment; `success` means the deletion
-was accepted or the target was already absent. Deletion completes in the
-background, preserving the monitor and its other environments.

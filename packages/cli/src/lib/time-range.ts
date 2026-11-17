@@ -219,7 +219,7 @@ function tryParseOperator(value: string): AbsoluteTimeRange | null {
     return {
       type: "absolute",
       [op.field]: parsed,
-    } as AbsoluteTimeRange;
+    };
   }
 
   return null;

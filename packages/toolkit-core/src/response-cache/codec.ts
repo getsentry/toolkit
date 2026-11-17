@@ -11,16 +11,9 @@
 // A namespace import, so a missing `zstdCompress` (Node < 22.15) is
 // `undefined` rather than a link error.
 import * as nodeZlib from "node:zlib";
-import type {
-  BodyCodec,
-  EncodedBody,
-} from "../api-client/response-cache/body.js";
+import type { BodyCodec, EncodedBody } from "@sentry/api/client";
 
-export type {
-  BodyCodec,
-  BodyEncoding,
-  EncodedBody,
-} from "../api-client/response-cache/body.js";
+export type { BodyCodec, BodyEncoding, EncodedBody } from "@sentry/api/client";
 
 /** Bodies smaller than this are stored uncompressed. */
 export const MIN_COMPRESSED_BYTES = 256;

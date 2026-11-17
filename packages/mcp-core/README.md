@@ -23,7 +23,7 @@ By default (no `--skills` flag), the MCP server grants active, non-deprecated sk
 - **`triage`** - Resolve, assign, and update issues
 - **`project-management`** - Create and modify projects, teams, and DSNs
 
-Documentation tools are available through the `inspect` skill via the catalog: use `search_sentry_tools` to find documentation tools, then call `search_docs` or `get_doc` through `execute_sentry_tool`. The legacy `docs` skill can still be requested explicitly for docs-only catalog access, but it is not granted by default.
+Documentation tools (`search_docs`, `get_doc`) are available through the `inspect` skill. The legacy `docs` skill can still be requested explicitly for docs-only catalog access, but it is not granted by default.
 
 ### Customizing Skills
 
@@ -133,12 +133,8 @@ The host configuration accepts two distinct formats:
 
 **Note**: Only HTTPS connections are supported for security reasons.
 
-By default we also enable Sentry reporting (traces, errors) upstream to our cloud service. You can disable that, or send it to a different Sentry instance by using the `--sentry-dsn` flag:
+By default the server reports its own telemetry (traces, errors) to the Sentry CLI's project on sentry.io. Set `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` to turn it off:
 
 ```shell
-# disable sentry reporting
-npx @sentry/mcp-server@latest --sentry-dsn=
-
-# use custom sentry instance
-npx @sentry/mcp-server@latest --sentry-dsn=https://publicKey@mysentry.example.com/...
+SENTRY_CLI_NO_TELEMETRY=1 npx @sentry/mcp-server@latest
 ```

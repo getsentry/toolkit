@@ -2,9 +2,8 @@
 /**
  * Scan module — pure-TS ripgrep-compatible file scanner.
  *
- * PR 1 exports the file-walking foundation. PR 2 adds the grep and
- * glob engines (`grepFiles`, `globFiles` + collect helpers). PR 3
- * will migrate the DSN scanner to this module.
+ * Exports the file walker and the grep engine (`grepFiles`,
+ * `collectGrep`), which the DSN scanner uses.
  *
  * @example
  * ```ts
@@ -46,7 +45,6 @@ export {
   normalizePath,
   TEXT_EXTENSIONS,
 } from "./constants.js";
-export { collectGlob, globFiles } from "./glob.js";
 export { collectGrep, grepFiles } from "./grep.js";
 export type { IgnoreStackOptions } from "./ignore.js";
 export { IgnoreStack } from "./ignore.js";
@@ -57,8 +55,6 @@ export {
   extractInlineFlags,
 } from "./regex.js";
 export type {
-  GlobOptions,
-  GlobResult,
   GrepMatch,
   GrepOptions,
   GrepResult,

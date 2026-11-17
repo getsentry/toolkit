@@ -493,10 +493,10 @@ describe("handleExplicit", () => {
 
   test("a failing name fallback keeps the not-found hint", async () => {
     // A bad org: the project lookup and the fallback listing both 404.
-    globalThis.fetch = (() =>
+    globalThis.fetch = () =>
       Promise.resolve(
         new Response(JSON.stringify({ detail: "Not found" }), { status: 404 }),
-      )) as unknown as typeof globalThis.fetch;
+      );
 
     const result = await handleExplicit("test-org", "frontnd", {
       limit: 30,
@@ -671,10 +671,7 @@ describe("project list: comma-separated project slugs", () => {
 
   test("propagates lookup errors other than not found", async () => {
     const projectFetch = mockProjectFetch(sampleProjects);
-    globalThis.fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       if (
         new Request(input, init).url.includes("/projects/test-org/backend/")
       ) {
@@ -683,7 +680,7 @@ describe("project list: comma-separated project slugs", () => {
         });
       }
       return await projectFetch(input, init);
-    }) as typeof globalThis.fetch;
+    };
     const { context } = createCommandContext();
 
     const error = await func
@@ -1528,7 +1525,7 @@ describe("handleAutoDetect", () => {
     expect(result.items).toHaveLength(2);
     expect(result.hasMore).toBe(true);
     expect(result.jsonExtra).toBeDefined();
-    expect((result.jsonExtra as Record<string, unknown>)?.hint).toBeString();
+    expect(result.jsonExtra?.hint).toBeString();
   });
 
   test("respects --platform flag", async () => {
@@ -1612,7 +1609,7 @@ describe("handleAutoDetect", () => {
     expect(result.hasMore).toBe(true);
     expect(result.items).toHaveLength(2);
     expect(result.jsonExtra).toBeDefined();
-    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    const jsonHint = result.jsonExtra?.hint;
     expect(jsonHint).toContain("test-org/");
     expect(jsonHint).toContain("--json");
   });
@@ -1632,7 +1629,7 @@ describe("handleAutoDetect", () => {
     });
 
     expect(result.hasMore).toBe(true);
-    const jsonHint = (result.jsonExtra as Record<string, unknown>)?.hint;
+    const jsonHint = result.jsonExtra?.hint;
     expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 

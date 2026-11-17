@@ -6,7 +6,35 @@ import {
   getHumanInterventionGuidance,
   isSeerSupportedIssue,
   getSeerUnsupportedIssueMessage,
+  getOutputForAutofixRun,
+  getAutofixArtifactSummaries,
+  getSeerPaymentRequiredMessage,
+  getSeerSetupRequiredMessage,
+  SEER_START_OUT_OF_CREDITS_MESSAGE,
 } from "./seer";
+import type { AutofixRunState } from "../../api-client/index";
+
+type AutofixRun = NonNullable<AutofixRunState["autofix"]>;
+
+const singleRun = {
+  run_id: 1,
+  status: "completed",
+  blocks: [
+    {
+      artifacts: [
+        {
+          key: "root_cause",
+          data: {
+            headline: "Regex rejects ids",
+            cause: "The regex is too strict.",
+          },
+          reason: "",
+        },
+      ],
+    },
+  ],
+  repo_pr_states: {},
+} as unknown as AutofixRun;
 
 describe("seer-utils", () => {
   describe("isTerminalStatus", () => {
@@ -102,5 +130,86 @@ describe("seer-utils", () => {
       expect(message).toContain("search_metrics");
       expect(message).not.toContain("Starting new analysis");
     });
+  });
+
+  describe("single-run root cause", () => {
+    it("renders the headline and cause", () => {
+      const output = getOutputForAutofixRun(singleRun, {
+        includeProvenanceTags: false,
+      });
+      expect(output).toContain(
+        "## Root Cause Analysis\n\nRegex rejects ids\n\nThe regex is too strict.",
+      );
+    });
+
+    it("summarizes with the headline", () => {
+      expect(getAutofixArtifactSummaries(singleRun).rootCause).toBe(
+        "Regex rejects ids",
+      );
+    });
+  });
+
+  describe("getSeerPaymentRequiredMessage", () => {
+    it("explains each 402 code from the API schema", () => {
+      expect(
+        getSeerPaymentRequiredMessage({
+          detail: "Out of credits",
+          code: "seer_out_of_credits",
+        }),
+      ).toBe(SEER_START_OUT_OF_CREDITS_MESSAGE);
+      expect(
+        getSeerPaymentRequiredMessage({
+          detail: "No quota",
+          code: "seer_out_of_quota",
+        }),
+      ).toContain("not have enough Seer quota");
+    });
+
+    it.each([
+      ["daily_cap_exceeded", "daily Seer spend limit"],
+      ["not_enough_credits", SEER_START_OUT_OF_CREDITS_MESSAGE],
+      [null, SEER_START_OUT_OF_CREDITS_MESSAGE],
+      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE],
+    ])(
+      "explains an out-of-credits 402 with denial reason %s",
+      (denialReason, message) => {
+        expect(
+          getSeerPaymentRequiredMessage({
+            detail: "Out of credits",
+            code: "seer_out_of_credits",
+            denialReason,
+          }),
+        ).toContain(message);
+      },
+    );
+
+    it("treats a 402 without a known code as out of quota", () => {
+      expect(getSeerPaymentRequiredMessage("No budget")).toContain(
+        "not have enough Seer quota",
+      );
+      expect(
+        getSeerPaymentRequiredMessage({ detail: "x", code: "constructor" }),
+      ).toContain("not have enough Seer quota");
+    });
+  });
+
+  describe("getSeerSetupRequiredMessage", () => {
+    it.each(["scm_integration_required", "repos_not_linked"])(
+      "explains a 409 with %s",
+      (code) => {
+        expect(
+          getSeerSetupRequiredMessage({ detail: "Set up Seer first.", code }),
+        ).toContain("Set up Seer first.");
+      },
+    );
+
+    it.each(["run_in_flight", "toString", undefined])(
+      "returns null for a 409 with code %s",
+      (code) => {
+        expect(
+          getSeerSetupRequiredMessage({ detail: "Conflict", code }),
+        ).toBeNull();
+      },
+    );
   });
 });

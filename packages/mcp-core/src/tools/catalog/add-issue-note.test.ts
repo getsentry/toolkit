@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
-import addIssueNote from "./add-issue-note.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+import addIssueNote, { addIssueNoteOutputSchema } from "./add-issue-note.js";
 
 const context = {
   constraints: {
@@ -24,9 +28,10 @@ describe("add_issue_note", () => {
           commentId: "comment-1",
           type: "note",
           source: "mcp:claude",
-          user: { name: "Jane Developer" },
+          user: { name: "Jane Developer", email: "jane@example.com" },
           dateCreated: "2025-04-14T12:34:56.000Z",
           data: { text: "Investigating after the latest deploy." },
+          backendOnlyField: "must-not-leak",
         }),
       ),
     );
@@ -41,20 +46,31 @@ describe("add_issue_note", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Added Note to Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      **Comment ID**: comment-1
-      **Type**: note
-      **Author**: Jane Developer (Claude via MCP)
-      **Created**: 2025-04-14T12:34:56.000Z
-      **Text**: Investigating after the latest deploy.
-
-      ## Response Notes
-
-      - The note is visible in the issue activity feed."
+    assertStructuredOnlyResult(result);
+    const structuredContent = getStructuredContent(result);
+    expect(addIssueNote.outputSchema).toBe(addIssueNoteOutputSchema);
+    expect(addIssueNoteOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent).toMatchInlineSnapshot(`
+      {
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "note": {
+          "author": "Jane Developer (Claude via MCP)",
+          "dateCreated": "2025-04-14T12:34:56.000Z",
+          "id": "comment-1",
+          "text": "Investigating after the latest deploy.",
+          "type": "note",
+        },
+        "organizationSlug": "sentry-mcp-evals",
+      }
     `);
-    expect(result).not.toContain("activity-1");
+    const serialized = JSON.stringify(structuredContent);
+    expect(serialized).not.toContain("activity-1");
+    expect(serialized).not.toContain("must-not-leak");
+    // Author attribution prefers the user name; email is only a fallback.
+    expect(serialized).not.toContain("jane@example.com");
   });
 
   it("serializes the created note", async () => {
@@ -68,18 +84,19 @@ describe("add_issue_note", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Added Note to Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-      **Comment ID**: 12345
-      **Type**: note
-      **Author**: Test User
-      **Created**: 2025-04-14T12:34:56.000Z
-      **Text**: Investigating with the payments team.
-
-      ## Response Notes
-
-      - The note is visible in the issue activity feed."
+    expect(getStructuredContent(result)).toMatchInlineSnapshot(`
+      {
+        "issueId": "CLOUDFLARE-MCP-41",
+        "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+        "note": {
+          "author": "Test User",
+          "dateCreated": "2025-04-14T12:34:56.000Z",
+          "id": "12345",
+          "text": "Investigating with the payments team.",
+          "type": "note",
+        },
+        "organizationSlug": "sentry-mcp-evals",
+      }
     `);
   });
 });

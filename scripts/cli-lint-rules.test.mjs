@@ -124,6 +124,76 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
   ],
 });
 
+tester.run("no-manual-api-request", plugin.rules["no-manual-api-request"], {
+  valid: [
+    {
+      filename: api,
+      code: "import { apiRequestToRegion } from '../api-client.js'; await listOrganizationReplays(options);",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/users.ts",
+      code: "export async function getCurrentUser() { return await apiRequestToRegion(url, '/auth/'); }",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/infrastructure.ts",
+      code: "export async function apiRequest(path) { return await apiRequestToRegion(url, path); }",
+    },
+    {
+      filename: source,
+      code: "const sourceFetch: typeof customFetch = fetchImpl;",
+    },
+    {
+      filename: "/repo/packages/cli/test/lib/api/example.test.ts",
+      code: "await apiRequestToRegion(url, '/projects/');",
+    },
+  ],
+  invalid: [
+    {
+      filename: api,
+      code: "await apiRequestToRegion(url, '/projects/');",
+      errors: 1,
+    },
+    {
+      filename: api,
+      code: "await apiRequest('/organizations/');",
+      errors: 1,
+    },
+    {
+      filename: source,
+      code: "const options = { fetch: customFetch };",
+      errors: 1,
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/users.ts",
+      code: "export async function listUsers() { return await apiRequestToRegion(url, '/users/'); }",
+      errors: 1,
+    },
+  ],
+});
+
+tester.run("no-process-exit", plugin.rules["no-process-exit"], {
+  valid: [
+    { filename: source, code: "process.exitCode = 1;" },
+    { filename: source, code: "this.process.exitCode = code;" },
+    {
+      // Tests may stub process.exit
+      filename: "/repo/packages/cli/test/example.test.ts",
+      code: "vi.spyOn(process, 'exit'); process.exit(1);",
+    },
+  ],
+  invalid: [
+    { filename: source, code: "process.exit(1);", errors: 1 },
+    { filename: commands, code: "this.process.exit(0);", errors: 1 },
+    {
+      // A forced-exit timer is still a forced exit
+      filename: source,
+      code: "setTimeout(() => process.exit(process.exitCode ?? 0), 1000).unref();",
+      errors: 1,
+    },
+    { filename: source, code: "setTimeout(process.exit, 100);", errors: 1 },
+  ],
+});
+
 tester.run("no-ad-hoc-id-arguments", plugin.rules["no-ad-hoc-id-arguments"], {
   valid: [
     {
@@ -391,7 +461,7 @@ tester.run(
     valid: [
       {
         filename: commands,
-        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', command: 'sentry list' }] } });",
+        code: "buildCommand({ docs: { fullDescription: 'Lists items.', examples: [{ description: 'List', run: 'list' }] } });",
       },
       {
         filename: commands,
@@ -470,6 +540,170 @@ tester.run(
       {
         filename: "/repo/packages/cli/script/example.ts",
         code: "const heading = new RegExp(`^#{1,4}\\\\s+${name}`, 'im');",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "json-transform-uses-fields",
+  plugin.rules["json-transform-uses-fields"],
+  {
+    valid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => filterFieldsIfSet(r.items, fields) } });",
+      },
+      {
+        filename: commands,
+        code: "function toJson(r, fields) { return filterFieldsIfSet(r, fields); }\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+      {
+        filename: commands,
+        code: "export function jsonTransformList(r, fields = []) { return filterFields(r, fields); }",
+      },
+      {
+        filename: commands,
+        code: "import { toJson } from './shared.js';\nbuildCommand({ output: { jsonTransform: toJson } });",
+      },
+    ],
+    invalid: [
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r) => r } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ output: { jsonTransform: (r, fields) => ({ id: r.id }) } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function toJson(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform: toJson } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function jsonTransform(r) { return { id: r.id }; }\nbuildCommand({ output: { jsonTransform } });",
+        errors: 1,
+      },
+    ],
+  },
+);
+
+tester.run(
+  "no-hardcoded-sentry-command",
+  plugin.rules["no-hardcoded-sentry-command"],
+  {
+    valid: [
+      {
+        filename: source,
+        code: "function hint() { return `Run '${sentry`auth login`}' first.`; }",
+      },
+      {
+        filename: source,
+        code: "function hint(org) { return sentry`project list ${org}/`; }",
+      },
+      // A command kept in a constant or table is built when it is shown.
+      {
+        filename: commands,
+        code: "const usageHint = () => sentry`issue list <org>/<project>`;",
+      },
+      {
+        filename: source,
+        code: "const SUGGESTIONS = new Map([['issue/get', { command: () => sentry`issue view <id>` }]]);",
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { fullDescription: 'Run `sentry auth status` to check.', examples: [{ run: 'auth login' }, { run: ['auth login', { prefix: 'sudo ', args: 'cli fix' }] }] } });",
+      },
+      {
+        filename: source,
+        code: "const message = 'Sentry CLI could not reach sentry.io';",
+      },
+      // Only `sentry <route>` is a command; the binary's name in prose is not.
+      {
+        filename: commands,
+        code: "function label(file, version) { return [`sentry entries in ${file}`, 'sentry binary', `Installed sentry v${version}`]; }",
+      },
+      {
+        filename: commands,
+        code: "const docs = { examples: [{ run: 'issue list' }] };",
+      },
+    ],
+    invalid: [
+      {
+        filename: source,
+        code: "function hint() { return \"Run 'sentry auth login' first.\"; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint(org) { return `Try: sentry project list ${org}/`; }",
+        errors: 1,
+      },
+      // An interpolated subcommand, a <command> placeholder, or a flag is
+      // still a command.
+      {
+        filename: commands,
+        code: "function hint(name) { return `Run sentry ${name} <org>/`; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry <command> <org>/<project>'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "function hint() { return '  sentry --help   See all commands'; }",
+        errors: 1,
+      },
+      // Every command runs under npx or another name, not only sentry-mcp.
+      {
+        filename: commands,
+        code: "function hint() { return 'Run sentry issue list'; }",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "const MESSAGE = 'Usage: sentry local run -- <command>';",
+        errors: 1,
+      },
+      // A usage line in a constant is shown as written, so it needs the tag.
+      {
+        filename: commands,
+        code: "const USAGE_HINT = 'sentry issue list <org>/<project>';",
+        errors: 1,
+      },
+      // Example steps leave out the program name; each renderer adds it.
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: 'sentry issue list' }] } });",
+        errors: 1,
+      },
+      {
+        filename: commands,
+        code: "buildCommand({ docs: { examples: [{ run: ['issue list', { prefix: 'sudo ', args: 'sentry cli fix' }] }] } });",
+        errors: 1,
+      },
+      // The tag adds the program name itself.
+      {
+        filename: source,
+        code: "function hint() { return sentry`sentry auth login`; }",
+        errors: 1,
+      },
+      // At module load the running program is not known yet.
+      {
+        filename: source,
+        code: "const HINT = sentry`auth login`;",
+        errors: 1,
+      },
+      {
+        filename: source,
+        code: "const config = { commandPrefix: sentry`team list` };",
         errors: 1,
       },
     ],

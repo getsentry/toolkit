@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { diffCommand } from "./diff.js";
 import { downloadCommand } from "./download.js";
 import { uploadCommand } from "./upload.js";
@@ -16,6 +17,6 @@ export const snapshotsRoute = buildRouteMap({
     upload: uploadCommand,
   },
   docs: {
-    brief: "Manage and compare snapshots",
+    brief: topLevelBrief("snapshots"),
   },
 });

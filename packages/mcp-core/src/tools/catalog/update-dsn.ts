@@ -2,6 +2,7 @@ import { z } from "zod";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamProjectSlug,
@@ -11,43 +12,39 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { validateResourceId } from "../../utils/slug-validation";
 
+export const updateDsnOutputSchema = z.object({
+  dsn: z.object({
+    id: z.string(),
+    name: z.string(),
+    dsn: z.string(),
+    isActive: z.boolean(),
+    rateLimit: z
+      .object({
+        count: z.number(),
+        windowSeconds: z.number(),
+      })
+      .nullable()
+      .describe("Null when rate limiting is disabled."),
+    browserSdkVersion: z.string().nullable(),
+    loaderOptions: z
+      .object({
+        hasReplay: z.boolean(),
+        hasPerformance: z.boolean(),
+        hasDebug: z.boolean(),
+        hasFeedback: z.boolean().optional(),
+        hasLogsAndMetrics: z.boolean().optional(),
+      })
+      .nullable(),
+  }),
+});
+
 export default defineTool({
   name: "update_dsn",
+  title: "Update DSN",
   skills: ["project-management"], // DSN management is part of project setup
   requiredScopes: ["project:write"],
-  description: [
-    "Update settings for an existing DSN (client key) in a project, such as name, active status, rate limit, and loader script options.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- Deactivating or activating a DSN/client key",
-    "- Setting or removing DSN rate limits ('set rate limit of 1000 per hour on DSN X')",
-    "- Renaming a DSN ('rename DSN X to Production')",
-    "- Configuring Javascript SDK loader script options (session replay, performance, debug, feedback, etc.)",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "<examples>",
-    "### Rename DSN and set rate limit",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', name='Production Key', rateLimitWindow=3600, rateLimitCount=500)",
-    "```",
-    "",
-    "### Deactivate a DSN",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', isActive=false)",
-    "```",
-    "",
-    "### Disable rate limit entirely",
-    "```",
-    "update_dsn(organizationSlug='my-organization', projectSlug='my-project', keyId='d20df0a1ab5031c7f3c7edca9c02814d', disableRateLimit=true)",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use `find_dsns()` first to find the `keyId` for the DSN you want to update.",
-    "- Both `rateLimitWindow` (seconds) and `rateLimitCount` (error cap) must be provided together to set a rate limit.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Update a DSN (client key) on a Sentry project: rename it, activate or deactivate it, set or remove its rate limit, or change JavaScript Loader Script options. Returns the settings Sentry saved; tell the user if any requested setting did not change.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -56,74 +53,62 @@ export default defineTool({
       .string()
       .trim()
       .superRefine(validateResourceId)
-      .describe(
-        "The ID of the DSN (client key) to update. Use find_dsns() to retrieve this ID first.",
-      ),
-    name: z
-      .string()
-      .trim()
-      .max(64)
-      .describe("The new name for the DSN.")
-      .optional(),
+      .describe("Client key ID from find_dsns."),
+    name: z.string().trim().max(64).describe("New key name.").optional(),
     isActive: z
       .boolean()
-      .describe("Activate or deactivate the DSN.")
+      .describe("False stops the key from accepting events.")
       .optional(),
     rateLimitWindow: z
       .number()
       .int()
       .min(0)
       .max(60 * 60 * 24)
-      .describe("The time window in seconds for the rate limit.")
+      .describe("Rate limit window in seconds. Requires rateLimitCount.")
       .optional(),
     rateLimitCount: z
       .number()
       .int()
       .min(0)
-      .describe(
-        "The maximum number of errors allowed within the rate limit window.",
-      )
+      .describe("Maximum events accepted per window. Requires rateLimitWindow.")
       .optional(),
     disableRateLimit: z
       .boolean()
       .describe(
-        "Set to true to disable the rate limit entirely (removes the cap).",
+        "True removes the rate limit. Do not combine with rateLimitWindow or rateLimitCount.",
       )
       .optional(),
     browserSdkVersion: z
       .string()
       .trim()
       .describe(
-        "The Sentry Javascript SDK version to use (e.g. 'latest', '7.x').",
+        "JavaScript SDK version the Loader Script serves, such as `latest` or `8.x`.",
       )
       .optional(),
     loaderHasReplay: z
       .boolean()
-      .describe("Configure Session Replay for the Javascript Loader Script.")
+      .describe("Loader Script: enable Session Replay.")
       .optional(),
     loaderHasPerformance: z
       .boolean()
-      .describe(
-        "Configure Performance Monitoring for the Javascript Loader Script.",
-      )
+      .describe("Loader Script: enable tracing (performance monitoring).")
       .optional(),
     loaderHasDebug: z
       .boolean()
-      .describe(
-        "Configure Debug Bundles & Logging for the Javascript Loader Script.",
-      )
+      .describe("Loader Script: use the debug bundle with SDK logging.")
       .optional(),
     loaderHasFeedback: z
       .boolean()
-      .describe("Configure User Feedback for the Javascript Loader Script.")
+      .describe("Loader Script: enable User Feedback.")
       .optional(),
     loaderHasLogsAndMetrics: z
       .boolean()
       .describe(
-        "Configure Logs and Metrics for the Javascript Loader Script (requires SDK >= 10.0.0).",
+        "Loader Script: enable logs and metrics. Requires SDK 10.0.0 or later.",
       )
       .optional(),
   },
+  outputSchema: updateDsnOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
@@ -239,70 +224,38 @@ export default defineTool({
       dynamicSdkLoaderOptions,
     });
 
-    let output = `# Updated DSN in **${organizationSlug}/${params.projectSlug}**\n\n`;
-    output += `**DSN ID**: ${clientKey.id}\n`;
-    output += `**DSN**: ${clientKey.dsn.public}\n`;
-    output += `**Name**: ${clientKey.name}\n`;
-    output += `**Status**: ${clientKey.isActive ? "Active" : "Inactive"}\n`;
-
-    if (
-      clientKey.rateLimit &&
-      clientKey.rateLimit.count > 0 &&
-      clientKey.rateLimit.window > 0
-    ) {
-      output += `**Rate Limit**: ${clientKey.rateLimit.count} events per ${clientKey.rateLimit.window} seconds\n`;
-    } else {
-      output += `**Rate Limit**: Disabled\n`;
-    }
-
-    if (clientKey.browserSdkVersion) {
-      output += `**Browser SDK Version**: ${clientKey.browserSdkVersion}\n`;
-    }
-
-    if (clientKey.dynamicSdkLoaderOptions) {
-      const loader = clientKey.dynamicSdkLoaderOptions;
-      const optionsStr = [
-        `Replay: ${loader.hasReplay ? "Enabled" : "Disabled"}`,
-        `Performance: ${loader.hasPerformance ? "Enabled" : "Disabled"}`,
-        `Debug: ${loader.hasDebug ? "Enabled" : "Disabled"}`,
-        loader.hasFeedback !== undefined
-          ? `Feedback: ${loader.hasFeedback ? "Enabled" : "Disabled"}`
+    const { rateLimit: appliedRateLimit, dynamicSdkLoaderOptions: loader } =
+      clientKey;
+    return structuredResult({
+      dsn: {
+        id: String(clientKey.id),
+        name: clientKey.name,
+        dsn: clientKey.dsn.public,
+        isActive: clientKey.isActive,
+        rateLimit:
+          appliedRateLimit &&
+          appliedRateLimit.count > 0 &&
+          appliedRateLimit.window > 0
+            ? {
+                count: appliedRateLimit.count,
+                windowSeconds: appliedRateLimit.window,
+              }
+            : null,
+        browserSdkVersion: clientKey.browserSdkVersion || null,
+        loaderOptions: loader
+          ? {
+              hasReplay: loader.hasReplay,
+              hasPerformance: loader.hasPerformance,
+              hasDebug: loader.hasDebug,
+              ...(loader.hasFeedback === undefined
+                ? {}
+                : { hasFeedback: loader.hasFeedback }),
+              ...(loader.hasLogsAndMetrics === undefined
+                ? {}
+                : { hasLogsAndMetrics: loader.hasLogsAndMetrics }),
+            }
           : null,
-        loader.hasLogsAndMetrics !== undefined
-          ? `Logs & Metrics: ${loader.hasLogsAndMetrics ? "Enabled" : "Disabled"}`
-          : null,
-      ]
-        .filter((val): val is string => val !== null)
-        .join(", ");
-      output += `**Loader Options**: ${optionsStr}\n`;
-    }
-
-    const updates: string[] = [];
-    if (params.name) updates.push(`name to "${params.name}"`);
-    if (params.isActive !== undefined)
-      updates.push(`status to ${params.isActive ? "active" : "inactive"}`);
-    if (params.disableRateLimit || zeroRateLimit)
-      updates.push("rate limit disabled");
-    else if (params.rateLimitWindow !== undefined) {
-      updates.push(
-        `rate limit to ${params.rateLimitCount} events per ${params.rateLimitWindow}s`,
-      );
-    }
-    if (params.browserSdkVersion)
-      updates.push(`browser SDK version to "${params.browserSdkVersion}"`);
-    if (dynamicSdkLoaderOptions) {
-      updates.push("loader options updated");
-    }
-
-    if (updates.length > 0) {
-      output += `\n## Updates Applied\n`;
-      output += updates.map((update) => `- Updated ${update}`).join("\n");
-      output += `\n`;
-    }
-
-    output += "\n## Response Notes\n\n";
-    output += "- Please tell the user the updated DSN settings.\n";
-
-    return output;
+      },
+    });
   },
 });

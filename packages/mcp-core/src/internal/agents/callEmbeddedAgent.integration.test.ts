@@ -1,8 +1,10 @@
+import { createOpenAI } from "@ai-sdk/openai";
 import { tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { hasSuccessfulSearchValidation } from "../../tools/support/search-events/agent";
+import { LIB_VERSION, setServerVersion } from "../../version";
 import { callEmbeddedAgent } from "./callEmbeddedAgent";
 import { getAgentProvider } from "./provider-factory";
 
@@ -104,4 +106,58 @@ it("stops after five steps when the final validation fails", async () => {
   ).rejects.toThrow("could not construct a valid query");
 
   expect(model.doGenerateCalls).toHaveLength(5);
+});
+
+describe("User-Agent", () => {
+  afterEach(() => {
+    setServerVersion(undefined);
+    vi.unstubAllGlobals();
+  });
+
+  // Uses a real provider: the AI SDK replaces provider-level User-Agent
+  // headers with its own, so only what reaches fetch proves anything.
+  async function sentUserAgent() {
+    let sent = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request | URL | string, init?: RequestInit) => {
+        sent = new Request(input, init).headers.get("User-Agent") ?? "";
+        return new Response("{}", { status: 400 });
+      }),
+    );
+    vi.mocked(getAgentProvider).mockReturnValue({
+      type: "openai",
+      label: "openai",
+      getModel: () =>
+        createOpenAI({ apiKey: "test-key", baseURL: "https://llm.test/v1" })(
+          "gpt-5",
+        ),
+      getProviderOptions: () => ({}),
+    });
+
+    await expect(
+      callEmbeddedAgent({
+        system: "Translate the query",
+        prompt: "Test query",
+        tools: {},
+        schema: z.object({ result: z.string() }),
+      }),
+    ).rejects.toThrow();
+
+    return sent;
+  }
+
+  // The AI SDK appends its own tokens after ours.
+  it("sends the host's version to the model provider", async () => {
+    setServerVersion("0.48.0-test");
+    expect(await sentUserAgent()).toMatch(
+      /^sentry-mcp\/0\.48\.0-test \(https:\/\/mcp\.sentry\.dev\) ai\//,
+    );
+  });
+
+  it("falls back to mcp-core's version", async () => {
+    expect(await sentUserAgent()).toMatch(
+      new RegExp(`^sentry-mcp/${LIB_VERSION.replaceAll(".", "\\.")} `),
+    );
+  });
 });

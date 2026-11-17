@@ -20,6 +20,12 @@ const LINE_BREAK = /\r\n?|\n/g;
 const INLINE_SYNTAX =
   /[\\`*[\]<>~@]|&(?=#?[a-z0-9]+;)|:(?=\/\/)|(?<=www)\.|(?<=\s)#(?=#*$)|(?<=^|[^\p{L}\p{N}])_|_(?=$|[^\p{L}\p{N}])/giu;
 
+/** `INLINE_SYNTAX` plus the pipe that would end a GFM table cell. */
+const TABLE_CELL_SYNTAX = new RegExp(
+  `\\||${INLINE_SYNTAX.source}`,
+  INLINE_SYNTAX.flags,
+);
+
 /** Syntax that only counts at the start of a line: headings, quotes, lists, rules. */
 const LINE_START_SYNTAX = /^(?:[#+=-]|\d{1,9}[.)])/;
 
@@ -75,14 +81,28 @@ export function codeBlock(value: string, language = ""): string {
  * and syntax that only counts at the start of a line. Line breaks become
  * spaces and surrounding whitespace is dropped, so the value stays on the
  * line it is placed in. Escapes are backslashes only, which `marked` (the
- * CLI renderer) and micromark both resolve. Pipes are not escaped.
+ * CLI renderer) and micromark both resolve. Pipes are not escaped; use
+ * `tableCell` inside a table.
  */
 export function text(value: string): string {
+  return escapeSyntax(value, INLINE_SYNTAX);
+}
+
+/**
+ * Escapes a value as `text` does, plus pipes, so it stays in its GFM table
+ * cell and renders as the same literal text.
+ */
+export function tableCell(value: string): string {
+  return escapeSyntax(value, TABLE_CELL_SYNTAX);
+}
+
+/** Puts a value on one line and backslash-escapes `syntax` and line-start syntax. */
+function escapeSyntax(value: string, syntax: RegExp): string {
   return toSingleLine(value)
     .trim()
-    .replace(INLINE_SYNTAX, (char) => `\\${char}`)
+    .replace(syntax, (char) => `\\${char}`)
     .replace(
       LINE_START_SYNTAX,
-      (syntax) => `${syntax.slice(0, -1)}\\${syntax.slice(-1)}`,
+      (match) => `${match.slice(0, -1)}\\${match.slice(-1)}`,
     );
 }

@@ -35,9 +35,17 @@
     "version": "8.0.0"
   },
   "user": {
-    "display_name": "Taylor Example",
+    "display_name": "taylor",
     "email": "taylor@example.com",
-    "id": "user-1"
+    "id": "user-1",
+    "ip": "203.0.113.42",
+    "username": "taylor",
+    "geo": {
+      "city": "Vienna",
+      "country_code": "AT",
+      "region": "Austria",
+      "subdivision": "Vienna"
+    }
   },
   "tags": {},
   "releases": ["frontend@1.2.3"]

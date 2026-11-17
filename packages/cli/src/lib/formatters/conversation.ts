@@ -5,20 +5,15 @@
  * Transcript parsing logic ported from sentry-mcp get-ai-conversation-details.
  */
 
+import { inlineCode, tableCell, text } from "@sentry/toolkit-core/markdown";
 import type {
   AgentConversationSpan,
   ConversationListItem,
   ConversationStats,
 } from "../../types/conversation.js";
-import {
-  colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
-  mdKvTable,
-  renderMarkdown,
-  safeCodeSpan,
-} from "./markdown.js";
+import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 import { type Column, formatTable } from "./table.js";
+import { formatLocalDateTime } from "./time-utils.js";
 
 // ---------------------------------------------------------------------------
 // List formatter
@@ -29,13 +24,6 @@ function truncate(value: string, max = 60): string {
     return value;
   }
   return `${value.slice(0, max - 1)}…`;
-}
-
-function formatTimestamp(epochSeconds: number): string {
-  if (epochSeconds === 0) {
-    return "—";
-  }
-  return new Date(epochSeconds * 1000).toLocaleString();
 }
 
 const USD_FORMAT = new Intl.NumberFormat("en-US", {
@@ -58,7 +46,7 @@ const WIDE_TABLE_MIN_TERM_WIDTH = 100;
 const ID_COLUMN: Column<ConversationListItem> = {
   header: "ID",
   value: (c) => {
-    const id = escapeMarkdownCell(truncate(c.conversationId, 40));
+    const id = tableCell(truncate(c.conversationId, 40));
     return c.webUrl ? `[${id}](${c.webUrl})` : id;
   },
   truncate: true,
@@ -67,13 +55,15 @@ const ID_COLUMN: Column<ConversationListItem> = {
 
 const TITLE_COLUMN: Column<ConversationListItem> = {
   header: "Title",
-  value: (c) => (c.title ? escapeMarkdownCell(truncate(c.title, 40)) : "—"),
+  value: (c) => (c.title ? tableCell(truncate(c.title, 40)) : "—"),
   truncate: true,
 };
 
 const STARTED_COLUMN: Column<ConversationListItem> = {
   header: "Started",
-  value: (c) => formatTimestamp(c.startTimestamp),
+  // The API sends 0 for a conversation with no start time.
+  value: (c) =>
+    c.startTimestamp === 0 ? "—" : formatLocalDateTime(c.startTimestamp),
 };
 
 const TOKENS_COLUMN: Column<ConversationListItem> = {
@@ -102,13 +92,12 @@ const ERRS_COLUMN: Column<ConversationListItem> = {
 
 const USER_COLUMN: Column<ConversationListItem> = {
   header: "User",
-  value: (c) => escapeMarkdownCell(c.user?.email ?? c.user?.username ?? "—"),
+  value: (c) => tableCell(c.user?.email ?? c.user?.username ?? "—"),
 };
 
 const FIRST_INPUT_COLUMN: Column<ConversationListItem> = {
   header: "First Input",
-  value: (c) =>
-    c.firstInput ? escapeMarkdownCell(truncate(c.firstInput)) : "—",
+  value: (c) => (c.firstInput ? tableCell(truncate(c.firstInput)) : "—"),
   truncate: true,
 };
 
@@ -405,15 +394,15 @@ function appendContentBlock(
   lines.push(`**${label}**`);
   lines.push("");
   for (const line of truncate(content, 600).split("\n")) {
-    lines.push(escapeMarkdownInline(line));
+    lines.push(text(line));
   }
   lines.push("");
 }
 
 function formatTurnHuman(turn: ConversationTurn): string {
   const meta = [
-    turn.model ? escapeMarkdownInline(turn.model) : null,
-    turn.agentName ? escapeMarkdownInline(turn.agentName) : null,
+    turn.model ? text(turn.model) : null,
+    turn.agentName ? text(turn.agentName) : null,
     turn.totalTokens > 0 ? `${turn.totalTokens} tokens` : null,
     formatDuration(turn.durationMs),
   ]
@@ -440,11 +429,9 @@ function formatTurnHuman(turn: ConversationTurn): string {
     lines.push("");
     for (const tc of turn.toolCalls) {
       const status =
-        tc.status && tc.status !== "ok"
-          ? ` (${escapeMarkdownInline(tc.status)})`
-          : "";
+        tc.status && tc.status !== "ok" ? ` (${text(tc.status)})` : "";
       lines.push(
-        `- ${safeCodeSpan(tc.name)} — ${formatDuration(tc.durationMs)}${status}`,
+        `- ${inlineCode(tc.name)} — ${formatDuration(tc.durationMs)}${status}`,
       );
     }
     lines.push("");
@@ -475,18 +462,16 @@ export type TranscriptResult = {
 
 export function formatTranscriptResult(result: TranscriptResult): string {
   if (result.spanCount === 0) {
-    const id = escapeMarkdownInline(result.conversationId);
-    const titled = result.title
-      ? `${id} (${escapeMarkdownInline(result.title)})`
-      : id;
+    const id = text(result.conversationId);
+    const titled = result.title ? `${id} (${text(result.title)})` : id;
     return `No spans found for conversation ${titled} in the last 30 days.`;
   }
 
   // Keep the conversation ID in the heading (needed to re-run `conversation
   // view`). Surface title as a table row so it is not duplicated in the heading.
   const rows: [string, string][] = [
-    ["Org", escapeMarkdownCell(result.org)],
-    ["Projects", result.projects.map(escapeMarkdownCell).join(", ") || "—"],
+    ["Org", tableCell(result.org)],
+    ["Projects", result.projects.map(tableCell).join(", ") || "—"],
     ["Started", formatEpoch(result.startTimestamp)],
     ["Ended", formatEpoch(result.endTimestamp)],
     ["Turns", String(result.turns.length)],
@@ -509,11 +494,11 @@ export function formatTranscriptResult(result: TranscriptResult): string {
     rows.push(["Tool Errors", String(result.toolErrors)]);
   }
   if (result.title) {
-    rows.unshift(["Title", escapeMarkdownCell(result.title)]);
+    rows.unshift(["Title", tableCell(result.title)]);
   }
 
   const lines: string[] = [
-    `# Agent Conversation: ${escapeMarkdownInline(result.conversationId)}`,
+    `# Agent Conversation: ${text(result.conversationId)}`,
     "",
     mdKvTable(rows),
     "",

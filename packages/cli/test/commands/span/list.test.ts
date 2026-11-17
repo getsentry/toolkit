@@ -58,6 +58,7 @@ import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
+import { FlatSpanSchema } from "../../../src/generated/output-schemas/span.js";
 
 const VALID_TRACE_ID = "aaaa1111bbbb2222cccc3333dddd4444";
 
@@ -586,6 +587,43 @@ describe("listCommand.func (trace mode)", () => {
 
     const parsed = JSON.parse(getStdout());
     expect(parsed.data[0].trace_id).toBe(VALID_TRACE_ID);
+  });
+
+  test("JSON output documents the fields it emits", async () => {
+    listSpansSpy.mockResolvedValue({
+      data: [
+        {
+          id: "a1b2c3d4e5f67890",
+          parent_span: "0987654321fedcba",
+          "span.op": "http.client",
+          description: "GET /api",
+          "span.duration": 12,
+          timestamp: "2024-01-15T10:30:00+00:00",
+          project: "test-project",
+          transaction: "/checkout",
+          trace: VALID_TRACE_ID,
+        },
+      ],
+      nextCursor: undefined,
+    });
+
+    const { context, getStdout } = createContext();
+
+    await func.call(
+      context,
+      {
+        limit: 25,
+        sort: "date",
+        period: parsePeriod("7d"),
+        json: true,
+        fresh: false,
+      },
+      VALID_TRACE_ID,
+    );
+
+    const documented = FlatSpanSchema.fields.map((f) => f.name);
+    const [span] = JSON.parse(getStdout()).data;
+    expect(documented).toEqual(expect.arrayContaining(Object.keys(span)));
   });
 
   test("trace mode passes allProjects: true to listSpans", async () => {

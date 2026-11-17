@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Generate typed SDK methods from the Stricli command tree.
  *
@@ -14,13 +13,13 @@
  *
  * Zero manual config — all commands are auto-discovered.
  *
- * Run: tsx script/generate-sdk.ts
+ * Run: pnpm ts script/generate.ts sdk
  */
 
 import { writeFile } from "node:fs/promises";
 import ts from "typescript";
 import { routes } from "../src/app.js";
-import { extractSchemaFields } from "../src/lib/formatters/output.js";
+import type { SchemaFieldInfo } from "../src/lib/formatters/output.js";
 import {
   type Command,
   type FlagDef,
@@ -38,6 +37,7 @@ import {
   typeRef,
   withJsDoc,
 } from "./ts-codegen.js";
+import { logger } from "../src/lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -161,14 +161,14 @@ function inferFlagType(def: FlagDef): {
 
 /** Extract SDK-relevant flag info from a Stricli Command's parameters. */
 function extractSdkFlags(command: Command): SdkFlagInfo[] {
-  const flagDefs = command.parameters?.flags;
+  const flagDefs = command.parameters.flags;
   if (!flagDefs) {
     return [];
   }
 
   const flags: SdkFlagInfo[] = [];
 
-  for (const [name, def] of Object.entries(flagDefs) as [string, FlagDef][]) {
+  for (const [name, def] of Object.entries(flagDefs)) {
     if (INTERNAL_FLAGS.has(name)) {
       continue;
     }
@@ -211,7 +211,7 @@ type PositionalInfo =
   | { name: string; variadic: true };
 
 function derivePositional(command: Command): PositionalInfo {
-  const params = command.parameters?.positional;
+  const params = command.parameters.positional;
   if (!params) {
     return null;
   }
@@ -222,7 +222,7 @@ function derivePositional(command: Command): PositionalInfo {
     return { name, variadic: true };
   }
 
-  if (params.kind === "tuple" && params.parameters.length > 0) {
+  if (params.parameters.length > 0) {
     // One param per tuple entry. A compound placeholder is a single entry whose own parser
     // splits it ("org/version" → orgVersion), but separate entries are separate argv tokens:
     // joining them into one param made every multi-positional command unusable, because the
@@ -238,7 +238,7 @@ function derivePositional(command: Command): PositionalInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Return Type Generation from __jsonSchema
+// Return Type Generation from __jsonFields
 // ---------------------------------------------------------------------------
 
 /** Map a single schema field type name to a TypeScript type node. */
@@ -306,20 +306,16 @@ function propertySignature(
 }
 
 /**
- * Build the result type from a command's __jsonSchema.
- * Returns null if no schema is attached.
+ * Build the result type from a command's __jsonFields.
+ * Returns null if no output schema is attached.
  */
 function buildReturnType(
   command: Command,
   typeName: string,
 ): ts.TypeAliasDeclaration | null {
-  const schema = (command as any).__jsonSchema;
-  if (!schema) {
-    return null;
-  }
-
-  const fields = extractSchemaFields(schema);
-  if (fields.length === 0) {
+  const fields: readonly SchemaFieldInfo[] | undefined = (command as any)
+    .__jsonFields;
+  if (!fields?.length) {
     return null;
   }
 
@@ -758,94 +754,97 @@ function createSdkMethodsFunction(root: NamespaceNode): ts.FunctionDeclaration {
 // Main
 // ---------------------------------------------------------------------------
 
-const allCommands = discoverCommands(routes as unknown as RouteMap, []);
-console.log(`Discovered ${allCommands.length} commands`);
+/** Write `src/sdk.generated.ts` and `src/sdk.generated.d.cts`. */
+export async function emit(): Promise<void> {
+  const allCommands = discoverCommands(routes as unknown as RouteMap, []);
+  logger.info(`Discovered ${allCommands.length} commands`);
 
-const paramTypes: ts.Statement[] = [];
-const returnTypes: ts.Statement[] = [];
-const sdkTree = createNamespaceNode();
+  const paramTypes: ts.Statement[] = [];
+  const returnTypes: ts.Statement[] = [];
+  const sdkTree = createNamespaceNode();
 
-for (const { path, command } of allCommands) {
-  const flags = extractSdkFlags(command);
-  const positional = derivePositional(command);
+  for (const { path, command } of allCommands) {
+    const flags = extractSdkFlags(command);
+    const positional = derivePositional(command);
 
-  const returnType = buildReturnType(command, `${buildTypeName(path)}Result`);
-  if (returnType) {
-    returnTypes.push(returnType);
+    const returnType = buildReturnType(command, `${buildTypeName(path)}Result`);
+    if (returnType) {
+      returnTypes.push(returnType);
+    }
+
+    const params = buildParamsType(
+      `${buildTypeName(path)}Params`,
+      positional,
+      flags,
+    );
+    if (params) {
+      paramTypes.push(params);
+    }
+
+    insertMethod(sdkTree, {
+      path,
+      brief: command.brief || path.join(" "),
+      positional,
+      flags,
+      streamingFlags: flags.filter((flag) => STREAMING_FLAGS.has(flag.name)),
+      paramsTypeName: params?.name.text,
+      paramsRequired: flags.some((flag) => !flag.optional),
+      resultTypeName: returnType?.name.text,
+    });
   }
 
-  const params = buildParamsType(
-    `${buildTypeName(path)}Params`,
-    positional,
-    flags,
-  );
-  if (params) {
-    paramTypes.push(params);
-  }
+  const sdkType = exportedObjectType(SDK_TYPE_NAME, [
+    ...namespaceType(sdkTree).members,
+  ]);
 
-  insertMethod(sdkTree, {
-    path,
-    brief: command.brief || path.join(" "),
-    positional,
-    flags,
-    streamingFlags: flags.filter((flag) => STREAMING_FLAGS.has(flag.name)),
-    paramsTypeName: params?.name.text,
-    paramsRequired: flags.some((flag) => !flag.optional),
-    resultTypeName: returnType?.name.text,
-  });
+  /** Sections shared verbatim by the implementation file and the published declarations. */
+  const sharedTypes = [
+    "// --- Return types (derived from __jsonFields) ---",
+    "",
+    returnTypes.length > 0
+      ? printNodes(returnTypes)
+      : "// No commands have registered schemas yet.",
+    "",
+    "// --- Parameter types ---",
+    "",
+    paramTypes.length > 0
+      ? printNodes(paramTypes)
+      : "// No commands have parameters.",
+    "",
+    "// --- SDK type ---",
+    "",
+    printNodes([sdkType]),
+    "",
+  ];
+
+  const header = [
+    "// Auto-generated by script/generate-sdk.ts — DO NOT EDIT",
+    "// Run `pnpm run generate:sdk` to regenerate.",
+    "",
+  ];
+
+  const output = [
+    ...header,
+    'import type { buildInvoker } from "./lib/sdk-invoke.js";',
+    'import { positionals } from "./lib/sdk-positionals.js";',
+    "",
+    ...sharedTypes,
+    "// --- SDK factory ---",
+    "",
+    "/** Invoke function type from sdk-invoke.ts */",
+    "type Invoke = ReturnType<typeof buildInvoker>;",
+    "",
+    printNodes([createSdkMethodsFunction(sdkTree)]),
+    "",
+  ].join("\n");
+
+  const outPath = "./src/sdk.generated.ts";
+  await writeFile(outPath, output);
+  logger.success(`Generated ${outPath}`);
+
+  // Standalone type declarations (.d.cts) for the npm bundle: only the shared type
+  // exports — no runtime imports or implementations.
+  const dtsPath = "./src/sdk.generated.d.cts";
+  await writeFile(dtsPath, [...header, ...sharedTypes].join("\n"));
+  logger.success(`Generated ${dtsPath}`);
 }
-
-const sdkType = exportedObjectType(SDK_TYPE_NAME, [
-  ...namespaceType(sdkTree).members,
-]);
-
-/** Sections shared verbatim by the implementation file and the published declarations. */
-const sharedTypes = [
-  "// --- Return types (derived from __jsonSchema) ---",
-  "",
-  returnTypes.length > 0
-    ? printNodes(returnTypes)
-    : "// No commands have registered schemas yet.",
-  "",
-  "// --- Parameter types ---",
-  "",
-  paramTypes.length > 0
-    ? printNodes(paramTypes)
-    : "// No commands have parameters.",
-  "",
-  "// --- SDK type ---",
-  "",
-  printNodes([sdkType]),
-  "",
-];
-
-const header = [
-  "// Auto-generated by script/generate-sdk.ts — DO NOT EDIT",
-  "// Run `pnpm run generate:sdk` to regenerate.",
-  "",
-];
-
-const output = [
-  ...header,
-  'import type { buildInvoker } from "./lib/sdk-invoke.js";',
-  'import { positionals } from "./lib/sdk-positionals.js";',
-  "",
-  ...sharedTypes,
-  "// --- SDK factory ---",
-  "",
-  "/** Invoke function type from sdk-invoke.ts */",
-  "type Invoke = ReturnType<typeof buildInvoker>;",
-  "",
-  printNodes([createSdkMethodsFunction(sdkTree)]),
-  "",
-].join("\n");
-
-const outPath = "./src/sdk.generated.ts";
-await writeFile(outPath, output);
-console.log(`Generated ${outPath}`);
-
-// Standalone type declarations (.d.cts) for the npm bundle: only the shared type
-// exports — no runtime imports or implementations.
-const dtsPath = "./src/sdk.generated.d.cts";
-await writeFile(dtsPath, [...header, ...sharedTypes].join("\n"));
-console.log(`Generated ${dtsPath}`);

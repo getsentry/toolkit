@@ -24,9 +24,6 @@ export function buildStdioServerLaunchConfig(
   // The host goes through SENTRY_HOST below; the server's --host is deprecated.
   const args: string[] = [];
 
-  if (config.sentryDsn) {
-    args.push(`--sentry-dsn=${config.sentryDsn}`);
-  }
   if (config.useExperimental) {
     args.push("--experimental");
   }
@@ -48,9 +45,6 @@ export function buildStdioServerLaunchConfig(
   }
   if (config.host) {
     env.SENTRY_HOST = config.host;
-  }
-  if (config.sentryDsn) {
-    env.SENTRY_DSN = config.sentryDsn;
   }
 
   return { args, env };

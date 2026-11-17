@@ -3,7 +3,25 @@
  * aliases, and the API names they map to.
  */
 
+import type { ListOrganizationEventsData } from "@sentry/api";
 import { ValidationError } from "./errors.js";
+
+/** Datasets the public `events/` and `events-timeseries/` endpoints accept. */
+export type EventsDataset = ListOrganizationEventsData["query"]["dataset"];
+
+const EVENTS_DATASETS: ReadonlySet<string> = new Set<EventsDataset>([
+  "errors",
+  "logs",
+  "profile_functions",
+  "spans",
+  "tracemetrics",
+  "uptime_results",
+]);
+
+/** Whether `dataset` is one the public Events endpoints accept. */
+export function isEventsDataset(dataset: string): dataset is EventsDataset {
+  return EVENTS_DATASETS.has(dataset);
+}
 
 /** API-level dataset names */
 export type ExploreDataset =

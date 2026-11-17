@@ -5,5 +5,5 @@
     "types": []
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/response-cache/codec.ts"]
+  "exclude": ["src/**/*.test.ts", "src/test-utils/**", "src/response-cache/codec.ts"]
 }

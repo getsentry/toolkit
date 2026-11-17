@@ -1,12 +1,12 @@
 import type { TraceSpan } from "@/lib/trace-model.ts";
 import {
-  inspectAi,
   parsed,
   record,
   display,
   text,
   isAiPayload,
 } from "@/lib/inspection.ts";
+import { inspectAiInteraction } from "@/lib/ai-interactions.ts";
 import { DetailFields } from "./span-detail.tsx";
 
 function CapturedContent({ value }: { value: unknown }) {
@@ -43,7 +43,7 @@ export function AiInspector({
   payload: unknown;
   steps?: readonly TraceSpan[];
 }) {
-  const ai = inspectAi(payload);
+  const ai = inspectAiInteraction(payload, steps);
   if (!ai) return null;
   const children: TraceSpan[] = [];
   const pending = [...steps];

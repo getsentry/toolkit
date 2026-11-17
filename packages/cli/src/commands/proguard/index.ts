@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { uploadCommand } from "./upload.js";
 import { uuidCommand } from "./uuid.js";
 
@@ -14,7 +15,7 @@ export const proguardRoute = buildRouteMap({
     uuid: uuidCommand,
   },
   docs: {
-    brief: "Work with ProGuard/R8 mapping files",
+    brief: topLevelBrief("proguard"),
     fullDescription:
       "Upload and manage Android ProGuard/R8 mapping files.\n\n" +
       "The UUID is derived deterministically from the mapping file contents " +

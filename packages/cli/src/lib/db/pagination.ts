@@ -14,6 +14,7 @@
 
 import { ValidationError } from "../errors.js";
 import { CURSOR_KEYWORDS } from "../arg-parsing.js";
+import { isPersistenceDisabled } from "../env.js";
 import type { ResolvedTarget } from "../resolve-target.js";
 import { getApiBaseUrl } from "../sentry-client.js";
 import { getDatabase } from "./index.js";
@@ -182,12 +183,20 @@ export function resolveCursor(
     return { cursor: cursorFlag, direction: "next" };
   }
 
-  const state = getPaginationState(commandKey, contextKey);
-
   // "first" — jump to the beginning regardless of state
   if (cursorFlag === "first") {
     return { cursor: undefined, direction: "first" };
   }
+
+  // "next" and "prev" read the stored cursor stack, which isn't written
+  if (isPersistenceDisabled()) {
+    throw new ValidationError(
+      `--cursor ${cursorFlag} needs saved pagination state, which SDK calls only keep with persist: true. Pass the nextCursor from the previous result instead.`,
+      "cursor",
+    );
+  }
+
+  const state = getPaginationState(commandKey, contextKey);
 
   // "next" / "last" — advance one page
   if (cursorFlag === "next" || cursorFlag === "last") {
@@ -509,7 +518,7 @@ export function buildMultiTargetContextKey(
     ? escapeContextKeyValue(filters.query)
     : undefined;
   return (
-    `${base}` +
+    base +
     (escapedSort ? `|sort:${escapedSort}` : "") +
     `|period:${escapedPeriod}` +
     (escapedQuery ? `|q:${escapedQuery}` : "") +

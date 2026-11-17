@@ -1,4 +1,17 @@
 export * from "./client";
 export * from "./schema";
 export * from "./types";
-export * from "@sentry/toolkit-core/api-client/errors";
+export {
+  ApiAuthenticationError,
+  ApiClientError,
+  ApiError,
+  ApiNotFoundError,
+  ApiPermissionError,
+  ApiRateLimitError,
+  ApiServerError,
+  ApiValidationError,
+  ConfigurationError,
+  createApiError,
+  isApiAuthenticationErrorDeep,
+  UserInputError,
+} from "@sentry/api/client";

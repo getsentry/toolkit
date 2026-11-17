@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-monitor
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry cron monitors
 requires:
   bins: ["sentry"]
@@ -71,6 +71,7 @@ List cron monitors
 | `config` | object | Schedule configuration |
 | `dateCreated` | string | Creation date (ISO 8601) |
 | `project` | object | Owning project |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

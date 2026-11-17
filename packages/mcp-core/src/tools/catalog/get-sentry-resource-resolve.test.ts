@@ -340,6 +340,18 @@ describe("resolveResourceParams", () => {
 
   // ─── URL mode: recognized types (replay, monitor, release) ────────────────
   describe("URL mode — recognized types", () => {
+    it.each([
+      "https://my-org.sentry.io/projects/my-project/events/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4/",
+      "https://sentry.io/organizations/my-org/projects/my-project/events/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4/",
+    ])("parses project event URL %s", (url) => {
+      expect(resolveResourceParams({ url })).toEqual<ResolvedResourceParams>({
+        type: "event",
+        organizationSlug: "my-org",
+        eventId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+        issueId: undefined,
+      });
+    });
+
     it("parses replay URL", () => {
       expect(
         resolveResourceParams({
@@ -418,6 +430,31 @@ describe("resolveResourceParams", () => {
 
   // ─── URL mode: error cases ────────────────────────────────────────────────
   describe("URL mode — error cases", () => {
+    it.each([
+      [
+        "https://my-org.sentry.io/issues/?query=is%3Aunresolved",
+        "Use `search_issues` to list issues",
+      ],
+      [
+        "https://my-org.sentry.io/alerts/rules/details/123/",
+        "Use `find_alert_rules` to list alert rules",
+      ],
+      [
+        "https://my-org.sentry.io/explore/logs/?project=1",
+        "Use `search_logs` to query logs",
+      ],
+      [
+        "https://my-org.sentry.io/explore/traces/",
+        "Use `search_traces` to query traces",
+      ],
+      [
+        "https://sentry.io/api/0/projects/my-org/my-project/events/abc123/",
+        "This is a Sentry API URL",
+      ],
+    ])("explains unsupported URL %s", (url, message) => {
+      expect(() => resolveResourceParams({ url })).toThrow(message);
+    });
+
     it("throws for unknown URL path (settings)", () => {
       expect(() =>
         resolveResourceParams({
@@ -555,6 +592,30 @@ describe("resolveResourceParams", () => {
   });
 
   // ─── By type and ID: validation errors ──────────────────────────────────────
+  describe("By ID without resourceType", () => {
+    it.each(["PROJECT-123", "MY-WEB-APP-2KD", "1234567890"])(
+      "infers issue for %s",
+      (resourceId) => {
+        expect(
+          resolveResourceParams({ organizationSlug: "my-org", resourceId }),
+        ).toEqual<ResolvedResourceParams>({
+          type: "issue",
+          organizationSlug: "my-org",
+          issueId: resourceId,
+        });
+      },
+    );
+
+    it.each(["a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", "my-cron-job"])(
+      "still requires resourceType for %s",
+      (resourceId) => {
+        expect(() =>
+          resolveResourceParams({ organizationSlug: "my-org", resourceId }),
+        ).toThrow("Either `url` or `resourceType` must be provided");
+      },
+    );
+  });
+
   describe("By type and ID — validation errors", () => {
     it("throws when neither url nor resourceType provided", () => {
       expect(() => resolveResourceParams({})).toThrow(

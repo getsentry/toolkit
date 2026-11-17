@@ -23,7 +23,7 @@ import {
   getCurrentUser,
   getDetailedTrace,
   getEvent,
-  getIssue,
+  findIssueInOrgs,
   getIssueByShortId,
   getIssueInOrg,
   getLatestEvent,
@@ -50,7 +50,7 @@ import {
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { getCachedCompletionEntities } from "../../src/lib/db/completion-cache.js";
 import { setOrgRegion } from "../../src/lib/db/regions.js";
-import { ApiError, AuthError } from "../../src/lib/errors.js";
+import { ApiError, AuthError, TimeoutError } from "../../src/lib/errors.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 // --- Shared test setup ---
@@ -113,39 +113,60 @@ function linkHeader(cursor: string, hasResults: boolean): string {
 // =============================================================================
 
 describe("issues.ts", () => {
-  describe("getIssue", () => {
-    test("fetches issue by numeric ID via legacy endpoint", async () => {
+  describe("findIssueInOrgs", () => {
+    test("returns the issue from the org that has it, skipping 404s and 403s", async () => {
       const issue = mockIssue();
+      const requested: string[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        expect(req.url).toContain("/api/0/issues/12345/");
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input, init).url);
+        requested.push(pathname);
+        if (pathname.includes("/organizations/has-it/")) {
+          return new Response(JSON.stringify(issue), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const status = pathname.includes("/no-access/") ? 403 : 404;
+        return new Response(JSON.stringify({ detail: "nope" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      const result = await getIssue("12345");
-      expect(result.id).toBe("12345");
-      expect(result.title).toBe("Test Issue");
+      const result = await findIssueInOrgs(
+        ["other", "no-access", "has-it"],
+        "12345",
+      );
+      expect(result?.org).toBe("has-it");
+      expect(result?.issue.id).toBe("12345");
+      expect(requested.some((p) => p.startsWith("/api/0/issues/"))).toBe(false);
     });
 
-    test("passes collapse query params when provided", async () => {
-      const issue = mockIssue();
+    test("returns null when no org has the issue", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          }),
+      );
+
+      expect(await findIssueInOrgs(["a", "b"], "12345")).toBeNull();
+    });
+
+    test("throws an unexpected error when no org has the issue", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        const url = new URL(req.url);
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "lifetime",
-        ]);
-        return new Response(JSON.stringify(issue), {
-          status: 200,
+        const { pathname } = new URL(new Request(input, init).url);
+        const status = pathname.includes("/organizations/broken/") ? 500 : 404;
+        return new Response(JSON.stringify({ detail: "boom" }), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      await getIssue("12345", { collapse: ["stats", "lifetime"] });
+      await expect(
+        findIssueInOrgs(["missing", "broken"], "12345"),
+      ).rejects.toMatchObject({ status: 500 });
     });
   });
 
@@ -153,7 +174,7 @@ describe("issues.ts", () => {
     test("fetches issue scoped to organization", async () => {
       const issue = mockIssue();
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/organizations/test-org/issues/12345/");
         return new Response(JSON.stringify(issue), {
           status: 200,
@@ -165,16 +186,13 @@ describe("issues.ts", () => {
       expect(result.id).toBe("12345");
     });
 
-    test("passes collapse query params when provided", async () => {
+    test("passes only the collapse values the details endpoint reads", async () => {
       const issue = mockIssue();
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/issues/12345/");
-        expect(url.searchParams.getAll("collapse")).toEqual([
-          "stats",
-          "filtered",
-        ]);
+        expect(url.searchParams.getAll("collapse")).toEqual(["stats"]);
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -182,7 +200,20 @@ describe("issues.ts", () => {
       });
 
       await getIssueInOrg("test-org", "12345", {
-        collapse: ["stats", "filtered"],
+        collapse: ["stats", "lifetime", "filtered", "unhandled"],
+      });
+    });
+
+    test("omits collapse when no value applies to the details endpoint", async () => {
+      const issue = mockIssue();
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const url = new URL(new Request(input, init).url);
+        expect(url.searchParams.has("collapse")).toBe(false);
+        return Response.json(issue);
+      });
+
+      await getIssueInOrg("test-org", "12345", {
+        collapse: ["lifetime", "filtered"],
       });
     });
   });
@@ -191,7 +222,7 @@ describe("issues.ts", () => {
     test("resolves short ID to issue (uppercases input)", async () => {
       const issue = mockIssue({ shortId: "TEST-1" });
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/shortids/TEST-1/");
         return new Response(JSON.stringify({ group: issue }), {
           status: 200,
@@ -223,7 +254,7 @@ describe("issues.ts", () => {
     test("passes collapse query params when provided", async () => {
       const issue = mockIssue({ shortId: "TEST-1" });
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/shortids/TEST-1/");
         expect(url.searchParams.getAll("collapse")).toEqual([
@@ -284,24 +315,36 @@ describe("issues.ts", () => {
   });
 
   describe("updateIssueStatus", () => {
-    test("sends PUT request with status body", async () => {
-      const issue = mockIssue({ status: "resolved" });
+    test("sends PUT to the org-scoped endpoint", async () => {
+      const issue = mockIssue({ status: "ignored" });
+      let capturedUrl = "";
       let capturedBody: unknown;
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
+        capturedUrl = req.url;
         capturedBody = await req.json();
         expect(req.method).toBe("PUT");
-        expect(req.url).toContain("/api/0/issues/12345/");
         return new Response(JSON.stringify(issue), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       });
 
-      const result = await updateIssueStatus("12345", "resolved");
-      expect(result.status).toBe("resolved");
-      expect(capturedBody).toEqual({ status: "resolved" });
+      const result = await updateIssueStatus("12345", "ignored", {
+        orgSlug: "test-org",
+        substatus: "archived_until_condition_met",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+      });
+      expect(result.status).toBe("ignored");
+      expect(capturedUrl).toContain(
+        "/api/0/organizations/test-org/issues/12345/",
+      );
+      expect(capturedBody).toEqual({
+        status: "ignored",
+        statusDetails: { ignoreCount: 10, ignoreWindow: 60 },
+        substatus: "archived_until_condition_met",
+      });
     });
   });
 
@@ -333,7 +376,7 @@ describe("issues.ts", () => {
 
       globalThis.fetch = mockFetch(async (input, init) => {
         callCount += 1;
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
 
         if (callCount === 1) {
@@ -405,7 +448,7 @@ describe("issues.ts", () => {
       let capturedUrl = "";
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         capturedUrl = req.url;
         return new Response(JSON.stringify([mockIssue({ id: "1" })]), {
           status: 200,
@@ -434,7 +477,7 @@ describe("teams.ts", () => {
       const teams = [mockTeam({ id: "1" }), mockTeam({ id: "2" })];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/organizations/test-org/teams/");
         return new Response(JSON.stringify(teams), {
           status: 200,
@@ -452,7 +495,7 @@ describe("teams.ts", () => {
       const teams = [mockTeam()];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/projects/test-org/test-project/teams/");
         return new Response(JSON.stringify(teams), {
           status: 200,
@@ -462,7 +505,7 @@ describe("teams.ts", () => {
 
       const result = await listProjectTeams("test-org", "test-project");
       expect(result).toHaveLength(1);
-      expect(result[0]!.slug).toBe("test-team");
+      expect(result[0].slug).toBe("test-team");
     });
   });
 
@@ -472,7 +515,7 @@ describe("teams.ts", () => {
       const requestUrls: string[] = [];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         requestUrls.push(req.url);
 
         if (
@@ -503,7 +546,7 @@ describe("teams.ts", () => {
       const team = mockTeam({ slug: "new-team" });
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
 
         if (
           req.method === "POST" &&
@@ -529,7 +572,7 @@ describe("teams.ts", () => {
   describe("addMemberToTeam", () => {
     test("adds member to team", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/members/me/teams/test-team/");
         expect(req.method).toBe("POST");
         return new Response(JSON.stringify({}), {
@@ -615,7 +658,7 @@ describe("projects.ts", () => {
 
     test("passes cursor and perPage options", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("cursor")).toBe("my-cursor");
         expect(url.searchParams.get("per_page")).toBe("50");
@@ -633,7 +676,7 @@ describe("projects.ts", () => {
 
     test("caps perPage at API_MAX_PER_PAGE", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("per_page")).toBe(String(API_MAX_PER_PAGE));
         return new Response(JSON.stringify([]), {
@@ -652,7 +695,7 @@ describe("projects.ts", () => {
       let callCount = 0;
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         const perPage = Number(url.searchParams.get("per_page"));
         perPageValues.push(perPage);
@@ -686,7 +729,7 @@ describe("projects.ts", () => {
       let callCount = 0;
       globalThis.fetch = mockFetch(async (input, init) => {
         callCount += 1;
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("per_page")).toBe("25");
         return new Response(JSON.stringify([mockProject()]), {
@@ -706,7 +749,7 @@ describe("projects.ts", () => {
       const project = mockProject({ slug: "new-project" });
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/teams/test-org/test-team/projects/");
         expect(req.method).toBe("POST");
         return new Response(JSON.stringify(project), {
@@ -741,7 +784,7 @@ describe("projects.ts", () => {
 
     test("POSTs to /organizations/{org}/projects/ and returns project with DSN and team_slug", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.url.includes("/projects/") && req.method === "POST") {
           return new Response(JSON.stringify(autoTeamProject), {
             status: 201,
@@ -780,7 +823,7 @@ describe("projects.ts", () => {
 
     test("returns dsn:null when DSN fetch fails", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         if (req.method === "POST") {
           return new Response(JSON.stringify(autoTeamProject), {
             status: 201,
@@ -812,7 +855,7 @@ describe("projects.ts", () => {
       ];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/projects/test-org/test-project/keys/");
         expect(new URL(req.url).searchParams.get("status")).toBe("active");
         return new Response(JSON.stringify(keys), {
@@ -825,7 +868,7 @@ describe("projects.ts", () => {
         status: "active",
       });
       expect(result).toHaveLength(1);
-      expect(result[0]!.dsn.public).toBe("https://abc@sentry.io/1");
+      expect(result[0].dsn.public).toBe("https://abc@sentry.io/1");
     });
   });
 
@@ -955,27 +998,58 @@ describe("projects.ts", () => {
 
 describe("users.ts", () => {
   describe("getCurrentUser", () => {
-    test("fetches authenticated user from /auth/ endpoint", async () => {
-      const user = {
-        id: "123",
-        name: "Test User",
-        email: "test@example.com",
-        username: "testuser",
-      };
+    const user = {
+      id: "123",
+      name: "Test User",
+      email: "test@example.com",
+      username: "testuser",
+    };
 
+    test("fetches authenticated user from /users/me/", async () => {
+      const paths: string[] = [];
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
-        expect(req.url).toContain("/api/0/auth/");
-        return new Response(JSON.stringify(user), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        const req = new Request(input, init);
+        paths.push(new URL(req.url).pathname);
+        return Response.json(user);
       });
 
       const result = await getCurrentUser();
       expect(result.id).toBe("123");
       expect(result.name).toBe("Test User");
       expect(result.email).toBe("test@example.com");
+      expect(paths).toEqual(["/api/0/users/me/"]);
+    });
+
+    test("falls back to /auth/ when /users/me/ returns 403", async () => {
+      const paths: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input, init);
+        const path = new URL(req.url).pathname;
+        paths.push(path);
+        if (path === "/api/0/users/me/") {
+          return Response.json(
+            { detail: "You do not have permission to perform this action." },
+            { status: 403 },
+          );
+        }
+        return Response.json(user);
+      });
+
+      const result = await getCurrentUser();
+      expect(result.id).toBe("123");
+      expect(paths).toEqual(["/api/0/users/me/", "/api/0/auth/"]);
+    });
+
+    test("doesn't fall back to /auth/ on other errors", async () => {
+      const paths: string[] = [];
+      globalThis.fetch = mockFetch(async (input, init) => {
+        const req = new Request(input, init);
+        paths.push(new URL(req.url).pathname);
+        return Response.json({ detail: "Invalid token" }, { status: 401 });
+      });
+
+      await expect(getCurrentUser()).rejects.toMatchObject({ status: 401 });
+      expect(paths).toEqual(["/api/0/users/me/"]);
     });
 
     test("validates against SentryUserSchema (rejects invalid)", async () => {
@@ -1003,7 +1077,7 @@ describe("events.ts", () => {
       const event = { eventID: "evt-abc", title: "Error" };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/organizations/test-org/issues/");
         expect(req.url).toContain("/events/latest/");
         return new Response(JSON.stringify(event), {
@@ -1022,7 +1096,7 @@ describe("events.ts", () => {
       const event = { eventID: "evt-abc" };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain(
           "/projects/test-org/test-project/events/evt-abc/",
         );
@@ -1041,7 +1115,7 @@ describe("events.ts", () => {
     test("returns attachment metadata from every API page", async () => {
       let requestCount = 0;
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain(
           "/projects/test-org/test-project/events/evt-abc/attachments/",
@@ -1152,14 +1226,14 @@ describe("traces.ts", () => {
       ];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain(
           "/organizations/test-org/trace/abc123def456/",
         );
         const url = new URL(req.url);
         expect(url.searchParams.get("timestamp")).toBe("1700000000");
-        expect(url.searchParams.get("limit")).toBe("10000");
-        expect(url.searchParams.get("project")).toBe("-1");
+        expect(url.searchParams.has("limit")).toBe(false);
+        expect(url.searchParams.has("project")).toBe(false);
         return new Response(JSON.stringify(spans), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1170,7 +1244,7 @@ describe("traces.ts", () => {
         timestamp: 1_700_000_000,
       });
       expect(result).toHaveLength(1);
-      expect(result[0]!.span_id).toBe("span-1");
+      expect(result[0].span_id).toBe("span-1");
     });
   });
 });
@@ -1193,7 +1267,7 @@ describe("repositories.ts", () => {
       ];
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/organizations/test-org/repos/");
         return new Response(JSON.stringify(repos), {
           status: 200,
@@ -1203,7 +1277,7 @@ describe("repositories.ts", () => {
 
       const result = await listRepositories("test-org");
       expect(result).toHaveLength(1);
-      expect(result[0]!.name).toBe("getsentry/sentry");
+      expect(result[0].name).toBe("getsentry/sentry");
     });
   });
 
@@ -1276,7 +1350,7 @@ describe("logs.ts", () => {
       };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/organizations/test-org/events/");
         const url = new URL(req.url);
         expect(url.searchParams.get("dataset")).toBe("logs");
@@ -1290,14 +1364,14 @@ describe("logs.ts", () => {
 
       const result = await listLogs("test-org", "my-project");
       expect(result).toHaveLength(1);
-      expect(result[0]!["sentry.item_id"]).toBe("log-1");
+      expect(result[0]["sentry.item_id"]).toBe("log-1");
     });
 
     test("uses numeric project ID via project param", async () => {
       const logsResponse = { data: [], meta: { fields: {} } };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         // Numeric ID should be passed as project param, not in query
         expect(url.searchParams.get("project")).toBe("42");
@@ -1319,7 +1393,7 @@ describe("logs.ts", () => {
       const logsResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         const query = url.searchParams.get("query") ?? "";
         expect(query).toContain("timestamp_precise:>1700000000");
@@ -1338,7 +1412,7 @@ describe("logs.ts", () => {
       const logsResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         const query = url.searchParams.get("query") ?? "";
         expect(query).toContain("severity:error");
@@ -1365,7 +1439,7 @@ describe("infrastructure.ts", () => {
   describe("apiRequest", () => {
     test("makes GET request to default base URL", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.url).toContain("/api/0/organizations/");
         expect(req.method).toBe("GET");
         return new Response(JSON.stringify([{ slug: "org1" }]), {
@@ -1398,6 +1472,27 @@ describe("infrastructure.ts", () => {
           "context",
         ),
       ).toThrow(authError);
+    });
+
+    test("keeps a TimeoutError and its hint, prefixed with the operation", () => {
+      const timeout = new TimeoutError(
+        "Request timed out after 30s.",
+        "If the problem persists, check https://status.sentry.io.",
+      );
+      let thrown: unknown;
+      try {
+        unwrapResult(
+          { data: undefined, error: timeout, response: undefined },
+          "Failed to create release",
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(TimeoutError);
+      expect((thrown as TimeoutError).message).toBe(
+        "Failed to create release: Request timed out after 30s.",
+      );
+      expect((thrown as TimeoutError).hint).toBe(timeout.hint);
     });
 
     test("returns data on success", () => {
@@ -1451,6 +1546,68 @@ describe("infrastructure.ts", () => {
         expect(apiErr.status).toBe(400);
         expect(apiErr.detail).toBe("Invalid query");
       }
+    });
+
+    test("keeps the error body's code next to its detail", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "Invalid quote at '*\"POST'",
+              code: "invalid_search_query",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        detail: "Invalid quote at '*\"POST'",
+        code: "invalid_search_query",
+      });
+    });
+
+    test("keeps the function and argument a 400 body rejected", async () => {
+      globalThis.fetch = mockFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              detail: "cart.total is invalid for parameter 1 in p75.",
+              code: "invalid_function_argument",
+              function: "p75",
+              argument: "cart.total",
+              hint: "Use cart.amount instead of cart.total.",
+            }),
+            {
+              status: 400,
+              statusText: "Bad Request",
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      );
+
+      const error = await apiRequestToRegion(
+        "https://sentry.io",
+        "/test/",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toMatchObject({
+        code: "invalid_function_argument",
+        functionArgument: {
+          function: "p75",
+          argument: "cart.total",
+          hint: "Use cart.amount instead of cart.total.",
+        },
+      });
     });
 
     test("JSON-stringifies error body without detail field", async () => {
@@ -1659,7 +1816,7 @@ describe("teams.ts (paginated)", () => {
 
     test("passes cursor and perPage options", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("cursor")).toBe("my-cursor");
         return new Response(JSON.stringify([]), {
@@ -1711,7 +1868,7 @@ describe("repositories.ts (paginated)", () => {
 
     test("passes cursor and perPage options", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("cursor")).toBe("repo-cursor");
         return new Response(JSON.stringify([]), {
@@ -1750,7 +1907,7 @@ describe("traces.ts (transactions)", () => {
       };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/events/");
         expect(url.searchParams.get("dataset")).toBe("spans");
@@ -1769,7 +1926,7 @@ describe("traces.ts (transactions)", () => {
         limit: 1,
       });
       expect(result.data).toHaveLength(1);
-      expect(result.data[0]!.transaction).toBe("GET /api/users");
+      expect(result.data[0].transaction).toBe("GET /api/users");
       expect(result.nextCursor).toContain("txn-next");
     });
 
@@ -1780,7 +1937,7 @@ describe("traces.ts (transactions)", () => {
       };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("project")).toBe("42");
         const query = url.searchParams.get("query");
@@ -1800,7 +1957,7 @@ describe("traces.ts (transactions)", () => {
       const txnResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("sort")).toBe("-span.duration");
         expect(url.searchParams.get("statsPeriod")).toBe("24h");
@@ -1820,7 +1977,7 @@ describe("traces.ts (transactions)", () => {
       const txnResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("sort")).toBe("-timestamp");
         return new Response(JSON.stringify(txnResponse), {
@@ -1856,7 +2013,7 @@ describe("logs.ts (detailed)", () => {
       };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         const query = url.searchParams.get("query") ?? "";
         expect(query).toContain("sentry.item_id:[log-1]");
@@ -1869,7 +2026,7 @@ describe("logs.ts (detailed)", () => {
 
       const result = await getLogs("test-org", "test-project", ["log-1"]);
       expect(result).toHaveLength(1);
-      expect(result[0]!["sentry.item_id"]).toBe("log-1");
+      expect(result[0]["sentry.item_id"]).toBe("log-1");
     });
 
     test("splits into batches when over API_MAX_PER_PAGE", async () => {
@@ -1878,7 +2035,7 @@ describe("logs.ts (detailed)", () => {
       let callCount = 0;
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
 
         // The SDK uses /events/ endpoint for logs
@@ -1930,11 +2087,12 @@ describe("logs.ts (detailed)", () => {
       };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.pathname).toContain("/organizations/test-org/trace-logs/");
-        expect(url.searchParams.get("traceId")).toBe("abc123def456");
+        expect(url.searchParams.getAll("traceId")).toEqual(["abc123def456"]);
         expect(url.searchParams.get("statsPeriod")).toBe("14d");
+        expect(url.searchParams.getAll("sort")).toEqual(["-timestamp"]);
         return new Response(JSON.stringify(traceLogsResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1943,14 +2101,14 @@ describe("logs.ts (detailed)", () => {
 
       const result = await listTraceLogs("test-org", "abc123def456");
       expect(result).toHaveLength(1);
-      expect(result[0]!.id).toBe("tlog-1");
+      expect(result[0].id).toBe("tlog-1");
     });
 
     test("passes custom statsPeriod and limit", async () => {
       const traceLogsResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("statsPeriod")).toBe("7d");
         expect(url.searchParams.get("per_page")).toBe("50");
@@ -1970,7 +2128,7 @@ describe("logs.ts (detailed)", () => {
       const traceLogsResponse = { data: [], meta: {} };
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         const url = new URL(req.url);
         expect(url.searchParams.get("query")).toBe("severity:error");
         return new Response(JSON.stringify(traceLogsResponse), {
@@ -2002,7 +2160,7 @@ describe("events.ts (findEventAcrossOrgs)", () => {
     };
 
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
 
       // listOrganizations → listOrganizationsPage (control silo)
       if (
@@ -2042,7 +2200,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
   describe("rawApiRequest", () => {
     test("makes GET request and returns status, headers, body", async () => {
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         expect(req.method).toBe("GET");
         expect(req.url).toContain("/api/0/organizations/");
         return new Response(JSON.stringify({ data: "test" }), {
@@ -2092,7 +2250,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
       let capturedContentType = "";
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         capturedContentType = req.headers.get("Content-Type") ?? "";
         capturedBody = await req.json();
         return new Response(JSON.stringify({}), {
@@ -2113,7 +2271,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
       let capturedBody = "";
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         capturedBody = await req.text();
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -2132,7 +2290,7 @@ describe("infrastructure.ts (rawApiRequest)", () => {
       let capturedAccept = "";
 
       globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input!, init);
+        const req = new Request(input, init);
         capturedAccept = req.headers.get("Accept") ?? "";
         return new Response(JSON.stringify({}), {
           status: 200,

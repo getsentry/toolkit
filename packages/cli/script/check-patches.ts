@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check Patched Dependency Versions
  *
@@ -33,7 +32,7 @@
  *   dropped the patch.
  *
  * Usage:
- *   tsx script/check-patches.ts
+ *   pnpm ts script/check-patches.ts
  *
  * Exit codes:
  *   0 - All patch versions match (or only non-critical warnings) and all
@@ -42,8 +41,11 @@
  *       (patch did not apply to the installed package)
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { logger } from "../src/lib/logger.js";
 
 /**
  * Read `patchedDependencies` from the workspace configuration.
@@ -82,6 +84,34 @@ function parsePatchedDependencies(source: string): Record<string, string> {
 }
 
 /**
+ * Resolvers rooted at this package first, then at every other workspace
+ * package, so a patch for a dependency only another package uses (such as
+ * `mcp-cloudflare`'s OAuth provider) still finds that package's copy.
+ */
+const resolvers = [
+  createRequire(import.meta.url),
+  ...["../../packages", "../../apps"].flatMap((dir) =>
+    readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => resolve(dir, entry.name, "package.json"))
+      .filter((manifest) => existsSync(manifest))
+      .map((manifest) => createRequire(manifest)),
+  ),
+];
+
+/** Resolve a package's main entry from the first workspace package that has it. */
+function resolveMainEntry(pkgName: string): string {
+  for (const resolver of resolvers) {
+    try {
+      return resolver.resolve(pkgName);
+    } catch {
+      // Not a dependency of this workspace package; try the next one.
+    }
+  }
+  throw new Error(`Cannot resolve ${pkgName}`);
+}
+
+/**
  * Resolve an installed package file to the copy THIS package actually uses.
  *
  * In a pnpm workspace, a transitive (unpatched) copy of a dependency can
@@ -89,7 +119,8 @@ function parsePatchedDependencies(source: string): Record<string, string> {
  * pulled in via another dependency). A naive `node_modules/<pkg>` path may
  * point at the wrong copy. Using `require.resolve` rooted at this package
  * respects pnpm's per-package resolution and finds the patched copy the
- * `sentry` package links to.
+ * `sentry` package links to. Packages the CLI does not depend on resolve
+ * from the workspace package that does.
  *
  * We resolve the package's MAIN entry (not its `package.json`, which many
  * packages exclude from their `exports` map) and then derive the package root
@@ -105,14 +136,7 @@ function parsePatchedDependencies(source: string): Record<string, string> {
  * @param subpath - Package subpath, e.g. `@sentry/core/build/cjs/index.js`.
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
-const require_ = createRequire(import.meta.url);
-const mastraRequire = createRequire(require_.resolve("@mastra/client-js"));
-const uiUtilsRequire = createRequire(mastraRequire.resolve("@ai-sdk/ui-utils"));
-
-function resolvePackageFile(
-  subpath: string,
-  resolver: NodeJS.Require = require_,
-): string | null {
+function resolvePackageFile(subpath: string): string | null {
   const parts = subpath.split("/");
   const pkgName = subpath.startsWith("@")
     ? `${parts[0]}/${parts[1]}`
@@ -120,7 +144,7 @@ function resolvePackageFile(
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
-    const mainEntry = resolver.resolve(pkgName);
+    const mainEntry = resolveMainEntry(pkgName);
     // The install dir is "<...>/node_modules/<pkgName>". Anchor on the last
     // "node_modules/" boundary, then take the first "<pkgName>/" after it so a
     // self-vendored nested copy can't shift the truncation point.
@@ -180,9 +204,7 @@ for (const [key, patchPath] of Object.entries(patches)) {
   const patchVersion = versionMatch[1];
 
   // Resolve installed version
-  const resolver =
-    key === "@ai-sdk/provider-utils@2.2.8" ? uiUtilsRequire : require_;
-  const pkgJsonPath = resolvePackageFile(`${name}/package.json`, resolver);
+  const pkgJsonPath = resolvePackageFile(`${name}/package.json`);
   try {
     if (!pkgJsonPath) {
       throw new Error("unresolved");
@@ -328,84 +350,36 @@ for (const assertion of CONTENT_ASSERTIONS) {
   }
 }
 
-try {
-  const { createStatusCodeErrorResponseHandler } = uiUtilsRequire(
-    "@ai-sdk/provider-utils",
-  ) as {
-    createStatusCodeErrorResponseHandler: () => (options: {
-      response: Response;
-      url: string;
-      requestBodyValues: unknown;
-    }) => Promise<unknown>;
-  };
-  let cancelled = false;
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      cancel() {
-        cancelled = true;
-      },
-    }),
-    {
-      status: 500,
-      headers: { "content-length": String(2 * 1024 * 1024 * 1024 + 1) },
-    },
-  );
-
-  await createStatusCodeErrorResponseHandler()({
-    response,
-    url: "https://example.invalid/oversized-response",
-    requestBodyValues: {},
-  }).then(
-    () => {
-      errors.push(
-        "  @ai-sdk/provider-utils: oversized response was accepted (resource-limit patch not applied)",
-      );
-    },
-    () => {
-      if (!cancelled) {
-        errors.push(
-          "  @ai-sdk/provider-utils: oversized response body was not cancelled",
-        );
-      }
-    },
-  );
-} catch (error) {
-  errors.push(
-    `  @ai-sdk/provider-utils: could not verify response-size limit (${String(error)})`,
-  );
-}
-
 // Emit GitHub Actions annotations for CI visibility
 const isCI = !!process.env.CI;
 for (const w of warnings) {
   if (isCI) {
+    // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.
     console.log(`::warning::Patch version mismatch:${w.trim()}`);
   } else {
-    console.warn(`⚠ ${w}`);
+    logger.warn(w.trim());
   }
 }
 
 if (errors.length > 0) {
-  console.error("✗ Patch problems detected:");
-  console.error("");
-  for (const e of errors) {
-    console.error(e);
-  }
-  console.error("");
-  console.error(
-    "A missing package is fixed by `pnpm install`. A content-assertion failure",
+  logger.error(
+    [
+      "Patch problems detected:",
+      "",
+      ...errors,
+      "",
+      "A missing package is fixed by `pnpm install`. A content-assertion failure",
+      "means the patch no longer applies (likely a dependency bump) — regenerate",
+      "it with `pnpm patch <name>` and re-commit.",
+    ].join("\n"),
   );
-  console.error(
-    "means the patch no longer applies (likely a dependency bump) — regenerate",
-  );
-  console.error("it with `pnpm patch <name>` and re-commit.");
   process.exit(1);
 }
 
 if (warnings.length === 0) {
-  console.log("✓ All patched dependency versions match installed versions");
+  logger.success("All patched dependency versions match installed versions");
 } else {
-  console.log(
-    `✓ Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
+  logger.success(
+    `Patches applied (${warnings.length} version mismatch warning(s) — consider regenerating)`,
   );
 }

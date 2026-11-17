@@ -175,7 +175,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows count when results exceed limit", async () => {
     const manyTeams = Array.from({ length: 10 }, (_, i) => ({
-      ...sampleTeams[0]!,
+      ...sampleTeams[0],
       id: String(i),
       slug: `team-${i}`,
       name: `Team ${i}`,

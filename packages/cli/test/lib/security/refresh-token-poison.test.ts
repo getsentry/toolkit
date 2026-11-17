@@ -34,10 +34,10 @@ describe("CVE defense-in-depth: refresh token", () => {
     // Intercept fetch to detect any outbound request attempt.
     fetchCalls = [];
     originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
       fetchCalls.push(extractFetchUrl(input));
       throw new Error("test: unexpected fetch");
-    }) as typeof fetch;
+    };
   });
 
   afterEach(() => {
@@ -101,10 +101,10 @@ describe("CVE defense-in-depth: refresh token", () => {
       delete process.env.SENTRY_HOST;
       delete process.env.SENTRY_URL;
       const credentialHost = "https://sentry.example.com:8443";
-      globalThis.fetch = (async (input: RequestInfo | URL) => {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
         fetchCalls.push(extractFetchUrl(input));
         throw failure;
-      }) as typeof fetch;
+      };
 
       await expect(
         refreshAccessToken("fake-refresh-token", { credentialHost }),

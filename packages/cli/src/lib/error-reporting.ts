@@ -54,7 +54,6 @@ import {
   TimeoutError,
   UpgradeError,
   ValidationError,
-  WizardError,
 } from "./errors.js";
 import { isSaaS } from "./sentry-web-urls.js";
 
@@ -74,7 +73,23 @@ type SilenceReason =
   | "process_exit"
   | "user_validation"
   | "user_input_error"
-  | "seer_unavailable_self_hosted";
+  | "seer_unavailable_self_hosted"
+  | "unexpected_response_self_hosted";
+
+/**
+ * A raw network TypeError, or the ApiError(status 0) that SDK-backed calls
+ * wrap it in (original kept on `cause`, CLI-29S).
+ */
+function isRawOrWrappedNetworkError(error: unknown): boolean {
+  if (isNetworkError(error)) {
+    return true;
+  }
+  return (
+    error instanceof ApiError &&
+    error.status === 0 &&
+    isNetworkError(error.cause)
+  );
+}
 
 /**
  * Classify whether an error should be silenced.
@@ -93,7 +108,7 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // offline" report, so drop it — same rationale as EPIPE/EBADF OS noise in
   // `beforeSend`. Note: TLS cert errors are wrapped as
   // ApiError(status 0), NOT matched here, so they stay captured/actionable.
-  if (isNetworkError(error)) {
+  if (isRawOrWrappedNetworkError(error)) {
     return "network_error";
   }
   // A ContextError means the user omitted a required value (no org/project
@@ -120,6 +135,29 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (
     error instanceof ValidationError &&
     error.field === "project.ambiguous_org"
+  ) {
+    return "user_validation";
+  }
+  // A ValidationError with field "repository" or "commit.repository" means
+  // `release set-commits` could not match a Sentry repository: the build has
+  // no git remote or CI repository variables (Vercel preview, Docker without
+  // .git), or the org has not added the repository (CLI-17R, CLI-4G3). The
+  // org's setup has to change, and the user sees how to fix it. The
+  // `cli.error.silenced` metric keeps the volume, split by `validation_field`.
+  if (
+    error instanceof ValidationError &&
+    (error.field === "repository" || error.field === "commit.repository")
+  ) {
+    return "user_validation";
+  }
+  // A ValidationError with field "release.version" or "release.projects"
+  // means Sentry rejected the version the user passed to `release create`
+  // (`latest`, a name with a `/`), or the release already exists for projects
+  // the auth token cannot access (CLI-2G3). The user sees which value to
+  // change; the metric keeps the volume, split by `validation_field`.
+  if (
+    error instanceof ValidationError &&
+    (error.field === "release.version" || error.field === "release.projects")
   ) {
     return "user_validation";
   }
@@ -151,6 +189,20 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof SeerError && !isSaaS()) {
     return "seer_unavailable_self_hosted";
   }
+  // A 2xx ApiError means the server answered but the body is not what Sentry
+  // sends (a non-array list, a non-JSON body). Against a custom SENTRY_URL
+  // that is a mock server, proxy, or non-Sentry endpoint: the user's setup,
+  // not a CLI bug. Nearly all of CLI-3DE is CI runs against such a URL. On
+  // SaaS it stays captured, since there it means the CLI's view of the API is
+  // wrong. The metric keeps the self-hosted volume, split by `api_status`.
+  if (
+    error instanceof ApiError &&
+    error.status >= 200 &&
+    error.status < 300 &&
+    !isSaaS()
+  ) {
+    return "unexpected_response_self_hosted";
+  }
   // A child process launched by `sentry local run` or `sentry monitor run`
   // that exits with a non-zero code throws `CliError("Process exited with
   // code N")`. These are expected user-script failures, not CLI bugs — no
@@ -162,10 +214,11 @@ export function classifySilenced(error: unknown): SilenceReason | null {
     return "process_exit";
   }
   // A 400 (Bad Request) signals a malformed request the CLI built — a code
-  // defect — so it is always captured. A user's unparseable `--query` is NOT a
-  // 400 here: it is converted to a ValidationError at the command boundary
-  // (toSearchQueryError) so the user gets an actionable message and the bug
-  // signal for CLI-authored bad queries is preserved (CLI-FA).
+  // defect — so it is always captured. 400s caused by user input are
+  // converted to CLI errors where the request is made, so the user gets an
+  // actionable message and the bug signal for the rest is preserved: an
+  // unparseable `--query` (toSearchQueryError, CLI-FA), or a project slug or
+  // release version Sentry rejects (CLI-2G3, CLI-344).
   return null;
 }
 
@@ -177,12 +230,18 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
   };
   if (error instanceof ApiError) {
     attributes.api_status = error.status;
+    if (error.denialReason) {
+      attributes.api_denial_reason = error.denialReason;
+    }
   }
   if (error instanceof AuthError) {
     attributes.auth_reason = error.reason;
   }
   if (error instanceof SeerError) {
     attributes.seer_reason = error.reason;
+  }
+  if (error instanceof ValidationError && error.field) {
+    attributes.validation_field = error.field;
   }
 
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
@@ -193,14 +252,17 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
   }
 
   // Structured log for user API errors — `detail` is often the most actionable
-  // field and is searchable in Sentry Logs.
+  // field and is searchable in Sentry Logs. A 401/403 logs its denial reason
+  // instead: its detail is the CLI's own guidance, which can name orgs.
   if (reason === "api_user_error" && error instanceof ApiError) {
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       Sentry.logger.info("cli.api_error_silenced", {
         status: error.status,
         endpoint: error.endpoint,
-        detail: error.detail,
+        ...(error.denialReason
+          ? { denial_reason: error.denialReason }
+          : { detail: error.detail }),
       });
     } catch {
       // Logger may not be initialized — ignore.
@@ -223,13 +285,18 @@ const ENDPOINT_PATTERNS: [RegExp, string][] = [
   [/\/teams\/[^/]+\/[^/]+/, "/teams/{org}/{team}"],
   [/\/dashboards\/[^/]+/, "/dashboards/{id}"],
   [/\/customers\/[^/]+/, "/customers/{org}"],
+  [/\/shortids\/[^/]+/, "/shortids/{id}"],
+  [/\/monitors\/[^/]+/, "/monitors/{monitor}"],
 ];
 
 /**
  * Strip remaining bare numeric segments (e.g. /12345/) but preserve
- * the API version prefix /0/ which is always the second segment.
+ * the API version in /api/0/, which may follow an install prefix.
  */
-const BARE_NUMERIC_SEGMENT_RE = /(?<=\/api\/0\/.*)\/\d+(?=\/|$)/g;
+const BARE_NUMERIC_SEGMENT_RE = /(?<!\/api)\/\d+(?=\/|$)/g;
+
+/** Scheme and host of an absolute URL. */
+const URL_ORIGIN_RE = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;
 
 /**
  * Normalize an API endpoint path by parameterizing variable segments.
@@ -238,15 +305,23 @@ const BARE_NUMERIC_SEGMENT_RE = /(?<=\/api\/0\/.*)\/\d+(?=\/|$)/g;
  * entity identifiers with placeholders so that server-side fingerprint
  * rules can sub-group `ApiError` by endpoint shape rather than exact path.
  *
+ * Accepts a path with or without a leading slash, or a full URL, whose
+ * origin is kept. Drops the query string and fragment.
+ *
  * `"/api/0/projects/my-org/my-project/events/abc123/"` →
  * `"/api/0/projects/{org}/{project}/events/{id}/"`
  */
 export function normalizeEndpoint(endpoint: string): string {
-  let result = endpoint;
+  const origin = URL_ORIGIN_RE.exec(endpoint)?.[0] ?? "";
+  const path = endpoint.slice(origin.length).split(/[?#]/, 1)[0] ?? "";
+  // The patterns match on a leading slash, which relative paths lack.
+  const hasLeadingSlash = origin !== "" || path.startsWith("/");
+  let result = path.startsWith("/") ? path : `/${path}`;
   for (const [pattern, replacement] of ENDPOINT_PATTERNS) {
     result = result.replace(pattern, replacement);
   }
-  return result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
+  result = result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
+  return origin + (hasLeadingSlash ? result : result.slice(1));
 }
 
 /**
@@ -342,9 +417,6 @@ function deriveErrorKind(error: Error): string | undefined {
   if (error instanceof HostScopeError) {
     return "host_scope";
   }
-  if (error instanceof WizardError) {
-    return "wizard";
-  }
   // Catch-all for bare CliError — must be checked AFTER all subclasses
   // because instanceof matches the entire prototype chain.
   // ConfigError and OutputError intentionally fall through here:
@@ -396,7 +468,7 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
   if (error instanceof ApiError) {
     scope.setContext("api_error", {
       status: error.status,
-      endpoint: error.endpoint,
+      endpoint: error.endpoint && normalizeEndpoint(error.endpoint),
       detail: error.detail,
     });
   } else if (error instanceof ContextError) {
@@ -422,6 +494,13 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Call-site details added to a captured event. */
+export type ReportContext = {
+  level?: Sentry.SeverityLevel;
+  tags?: Record<string, string>;
+  extra?: Record<string, unknown>;
+};
+
 /**
  * Report an error to Sentry without rethrowing.
  *
@@ -430,11 +509,15 @@ function setCliErrorContext(scope: Sentry.Scope, error: unknown): void {
  * log is not a substitute: users do not run `--verbose`, so swallowed
  * unexpected failures must become Sentry issues.
  *
+ * This is the only place that calls `captureException`; the
+ * `sentry-cli/no-raw-capture-exception` lint rule enforces it.
+ *
  * - Silenced errors (network, expected auth, 4xx) emit a metric and return
  *   without calling `captureException`.
- * - Captured errors get grouping tags + structured context on a fresh scope.
+ * - Captured errors get grouping tags + structured context on a fresh scope,
+ *   plus the caller's `context`.
  */
-export function reportCliError(error: unknown): void {
+export function reportCliError(error: unknown, context?: ReportContext): void {
   const silenced = classifySilenced(error);
   if (silenced) {
     recordSilencedError(error, silenced);
@@ -444,7 +527,7 @@ export function reportCliError(error: unknown): void {
   Sentry.withScope((scope) => {
     setGroupingTags(scope, error);
     setCliErrorContext(scope, error);
-    Sentry.captureException(error);
+    Sentry.captureException(error, context);
   });
 }
 
@@ -540,7 +623,7 @@ export function enrichEventWithGroupingTags(
   event.tags["cli_error.class"] = exc.type;
 
   // Set kind from exception message prefix so server-side rules can group
-  // non-CliError exceptions (TypeError, Error, WizardCancelledError, etc.)
+  // non-CliError exceptions (TypeError, Error, etc.)
   // that bypass reportCliError (uncaught exceptions, unhandled rejections).
   if (exc.value) {
     event.tags["cli_error.kind"] = extractMessagePrefix(exc.value, 4);

@@ -63,6 +63,7 @@ describe("create_uptime_monitor", () => {
         intervalSeconds: 300,
         timeoutMs: 8000,
         method: "GET",
+        headers: [["Accept", "application/json"]],
         environment: "production",
       },
       context,
@@ -74,6 +75,7 @@ describe("create_uptime_monitor", () => {
       intervalSeconds: 300,
       timeoutMs: 8000,
       method: "GET",
+      headers: [["Accept", "application/json"]],
       environment: "production",
     });
     expect(requestBody).not.toHaveProperty("interval_seconds");
@@ -106,6 +108,15 @@ describe("create_uptime_monitor", () => {
         },
       }
     `);
+  });
+
+  it("accepts only [name, value] header pairs in the input schema", () => {
+    const { headers } = createUptimeMonitor.inputSchema;
+    expect(headers.safeParse([["Accept", "application/json"]]).success).toBe(
+      true,
+    );
+    expect(headers.safeParse([["Accept"]]).success).toBe(false);
+    expect(headers.safeParse([["Accept", "a", "b"]]).success).toBe(false);
   });
 
   it("rejects empty owner in the input schema", () => {

@@ -97,7 +97,7 @@ describe("adapter query params", () => {
   test("event adapter queries the errors dataset with project scope", async () => {
     let queryUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return eventsResponse([
         {
@@ -130,7 +130,7 @@ describe("adapter query params", () => {
   test("trace adapter queries the spans dataset and extracts trace field", async () => {
     let queryUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return eventsResponse([
         {
@@ -165,7 +165,7 @@ describe("adapter query params", () => {
     let queryUrl = "";
     const traceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return eventsResponse([
         {
@@ -191,7 +191,7 @@ describe("adapter query params", () => {
   test("log adapter queries the logs dataset and extracts sentry.item_id", async () => {
     let queryUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return new Response(
         JSON.stringify({
@@ -238,7 +238,7 @@ describe("adapter query params", () => {
   test("ctx.period override replaces the default scan window", async () => {
     let queryUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return eventsResponse([]);
     });
@@ -264,7 +264,7 @@ describe("recoverHexId trace redirect via findTraceBySpanId", () => {
     const parentTrace = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     let queryUrl = "";
     globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input!, init);
+      const req = new Request(input, init);
       queryUrl = req.url;
       return eventsResponse([
         {

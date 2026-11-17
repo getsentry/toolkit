@@ -8,6 +8,7 @@ import catalogTools from "../catalog";
 import createProject from "../catalog/create-project";
 import removeTeamFromProject from "../catalog/remove-team-from-project";
 import updateProject from "../catalog/update-project";
+import { EXPOSE_ALL_TOOLS } from "../exposure";
 import {
   getFilteredInputSchema,
   getToolsForMcpRegistration,
@@ -39,7 +40,7 @@ function getSearchableToolNames(context: ServerContext): string[] {
 }
 
 describe("catalog availability", () => {
-  it("keeps project-management tools skill-gated and catalog-only", () => {
+  it("keeps project-management tools skill-gated and direct only with EXPOSE_ALL_TOOLS", () => {
     const inspectContext = getServerContext({
       grantedSkills: new Set<Skill>(["inspect"]),
     });
@@ -62,14 +63,17 @@ describe("catalog availability", () => {
       useDefaultSurfacePolicy: true,
     }).map(({ tool }) => tool.name);
 
-    expect(directToolNames).not.toEqual(
-      expect.arrayContaining([
-        "create_project",
-        "update_project",
-        "add_team_to_project",
-        "remove_team_from_project",
-      ]),
-    );
+    const projectManagementToolNames = expect.arrayContaining([
+      "create_project",
+      "update_project",
+      "add_team_to_project",
+      "remove_team_from_project",
+    ]);
+    if (EXPOSE_ALL_TOOLS) {
+      expect(directToolNames).toEqual(projectManagementToolNames);
+    } else {
+      expect(directToolNames).not.toEqual(projectManagementToolNames);
+    }
     expect(getSearchableToolNames(projectManagementContext)).toEqual(
       expect.arrayContaining([
         "create_project",

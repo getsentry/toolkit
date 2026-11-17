@@ -41,15 +41,15 @@ export const listCommand = buildCommand({
     examples: [
       {
         description: "Search the documentation index",
-        command: 'sentry docs list "source maps"',
+        run: 'docs list "source maps"',
       },
       {
         description: "Limit the number of results",
-        command: 'sentry docs list "session replay privacy" --limit 5',
+        run: 'docs list "session replay privacy" --limit 5',
       },
       {
         description: "Output as JSON",
-        command: 'sentry docs list "source maps" --json',
+        run: 'docs list "source maps" --json',
       },
     ],
   },

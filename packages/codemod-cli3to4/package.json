@@ -1,0 +1,16 @@
+{
+  "name": "@sentry/cli3to4",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codemod that migrates @sentry/cli v3 SDK usage to the v4 sentry package",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "pnpm dlx codemod@1.12.7 jssg test -l typescript ./scripts/codemod.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "1.6.3",
+    "typescript": "catalog:"
+  }
+}

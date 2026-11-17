@@ -1,3 +1,4 @@
+import { sentry } from "../../lib/app-identity.js";
 import {
   choiceParser,
   parseBindHost,
@@ -25,10 +26,13 @@ import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
-import { Hono } from "hono";
+  ingestReceiverEnvelope,
+  readReceiverBody,
+  receiverEnvelopeId,
+  type ReceiverEnvelope,
+  type ReceiverBuffer,
+} from "./receiver-ingest.js";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
@@ -72,7 +76,7 @@ export const DEFAULT_PORT = 8969;
  *
  * Spotlight clients (the desktop app, the browser overlay) probe `/health` and
  * treat a sidecar as present only when this exact header value comes back —
- * see `isSidecarRunning()` in `@spotlightjs/spotlight`. Without it they assume
+ * without it they assume
  * no sidecar is running, try to start their own on the same port, fail with
  * EADDRINUSE, and report "not connected" even though this server is happily
  * receiving envelopes.
@@ -215,23 +219,26 @@ export function buildSSEHandler(
   useBase64 = false,
 ) {
   const base64Indicator = useBase64 ? ";base64" : "";
-  return (container: {
-    getParsedEnvelope: () => {
-      envelope: [Record<string, unknown>, unknown[]];
-    } | null;
-    getContentType: () => string;
-  }) => {
+  return (container: ReceiverEnvelope) => {
     try {
+      const envelopeId = receiverEnvelopeId(container);
       const parsed = container.getParsedEnvelope();
-      if (!parsed) {
-        return;
+      let data: string;
+      try {
+        data = parsed
+          ? JSON.stringify(parsed.envelope)
+          : container.getData().toString("utf8");
+      } catch {
+        logger.debug(
+          "Local receiver is streaming raw data because decoded JSON could not serialize.",
+        );
+        data = container.getData().toString("utf8");
       }
-      const envelopeId = spotlightEnvelopeId(parsed.envelope[0]);
       stream
         .writeSSE({
           id: envelopeId || undefined,
           event: `${container.getContentType()}${base64Indicator}`,
-          data: JSON.stringify(parsed.envelope),
+          data,
         })
         .catch((err: unknown) => {
           logger.debug(
@@ -249,7 +256,7 @@ export function buildSSEHandler(
 }
 
 export function buildApp(
-  spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
+  buffer: ReceiverBuffer,
   { uiActions = false, retention }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
@@ -367,7 +374,7 @@ export function buildApp(
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      retention.resize(value);
+      await retention.resize(value);
       return c.json(retention.getSettings());
     } catch (error) {
       if (error instanceof RetentionLimitError)
@@ -380,7 +387,7 @@ export function buildApp(
     if (!uiActions) {
       return c.body(null, 403);
     }
-    spotlightBuffer.clear();
+    buffer.clear();
     return c.body(null, 204);
   });
 
@@ -389,7 +396,7 @@ export function buildApp(
       return c.body(null, 403);
     }
     try {
-      const container = spotlightBuffer.read({
+      const container = buffer.read({
         envelopeId: c.req.param("id"),
       })[0];
       if (!container) {
@@ -406,23 +413,9 @@ export function buildApp(
     }
   });
 
-  const ingest = async (c: {
-    req: {
-      arrayBuffer: () => Promise<ArrayBuffer>;
-      header: (name: string) => string | undefined;
-      query: (name: string) => string | undefined;
-    };
-    body: (data: null, status: number) => Response;
-  }) => {
-    const contentLength = Number(c.req.header("content-length") ?? 0);
-    if (contentLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const arrayBuf = await c.req.arrayBuffer();
-    if (arrayBuf.byteLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const body = Buffer.from(arrayBuf);
+  const ingest = async (c: Context) => {
+    const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+    if (typeof body === "number") return c.body(null, body);
     // Browser SDKs using sendBeacon() set Content-Type to text/plain to
     // avoid CORS preflight. Detect this via the sentry_client query param
     // and override to the canonical Sentry envelope content type.
@@ -433,25 +426,18 @@ export function buildApp(
     ) {
       contentType = SENTRY_CONTENT_TYPE;
     }
-    const rawEncoding = c.req.header("content-encoding");
-    const contentEncoding = (
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined
-    ) as "gzip" | "deflate" | "br" | undefined;
+    const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    pushToSpotlightBuffer({
-      spotlightBuffer,
+    const status = await ingestReceiverEnvelope(buffer, {
       body,
       encoding: contentEncoding,
       contentType,
       userAgent,
     });
 
-    return c.body(null, 204);
+    if (status === 503) c.header("Retry-After", "1");
+    return c.body(null, status);
   };
 
   app.post("/stream", ingest);
@@ -492,11 +478,11 @@ export function buildApp(
           : () => {};
       if (retention && c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
-      const readerId = spotlightBuffer.subscribe(onEnvelope, lastEventId);
+      const readerId = buffer.subscribe(onEnvelope, lastEventId);
 
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
-          spotlightBuffer.unsubscribe(readerId);
+          buffer.unsubscribe(readerId);
           unsubscribeSettings();
           resolve();
         });
@@ -521,6 +507,7 @@ function waitForShutdown(server: Server): Promise<void> {
 
     function shutdown(signal: NodeJS.Signals) {
       if (shuttingDown) {
+        // oxlint-disable-next-line sentry-cli/no-process-exit -- a second SIGINT/SIGTERM during shutdown.
         process.exit(0);
       }
       shuttingDown = true;
@@ -601,6 +588,36 @@ export function tryListen(
 }
 
 /**
+ * Ask `${url}/health` who holds the port: `none` for a transport failure
+ * (connection refused, timeout), `daemon` for a Sentry Local daemon, and
+ * `other` for any other HTTP reply, including an error status.
+ */
+export async function probeLocalHealth(
+  url: string,
+  timeoutMs: number,
+): Promise<"none" | "daemon" | "other"> {
+  let res: Response;
+  try {
+    res = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    logger.debug(
+      `No existing server at ${url}`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return "none";
+  }
+  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
+  if (!res.ok) {
+    logger.debug(
+      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
+    );
+  }
+  return "other";
+}
+
+/**
  * Check whether something is already serving on the given URL.
  *
  * Any HTTP reply — including an error status — means the port is taken, so
@@ -615,28 +632,14 @@ export function tryListen(
  * protocol, {@link consumeSSE} reports that when the stream fails to open.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
-  let res: Response;
-  try {
-    res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
-  } catch (err) {
-    logger.debug(
-      `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
-  }
-  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") {
+  const holder = await probeLocalHealth(url, 2000);
+  if (holder === "daemon") {
     throw new ValidationError(
       "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
       "session",
     );
   }
-  if (!res.ok) {
-    logger.debug(
-      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
-    );
-  }
-  return true;
+  return holder === "other";
 }
 
 /** Apply only an explicitly requested limit when attaching to an existing receiver. */
@@ -1023,33 +1026,33 @@ export const serverCommand = buildCommand({
     examples: [
       {
         description: "Start the server and tail events",
-        command: "sentry local",
+        run: "local",
       },
-      { description: "Use a custom port", command: "sentry local --port 9000" },
+      { description: "Use a custom port", run: "local --port 9000" },
       {
         description:
           "Receive into a daemon session that outlives this terminal",
-        command: "sentry local serve --session worker",
+        run: "local serve --session worker",
       },
       {
         description: "Only show errors and logs (filter out transactions)",
-        command: "sentry local -f error -f log",
+        run: "local -f error -f log",
       },
       {
         description: "Only show AI/agent spans",
-        command: "sentry local -f ai",
+        run: "local -f ai",
       },
       {
         description: "Suppress per-envelope tail output",
-        command: "sentry local --quiet",
+        run: "local --quiet",
       },
       {
         description: "Stream NDJSON for scripts and agents",
-        command: "sentry local --format json",
+        run: "local --format json",
       },
       {
         description: "Start the server and open the Sentry Local UI",
-        command: "sentry local --open",
+        run: "local --open",
       },
     ],
   },
@@ -1135,7 +1138,7 @@ export const serverCommand = buildCommand({
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
-        `  Capabilities: sentry local session view ${session.id} --json`,
+        `  Capabilities: ${sentry`local session view ${session.id} --json`}`,
       );
       logger.info("Press Ctrl-C to stop.");
       await openLocalUiIfRequested(
@@ -1246,7 +1249,7 @@ export const serverCommand = buildCommand({
       `  Set ${bold("SENTRY_SPOTLIGHT")}=${listenUrl}/stream in your app`,
     );
     logger.info(
-      `  Or run: ${bold(`sentry local run -p ${boundPort} -- <your-command>`)}`,
+      `  Or run: ${bold(sentry`local run -p ${boundPort} -- <your-command>`)}`,
     );
     if (activeFilters.size > 0) {
       logger.info(`  Filtering: ${[...activeFilters].join(", ")}`);

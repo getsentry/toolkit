@@ -4,7 +4,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { useTestConfigDir } from "../../helpers.js";
 import {
   claimDaemonOwnership,
+  getRunningLocalDaemon,
+  LOCAL_DAEMON_STATE_FILENAME,
   waitForLocalDaemonShutdown,
+  writeLocalDaemonState,
 } from "../../../src/commands/local/daemon.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -34,6 +37,37 @@ describe("Local daemon ownership", () => {
       await release();
     },
   );
+
+  test("treats discovery that a shutting-down daemon removes during stale recovery as released", async () => {
+    const directory = getConfigDir();
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, "local-control-plane.owner"),
+      String(process.pid),
+    );
+    await writeLocalDaemonState(directory, {
+      host: "127.0.0.1",
+      port: 9,
+      pid: process.pid,
+      token: "stale",
+      version: 1,
+    });
+    const refused = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(refused));
+    vi.mocked(stat).mockImplementationOnce(async () => {
+      await rm(join(directory, LOCAL_DAEMON_STATE_FILENAME));
+      throw Object.assign(new Error("discovery removed"), { code: "ENOENT" });
+    });
+    try {
+      await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   test("claims an invalid owner that expires on the last recovery inspection", async () => {
     const fs =

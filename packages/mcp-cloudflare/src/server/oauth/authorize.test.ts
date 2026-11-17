@@ -14,7 +14,7 @@ const mockOAuthProvider = {
 };
 
 // Create test app with mocked environment
-function createTestApp(env: Partial<Env> = {}) {
+function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
   app.route("/oauth", oauthRoute);
   return app;
@@ -77,7 +77,7 @@ async function createSkillPreferenceCookie(
       method: "POST",
       body: formData,
     }),
-    testEnv as Env,
+    testEnv,
   );
   expect(response.status).toBe(302);
 
@@ -100,7 +100,7 @@ describe("oauth authorize routes", () => {
       SENTRY_CLIENT_SECRET: "test-client-secret",
       SENTRY_HOST: "sentry.io",
     };
-    app = createTestApp(testEnv);
+    app = createTestApp();
   });
 
   describe("GET /oauth/authorize", () => {
@@ -121,12 +121,67 @@ describe("oauth authorize routes", () => {
       const request = new Request("http://localhost/oauth/authorize", {
         method: "GET",
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain("<form");
       expect(html).toContain('name="state"');
     });
+
+    it.each([
+      [undefined, null],
+      ["none", null],
+      ["select_account", "1"],
+      ["consent", "1"],
+      ["login", "1"],
+      ["login consent", "1"],
+    ])(
+      "maps prompt=%s to Sentry force_prompt=%s",
+      async (prompt, forcePrompt) => {
+        mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "orig",
+        });
+        mockOAuthProvider.lookupClient.mockResolvedValue({
+          clientId: "test-client",
+          clientName: "Test Client",
+          redirectUris: ["https://example.com/callback"],
+          tokenEndpointAuthMethod: "client_secret_basic",
+        });
+
+        const url = new URL("http://localhost/oauth/authorize");
+        if (prompt) url.searchParams.set("prompt", prompt);
+        const page = await app.fetch(new Request(url), testEnv);
+        expect(page.status).toBe(200);
+        const html = await page.text();
+        expect(html).not.toContain("switch_account");
+        const encodedState = html.match(/name="state" value="([^"]+)"/)?.[1];
+        expect(encodedState).toBeTruthy();
+
+        const formData = new FormData();
+        formData.append("state", encodedState!);
+        formData.append("skill", "triage");
+        const response = await app.fetch(
+          new Request("http://localhost/oauth/authorize", {
+            method: "POST",
+            body: formData,
+          }),
+          testEnv,
+        );
+
+        expect(response.status).toBe(302);
+        const redirectUrl = new URL(response.headers.get("location")!);
+        expect(redirectUrl.hostname).toBe("sentry.io");
+        expect(redirectUrl.searchParams.get("force_prompt")).toBe(forcePrompt);
+        const upstreamState = await verifyAndParseState(
+          redirectUrl.searchParams.get("state")!,
+          testEnv.COOKIE_SECRET!,
+        );
+        expect(upstreamState.req).not.toHaveProperty("forcePrompt");
+      },
+    );
 
     it("renders only the requested redirect URI when the client has multiple registered URIs", async () => {
       mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
@@ -149,7 +204,7 @@ describe("oauth authorize routes", () => {
       const request = new Request("http://localhost/oauth/authorize", {
         method: "GET",
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(200);
       const html = await response.text();
@@ -175,7 +230,7 @@ describe("oauth authorize routes", () => {
       const request = new Request("http://localhost/oauth/authorize", {
         method: "GET",
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(400);
       expect(await response.text()).toBe("client_id is required");
@@ -193,7 +248,7 @@ describe("oauth authorize routes", () => {
       const request = new Request("http://localhost/oauth/authorize", {
         method: "GET",
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(302);
       const location = new URL(response.headers.get("location")!);
@@ -221,7 +276,7 @@ describe("oauth authorize routes", () => {
       const request = new Request("http://localhost/oauth/authorize", {
         method: "GET",
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(400);
       expect(await response.text()).toBe("Invalid redirect URI");
@@ -253,7 +308,7 @@ describe("oauth authorize routes", () => {
           method: "GET",
           headers: { Cookie: preferenceCookie },
         }),
-        testEnv as Env,
+        testEnv,
       );
       const html = await response.text();
 
@@ -295,7 +350,7 @@ describe("oauth authorize routes", () => {
           method: "GET",
           headers: { Cookie: preferenceCookie },
         }),
-        testEnv as Env,
+        testEnv,
       );
       const html = await response.text();
 
@@ -331,7 +386,7 @@ describe("oauth authorize routes", () => {
             )}`,
           },
         }),
-        testEnv as Env,
+        testEnv,
       );
       const html = await response.text();
 
@@ -373,7 +428,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(400);
       expect(await response.text()).toBe("Invalid redirect URI");
@@ -410,7 +465,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(302);
     });
@@ -439,7 +494,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       expect(response.status).toBe(302);
       const location = response.headers.get("location");
       expect(location).toBeTruthy();
@@ -503,7 +558,7 @@ describe("oauth authorize routes", () => {
           headers: { Cookie: preferenceCookie },
           body: formData,
         }),
-        testEnv as Env,
+        testEnv,
       );
 
       expect(response.status).toBe(302);
@@ -538,7 +593,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       expect(response.status).toBe(302);
       const location = response.headers.get("location");
       expect(location).toBeTruthy();
@@ -573,7 +628,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       expect(response.status).toBe(302);
       const location = response.headers.get("location");
       const redirectUrl = new URL(location!);
@@ -605,7 +660,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       const setCookie = response.headers.get("Set-Cookie");
       expect(setCookie).toBeTruthy();
       expect(setCookie).toContain("mcp-approved-clients=");
@@ -636,7 +691,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
 
       expect(response.status).toBe(302);
       expect(response.headers.get("Set-Cookie")).toBeNull();
@@ -656,7 +711,7 @@ describe("oauth authorize routes", () => {
         method: "POST",
         body: formData,
       });
-      const response = await app.fetch(request, testEnv as Env);
+      const response = await app.fetch(request, testEnv);
       expect(response.status).toBe(400);
       const text = await response.text();
       expect(text).toBe("Invalid request");
@@ -680,7 +735,7 @@ describe("oauth authorize routes", () => {
         const request = new Request("http://localhost/oauth/authorize", {
           method: "GET",
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should proceed normally (render approval dialog)
         expect(response.status).toBe(200);
@@ -706,7 +761,7 @@ describe("oauth authorize routes", () => {
           "http://localhost/oauth/authorize?resource=http://localhost/mcp",
           { method: "GET" },
         );
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should proceed normally
         expect(response.status).toBe(200);
@@ -731,7 +786,7 @@ describe("oauth authorize routes", () => {
           "http://localhost/oauth/authorize?resource=http://localhost",
           { method: "GET" },
         );
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -756,7 +811,7 @@ describe("oauth authorize routes", () => {
         url.searchParams.set("resource", "http://localhost/");
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -781,7 +836,7 @@ describe("oauth authorize routes", () => {
         url.searchParams.set("resource", "http://localhost/mcp?experimental=1");
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(200);
         const html = await response.text();
@@ -811,7 +866,7 @@ describe("oauth authorize routes", () => {
         );
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(200);
         const html = await response.text();
@@ -837,7 +892,7 @@ describe("oauth authorize routes", () => {
         url.searchParams.set("resource", "http://localhost/mcp/test-org");
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(200);
         const html = await response.text();
@@ -864,7 +919,7 @@ describe("oauth authorize routes", () => {
         );
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(200);
         const html = await response.text();
@@ -884,7 +939,7 @@ describe("oauth authorize routes", () => {
           "http://localhost/oauth/authorize?resource=https://attacker.com/mcp&redirect_uri=https://example.com/callback&state=test-state",
           { method: "GET" },
         );
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should redirect with error
         expect(response.status).toBe(302);
@@ -911,7 +966,7 @@ describe("oauth authorize routes", () => {
           "http://localhost/oauth/authorize?resource=http://localhost/api&redirect_uri=https://example.com/callback",
           { method: "GET" },
         );
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should redirect with error
         expect(response.status).toBe(302);
@@ -934,7 +989,7 @@ describe("oauth authorize routes", () => {
         url.searchParams.set("state", "test-state");
 
         const request = new Request(url, { method: "GET" });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -953,7 +1008,7 @@ describe("oauth authorize routes", () => {
           "http://localhost/oauth/authorize?resource=https://attacker.com/mcp",
           { method: "GET" },
         );
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should return direct error
         expect(response.status).toBe(400);
@@ -992,7 +1047,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should proceed normally (redirect to Sentry)
         expect(response.status).toBe(302);
@@ -1022,7 +1077,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should proceed normally
         expect(response.status).toBe(302);
@@ -1052,7 +1107,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1082,7 +1137,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1113,7 +1168,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1147,7 +1202,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1176,7 +1231,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1206,7 +1261,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should redirect with error
         expect(response.status).toBe(302);
@@ -1241,7 +1296,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         // Should redirect with error
         expect(response.status).toBe(302);
@@ -1273,7 +1328,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(302);
         const location = response.headers.get("location");
@@ -1306,7 +1361,7 @@ describe("oauth authorize routes", () => {
           method: "POST",
           body: formData,
         });
-        const response = await app.fetch(request, testEnv as Env);
+        const response = await app.fetch(request, testEnv);
 
         expect(response.status).toBe(400);
         const text = await response.text();

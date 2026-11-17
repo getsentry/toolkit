@@ -25,6 +25,7 @@ export const SENTRY_SCOPES = [
   "org:admin",
   "org:integrations",
   "org:ci",
+  "org:tokens",
   "member:invite",
   "member:read",
   "member:write",
@@ -123,7 +124,7 @@ function extractScopeCandidate(entry: unknown): string | undefined {
     entry &&
     typeof entry === "object" &&
     "scope" in entry &&
-    typeof (entry as { scope: unknown }).scope === "string"
+    typeof entry.scope === "string"
   ) {
     return (entry as { scope: string }).scope;
   }

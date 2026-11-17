@@ -1,7 +1,7 @@
 # GitHub Actions
 
 Toolkit CI covers the CLI, MCP, and shared packages. The Cloudflare deployment
-workflows below serve the MCP and Docs MCP Workers; CLI release and docs
+workflows below serve the MCP, Docs MCP, and Games API Workers; CLI release and docs
 workflows are listed in the [CLI guide](../cli/README.md).
 
 `pnpm build` builds the MCP workspace; `pnpm build:cli` builds the imported CLI
@@ -18,6 +18,8 @@ docs depend on `sentry`). Root-level changes and non-PR events check every
 enabled project. Each project has its own build, lint, typecheck, test, policy,
 and E2E steps when those scripts exist. The always-present `test` job checks
 discovery, installation, repository quality, and every selected project.
+It is the required status check for `main` and `release/**`, so no other
+job may use the check name `test`: GitHub would accept that check in its place.
 Package-specific checks and exceptions live in `package.json#sentryCi`; see
 [Package CI checks](#package-ci-checks). The standalone smoke-test suite remains
 in its own workflow.
@@ -53,6 +55,16 @@ It preserves runtime variables and secrets and keeps public URLs disabled.
 Private service-binding functionality must be checked through a real consumer.
 Disconnect the old Init Workers Builds connection before merging this workflow
 for its first deployment. See the [Docs MCP cutover guide](../../apps/docs-mcp/README.md#deployment-ownership).
+
+### deploy-games-api.yml
+
+Uses the same successful `Test` push gate and tested `main` revision to deploy
+the public `sentry-games-api` Worker. It runs on the Sentry Internal Cloudflare
+account, so it reads `GAMES_API_CLOUDFLARE_API_TOKEN` and
+`GAMES_API_CLOUDFLARE_ACCOUNT_ID` from `production` instead of the MCP
+credentials. It keeps runtime variables and secrets, then requests the public
+leaderboard until it returns `200`. See the
+[Games API README](../../apps/games-api/README.md#deployment-ownership).
 
 ### recover-cloudflare-deployment.yml
 
@@ -99,6 +111,32 @@ Runs the label publisher's regression tests when its workflow or tests change.
 Covers label replacement, stale revisions, failed classifications, and concurrent
 label creation.
 
+### bump-sentry-api.yml
+
+Keeps one PR that pins the catalog's `@sentry/api` to its newest npm release, on
+the `bot/bump-sentry-api` branch, and updates the package's
+`minimumReleaseAgeExclude` entry so the fresh release installs. `test.yml` runs
+on that PR, so the CLI, MCP and shared packages are checked against each release
+that getsentry/sentry publishes.
+
+getsentry/sentry dispatches it once npm serves each `api@` release, and it also
+runs daily as a fallback. It calls getsentry/sentry's reusable
+[`bump-sentry-api-consumer.yml`](https://github.com/getsentry/sentry/blob/master/.github/workflows/bump-sentry-api-consumer.yml)
+in `rolling-pr` mode, whose script documents the behavior. The release bot's
+token opens the PR, because a PR opened with `github.token` does not start other
+workflows.
+
+- With no open bump PR, it opens one.
+- When a newer release ships while the PR is open, it rebuilds the branch from
+  main with that version, force-pushes it, and retitles the PR. It never opens a
+  second one.
+- The branch belongs to the bump. If someone pushes their own commit to it, the
+  bump stops updating the PR and logs a warning, so the commit is not lost.
+  Merging main into the branch, such as with "Update branch", doesn't count.
+  Rebase it onto the new release by hand, or close it and let the next run open
+  a fresh PR.
+- The PR is never merged automatically.
+
 ## Package CI checks
 
 Add a check for one workspace package to that package's `package.json`, not to
@@ -110,16 +148,16 @@ workflow for one package duplicates that selection and is not a required check.
 Each step runs a package script. Without a `sentryCi` override, the first
 script that exists is used:
 
-| Field        | Default scripts                | Notes                                                                           |
-| ------------ | ------------------------------ | ------------------------------------------------------------------------------- |
-| `prepare`    | `ci:prepare`                   | Runs before the build.                                                          |
-| `build`      | `build`                        |                                                                                 |
-| `lint`       | `lint`                         |                                                                                 |
-| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                 |
-| `test`       | `test:ci`, `test:unit`, `test` |                                                                                 |
-| `policy`     | `ci:policy`                    |                                                                                 |
-| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                          |
-| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24. |
+| Field        | Default scripts                | Notes                                                                                      |
+| ------------ | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `prepare`    | `ci:prepare`                   | Runs before the build.                                                                     |
+| `build`      | `build`                        |                                                                                            |
+| `lint`       | `lint`                         |                                                                                            |
+| `typecheck`  | `typecheck`, `tsc`, `check`    |                                                                                            |
+| `test`       | `test:ci`, `test:unit`, `test` |                                                                                            |
+| `policy`     | `ci:policy`                    |                                                                                            |
+| `e2e`        | `ci:e2e`, `test:e2e`           | Runs on Node 24 after the other steps.                                                     |
+| `npmRuntime` | none                           | Runs the script, packs the package, and runs its binary on Node 20, 22, and 24 and on Bun. |
 
 Set a field to a script name to override it, or to `false` to skip it. The
 other fields are:
@@ -186,6 +224,9 @@ not deploy it. The production candidate uses the production bindings:
 ### Deployment Flow
 
 The workflow never deploys an untested revision or a stale `main` commit.
+When `main` has advanced past the tested commit before the deploy starts, the
+deploy job is skipped, not failed; the newer commit's `Test` run deploys it.
+If `main` advances after that check, the deploy job's own revision checks fail it.
 Failure to identify the prior active version, verify deployment ownership, or
 confirm the restored version fails the job rather than guessing a recovery.
 

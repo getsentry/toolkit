@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import createSentrySDK, { SentryError } from "../../src/index.js";
+import createSentrySDK, {
+  getPath,
+  getVersion,
+  SentryError,
+} from "../../src/index.js";
+import { CLI_VERSION } from "../../src/lib/constants.js";
 import { setAuthToken } from "../../src/lib/db/auth.js";
 import { mockFetch, useTestConfigDir } from "../helpers.js";
 
@@ -167,5 +172,20 @@ describe("createSentrySDK() library API", () => {
     const sdk = createSentrySDK();
     const result = sdk.run("log", "list", "-f");
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
+  });
+});
+
+describe("v3 static helpers", () => {
+  test("getVersion() returns the CLI version", () => {
+    expect(getVersion()).toBe(CLI_VERSION);
+  });
+
+  test("getPath() points at bin.cjs next to the entry point", () => {
+    expect(getPath()).toMatch(/[\\/]bin\.cjs$/);
+  });
+
+  test("both are also static members of createSentrySDK, as on v3's class", () => {
+    expect(createSentrySDK.getVersion).toBe(getVersion);
+    expect(createSentrySDK.getPath).toBe(getPath);
   });
 });

@@ -241,9 +241,7 @@ describe("parseMethod properties", () => {
       property(validMethodArb, (method) => {
         const result = parseMethod(method);
         expect(result).toBe(method.toUpperCase() as typeof result);
-        expect(["GET", "POST", "PUT", "DELETE", "PATCH"]).toContain(
-          result as string,
-        );
+        expect(["GET", "POST", "PUT", "DELETE", "PATCH"]).toContain(result);
       }),
       { numRuns: DEFAULT_NUM_RUNS },
     );
@@ -535,11 +533,11 @@ const bareFieldArb = stringMatching(/^[a-zA-Z][a-zA-Z0-9]{1,15}$/).filter(
 function captureStderr(fn: () => void): string {
   let output = "";
   const original = process.stderr.write;
-  process.stderr.write = ((chunk: string | Uint8Array) => {
+  process.stderr.write = (chunk: string | Uint8Array) => {
     output +=
       typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
     return true;
-  }) as typeof process.stderr.write;
+  };
   try {
     fn();
   } finally {
@@ -772,7 +770,7 @@ describe("property: buildFromFields", () => {
   });
 });
 
-const MOCK_STDIN = process.stdin as unknown as NodeJS.ReadStream & { fd: 0 };
+const MOCK_STDIN = process.stdin;
 
 describe("property: resolveBody", () => {
   test("--data always returns a body (no params)", async () => {

@@ -17,7 +17,7 @@ const INVALID_HEADER_END = /(?<!\\)(\\*["']) is an invalid header value/gi;
 // Header validation errors quote the entire value, including invalid newlines.
 // The end-of-string alternative also covers messages truncated by the SDK.
 const QUOTED_CREDENTIAL =
-  /(?<!\\)(\\*["'])(Bearer[ \t]+|sntry[su]_)[\s\S]*?(?:\1|$)/gi;
+  /(?<!\\)(\\*["'])(Bearer[ \t]+|sntry[suc]_)[\s\S]*?(?:\1|$)/gi;
 /** Control characters can also appear escaped in serialized diagnostics. */
 const ESCAPED_CONTROL = /\\+(?:[nrtbfv]|u00[01][\da-f]|u007f|u202[89])/.source;
 const BEARER_PART = String.raw`(?:${ESCAPED_CONTROL}[ \t]*|\\+[^"'\s\\]|[^\s"'\\])`;
@@ -28,9 +28,12 @@ const BEARER_CREDENTIAL = new RegExp(
   "gi",
 );
 const SENTRY_CREDENTIAL = new RegExp(
-  String.raw`\bsntry[su]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
+  String.raw`\bsntry[suc]_[A-Za-z0-9._~+/=-]+(?:(?:\r\n|(?! )[\s\x00-\x1f\x7f-\x9f]|${ESCAPED_CONTROL})[ \t]*[A-Za-z0-9._~+/=-]+)*`,
   "gi",
 );
+// Onboarding run tokens grant write access to a run's progress. They have no
+// prefix to match on, so match the field name instead.
+const RUN_TOKEN = /(\brun_?token\\*["']?\s*[=:]\s*\\*["']?)[A-Za-z0-9]+/gi;
 
 /**
  * Use the runtime's final delimiter because an invalid token can contain quotes.
@@ -87,5 +90,6 @@ export function redactCredentialText(text: string): string {
         : `${quote}[REDACTED]${quote}`,
     )
     .replace(BEARER_CREDENTIAL, "Bearer [REDACTED]")
-    .replace(SENTRY_CREDENTIAL, "[REDACTED]");
+    .replace(SENTRY_CREDENTIAL, "[REDACTED]")
+    .replace(RUN_TOKEN, "$1[REDACTED]");
 }

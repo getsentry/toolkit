@@ -1,7 +1,8 @@
+import { CLI_MCP_ARGS, CLI_MCP_COMMAND } from "../../../../constants";
 import CodeSnippet from "../../ui/code-snippet";
 
 interface AmpInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "cli";
 }
 
 export function AmpInstructions({ transport }: AmpInstructionsProps) {
@@ -40,17 +41,6 @@ export function AmpInstructions({ transport }: AmpInstructionsProps) {
     );
   }
 
-  // Stdio transport
-  const defaultEnv = {
-    SENTRY_ACCESS_TOKEN: "sentry-user-token",
-    OPENAI_API_KEY: "your-openai-key",
-  } as const;
-  const coreConfig = {
-    command: "npx",
-    args: ["@sentry/mcp-server@latest"],
-    env: defaultEnv,
-  };
-
   return (
     <>
       <ol>
@@ -71,38 +61,7 @@ export function AmpInstructions({ transport }: AmpInstructionsProps) {
             snippet={JSON.stringify(
               {
                 "amp.mcpServers": {
-                  sentry: {
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                    },
-                  },
-                },
-              },
-              undefined,
-              2,
-            )}
-          />
-        </li>
-        <li>
-          Replace <code>sentry-user-token</code> with your Sentry User Auth
-          Token.
-        </li>
-        <li>
-          For self-hosted Sentry, add <code>SENTRY_HOST</code> to the env
-          object:
-          <CodeSnippet
-            noMargin
-            snippet={JSON.stringify(
-              {
-                "amp.mcpServers": {
-                  sentry: {
-                    ...coreConfig,
-                    env: {
-                      ...coreConfig.env,
-                      SENTRY_HOST: "sentry.example.com",
-                    },
-                  },
+                  sentry: { command: CLI_MCP_COMMAND, args: CLI_MCP_ARGS },
                 },
               },
               undefined,
@@ -112,19 +71,6 @@ export function AmpInstructions({ transport }: AmpInstructionsProps) {
         </li>
         <li>Restart Amp to load the new configuration.</li>
       </ol>
-      <p>
-        <small>
-          For more details, see the{" "}
-          <a
-            href="https://ampcode.com/manual#mcp"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Amp MCP documentation
-          </a>
-          .
-        </small>
-      </p>
     </>
   );
 }

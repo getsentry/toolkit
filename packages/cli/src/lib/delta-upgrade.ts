@@ -43,6 +43,7 @@ import {
 import { CLI_VERSION } from "./constants.js";
 import { customFetch } from "./custom-ca.js";
 import { getConfigDir } from "./db/index.js";
+import { reportCliError } from "./error-reporting.js";
 import { extractInputUrl } from "./fetch-input.js";
 import { formatBytes } from "./formatters/numbers.js";
 import { logger } from "./logger.js";
@@ -669,7 +670,7 @@ export function attemptDeltaUpgrade(
         span.setStatus({ code: 1 });
         return result;
       } catch (error) {
-        Sentry.captureException(error, {
+        reportCliError(error, {
           level: "warning",
           tags: {
             "delta.from_version": CLI_VERSION,

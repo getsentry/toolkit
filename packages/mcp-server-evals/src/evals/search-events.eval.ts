@@ -1,4 +1,4 @@
-import { describeEval } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
 import { FIXTURES, NoOpTaskRunner, ToolPredictionScorer } from "./utils";
 
 // Note: This eval requires OPENROUTER_API_KEY to be set in the environment

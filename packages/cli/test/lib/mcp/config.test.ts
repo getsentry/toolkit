@@ -312,7 +312,6 @@ describe("finalizeMcpConfig", () => {
   it("keeps the static token, constraints, and embedded agent settings", () => {
     const cfg = finalize({
       mcpUrl: "https://mcp.example.com",
-      sentryDsn: "dsn",
       openaiModel: "gpt-test",
       anthropicBaseUrl: "https://anthropic.example.com",
       anthropicModel: "claude-test",
@@ -324,7 +323,6 @@ describe("finalizeMcpConfig", () => {
     });
     expect(cfg).toMatchObject({
       mcpUrl: "https://mcp.example.com",
-      sentryDsn: "dsn",
       openaiModel: "gpt-test",
       anthropicBaseUrl: "https://anthropic.example.com/",
       anthropicModel: "claude-test",

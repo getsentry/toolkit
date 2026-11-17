@@ -1,6 +1,12 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { z } from "zod";
-import { ApiNotFoundError } from "../../api-client";
-import { UserInputError } from "../../errors";
+import {
+  ApiClientError,
+  ApiNotFoundError,
+  type IssueTagKeyList,
+  type SentryApiService,
+} from "../../api-client";
+import { ConfigurationError, UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
@@ -15,6 +21,7 @@ import {
   ParamOrganizationSlug,
   ParamRegionUrl,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 
@@ -36,50 +43,11 @@ export const getIssueTagValuesOutputSchema = z.object({
 
 export default defineTool({
   name: "get_issue_tag_values",
+  title: "Get Issue Tag Values",
   skills: ["inspect"], // Available in inspect skill for understanding issue distribution
   requiredScopes: ["event:read"],
-  description: [
-    "Get tag value distribution for a specific Sentry issue.",
-    "",
-    "Use this tool when you need to:",
-    "- Understand how an issue is distributed across different tag values",
-    "- Get aggregate counts of unique tag values (e.g., 'how many unique URLs are affected')",
-    "- Analyze which browsers, environments, or URLs are most impacted by an issue",
-    "- View the tag distributions page data programmatically",
-    "",
-    "Common tag keys:",
-    "- `url`: Request URLs affected by the issue",
-    "- `browser`: Browser types and versions",
-    "- `browser.name`: Browser names only",
-    "- `os`: Operating systems",
-    "- `environment`: Deployment environments (production, staging, etc.)",
-    "- `release`: Software releases",
-    "- `device`: Device types",
-    "- `user`: Affected users",
-    "",
-    "<examples>",
-    "### Get URL distribution for an issue",
-    "```",
-    "get_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='url')",
-    "```",
-    "",
-    "### Get browser distribution using issue URL",
-    "```",
-    "get_issue_tag_values(issueUrl='https://sentry.io/issues/PROJECT-123/', tagKey='browser')",
-    "```",
-    "",
-    "### Get environment distribution",
-    "```",
-    "get_issue_tag_values(organizationSlug='my-organization', issueId='PROJECT-123', tagKey='environment')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged",
-    "- Common tag keys: url, browser, browser.name, os, environment, release, device, user",
-    "- Tag keys are case-sensitive",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the tag value distribution of a Sentry issue: counts of each browser, environment, release, URL, or other tag value affected. Tag keys vary by platform, SDK, and custom tags.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -93,7 +61,7 @@ export default defineTool({
         "Tag key must contain only alphanumeric characters, dots, hyphens, and underscores, and must start with an alphanumeric character",
       )
       .describe(
-        "The tag key to get values for (e.g., 'url', 'browser', 'environment', 'release').",
+        "Case-sensitive tag key from the issue's tags, e.g. `environment` or `release`.",
       ),
   },
   annotations: {
@@ -120,12 +88,6 @@ export default defineTool({
       );
     }
 
-    if (!params.tagKey) {
-      throw new UserInputError(
-        "`tagKey` is required. Common values: url, browser, environment, release, os, device, user",
-      );
-    }
-
     const { organizationSlug: orgSlug, issueId: parsedIssueId } =
       parseIssueParams({
         organizationSlug: params.organizationSlug,
@@ -138,7 +100,7 @@ export default defineTool({
     await ensureIssueWithinProjectConstraint({
       apiService,
       organizationSlug: orgSlug,
-      issueId: parsedIssueId!,
+      issueId: parsedIssueId,
       projectSlug: context.constraints.projectSlug,
     });
 
@@ -147,15 +109,17 @@ export default defineTool({
     try {
       tagValues = await apiService.getIssueTagValues({
         organizationSlug: orgSlug,
-        issueId: parsedIssueId!,
+        issueId: parsedIssueId,
         tagKey: params.tagKey,
       });
     } catch (error) {
       if (error instanceof ApiNotFoundError) {
-        throw enhanceNotFoundError(error, {
+        throw await explainTagValuesNotFound({
+          apiService,
           organizationSlug: orgSlug,
           issueId: parsedIssueId,
           tagKey: params.tagKey,
+          error,
         });
       }
       throw error;
@@ -176,3 +140,72 @@ export default defineTool({
     });
   },
 });
+
+/** Keys to list when a tag key is not on the issue; issues can have hundreds. */
+const MAX_LISTED_TAG_KEYS = 30;
+
+/**
+ * Sentry answers the tag values endpoint with the same 404 whether the issue
+ * or the tag key is missing. List the issue's tag keys to tell them apart, and
+ * name the keys the issue has when the requested one is not among them.
+ */
+async function explainTagValuesNotFound({
+  apiService,
+  organizationSlug,
+  issueId,
+  tagKey,
+  error,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  issueId: string;
+  tagKey: string;
+  error: ApiNotFoundError;
+}): Promise<Error> {
+  const originalError = () =>
+    enhanceNotFoundError(error, { organizationSlug, issueId, tagKey });
+
+  let tags: IssueTagKeyList;
+  try {
+    tags = await apiService.listIssueTags({ organizationSlug, issueId });
+  } catch (listError) {
+    if (listError instanceof ApiNotFoundError) {
+      return enhanceNotFoundError(listError, { organizationSlug, issueId });
+    }
+    // The list only refines the 404, so a failed list (rate limit, server
+    // error, unexpected body) must not replace it with a worse error.
+    if (
+      !(listError instanceof ApiClientError) &&
+      !(listError instanceof ConfigurationError)
+    ) {
+      logIssue(listError, {
+        loggerScope: ["tools", "get-issue-tag-values", "list-tags"],
+        contexts: { request: { organizationSlug, issueId } },
+      });
+    }
+    return originalError();
+  }
+
+  // Sentry also 404s for a listed key whose values are all empty.
+  if (tags.some((tag) => tag.key === tagKey)) {
+    return originalError();
+  }
+
+  const notFound = `Tag ${inlineCode(tagKey)} not found on this issue.`;
+  if (tags.length === 0) {
+    return new UserInputError(`${notFound} The issue has no tags.`);
+  }
+  const keys = [...tags]
+    .sort(
+      (a, b) =>
+        (b.totalValues ?? 0) - (a.totalValues ?? 0) ||
+        a.key.localeCompare(b.key),
+    )
+    .slice(0, MAX_LISTED_TAG_KEYS)
+    .map((tag) => inlineCode(tag.key));
+  const more =
+    tags.length > keys.length ? ` (and ${tags.length - keys.length} more)` : "";
+  return new UserInputError(
+    `${notFound} Available keys: ${keys.join(", ")}${more}.`,
+  );
+}

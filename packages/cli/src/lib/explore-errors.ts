@@ -6,7 +6,8 @@
 
 import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { getSortField } from "@sentry/toolkit-core/events-sort";
-import { ApiError, validationError } from "./errors.js";
+import { sentry } from "./app-identity.js";
+import { ApiError, type FunctionArgument, validationError } from "./errors.js";
 
 /** User-authored expressions and the request they contributed to. */
 type ExploreErrorContext = {
@@ -22,9 +23,18 @@ type ExploreErrorContext = {
   userSort: string | undefined;
 };
 
-/** Match narrow backend diagnostics without maintaining an aggregate catalog. */
+/** `code` of a 400 that names the function argument it rejected (getsentry/sentry#129954). */
+const INVALID_FUNCTION_ARGUMENT_CODE = "invalid_function_argument";
+
+/**
+ * Match narrow backend diagnostics without maintaining an aggregate catalog.
+ * Beyond the specific corrections, a 400 whose structured fields name this
+ * expression's own function and argument gets the server's hint, or a generic
+ * one when the server sent none.
+ */
 function recoveryHint(
   detail: string,
+  rejected: FunctionArgument | undefined,
   expression: string,
   dataset: string,
 ): string | undefined {
@@ -54,12 +64,31 @@ function recoveryHint(
   }
 
   if (detail === `Unknown function ${parsed.name}`) {
-    return "Aggregate functions depend on the dataset. Check the function name and selected dataset; sentry explore --help includes usage examples.";
+    return `Aggregate functions depend on the dataset. Check the function name and selected dataset; ${sentry`explore --help`} includes usage examples.`;
   }
+
+  if (
+    !rejected ||
+    rejected.function !== parsed.name ||
+    !parsed.arguments.includes(rejected.argument)
+  ) {
+    return;
+  }
+  if (rejected.hint) {
+    return rejected.hint;
+  }
+  const { argument } = rejected;
+  const problem = `${parsed.name}() does not accept ${argument} on dataset "${dataset}": it may not exist there, or may not have the type ${parsed.name}() needs.`;
+  return ATTRIBUTE_DATASETS.has(dataset)
+    ? `${problem} Reference a numeric custom attribute with its type, e.g. tags[${argument},number]; to check the key and its type, run: ${sentry`attribute list <org>/ ${argument} --dataset ${dataset}`}`
+    : `${problem} Check the column name and its type.`;
 }
 
+/** Datasets whose custom attributes use `tags[name,type]` keys listed by `sentry attribute list`. */
+const ATTRIBUTE_DATASETS = new Set(["spans", "logs"]);
+
 /**
- * Add a correction for a known rejected user expression, preserving the server
+ * Add a correction for a rejected user expression, preserving the server
  * detail. Unknown failures and errors caused by CLI-generated input are returned
  * unchanged so they retain their API error classification and diagnostics.
  */
@@ -82,8 +111,17 @@ export function toExploreFieldError(
     });
   }
 
+  const rejected =
+    error.code === INVALID_FUNCTION_ARGUMENT_CODE
+      ? error.functionArgument
+      : undefined;
   for (const { expression, value, flag } of expressions) {
-    const hint = recoveryHint(error.detail, expression, context.dataset);
+    const hint = recoveryHint(
+      error.detail,
+      rejected,
+      expression,
+      context.dataset,
+    );
     if (hint) {
       return validationError(
         `Sentry rejected --${flag} "${value}" for dataset "${context.dataset}".\n\n${error.detail}`,

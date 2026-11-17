@@ -301,7 +301,7 @@ describe("statusCommand.func", () => {
         id: "7",
         name: "CI Bot",
         email: "ci@example.com",
-      } as Awaited<ReturnType<typeof apiClient.getCurrentUser>>);
+      });
 
       try {
         const { context, getOutput } = createContext();

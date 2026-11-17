@@ -10,6 +10,7 @@ import {
   listOrganizationDsns,
   listProjectDsns,
 } from "../../lib/api/projects.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { textParser } from "../../lib/completion-target.js";
 import {
@@ -56,12 +57,12 @@ import {
 import type { ListCommandTarget } from "../../lib/target-positional.js";
 
 const PAGINATION_KEY = "dsn-list";
-const USAGE_HINT = "sentry dsn list <org>/<project>";
+const usageHint = () => sentry`dsn list <org>/<project>`;
 
 const listConfig: ListCommandMeta = {
   paginationKey: PAGINATION_KEY,
   entityPlural: "DSNs",
-  commandPrefix: "sentry dsn list",
+  commandPrefix: () => sentry`dsn list`,
 };
 
 /** List an organization's keys directly, preserving its cursor history. */
@@ -86,7 +87,7 @@ async function listForOrganization(
   advancePaginationState(PAGINATION_KEY, contextKey, direction, nextCursor);
   const hasPrev = hasPreviousPage(PAGINATION_KEY, contextKey);
   const hasMore = !!nextCursor;
-  const command = `sentry dsn list ${target} --limit ${flags.limit}`;
+  const command = sentry`dsn list ${target} --limit ${flags.limit}`;
 
   return {
     items: data.map((dsn) => ({ ...dsn, org })),
@@ -184,13 +185,13 @@ async function listForResolvedProjects<
 >(ctx: HandlerContext<T>): Promise<ListResult<DsnListItem>> {
   const resolution = await resolveProjectBoundTargets(ctx.parsed, {
     cwd: ctx.cwd,
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     projectSearchResolution: ctx.projectSearchResolution,
   });
   if (resolution.targets.length === 0) {
     throw new ContextError(
       "Organization and project",
-      USAGE_HINT,
+      usageHint(),
       undefined,
       resolution.skippedSelfHosted
         ? `Found ${resolution.skippedSelfHosted} DSN(s) that could not be resolved — you may not have access to these projects`
@@ -309,29 +310,28 @@ export const listCommand = buildListCommand("dsn", {
       {
         description:
           "List client keys for detected projects, including monorepos",
-        command: "sentry dsn list",
+        run: "dsn list",
       },
       {
         description: "List enabled and disabled DSNs for one project",
-        command: "sentry dsn list my-org/my-project",
+        run: "dsn list my-org/my-project",
       },
       {
         description:
           "List DSNs across all accessible projects in an organization",
-        command: "sentry dsn list my-org/",
+        run: "dsn list my-org/",
       },
       {
         description: "Fetch the next page",
-        command: "sentry dsn list my-org/ --limit 10 -c next",
+        run: "dsn list my-org/ --limit 10 -c next",
       },
       {
         description: "Fetch the previous page",
-        command: "sentry dsn list my-org/ --limit 10 -c prev",
+        run: "dsn list my-org/ --limit 10 -c prev",
       },
       {
         description: "Select public DSN fields as JSON",
-        command:
-          "sentry dsn list my-org/my-project --json --fields name,dsn,isActive",
+        run: "dsn list my-org/my-project --json --fields name,dsn,isActive",
       },
     ],
   },

@@ -2,11 +2,9 @@
  * Cache for numeric-issue-ID → organization-slug mappings.
  *
  * When a user runs `sentry issue view 123456789` without an org context,
- * the CLI must fall back to the legacy unscoped `GET /api/0/issues/{id}/`
- * endpoint (which does not support region routing) and then extract the
- * org from the response `permalink`. Follow-up fetches (events/latest,
- * trace/...) require the org slug, so without a cache every subsequent
- * command run repeats the same unscoped lookup.
+ * the CLI searches the user's organizations for the issue through the
+ * org-scoped endpoint. Without a cache every subsequent command run
+ * repeats that search.
  *
  * This module records the resolved numeric-id → org-slug mapping so
  * future runs can skip straight to the org-scoped endpoint. It addresses
@@ -84,7 +82,7 @@ export function setCachedIssueOrg(numericId: string, orgSlug: string): void {
  * Drop the cached mapping for a numeric issue ID.
  *
  * Called when an org-scoped fetch 404s so subsequent runs re-resolve
- * the org via the legacy unscoped endpoint.
+ * the org by searching the user's organizations.
  *
  * @param numericId - Numeric issue group ID
  */

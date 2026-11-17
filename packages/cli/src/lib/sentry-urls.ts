@@ -8,7 +8,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isSentryHost } from "@sentry/toolkit-core/sentry-host";
 import {
-  DEFAULT_SENTRY_HOST,
   DEFAULT_SENTRY_URL,
   getConfiguredSentryUrl,
   normalizeUrl,
@@ -237,64 +236,6 @@ export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
   return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/?query=event.id:${eventId}`;
 }
 
-/**
- * Build URL to the project-scoped Issues stream — where a project's errors
- * land. This is the destination a freshly-instrumented project wants to watch
- * for its first event, as opposed to {@link buildProjectUrl} (settings).
- *
- * @param orgSlug - Organization slug
- * @param projectId - Numeric project ID; when omitted the org-wide stream is
- *   returned (still correct, just unfiltered).
- * @returns Full URL to the Issues stream, filtered to the project when possible
- */
-export function buildProjectIssuesUrl(
-  orgSlug: string,
-  projectId?: string,
-): string {
-  const filter = projectId ? `?project=${projectId}` : "";
-  if (isSaaS()) {
-    return `${getOrgBaseUrl(orgSlug)}/issues/${filter}`;
-  }
-  return `${getSentryBaseUrl()}/organizations/${orgSlug}/issues/${filter}`;
-}
-
-/**
- * Recover the org and project slugs from a project settings URL as built by
- * {@link buildProjectUrl}. Used as a fallback when the server didn't hand the
- * slugs back directly, so the CLI can still build Issues / MCP URLs. Returns
- * `{}` for anything that doesn't parse.
- *
- * SaaS shape:        `https://{org}.sentry.io/settings/projects/{project}/`
- * Self-hosted shape: `{base}/settings/{org}/projects/{project}/`
- */
-export function parseOrgProjectFromSettingsUrl(url: string): {
-  orgSlug?: string;
-  projectSlug?: string;
-} {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const projectsIndex = segments.indexOf("projects");
-    const projectSlug =
-      projectsIndex >= 0 ? segments[projectsIndex + 1] : undefined;
-    if (isSentrySaasUrl(url)) {
-      // Org is the subdomain; guard against the bare apex (no org subdomain).
-      const [subdomain] = parsed.hostname.split(".");
-      const orgSlug =
-        parsed.hostname === DEFAULT_SENTRY_HOST ? undefined : subdomain;
-      return { orgSlug, projectSlug };
-    }
-    // Self-hosted: org is the path segment right after `settings`.
-    const settingsIndex = segments.indexOf("settings");
-    const orgSlug =
-      settingsIndex >= 0 ? segments[settingsIndex + 1] : undefined;
-    return { orgSlug, projectSlug };
-  } catch {
-    return {};
-  }
-}
-
 // Settings URLs
 
 /**
@@ -322,6 +263,35 @@ export function buildSeerSettingsUrl(orgSlug: string): string {
     return `${getOrgBaseUrl(orgSlug)}/settings/seer/`;
   }
   return `${getSentryBaseUrl()}/settings/${orgSlug}/seer/`;
+}
+
+/**
+ * Build URL to the organization's repository settings page, where
+ * repositories from source code integrations are added.
+ *
+ * @param orgSlug - Organization slug
+ * @returns Full URL to the repository settings page
+ */
+export function buildRepositorySettingsUrl(orgSlug: string): string {
+  if (isSaaS()) {
+    return `${getOrgBaseUrl(orgSlug)}/settings/repos/`;
+  }
+  return `${getSentryBaseUrl()}/settings/${orgSlug}/repos/`;
+}
+
+/**
+ * Build URL to the organization's integration directory, filtered to source
+ * code integrations (GitHub, GitLab, Bitbucket, Azure DevOps). Connecting one
+ * is how an org gets repositories that releases can associate commits with.
+ *
+ * @param orgSlug - Organization slug
+ * @returns Full URL to the source code integrations directory
+ */
+export function buildSourceCodeIntegrationsUrl(orgSlug: string): string {
+  const base = isSaaS()
+    ? `${getOrgBaseUrl(orgSlug)}/settings/integrations/`
+    : `${getSentryBaseUrl()}/settings/${orgSlug}/integrations/`;
+  return `${base}?category=source%20code%20management`;
 }
 
 /**

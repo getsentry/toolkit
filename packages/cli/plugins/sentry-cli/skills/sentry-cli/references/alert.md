@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-alert
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Manage Sentry alert rules
 requires:
   bins: ["sentry"]
@@ -94,6 +94,18 @@ Create an issue alert rule
 - `--owner <value> - Owner (team:user style value accepted by Sentry API)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+| `project` | string | Project slug |
+
 **Examples:**
 
 ```bash
@@ -126,6 +138,17 @@ Delete an issue alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `project` | string | Project slug |
 
 **Examples:**
 
@@ -160,6 +183,29 @@ Edit an issue alert rule
 - `--filter <value>... - Filter object JSON (repeatable, or pass one JSON array)`
 - `-m, --filter-match <value> - Filter match mode: all or any`
 - `--owner <value> - Owner value (pass empty string to clear)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `type` | string | Type of the workflow, such as alert |
+| `organizationId` | string | ID of the organization the workflow belongs to |
+| `createdBy` | string \| null | ID of the user who created the workflow |
+| `dateCreated` | string | When the workflow was created (ISO 8601) |
+| `dateUpdated` | string | When the workflow was last updated (ISO 8601) |
+| `triggers` | object \| null | Conditions on which the workflow triggers |
+| `actionFilters` | array \| null | Filters to run before actions fire, each with the actions to fire |
+| `environment` | string \| null | Name of the environment the workflow is limited to. Null for all environments |
+| `config` | object | Configuration of the workflow, such as frequency in minutes |
+| `detectorIds` | array \| null | IDs of the monitors connected to the workflow |
+| `enabled` | boolean | Whether the workflow is enabled |
+| `lastTriggered` | string \| null | When the workflow last fired (ISO 8601) |
+| `owner` | string \| null | Team or user that owns the workflow, such as user:123 or team:456 |
+| `org` | string | Organization slug |
+| `project` | string | Project slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 
@@ -259,6 +305,17 @@ Create a metric alert rule
 - `--workflow <value>... - Alert (workflow) id to notify (repeatable or comma-separated)`
 - `-n, --dry-run - Show what would happen without making changes`
 
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
+| `status` | string | Rule status (active, disabled) |
+| `dryRun` | boolean | True when --dry-run made no change |
+| `body` | object | Request body that would be sent (--dry-run) |
+
 **Examples:**
 
 ```bash
@@ -285,6 +342,16 @@ Delete a metric alert rule
 - `-y, --yes - Skip confirmation prompt`
 - `-f, --force - Force the operation without confirmation`
 - `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dryRun` | boolean | True when --dry-run made no change |
+| `deleted` | boolean | True when the rule was deleted |
+| `org` | string | Organization slug |
+| `id` | string | Alert rule ID |
+| `name` | string | Alert rule name |
 
 **Examples:**
 
@@ -318,6 +385,28 @@ Edit a metric alert rule
 - `--environment <value> - Environment value (pass empty string to clear)`
 - `--owner <value> - Owner value (pass empty string to clear)`
 - `--workflow <value>... - Replace connected alert (workflow) ids (repeatable or comma-separated; empty string disconnects all)`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `owner` | object \| null | Team or user that owns the monitor |
+| `createdBy` | string \| null | ID of the user who created the monitor |
+| `latestGroup` | object \| null | Latest issue the monitor created |
+| `description` | string \| null | Description of the monitor |
+| `id` | string | Alert rule ID |
+| `projectId` | string \| null | ID of the project the monitor belongs to |
+| `name` | string | Alert rule name |
+| `type` | string | Type of the monitor, such as metric_issue or error |
+| `workflowIds` | array \| null | IDs of the alerts connected to the monitor |
+| `dateCreated` | string | When the monitor was created (ISO 8601) |
+| `dateUpdated` | string | When the monitor was last updated (ISO 8601) |
+| `dataSources` | array \| null | Data sources the monitor evaluates, such as a query subscription |
+| `conditionGroup` | object \| null | Conditions that decide the monitor's status |
+| `config` | object | Configuration of the monitor, which depends on its type |
+| `enabled` | boolean | Whether the monitor is enabled |
+| `org` | string | Organization slug |
+| `status` | string | Rule status (active, disabled) |
 
 **Examples:**
 

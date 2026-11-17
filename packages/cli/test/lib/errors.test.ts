@@ -25,7 +25,6 @@ import {
   UpgradeError,
   ValidationError,
   validationError,
-  WizardError,
   withAuthGuard,
 } from "../../src/lib/errors.js";
 
@@ -398,6 +397,53 @@ describe("SeerError", () => {
     expect(formatted).toContain("my-org");
   });
 
+  test("format() includes billing URL for out_of_credits with orgSlug", () => {
+    const formatted = new SeerError("out_of_credits", "my-org").format();
+    expect(formatted).toContain("Your organization is out of Seer credits.");
+    expect(formatted).toContain(
+      "https://my-org.sentry.io/settings/billing/overview/?product=seer",
+    );
+  });
+
+  test("format() includes billing URL for daily_cap_exceeded with orgSlug", () => {
+    const formatted = new SeerError("daily_cap_exceeded", "my-org").format();
+    expect(formatted).toBe(
+      "Your organization has reached its daily Seer spend limit.\n\n" +
+        "Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n" +
+        "  https://my-org.sentry.io/settings/billing/overview/?product=seer",
+    );
+  });
+
+  test("format() shows fallback for daily_cap_exceeded without orgSlug", () => {
+    const formatted = new SeerError("daily_cap_exceeded").format();
+    expect(formatted).toBe(
+      "Your organization has reached its daily Seer spend limit.\n\n" +
+        "Someone with billing access can raise the limit in your organization's billing settings, or you can try again tomorrow.",
+    );
+  });
+
+  test("format() links source code integrations for scm_integration_required", () => {
+    const err = new SeerError("scm_integration_required", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs a GitHub or GitLab integration for this organization.",
+    );
+    expect(formatted).toContain(
+      "https://my-org.sentry.io/settings/integrations/?category=source%20code%20management",
+    );
+    expect(formatted).not.toContain("trial");
+  });
+
+  test("format() links Seer settings for repos_not_linked", () => {
+    const err = new SeerError("repos_not_linked", "my-org");
+    const formatted = err.format();
+    expect(formatted).toContain(
+      "Seer needs repositories connected to this project.",
+    );
+    expect(formatted).toContain("https://my-org.sentry.io/settings/seer/");
+    expect(formatted).not.toContain("trial");
+  });
+
   test("format() shows fallback message without orgSlug", () => {
     const err = new SeerError("not_enabled");
     const formatted = err.format();
@@ -530,7 +576,6 @@ describe("isUserError", () => {
     ["ValidationError", new ValidationError("bad input"), true],
     ["DeviceFlowError", new DeviceFlowError("slow_down"), true],
     ["SeerError", new SeerError("not_enabled"), true],
-    ["WizardError", new WizardError("wizard failed"), true],
     ["ApiError 0 (network)", new ApiError("network error", 0), true],
     [
       "raw fetch failed TypeError (network)",
@@ -622,6 +667,26 @@ describe("isSearchQueryParseError", () => {
     expect(isSearchQueryParseError(new ApiError("wrapped", 400, detail))).toBe(
       true,
     );
+  });
+
+  test("true for a 400 with the invalid_search_query code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
+      "/organizations/my-org/events/",
+      { code: "invalid_search_query" },
+    );
+    expect(isSearchQueryParseError(error)).toBe(true);
+  });
+
+  test("false for a parser-looking Events 400 without the code", () => {
+    const error = new ApiError(
+      "bad",
+      400,
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.",
+    );
+    expect(isSearchQueryParseError(error)).toBe(false);
   });
 
   test("false for a 400 without a query parse detail", () => {
@@ -760,6 +825,18 @@ describe("exit codes", () => {
     expect(new SeerError("not_enabled").exitCode).toBe(EXIT.SEER_NOT_ENABLED);
     expect(new SeerError("no_budget").exitCode).toBe(EXIT.SEER_NO_BUDGET);
     expect(new SeerError("ai_disabled").exitCode).toBe(EXIT.SEER_AI_DISABLED);
+    expect(new SeerError("out_of_credits").exitCode).toBe(
+      EXIT.SEER_OUT_OF_CREDITS,
+    );
+    expect(new SeerError("daily_cap_exceeded").exitCode).toBe(
+      EXIT.SEER_OUT_OF_CREDITS,
+    );
+    expect(new SeerError("scm_integration_required").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
+    );
+    expect(new SeerError("repos_not_linked").exitCode).toBe(
+      EXIT.SEER_SETUP_REQUIRED,
+    );
   });
 
   test("TimeoutError has exit code TIMEOUT", () => {
@@ -768,24 +845,6 @@ describe("exit codes", () => {
 
   test("OutputError has exit code OUTPUT_ERROR", () => {
     expect(new OutputError({ items: [] }).exitCode).toBe(EXIT.OUTPUT_ERROR);
-  });
-
-  test("WizardError defaults to exit code WIZARD", () => {
-    expect(new WizardError("wizard failed").exitCode).toBe(EXIT.WIZARD);
-  });
-
-  test("WizardError accepts custom exit code for workflow sub-codes", () => {
-    expect(
-      new WizardError("deps failed", { exitCode: EXIT.WIZARD_DEPS }).exitCode,
-    ).toBe(EXIT.WIZARD_DEPS);
-    expect(
-      new WizardError("codemod failed", { exitCode: EXIT.WIZARD_CODEMOD })
-        .exitCode,
-    ).toBe(EXIT.WIZARD_CODEMOD);
-    expect(
-      new WizardError("verify stopped", { exitCode: EXIT.WIZARD_VERIFY })
-        .exitCode,
-    ).toBe(EXIT.WIZARD_VERIFY);
   });
 
   test("EXIT values are all unique", () => {

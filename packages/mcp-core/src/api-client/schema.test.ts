@@ -1,5 +1,6 @@
 import {
   autofixStateExplorerFixture,
+  createDefaultEvent,
   issueNullCulpritFixture,
   profileChunkFixture,
   tagsFixture,
@@ -22,7 +23,6 @@ import {
   ProfileFrameSchema,
   ReleaseSchema,
   ReplayDetailsSchema,
-  ReplayRecordingSegmentsSchema,
   TagSchema,
   TraceMetaSchema,
   TransactionProfileSampleSchema,
@@ -579,44 +579,6 @@ describe("ReplayDetailsSchema", () => {
       region: null,
       subdivision: null,
     });
-  });
-});
-
-describe("ReplayRecordingSegmentsSchema", () => {
-  it("keeps usable event fields when sibling fields are malformed", () => {
-    expect(
-      ReplayRecordingSegmentsSchema.parse([
-        [
-          {
-            timestamp: "invalid",
-            type: 5,
-            data: {
-              tag: "ui.click",
-              href: 123,
-              payload: {
-                message: "Clicked checkout",
-                data: { duration: "invalid" },
-              },
-            },
-          },
-        ],
-      ]),
-    ).toEqual([
-      [
-        {
-          timestamp: undefined,
-          type: 5,
-          data: {
-            tag: "ui.click",
-            href: undefined,
-            payload: {
-              message: "Clicked checkout",
-              data: { duration: undefined },
-            },
-          },
-        },
-      ],
-    ]);
   });
 });
 
@@ -1183,5 +1145,17 @@ describe("TransactionProfileSchema", () => {
     });
 
     expect(profile.profile.thread_metadata).toEqual({});
+  });
+});
+
+describe("event packages", () => {
+  it.each([
+    { label: "missing", packages: undefined },
+    { label: "null", packages: null },
+    { label: "empty", packages: {} },
+    { label: "recorded", packages: { example: "1.2.3", redacted: null } },
+  ])("retains $label package metadata during event parsing", ({ packages }) => {
+    const event = EventSchema.parse({ ...createDefaultEvent(), packages });
+    expect(event.packages).toEqual(packages);
   });
 });

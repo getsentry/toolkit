@@ -1,7 +1,9 @@
 import { z } from "zod";
+import type { UptimeCheck } from "../../api-client/types";
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
@@ -10,72 +12,65 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { compactLines, formatDate } from "./support/api-formatting";
+import { formatDate } from "./support/api-formatting";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
 import {
-  formatUptimeHeadersForOutput,
-  formatUptimeStatus,
-  getUptimeOwnerName,
+  toUptimeHeadersForOutput,
+  toUptimeMonitorSummary,
+  uptimeHeaderSchema,
+  uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
 
-function formatCheck(
-  check: {
-    timestamp?: string;
-    scheduledCheckTime?: string;
-    checkStatus?: string;
-    checkStatusReason?: string | null;
-    httpStatusCode?: number | null;
-    durationMs?: number;
-    regionName?: string;
-    region?: string;
-    environment?: string;
-  },
-  monitorEnvironment: string | null | undefined,
-): string {
-  const time =
-    formatDate(check.timestamp) ??
-    formatDate(check.scheduledCheckTime) ??
-    "unknown time";
-  const status = check.checkStatus ?? "unknown";
-  const reason = check.checkStatusReason ? ` (${check.checkStatusReason})` : "";
-  const http =
-    check.httpStatusCode === undefined || check.httpStatusCode === null
-      ? ""
-      : `, HTTP ${check.httpStatusCode}`;
-  const duration =
-    check.durationMs === undefined ? "" : `, ${check.durationMs}ms`;
-  const region = check.regionName || check.region;
-  const regionPart = region ? `, ${region}` : "";
-  // Only print environment when it differs from the monitor-level value.
-  const checkEnvironment = check.environment?.trim();
-  const monitorEnv = monitorEnvironment?.trim() || null;
-  const environment =
-    checkEnvironment && checkEnvironment !== monitorEnv
-      ? `, ${checkEnvironment}`
-      : "";
-  return `- ${time}: ${status}${reason}${http}${duration}${regionPart}${environment}`;
+const uptimeCheckOutputSchema = z.object({
+  time: z.string().nullable(),
+  status: z.string(),
+  statusReason: z.string().nullable(),
+  httpStatusCode: z.number().nullable(),
+  durationMs: z.number().nullable(),
+  region: z.string().nullable(),
+  environment: z.string().nullable(),
+});
+
+export const getUptimeMonitorDetailsOutputSchema = z.object({
+  monitor: uptimeMonitorSummarySchema.extend({
+    headers: z
+      .array(uptimeHeaderSchema)
+      .describe("Configured request headers; sensitive values are redacted."),
+    hasRequestBody: z
+      .boolean()
+      .describe(
+        "Whether a request body is configured. The body is never returned.",
+      ),
+    assertion: z
+      .unknown()
+      .describe(
+        "Response assertion tree as configured in Sentry, or null when none is set.",
+      ),
+  }),
+  checks: z.array(uptimeCheckOutputSchema),
+});
+
+function toCheck(check: UptimeCheck): z.infer<typeof uptimeCheckOutputSchema> {
+  return {
+    time: formatDate(check.timestamp) ?? formatDate(check.scheduledCheckTime),
+    status: check.checkStatus ?? "unknown",
+    statusReason: check.checkStatusReason || null,
+    httpStatusCode: check.httpStatusCode ?? null,
+    durationMs: check.durationMs ?? null,
+    region: check.regionName || check.region || null,
+    environment: check.environment?.trim() || null,
+  };
 }
 
 export default defineTool({
   name: "get_uptime_monitor_details",
+  title: "Get Uptime Monitor Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [
-    "Get details for a Sentry uptime monitor, including recent checks.",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect an uptime monitor's URL, interval, thresholds, and status",
-    "- Review recent HTTP check results (success/failure, status code, duration)",
-    "- Debug why an uptime monitor is failing",
-    "",
-    "This is separate from cron monitors (`get_monitor_details`).",
-    "",
-    "Request bodies are never returned. Sensitive header values are redacted.",
-    "",
-    "<examples>",
-    "get_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')",
-    "get_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)",
-    "</examples>",
+    "Get a Sentry uptime monitor: its URL, interval, thresholds, status, and recent HTTP check results (status code, duration, failures). Request bodies are never returned; sensitive headers are redacted.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
+    "Related issues: search_issues with uptime_rule:<id>.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -85,32 +80,29 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe("Uptime monitor ID (detector id)."),
+      .describe("Uptime monitor ID from find_uptime_monitors."),
     period: ParamPeriod.describe(
-      "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted.",
+      "Relative time range for recent checks, such as 24h or 7d. Defaults to 24h without start and end.",
     ).optional(),
     start: z
       .string()
       .datetime()
-      .describe(
-        "Absolute start time. Must be provided with `end`; do not combine with `period`.",
-      )
+      .describe("Absolute start time. Requires end; not with period.")
       .optional(),
     end: z
       .string()
       .datetime()
-      .describe(
-        "Absolute end time. Must be provided with `start`; do not combine with `period`.",
-      )
+      .describe("Absolute end time. Requires start; not with period.")
       .optional(),
     checkLimit: z
       .number()
       .int()
       .positive()
       .max(50)
-      .describe("Maximum number of recent checks to include.")
+      .describe("Maximum recent checks to include.")
       .default(10),
   },
+  outputSchema: getUptimeMonitorDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -167,79 +159,15 @@ export default defineTool({
     });
 
     const webUrl = apiService.getUptimeMonitorUrl(organizationSlug, monitor.id);
-    const owner = getUptimeOwnerName(monitor);
-    const uptimeStatus = formatUptimeStatus(monitor.uptimeStatus);
 
-    const output = compactLines([
-      `# Uptime Monitor ${monitor.name} in **${organizationSlug}**`,
-      "",
-      `**ID**: ${monitor.id}`,
-      `**Project**: ${monitor.projectSlug}`,
-      `**Status**: ${monitor.status}`,
-      `**Uptime Status**: ${uptimeStatus}`,
-      `**URL**: ${monitor.url}`,
-      monitor.method ? `**Method**: ${monitor.method}` : null,
-      `**Interval**: ${monitor.intervalSeconds}s`,
-      `**Timeout**: ${monitor.timeoutMs}ms`,
-      monitor.environment ? `**Environment**: ${monitor.environment}` : null,
-      owner ? `**Owner**: ${owner}` : null,
-      monitor.recoveryThreshold !== undefined &&
-      monitor.recoveryThreshold !== null
-        ? `**Recovery Threshold**: ${monitor.recoveryThreshold}`
-        : null,
-      monitor.downtimeThreshold !== undefined &&
-      monitor.downtimeThreshold !== null
-        ? `**Downtime Threshold**: ${monitor.downtimeThreshold}`
-        : null,
-      monitor.traceSampling !== undefined && monitor.traceSampling !== null
-        ? `**Trace Sampling**: ${monitor.traceSampling}`
-        : null,
-      monitor.responseCaptureEnabled !== undefined &&
-      monitor.responseCaptureEnabled !== null
-        ? `**Response Capture**: ${monitor.responseCaptureEnabled}`
-        : null,
-      `**Web URL**: [Open Monitor](${webUrl})`,
-    ]);
-
-    const headerLines = formatUptimeHeadersForOutput(monitor.headers);
-    if (headerLines.length > 0) {
-      output.push("", "## Headers", "", ...headerLines);
-    }
-    if (monitor.body) {
-      output.push(
-        "",
-        "## Request Payload",
-        "",
-        "Request body is configured but omitted from this view.",
-      );
-    }
-
-    if (monitor.assertion !== undefined && monitor.assertion !== null) {
-      output.push(
-        "",
-        "## Assertion",
-        "",
-        "```json",
-        JSON.stringify(monitor.assertion, null, 2),
-        "```",
-      );
-    }
-
-    output.push("", "## Recent Checks", "");
-    output.push(
-      checks.length === 0
-        ? "No checks found in this time range."
-        : checks
-            .slice(0, params.checkLimit)
-            .map((check) => formatCheck(check, monitor.environment))
-            .join("\n"),
-    );
-
-    output.push("", "## Response Notes", "");
-    output.push(
-      `- Search related issues with \`search_issues\` query \`uptime_rule:${monitor.id}\`.`,
-    );
-
-    return `${output.join("\n")}\n`;
+    return structuredResult({
+      monitor: {
+        ...toUptimeMonitorSummary(monitor, webUrl),
+        headers: toUptimeHeadersForOutput(monitor.headers),
+        hasRequestBody: Boolean(monitor.body),
+        assertion: monitor.assertion ?? null,
+      },
+      checks: checks.slice(0, params.checkLimit).map(toCheck),
+    });
   },
 });

@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { archiveCommand } from "./archive.js";
 import { eventsCommand } from "./events.js";
 import { explainCommand } from "./explain.js";
@@ -31,7 +32,7 @@ export const issueRoute = buildRouteMap({
   aliases: { reopen: "unresolve", ignore: "archive" },
   defaultCommand: "view",
   docs: {
-    brief: "Manage Sentry issues",
+    brief: topLevelBrief("issue"),
     fullDescription:
       "View and manage issues from your Sentry projects.\n\n" +
       "Commands:\n" +

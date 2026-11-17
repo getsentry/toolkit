@@ -11,6 +11,7 @@ import {
   getDetailedTrace,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { spansFlag } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ORG_PROJECT_TARGET } from "../../lib/completion-target.js";
@@ -63,8 +64,8 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT =
-  "sentry span view [<org>/<project>/]<trace-id> <span-id> [<span-id>...]";
+const usageHint = () =>
+  sentry`span view [<org>/<project>/]<trace-id> <span-id> [<span-id>...]`;
 
 /** The arguments of `span view`, parsed but with the IDs as typed. */
 export type SpanViewInput = {
@@ -99,7 +100,7 @@ type SpanViewArguments = BoundArguments<SpanViewInput, ResolvedSpans>;
 export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
   // A lone argument that does not end in a span ID is the trace
   const { target, ids } = parseIdArguments(rawArgs, ID_KINDS.span, {
-    usageHint: USAGE_HINT,
+    usageHint: usageHint(),
     multiple: true,
     optional: true,
     needsProject: true,
@@ -112,20 +113,20 @@ export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
     // (CLI-SC)
     throw new ContextError(
       "Trace ID and span ID",
-      USAGE_HINT,
+      usageHint(),
       first && ID_KINDS.span.isId(first)
         ? [
             `'${first}' looks like a span ID (16 characters), not a trace ID`,
-            `Provide the trace ID first: sentry span view <trace-id> ${validateSpanId(first)}`,
-            `Use 'sentry trace list' to find trace IDs`,
+            `Provide the trace ID first: ${sentry`span view <trace-id> ${validateSpanId(first)}`}`,
+            `Use '${sentry`trace list`}' to find trace IDs`,
           ]
         : [],
     );
   }
 
   if (first === undefined) {
-    throw new ContextError("Span ID", USAGE_HINT, [
-      `Use 'sentry span list ${target}' to find span IDs within this trace`,
+    throw new ContextError("Span ID", usageHint(), [
+      `Use '${sentry`span list ${target}`}' to find span IDs within this trace`,
     ]);
   }
 
@@ -141,16 +142,16 @@ export function parseSpanViewInput(rawArgs: readonly string[]): SpanViewInput {
  */
 function parseTrace(traceArg: string, spanId: string): TraceArgumentsInput {
   try {
-    return parseTraceArgumentsInput([traceArg], USAGE_HINT, {
+    return parseTraceArgumentsInput([traceArg], usageHint(), {
       needsProject: true,
     });
   } catch (error) {
     if (!(error instanceof ContextError)) {
       throw error;
     }
-    throw new ContextError("Trace ID", USAGE_HINT, [
+    throw new ContextError("Trace ID", usageHint(), [
       `'${traceArg}' is missing a trace ID before the span ID '${spanId}'`,
-      `Provide the trace ID: sentry span view ${traceArg}/<trace-id> ${spanId}`,
+      `Provide the trace ID: ${sentry`span view ${traceArg}/<trace-id> ${spanId}`}`,
     ]);
   }
 }
@@ -169,7 +170,8 @@ async function resolveSpanViewInput(
   const { traceId, org, project } = await resolveTraceOrgProject(
     traceTarget,
     context.cwd,
-    USAGE_HINT,
+    "span view",
+    usageHint(),
   );
   // Span IDs are unique only within a trace, so recovery scopes its fuzzy
   // lookup via `ctx.traceId`.
@@ -199,7 +201,7 @@ async function validateAndRecoverSpanId(
     const result = await recoverHexId(rawSpanId, "span", ctx);
     return handleRecoveryResult(result, err, {
       entityType: "span",
-      canonicalCommand: `sentry span view ${ctx.org}/${ctx.project}/${ctx.traceId} <id>`,
+      canonicalCommand: sentry`span view ${ctx.org}/${ctx.project}/${ctx.traceId} <id>`,
       logTag: "span.view",
     });
   }
@@ -356,18 +358,15 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View a single span",
-        command:
-          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+        run: "span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
       },
       {
         description: "View multiple spans at once",
-        command:
-          "sentry span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
+        run: "span view abc123def456abc123def456abc12345 a1b2c3d4e5f67890 b2c3d4e5f6789012",
       },
       {
         description: "Specify the organization and project explicitly",
-        command:
-          "sentry span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
+        run: "span view my-org/backend/abc123def456abc123def456abc12345 a1b2c3d4e5f67890",
       },
     ],
   },
@@ -402,10 +401,15 @@ export const viewCommand = buildCommand({
     const spans = await getDetailedTrace(org, traceId);
 
     if (spans.length === 0) {
-      throw new ResolutionError(`Trace "${traceId}"`, "not found", USAGE_HINT, [
-        "The ID format is valid but no matching trace exists in this project",
-        "Check that you are querying the right org/project, or the trace may be past your plan's retention window",
-      ]);
+      throw new ResolutionError(
+        `Trace "${traceId}"`,
+        "not found",
+        usageHint(),
+        [
+          "The ID format is valid but no matching trace exists in this project",
+          "Check that you are querying the right org/project, or the trace may be past your plan's retention window",
+        ],
+      );
     }
 
     // Find each requested span
@@ -430,14 +434,14 @@ export const viewCommand = buildCommand({
         throw new ResolutionError(
           `Span "${spanIds[0]}" in trace ${traceId}`,
           "not found",
-          USAGE_HINT,
+          usageHint(),
         );
       }
       const idList = formatIdList(spanIds);
       throw new ResolutionError(
         `Spans in trace ${traceId}`,
         "none of the requested IDs were found",
-        USAGE_HINT,
+        usageHint(),
         [`Requested IDs:\n${idList}`],
       );
     }

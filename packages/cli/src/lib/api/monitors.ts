@@ -30,7 +30,7 @@ import {
  * @returns Monitors, including nested monitor environments
  */
 export async function listMonitors(orgSlug: string): Promise<SentryMonitor[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const { data: allResults } = await autoPaginate(async (cursor) => {
     const result = await listOrganizationMonitors({
@@ -63,7 +63,7 @@ export async function listMonitorsPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryMonitor[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationMonitors({
     ...config,

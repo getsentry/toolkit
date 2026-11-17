@@ -5,29 +5,43 @@
  * Explore UI, with user-specified aggregates, datasets, filters, and time ranges.
  */
 
-import type { OrganizationEventsTimeseriesResponse } from "@sentry/api";
+import {
+  listOrganizationEvents,
+  listOrganizationEventsTimeseries,
+  type OrganizationEventsTimeseriesResponse,
+} from "@sentry/api";
 
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
+import type { EventsDataset } from "../datasets.js";
 import { stringifyUnknown } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
+import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
+  getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
   paginate,
-  parseLinkHeader,
+  unwrapPaginatedResult,
+  unwrapResult,
+  validateResponse,
 } from "./infrastructure.js";
 
 /** Options for querying the Explore/Events endpoint. */
 export type ExploreQueryOptions = {
   /** Fields to request — columns, aggregates, or equations */
   fields: string[];
-  /** Dataset to query: errors, spans, tracemetrics, logs, replays */
-  dataset?: string;
+  /** Dataset to query. Defaults to `errors`. */
+  dataset?: EventsDataset;
   /** Sentry search query filter */
   query?: string;
+  /**
+   * Numeric project ID, sent as the `project` param. `project:<slug>` in
+   * `query` only matches projects the requester is a member of, so a valid
+   * slug can 400 with "not actively selected" (#1317).
+   */
+  projectId?: number;
   /**
    * Sort field. Prefix with `-` for descending.
    * Every Events dataset accepts it as long as the sort column is in
@@ -48,10 +62,10 @@ export type ExploreQueryOptions = {
   end?: string;
 };
 
-/** Options for an ungrouped time series, with project and environment filters in `query`. */
+/** Options for an ungrouped time series, with environment filters in `query`. */
 export type ExploreTimeSeriesQueryOptions = Pick<
   ExploreQueryOptions,
-  "fields" | "dataset" | "query" | "statsPeriod" | "start" | "end"
+  "fields" | "dataset" | "query" | "projectId" | "statsPeriod" | "start" | "end"
 > & {
   /** Bucket width as a duration, such as `5m`. Must be valid for the requested range. */
   interval: string;
@@ -81,34 +95,34 @@ export type EventsTimeSeriesResponse = Omit<
 /**
  * Query aggregate values over time without grouping or pagination.
  *
- * Uses the same regional transport as `queryEvents` because the generated
- * SDK input types do not support repeated `yAxis` or duration-string intervals.
  * Returns the complete API response, including sampling and ingestion metadata.
  */
 export async function queryEventsTimeSeries(
   orgSlug: string,
   options: ExploreTimeSeriesQueryOptions,
 ): Promise<EventsTimeSeriesResponse> {
-  const regionUrl = await resolveOrgRegion(orgSlug);
-  const { data } = await apiRequestToRegion<EventsTimeSeriesResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events-timeseries/`,
-    {
-      params: {
-        dataset: options.dataset ?? "errors",
-        yAxis: options.fields,
-        query: options.query || undefined,
-        interval: options.interval,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "24h"),
-        start: options.start,
-        end: options.end,
-      },
+  const result = await listOrganizationEventsTimeseries({
+    ...getOrgSdkConfig(),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      yAxis: options.fields,
+      query: options.query || undefined,
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      interval: options.interval,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "24h"),
+      start: options.start,
+      end: options.end,
     },
+  });
+  return unwrapResult<EventsTimeSeriesResponse>(
+    result,
+    "Failed to query events time series",
   );
-  return data;
 }
 
 /**
@@ -129,30 +143,34 @@ async function fetchEventsPage(
   options: ExploreQueryOptions,
   perPage: number,
 ): Promise<PaginatedResponse<EventsTableResponse>> {
-  const { data, headers } = await apiRequestToRegion<EventsTableResponse>(
-    regionUrl,
-    `/organizations/${orgSlug}/events/`,
-    {
-      params: {
-        dataset: options.dataset ?? "errors",
-        field: options.fields,
-        query: options.query || undefined,
-        sort: options.sort || undefined,
-        per_page: perPage,
-        statsPeriod:
-          options.start || options.end
-            ? undefined
-            : (options.statsPeriod ?? "24h"),
-        start: options.start,
-        end: options.end,
-        cursor: options.cursor,
-      },
-      schema: EventsTableResponseSchema,
+  const result = await listOrganizationEvents({
+    ...getSdkClientConfig(regionUrl),
+    path: { organization_id_or_slug: orgSlug },
+    query: {
+      dataset: options.dataset ?? "errors",
+      field: options.fields,
+      query: options.query || undefined,
+      project:
+        options.projectId === undefined ? undefined : [options.projectId],
+      sort: options.sort || undefined,
+      per_page: perPage,
+      statsPeriod:
+        options.start || options.end
+          ? undefined
+          : (options.statsPeriod ?? "24h"),
+      start: options.start,
+      end: options.end,
+      cursor: options.cursor,
     },
+  });
+  const page = unwrapPaginatedResult<unknown>(result, "Failed to query events");
+  const data: EventsTableResponse = validateResponse(
+    EventsTableResponseSchema,
+    page.data,
+    `/organizations/${orgSlug}/events/`,
+    page.response?.status ?? 0,
   );
-
-  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
-  return { data, nextCursor };
+  return { data, nextCursor: page.nextCursor };
 }
 
 /** Metric metadata returned by {@link queryMetricsMeta}. */
@@ -178,15 +196,21 @@ export async function queryMetricsMeta(
     start?: string;
     end?: string;
     project?: string;
+    /** Numeric ID for `project`; when set, replaces the `project:<slug>` filter. */
+    projectId?: number;
   },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const query = options?.project ? `project:${options.project}` : undefined;
+  const query =
+    options?.project && options.projectId === undefined
+      ? `project:${options.project}`
+      : undefined;
 
   const baseOptions: ExploreQueryOptions = {
     fields: ["metric.name", "metric.type", "metric.unit"],
     dataset: "tracemetrics",
     query,
+    projectId: options?.projectId,
     statsPeriod:
       options?.start || options?.end
         ? undefined

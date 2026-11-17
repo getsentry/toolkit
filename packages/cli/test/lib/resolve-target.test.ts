@@ -44,7 +44,7 @@ import {
   resetCacheState,
 } from "../../src/lib/response-cache.js";
 import { resetAuthenticatedFetch } from "../../src/lib/sentry-client.js";
-import { mockFetch, useTestConfigDir } from "../helpers.js";
+import { mintSntrysToken, mockFetch, useTestConfigDir } from "../helpers.js";
 
 // ============================================================================
 // Arbitraries for Property-Based Testing
@@ -356,6 +356,54 @@ describe("Environment variable resolution (SENTRY_ORG / SENTRY_PROJECT)", () => 
     process.env.SENTRY_ORG = "env-org";
     const result = await resolveOrgsForListing(undefined, "/tmp");
     expect(result.orgs).toContain("env-org");
+  });
+
+  // --- org auth token (sntrys_) org claim ---
+
+  function useOrgAuthToken(org: string): void {
+    setAuthToken(
+      mintSntrysToken({ iat: 1_700_000_000, url: DEFAULT_SENTRY_URL, org }),
+    );
+  }
+
+  test("resolveOrg: falls back to the org embedded in an org auth token", async () => {
+    useOrgAuthToken("token-org");
+    const result = await resolveOrg({ cwd: "/tmp" });
+    expect(result).toEqual({
+      org: "token-org",
+      detectedFrom: "org auth token",
+    });
+  });
+
+  test("resolveOrgAndProject: org auth token org + SENTRY_PROJECT", async () => {
+    useOrgAuthToken("token-org");
+    process.env.SENTRY_PROJECT = "web";
+    const result = await resolveOrgAndProject({ cwd: "/tmp" });
+    expect(result?.org).toBe("token-org");
+    expect(result?.project).toBe("web");
+    expect(result?.detectedFrom).toContain("org auth token");
+  });
+
+  test("resolveAllTargets: org auth token org + SENTRY_PROJECT", async () => {
+    useOrgAuthToken("token-org");
+    process.env.SENTRY_PROJECT = "web";
+    const result = await resolveAllTargets({ cwd: "/tmp" });
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0]?.org).toBe("token-org");
+    expect(result.targets[0]?.project).toBe("web");
+  });
+
+  test("resolveOrg: SENTRY_ORG wins over the org auth token org", async () => {
+    useOrgAuthToken("token-org");
+    process.env.SENTRY_ORG = "env-org";
+    const result = await resolveOrg({ cwd: "/tmp" });
+    expect(result?.org).toBe("env-org");
+  });
+
+  test("resolveOrg: a user token contributes no org", async () => {
+    setAuthToken("sntryu_user-token");
+    const result = await resolveOrg({ cwd: "/tmp" });
+    expect(result?.detectedFrom ?? "").not.toContain("org auth token");
   });
 });
 
@@ -858,7 +906,7 @@ describe("tryFuzzyProjectRecovery", () => {
       // Match /organizations/<org>/projects/
       const orgMatch = url.match(/\/organizations\/([^/]+)\/projects/);
       if (orgMatch) {
-        const org = orgMatch[1] as string;
+        const org = orgMatch[1];
         const slugs = projectsByOrg[org];
         if (slugs) {
           const projects = slugs.map((slug, i) => ({

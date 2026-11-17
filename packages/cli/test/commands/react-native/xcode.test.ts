@@ -129,8 +129,7 @@ describe("react-native xcode", () => {
     expect(wrapEnv?.__SENTRY_RN_WRAP_XCODE_CALL).toBe("1");
 
     expect(sourcemaps.uploadSourcemaps).toHaveBeenCalledTimes(1);
-    const opts = vi.mocked(sourcemaps.uploadSourcemaps).mock
-      .calls[0][0] as sourcemaps.UploadOptions;
+    const opts = vi.mocked(sourcemaps.uploadSourcemaps).mock.calls[0][0];
     expect(opts).toMatchObject({
       org: "acme",
       project: "mobile",

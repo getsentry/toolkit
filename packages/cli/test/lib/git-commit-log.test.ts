@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 // Mock node:child_process so getCommitLog never shells out to a real git.
-const execFileSyncMock = vi.fn(() => "");
+const execFileSyncMock = vi.fn(
+  (_file: string, _args: string[], _options?: unknown) => "",
+);
 vi.mock("node:child_process", () => ({
-  execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+  execFileSync: (...args: Parameters<typeof execFileSyncMock>) =>
+    execFileSyncMock(...args),
 }));
 
 import { getCommitLog } from "../../src/lib/git.js";
@@ -12,7 +15,7 @@ import { getCommitLog } from "../../src/lib/git.js";
 function lastGitArgs(): string[] {
   const call = execFileSyncMock.mock.calls.at(-1);
   // execFileSync(file, args, options)
-  return (call?.[1] ?? []) as string[];
+  return call?.[1] ?? [];
 }
 
 describe("getCommitLog pathspec argv", () => {

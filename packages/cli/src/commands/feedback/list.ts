@@ -10,6 +10,7 @@ import {
   getProject,
   listFeedback,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { validateLimit } from "../../lib/arg-parsing.js";
 import { textParser } from "../../lib/completion-target.js";
 import {
@@ -32,7 +33,7 @@ import {
   paginationHint,
   targetPatternExplanation,
 } from "../../lib/list-command.js";
-import { jsonTransformListResult } from "../../lib/org-list.js";
+import { jsonTransformListResult, type ListJson } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
 import {
   type ResolvedOrgOptionalTarget,
@@ -51,10 +52,8 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import {
-  type FeedbackListResult,
-  SentryFeedbackSchema,
-} from "../../types/index.js";
+import type { FeedbackListResult, SentryFeedback } from "../../types/index.js";
+import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 const DEFAULT_PERIOD = "14d";
 const DEFAULT_STATUS: FeedbackStatus = "unresolved";
@@ -113,7 +112,7 @@ function pageHint(
   flags: Pick<ListFlags, "status" | "limit" | "query" | "period">,
 ): string {
   return appendFeedbackFlags(
-    `sentry feedback list ${formatScope(org, project)} -c ${direction}`,
+    sentry`feedback list ${formatScope(org, project)} -c ${direction}`,
     flags,
   );
 }
@@ -121,7 +120,7 @@ function pageHint(
 function jsonTransformFeedbackList(
   result: FeedbackListResult,
   fields?: string[],
-): unknown {
+): ListJson<SentryFeedback> {
   return jsonTransformListResult(
     {
       items: result.feedback,
@@ -147,37 +146,35 @@ export const listCommand = buildListCommand("feedback", {
     examples: [
       {
         description: "List Feedback (organization auto-detected)",
-        command: "sentry feedback list",
+        run: "feedback list",
       },
       {
         description: "List Feedback for one project",
-        command: "sentry feedback list my-org/frontend",
+        run: "feedback list my-org/frontend",
       },
       {
         description: "List Feedback across every project in an organization",
-        command: "sentry feedback list my-org/",
+        run: "feedback list my-org/",
       },
       {
         description: "Search for a project across accessible organizations",
-        command: "sentry feedback list frontend",
+        run: "feedback list frontend",
       },
       {
         description: "Show resolved Feedback",
-        command: "sentry feedback list my-org/frontend --status resolved",
+        run: "feedback list my-org/frontend --status resolved",
       },
       {
         description: "Show the spam mailbox",
-        command: "sentry feedback list my-org/frontend --status spam",
+        run: "feedback list my-org/frontend --status spam",
       },
       {
         description: "Show every status over the last 90 days",
-        command:
-          "sentry feedback list my-org/frontend --status all --period 90d",
+        run: "feedback list my-org/frontend --status all --period 90d",
       },
       {
         description: "Search Feedback messages",
-        command:
-          'sentry feedback list my-org/frontend --query "message:*checkout*"',
+        run: 'feedback list my-org/frontend --query "message:*checkout*"',
       },
     ],
   },
@@ -288,7 +285,7 @@ export const listCommand = buildListCommand("feedback", {
       const count = `Showing ${feedback.length} feedback item${feedback.length === 1 ? "" : "s"}.`;
       const first = feedback[0];
       const viewHint = first
-        ? `Use 'sentry feedback view ${resolved.org}/${first.shortId}' for details.`
+        ? `Use '${sentry`feedback view ${resolved.org}/${first.shortId}`}' for details.`
         : undefined;
       hint = nav
         ? `${count} ${nav}`

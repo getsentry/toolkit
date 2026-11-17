@@ -7,7 +7,6 @@ import {
   generatePerformanceInsights,
   compareFrameStats,
   formatDuration,
-  formatPercentage,
   hasProfileData,
 } from "./analyzer";
 
@@ -452,16 +451,6 @@ describe("analyzer", () => {
 
     it("formats seconds", () => {
       expect(formatDuration(1_500_000_000)).toBe("1.5s");
-    });
-  });
-
-  describe("formatPercentage", () => {
-    it("formats small percentages with 2 decimals", () => {
-      expect(formatPercentage(0.53)).toBe("0.53%");
-    });
-
-    it("formats larger percentages with 1 decimal", () => {
-      expect(formatPercentage(45.2)).toBe("45.2%");
     });
   });
 

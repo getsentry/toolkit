@@ -33,7 +33,7 @@ const log = logger.withTag("api.repositories");
 export async function listRepositories(
   orgSlug: string,
 ): Promise<SentryRepository[]> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationRepos({
     ...config,
@@ -60,7 +60,7 @@ export async function listRepositoriesPaginated(
   orgSlug: string,
   options: { cursor?: string; perPage?: number; query?: string } = {},
 ): Promise<PaginatedResponse<SentryRepository[]>> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await listOrganizationRepos({
     ...config,

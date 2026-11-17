@@ -8,11 +8,14 @@ import {
   setActiveAccount,
   setAuthToken,
 } from "../../src/lib/db/auth.js";
+import { setOrgRegions } from "../../src/lib/db/regions.js";
 import { setUserInfo } from "../../src/lib/db/user.js";
 import { captureEnvTokenHost } from "../../src/lib/env-token-host.js";
 import {
   HostScopeError,
   MalformedAuthTokenError,
+  ResolutionError,
+  ValidationError,
 } from "../../src/lib/errors.js";
 import type { McpServerConfig } from "../../src/lib/mcp/config.js";
 import {
@@ -26,7 +29,7 @@ import {
   useEnvSandbox,
   useTestConfigDir,
 } from "../helpers.js";
-import { parseMcpFlags } from "./mcp/parse-flags.js";
+import { parseMcpArgs } from "./mcp/parse-flags.js";
 
 type Served = { config: McpServerConfig; options: McpServeOptions };
 
@@ -55,6 +58,26 @@ vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
   };
 });
 
+/** The startup scope check; it would otherwise call Sentry. */
+const scopeChecks = vi.hoisted(() => ({
+  calls: [] as { organizationSlug?: string; accessToken: string }[],
+  result: undefined as Error | undefined,
+}));
+
+vi.mock("../../src/lib/mcp/scope-check.js", () => ({
+  assertMcpScopeExists: vi.fn(
+    async (config: { organizationSlug?: string }, accessToken: string) => {
+      scopeChecks.calls.push({
+        organizationSlug: config.organizationSlug,
+        accessToken,
+      });
+      if (scopeChecks.result) {
+        throw scopeChecks.result;
+      }
+    },
+  ),
+}));
+
 vi.mock("../../src/lib/mcp/server.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/lib/mcp/server.js")>()),
   serveMcpStdio: vi.fn(
@@ -80,6 +103,8 @@ let workingDir = process.cwd();
 
 beforeEach(async () => {
   served.calls = [];
+  scopeChecks.calls = [];
+  scopeChecks.result = undefined;
   workingDir = process.cwd();
   await resetHostScopingState();
 });
@@ -92,7 +117,8 @@ afterEach(async () => {
 /** Run `sentry mcp <args>` up to the (mocked) stdio server. */
 async function serve(args: string[]): Promise<void> {
   const { serveMcp } = await import("../../src/lib/mcp.js");
-  await serveMcp(await parseMcpFlags(args), workingDir);
+  const { flags, scope } = await parseMcpArgs(args);
+  await serveMcp(flags, workingDir, scope);
 }
 
 async function start(args: string[]): Promise<Served> {
@@ -105,6 +131,23 @@ async function start(args: string[]): Promise<Served> {
   return call;
 }
 
+/**
+ * Refresh the startup credential the way mcp-core does after an upstream
+ * 401: through the account router for a stored login, else through
+ * `refreshAccessToken`.
+ */
+async function refreshStartupCredential(
+  options: McpServeOptions,
+): Promise<string | undefined> {
+  if (options.credentialRouter) {
+    const credential = await options.credentialRouter.resolve({
+      organizationSlug: null,
+    });
+    return await credential.refresh?.();
+  }
+  return await options.refreshAccessToken?.();
+}
+
 describe("serveMcp credential wiring", () => {
   test("serves with the CLI session token", async () => {
     setAuthToken("cli-session-token", undefined, undefined, {
@@ -113,7 +156,10 @@ describe("serveMcp credential wiring", () => {
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("cli-session-token");
-    expect(options.refreshAccessToken).toBeDefined();
+    // A stored login routes calls between stored accounts, and refreshes
+    // through the router.
+    expect(options.credentialRouter).toBeDefined();
+    expect(options.refreshAccessToken).toBeUndefined();
   });
 
   test("serves SENTRY_AUTH_TOKEN over a stored login", async () => {
@@ -124,6 +170,8 @@ describe("serveMcp credential wiring", () => {
 
     const { options } = await start([]);
     expect(options.accessToken).toBe("env-token");
+    // The env token is the only credential: no routing to stored logins.
+    expect(options.credentialRouter).toBeUndefined();
     // Refreshes stay on the env token, and the process env is left alone.
     await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
     expect(process.env.SENTRY_FORCE_ENV_TOKEN).toBeUndefined();
@@ -149,7 +197,58 @@ describe("serveMcp credential wiring", () => {
     setAuthToken("rotated-token", undefined, undefined, {
       host: "https://sentry.io",
     });
-    await expect(options.refreshAccessToken?.()).resolves.toBe("rotated-token");
+    await expect(refreshStartupCredential(options)).resolves.toBe(
+      "rotated-token",
+    );
+  });
+});
+
+describe("serveMcp scope", () => {
+  test("serves the <org>/<project> target as the server's scope", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+
+    const { config } = await start(["acme/web"]);
+    expect(config.organizationSlug).toBe("acme");
+    expect(config.projectSlug).toBe("web");
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "acme", accessToken: "cli-session-token" },
+    ]);
+  });
+
+  test("does not serve a scope Sentry reports as not found", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+    scopeChecks.result = new ResolutionError(
+      "Organization 'missing' (MCP server scope 'missing/')",
+      "not found",
+      "Check the <org>/ argument",
+    );
+
+    await expect(serve(["missing/"])).rejects.toBe(scopeChecks.result);
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("checks the scope with a static token", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+
+    await start(["--org", "acme"]);
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "acme", accessToken: "env-token" },
+    ]);
+  });
+
+  test("refuses a target that conflicts with --org before serving", async () => {
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.io",
+    });
+
+    await expect(serve(["acme/", "--org=other"])).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(served.calls).toHaveLength(0);
   });
 });
 
@@ -202,11 +301,11 @@ describe("serveMcp account pinning", () => {
 
     setActiveAccount(b);
 
-    await expect(options.refreshAccessToken?.()).resolves.toBe(
+    await expect(refreshStartupCredential(options)).resolves.toBe(
       "a-token-rotated",
     );
     // A second refresh, after the first cleared the cached rows, stays on A.
-    await expect(options.refreshAccessToken?.()).resolves.toBe(
+    await expect(refreshStartupCredential(options)).resolves.toBe(
       "a-token-rotated",
     );
     expect(refreshedWith).toEqual(["a-token-refresh", "a-token-refresh"]);
@@ -220,7 +319,7 @@ describe("serveMcp account pinning", () => {
 
     await removeAccount(a, { promoteNext: true });
 
-    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+    await expect(refreshStartupCredential(options)).rejects.toThrow(
       "The account this MCP server started with is no longer available",
     );
     expect(refreshedWith).toEqual([]);
@@ -236,10 +335,28 @@ describe("serveMcp account pinning", () => {
     });
     setUserInfo({ userId: "3", email: "3@example.com" });
 
-    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+    await expect(refreshStartupCredential(options)).rejects.toThrow(
       "The account this MCP server started with is no longer available",
     );
     expect(refreshedWith).toEqual([]);
+  });
+
+  test("refuses another user's login over the startup account during startup", async () => {
+    login("a-token", "1");
+    // After the startup pin is taken but before the credential read, another
+    // user replaces the account's credentials in place.
+    refreshHooks.before = () => {
+      refreshHooks.before = undefined;
+      setAuthToken("c-token", 3600, "c-token-refresh", {
+        host: "https://sentry.io",
+      });
+      setUserInfo({ userId: "3", email: "3@example.com" });
+    };
+
+    await expect(serve([])).rejects.toThrow(
+      "The account this MCP server started with is no longer available",
+    );
+    expect(served.calls).toHaveLength(0);
   });
 
   test("pins the account whose token startup returned, even if the active account changes right after", async () => {
@@ -254,7 +371,7 @@ describe("serveMcp account pinning", () => {
     const { options } = await start([]);
     expect(options.accessToken).toBe("a-token");
 
-    await expect(options.refreshAccessToken?.()).resolves.toBe(
+    await expect(refreshStartupCredential(options)).resolves.toBe(
       "a-token-rotated",
     );
     expect(refreshedWith).toEqual(["a-token-refresh"]);
@@ -270,7 +387,7 @@ describe("serveMcp account pinning", () => {
     // CLI's account selection falls back to the remaining account.
     refreshHooks.before = () => removeAccount(a, { promoteNext: true });
 
-    await expect(options.refreshAccessToken?.()).rejects.toThrow(
+    await expect(refreshStartupCredential(options)).rejects.toThrow(
       "The account this MCP server started with is no longer available",
     );
   });
@@ -284,6 +401,178 @@ describe("serveMcp account pinning", () => {
     login("stored-token", "1");
 
     await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
+  });
+});
+
+describe("serveMcp account routing", () => {
+  const originalFetch = globalThis.fetch;
+  const refreshedWith: string[] = [];
+  let nextOrgId = 5000;
+
+  /** Store a new active account, as `sentry auth login` does. */
+  function login(token: string, userId: string, host = "https://sentry.io") {
+    const id = setAuthToken(token, 3600, `${token}-refresh`, {
+      host,
+      newAccount: true,
+    });
+    setUserInfo({ userId, email: `${userId}@example.com` });
+    return id;
+  }
+
+  /** Cache a full org list for the active account, like `org list`. */
+  function seeOrgList(orgs: string[], host = "https://sentry.io"): void {
+    setOrgRegions(
+      orgs.map((slug) => {
+        nextOrgId += 1;
+        return {
+          slug,
+          regionUrl: host,
+          sourceOrigin: host,
+          orgId: String(nextOrgId),
+          orgName: slug,
+        };
+      }),
+    );
+  }
+
+  /** Accounts A (startup, owns a-org) and B (owns b-org) on sentry.io. */
+  function loginTwoAccounts(): { a: string; b: string } {
+    const a = login("a-token", "1");
+    seeOrgList(["a-org"]);
+    const b = login("b-token", "2");
+    seeOrgList(["b-org"]);
+    setActiveAccount(a);
+    return { a, b };
+  }
+
+  function routerOf(options: McpServeOptions) {
+    const router = options.credentialRouter;
+    if (!router) {
+      throw new Error("expected a credential router");
+    }
+    return router;
+  }
+
+  beforeEach(async () => {
+    await clearAuth();
+    refreshedWith.length = 0;
+    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    globalThis.fetch = async (input, init) => {
+      expect(new Request(input).url).toBe("https://sentry.io/oauth/token/");
+      const body = init?.body;
+      const refresh =
+        body instanceof URLSearchParams ? body.get("refresh_token") : null;
+      refreshedWith.push(refresh ?? "");
+      return Response.json({
+        access_token: `${refresh?.replace(/-refresh$/, "")}-rotated`,
+        token_type: "bearer",
+        expires_in: 3600,
+        refresh_token: refresh,
+      });
+    };
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("routes each organization to the stored account that knows it", async () => {
+    const { a, b } = loginTwoAccounts();
+    const { options } = await start([]);
+    const router = routerOf(options);
+    expect(options.accessToken).toBe("a-token");
+
+    await expect(
+      router.resolve({ organizationSlug: "b-org" }),
+    ).resolves.toMatchObject({ id: b, accessToken: "b-token" });
+    await expect(
+      router.resolve({ organizationSlug: "a-org" }),
+    ).resolves.toMatchObject({ id: a, accessToken: "a-token" });
+    // No organization: the startup account.
+    await expect(
+      router.resolve({ organizationSlug: null }),
+    ).resolves.toMatchObject({ id: a, accessToken: "a-token" });
+  });
+
+  test("gives overlapping calls for different orgs their own account", async () => {
+    loginTwoAccounts();
+    const { options } = await start([]);
+    const router = routerOf(options);
+
+    const resolved = await Promise.all(
+      ["a-org", "b-org", "a-org", "b-org"].map((organizationSlug) =>
+        router.resolve({ organizationSlug }),
+      ),
+    );
+    expect(resolved.map((credential) => credential.accessToken)).toEqual([
+      "a-token",
+      "b-token",
+      "a-token",
+      "b-token",
+    ]);
+  });
+
+  test("refreshes only the account that made the call", async () => {
+    loginTwoAccounts();
+    const { options } = await start([]);
+    const credential = await routerOf(options).resolve({
+      organizationSlug: "b-org",
+    });
+
+    await expect(credential.refresh?.()).resolves.toBe("b-token-rotated");
+    expect(refreshedWith).toEqual(["b-token-refresh"]);
+  });
+
+  test("falls back to the startup account for an unknown organization", async () => {
+    const { a } = loginTwoAccounts();
+    const { options } = await start([]);
+
+    // Every account already has a fresh org list, so nothing is listed.
+    await expect(
+      routerOf(options).resolve({ organizationSlug: "unknown-org" }),
+    ).resolves.toMatchObject({ id: a, accessToken: "a-token" });
+  });
+
+  test("lists every usable account on the target server, startup account first", async () => {
+    const { a, b } = loginTwoAccounts();
+    login("acme-token", "3", "https://sentry.acme.com");
+    setActiveAccount(a);
+    const { options } = await start([]);
+
+    const credentials = await routerOf(options).list();
+    expect(
+      credentials.map(({ id, accessToken }) => ({ id, accessToken })),
+    ).toEqual([
+      { id: a, accessToken: "a-token" },
+      { id: b, accessToken: "b-token" },
+    ]);
+  });
+
+  test("keeps the startup account after another process switches accounts", async () => {
+    const { a, b } = loginTwoAccounts();
+    const { options } = await start([]);
+
+    setActiveAccount(b);
+
+    await expect(
+      routerOf(options).resolve({ organizationSlug: null }),
+    ).resolves.toMatchObject({ id: a, accessToken: "a-token" });
+  });
+
+  test("--organization-slug picks the account that knows the org once", async () => {
+    loginTwoAccounts();
+    const { options } = await start(["--organization-slug", "b-org"]);
+
+    expect(options.credentialRouter).toBeUndefined();
+    expect(options.accessToken).toBe("b-token");
+    // The scope is checked with the account the org routed to.
+    expect(scopeChecks.calls).toEqual([
+      { organizationSlug: "b-org", accessToken: "b-token" },
+    ]);
+    await expect(options.refreshAccessToken?.()).resolves.toBe(
+      "b-token-rotated",
+    );
+    expect(refreshedWith).toEqual(["b-token-refresh"]);
   });
 });
 
@@ -531,6 +820,8 @@ describe("serveMcp .sentryclirc URLs", () => {
     rcDirs.push(dir);
     workingDir = dir;
     clearSentryCliRcCache();
+    // Boot order: the env-token host is snapshotted before the shim runs.
+    captureEnvTokenHost();
     await applySentryCliRcEnvShim(dir);
   }
 
@@ -632,6 +923,29 @@ describe("serveMcp .sentryclirc URLs", () => {
       await inRcDir("https://sentry.example.com");
 
       const { config, options } = await start([]);
+      expect(config.sentryHost).toBe("sentry.example.com");
+      expect(options.accessToken).toBe("env-token");
+      // The refresh after an upstream 401 runs under the same scope.
+      await expect(options.refreshAccessToken?.()).resolves.toBe("env-token");
+    });
+
+    test("serves the env token over http with --insecure-http on its startup SENTRY_HOST", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      process.env.SENTRY_HOST = "sentry.internal:9000";
+      captureEnvTokenHost();
+
+      const { config, options } = await start(["--insecure-http"]);
+      expect(config.sentryHost).toBe("sentry.internal:9000");
+      expect(config.sentryProtocol).toBe("http");
+      expect(options.accessToken).toBe("env-token");
+    });
+
+    test("scopes the env token to an explicit --host over the rc URL", async () => {
+      process.env.SENTRY_AUTH_TOKEN = "env-token";
+      captureEnvTokenHost();
+      await inRcDir("https://evil.example.com");
+
+      const { config, options } = await start(["--host=sentry.example.com"]);
       expect(config.sentryHost).toBe("sentry.example.com");
       expect(options.accessToken).toBe("env-token");
     });
@@ -742,13 +1056,60 @@ describe("serveMcp .sentryclirc URLs", () => {
     expect(served.calls).toHaveLength(0);
   });
 
-  test("serves a static token for an rc URL the user has logged in to", async () => {
+  test("keeps an env token with no host claim off an rc URL the user has logged in to", async () => {
+    // The stored login on the rc host gets past the rc-URL gate; the env
+    // token still wins for serving, so it must keep its startup (SaaS) host.
+    setAuthToken("cli-session-token", undefined, undefined, {
+      host: "https://sentry.example.com",
+    });
+    process.env.SENTRY_AUTH_TOKEN = "env-token";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
+
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    // --insecure-http alone keeps the rc host as the target, so it must not
+    // scope the env token either.
+    await expect(serve(["--insecure-http"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
+    expect(served.calls).toHaveLength(0);
+  });
+
+  test("keeps a static token with no host claim off an rc URL the user has logged in to", async () => {
+    // The same as SENTRY_AUTH_TOKEN: the stored login on the rc host gets
+    // past the rc-URL gate, but the static token keeps its startup (SaaS)
+    // host.
     setAuthToken("cli-session-token", undefined, undefined, {
       host: "https://sentry.example.com",
     });
     await inRcDir("https://sentry.example.com");
 
-    const { config } = await start(["--access-token=static-token"]);
+    await expect(serve(["--access-token=static-token"])).rejects.toBeInstanceOf(
+      HostScopeError,
+    );
+    await expect(
+      serve(["--access-token=static-token", "--insecure-http"]),
+    ).rejects.toBeInstanceOf(HostScopeError);
+    process.env.SENTRY_ACCESS_TOKEN = "env-static-token";
+    await expect(serve([])).rejects.toBeInstanceOf(HostScopeError);
+    expect(served.calls).toHaveLength(0);
+
+    // An explicit target still scopes it.
+    const { config, options } = await start([
+      "--access-token=static-token",
+      "--host=sentry.example.com",
+    ]);
     expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
+  });
+
+  test("serves a static token on the rc URL its startup SENTRY_URL names", async () => {
+    process.env.SENTRY_URL = "https://sentry.example.com";
+    captureEnvTokenHost();
+    await inRcDir("https://sentry.example.com");
+
+    const { config, options } = await start(["--access-token=static-token"]);
+    expect(config.sentryHost).toBe("sentry.example.com");
+    expect(options.accessToken).toBe("static-token");
   });
 });

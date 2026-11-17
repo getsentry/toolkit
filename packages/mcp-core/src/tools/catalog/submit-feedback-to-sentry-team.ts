@@ -1,5 +1,6 @@
 import { captureFeedback } from "@sentry/core";
 import { z } from "zod";
+import { UserInputError } from "../../errors";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import { ALL_SKILLS } from "../../skills";
@@ -9,6 +10,43 @@ import { scrubSensitiveText } from "../../telem/sentry";
 // UTF-16 units keeps us at or under that.
 const MAX_FEEDBACK_MESSAGE_LENGTH = 4096;
 
+// Filler that agents have sent instead of a real report, compared after
+// lowercasing and dropping everything but letters and digits.
+const PLACEHOLDER_DESCRIPTIONS = new Set([
+  "",
+  "na",
+  "none",
+  "noop",
+  "null",
+  "placeholder",
+  "tbd",
+  "test",
+  "todo",
+  "undefined",
+]);
+
+function isPlaceholder(text: string): boolean {
+  return PLACEHOLDER_DESCRIPTIONS.has(
+    text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""),
+  );
+}
+
+/**
+ * Name shown on the feedback instead of "Anonymous User". Our telemetry
+ * identifies people only by Sentry user ID, so name the agent and that ID
+ * rather than the person's name or email.
+ */
+function getFeedbackName({
+  clientFamily,
+  userId,
+}: {
+  clientFamily?: string | null;
+  userId?: string | null;
+}): string {
+  const agent = clientFamily ? `MCP agent (${clientFamily})` : "MCP agent";
+  return userId ? `${agent} for user ${userId}` : agent;
+}
+
 export const submitFeedbackToSentryTeamOutputSchema = z.object({
   feedbackId: z
     .string()
@@ -17,24 +55,9 @@ export const submitFeedbackToSentryTeamOutputSchema = z.object({
 
 export default defineTool({
   name: "submit_feedback_to_sentry_team",
-  description: [
-    "Report friction with the Sentry MCP server to its maintainers.",
-    "",
-    "Use this tool when you need to:",
-    "- Report that no Sentry MCP tool could do what the user asked",
-    "- Report a tool that failed, returned wrong data, or was confusing",
-    "- Suggest an improvement to the Sentry MCP tools",
-    "",
-    "<examples>",
-    "submit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Call at most once per task, after you finish or give up.",
-    "- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.",
-    "- Do not include secrets, credentials, or personal data.",
-    "</hints>",
-  ].join("\n"),
+  title: "Submit Feedback to Sentry Team",
+  description:
+    "Report friction with the Sentry MCP server to its maintainers (not the user's Sentry organization): a missing tool, a tool that failed or returned wrong data, a confusing tool, or an idea. Call it at most once per task, only when a Sentry MCP tool was missing, failed, or got in the way. Skip it if the task went fine or did not need Sentry; never use it to log progress or to test it. Do not include secrets or personal data.",
   inputSchema: {
     task: z
       .string()
@@ -75,7 +98,13 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params) {
+  async handler(params, context) {
+    if (isPlaceholder(params.description)) {
+      throw new UserInputError(
+        "`description` is a placeholder. Describe what you tried and what went wrong, or skip this tool if there is nothing to report.",
+      );
+    }
+
     const message = scrubSensitiveText(
       [
         `Task: ${params.task}`,
@@ -89,6 +118,7 @@ export default defineTool({
 
     const feedbackId = captureFeedback({
       source: "mcp_agent",
+      name: getFeedbackName(context),
       message: message.slice(0, MAX_FEEDBACK_MESSAGE_LENGTH),
       tags: {
         "feedback.kind": params.kind,

@@ -44,7 +44,7 @@ const sortedDatePairArb = array(isoDateArb, { minLength: 2, maxLength: 2 }).map(
     const sorted = [...dates].sort();
     // Ensure they're different (no zero-length range issues)
     if (sorted[0] === sorted[1]) {
-      const d = new Date(sorted[1]!);
+      const d = new Date(sorted[1]);
       d.setDate(d.getDate() + 1);
       sorted[1] = d.toISOString().slice(0, 10);
     }

@@ -1,18 +1,43 @@
 // Grammar for one argument that names an issue, for `issue view`, `issue
-// explain`, and every other command that takes one:
+// explain`, and every other command that takes one.
 //
-//   <numeric-id>                  123456789
-//   [<org>/]@<selector>           @latest, my-org/@most_frequent
-//   <project>-<suffix>            cli-G, spotlight-electron-4Y (the project
-//                                 is found in any org)
-//   <suffix>                      G (the project is auto-detected)
-//   <project>:<id>                CLI:CLI-G, CLI:123456789
-//   [<org>/]<project>#<id>        GitHub-style: my-org/cli#CLI-G, #CLI-G
-//   <org>/<numeric-id>            my-org/123456789
-//   <org>/<project>-<suffix>      my-org/cli-G
-//   <org>/<suffix>                my-org/G (no project: always an error)
-//   <org>/<project>/<id>          my-org/cli/G, my-org/cli/CLI-G,
-//                                 my-org/cli/123456789
+// The issue ID formats table in the docs (features.md) is generated from the
+// `@form` lines below (script/generate-docs-sections.ts). A line reads
+// `@form <form> <syntax> <example> — <meaning>`: `<form>` is the `form` the
+// grammar returns for the example, and `<syntax>` and `<example>` are code
+// spans. Indented `//` lines continue the meaning. Generation fails when an
+// example does not parse to its `<form>`, or a form the grammar returns has
+// no `@form` line, so the docs cannot describe a form the parser reads
+// differently. `url` and `search` never reach the grammar: Sentry URLs and
+// text with spaces are taken apart before it.
+//
+// @form numeric `<numeric-id>` `123456789` — The issue's numeric ID
+// @form short-id `<project>-<suffix>` `cli-G` — A short ID, as shown in
+//   Sentry. A project alias from `sentry issue list` works in place of the
+//   project (`e-4Y`). Otherwise the project is looked up in the default
+//   organization, or in every accessible organization
+// @form suffix `<suffix>` `G` — The suffix of a short ID, in the
+//   auto-detected project
+// @form org-short-id `<org>/<project>-<suffix>` `my-org/cli-G` — A short ID
+//   in that organization
+// @form org-project-id `<org>/<project>/<id>` `my-org/cli/CLI-G` — An issue
+//   in that project. `<id>` is a short ID, its suffix, or a numeric ID
+// @form org-numeric `<org>/<numeric-id>` `my-org/123456789` — A numeric ID
+//   in that organization
+// @form org-suffix `<org>/<suffix>` `my-org/G` — Always fails: it names no
+//   project. Use `<org>/<project>-<suffix>` or `<org>/<project>/<suffix>`
+// @form hash `[<org>/]<project>#<id>` `my-org/cli#CLI-G` — GitHub-style:
+//   `<org>/<project>#<id>` is the same as `<org>/<project>/<id>`,
+//   `<project>#<id>` as `<project>:<id>`, and `#<id>` as `<id>`
+// @form project-id `<project>:<id>` `cli:CLI-G` — An issue in that project.
+//   `<id>` is a short ID, its suffix, or a numeric ID
+// @form selector `[<org>/]@<selector>` `@latest` — The top issue in the
+//   organization: `@latest` (most recent) or `@most_frequent`
+// @form url `https://<org>.sentry.io/issues/<id>/`
+//   `https://my-org.sentry.io/issues/123456789/` — An issue URL or share link
+//   copied from Sentry
+// @form search `<text with spaces>` `login timeout` — The one issue in the
+//   organization whose search matches the text. Quote it in the shell
 //
 // `pnpm run generate:grammar` compiles it, with the types in
 // issue-argument.d.ts, into the gitignored src/generated/.

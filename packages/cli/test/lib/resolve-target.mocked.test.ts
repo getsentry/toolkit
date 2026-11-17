@@ -39,7 +39,7 @@ const {
   mockGetCachedDsn,
   mockSetCachedDsn,
   mockGetProject,
-  mockFindProjectByDsnKey,
+  mockFindProjectByDsn,
   mockFindProjectsByPattern,
   mockListOrganizationsUncached,
   mockGetOrgByNumericId,
@@ -75,7 +75,7 @@ const {
     /* no-op */
   }),
   mockGetProject: vi.fn(() => Promise.resolve({ slug: "test", name: "Test" })),
-  mockFindProjectByDsnKey: vi.fn(() => Promise.resolve(null)),
+  mockFindProjectByDsn: vi.fn(() => Promise.resolve(null)),
   mockFindProjectsByPattern: vi.fn(() => Promise.resolve([])),
   mockListOrganizationsUncached: vi.fn(() => Promise.resolve([])),
   mockGetOrgByNumericId: vi.fn(
@@ -143,7 +143,7 @@ vi.mock("../../src/lib/db/regions.js", () => ({
 
 vi.mock("../../src/lib/api-client.js", () => ({
   getProject: mockGetProject,
-  findProjectByDsnKey: mockFindProjectByDsnKey,
+  findProjectByDsn: mockFindProjectByDsn,
   findProjectsByPattern: mockFindProjectsByPattern,
   findProjectsBySlug: vi.fn(() => Promise.resolve({ projects: [], orgs: [] })),
   listOrganizations: vi.fn(() => Promise.resolve([])),
@@ -177,7 +177,7 @@ function resetAllMocks() {
   mockGetCachedDsn.mockReset();
   mockSetCachedDsn.mockReset();
   mockGetProject.mockReset();
-  mockFindProjectByDsnKey.mockReset();
+  mockFindProjectByDsn.mockReset();
   mockFindProjectsByPattern.mockReset();
   mockListOrganizationsUncached.mockReset();
   mockGetOrgByNumericId.mockReset();
@@ -263,7 +263,8 @@ describe("resolveOrg", () => {
     expect(mockDetectDsn).toHaveBeenCalled();
   });
 
-  test("returns numeric orgId when DSN detected but no cache", async () => {
+  test("ignores DSN numeric orgId that matches none of the user's orgs", async () => {
+    // Placeholder DSN (CLI-T6): the org list refreshes but has no org 123.
     mockGetDefaultOrganization.mockReturnValue(null);
     mockDetectDsn.mockResolvedValue({
       raw: "https://abc@o123.ingest.sentry.io/456",
@@ -275,6 +276,52 @@ describe("resolveOrg", () => {
       source: "env",
     });
     mockGetCachedProject.mockReturnValue(null);
+    mockListOrganizationsUncached.mockResolvedValue([]);
+
+    const result = await resolveOrg({ cwd: "/test" });
+
+    expect(mockListOrganizationsUncached).toHaveBeenCalled();
+    expect(result?.org).not.toBe("123");
+    expect(result).toBeNull();
+  });
+
+  test("resolves DSN numeric orgId from the fetched org list when the cache stays cold", async () => {
+    // listOrganizationsUncached may skip writing org_id rows (unverified
+    // region), so the returned list must be checked directly.
+    mockGetDefaultOrganization.mockReturnValue(null);
+    mockDetectDsn.mockResolvedValue({
+      raw: "https://abc@o1169445.ingest.us.sentry.io/456",
+      protocol: "https",
+      publicKey: "abc",
+      host: "o1169445.ingest.us.sentry.io",
+      projectId: "456",
+      orgId: "1169445",
+      source: "env",
+    });
+    mockGetCachedProject.mockReturnValue(null);
+    mockGetOrgByNumericId.mockReturnValue(undefined);
+    mockListOrganizationsUncached.mockResolvedValue([
+      { id: "1169445", slug: "my-org", name: "My Org" },
+    ]);
+
+    const result = await resolveOrg({ cwd: "/test" });
+
+    expect(result?.org).toBe("my-org");
+  });
+
+  test("keeps DSN numeric orgId when the org list cannot be fetched", async () => {
+    mockGetDefaultOrganization.mockReturnValue(null);
+    mockDetectDsn.mockResolvedValue({
+      raw: "https://abc@o123.ingest.sentry.io/456",
+      protocol: "https",
+      publicKey: "abc",
+      host: "o123.ingest.sentry.io",
+      projectId: "456",
+      orgId: "123",
+      source: "env",
+    });
+    mockGetCachedProject.mockReturnValue(null);
+    mockListOrganizationsUncached.mockRejectedValue(new Error("offline"));
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -884,8 +931,8 @@ describe("resolveAllTargets", () => {
       fingerprint: "",
     });
     mockGetCachedProjectByDsnKey.mockReturnValue(null);
-    // findProjectByDsnKey returns null (project not found)
-    mockFindProjectByDsnKey.mockResolvedValue(null);
+    // findProjectByDsn returns null (project not found)
+    mockFindProjectByDsn.mockResolvedValue(null);
     mockFindProjectRoot.mockResolvedValue({
       projectRoot: "/a",
       detectedFrom: "package.json",

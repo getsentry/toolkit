@@ -14,16 +14,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy Docs MCP
+  check:
+    name: Check tested revision is current
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
+    timeout-minutes: 5
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_repository.id == github.event.repository.id &&
           github.event.workflow_run.head_branch == 'main' }}
+    outputs:
+      current: ${{ steps.revision.outputs.current }}
+    steps:
+      # A newer main commit supersedes this one and gets its own deploy, so
+      # skip this deploy instead of failing it.
+      - name: Compare tested revision with main
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_sha" == "$EXPECTED_SHA" ]]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Main advanced to $current_sha; skipping deployment of superseded $EXPECTED_SHA."
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy Docs MCP
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    needs: check
+    if: ${{ needs.check.outputs.current == 'true' }}
     env:
       TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
       DEPLOYMENT_MARKER: toolkit-mcp:${{ github.run_id }}:${{ github.run_attempt }}:${{ github.event.workflow_run.head_sha }}
@@ -41,7 +66,7 @@ jobs:
         run: |
           current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
           if [[ "$current_sha" != "$EXPECTED_SHA" ]]; then
-            echo 'The tested revision is no longer at main; refusing deployment.' >&2
+            echo 'Main advanced after the revision check; refusing deployment.' >&2
             exit 1
           fi
 

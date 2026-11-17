@@ -52,6 +52,20 @@ vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as browser from "../../../src/lib/browser.js";
+
+vi.mock("../../../src/lib/region.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../src/lib/region.js")>();
+  return Object.fromEntries(
+    Object.entries(actual).map(([k, v]) => [
+      k,
+      typeof v === "function" ? vi.fn(v) : v,
+    ]),
+  );
+});
+
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
+import * as region from "../../../src/lib/region.js";
 import { ContextError } from "../../../src/lib/errors.js";
 import {
   type IssueArgument,
@@ -433,5 +447,114 @@ describe("fetchMultipleIssueViews", () => {
         spans: 0,
       }),
     ).rejects.toBe(error);
+  });
+});
+
+describe("issue view org/numeric prefetch", () => {
+  let resolveIssueSpy: ReturnType<typeof vi.spyOn>;
+  let getLatestEventSpy: ReturnType<typeof vi.spyOn>;
+  let listReplayIdsForIssueSpy: ReturnType<typeof vi.spyOn>;
+  let getDetailedTraceSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveIssueSpy = vi.spyOn(issueUtils, "resolveIssue");
+    getLatestEventSpy = vi
+      .spyOn(apiClient, "getLatestEvent")
+      .mockResolvedValue(
+        sampleEvent({ contexts: { trace: { trace_id: "a".repeat(32) } } }),
+      );
+    listReplayIdsForIssueSpy = vi
+      .spyOn(apiClient, "listReplayIdsForIssue")
+      .mockResolvedValue([SECOND_REPLAY_ID]);
+    getDetailedTraceSpy = vi
+      .spyOn(apiClient, "getDetailedTrace")
+      .mockResolvedValue([]);
+    vi.spyOn(region, "resolveEffectiveOrg").mockImplementation(
+      async (org: string) => org,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("fetches latest event, replays, and trace while the issue is still loading", async () => {
+    let releaseIssue: (() => void) | undefined;
+    resolveIssueSpy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseIssue = () =>
+            resolve({ org: "test-org", issue: sampleIssue() });
+        }),
+    );
+
+    const pending = fetchMultipleIssueViews({
+      issueArgs: [parseIssueArgument("test-org/12345")],
+      cwd: "/tmp",
+      spans: 3,
+    });
+
+    await vi.waitFor(() => {
+      expect(resolveIssueSpy).toHaveBeenCalled();
+      expect(getDetailedTraceSpy).toHaveBeenCalled();
+    });
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "12345");
+    expect(listReplayIdsForIssueSpy).toHaveBeenCalledWith("test-org", "12345");
+
+    releaseIssue?.();
+    const [view] = await pending;
+
+    expect(getLatestEventSpy).toHaveBeenCalledTimes(1);
+    expect(listReplayIdsForIssueSpy).toHaveBeenCalledTimes(1);
+    expect(getDetailedTraceSpy).toHaveBeenCalledTimes(1);
+    expect(view?.event?.eventID).toBe(sampleEvent().eventID);
+    expect(view?.replayIds).toEqual([REPLAY_ID, SECOND_REPLAY_ID]);
+    expect(view?.trace?.traceId).toBe("a".repeat(32));
+  });
+
+  test("refetches details when the issue resolves to a different ID", async () => {
+    resolveIssueSpy.mockResolvedValue({
+      org: "test-org",
+      issue: sampleIssue({ id: "67890" }),
+    });
+
+    const [view] = await fetchMultipleIssueViews({
+      issueArgs: [parseIssueArgument("test-org/12345")],
+      cwd: "/tmp",
+      spans: 0,
+    });
+
+    expect(getLatestEventSpy).toHaveBeenCalledWith("test-org", "12345");
+    expect(getLatestEventSpy).toHaveBeenLastCalledWith("test-org", "67890");
+    expect(listReplayIdsForIssueSpy).toHaveBeenLastCalledWith(
+      "test-org",
+      "67890",
+    );
+    expect(view?.issue.id).toBe("67890");
+  });
+
+  test.each([
+    ["short IDs", "CLI-123"],
+    [
+      "pasted URLs",
+      "https://sentry.example.com/organizations/test-org/issues/12345/",
+    ],
+  ])("waits for the issue before fetching details for %s", async (_, arg) => {
+    resolveIssueSpy.mockResolvedValue({
+      org: "test-org",
+      issue: sampleIssue(),
+    });
+
+    await fetchMultipleIssueViews({
+      issueArgs: [parseIssueArgument(arg)],
+      cwd: "/tmp",
+      spans: 0,
+    });
+
+    expect(getLatestEventSpy).toHaveBeenCalledTimes(1);
+    expect(resolveIssueSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      getLatestEventSpy.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 });

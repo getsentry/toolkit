@@ -17,6 +17,7 @@ import {
   ParamUptimeMonitorStatus,
   ParamUptimeOwner,
   ParamUptimeTimeoutMs,
+  toUptimeHeaderPairs,
   toUptimeMonitorSummary,
   uptimeMonitorSummarySchema,
 } from "./support/uptime-monitors";
@@ -27,38 +28,30 @@ export const createUptimeMonitorOutputSchema = z.object({
 
 export default defineTool({
   name: "create_uptime_monitor",
+  title: "Create Uptime Monitor",
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [
-    "Create a Sentry HTTP uptime monitor.",
-    "",
-    "Use this tool when you need to:",
-    "- Start monitoring a URL for availability",
-    "- Create a new uptime check with interval and timeout",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "Required fields match Sentry's uptime API: name, url, intervalSeconds, timeoutMs.",
-    "Advanced response assertions are not supported in this MVP; configure them in the Sentry UI if needed.",
-    "",
-    "<examples>",
-    "create_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='API Health', url='https://api.example.com/health', intervalSeconds=60, timeoutMs=5000)",
-    "create_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', name='Checkout', url='https://example.com/checkout', intervalSeconds=300, timeoutMs=10000, method='GET', environment='production')",
-    "</examples>",
+    "Create a Sentry uptime monitor that checks a URL over HTTP on an interval. Response assertions are not supported; set them in the Sentry UI.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     projectSlug: ParamProjectSlug,
     name: z.string().trim().min(1).max(128).describe("Monitor display name."),
-    url: z.string().url().describe("URL to check."),
+    url: z
+      .string()
+      .url()
+      .max(255)
+      .describe("URL to check (max 255 characters)."),
     intervalSeconds: ParamUptimeIntervalSeconds,
     timeoutMs: ParamUptimeTimeoutMs.default(5000),
     method: ParamUptimeHttpMethod.optional(),
     headers: ParamUptimeHeaders.optional(),
     body: z
       .string()
-      .describe("Optional request body for methods that support a body.")
+      .describe("Request body, for methods that take one.")
       .optional(),
     status: ParamUptimeMonitorStatus.optional(),
     owner: ParamUptimeOwner.optional(),
@@ -67,7 +60,7 @@ export default defineTool({
       .trim()
       .min(1)
       .max(64)
-      .describe("Optional environment name for created uptime issues.")
+      .describe("Environment for uptime issues this monitor creates.")
       .optional(),
     traceSampling: z
       .boolean()
@@ -75,7 +68,7 @@ export default defineTool({
       .optional(),
     responseCaptureEnabled: z
       .boolean()
-      .describe("Capture response body/headers on failures.")
+      .describe("Capture response body and headers on failed checks.")
       .optional(),
     recoveryThreshold: z
       .number()
@@ -117,7 +110,7 @@ export default defineTool({
       intervalSeconds: params.intervalSeconds,
       timeoutMs: params.timeoutMs,
       method: params.method,
-      headers: params.headers,
+      headers: params.headers && toUptimeHeaderPairs(params.headers),
       body: params.body,
       status: params.status,
       owner: params.owner,

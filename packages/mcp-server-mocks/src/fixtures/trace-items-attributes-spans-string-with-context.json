@@ -249,11 +249,13 @@
   {
     "key": "custom.tier",
     "name": "custom.tier",
+    "attributeSource": {"source_type": "user"},
     "context": {}
   },
   {
     "key": "custom.feature_flag",
     "name": "custom.feature_flag",
+    "attributeSource": {"source_type": "user"},
     "context": {}
   },
   {

@@ -196,10 +196,25 @@ export function filterFields<T>(data: T, fields: string[]): Partial<T> {
     ) as unknown as Partial<T>;
   }
   if (data === null || data === undefined || typeof data !== "object") {
-    return data as Partial<T>;
+    return data;
   }
   const projection = projectFields(data, fields);
   return (projection.found ? projection.value : {}) as Partial<T>;
+}
+
+/**
+ * Apply `--fields` the way the default JSON output does: filter when fields
+ * were given, return the data unchanged otherwise.
+ *
+ * A command's `jsonTransform` replaces that default, so it must call this
+ * (or {@link filterFields}) on what it returns. The
+ * `sentry-cli/json-transform-uses-fields` lint rule enforces it.
+ */
+export function filterFieldsIfSet<T>(
+  data: T,
+  fields: string[] | undefined,
+): T | Partial<T> {
+  return fields?.length ? filterFields(data, fields) : data;
 }
 
 /**
@@ -227,7 +242,7 @@ export function parseFieldsList(input: string): string[] {
 /**
  * Format data as pretty-printed JSON
  */
-export function formatJson<T>(data: T): string {
+export function formatJson(data: unknown): string {
   return JSON.stringify(data, null, 2);
 }
 
@@ -242,7 +257,11 @@ export function formatJson<T>(data: T): string {
  * @param data - Data to serialize
  * @param fields - Optional field paths to include (dot-notation supported)
  */
-export function writeJson<T>(stream: Writer, data: T, fields?: string[]): void {
+export function writeJson(
+  stream: Writer,
+  data: unknown,
+  fields?: string[],
+): void {
   const output =
     fields && fields.length > 0 ? filterFields(data, fields) : data;
   stream.write(`${formatJson(output)}\n`);
@@ -272,9 +291,9 @@ export function writeJson<T>(stream: Writer, data: T, fields?: string[]): void {
  * // → { "data": [{ "id": "1", "title": "Bug" }, ...], "hasMore": true }
  * ```
  */
-export function writeJsonList<T>(
+export function writeJsonList(
   stream: Writer,
-  items: T[],
+  items: readonly unknown[],
   options: {
     hasMore: boolean;
     nextCursor?: string | null;

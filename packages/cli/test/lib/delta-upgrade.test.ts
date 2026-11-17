@@ -45,9 +45,6 @@ import type { OciManifest } from "../../src/lib/ghcr.js";
 import { useTestConfigDir } from "../helpers.js";
 
 const LEGACY_UPGRADE_SOURCE = UPGRADE_SOURCES[1];
-if (!LEGACY_UPGRADE_SOURCE) {
-  throw new Error("Legacy upgrade source is not configured");
-}
 
 // ---------------------------------------------------------------------------
 // Test helpers (file-scoped)
@@ -811,7 +808,7 @@ describe("validateChainStep", () => {
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 /** Store original fetch for restoration */
@@ -909,7 +906,7 @@ describe("downloadStablePatch", () => {
 
     mockFetch(async (url) => {
       expect(extractInputUrl(url)).toBe("https://example.com/patch.bin");
-      return new Response(patchData.buffer as ArrayBuffer, {
+      return new Response(patchData.buffer, {
         status: 200,
       });
     });

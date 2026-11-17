@@ -137,7 +137,7 @@ describe("buildDroppedEventsNote", () => {
       await buildDroppedEventsNote({
         ...base,
         apiService,
-        dataset: "profiles" as never,
+        dataset: "profiles",
       }),
     ).toBe("");
   });

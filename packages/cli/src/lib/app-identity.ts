@@ -28,16 +28,6 @@ export function getAppIdentity(): AppIdentity {
 }
 
 /**
- * `command` as the running program spells it: a leading `sentry ` (how
- * command docs write their examples) becomes this program's name.
- */
-export function asRunningAppCommand(command: string): string {
-  return command.startsWith("sentry ")
-    ? `${identity.name}${command.slice("sentry".length)}`
-    : command;
-}
-
-/**
  * Whether npm's `npx` (`npm exec`) launched this process. The binary is then
  * not on PATH, so hints must go through `npx` too.
  */
@@ -57,6 +47,32 @@ export function getInvocationCommand(): string {
     ? `npx -y ${identity.packageName}`
     : identity.name;
 }
+
+/**
+ * Tag for a hint that runs this program again, written without the program
+ * name: `` sentry`issue list ${org}/` `` gives `sentry issue list acme/`,
+ * `npx -y sentry issue list acme/`, or `sentry-mcp issue list acme/`.
+ *
+ * Interpolated values are inserted as they are. A command built with this
+ * tag already names the program, so nesting one never names it twice, and
+ * text that only looks like a command is never rewritten.
+ *
+ * The program is known only once an entry point has started, so build the
+ * hint where it is shown. A command kept in a constant or a table is a
+ * {@link LazyCommand}: `` const usageHint = () => sentry`issue view <id>` ``.
+ */
+export function sentry(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+): string {
+  const text = strings.reduce(
+    (built, part, i) => `${built}${String(values[i - 1])}${part}`,
+  );
+  return `${getInvocationCommand()} ${text}`;
+}
+
+/** A command hint built when it is shown, as `() => sentry`issue view <id>``. */
+export type LazyCommand = () => string;
 
 /** Command that signs in to the active Sentry host. */
 export function getLoginCommand(): string {

@@ -235,6 +235,12 @@ Each tool follows a consistent structure:
 
 **Tool Count Constraints:**
 
+`EXPOSE_ALL_TOOLS` (`packages/mcp-core/src/tools/exposure.ts`) is on by default:
+every available tool is listed in `tools/list` and `search_sentry_tools` /
+`execute_sentry_tool` are not registered, because tier 1 harnesses defer MCP
+tool schemas behind their own tool search. The constraints below apply to the
+gateway surface that the flag falls back to.
+
 - AI agents have a 45 tool limit (Cursor, etc.)
 - Sentry MCP must stay under 25 tools (target: ~20)
 - Consolidate functionality where possible

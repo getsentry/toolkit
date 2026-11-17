@@ -3,8 +3,10 @@
  * `logout`).
  */
 
+import { text } from "@sentry/toolkit-core/markdown";
+import { sentry } from "../app-identity.js";
 import { type AccountSummary, hostnameOf } from "../db/accounts.js";
-import { colorTag, escapeMarkdownInline, renderMarkdown } from "./markdown.js";
+import { colorTag, renderMarkdown } from "./markdown.js";
 import { formatTable } from "./table.js";
 
 /**
@@ -54,17 +56,17 @@ export type AccountListResult = {
 /** Human output for `sentry auth list`. */
 export function formatAccountList(data: AccountListResult): string {
   if (data.accounts.length === 0) {
-    return renderMarkdown("No stored accounts. Run `sentry auth login`.");
+    return renderMarkdown(`No stored accounts. Run \`${sentry`auth login`}\`.`);
   }
   return formatTable(data.accounts, [
     { header: "", value: (a) => (a.active ? "*" : ""), minWidth: 1 },
     {
       header: "ACCOUNT",
-      value: (a) => escapeMarkdownInline(formatAccountIdentity(a)),
+      value: (a) => text(formatAccountIdentity(a)),
     },
     {
       header: "SERVER",
-      value: (a) => escapeMarkdownInline(hostnameOf(a.host) ?? "unknown"),
+      value: (a) => text(hostnameOf(a.host) ?? "unknown"),
     },
     { header: "STATUS", value: accountStatus },
   ]);
@@ -79,7 +81,7 @@ export type AccountSwitchResult = {
 
 /** Human output for `sentry auth switch`. */
 export function formatAccountSwitch(data: AccountSwitchResult): string {
-  const label = escapeMarkdownInline(formatAccountLabel(data.account));
+  const label = text(formatAccountLabel(data.account));
   const line = data.switched
     ? `${colorTag("green", "✓")} Switched to ${label}.`
     : `Already using ${label}.`;

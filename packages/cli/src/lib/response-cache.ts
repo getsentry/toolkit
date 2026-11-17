@@ -1,20 +1,22 @@
 /**
  * HTTP response cache for read-only API calls.
  *
- * Freshness, revalidation, and retention come from the toolkit-core cache
- * policy (`lookupResponse` / `storeResponse`): server `Cache-Control` /
- * `ETag` / `Expires` headers win, and a URL-based fallback TTL applies when
- * the server sends none (Sentry's current behavior). This module adds the
- * CLI's store, identity, kill switches, telemetry, and cache-age hint.
+ * Freshness, revalidation, and retention come from the shared cache policy
+ * in `@sentry/api/client` (`lookupResponse` / `storeResponse`): server
+ * `Cache-Control` / `ETag` / `Expires` headers win, and a URL-based fallback
+ * TTL applies when the server sends none (Sentry's current behavior). This
+ * module adds the CLI's store, identity, kill switches, telemetry, and
+ * cache-age hint.
  *
  * Bodies are compressed with the toolkit-core codec and kept in a
- * filesystem store under `~/.sentry/cache/responses/` (see
+ * filesystem store under `~/.sentry/cache/api-responses/` (see
  * `response-cache-store.ts`), separate from the config SQLite database, which
  * stores small structured data (tokens, org slugs, cursors).
  *
  * @module
  */
 
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   buildCacheKey as buildIdentityCacheKey,
@@ -22,12 +24,12 @@ import {
   classifyUrl,
   lookupResponse,
   storeResponse,
-} from "@sentry/toolkit-core/api-client/response-cache";
+} from "@sentry/api/client";
 import { createBodyCodec } from "@sentry/toolkit-core/response-cache/codec";
 
 import { getIdentityFingerprint } from "./db/auth.js";
 import { getConfigDir } from "./db/index.js";
-import { getEnv } from "./env.js";
+import { getEnv, invocationState, isPersistenceDisabled } from "./env.js";
 import { logger } from "./logger.js";
 import { createFileStore, type FileStore } from "./response-cache-store.js";
 import { recordCacheHit, withCacheSpan } from "./telemetry.js";
@@ -36,7 +38,7 @@ import { recordCacheHit, withCacheSpan } from "./telemetry.js";
 const log = logger.withTag("response-cache");
 
 // ---------------------------------------------------------------------------
-// Cache keys — tiers, keys, and invalidation prefixes live in toolkit-core
+// Cache keys — tiers, keys, and invalidation prefixes live in @sentry/api/client
 // ---------------------------------------------------------------------------
 
 /**
@@ -58,6 +60,15 @@ export async function buildCacheKey(
 
 /** Get the response cache directory path */
 function getCacheDir(): string {
+  return join(getConfigDir(), "cache", "api-responses");
+}
+
+/**
+ * The directory CLI versions before `@sentry/api` 0.446.0 cached into. Their
+ * entries can hold the raw `Authorization` header in the stored cache policy,
+ * so it is deleted rather than migrated.
+ */
+function getLegacyCacheDir(): string {
   return join(getConfigDir(), "cache", "responses");
 }
 
@@ -73,31 +84,37 @@ function getStore(): FileStore {
   const dir = getCacheDir();
   if (current?.dir !== dir) {
     current = { dir, store: createFileStore({ dir }) };
+    rm(getLegacyCacheDir(), { recursive: true, force: true }).catch((error) => {
+      log.debug("Failed to delete the legacy response cache", error);
+    });
   }
   return current.store;
 }
 
 // ---------------------------------------------------------------------------
-// Last cache-hit age — process-global signal for cache-age hints
+// Per-invocation cache state: last cache-hit age and the `--fresh` bypass
 // ---------------------------------------------------------------------------
 
 /**
- * Age of the most recent cache hit, in milliseconds.
- *
- * Set inside {@link lookupCachedResponse} on a hit, cleared at the start of each
+ * `lastHitAgeMs` is the age of the most recent cache hit. It is set inside
+ * {@link lookupCachedResponse} on a hit and cleared at the start of each
  * `authenticatedFetch` call in `sentry-client.ts`. Commands read it via
  * {@link getLastCacheHitAge} to show "cached · 3m ago · use -f to refresh".
  *
- * Safe because the CLI is single-process, single-command — no races.
+ * `readBypassed` is set by `--fresh`. Both are per invocation, so one SDK
+ * call never reports another call's cache hit or keeps its bypass.
  */
-let lastCacheHitAgeMs: number | undefined;
+const cacheState = invocationState<{
+  lastHitAgeMs: number | undefined;
+  readBypassed: boolean;
+}>(() => ({ lastHitAgeMs: undefined, readBypassed: false }));
 
 /**
  * Get the age (in ms) of the most recent cache hit, or `undefined` if the
  * last request was not served from cache.
  */
 export function getLastCacheHitAge(): number | undefined {
-  return lastCacheHitAgeMs;
+  return cacheState().lastHitAgeMs;
 }
 
 /**
@@ -105,7 +122,7 @@ export function getLastCacheHitAge(): number | undefined {
  * call so the signal reflects only the current request.
  */
 export function clearLastCacheHitAge(): void {
-  lastCacheHitAgeMs = undefined;
+  cacheState().lastHitAgeMs = undefined;
 }
 
 /**
@@ -115,23 +132,17 @@ export function clearLastCacheHitAge(): void {
  * @internal Exported for testing
  */
 export function setLastCacheHitAgeForTesting(ageMs: number): void {
-  lastCacheHitAgeMs = ageMs;
+  cacheState().lastHitAgeMs = ageMs;
 }
 
-// ---------------------------------------------------------------------------
-// Cache bypass control
-// ---------------------------------------------------------------------------
-
-let cacheReadBypassed = false;
-
 /**
- * Bypass cache reads for the current process.
+ * Bypass cache reads for the current invocation.
  *
  * Called when `--fresh` flag is passed to a command. Fresh API responses are
  * still written to cache so subsequent invocations serve updated data.
  */
 export function disableResponseCache(): void {
-  cacheReadBypassed = true;
+  cacheState().readBypassed = true;
 }
 
 /**
@@ -144,7 +155,7 @@ export function disableResponseCache(): void {
  * @internal Exported for testing
  */
 export function resetCacheState(): void {
-  cacheReadBypassed = false;
+  cacheState().readBypassed = false;
 }
 
 /**
@@ -152,20 +163,21 @@ export function resetCacheState(): void {
  * Reads are skipped when:
  * - `disableResponseCache()` was called (`--fresh` flag)
  * - `SENTRY_NO_CACHE=1` environment variable is set
+ * - persistence is off for this invocation
  */
 export function isCacheDisabled(): boolean {
-  return cacheReadBypassed || getEnv().SENTRY_NO_CACHE === "1";
+  return cacheState().readBypassed || isCacheWriteDisabled();
 }
 
 /**
  * Check if cache writes are disabled.
  *
- * Only the `SENTRY_NO_CACHE=1` env var disables writes. The `--fresh` flag
- * intentionally allows writes so that the freshly-fetched response replaces
- * any stale cache entry.
+ * Only the `SENTRY_NO_CACHE=1` env var and persistence being off disable
+ * writes. The `--fresh` flag intentionally allows writes so that the
+ * freshly-fetched response replaces any stale cache entry.
  */
 function isCacheWriteDisabled(): boolean {
-  return getEnv().SENTRY_NO_CACHE === "1";
+  return getEnv().SENTRY_NO_CACHE === "1" || isPersistenceDisabled();
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +190,7 @@ export type { CacheLookup };
  * Look up a GET request in the cache.
  *
  * A fresh entry is a `hit`, and a stale entry with an `ETag` is returned for
- * conditional revalidation (see toolkit-core's `lookupResponse`).
+ * conditional revalidation (see `lookupResponse` in `@sentry/api/client`).
  *
  * @param method - HTTP method (only "GET" is cached)
  * @param url - Full request URL
@@ -239,7 +251,7 @@ export async function lookupCachedResponse(
         span.setAttribute("cache.item_size", lookup.size);
 
         // Surface cache age for command-level hints (getsentry/cli#785 #1)
-        lastCacheHitAgeMs = Date.now() - lookup.createdAt;
+        cacheState().lastHitAgeMs = Date.now() - lookup.createdAt;
         return lookup;
       } catch (error) {
         // Corrupted or version-incompatible policy or body — treat as a miss
@@ -282,7 +294,8 @@ export async function getCachedResponse(
  * Store a response in the cache.
  *
  * Only caches successful (2xx) GET responses that HTTP caching allows (see
- * toolkit-core's `storeResponse`); `Cache-Control: no-store` is not cached.
+ * `storeResponse` in `@sentry/api/client`); `Cache-Control: no-store` is not
+ * cached.
  *
  * This function is fire-and-forget — errors are silently swallowed to avoid
  * slowing down the response path.
@@ -361,6 +374,9 @@ export async function invalidateCachedResponsesMatching(
   prefix: string,
   identity = getIdentityFingerprint(),
 ): Promise<void> {
+  if (isPersistenceDisabled()) {
+    return;
+  }
   try {
     await getStore().deleteMatching(identity, prefix);
   } catch (error) {
@@ -374,6 +390,9 @@ export async function invalidateCachedResponsesMatching(
  * Called on `auth logout` and `auth login` since cached data is tied to the user.
  */
 export async function clearResponseCache(): Promise<void> {
+  if (isPersistenceDisabled()) {
+    return;
+  }
   try {
     await getStore().clear();
   } catch (error) {

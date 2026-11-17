@@ -4,41 +4,66 @@ import { ApiError } from "../../api-client/index";
 import { UserInputError } from "../../errors";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
-import type { ServerContext } from "../../types";
-import { USER_AGENT } from "../../version";
+import { getUserAgent } from "../../version";
+
+const DOC_NOT_FOUND_MESSAGE =
+  "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.";
+
+// docs.sentry.io answers unknown paths with 200 and a "Page Not Found" page,
+// marked with this header.
+const NOT_FOUND_HEADER = "x-sentry-docs-not-found";
+
+const DOCS_BASE_URL = "https://docs.sentry.io";
+const ALLOWED_HOSTS = ["docs.sentry.io", "develop.sentry.io"];
+const MAX_REDIRECTS = 5;
+
+/**
+ * Resolve a docs path or page URL to the markdown URL of that page.
+ *
+ * Accepts `/path.md`, `/path/`, `/path`, or an https URL on an allowed host,
+ * with or without a query or fragment. A page path maps to `<path>.md`, so
+ * `/platforms/javascript/` becomes `/platforms/javascript.md` and `/`
+ * becomes `/index.md`. Returns null for anything outside the allowlist.
+ */
+export function resolveDocUrl(
+  input: string,
+  base: string | URL = DOCS_BASE_URL,
+): URL | null {
+  let url: URL;
+  try {
+    url = new URL(input, base);
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== "" ||
+    !ALLOWED_HOSTS.includes(url.hostname)
+  ) {
+    return null;
+  }
+  url.search = "";
+  url.hash = "";
+  const pagePath = url.pathname.replace(/\/+$/, "") || "/index";
+  url.pathname = pagePath.endsWith(".md") ? pagePath : `${pagePath}.md`;
+  return url;
+}
 
 export default defineTool({
   name: "get_doc",
+  title: "Get Sentry Doc",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
-  description: [
+  description:
     "Fetch the full markdown content of a Sentry documentation page.",
-    "",
-    "Use this tool when you need to:",
-    "- Read the complete documentation for a specific topic",
-    "- Get detailed implementation examples or code snippets",
-    "- Access the full context of a documentation page",
-    "- Extract specific sections from documentation",
-    "",
-    "<examples>",
-    "### Get the Next.js integration guide",
-    "",
-    "```",
-    "get_doc(path='/platforms/javascript/guides/nextjs.md')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use the path from search_docs results for accurate fetching",
-    "- Paths should end with .md extension",
-    "</hints>",
-  ].join("\n"),
   inputSchema: {
     path: z
       .string()
       .trim()
       .describe(
-        "The documentation path (e.g., '/platforms/javascript/guides/nextjs.md'). Get this from search_docs results.",
+        "Docs page path from search_docs, or a full docs.sentry.io page URL.",
       ),
   },
   annotations: {
@@ -46,57 +71,53 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params, context: ServerContext) {
+  async handler(params, context) {
     const docContext = { "doc.path": params.path };
     setTags(docContext);
     setAttributes(docContext);
 
-    let output = `# Documentation Content\n\n`;
-    output += `**Path**: ${params.path}\n\n`;
-
-    // Validate path format
-    if (!params.path.endsWith(".md")) {
+    let docUrl = resolveDocUrl(params.path);
+    if (!docUrl) {
       throw new UserInputError(
-        "Invalid documentation path. Path must end with .md extension.",
+        `Invalid documentation path. Use a docs path or an https URL on: ${ALLOWED_HOSTS.join(", ")}`,
       );
     }
 
-    // Use docs.sentry.io for now - will be configurable via flag in the future
-    const baseUrl = "https://docs.sentry.io";
-
-    // Construct the full URL for the markdown file
-    const docUrl = new URL(params.path, baseUrl);
-
-    // Validate domain whitelist for security
-    const allowedDomains = ["docs.sentry.io", "develop.sentry.io"];
-    if (!allowedDomains.includes(docUrl.hostname)) {
-      throw new UserInputError(
-        `Invalid domain. Documentation can only be fetched from allowed domains: ${allowedDomains.join(", ")}`,
-      );
-    }
-
-    const response = await fetchWithTimeout(
-      docUrl.toString(),
-      {
-        headers: {
-          Accept: "text/plain, text/markdown",
-          "User-Agent": USER_AGENT,
+    // Follow redirects by hand so each hop stays on the allowlist. A redirect
+    // off the allowed hosts is reported as a missing page.
+    let response: Response;
+    for (let redirects = 0; ; redirects++) {
+      response = await fetchWithTimeout(
+        docUrl,
+        {
+          headers: {
+            Accept: "text/plain, text/markdown",
+            "User-Agent": getUserAgent(),
+          },
+          redirect: "manual",
+          signal: context.signal,
         },
-      },
-      15000, // 15 second timeout
-    );
+        15000, // 15 second timeout
+      );
+      const location =
+        response.status >= 300 && response.status < 400
+          ? response.headers.get("location")
+          : null;
+      if (!location) {
+        break;
+      }
+      const nextUrl = resolveDocUrl(location, docUrl);
+      if (!nextUrl || redirects >= MAX_REDIRECTS) {
+        throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
+      }
+      docUrl = nextUrl;
+    }
+
+    if (response.status === 404 || response.headers.has(NOT_FOUND_HEADER)) {
+      throw new UserInputError(DOC_NOT_FOUND_MESSAGE);
+    }
 
     if (!response.ok) {
-      if (response.status === 404) {
-        output += `**Error**: Documentation not found at this path.\n\n`;
-        output += `Please verify the path is correct. Common issues:\n`;
-        output += `- Path should start with / (e.g., /platforms/javascript/guides/nextjs.md)\n`;
-        output += `- Path should match exactly what's shown in search_docs results\n`;
-        output += `- Some pages may have been moved or renamed\n\n`;
-        output += `Try searching again with \`search_docs()\` to find the correct path.\n`;
-        return output;
-      }
-
       throw new ApiError(
         `Failed to fetch documentation: ${response.statusText}`,
         response.status,
@@ -105,14 +126,16 @@ export default defineTool({
 
     const content = await response.text();
 
+    let output = `# Documentation Content\n\n`;
+    output += `**URL**: ${docUrl}\n\n`;
+
     // Check if we got HTML instead of markdown (wrong path format)
     if (
       content.trim().startsWith("<!DOCTYPE") ||
       content.trim().startsWith("<html")
     ) {
       output += `> **Error**: Received HTML instead of markdown. The path may be incorrect.\n\n`;
-      output += `Make sure to use the .md extension in the path.\n`;
-      output += `Example: /platforms/javascript/guides/nextjs.md\n`;
+      output += `Use \`search_docs()\` to find the current path.\n`;
       return output;
     }
 

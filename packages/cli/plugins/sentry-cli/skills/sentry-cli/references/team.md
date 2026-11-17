@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-team
-version: 0.48.0-dev.0
+version: 0.50.0-dev.0
 description: Work with Sentry teams
 requires:
   bins: ["sentry"]
@@ -33,10 +33,11 @@ List teams
 | `id` | string | Team ID |
 | `slug` | string | Team slug |
 | `name` | string | Team name |
-| `dateCreated` | string \| null | Creation date (ISO 8601) |
-| `isMember` | boolean | Whether you are a member |
-| `teamRole` | string \| null | Your role in the team |
-| `memberCount` | number | Number of members |
+| `dateCreated` | string \| null | When the team was created (ISO 8601) |
+| `isMember` | boolean | Whether the requesting user is a member of the team |
+| `teamRole` | string \| null | The requesting user's role in the team |
+| `memberCount` | number | Number of members in the team |
+| `orgSlug` | string | Organization slug |
 
 **Examples:**
 

@@ -33,6 +33,7 @@
  */
 
 import { parse } from "../generated/id-arguments-grammar.js";
+import { type LazyCommand, sentry } from "./app-identity.js";
 import { looksLikeIssueShortId } from "./arg-parsing.js";
 import { ContextError, ValidationError } from "./errors.js";
 import {
@@ -90,8 +91,8 @@ export type IdKind = {
    * instead of how the ID is malformed.
    */
   readonly search?: {
-    /** The list command, e.g. `"sentry trace list"`, which takes `--query` */
-    readonly command: string;
+    /** The list command, e.g. `sentry trace list`, which takes `--query` */
+    readonly command: LazyCommand;
     /** Whether `value`, not an ID, reads as text rather than a broken ID */
     readonly isText: (value: string) => boolean;
   };
@@ -137,7 +138,7 @@ const OPAQUE_ID_RE = /^[^/?#%\s\p{Cc}]+$/u;
 
 function hexKind(
   label: string,
-  listCommand: string | null,
+  listCommand: LazyCommand | null,
   fromUrl: IdKind["fromUrl"],
   urlExample?: string,
 ): IdKind {
@@ -158,7 +159,7 @@ function hexKind(
  * to search for it rather than how the ID is malformed: `validate()` throws
  * that, so a command that recovers malformed IDs first still gets it last.
  */
-function searchable(kind: IdKind, listCommand: string): IdKind {
+function searchable(kind: IdKind, listCommand: LazyCommand): IdKind {
   const search = { command: listCommand, isText: isHexSearchText };
   return {
     ...kind,
@@ -167,7 +168,7 @@ function searchable(kind: IdKind, listCommand: string): IdKind {
       if (!(kind.isId(value) || kind.mayBeId(value)) && search.isText(value)) {
         const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
         throw new ValidationError(
-          `Not a ${label}: "${value}". To search, try \`${search.command} --query ${shellQuote(value)}\`.\n\n` +
+          `Not a ${label}: "${value}". To search, try \`${search.command()} --query ${shellQuote(value)}\`.\n\n` +
             `If it names a project, pass the ${label} after it: <org>/<project> <${label}>`,
           "positional",
         );
@@ -212,17 +213,25 @@ const ISSUE_KIND: IdKind & {
 
 /** The kinds of ID commands take. Commands use these instead of their own. */
 export const ID_KINDS = {
-  trace: hexKind("Trace ID", "sentry trace list", (url) => url.traceId),
+  trace: hexKind(
+    "Trace ID",
+    () => sentry`trace list`,
+    (url) => url.traceId,
+  ),
   // `event list` searches an issue's events, so there is no search to hint
   event: hexKind("Event ID", null, (url) => url.eventId),
   // Replays are looked up in an org, so a replay URL needs one
   replay: hexKind(
     "Replay ID",
-    "sentry replay list",
+    () => sentry`replay list`,
     (url) => (url.org ? url.replayId : undefined),
     "https://sentry.io/organizations/{org}/explore/replays/{replayId}/",
   ),
-  log: hexKind("Log ID", "sentry log list", () => undefined),
+  log: hexKind(
+    "Log ID",
+    () => sentry`log list`,
+    () => undefined,
+  ),
   span: searchable(
     {
       label: "Span ID",
@@ -231,7 +240,7 @@ export const ID_KINDS = {
       validate: validateSpanId,
       fromUrl: () => undefined,
     },
-    "sentry span list",
+    () => sentry`span list`,
   ),
   // A numeric ID, or a title: `Latency/p95`, `Top 10`, or unquoted words
   // after the org
@@ -267,13 +276,23 @@ export const ID_KINDS = {
     validate: (value) => {
       if (!isAllDigits(value)) {
         throw new ValidationError(
-          `Invalid integration ID '${value}'. Use the numeric ID from 'sentry integration list'.`,
+          `Invalid integration ID '${value}'. Use the numeric ID from '${sentry`integration list`}'.`,
           "integration-id",
         );
       }
       return value;
     },
     fromUrl: () => undefined,
+    orgScoped: true,
+  },
+  // A numeric ID, or a token's name, which may hold spaces and slashes
+  token: {
+    label: "Token ID",
+    isId: isAllDigits,
+    mayBeId: () => false,
+    validate: (value) => value,
+    fromUrl: () => undefined,
+    names: true,
     orgScoped: true,
   },
 } as const satisfies Record<string, IdKind>;

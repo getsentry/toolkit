@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { uploadCommand } from "./upload.js";
 
 export const codeMappingsRoute = buildRouteMap({
@@ -12,7 +13,7 @@ export const codeMappingsRoute = buildRouteMap({
     upload: uploadCommand,
   },
   docs: {
-    brief: "Manage code mappings for stack trace linking",
+    brief: topLevelBrief("code-mappings"),
     fullDescription:
       "Upload and manage code mappings that link stack trace paths to " +
       "source code paths in your repository.",

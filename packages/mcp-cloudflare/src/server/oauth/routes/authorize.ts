@@ -21,6 +21,7 @@ import {
   createResourceValidationError,
   getAuthorizationServerIssuer,
   getUpstreamAuthorizeUrl,
+  promptRequestsAccountSelection,
   validateResourceParameter,
 } from "../helpers";
 import { parseResourceMcpConstraints } from "../resource-scope";
@@ -44,6 +45,7 @@ async function redirectToUpstream(
   oauthReqInfo: AuthRequest | AuthRequestWithSkills,
   headers: HeadersInit = {},
   stateOverride?: string,
+  forcePrompt = false,
 ) {
   const responseHeaders = new Headers(headers);
   responseHeaders.set(
@@ -57,6 +59,7 @@ async function redirectToUpstream(
       client_id: env.SENTRY_CLIENT_ID,
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
+      force_prompt: forcePrompt,
     }),
   );
 
@@ -225,7 +228,14 @@ export default new Hono<{ Bindings: Env }>()
       },
       scope: approvalScope,
       redirectUri: oauthReqInfoWithResource.redirectUri,
-      state: { oauthReqInfo: oauthReqInfoWithResource },
+      state: {
+        oauthReqInfo: oauthReqInfoWithResource,
+        // Clients such as Copilot CLI send an OIDC `prompt` to add another
+        // account. Kept in the signed form state, outside the auth request.
+        forcePrompt: promptRequestsAccountSelection(
+          requestUrl.searchParams.get("prompt"),
+        ),
+      },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
     });
@@ -355,7 +365,7 @@ export default new Hono<{ Bindings: Env }>()
     // Build signed state for redirect to Sentry (10 minute validity)
     const now = Date.now();
     const payload: OAuthState = {
-      req: oauthReqWithSkills as unknown as Record<string, unknown>,
+      req: oauthReqWithSkills,
       iat: now,
       exp: now + 10 * 60 * 1000,
     };
@@ -381,5 +391,6 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
+      state.forcePrompt === true,
     );
   });

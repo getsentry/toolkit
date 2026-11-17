@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { downloadCommand } from "./download.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";
@@ -17,7 +18,7 @@ export const replayRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "Search and inspect Session Replays",
+    brief: topLevelBrief("replay"),
     fullDescription:
       "Search and inspect Session Replays from your Sentry organization.\n\n" +
       "Commands:\n" +

@@ -1,5 +1,5 @@
-import { describeEval } from "vitest-evals";
-import { ToolCallScorer } from "vitest-evals";
+import { describeEval } from "vitest-evals/legacy";
+import { ToolCallScorer } from "vitest-evals/legacy";
 import { searchEventsAgent } from "@sentry/mcp-core/tools/search-events/agent";
 import { SentryApiService } from "@sentry/mcp-core/api-client";
 import { StructuredOutputScorer } from "./utils/structuredOutputScorer";

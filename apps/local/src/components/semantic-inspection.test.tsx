@@ -312,7 +312,7 @@ test.each([
   },
 );
 
-test("raw SSE envelopes show attachment previews and keep the original JSON", () => {
+test("raw SSE envelopes decode attachment previews on demand and keep the original JSON", () => {
   const raw = JSON.stringify([
     {},
     [
@@ -321,19 +321,52 @@ test("raw SSE envelopes show attachment previews and keep the original JSON", ()
           type: "attachment",
           filename: "notes.txt",
           content_type: "text/plain",
+          length: 14,
         },
         { data: "captured notes" },
       ],
     ],
   ]);
+  const create = vi.fn((_blob: Blob) => "blob:attachment");
+  class TestURL extends URL {
+    static createObjectURL = create;
+    static revokeObjectURL = vi.fn();
+  }
+  vi.stubGlobal("URL", TestURL);
   render(
     <EventDetail
       item={{ id: "envelope", type: "envelope", payload: raw, text: raw }}
     />,
   );
+  const attachments = screen.getByRole("region", {
+    name: "Envelope attachments",
+  });
+  // Collapsed attachments show header metadata without decoding the payload.
+  expect(attachments.textContent).toContain("notes.txt");
+  expect(attachments.textContent).toContain("text/plain · 14 bytes");
+  expect(attachments.textContent).not.toContain("captured notes");
+  expect(create).not.toHaveBeenCalled();
+
+  const toggle = screen.getByRole("button", { name: "Show notes.txt preview" });
+  fireEvent.click(toggle);
+  expect(attachments.textContent).toContain("captured notes");
+  expect(create).toHaveBeenCalledTimes(1);
   expect(
-    screen.getByRole("region", { name: "Envelope attachments" }).textContent,
-  ).toContain("captured notes");
+    screen.getByRole("link", { name: "Download attachment" }),
+  ).toBeDefined();
+
+  // The same button stays mounted, so keyboard focus survives the toggle.
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide notes.txt preview" }),
+  );
+  expect(screen.getByRole("button", { name: "Show notes.txt preview" })).toBe(
+    toggle,
+  );
+  expect(attachments.textContent).not.toContain("captured notes");
+  expect(
+    screen.queryByRole("link", { name: "Download attachment" }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
   expect(screen.getByTestId("highlighted-json").textContent).toContain(
     "notes.txt",

@@ -13,6 +13,7 @@ import {
   formatKnownUserValue,
   isSemanticFilterDowngrade,
   looksLikeSentrySearchSyntax,
+  normalizeNumericIssueFilters,
 } from "./utils";
 
 describe("validateSearch tool contract", () => {
@@ -79,8 +80,8 @@ describe("validateSearch tool contract", () => {
     });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.getAll("environment")).toEqual([]);
-    expect(requests[0]!.get("query")).toBe(query);
+    expect(requests[0].getAll("environment")).toEqual([]);
+    expect(requests[0].get("query")).toBe(query);
     expect(result).toEqual({
       result: { valid: true, message: "Search validation passed." },
     });
@@ -274,6 +275,31 @@ describe("formatEventValue", () => {
 });
 
 describe("search query helpers", () => {
+  it("rewrites numeric issue filters to issue.id", () => {
+    expect(normalizeNumericIssueFilters("issue:123 level:error")).toBe(
+      "issue.id:123 level:error",
+    );
+    expect(normalizeNumericIssueFilters('!issue:"123"')).toBe(
+      '!issue.id:"123"',
+    );
+    expect(normalizeNumericIssueFilters("(issue:[1, 2] OR level:fatal)")).toBe(
+      "(issue.id:[1, 2] OR level:fatal)",
+    );
+  });
+
+  it("leaves short IDs and quoted text unchanged", () => {
+    for (const query of [
+      "issue:PROJ-123",
+      "issue:[PROJ-1,123]",
+      "issue:123abc",
+      "issue.id:123",
+      "tags[issue]:123",
+      'message:"see issue:123"',
+    ]) {
+      expect(normalizeNumericIssueFilters(query)).toBe(query);
+    }
+  });
+
   it("should detect structured Sentry search syntax", () => {
     expect(looksLikeSentrySearchSyntax("vpn connections from China")).toBe(
       false,
@@ -1136,7 +1162,7 @@ describe("fetchCustomAttributes", () => {
       );
 
       expect(requests).toHaveLength(1);
-      expect(requests[0]!.get("attributeType")).toBeNull();
+      expect(requests[0].get("attributeType")).toBeNull();
       for (const params of requests) {
         expect(params.get("itemType")).toBe("spans");
         expect(params.get("project")).toBe("123");

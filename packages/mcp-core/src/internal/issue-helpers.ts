@@ -136,11 +136,6 @@ export function parseIssueParams({
 } {
   if (issueUrl) {
     const resolved = extractIssueId(issueUrl);
-    if (!resolved) {
-      throw new Error(
-        "Invalid Sentry issue URL. Path should contain '/issues/{issue_id}'",
-      );
-    }
     return {
       organizationSlug: resolveScopedOrganizationSlug({
         resourceLabel: "Issue",

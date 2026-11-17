@@ -27,11 +27,11 @@ afterEach(() => {
 
 describe("scope-recovery error boundary", () => {
   test.each([401, 403])("lets API %i escape Stricli", async (status) => {
-    globalThis.fetch = (async () =>
+    globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Denied" }), {
         status,
         headers: { "content-type": "application/json" },
-      })) as typeof fetch;
+      });
 
     let thrown: unknown;
     try {

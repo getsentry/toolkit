@@ -104,7 +104,7 @@ async function createSignedCallbackState(
     },
     iat: now,
     exp: now + 10 * 60 * 1000,
-  } as unknown as OAuthState;
+  };
 
   return await signState(payload, COOKIE_SECRET);
 }
@@ -319,7 +319,7 @@ describe("oauth callback routes", () => {
           },
           iat: now,
           exp: now + 10 * 60 * 1000,
-        } as unknown as OAuthState,
+        },
         COOKIE_SECRET,
       );
 
@@ -699,7 +699,7 @@ describe("oauth callback routes", () => {
 
       expect(callbackResponse.status).toBe(302);
       expect(completeAuthorization).toHaveBeenCalledOnce();
-      const props = completeAuthorization.mock.calls[0]![0].props as Record<
+      const props = completeAuthorization.mock.calls[0][0].props as Record<
         string,
         unknown
       >;
@@ -733,7 +733,7 @@ describe("oauth callback routes", () => {
       });
 
       expect(callbackResponse.status).toBe(302);
-      const props = completeAuthorization.mock.calls[0]![0].props as Record<
+      const props = completeAuthorization.mock.calls[0][0].props as Record<
         string,
         unknown
       >;

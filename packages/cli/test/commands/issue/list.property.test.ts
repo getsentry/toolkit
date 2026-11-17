@@ -96,18 +96,15 @@ const sentryIssueArb = tuple(
   isoDateArb,
   nat({ max: 100_000 }),
   nat({ max: 50_000 }),
-).map(
-  ([lastSeen, firstSeen, count, userCount]) =>
-    ({
-      id: `${Math.random()}`,
-      shortId: "PROJ-1",
-      title: "test",
-      lastSeen,
-      firstSeen,
-      count: `${count}`,
-      userCount,
-    }) as SentryIssue,
-);
+).map(([lastSeen, firstSeen, count, userCount]) => ({
+  id: `${Math.random()}`,
+  shortId: "PROJ-1",
+  title: "test",
+  lastSeen,
+  firstSeen,
+  count: `${count}`,
+  userCount,
+}));
 
 // --- trimWithProjectGuarantee ---
 

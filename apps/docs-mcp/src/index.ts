@@ -116,7 +116,6 @@ app.post("/internal/docs", async (c) => {
 export default Sentry.withSentry(
   (_env: Env) => ({
     dsn: "https://05c618aef6e0489b8c9d07e0d65664ce@o1.ingest.us.sentry.io/4511189954199552",
-    sendDefaultPii: true,
     tracesSampleRate: 1.0,
   }),
   app,

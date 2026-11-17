@@ -124,17 +124,15 @@ export const findCommand = buildCommand({
     examples: [
       {
         description: "Locate debug files for a debug identifier on disk",
-        command: "sentry debug-files find <debug-id>",
+        run: "debug-files find <debug-id>",
       },
       {
         description: "Search only for dSYMs, including an extra directory",
-        command:
-          "sentry debug-files find <debug-id> --type dsym --path ./build",
+        run: "debug-files find <debug-id> --type dsym --path ./build",
       },
       {
         description: "Search only an explicit directory and output JSON",
-        command:
-          "sentry debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
+        run: "debug-files find <debug-id> --no-cwd --no-well-known -p /symbols --json",
       },
     ],
   },
@@ -186,7 +184,7 @@ export const findCommand = buildCommand({
   },
   async *func(this: SentryContext, flags: FindFlags, ...ids: string[]) {
     if (ids.length === 0) {
-      yield new CommandOutput<FindResult>({ matches: [], missing: [] });
+      yield new CommandOutput({ matches: [], missing: [] });
       return { hint: "Provide one or more debug identifiers to search for." };
     }
 

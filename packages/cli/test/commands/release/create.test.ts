@@ -160,6 +160,60 @@ describe("release create", () => {
     });
   });
 
+  test("--dry-run outputs a release-shaped preview without calling the API", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await createCommand.loader();
+    await func.call(
+      context,
+      {
+        finalize: true,
+        project: "proj-a, proj-b",
+        ref: "main",
+        "dry-run": true,
+        json: true,
+      },
+      "1.0.0",
+    );
+
+    expect(createReleaseSpy).not.toHaveBeenCalled();
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    // Same project shape as a real create: objects, not slug strings.
+    expect(parsed).toMatchObject({
+      dryRun: true,
+      version: "1.0.0",
+      projects: [{ slug: "proj-a" }, { slug: "proj-b" }],
+      ref: "main",
+    });
+    expect(typeof parsed.dateReleased).toBe("string");
+    expect(parsed).not.toHaveProperty("finalize");
+  });
+
+  test("--dry-run --fields filters the preview like a created release", async () => {
+    resolveOrgSpy.mockResolvedValue({ org: "my-org" });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await createCommand.loader();
+    await func.call(
+      context,
+      {
+        finalize: false,
+        project: "proj-a",
+        "dry-run": true,
+        json: true,
+        fields: ["version", "projects.slug"],
+      },
+      "1.0.0",
+    );
+
+    const parsed = JSON.parse(stdoutWrite.mock.calls.map((c) => c[0]).join(""));
+    expect(parsed).toEqual({
+      version: "1.0.0",
+      projects: [{ slug: "proj-a" }],
+    });
+  });
+
   test("throws when no version provided", async () => {
     const { context } = createMockContext();
     const func = await createCommand.loader();

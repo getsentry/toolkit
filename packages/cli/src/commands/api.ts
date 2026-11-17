@@ -8,12 +8,13 @@
 import { access, readFile } from "node:fs/promises";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
+import { API_BASE_PATH, parseApiPathScope } from "@sentry/api/client";
 import type { SentryContext } from "../context.js";
 import {
   appendSearchParams,
-  consumePage,
+  consumeCursorPage,
   decodePageCursor,
-  type PagePosition,
+  type CursorPosition,
   parseLinkHeader,
   type PreparedRawApiRequest,
   prepareRawApiRequest,
@@ -35,6 +36,7 @@ import {
   hasPreviousPage,
   resolveCursor,
 } from "../lib/db/pagination.js";
+import { normalizeEndpoint as templateEndpoint } from "../lib/error-reporting.js";
 import {
   OutputError,
   stringifyUnknown,
@@ -55,13 +57,15 @@ import {
 } from "../lib/sixel.js";
 import { imageBytesToSixel } from "../lib/sixel-image.js";
 import { setOrgProjectContext } from "../lib/telemetry.js";
+import { topLevelBrief } from "../top-level-briefs.js";
 
 const log = logger.withTag("api");
 
 /** Strips line breaks and surrounding indentation from copy-pasted endpoints. */
 const LINE_BREAK_PATTERN = /[ \t]*[\r\n]+[ \t]*/g;
-const API_PREFIX = "/api/0";
-const API_PREFIX_WITH_SLASH = `${API_PREFIX}/`;
+const API_PREFIX_WITH_SLASH = `${API_BASE_PATH}/`;
+/** The base path as users type it, without the leading slash. */
+const BARE_API_PREFIX = API_BASE_PATH.slice(1);
 const PAGINATION_KEY = "api";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -158,10 +162,10 @@ function splitAbsoluteApiUrl(url: URL): AbsoluteApiTarget {
       strippedApiPrefix: true,
     };
   }
-  if (url.pathname.endsWith(API_PREFIX)) {
+  if (url.pathname.endsWith(API_BASE_PATH)) {
     return {
       endpoint: url.search,
-      baseUrl: `${url.origin}${url.pathname.slice(0, -API_PREFIX.length)}`,
+      baseUrl: `${url.origin}${url.pathname.slice(0, -API_BASE_PATH.length)}`,
       strippedApiPrefix: true,
     };
   }
@@ -215,12 +219,11 @@ export function normalizeEndpoint(endpoint: string): string {
     ? relativeEndpoint.slice(1)
     : relativeEndpoint;
 
-  // Strip api/0/ prefix if user accidentally included it — the base URL
-  // already includes /api/0/, so keeping it would produce a doubled path
-  // like /api/0/api/0/... (see CLI-K1).
-  // Also strip bare "api/0" to maintain idempotency.
-  if (trimmed.startsWith("api/0/") || trimmed === "api/0") {
-    trimmed = trimmed.slice(trimmed.startsWith("api/0/") ? 6 : 5);
+  // Strip the API base path if the user included it — the client adds it,
+  // so keeping it would produce a doubled path like /api/0/api/0/...
+  // (see CLI-K1). Also strip the bare base path to maintain idempotency.
+  if (hasBareApiPrefix(trimmed)) {
+    trimmed = trimmed.slice(BARE_API_PREFIX.length + 1);
   }
 
   // Split path and query string
@@ -235,6 +238,12 @@ export function normalizeEndpoint(endpoint: string): string {
   const query = trimmed.substring(queryIndex);
   const normalizedPath = path.endsWith("/") ? path : `${path}/`;
   return `${normalizedPath}${query}`;
+}
+
+function hasBareApiPrefix(endpoint: string): boolean {
+  return (
+    endpoint.startsWith(`${BARE_API_PREFIX}/`) || endpoint === BARE_API_PREFIX
+  );
 }
 
 function resolveApiTarget(endpoint: string): {
@@ -256,28 +265,16 @@ function resolveApiTarget(endpoint: string): {
     requestBaseUrl: absoluteTarget?.baseUrl,
     strippedApiPrefix:
       absoluteTarget?.strippedApiPrefix ??
-      (withoutLeadingSlash.startsWith("api/0/") ||
-        withoutLeadingSlash === "api/0"),
+      hasBareApiPrefix(withoutLeadingSlash),
   };
-}
-
-/**
- * Org/project slugs or numeric IDs in API paths. Rejects schema placeholders
- * (`{organization_id_or_slug}`) and empty/dot segments so we never tag junk.
- */
-const API_PATH_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
-
-function isApiPathSlug(segment: string | undefined): segment is string {
-  return segment !== undefined && API_PATH_SLUG_RE.test(segment);
 }
 
 /**
  * Parse org (and project when present) from a Sentry API endpoint path.
  *
  * `sentry api` never goes through target resolve, so the slug lives only in
- * the URL. `organizations/`, `projects/`, and `teams/` prefixes carry the
- * org; `projects/` and `organizations/{org}/projects/{project}/` also carry
- * a project when that segment is a real slug.
+ * the URL. The transport reads the same scope to pick the stored account
+ * that knows the org; see `parseApiPathScope` in `@sentry/api/client`.
  *
  * @param endpoint - Path relative to `/api/0/`, optionally with a query string
  *   or a leading `/api/0/` prefix
@@ -288,34 +285,13 @@ function isApiPathSlug(segment: string | undefined): segment is string {
 export function parseOrgProjectFromApiPath(
   endpoint: string,
 ): { org: string; project?: string } | undefined {
-  const path = endpoint.split("?", 1)[0] ?? "";
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-
-  if (segments[0] === "api" && segments[1] === "0") {
-    segments.splice(0, 2);
+  const scope = parseApiPathScope(endpoint);
+  if (!scope) {
+    return;
   }
-
-  if (segments[0] === "organizations" && isApiPathSlug(segments[1])) {
-    const org = segments[1];
-    if (segments[2] === "projects" && isApiPathSlug(segments[3])) {
-      return { org, project: segments[3] };
-    }
-    return { org };
-  }
-
-  if (segments[0] === "projects" && isApiPathSlug(segments[1])) {
-    const org = segments[1];
-    if (isApiPathSlug(segments[2])) {
-      return { org, project: segments[2] };
-    }
-    return { org };
-  }
-
-  if (segments[0] === "teams" && isApiPathSlug(segments[1])) {
-    return { org: segments[1] };
-  }
-
-  return;
+  return scope.project
+    ? { org: scope.organization, project: scope.project }
+    : { org: scope.organization };
 }
 
 function tagOrgFromApiPath(endpoint: string): void {
@@ -699,13 +675,11 @@ export function buildQueryParams(
     const rawValue = field.substring(eqIndex + 1);
     const value = parseFieldValue(rawValue);
 
-    // Handle arrays by creating string[] for repeated keys
-    // Use stringifyValue to handle objects (avoid "[object Object]")
-    if (Array.isArray(value)) {
-      result[key] = value.map(stringifyValue);
-    } else {
-      result[key] = stringifyValue(value);
-    }
+    const values = Array.isArray(value)
+      ? value.map(stringifyValue)
+      : stringifyValue(value);
+    const existing = Object.hasOwn(result, key) ? result[key] : undefined;
+    result[key] = existing === undefined ? values : [existing, values].flat();
   }
 
   return result;
@@ -1136,7 +1110,10 @@ export function formatEmptyErrorBody(
   endpoint: string | undefined,
 ): string {
   const statusLabel = [status, statusText].filter(Boolean).join(" ");
-  const request = method && endpoint ? ` — ${method} /api/0/${endpoint}` : "";
+  const request =
+    method && endpoint
+      ? ` — ${method} ${API_PREFIX_WITH_SLASH}${endpoint}`
+      : "";
   return `HTTP ${statusLabel}${request}`;
 }
 
@@ -1256,6 +1233,25 @@ function resolveRequestEndpoint(
   return appendSearchParams(withoutFragment, params);
 }
 
+/**
+ * Remove every `cursor` from an endpoint's query, keeping the other parameters
+ * and their encoding as written.
+ */
+function withoutCursor(endpoint: string): string {
+  const queryIndex = endpoint.indexOf("?");
+  if (queryIndex === -1) {
+    return endpoint;
+  }
+  const kept = endpoint
+    .slice(queryIndex + 1)
+    .split("&")
+    .filter(
+      (part) => new URLSearchParams(part).keys().next().value !== "cursor",
+    );
+  const path = endpoint.slice(0, queryIndex);
+  return kept.length > 0 ? `${path}?${kept.join("&")}` : path;
+}
+
 /** Pagination resolved for one GET, without mutating its saved history. */
 type ApiPagination = {
   /** SDK-prepared request with the resolved server cursor and page size. */
@@ -1267,7 +1263,7 @@ type ApiPagination = {
   /** Original cursor, including any bookmark, saved for backward navigation. */
   currentCursor: string | undefined;
   /** Shared decoded position; skip counts rows already returned to the caller. */
-  position: PagePosition;
+  position: CursorPosition;
 };
 
 /**
@@ -1286,9 +1282,8 @@ async function resolveApiNavigation(
     queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
   const inputCursor = query.getAll("cursor").at(-1);
-  const context = await prepareRawApiRequest(endpoint, request, {
-    cursor: null,
-  });
+  const endpointWithoutCursor = withoutCursor(endpoint);
+  const context = await prepareRawApiRequest(endpointWithoutCursor, request);
   const contextUrl = context.request.url;
   const effectiveHeaders = new Headers(context.request.headers);
   applyCustomHeaders(effectiveHeaders, contextUrl);
@@ -1315,8 +1310,8 @@ async function resolveApiNavigation(
     prepared:
       cursorFlag === undefined && inputCursor === undefined
         ? context
-        : await prepareRawApiRequest(endpoint, request, {
-            cursor: position.cursor ?? null,
+        : await prepareRawApiRequest(endpointWithoutCursor, request, {
+            cursor: position.cursor,
             per_page: position.perPage,
           }),
     contextKey,
@@ -1384,7 +1379,7 @@ export function buildFromFields(
     // Merge field-built key=value entries into the auto-detected JSON object body
     body =
       body && typeof body === "object"
-        ? { ...(body as Record<string, unknown>), ...options.body }
+        ? { ...body, ...options.body }
         : options.body;
   }
 
@@ -1463,7 +1458,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", endpoint);
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
     span.setAttribute("api_error.method", method);
   }
 }
@@ -1597,10 +1592,10 @@ export function resolveBinaryTtyOutput(
 export const apiCommand = buildCommand({
   output: { human: formatApiResponse, jsonTransform: formatApiResponseJson },
   docs: {
-    brief: "Make an authenticated API request",
+    brief: topLevelBrief("api"),
     fullDescription:
       "Make a raw API request to the Sentry API. Similar to 'gh api' for GitHub. " +
-      "The endpoint is relative to /api/0/ (do not include the prefix). " +
+      `The endpoint is relative to ${API_PREFIX_WITH_SLASH} (do not include the prefix). ` +
       "Absolute HTTP(S) Sentry URLs are also accepted; their origin is " +
       "validated against your authenticated host. " +
       "Authentication is handled automatically using your stored credentials.\n\n" +
@@ -1617,78 +1612,73 @@ export const apiCommand = buildCommand({
       "  key[sub]=value     Nested object: {key: {sub: value}}\n" +
       "  key[]=value        Array append: {key: [value]}\n" +
       "  key[]              Empty array: {key: []}\n\n" +
-      "Use --raw-field/-f to send values as strings without JSON parsing.",
+      "Use --raw-field/-f to send values as strings without JSON parsing. " +
+      "For GET requests, repeat a key to send an ordered list of values.",
     examples: [
       {
         description: "List organizations",
-        command: "sentry api organizations/",
+        run: "api organizations/",
       },
       {
         description: "Read a page and its pagination metadata",
-        command: "sentry api organizations/ -f per_page=2 --json",
+        run: "api organizations/ -f per_page=2 --json",
       },
       {
         description: "Continue the same query using shared pagination",
-        command: "sentry api organizations/ -f per_page=2 --cursor next --json",
+        run: "api organizations/ -f per_page=2 --cursor next --json",
       },
       {
         description: "Return to the previously visited page",
-        command: "sentry api organizations/ -f per_page=2 --cursor prev --json",
+        run: "api organizations/ -f per_page=2 --cursor prev --json",
       },
       {
         description: "Get a specific issue",
-        command: "sentry api issues/123456789/",
+        run: "api issues/123456789/",
       },
       {
         description: "Create a release",
-        command:
-          "sentry api organizations/my-org/releases/ -X POST -F version=1.0.0",
+        run: "api organizations/my-org/releases/ -X POST -F version=1.0.0",
       },
       {
         description: "Update an issue status",
-        command: "sentry api issues/123456789/ -X PUT -F status=resolved",
+        run: "api issues/123456789/ -X PUT -F status=resolved",
       },
       {
         description: "Send an inline JSON body",
-        command:
-          'sentry api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
+        run: 'api issues/123456789/ -X PUT -d \'{"status":"resolved"}\'',
       },
       {
         description: "Set a nested field",
-        command:
-          "sentry api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
+        run: "api projects/my-org/my-project/ -X PUT -F options[sampleRate]=0.5",
       },
       {
         description: "Assign an issue",
-        command:
-          'sentry api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
+        run: 'api issues/123456789/ -X PUT --field assignedTo="user@example.com"',
       },
       {
         description: "Delete a project",
-        command: "sentry api projects/my-org/my-project/ -X DELETE",
+        run: "api projects/my-org/my-project/ -X DELETE",
       },
       {
         description: "Add custom headers",
-        command: 'sentry api organizations/ -H "X-Custom: value"',
+        run: 'api organizations/ -H "X-Custom: value"',
       },
       {
         description: "Read the request body from a file",
-        command:
-          "sentry api projects/my-org/my-project/releases/ -X POST --input release.json",
+        run: "api projects/my-org/my-project/releases/ -X POST --input release.json",
       },
       {
         description: "Show the full HTTP request and response",
-        command: "sentry api organizations/ --verbose",
+        run: "api organizations/ --verbose",
       },
       {
         description: "Preview the request without sending it",
-        command: "sentry api organizations/ --dry-run",
+        run: "api organizations/ --dry-run",
       },
       {
         description:
           "Save a binary response, such as an event attachment, to a file",
-        command:
-          'sentry api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
+        run: 'api "https://sentry.io/api/0/projects/my-org/my-project/events/EVENT_ID/attachments/ATTACHMENT_ID/?download=1" > screenshot.png',
       },
     ],
   },
@@ -1697,7 +1687,7 @@ export const apiCommand = buildCommand({
       kind: "tuple",
       parameters: [
         {
-          brief: "API endpoint relative to /api/0/, or an absolute HTTP(S) URL",
+          brief: `API endpoint relative to ${API_PREFIX_WITH_SLASH}, or an absolute HTTP(S) URL`,
           parse: parseApiEndpoint,
           placeholder: "endpoint",
         },
@@ -1792,7 +1782,7 @@ export const apiCommand = buildCommand({
       // only surface the detail at debug level for troubleshooting
       // (getsentry/cli#785 item #11).
       log.debug(
-        "Stripped /api/0/ prefix from endpoint (auto-added by the API client)",
+        `Stripped ${API_PREFIX_WITH_SLASH} prefix from endpoint (auto-added by the API client)`,
       );
     }
     const { body, params } = await resolveBody(flags, stdin);
@@ -1869,7 +1859,7 @@ export const apiCommand = buildCommand({
         ? response.body
         : envelope?.data;
       if (Array.isArray(rows)) {
-        const page = consumePage<unknown>(
+        const page = consumeCursorPage<unknown>(
           { data: rows, ...pagination },
           navigation.position,
         );

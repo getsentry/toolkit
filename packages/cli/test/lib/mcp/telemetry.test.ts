@@ -1,8 +1,15 @@
+import { createEnvelope, type Envelope } from "@sentry/core";
 import type { NodeOptions } from "@sentry/node";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CLI_VERSION, SENTRY_CLI_DSN } from "../../../src/lib/constants.js";
 import type { McpServerConfig } from "../../../src/lib/mcp/config.js";
 import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  closeIngestServers,
+  noop,
+  startMockIngest,
+  startRefusedIngest,
+} from "../telemetry/ingest-servers.js";
 
 const sentry = vi.hoisted(() => ({
   init: vi.fn((_options: NodeOptions) => undefined),
@@ -19,6 +26,7 @@ useEnvSandbox([
   "DO_NOT_TRACK",
   "SENTRY_RELEASE",
   "SENTRY_DSN",
+  "DEFAULT_SENTRY_DSN",
 ]);
 
 const config: McpServerConfig = {
@@ -27,6 +35,7 @@ const config: McpServerConfig = {
   agentProviderFromFlag: false,
   experimental: false,
   finalSkills: new Set(),
+  disabledSkills: [],
 };
 
 /** The options the server passed to `Sentry.init`. */
@@ -46,13 +55,54 @@ beforeEach(() => {
   sentry.init.mockClear();
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals();
   vi.resetModules();
+  await closeIngestServers();
 });
 
+function eventEnvelope(id: string): Envelope {
+  return createEnvelope({ event_id: id }, [
+    [{ type: "event" }, { event_id: id, message: "hi" }],
+  ] as never);
+}
+
+/**
+ * The database and store modules the server will load (modules are reset
+ * after each test), with the database already open. Opening it with
+ * telemetry on `require`s the telemetry module, which fails under vitest.
+ */
+async function openStore() {
+  const { getDatabase } = await import("../../../src/lib/db/index.js");
+  const { createEnvelopeStore } =
+    await import("../../../src/lib/telemetry/offline-store.js");
+  const optedOut = process.env.SENTRY_CLI_NO_TELEMETRY;
+  process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  getDatabase();
+  if (optedOut === undefined) {
+    delete process.env.SENTRY_CLI_NO_TELEMETRY;
+  }
+  return {
+    store: createEnvelopeStore(),
+    storedCount: () =>
+      (
+        getDatabase()
+          .query("SELECT COUNT(*) AS count FROM telemetry_envelope_queue")
+          .get() as { count: number }
+      ).count,
+  };
+}
+
+/** The transport the server's `Sentry.init` options build for `url`. */
+function buildTransport(options: NodeOptions, url: string) {
+  if (!options.transport) {
+    throw new Error("Sentry.init got no transport");
+  }
+  return options.transport({ url, recordDroppedEvent: noop });
+}
+
 describe("initMcpTelemetry", () => {
-  test("reports to the CLI's project when no DSN is configured", async () => {
+  test("reports to the CLI's project", async () => {
     const options = await initOptions();
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
     expect(options.enabled).toBe(true);
@@ -65,33 +115,29 @@ describe("initMcpTelemetry", () => {
     expect(options.release).toBe(CLI_VERSION);
   });
 
-  test("honors the CLI's telemetry opt-out", async () => {
-    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  test.each(["SENTRY_CLI_NO_TELEMETRY", "DO_NOT_TRACK"])(
+    "honors the CLI's telemetry opt-out (%s)",
+    async (name) => {
+      process.env[name] = "1";
+      const options = await initOptions();
+      expect(options.dsn).toBe(SENTRY_CLI_DSN);
+      expect(options.enabled).toBe(false);
+    },
+  );
+
+  // A server started from a project shell or IDE inherits the app's DSN.
+  test("ignores SENTRY_DSN and DEFAULT_SENTRY_DSN from the environment", async () => {
+    const appDsn = "https://key@o1.ingest.sentry.io/1";
+    process.env.SENTRY_DSN = appDsn;
+    process.env.DEFAULT_SENTRY_DSN = appDsn;
     const options = await initOptions();
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
-    expect(options.enabled).toBe(false);
-  });
-
-  test("an explicit DSN wins and ignores the CLI opt-out", async () => {
-    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
-    const dsn = "https://key@o1.ingest.sentry.io/1";
-    const options = await initOptions({ sentryDsn: dsn });
-    expect(options.dsn).toBe(dsn);
     expect(options.enabled).toBe(true);
-  });
-
-  test("an empty DSN turns telemetry off, even with SENTRY_DSN set", async () => {
-    process.env.SENTRY_DSN = "https://key@o1.ingest.sentry.io/1";
-    const { initMcpTelemetry } = await import("../../../src/lib/mcp/server.js");
-    initMcpTelemetry({ ...config, sentryDsn: "" });
-    expect(sentry.init).not.toHaveBeenCalled();
   });
 
   test("ignores SENTRY_RELEASE so the reported release stays ours", async () => {
     process.env.SENTRY_RELEASE = "spoofed";
-    const options = await initOptions({
-      sentryDsn: "https://key@o1.ingest.sentry.io/1",
-    });
+    const options = await initOptions();
     expect(options.release).toBe(CLI_VERSION);
   });
 
@@ -130,5 +176,42 @@ describe("initMcpTelemetry", () => {
       stderr.mockRestore();
       cwd.mockRestore();
     }
+  });
+
+  test("stores telemetry that fails to send", async () => {
+    const { storedCount } = await openStore();
+    const { url } = await startRefusedIngest();
+    const transport = buildTransport(await initOptions(), url);
+
+    await expect(transport.send(eventEnvelope("a"))).resolves.toEqual({});
+
+    expect(storedCount()).toBe(1);
+  });
+
+  test("sends what earlier runs stored at startup", async () => {
+    const { store, storedCount } = await openStore();
+    await store.push(eventEnvelope("stored"));
+    const ingest = await startMockIngest(() => ({ statusCode: 200 }));
+    // The real `init` builds the transport; the mock does the same so the
+    // server's startup drain has one.
+    sentry.init.mockImplementationOnce((options) => {
+      buildTransport(options, ingest.url);
+    });
+
+    await initOptions();
+
+    await vi.waitFor(() => expect(ingest.captures).toHaveLength(1));
+    expect(storedCount()).toBe(0);
+  });
+
+  test("opting out clears stored telemetry", async () => {
+    const { store, storedCount } = await openStore();
+    await store.push(eventEnvelope("stored"));
+    expect(storedCount()).toBe(1);
+    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+
+    await initOptions();
+
+    expect(storedCount()).toBe(0);
   });
 });

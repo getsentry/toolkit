@@ -8,12 +8,14 @@ import type { SentryContext } from "../../context.js";
 import {
   attributesToDict,
   fetchMultiSpanDetails,
+  findTraceReplay,
   getDetailedTrace,
   getIssueByShortId,
   getLatestEvent,
   getProject,
   type TraceItemDetail,
 } from "../../lib/api-client.js";
+import { sentry } from "../../lib/app-identity.js";
 import { looksLikeIssueShortId, spansFlag } from "../../lib/arg-parsing.js";
 import { openInBrowser } from "../../lib/browser.js";
 import { buildCommand } from "../../lib/command.js";
@@ -44,7 +46,7 @@ import {
   type BoundArguments,
   boundArguments,
 } from "../../lib/positional-parse.js";
-import { resolveOrg, toNumericId } from "../../lib/resolve-target.js";
+import { resolveOrg } from "../../lib/resolve-target.js";
 import { buildTraceUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import {
@@ -66,7 +68,7 @@ type ViewFlags = {
 };
 
 /** Usage hint for ContextError messages */
-const USAGE_HINT = "sentry trace view [<org>/<project>/]<trace-id>";
+const usageHint = () => sentry`trace view [<org>/<project>/]<trace-id>`;
 
 /**
  * Build a contextual hint with real values for easy copy-paste.
@@ -78,14 +80,14 @@ function buildViewHint(
   summary: ReturnType<typeof computeTraceSummary>,
 ): string {
   if (projectFilter) {
-    return `Filtered to project '${projectFilter}'. Full trace: sentry trace view ${org}/${traceId}`;
+    return `Filtered to project '${projectFilter}'. Full trace: ${sentry`trace view ${org}/${traceId}`}`;
   }
   if (summary.projects.length > 1) {
     const projectList = summary.projects.join(", ");
     const firstProject = summary.projects[0];
-    return `This trace spans ${summary.projects.length} projects (${projectList}). Filter: sentry trace view ${org}/${firstProject}/${traceId}`;
+    return `This trace spans ${summary.projects.length} projects (${projectList}). Filter: ${sentry`trace view ${org}/${firstProject}/${traceId}`}`;
   }
-  return `Tip: Open in browser with 'sentry trace view --web ${traceId}'`;
+  return `Tip: Open in browser with '${sentry`trace view --web ${traceId}`}'`;
 }
 
 /**
@@ -118,8 +120,10 @@ export function parseTraceViewInput(args: readonly string[]): TraceViewInput {
     return { issueShortId: first };
   }
   return {
-    trace: parseTraceArgumentsInput(args, USAGE_HINT),
-    ...(shortId && { suggestion: `Did you mean: sentry issue view ${first}` }),
+    trace: parseTraceArgumentsInput(args, usageHint()),
+    ...(shortId && {
+      suggestion: `Did you mean: ${sentry`issue view ${first}`}`,
+    }),
   };
 }
 
@@ -145,7 +149,8 @@ async function resolveTraceViewInput(
   const target = await resolveTraceOrgOptionalProject(
     parsed,
     context.cwd,
-    USAGE_HINT,
+    "trace view",
+    usageHint(),
   );
   return {
     ...target,
@@ -169,7 +174,30 @@ export type TraceViewData = {
   details?: Map<string, TraceItemDetail>;
   /** Shared interpretation used by the request and JSON projection. */
   fieldSelection?: TraceFieldSelection;
+  /** Newest stored replay linked to the trace, or null if there's none */
+  replayId?: string | null;
 };
+
+/**
+ * Look up the newest stored replay linked to a trace.
+ *
+ * Returns the replay ID, null when none is stored, or undefined when the
+ * lookup fails, so a replay problem never fails `trace view`.
+ */
+async function lookupTraceReplay(
+  org: string,
+  traceId: string,
+): Promise<string | null | undefined> {
+  try {
+    const replay = await findTraceReplay(org, traceId);
+    return replay?.id ?? null;
+  } catch (error) {
+    logger
+      .withTag("trace.view")
+      .debug(`Failed to look up replays for trace ${traceId}`, error);
+    return;
+  }
+}
 
 /**
  * Count spans in the tree that have non-empty `additional_attributes`.
@@ -264,7 +292,7 @@ function mergeSpanDetails(
 export function formatTraceView(data: TraceViewData): string {
   const parts: string[] = [];
 
-  parts.push(formatTraceSummary(data.summary));
+  parts.push(formatTraceSummary(data.summary, { replayId: data.replayId }));
 
   if (data.spanTreeLines && data.spanTreeLines.length > 0) {
     parts.push(data.spanTreeLines.join("\n"));
@@ -346,7 +374,12 @@ function jsonTransformTraceView(
       ? mergeSpanDetails(cleaned, details)
       : cleaned;
   });
-  const result = { ...summary, spans: cleanedSpans };
+  // replayId is omitted when the lookup failed, matching the hidden human row.
+  const result = {
+    ...summary,
+    ...(data.replayId !== undefined && { replayId: data.replayId }),
+    spans: cleanedSpans,
+  };
   const selection = data.fieldSelection ?? parseTraceFields(fields);
   return selection ? projectTraceFields(result, selection) : result;
 }
@@ -375,7 +408,7 @@ async function resolveTraceFromIssue(
 
   const resolved = await resolveOrg({ cwd });
   if (!resolved) {
-    throw new ContextError("Organization", `sentry issue view ${issueShortId}`);
+    throw new ContextError("Organization", sentry`issue view ${issueShortId}`);
   }
   const org = resolved.org;
 
@@ -391,7 +424,7 @@ async function resolveTraceFromIssue(
   if (!traceId) {
     throw new ValidationError(
       `Could not find a trace for issue '${issueShortId}'. The latest event has no trace context.\n\n` +
-        `Try: sentry issue view ${issueShortId}`,
+        `Try: ${sentry`issue view ${issueShortId}`}`,
     );
   }
 
@@ -420,7 +453,7 @@ function fetchTraceSpanDetails(
   if (totalCount > LARGE_TRACE_WARN_THRESHOLD) {
     log.warn(
       `Trace has ${totalCount} spans \u2014 this may take a moment. ` +
-        "Use 'sentry span view' for specific spans.",
+        `Use '${sentry`span view`}' for specific spans.`,
     );
   }
 
@@ -444,51 +477,45 @@ export const viewCommand = buildCommand({
     examples: [
       {
         description: "View trace details with the span tree",
-        command: "sentry trace view abc123def456abc123def456abc12345",
+        run: "trace view abc123def456abc123def456abc12345",
       },
       {
         description: "Show the full trace across all projects",
-        command: "sentry trace view my-org/abc123def456abc123def456abc12345",
+        run: "trace view my-org/abc123def456abc123def456abc12345",
       },
       {
         description: "Filter the span tree to one project",
-        command:
-          "sentry trace view my-org/cli-server/abc123def456abc123def456abc12345",
+        run: "trace view my-org/cli-server/abc123def456abc123def456abc12345",
       },
       {
         description: "Recover the trace from an issue short ID",
-        command: "sentry trace view PROJ-123",
+        run: "trace view PROJ-123",
       },
       {
         description: "Open the trace in the browser",
-        command: "sentry trace view abc123def456abc123def456abc12345 -w",
+        run: "trace view abc123def456abc123def456abc12345 -w",
       },
       {
         description: "Find a project across organizations",
-        command:
-          "sentry trace view cli-server abc123def456abc123def456abc12345",
+        run: "trace view cli-server abc123def456abc123def456abc12345",
       },
       {
         description:
           "Select the trace ID and an attribute across the whole span tree",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields traceId,http.method",
       },
       {
         description: "Keep full spans while requesting an additional attribute",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans,http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans,http.method",
       },
       {
         description: "Select IDs and detail attributes from root spans only",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans.span_id,spans.data.http.method",
       },
       {
         description:
           "Select an additional attribute from immediate child spans",
-        command:
-          "sentry trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method",
+        run: "trace view abc123def456abc123def456abc12345 --json --fields spans.children.additional_attributes.http.method",
       },
     ],
   },
@@ -539,23 +566,23 @@ export const viewCommand = buildCommand({
       ? fieldSelection.additionalAttributes
       : undefined;
 
-    // Resolve numeric project ID for API-level filtering
-    let numericProjectId: number | undefined;
+    // Keep failing on an unknown project. The trace endpoint ignores
+    // `project` and returns spans from every project in the trace.
     if (projectFilter) {
-      const projectData = await getProject(org, projectFilter);
-      numericProjectId = toNumericId(projectData.id);
+      await getProject(org, projectFilter);
     }
 
-    const spans = await getDetailedTrace(org, traceId, {
-      additionalAttributes,
-      projectId: numericProjectId,
-    });
+    // The replay lookup runs alongside the trace fetch to avoid adding latency.
+    const [spans, replayId] = await Promise.all([
+      getDetailedTrace(org, traceId, { additionalAttributes }),
+      lookupTraceReplay(org, traceId),
+    ]);
 
     if (spans.length === 0) {
       throw new ResolutionError(
         `Trace '${traceId}'`,
         "not found",
-        `sentry trace view ${org}/${project ?? "<project>"}/${traceId}`,
+        sentry`trace view ${org}/${project ?? "<project>"}/${traceId}`,
         [
           "Check that you are querying the right org/project",
           "The trace may be past your plan's retention window",
@@ -589,6 +616,7 @@ export const viewCommand = buildCommand({
       spanTreeLines,
       details: spanDetails,
       fieldSelection,
+      replayId,
     });
     return { hint: buildViewHint(traceId, org, projectFilter, summary) };
   },

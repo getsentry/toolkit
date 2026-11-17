@@ -37,7 +37,7 @@ function mockOk(
   let capturedMethod = "";
 
   globalThis.fetch = mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     capturedUrl = req.url;
     capturedMethod = req.method;
     return new Response(JSON.stringify(body), {
@@ -63,10 +63,10 @@ function mockSequential(
   let callIndex = 0;
 
   globalThis.fetch = mockFetch(async (input, init) => {
-    const req = new Request(input!, init);
+    const req = new Request(input, init);
     capturedUrls.push(req.url);
 
-    const resp = responses[callIndex]!;
+    const resp = responses[callIndex];
     callIndex += 1;
 
     return new Response(JSON.stringify(resp.body), {
@@ -406,6 +406,35 @@ describe("getConversationSpans", () => {
     expect(getCapturedUrls()).toHaveLength(2);
     // Second request should include cursor
     expect(getCapturedUrls()[1]).toContain("cursor=page-2-cursor");
+  });
+
+  test("keeps first-page stats when later pages send stats: null", async () => {
+    const stats: ConversationStats = {
+      errors: 2,
+      llmCalls: 3,
+      toolCalls: 4,
+      toolErrors: 1,
+      totalCost: 0.5,
+      totalTokens: 900,
+    };
+    mockSequential([
+      {
+        body: makeEnvelope([makeSpan("span-page-1-aa11")], "Long run", stats),
+        headers: linkHeader("page-2-cursor"),
+      },
+      {
+        body: {
+          ...makeEnvelope([makeSpan("span-page-2-bb22")], null),
+          stats: null,
+        },
+      },
+    ]);
+
+    const result = await getConversationSpans(ORG, CONV_ID);
+
+    expect(result.spans).toHaveLength(2);
+    expect(result.stats).toEqual(stats);
+    expect(result.title).toBe("Long run");
   });
 
   test("returns truncated=true when pagination limit reached", async () => {

@@ -13,7 +13,18 @@ import {
 export default defineTool({
   ...searchToolBase("search_events"),
   name: "search_events",
+  title: "Search Events",
   includeInSkillDefinitions: false,
+  deprecated: {
+    replacedBy: [
+      "search_errors",
+      "search_logs",
+      "search_traces",
+      "search_metrics",
+      "search_profiles",
+      "search_replays",
+    ],
+  },
   description: [
     "Deprecated multi-dataset event search, kept for backward compatibility.",
     "",

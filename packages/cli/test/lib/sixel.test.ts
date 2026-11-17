@@ -28,6 +28,7 @@ import {
   optedOut,
   parseSixelCaps,
   parseTmuxInfo,
+  kittyQueryCleanup,
   probeQueries,
   readReply,
   selectGraphicsFormat,
@@ -271,10 +272,13 @@ describe("parseTmuxInfo", () => {
 });
 
 describe("probeQueries", () => {
-  test("outside tmux, sends the kitty query directly with DA1 last", () => {
+  test("outside tmux, sends the kitty query between cursor reports with DA1 last", () => {
     const { query, sentinels } = probeQueries(undefined);
-    expect(query.startsWith(`${ESC}[16t${ESC}_G`)).toBe(true);
-    expect(query.endsWith(`${ESC}[c`)).toBe(true);
+    // Autowrap is off around the kitty query so printed text can't wrap.
+    expect(query.startsWith(`${ESC}[16t${ESC}[6n${ESC}[?7l${ESC}_G`)).toBe(
+      true,
+    );
+    expect(query.endsWith(`${ESC}[?7h${ESC}[6n${ESC}[c`)).toBe(true);
     expect(sentinels).toBe(1);
   });
 
@@ -297,6 +301,32 @@ describe("probeQueries", () => {
     expect(passthrough.startsWith(`${ESC}Ptmux;${ESC}${ESC}_G`)).toBe(true);
     expect(passthrough.endsWith(`${ESC}${ESC}[c${ESC}\\`)).toBe(true);
     expect(sentinels).toBe(2);
+  });
+});
+
+describe("kittyQueryCleanup", () => {
+  const da = `${ESC}[?1;2c`;
+
+  test("does nothing when the cursor did not move", () => {
+    // The terminal ignored the query, or answered it without drawing.
+    expect(kittyQueryCleanup(`${ESC}[12;1R${ESC}[12;1R${da}`)).toBe("");
+    expect(
+      kittyQueryCleanup(
+        `${ESC}[12;1R${ESC}_Gi=4271;OK${ESC}\\${ESC}[12;1R${da}`,
+      ),
+    ).toBe("");
+  });
+
+  test("erases the printed query on the same line", () => {
+    // macOS Terminal.app prints the APC body, moving the cursor right.
+    expect(kittyQueryCleanup(`${ESC}[12;1R${ESC}[12;34R${da}`)).toBe(
+      `${ESC}[12;1H${ESC}[K`,
+    );
+  });
+
+  test("does nothing without both cursor reports", () => {
+    expect(kittyQueryCleanup(da)).toBe("");
+    expect(kittyQueryCleanup(`${ESC}[12;1R${da}`)).toBe("");
   });
 });
 

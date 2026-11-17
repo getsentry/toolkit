@@ -3,6 +3,534 @@
 Entries through 0.45.0 come from the [original CLI changelog at its 0.45.0 tag](https://github.com/getsentry/cli/blob/0.45.0/CHANGELOG.md).
 
 <!-- Craft generates notes for each CLI release. -->
+## 0.49.0
+
+New CLI, MCP, search, profiling, and evaluation capabilities, paired with safer persistence, diagnostics, and workflow tooling, improve testing, setup, and development.
+
+### New Features ✨
+
+CLI, MCP, search, profiling, and evaluation updates add structured outputs, safer persistence, replayable testing, and clearer setup guidance.
+
+#### Cli
+
+CLI updates add the sentry\`…\` tag for command hints, linting, and correct npx prefixes; runtime-data hints still use asInvocationCommand(command). SDK calls now write no local state by default while retaining reads and separate telemetry opt-outs; callers needing persistence must use the prior package behavior rather than assuming it. Installer guidance now mentions sentry mcp. Dashboard charts use events-timeseries responses. sentry init prints an agent setup guide instead of running the remote Mastra wizard.
+
+- Build command hints with a sentry`…` tag and lint them by @BYK with @sentry-junior in [#2071](https://github.com/getsentry/toolkit/pull/2071)
+- Make SDK calls write no local state by default by @BYK with @sentry-junior in [#2074](https://github.com/getsentry/toolkit/pull/2074)
+- Mention sentry mcp in installer Get started output by @dcramer with @sentry-junior in [#2052](https://github.com/getsentry/toolkit/pull/2052)
+- Migrate dashboard chart widgets to events-timeseries by @edwardgou-sentry in [#1901](https://github.com/getsentry/toolkit/pull/1901)
+- Make `sentry init` print an agent setup guide by @betegon and @claude in [#1856](https://github.com/getsentry/toolkit/pull/1856)
+
+#### Mcp
+
+MCP search tools increasingly return structured JSON with declared output schemas instead of markdown, including errors, logs, traces, metrics, profiles, and replays, with selected fields, links, notes, and suggested actions. search\_issues can translate queries through Seer when the required rollout and feature flags allow it, while fallback paths remain unchanged. Token-cost reporting now includes output schemas.
+
+- Translate search_issues queries with Seer's Issues strategy by @claude with @sentry-junior in [#2059](https://github.com/getsentry/toolkit/pull/2059)
+- Count outputSchema in the token cost report by @dcramer with @sentry-junior in [#2045](https://github.com/getsentry/toolkit/pull/2045)
+- Return structured output from search_replays by @dcramer with @sentry-junior in [#2025](https://github.com/getsentry/toolkit/pull/2025)
+- Return structured output from search_profiles by @dcramer with @sentry-junior in [#2012](https://github.com/getsentry/toolkit/pull/2012)
+- Return structured output from search_metrics by @dcramer with @sentry-junior in [#2010](https://github.com/getsentry/toolkit/pull/2010)
+- Return structured output from search_traces by @dcramer with @sentry-junior in [#2008](https://github.com/getsentry/toolkit/pull/2008)
+- Return structured output from search_logs by @dcramer with @sentry-junior in [#2006](https://github.com/getsentry/toolkit/pull/2006)
+- Return structured output from search_errors by @dcramer with @sentry-junior in [#1987](https://github.com/getsentry/toolkit/pull/1987)
+
+#### Tools
+
+Search results now return structured output with mapped hits, limited snippets, and conditional get\_doc suggestions; get\_doc remains markdown. Tool schemas now type-check handler results and reject missing or mistyped fields. get\_profile and get\_profile\_details expose structured profile data, nullable fields, indexed shared frames, balanced time estimates, and conditional follow-up actions while filtering raw profile data.
+
+- Return structured output from search_docs by @dcramer with @sentry-junior in [#2040](https://github.com/getsentry/toolkit/pull/2040)
+- Type handler results from outputSchema by @dcramer with @sentry-junior in [#2035](https://github.com/getsentry/toolkit/pull/2035)
+- Add outputSchema to get_profile_details by @dcramer with @sentry-junior in [#2024](https://github.com/getsentry/toolkit/pull/2024)
+- Add outputSchema to get_profile by @dcramer with @sentry-junior in [#2023](https://github.com/getsentry/toolkit/pull/2023)
+
+#### Other
+
+- (evals) Record and replay eval model calls with Roach by @dcramer with @sentry-junior in [#1972](https://github.com/getsentry/toolkit/pull/1972)
+- (server) Send compact JSON as structured tool result text by @dcramer with @sentry-junior in [#2046](https://github.com/getsentry/toolkit/pull/2046)
+
+### Bug Fixes 🐛
+
+CLI and MCP fixes improve installation, database fallback, query diagnostics, scope errors, documentation guidance, option warnings, and provider identity.
+
+#### Cli
+
+Homebrew installations now set the CLI binary executable before completions. API calls send only supported parameters and use updated SDK errors. Database access falls back to in-memory storage when cli.db cannot open, while WASM handles WAL databases when safe. Snapshot uploads batch object-store requests. MCP adds working cli defaults and cli fix commands, uses invocation-aware hints, and hides deprecated --access-token from help.
+
+- Make the Homebrew binary executable before generating completions by @BYK with @sentry-junior in [#2077](https://github.com/getsentry/toolkit/pull/2077)
+- Send the API params the endpoints accept by @BYK with @sentry-junior in [#2075](https://github.com/getsentry/toolkit/pull/2075)
+- Use an in-memory database when cli.db won't open by @BYK with @sentry-junior in [#2070](https://github.com/getsentry/toolkit/pull/2070)
+- Read a WAL-mode database on the WASM SQLite driver by @BYK with @sentry-junior in [#2069](https://github.com/getsentry/toolkit/pull/2069)
+- Batch objectstore requests in snapshots upload by @jamieQ and @BYK with @sentry-junior in [#2062](https://github.com/getsentry/toolkit/pull/2062)
+- Name a working ca-cert command in @sentry/mcp-server by @dcramer with @sentry-junior in [#2054](https://github.com/getsentry/toolkit/pull/2054)
+- Hide deprecated --access-token from sentry mcp help by @dcramer with @sentry-junior in [#2057](https://github.com/getsentry/toolkit/pull/2057)
+
+#### Mcp
+
+MCP search now explains when untranslated multi-word queries return no results and suggests Sentry syntax. Startup validates missing organization or project scopes, reporting 404 resolution errors with exit code 23 while preserving other startup behavior. get\_doc reports missing and soft-404 pages as errors and directs callers to search\_docs. The CLI warns when --disable-skills removes no tools. streamText restores the sentry-mcp User-Agent for OpenAI, Anthropic, OpenRouter, and Azure OpenAI providers.
+
+- Note untranslated natural-language searches that find nothing by @claude with @sentry-junior in [#2053](https://github.com/getsentry/toolkit/pull/2053)
+- Fail at startup when the org or project scope does not exist by @dcramer with @sentry-junior in [#2056](https://github.com/getsentry/toolkit/pull/2056)
+- Return an error when get_doc finds no page by @dcramer with @sentry-junior in [#2051](https://github.com/getsentry/toolkit/pull/2051)
+- Warn when --disable-skills removes no tools by @dcramer with @sentry-junior in [#2055](https://github.com/getsentry/toolkit/pull/2055)
+- Restore sentry-mcp User-Agent on streamText provider calls by @dcramer with @sentry-junior in [#2011](https://github.com/getsentry/toolkit/pull/2011)
+
+### Internal Changes 🔧
+
+API and logging updates support cleaner tooling, while registry metadata, release automation, and incremental reviews improve development workflows.
+
+#### Cli
+
+The CLI is moving generated API operations onto @​sentry/api 1.46.0, including updated issue, dashboard, explore, conversation, and trace calls. Packages using @​sentry/logger now prohibit console calls and route messages through the logger, keeping data on stdout available for JSON and MCP stdio while honoring SENTRY\_LOG\_LEVEL and --log-level.
+
+- Bump @sentry/api to 1.46.0 and move unblocked call sites by @sentry-junior in [#2078](https://github.com/getsentry/toolkit/pull/2078)
+- Move API calls with generated operations onto @sentry/api by @BYK with @sentry-junior in [#2073](https://github.com/getsentry/toolkit/pull/2073)
+- Ban console calls in every package that uses @sentry/logger by @BYK with @sentry-junior in [#2072](https://github.com/getsentry/toolkit/pull/2072)
+
+#### Mcp
+
+mcp-core now shares organization and project constraint lookup and classification between hosted and stdio callers while preserving their policies and hosts. Metadata tests validate tool outputs, schemas, server information, environment declarations, and registry fields. The MCP Registry manifest now points to getsentry/toolkit, makes SENTRY\_AUTH\_TOKEN optional, and publishes corrected host, URL, branding, and icon metadata.
+
+- Share the org/project constraint lookup in mcp-core by @BYK with @sentry-junior in [#2060](https://github.com/getsentry/toolkit/pull/2060)
+- Lint the metadata clients receive from the server by @dcramer with @sentry-junior in [#2039](https://github.com/getsentry/toolkit/pull/2039)
+- Update the MCP Registry manifest by @dcramer with @sentry-junior in [#1986](https://github.com/getsentry/toolkit/pull/1986)
+
+#### Release
+
+Craft AI changelog summaries receive a 600-second timeout and require Craft 3.11.0, preventing large release preparations from stopping at the previous limit. Release workflows now support auto and pre bump modes, default to auto, and accept an optional exact version that overrides bump.
+
+- Give Craft AI summaries 10 minutes by @BYK with @sentry-junior in [#2029](https://github.com/getsentry/toolkit/pull/2029)
+- Add auto, pre, and exact version inputs by @BYK with @sentry-junior in [#2005](https://github.com/getsentry/toolkit/pull/2005)
+
+#### Other
+
+- (warden) Enable incremental review by @Jeffreyhung with @sentry-junior in [#2032](https://github.com/getsentry/toolkit/pull/2032)
+
+## 0.48.0
+
+### New Features ✨
+
+#### Agent Conversation
+
+- Filter list by project by @vgrozdanic in [#1459](https://github.com/getsentry/toolkit/pull/1459)
+- Show aggregate metrics and costs by @vgrozdanic in [#1458](https://github.com/getsentry/toolkit/pull/1458)
+
+#### Cli
+
+- Cache telemetry that fails to send and retry it on the next run by @BYK with @sentry-junior in [#1963](https://github.com/getsentry/toolkit/pull/1963)
+- Add event analytics command for dropped events by @manessaraj, @claude and @BYK with @sentry-junior in [#1812](https://github.com/getsentry/toolkit/pull/1812)
+- Port the v3-to-v4 codemod from the archived getsentry/cli as cli3to4 by @BYK with @sentry-junior in [#1968](https://github.com/getsentry/toolkit/pull/1968)
+- Add associated replay id to trace view command by @lzhao-sentry with @sentry-junior in [#1917](https://github.com/getsentry/toolkit/pull/1917)
+- Add sentry games snake by @sergical and @claude in [#1432](https://github.com/getsentry/toolkit/pull/1432)
+- Publish install script checksums with each release by @BYK with @sentry-junior in [#1962](https://github.com/getsentry/toolkit/pull/1962)
+- Add token commands for org auth tokens by @BYK and @betegon with @sentry-junior in [#1647](https://github.com/getsentry/toolkit/pull/1647)
+- Authenticate headless installs with setup codes by @evanpurkhiser in [#1873](https://github.com/getsentry/toolkit/pull/1873)
+- Add headless authentication bootstrap command by @evanpurkhiser in [#1872](https://github.com/getsentry/toolkit/pull/1872)
+- Bootstrap account credentials from setup codes by @evanpurkhiser in [#1871](https://github.com/getsentry/toolkit/pull/1871)
+- Exchange one-time OAuth setup codes by @evanpurkhiser in [#1870](https://github.com/getsentry/toolkit/pull/1870)
+- Upload DXIL shader binaries as debug files by @tustanivsky in [#1943](https://github.com/getsentry/toolkit/pull/1943)
+- Complete --fields on org, project, release, dashboard, alert, and auth commands by @BYK and @claude with @sentry-junior in [#1783](https://github.com/getsentry/toolkit/pull/1783)
+- Support magic selectors in event view, defaulting to @latest by @BYK and @claude with @sentry and @sentry-junior in [#1793](https://github.com/getsentry/toolkit/pull/1793)
+- Warm attribute keys for completion on login and setup by @BYK with @sentry-junior in [#1788](https://github.com/getsentry/toolkit/pull/1788)
+- Narrow alert aggregates and match fields by segment by @BYK with @sentry-junior in [#1785](https://github.com/getsentry/toolkit/pull/1785)
+- Complete Local session IDs and labels by @BYK with @sentry-junior in [#1781](https://github.com/getsentry/toolkit/pull/1781)
+- Complete dataset fields and aggregates in shell completion by @BYK with @sentry-junior in [#1782](https://github.com/getsentry/toolkit/pull/1782)
+- Declare and lint a completion kind for every flag by @BYK with @sentry-junior in [#1759](https://github.com/getsentry/toolkit/pull/1759)
+- Complete flags at every command depth in bash, zsh, and fish by @sentry-junior in [#1760](https://github.com/getsentry/toolkit/pull/1760)
+- Declare a completion kind for every positional by @BYK and @claude with @sentry-junior in [#1751](https://github.com/getsentry/toolkit/pull/1751)
+- Tag CI invocations in telemetry by @betegon in [#1753](https://github.com/getsentry/toolkit/pull/1753)
+- Label explore charts with shared axes and legends by @betegon in [#1717](https://github.com/getsentry/toolkit/pull/1717)
+- Expose api pagination and shared cursor navigation by @betegon in [#1659](https://github.com/getsentry/toolkit/pull/1659)
+- Add issue tag distributions by @betegon in [#1636](https://github.com/getsentry/toolkit/pull/1636)
+- Render explore time series as charts by @betegon in [#1693](https://github.com/getsentry/toolkit/pull/1693)
+- Add attribute list command by @lzhao-sentry, @betegon and @BYK with @sentry-junior in [#1559](https://github.com/getsentry/toolkit/pull/1559)
+- Retry writes Sentry marks idempotent by @sentry-junior in [#1706](https://github.com/getsentry/toolkit/pull/1706)
+- Complete issues, dashboards, --query terms, and --period values by @BYK with @sentry-junior in [#1572](https://github.com/getsentry/toolkit/pull/1572)
+- Revalidate stale cache entries with If-None-Match by @BYK with @sentry-junior in [#1698](https://github.com/getsentry/toolkit/pull/1698)
+- Store compressed response cache entries with a byte budget by @BYK with @sentry-junior in [#1697](https://github.com/getsentry/toolkit/pull/1697)
+- Back up the database on upgrade and add `cli upgrade undo` by @BYK with @sentry-junior in [#1631](https://github.com/getsentry/toolkit/pull/1631)
+- Add explore time series by @betegon in [#1657](https://github.com/getsentry/toolkit/pull/1657)
+- Name filter for project, team, repo, monitor and integration lists by @BYK with @sentry-junior in [#1575](https://github.com/getsentry/toolkit/pull/1575)
+- Expose trace id in span list command by @lzhao-sentry in [#1680](https://github.com/getsentry/toolkit/pull/1680)
+- Rewrite is: OR in issue and feedback list queries by @BYK with @sentry-junior in [#1674](https://github.com/getsentry/toolkit/pull/1674)
+- Inspect metric alert thresholds and notifications by @betegon in [#1663](https://github.com/getsentry/toolkit/pull/1663)
+- Parse and resolve org/project targets in their positional by @BYK with @sentry-junior in [#1594](https://github.com/getsentry/toolkit/pull/1594)
+- Default the project team when --team is omitted by @BYK with @sentry-junior in [#1589](https://github.com/getsentry/toolkit/pull/1589)
+- Treat SENTRY_AUTH_TOKEN as an account next to stored logins by @BYK with @sentry-junior in [#1558](https://github.com/getsentry/toolkit/pull/1558)
+- Generate completion command sets from route metadata by @BYK with @sentry-junior in [#1557](https://github.com/getsentry/toolkit/pull/1557)
+- List organizations across all stored accounts by @BYK with @sentry-junior in [#1537](https://github.com/getsentry/toolkit/pull/1537)
+- Pick the stored account from the target org or server by @BYK with @sentry-junior in [#1528](https://github.com/getsentry/toolkit/pull/1528)
+- Move Windows PATH handling into cli setup by @BYK with @sentry-junior in [#1536](https://github.com/getsentry/toolkit/pull/1536)
+- Support multi-account auth by @BYK with @sentry-junior in [#1526](https://github.com/getsentry/toolkit/pull/1526)
+- Add a PowerShell installer for Windows by @BYK with @sentry-junior in [#1511](https://github.com/getsentry/toolkit/pull/1511)
+- Add integration list and delete commands by @BYK, @betegon and @sergical with @sentry-junior in [#1523](https://github.com/getsentry/toolkit/pull/1523)
+- Add persistent tips default and SENTRY_DISABLE_TIPS override by @BYK with @sentry-junior in [#1522](https://github.com/getsentry/toolkit/pull/1522)
+- Support dSYMs with IPA uploads by @BYK and @codex with @jared-outpost in [#1496](https://github.com/getsentry/toolkit/pull/1496)
+- Decode iOS asset catalogs with CoreUI by @BYK and @codex in [#1500](https://github.com/getsentry/toolkit/pull/1500)
+- Add type-to-filter organization, team, and project pickers by @betegon in [#1495](https://github.com/getsentry/toolkit/pull/1495)
+- Sort agent conversations by fields by @vgrozdanic in [#1461](https://github.com/getsentry/toolkit/pull/1461)
+- Add local MCP server command by @MathurAditya724 and @codex in [#1401](https://github.com/getsentry/toolkit/pull/1401)
+- Add issue unlink command by @betegon and @codex in [#1376](https://github.com/getsentry/toolkit/pull/1376)
+- Add issue link command by @betegon and @codex in [#1373](https://github.com/getsentry/toolkit/pull/1373)
+
+#### Core
+
+- Share Sentry's search grammar across the CLI and MCP by @BYK with @sentry-junior in [#1532](https://github.com/getsentry/toolkit/pull/1532)
+- Share CLI and MCP authentication protocol by @BYK in [#1421](https://github.com/getsentry/toolkit/pull/1421)
+
+#### Local
+
+- Add capture controls and telemetry investigation by @MathurAditya724 and @codex in [#1509](https://github.com/getsentry/toolkit/pull/1509)
+- Add daemon-managed telemetry sessions and viewer by @MathurAditya724 and @codex in [#1492](https://github.com/getsentry/toolkit/pull/1492)
+
+#### Mcp
+
+- Add a display title to every tool by @sentry-junior in [#1991](https://github.com/getsentry/toolkit/pull/1991)
+- Add create_monitor tool for cron monitors by @sentry-junior in [#1861](https://github.com/getsentry/toolkit/pull/1861)
+- Tune tool descriptions for harness search, hide deprecated tools by @dcramer with @sentry-junior in [#1906](https://github.com/getsentry/toolkit/pull/1906)
+- Expose every tool directly and rely on harness tool search by @dcramer with @sentry-junior in [#1868](https://github.com/getsentry/toolkit/pull/1868)
+- Add a fresh input to read tools that bypasses cached reads by @claude with @sentry-junior in [#1832](https://github.com/getsentry/toolkit/pull/1832)
+- Default organizationSlug to the user's only organization by @BYK with @sentry-junior in [#1836](https://github.com/getsentry/toolkit/pull/1836)
+- Accept an <org>/<project> target for sentry mcp by @BYK with @sentry-junior in [#1800](https://github.com/getsentry/toolkit/pull/1800)
+
+#### Mcp Server
+
+- Route stdio tool calls to the stored account that knows the org by @BYK with @sentry-junior in [#1802](https://github.com/getsentry/toolkit/pull/1802)
+- Ship @sentry/mcp-server as a slim bundle that shares CLI auth by @BYK with @sentry-junior in [#1731](https://github.com/getsentry/toolkit/pull/1731)
+
+#### Search Events
+
+- Teach the logs query agent regex message search by @JoshuaKGoldberg and @claude in [#1406](https://github.com/getsentry/toolkit/pull/1406)
+- Mark incomplete buckets and report ingestion delay by @edwardgou-sentry in [#1441](https://github.com/getsentry/toolkit/pull/1441)
+- Use Seer translation outside experimental mode by @skaasten with @sentry-junior in [#1412](https://github.com/getsentry/toolkit/pull/1412)
+
+#### Toolkit Core
+
+- Add shared Markdown builders for untrusted values by @BYK with @sentry-junior in [#1795](https://github.com/getsentry/toolkit/pull/1795)
+- Share the API transport with the CLI by @BYK with @sentry-junior in [#1719](https://github.com/getsentry/toolkit/pull/1719)
+- Share the response cache policy by @BYK with @sentry-junior in [#1704](https://github.com/getsentry/toolkit/pull/1704)
+
+#### Tools
+
+- Expose selected package versions for exact events by @mr-danya, @codex and 2 others with @sentry-junior in [#1293](https://github.com/getsentry/toolkit/pull/1293)
+- Add find_dropped_events tool for the events-dropped endpoint by @manessaraj in [#1410](https://github.com/getsentry/toolkit/pull/1410)
+
+#### Other
+
+- (api-client) Share Sentry's idempotent writes with MCP and bump @sentry/api by @sentry-junior in [#1820](https://github.com/getsentry/toolkit/pull/1820)
+- (arg-parsing) Accept comma-separated project slugs by @betegon, @cursoragent and @BYK in [#1377](https://github.com/getsentry/toolkit/pull/1377)
+- (cli-docs) Show the install script in browsers instead of downloading it by @evanpurkhiser and @BYK with @sentry-junior in [#1992](https://github.com/getsentry/toolkit/pull/1992)
+- (cloudflare) Drop the legacy MCP SDK transport from chat routes by @scttcper and @claude in [#1924](https://github.com/getsentry/toolkit/pull/1924)
+- (crons) Add monitor environment deletion tool by @evanpurkhiser in [#1443](https://github.com/getsentry/toolkit/pull/1443)
+- (logger) Publish the logger as @sentry/logger by @BYK with @sentry-junior in [#1773](https://github.com/getsentry/toolkit/pull/1773)
+- (oauth) Store scopes Sentry actually granted as upstreamScopes by @skaasten with @sentry-junior in [#1561](https://github.com/getsentry/toolkit/pull/1561)
+- (server) Return server instructions from initialize by @sentry-junior in [#1982](https://github.com/getsentry/toolkit/pull/1982)
+
+### Bug Fixes 🐛
+
+#### Cli
+
+- Preserve saved transformations during dashboard edits by @nsdeschenes and @codex in [#1988](https://github.com/getsentry/toolkit/pull/1988)
+- Route `sentry api` org requests to accounts on other servers by @BYK with @sentry-junior in [#1978](https://github.com/getsentry/toolkit/pull/1978)
+- Give Next.js advice when no sourcemaps are found by @betegon with @sentry-junior in [#1937](https://github.com/getsentry/toolkit/pull/1937)
+- Route org-scoped API requests to the account that knows the org by @BYK with @sentry-junior in [#1976](https://github.com/getsentry/toolkit/pull/1976)
+- Bind the sentry mcp telemetry client so it sends anything by @BYK with @sentry-junior in [#1970](https://github.com/getsentry/toolkit/pull/1970)
+- Let the CLI exit on its own instead of forcing it on macOS by @sentry-junior in [#1960](https://github.com/getsentry/toolkit/pull/1960)
+- Fall back to the only organization in resolveOrg (CLI-3B) by @betegon with @sentry-junior in [#1958](https://github.com/getsentry/toolkit/pull/1958)
+- Show the server's hint for rejected Explore function arguments by @BYK with @sentry-junior in [#1966](https://github.com/getsentry/toolkit/pull/1966)
+- Explain Explore aggregates rejected for their argument by @betegon with @sentry-junior in [#1927](https://github.com/getsentry/toolkit/pull/1927)
+- Treat Events search syntax 400s as --query mistakes by @betegon with @sentry-junior in [#1936](https://github.com/getsentry/toolkit/pull/1936)
+- Report dashboard widget failures through the shared error policy by @sentry-junior in [#1929](https://github.com/getsentry/toolkit/pull/1929)
+- Check for updates once per interval, not once per hour (#1957) by @BYK with @sentry-junior in [#1959](https://github.com/getsentry/toolkit/pull/1959)
+- List the only organization when no project is detected (CLI-3B) by @betegon with @sentry-junior in [#1947](https://github.com/getsentry/toolkit/pull/1947)
+- Use Sentry's repository name when set-commits --commit only differs in form by @betegon with @sentry-junior in [#1948](https://github.com/getsentry/toolkit/pull/1948)
+- Explain set-commits --commit repositories that Sentry doesn't have by @betegon with @sentry-junior in [#1902](https://github.com/getsentry/toolkit/pull/1902)
+- Run the npm package on Bun by @sergical and @claude in [#1944](https://github.com/getsentry/toolkit/pull/1944)
+- Treat every OS errno from best-effort scans as expected by @betegon with @sentry-junior in [#1932](https://github.com/getsentry/toolkit/pull/1932)
+- Accept glob patterns as the sourcemap upload target by @betegon with @sentry-junior in [#1934](https://github.com/getsentry/toolkit/pull/1934)
+- Use the org from an org auth token when none is set (CLI-3B) by @betegon with @sentry-junior in [#1938](https://github.com/getsentry/toolkit/pull/1938)
+- Skip DSN scan from $HOME and temp roots for every root reason by @betegon with @sentry-junior in [#1930](https://github.com/getsentry/toolkit/pull/1930)
+- Scope explore to the project by ID, not project:<slug> by @betegon with @sentry-junior in [#1928](https://github.com/getsentry/toolkit/pull/1928)
+- Keep timeout guidance and name the real cause of network errors by @betegon with @sentry-junior in [#1904](https://github.com/getsentry/toolkit/pull/1904)
+- Say how to connect an integration when set-commits --auto finds no repos by @claude with @sentry-junior in [#1900](https://github.com/getsentry/toolkit/pull/1900)
+- Say how to recover when set-commits --auto fails by @betegon with @sentry-junior in [#1866](https://github.com/getsentry/toolkit/pull/1866)
+- Match GitLab repositories in set-commits --auto by @betegon with @sentry-junior in [#1865](https://github.com/getsentry/toolkit/pull/1865)
+- Read Vercel production builds in set-commits --auto by @betegon with @sentry-junior in [#1864](https://github.com/getsentry/toolkit/pull/1864)
+- Read the repository from CI variables in set-commits --auto by @betegon with @sentry-junior in [#1863](https://github.com/getsentry/toolkit/pull/1863)
+- Pass SEA assets to fossilize through its API by @BYK with @sentry-junior in [#1858](https://github.com/getsentry/toolkit/pull/1858)
+- Upload each slice of a fat Mach-O as its own debug file by @BYK with @sentry-junior in [#1849](https://github.com/getsentry/toolkit/pull/1849)
+- Show full replay ID in human readable output of replay list by @lzhao-sentry in [#1809](https://github.com/getsentry/toolkit/pull/1809)
+- Recover issue alert --condition input instead of failing by @BYK with @sentry-junior in [#1794](https://github.com/getsentry/toolkit/pull/1794)
+- Warm completion caches after the setup auto-login by @sentry-junior in [#1789](https://github.com/getsentry/toolkit/pull/1789)
+- Repair DB schema when telemetry is off by @BYK with @sentry-junior in [#1770](https://github.com/getsentry/toolkit/pull/1770)
+- Read only the first line of an org argument by @BYK with @sentry-junior in [#1749](https://github.com/getsentry/toolkit/pull/1749)
+- Render graphics with kitty and route them through tmux by @BYK and @betegon with @sentry-junior in [#1735](https://github.com/getsentry/toolkit/pull/1735)
+- Keep all-digit event IDs after <short-id>/ as events by @BYK with @sentry-junior in [#1738](https://github.com/getsentry/toolkit/pull/1738)
+- Improve schema discovery by @betegon in [#1658](https://github.com/getsentry/toolkit/pull/1658)
+- End a flag's completion value at the next flag by @BYK with @sentry-junior in [#1708](https://github.com/getsentry/toolkit/pull/1708)
+- Move the CLI to Sentry SDK v11 and its defaults by @BYK with @sentry-junior in [#1694](https://github.com/getsentry/toolkit/pull/1694)
+- Serve the newer cache entry when both formats exist by @BYK with @sentry-junior in [#1703](https://github.com/getsentry/toolkit/pull/1703)
+- Split whitespace and newlines in span view positional arguments by @sentry in [#1686](https://github.com/getsentry/toolkit/pull/1686)
+- Stop caching events and traces for 24 hours by @BYK with @sentry-junior in [#1681](https://github.com/getsentry/toolkit/pull/1681)
+- Keep the local database usable across CLI downgrades by @BYK with @sentry-junior in [#1612](https://github.com/getsentry/toolkit/pull/1612)
+- Don't auto-retry non-idempotent requests; honor rate-limit reset on 429 by @BYK with @sentry-junior in [#1677](https://github.com/getsentry/toolkit/pull/1677)
+- Preserve trace attributes in field projections by @betegon in [#1665](https://github.com/getsentry/toolkit/pull/1665)
+- Explain rejected Explore field expressions by @betegon in [#1661](https://github.com/getsentry/toolkit/pull/1661)
+- Honor event IDs after issue short IDs by @betegon in [#1662](https://github.com/getsentry/toolkit/pull/1662)
+- Preserve valid Explore queries and metric expressions by @betegon in [#1660](https://github.com/getsentry/toolkit/pull/1660)
+- Remove stale issue command suggestions by @betegon in [#1656](https://github.com/getsentry/toolkit/pull/1656)
+- Improve missing-context recovery by @betegon in [#1634](https://github.com/getsentry/toolkit/pull/1634)
+- Refresh tokens with a corrupt issued_at by @BYK with @sentry-junior in [#1648](https://github.com/getsentry/toolkit/pull/1648)
+- Split paginate() limits evenly and return Sentry-compatible cursors by @BYK with @sentry-junior in [#1642](https://github.com/getsentry/toolkit/pull/1642)
+- Route all limit-bounded pagination through paginate() by @BYK with @sentry-junior in [#1625](https://github.com/getsentry/toolkit/pull/1625)
+- Handle malformed sourcemaps and timestamps by @BYK with @sentry-junior in [#1609](https://github.com/getsentry/toolkit/pull/1609)
+- Stop dashboard revisions pagination from skipping rows by @BYK with @sentry-junior in [#1608](https://github.com/getsentry/toolkit/pull/1608)
+- Match SDK variadic flags and streaming targets to the runtime by @BYK with @sentry-junior in [#1607](https://github.com/getsentry/toolkit/pull/1607)
+- Silence dropped connections and bad sourcemap directories by @BYK with @sentry-junior in [#1606](https://github.com/getsentry/toolkit/pull/1606)
+- Accept user.display as a replay explore field by @BYK with @sentry-junior in [#1605](https://github.com/getsentry/toolkit/pull/1605)
+- Reject custom header values that fetch cannot send by @BYK with @sentry-junior in [#1604](https://github.com/getsentry/toolkit/pull/1604)
+- Narrow metric alert dataset before mapping by @betegon in [#1599](https://github.com/getsentry/toolkit/pull/1599)
+- Show a compact command overview for bare `sentry` by @BYK with @sentry-junior in [#1596](https://github.com/getsentry/toolkit/pull/1596)
+- Send native detector datasets and conditions for metric alerts by @BYK with @sentry-junior in [#1591](https://github.com/getsentry/toolkit/pull/1591)
+- Detect Homebrew Cellar installs in cli uninstall by @BYK with @sentry-junior in [#1592](https://github.com/getsentry/toolkit/pull/1592)
+- Use the issues endpoint's filtered counts for release: queries by @BYK with @sentry-junior in [#1590](https://github.com/getsentry/toolkit/pull/1590)
+- Trace view unable to fetch span warning when using --full/--json by @lzhao-sentry in [#1577](https://github.com/getsentry/toolkit/pull/1577)
+- Install Homebrew completions from the formula by @BYK with @sentry-junior in [#1555](https://github.com/getsentry/toolkit/pull/1555)
+- Require return await for returned promises by @BYK and @claude with @sentry-junior in [#1556](https://github.com/getsentry/toolkit/pull/1556)
+- Strip credentials from chunk-upload URL by @sentry in [#1569](https://github.com/getsentry/toolkit/pull/1569)
+- Retry interrupted GET responses across commands by @betegon in [#1548](https://github.com/getsentry/toolkit/pull/1548)
+- Resolve qualified dashboard IDs by @betegon in [#1550](https://github.com/getsentry/toolkit/pull/1550)
+- Preserve quoted queries in pagination hints by @betegon in [#1549](https://github.com/getsentry/toolkit/pull/1549)
+- Flatten release list results for session-based sorts by @sentry-junior in [#1543](https://github.com/getsentry/toolkit/pull/1543)
+- Ignore ENOTCONN from disconnected mounts during file scans by @sentry-junior in [#1544](https://github.com/getsentry/toolkit/pull/1544)
+- Write ZIP64 end records for sourcemap bundles over 65535 entries by @betegon with @sentry-junior in [#1540](https://github.com/getsentry/toolkit/pull/1540)
+- Support list alias for sentry cli defaults by @sentry in [#1539](https://github.com/getsentry/toolkit/pull/1539)
+- Scope issue list counts to the release: filter by @BYK with @sentry-junior in [#1512](https://github.com/getsentry/toolkit/pull/1512)
+- Sort every Events dataset through a shared resolver by @sentry-junior in [#1521](https://github.com/getsentry/toolkit/pull/1521)
+- Repair zsh completion during setup by @MathurAditya724 and @codex in [#1524](https://github.com/getsentry/toolkit/pull/1524)
+- Handle Bun debug IDs and `// @bun` pragma in sourcemap inject by @BYK with @sentry-junior in [#1515](https://github.com/getsentry/toolkit/pull/1515)
+- Improve fuzzy search in selectors and completions by @betegon in [#1498](https://github.com/getsentry/toolkit/pull/1498)
+- Support multiple fully-qualified log paths in log view by @sentry and @sentry-junior in [#1463](https://github.com/getsentry/toolkit/pull/1463)
+- Keep regex log queries intact in --query by @JoshuaKGoldberg and @claude in [#1407](https://github.com/getsentry/toolkit/pull/1407)
+- Stub transport in telemetry tests to prevent production event leakage by @sentry in [#1464](https://github.com/getsentry/toolkit/pull/1464)
+- Parse trace IDs from Sentry URLs and with trailing slashes by @sentry in [#1457](https://github.com/getsentry/toolkit/pull/1457)
+- Sanitize project argument newlines by @sentry in [#1456](https://github.com/getsentry/toolkit/pull/1456)
+- Preserve full log IDs in human output by @betegon in [#1455](https://github.com/getsentry/toolkit/pull/1455)
+- Recover logs omitted by partial scans by @betegon in [#1451](https://github.com/getsentry/toolkit/pull/1451)
+- Generate accurate command references by @BYK and @codex in [#1429](https://github.com/getsentry/toolkit/pull/1429)
+- Honor configured organizations for short IDs by @betegon and @codex in [#1418](https://github.com/getsentry/toolkit/pull/1418)
+- Route org-auth tokens to their instance by @BYK in [#1414](https://github.com/getsentry/toolkit/pull/1414)
+
+#### Deps
+
+- Bump Cloudflare toolchain and pin zod to patched release by @dcramer with @sentry-junior in [#1912](https://github.com/getsentry/toolkit/pull/1912)
+- Bump agents to 0.32.0 and MCP SDK to 1.32.2 by @dcramer with @sentry-junior in [#1774](https://github.com/getsentry/toolkit/pull/1774)
+- Bump @modelcontextprotocol/server to 2.4.0 for fast-uri 3.1.8 by @BYK with @sentry-junior in [#1758](https://github.com/getsentry/toolkit/pull/1758)
+
+#### Mcp
+
+- Report the shipped version in stdio serverInfo and User-Agent by @dcramer and @BYK with @sentry-junior in [#1994](https://github.com/getsentry/toolkit/pull/1994)
+- Keep the env token's startup host when serving by @BYK with @sentry-junior in [#1801](https://github.com/getsentry/toolkit/pull/1801)
+- Replace lone surrogates in tool responses by @betegon and @claude with @sentry-junior in [#1790](https://github.com/getsentry/toolkit/pull/1790)
+- Limit tool input elements and request body size by @BYK with @sentry-junior in [#1780](https://github.com/getsentry/toolkit/pull/1780)
+- Defer find_dropped_events and lock the default tool list by @dcramer with @sentry-junior in [#1700](https://github.com/getsentry/toolkit/pull/1700)
+- Retry rate-limited GETs using Sentry rate-limit reset headers by @BYK with @sentry-junior in [#1673](https://github.com/getsentry/toolkit/pull/1673)
+- Rewrite AND/OR in search_issues queries before calling Sentry by @BYK and @aliu39 with @sentry-junior in [#1671](https://github.com/getsentry/toolkit/pull/1671)
+- Upgrade wrangler for worker-scoped deploy tokens by @betegon in [#1570](https://github.com/getsentry/toolkit/pull/1570)
+- Reduce project constraint verification delays by @betegon in [#1551](https://github.com/getsentry/toolkit/pull/1551)
+
+#### Search Events
+
+- Document backtick \_if aggregate syntax by @wmak and @cursoragent in [#1494](https://github.com/getsentry/toolkit/pull/1494)
+- Gate Seer translation on a rollout flag by @sentry-junior in [#1447](https://github.com/getsentry/toolkit/pull/1447)
+
+#### Server
+
+- Mark calls to unregistered tools as failed spans by @dcramer with @sentry-junior in [#1952](https://github.com/getsentry/toolkit/pull/1952)
+- Stop advertising tool list change notifications by @betegon and @codex in [#1317](https://github.com/getsentry/toolkit/pull/1317)
+
+#### Other
+
+- (cli-docs) Restore code block styles on MDX pages by @claude with @sentry-junior in [#2000](https://github.com/getsentry/toolkit/pull/2000)
+- (cloudflare) Bucket Claude-User clients as claude, not claude-desktop by @mrduncan with @sentry-junior in [#1516](https://github.com/getsentry/toolkit/pull/1516)
+- (deploy) Survive stale Cloudflare deployment reads by @dcramer with @sentry-junior in [#1701](https://github.com/getsentry/toolkit/pull/1701)
+- (docs-mcp) Limit request bodies and tool input elements by @BYK with @sentry-junior in [#1784](https://github.com/getsentry/toolkit/pull/1784)
+- (evals) Run the eval suite on vitest-evals 0.18 by @dcramer with @sentry-junior in [#1973](https://github.com/getsentry/toolkit/pull/1973)
+- (formatting) Read camelCase metric alert evidence and link to breach data by @BYK with @sentry-junior in [#1715](https://github.com/getsentry/toolkit/pull/1715)
+- (local) Show SDK exception messages and stacks by @MathurAditya724 and @codex in [#1503](https://github.com/getsentry/toolkit/pull/1503)
+- (logger) Keep falsy causes and literal % in error messages by @BYK with @sentry-junior in [#1779](https://github.com/getsentry/toolkit/pull/1779)
+- (mcp-core) Allow string values in events-timeseries response by @betegon with @sentry and @sentry-junior in [#1424](https://github.com/getsentry/toolkit/pull/1424)
+- (tools) Preserve issue activity source attribution by @cvxluo and @codex in [#1682](https://github.com/getsentry/toolkit/pull/1682)
+
+### Documentation 📚
+
+#### Cli
+
+- Point the v3 migration guide at the published codemod by @BYK with @sentry-junior in [#1977](https://github.com/getsentry/toolkit/pull/1977)
+- Correct short-suffix issue IDs and document the response cache by @BYK with @sentry-junior in [#1799](https://github.com/getsentry/toolkit/pull/1799)
+- Correct CLI docs drift and guard against it by @sentry-junior in [#1667](https://github.com/getsentry/toolkit/pull/1667)
+- Mark destructive commands in generated references by @BYK with @sentry-junior in [#1646](https://github.com/getsentry/toolkit/pull/1646)
+- Generate and check docs that mirror CLI behavior by @claude and @BYK with @sentry-junior in [#1626](https://github.com/getsentry/toolkit/pull/1626)
+- Reject sentry commands in fragment code blocks by @BYK with @sentry-junior in [#1639](https://github.com/getsentry/toolkit/pull/1639)
+- Move remaining fragment examples into command metadata by @BYK with @sentry-junior in [#1633](https://github.com/getsentry/toolkit/pull/1633)
+- Document allow-failure via the v3 migration shim by @BYK with @sentry-junior in [#1593](https://github.com/getsentry/toolkit/pull/1593)
+- Fix broken doc links and stale SDK examples by @sentry-junior in [#1542](https://github.com/getsentry/toolkit/pull/1542)
+- Correct self-hosted login, upgrade, and dev setup docs by @betegon with @sentry-junior in [#1541](https://github.com/getsentry/toolkit/pull/1541)
+- Fix stale issue alert migration comment by @BYK with @sentry-junior in [#1525](https://github.com/getsentry/toolkit/pull/1525)
+- Document conversation query filters by @vgrozdanic in [#1460](https://github.com/getsentry/toolkit/pull/1460)
+
+#### Other
+
+- (mcp) Add supported harness tiers and native tool search matrix by @dcramer with @sentry-junior in [#1862](https://github.com/getsentry/toolkit/pull/1862)
+
+### Internal Changes 🔧
+
+#### Cli
+
+- Take API field descriptions from @sentry/api by @BYK with @sentry-junior in [#1967](https://github.com/getsentry/toolkit/pull/1967)
+- Lint against forced exits and pin update check retries by @BYK with @sentry-junior in [#1955](https://github.com/getsentry/toolkit/pull/1955)
+- Prefetch issue view details for org/numeric IDs by @betegon with @sentry-junior in [#1931](https://github.com/getsentry/toolkit/pull/1931)
+- Run generators in one process by @BYK with @sentry-junior in [#1939](https://github.com/getsentry/toolkit/pull/1939)
+- Read output fields from generated data, not schemas by @BYK with @sentry-junior in [#1923](https://github.com/getsentry/toolkit/pull/1923)
+- Write top-level briefs once and generate root help data by @BYK with @sentry-junior in [#1921](https://github.com/getsentry/toolkit/pull/1921)
+- Load top-level routes from a checked-in command manifest by @BYK with @sentry-junior in [#1918](https://github.com/getsentry/toolkit/pull/1918)
+- Skip loading commands for --version and leading global flags by @BYK with @sentry-junior in [#1826](https://github.com/getsentry/toolkit/pull/1826)
+- Check output.schema for commands with jsonTransform by @BYK with @sentry-junior in [#1869](https://github.com/getsentry/toolkit/pull/1869)
+- Type-check command yields against their output config by @BYK with @sentry-junior in [#1854](https://github.com/getsentry/toolkit/pull/1854)
+- Split multi-object debug files with symbolic's ObjectFile.data() by @sentry-junior in [#1857](https://github.com/getsentry/toolkit/pull/1857)
+- Use Craft's versioning.files instead of the bump script by @BYK with @sentry-junior in [#1825](https://github.com/getsentry/toolkit/pull/1825)
+- Derive command output types from their output schemas by @BYK with @sentry-junior in [#1830](https://github.com/getsentry/toolkit/pull/1830)
+- Code-split the npm package and the SDK like the standalone binary by @BYK with @sentry-junior in [#1843](https://github.com/getsentry/toolkit/pull/1843)
+- Cover the json-transform-uses-fields lint rule by @BYK with @sentry-junior in [#1816](https://github.com/getsentry/toolkit/pull/1816)
+- Add regression tests for empty actions on metric alert triggers by @sentry in [#1818](https://github.com/getsentry/toolkit/pull/1818)
+- Load only the top-level route a command runs by @BYK with @sentry-junior in [#1814](https://github.com/getsentry/toolkit/pull/1814)
+- Escape Markdown with the shared toolkit-core builders by @BYK with @sentry-junior in [#1805](https://github.com/getsentry/toolkit/pull/1805)
+- Split the SEA binary into a bootstrap and cached chunks by @BYK with @sentry-junior in [#1810](https://github.com/getsentry/toolkit/pull/1810)
+- Use Craft's built-in post-release version bump by @BYK with @sentry-junior in [#1796](https://github.com/getsentry/toolkit/pull/1796)
+- Replace consola with a small in-house logger by @BYK with @sentry-junior in [#1771](https://github.com/getsentry/toolkit/pull/1771)
+- Read the route tree from a registry instead of app.ts by @BYK with @sentry-junior in [#1766](https://github.com/getsentry/toolkit/pull/1766)
+- Give `__complete` its own light entry point by @BYK with @sentry-junior in [#1762](https://github.com/getsentry/toolkit/pull/1762)
+- Load syntax highlighting lazily and allow compiling it out by @BYK with @sentry-junior in [#1765](https://github.com/getsentry/toolkit/pull/1765)
+- Bundle only Zod's English locale by @BYK with @sentry-junior in [#1763](https://github.com/getsentry/toolkit/pull/1763)
+- Remove the completion-only target parsers by @BYK with @sentry-junior in [#1750](https://github.com/getsentry/toolkit/pull/1750)
+- Parse alert rule positionals before the command runs by @BYK with @sentry-junior in [#1745](https://github.com/getsentry/toolkit/pull/1745)
+- Parse init, project create and dashboard create arguments before run by @BYK with @sentry-junior in [#1746](https://github.com/getsentry/toolkit/pull/1746)
+- Parse issue view, explain, and merge positionals before run by @BYK with @sentry-junior in [#1747](https://github.com/getsentry/toolkit/pull/1747)
+- Concurrently fetch previous release commit in setCommitsAuto by @sentry in [#1748](https://github.com/getsentry/toolkit/pull/1748)
+- Bind org-only and opaque-ID positionals by @BYK with @sentry-junior in [#1744](https://github.com/getsentry/toolkit/pull/1744)
+- Check dashboard and issue search arguments across commands by @sentry-junior in [#1742](https://github.com/getsentry/toolkit/pull/1742)
+- Parse dashboard and issue arguments with the shared ID grammar by @BYK with @sentry-junior in [#1730](https://github.com/getsentry/toolkit/pull/1730)
+- Ratchet hand-parsed positionals and test argument conventions by @BYK with @sentry-junior in [#1739](https://github.com/getsentry/toolkit/pull/1739)
+- Parse event view arguments with the shared ID grammar by @BYK with @sentry-junior in [#1733](https://github.com/getsentry/toolkit/pull/1733)
+- Parse issue arguments with their own grammar, before the command runs by @BYK with @sentry-junior in [#1729](https://github.com/getsentry/toolkit/pull/1729)
+- Parse trace logs and span list arguments before they run by @BYK with @sentry-junior in [#1728](https://github.com/getsentry/toolkit/pull/1728)
+- Parse list command targets in their positional by @BYK with @sentry-junior in [#1711](https://github.com/getsentry/toolkit/pull/1711)
+- Parse every kind of ID argument with one grammar by @BYK with @sentry-junior in [#1714](https://github.com/getsentry/toolkit/pull/1714)
+- Skip adjacent-event lookups on project event details by @BYK with @sentry-junior in [#1712](https://github.com/getsentry/toolkit/pull/1712)
+- Use the shared api-retry policy by @BYK with @sentry-junior in [#1710](https://github.com/getsentry/toolkit/pull/1710)
+- Move agent-conversation list onto the org-optional target positional by @BYK with @sentry-junior in [#1709](https://github.com/getsentry/toolkit/pull/1709)
+- Parse target positionals in Stricli's argument scanner by @BYK with @sentry-junior in [#1655](https://github.com/getsentry/toolkit/pull/1655)
+- Centralize target syntax and lint free-text help examples by @BYK with @sentry-junior in [#1652](https://github.com/getsentry/toolkit/pull/1652)
+- Move explore onto the org-optional target positional by @BYK with @sentry-junior in [#1650](https://github.com/getsentry/toolkit/pull/1650)
+- Define the org/project target syntax as a PEG grammar by @claude and @BYK with @sentry-junior in [#1638](https://github.com/getsentry/toolkit/pull/1638)
+- Upgrade @sentry/api to 0.400.0 by @BYK with @sentry-junior in [#1645](https://github.com/getsentry/toolkit/pull/1645)
+- Generate the SDK with the TypeScript AST instead of strings by @BYK with @sentry-junior in [#1644](https://github.com/getsentry/toolkit/pull/1644)
+- Upgrade @sentry/api to 0.399.0 by @BYK with @sentry-junior in [#1643](https://github.com/getsentry/toolkit/pull/1643)
+- Derive replay explore fields from the @sentry/api schema by @BYK with @sentry-junior in [#1617](https://github.com/getsentry/toolkit/pull/1617)
+- Filter repositories by name in set-commits --auto by @scttcper and @claude in [#1538](https://github.com/getsentry/toolkit/pull/1538)
+- Alert when nightly publishing stalls by @BYK with @sentry-junior in [#1530](https://github.com/getsentry/toolkit/pull/1530)
+- Upgrade the API SDK with shared error compatibility by @betegon in [#1507](https://github.com/getsentry/toolkit/pull/1507)
+- Mock browser in trace logs --web test by @JoshuaKGoldberg and @claude in [#1417](https://github.com/getsentry/toolkit/pull/1417)
+- Smoke-test native macOS arm64 binary by @BYK in [#1416](https://github.com/getsentry/toolkit/pull/1416)
+
+#### Deps
+
+- Upgrade vitest to v5 by @scttcper and @claude in [#1757](https://github.com/getsentry/toolkit/pull/1757)
+- Bump vite from 6.4.4 to 6.4.5 by @dependabot in [#1734](https://github.com/getsentry/toolkit/pull/1734)
+- Bump @sentry/api to 0.425.0 by @BYK with @sentry-junior in [#1723](https://github.com/getsentry/toolkit/pull/1723)
+- Bump sharp from 0.35.4 to 0.35.5 by @BYK with @dependabot and @sentry-junior in [#1425](https://github.com/getsentry/toolkit/pull/1425)
+- Share one @sentry/api version through the pnpm catalog by @BYK with @sentry-junior in [#1672](https://github.com/getsentry/toolkit/pull/1672)
+- Bump body-parser from 2.2.2 to 2.4.0 by @BYK with @dependabot and @sentry-junior in [#1641](https://github.com/getsentry/toolkit/pull/1641)
+- Bump zod from 4.5.4 to 4.6.6 by @BYK with @dependabot and @sentry-junior in [#1640](https://github.com/getsentry/toolkit/pull/1640)
+- Align Wrangler through the workspace catalog by @betegon in [#1598](https://github.com/getsentry/toolkit/pull/1598)
+- Bump hono from 4.13.8 to 4.13.11 by @dependabot in [#1567](https://github.com/getsentry/toolkit/pull/1567)
+- Update Vite 6 and Vite 8 dependencies by @codex with @dependabot in [#1562](https://github.com/getsentry/toolkit/pull/1562)
+- Bump @modelcontextprotocol/server from 2.0.0 to 2.3.0 by @codex with @dependabot in [#1566](https://github.com/getsentry/toolkit/pull/1566)
+- Bump @modelcontextprotocol/sdk from 1.31.0 to 1.32.0 by @dependabot in [#1565](https://github.com/getsentry/toolkit/pull/1565)
+- Bump Sentry JavaScript SDK catalog to 11.6.0 by @cleptric with @sentry-junior in [#1450](https://github.com/getsentry/toolkit/pull/1450)
+- Bump @modelcontextprotocol/sdk from 1.30.0 to 1.31.0 by @dependabot in [#1428](https://github.com/getsentry/toolkit/pull/1428)
+
+#### Deps Dev
+
+- Bump @hono/node-server from 2.1.1 to 2.1.3 by @dependabot in [#1707](https://github.com/getsentry/toolkit/pull/1707)
+- Bump undici from 7.24.4 to 7.30.1 by @BYK with @dependabot and @sentry-junior in [#1685](https://github.com/getsentry/toolkit/pull/1685)
+
+#### Docs Mcp
+
+- Deploy from Toolkit after main CI by @betegon in [#1664](https://github.com/getsentry/toolkit/pull/1664)
+- Migrate docs Worker to Toolkit by @betegon in [#1597](https://github.com/getsentry/toolkit/pull/1597)
+
+#### Lint
+
+- Enable type-aware Oxlint rules disabled in #1556 by @BYK with @sentry-junior in [#1578](https://github.com/getsentry/toolkit/pull/1578)
+- Remove Biome from Toolkit by @BYK in [#1426](https://github.com/getsentry/toolkit/pull/1426)
+
+#### Mcp
+
+- Always send MCP telemetry to the CLI's project by @BYK with @sentry-junior in [#1969](https://github.com/getsentry/toolkit/pull/1969)
+- Call shared replay endpoints by @BYK with @sentry-junior in [#1850](https://github.com/getsentry/toolkit/pull/1850)
+- Type metric evidence against generated @sentry/api schema by @sentry-junior in [#1822](https://github.com/getsentry/toolkit/pull/1822)
+- Load the server stack only when the stdio server starts by @BYK with @sentry-junior in [#1764](https://github.com/getsentry/toolkit/pull/1764)
+- Call shared organization endpoints from SentryApiService by @sentry-junior in [#1741](https://github.com/getsentry/toolkit/pull/1741)
+- Send SentryApiService requests through a shared request core by @sentry-junior in [#1737](https://github.com/getsentry/toolkit/pull/1737)
+- Send Sentry API requests through the shared transport by @BYK with @sentry-junior in [#1722](https://github.com/getsentry/toolkit/pull/1722)
+- Move issue and event reads onto @sentry/api by @BYK with @sentry-junior in [#1713](https://github.com/getsentry/toolkit/pull/1713)
+- Use events-timeseries for search_events time series by @edwardgou-sentry in [#1431](https://github.com/getsentry/toolkit/pull/1431)
+
+#### Release
+
+- Update .craft.yml for craft 3.9.0 by @BYK with @sentry-junior in [#1915](https://github.com/getsentry/toolkit/pull/1915)
+- Enable Craft AI changelog summaries by @MathurAditya724 with @sentry-junior in [#1716](https://github.com/getsentry/toolkit/pull/1716)
+
+#### Toolkit Core
+
+- Move pagination, cache, retry, and transport under api-client by @BYK with @sentry-junior in [#1736](https://github.com/getsentry/toolkit/pull/1736)
+- Start the shared API client with errors and response reading by @sentry-junior in [#1732](https://github.com/getsentry/toolkit/pull/1732)
+- Share the response cache policy with the MCP by @BYK with @sentry-junior in [#1688](https://github.com/getsentry/toolkit/pull/1688)
+- Use the published @sentry/search-syntax package by @BYK with @sentry-junior in [#1689](https://github.com/getsentry/toolkit/pull/1689)
+- Share limit-bounded pagination with the MCP by @BYK with @sentry-junior in [#1683](https://github.com/getsentry/toolkit/pull/1683)
+
+#### Other
+
+- (api) Skip adjacent-event lookups on event details by @BYK with @sentry-junior in [#1705](https://github.com/getsentry/toolkit/pull/1705)
+- (cloudflare) Align test runtime with Wrangler by @betegon in [#1676](https://github.com/getsentry/toolkit/pull/1676)
+- (deploy) Skip superseded deploys instead of failing them by @dcramer with @sentry-junior in [#1920](https://github.com/getsentry/toolkit/pull/1920)
+- (mcp-cloudflare) Remove unused better-sqlite3 dependency by @BYK with @sentry-junior in [#1941](https://github.com/getsentry/toolkit/pull/1941)
+- (node) Bump Node pins to 22.23.4 and 24.22.1 by @geoffg-sentry with @sentry-junior in [#1576](https://github.com/getsentry/toolkit/pull/1576)
+- (test) Fall back to a placeholder SENTRY_CLIENT_ID for fork PRs by @BYK with @sentry-junior in [#1804](https://github.com/getsentry/toolkit/pull/1804)
+- Finish the @sentry/api follow-ups from #1942 by @BYK with @sentry-junior in [#1961](https://github.com/getsentry/toolkit/pull/1961)
+- Use the @sentry/api client and delete the toolkit-core copy by @BYK with @sentry-junior in [#1942](https://github.com/getsentry/toolkit/pull/1942)
+- Give the PR risk label test job its own check name by @BYK with @sentry-junior in [#1847](https://github.com/getsentry/toolkit/pull/1847)
+- Run package checks from the test.yml matrix by @BYK with @sentry-junior in [#1778](https://github.com/getsentry/toolkit/pull/1778)
+- Prefer spread over Array.from() repo-wide by @BYK with @sentry-junior in [#1724](https://github.com/getsentry/toolkit/pull/1724)
+- Check formatting with oxfmt in lint by @JoshuaKGoldberg and @claude in [#1547](https://github.com/getsentry/toolkit/pull/1547)
+
+### Other
+
+- Use Sentry SDK calls for MCP organization lists by @BYK in [#1462](https://github.com/getsentry/toolkit/pull/1462)
+- Share Sentry resource identity types across CLI and MCP by @BYK in [#1449](https://github.com/getsentry/toolkit/pull/1449)
+- Share credential-scoped region lookup caching by @BYK in [#1445](https://github.com/getsentry/toolkit/pull/1445)
+- Share strict Sentry origin checks across CLI and MCP by @BYK in [#1444](https://github.com/getsentry/toolkit/pull/1444)
+- Share Sentry API URLs and bearer headers by @BYK in [#1442](https://github.com/getsentry/toolkit/pull/1442)
+- Share API path segment encoding across CLI and MCP by @BYK in [#1439](https://github.com/getsentry/toolkit/pull/1439)
+- Make root docs the shared Toolkit home by @BYK in [#1438](https://github.com/getsentry/toolkit/pull/1438)
+- Use the Sentry Link parser for MCP pagination by @BYK in [#1436](https://github.com/getsentry/toolkit/pull/1436)
+- Share OAuth device polling outcomes across CLI and MCP by @BYK in [#1434](https://github.com/getsentry/toolkit/pull/1434)
+- Import shared Sentry host helper directly by @BYK in [#1433](https://github.com/getsentry/toolkit/pull/1433)
+- Share Sentry hostname recognition across CLI and MCP by @BYK in [#1430](https://github.com/getsentry/toolkit/pull/1430)
+- Share OAuth device polling intervals between CLI and MCP by @BYK in [#1423](https://github.com/getsentry/toolkit/pull/1423)
+- Adopt Oxc lint and format tooling for MCP and root by @BYK in [#1419](https://github.com/getsentry/toolkit/pull/1419)
+- Keep generated CLI skill versions in sync after releases by @BYK in [#1415](https://github.com/getsentry/toolkit/pull/1415)
+
 ## 0.47.0
 
 ### New Features ✨

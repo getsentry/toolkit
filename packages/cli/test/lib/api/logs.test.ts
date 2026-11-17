@@ -218,7 +218,7 @@ describe("listLogs", () => {
     let call = 0;
     globalThis.fetch = mockFetch(async (input: RequestInfo | URL) => {
       urls.push(typeof input === "string" ? input : (input as Request).url);
-      const resp = responses[call]!;
+      const resp = responses[call];
       call += 1;
       return new Response(JSON.stringify(resp.body), {
         status: 200,
@@ -297,7 +297,7 @@ describe("getLogs", () => {
       );
       expect(url.searchParams.get("project")).toBeNull();
       expect(url.searchParams.getAll("field")).toEqual(
-        requests[0]!.searchParams.getAll("field"),
+        requests[0].searchParams.getAll("field"),
       );
     }
   });
@@ -333,21 +333,21 @@ describe("getLogs", () => {
     expect(logs).toEqual([found, missing]);
     expect(requests).toHaveLength(2);
     const [initial, retry] = requests;
-    expect(initial!.searchParams.get("sampling")).toBe("NORMAL");
-    expect(initial!.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
-    expect(initial!.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
-    expect(retry!.searchParams.get("sampling")).toBe("HIGHEST_ACCURACY");
-    expect(retry!.searchParams.get("query")).toBe(
+    expect(initial.searchParams.get("sampling")).toBe("NORMAL");
+    expect(initial.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
+    expect(initial.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
+    expect(retry.searchParams.get("sampling")).toBe("HIGHEST_ACCURACY");
+    expect(retry.searchParams.get("query")).toBe(
       `sentry.item_id:[${missing["sentry.item_id"]}]`,
     );
-    expect(retry!.searchParams.get("per_page")).toBe("1");
-    expect(retry!.searchParams.get("start")).toBe("2026-10-09T11:55:00.000Z");
-    expect(retry!.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
+    expect(retry.searchParams.get("per_page")).toBe("1");
+    expect(retry.searchParams.get("start")).toBe("2026-10-09T11:55:00.000Z");
+    expect(retry.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
     for (const url of requests) {
       expect(url.searchParams.get("project")).toBe("4242");
       expect(url.searchParams.getAll("field")).toContain("custom.attribute");
       expect(url.searchParams.getAll("field")).toEqual(
-        initial!.searchParams.getAll("field"),
+        initial.searchParams.getAll("field"),
       );
       expect(url.searchParams.get("statsPeriod")).toBeNull();
     }
@@ -376,7 +376,7 @@ describe("getLogs", () => {
     expect(await getLogs("test-org", "test-project", [id, id])).toEqual(data);
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.searchParams.get("sampling")).toBe("NORMAL");
+    expect(requests[0].searchParams.get("sampling")).toBe("NORMAL");
   });
 
   test("stops after one accuracy retry even if the scan remains partial", async () => {

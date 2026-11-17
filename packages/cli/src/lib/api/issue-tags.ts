@@ -22,7 +22,7 @@ export async function getIssueTag(
   key: string,
   environment?: string,
 ): Promise<GetOrganizationIssueTagResponse> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
   const result = await getOrganizationIssueTag({
     ...config,
     path: {

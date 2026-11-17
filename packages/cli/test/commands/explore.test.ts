@@ -175,6 +175,7 @@ let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
 let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
 let listReplaysSpy: ReturnType<typeof spyOn>;
 let resolveTargetSpy: ReturnType<typeof spyOn>;
+let resolveProjectIdSpy: ReturnType<typeof spyOn>;
 let resolveCursorSpy: ReturnType<typeof spyOn>;
 let advancePaginationStateSpy: ReturnType<typeof spyOn>;
 let hasPreviousPageSpy: ReturnType<typeof spyOn>;
@@ -205,6 +206,9 @@ beforeEach(async () => {
   // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
   resolveTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOptionalTarget");
   resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+  // Default: the project ID can't be resolved, so queries fall back to slugs.
+  resolveProjectIdSpy = vi.spyOn(resolveTarget, "resolveLogProjectId");
+  resolveProjectIdSpy.mockResolvedValue(undefined);
 
   resolveCursorSpy = vi.spyOn(paginationDb, "resolveCursor").mockReturnValue({
     cursor: undefined,
@@ -224,6 +228,7 @@ afterEach(() => {
   queryMetricsMetaSpy.mockRestore();
   listReplaysSpy.mockRestore();
   resolveTargetSpy.mockRestore();
+  resolveProjectIdSpy.mockRestore();
   resolveCursorSpy.mockRestore();
   advancePaginationStateSpy.mockRestore();
   hasPreviousPageSpy.mockRestore();
@@ -297,7 +302,7 @@ describe("sentry explore", () => {
       );
     });
 
-    test("`<org>/<project>` adds project:<slug> to query automatically", async () => {
+    test("`<org>/<project>` falls back to project:<slug> without a project ID", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
       const { context } = createContext();
 
@@ -373,6 +378,87 @@ describe("sentry explore", () => {
 
       await expect(func.call(context, DEFAULT_FLAGS)).rejects.toThrow(
         "Organization",
+      );
+    });
+  });
+
+  describe("project scoping", () => {
+    test("scopes table queries by project ID instead of project:<slug>", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, query: "level:error", environment: ["prod"] },
+        "my-org/cli",
+      );
+
+      expect(resolveProjectIdSpy).toHaveBeenCalledWith("my-org", "cli");
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({
+          projectId: 42,
+          query: "environment:prod (level:error)",
+        }),
+      );
+    });
+
+    test("scopes time series by project ID", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(context, TIME_SERIES_FLAGS, "my-org/cli");
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: 42, query: undefined }),
+      );
+    });
+
+    test("passes the project ID to --metric discovery", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      resolveProjectIdSpy.mockResolvedValue(42);
+      const { context } = createContext();
+
+      await func.call(
+        context,
+        {
+          ...DEFAULT_FLAGS,
+          dataset: "tracemetrics",
+          metric: "llm.token_usage",
+        },
+        "my-org/cli",
+      );
+
+      expect(queryMetricsMetaSpy).toHaveBeenCalledWith("my-org", {
+        statsPeriod: "24h",
+        project: "cli",
+        projectId: 42,
+      });
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: 42, query: undefined }),
+      );
+    });
+
+    test("does not resolve a project ID for org-wide or replay queries", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "my-org" });
+      const { context } = createContext();
+      await func.call(context, DEFAULT_FLAGS, "my-org/");
+
+      resolveTargetSpy.mockResolvedValue({ org: "my-org", project: "cli" });
+      await func.call(
+        context,
+        { ...DEFAULT_FLAGS, dataset: "replays" },
+        "my-org/cli",
+      );
+
+      expect(resolveProjectIdSpy).not.toHaveBeenCalled();
+      expect(queryEventsSpy).toHaveBeenCalledWith(
+        "my-org",
+        expect.objectContaining({ projectId: undefined }),
       );
     });
   });
@@ -1279,6 +1365,127 @@ describe("sentry explore", () => {
       expect((error as Error).message).not.toContain("attribute list");
     });
 
+    const rejectedArgument = (fn: string, argument: string, hint?: string) => ({
+      code: "invalid_function_argument",
+      functionArgument: { function: fn, argument, hint },
+    });
+    const rejectedArgumentError = (
+      detail: string,
+      fn: string,
+      argument: string,
+      hint?: string,
+    ) =>
+      new ApiError(
+        "Bad request",
+        400,
+        detail,
+        undefined,
+        rejectedArgument(fn, argument, hint),
+      );
+
+    test.each([
+      [
+        "a string attribute in a numeric aggregate",
+        { dataset: "spans", field: ["span.op", "p75(cart.total)"] },
+        rejectedArgumentError(
+          "cart.total is invalid for parameter 1 in p75. Its a string type field, but it must be one of these types: {'number'}",
+          "p75",
+          "cart.total",
+        ),
+        '--field "p75(cart.total)"',
+        "tags[cart.total,number]; to check the key and its type, run: sentry attribute list <org>/ cart.total --dataset spans",
+      ],
+      [
+        "the server's hint for transaction.duration on transactions",
+        {
+          dataset: "transactions",
+          field: ["transaction", "sum(transaction.duration)"],
+          sort: "-sum(transaction.duration)",
+        },
+        rejectedArgumentError(
+          "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
+          "sum",
+          "transaction.duration",
+          "Use span.duration instead of transaction.duration on the spans dataset.",
+        ),
+        '--field "sum(transaction.duration)" for dataset "spans"',
+        "Use span.duration instead of transaction.duration on the spans dataset.",
+      ],
+      [
+        "a generic hint for transaction.duration when the server sends none",
+        { dataset: "transactions", field: ["sum(transaction.duration)"] },
+        rejectedArgumentError(
+          "transaction.duration is invalid for parameter 1 in sum. Its a string type field, but it must be one of these types: {'number', 'duration'}",
+          "sum",
+          "transaction.duration",
+        ),
+        '--field "sum(transaction.duration)" for dataset "spans"',
+        'sum() does not accept transaction.duration on dataset "spans"',
+      ],
+      [
+        "a timestamp aggregate on spans",
+        { dataset: "spans", field: ["min(timestamp)"] },
+        rejectedArgumentError(
+          "timestamp is invalid for parameter 1 in min. Its a string type field, but it must be one of these types: {'number'}",
+          "min",
+          "timestamp",
+        ),
+        '--field "min(timestamp)"',
+        'min() does not accept timestamp on dataset "spans"',
+      ],
+      [
+        "a non-numeric errors column",
+        { field: ["issue", "min(title)"] },
+        rejectedArgumentError(
+          "min(title): column argument invalid: title is not a numeric column",
+          "min",
+          "title",
+        ),
+        '--field "min(title)" for dataset "errors"',
+        "Check the column name and its type.",
+      ],
+      [
+        "an unknown errors column passed only through --sort",
+        { field: ["device", "count()"], sort: "-avg(device.memory)" },
+        rejectedArgumentError(
+          "avg(device.memory): column argument invalid: device.memory is not a valid column",
+          "avg",
+          "device.memory",
+        ),
+        '--sort "-avg(device.memory)"',
+        'avg() does not accept device.memory on dataset "errors"',
+      ],
+      [
+        "an invalid conditional-count argument",
+        { dataset: "logs", field: ["count_if(severity,equals,error)"] },
+        rejectedArgumentError(
+          "severity is not a valid argument for count_if",
+          "count_if",
+          "severity",
+        ),
+        '--field "count_if(severity,equals,error)"',
+        "sentry attribute list <org>/ severity --dataset logs",
+      ],
+    ])(
+      "attributes %s to the user's expression",
+      async (_label, flags, apiError, rejected, hint) => {
+        resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+        queryEventsSpy.mockRejectedValue(apiError);
+        const { context } = createContext();
+
+        const error = await func
+          .call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/")
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ValidationError);
+        expect((error as Error).message).toContain(apiError.detail);
+        expect((error as Error).message).toContain(rejected);
+        expect((error as Error).message).toContain(hint);
+        expect((error as Error).message).not.toContain("timestamp_precise");
+        expect(isUserError(error)).toBe(true);
+      },
+    );
+
     test.each([
       ["default fields", {}, "Unknown function count"],
       [
@@ -1297,9 +1504,21 @@ describe("sentry explore", () => {
         "Unknown function p10",
       ],
       [
-        "a spans backend without timestamp aggregates",
-        { dataset: "spans", field: ["min(timestamp)"] },
-        "timestamp is invalid for parameter 1 in min. Its a string type field",
+        "a rejected argument the user did not pass",
+        { dataset: "spans", field: ["p75(span.duration)"] },
+        "cart.total is invalid for parameter 1 in p75. Its a string type field",
+        rejectedArgument("p75", "cart.total"),
+      ],
+      [
+        "a rejected argument of a default field",
+        { query: "level:error" },
+        "min(title): column argument invalid: title is not a numeric column",
+        rejectedArgument("min", "title"),
+      ],
+      [
+        "a rejected argument from a server that sends no code",
+        { dataset: "spans", field: ["p75(cart.total)"] },
+        "cart.total is invalid for parameter 1 in p75. Its a string type field",
       ],
       [
         "an unknown rejection",
@@ -1315,18 +1534,27 @@ describe("sentry explore", () => {
         },
         "Unknown function sum",
       ],
-    ])("preserves the API error for %s", async (_label, flags, detail) => {
-      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
-      const original = new ApiError("Bad request", 400, detail);
-      queryEventsSpy.mockRejectedValue(original);
-      const { context } = createContext();
+    ])(
+      "preserves the API error for %s",
+      async (_label, flags, detail, fields?) => {
+        resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+        const original = new ApiError(
+          "Bad request",
+          400,
+          detail,
+          undefined,
+          fields,
+        );
+        queryEventsSpy.mockRejectedValue(original);
+        const { context } = createContext();
 
-      await expect(
-        func.call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/"),
-      ).rejects.toBe(original);
-      expect(isUserError(original)).toBe(false);
-      expect(classifySilenced(original)).toBeNull();
-    });
+        await expect(
+          func.call(context, { ...DEFAULT_FLAGS, ...flags }, "test-org/"),
+        ).rejects.toBe(original);
+        expect(isUserError(original)).toBe(false);
+        expect(classifySilenced(original)).toBeNull();
+      },
+    );
 
     test("preserves non-400 errors even when their detail mentions a user field", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
@@ -1345,6 +1573,55 @@ describe("sentry explore", () => {
           "test-org/",
         ),
       ).rejects.toBe(original);
+    });
+  });
+
+  describe("search syntax errors", () => {
+    const detail =
+      "Invalid quote at '*\"POST': quotes must enclose text or be escaped.";
+    const flags = {
+      ...DEFAULT_FLAGS,
+      dataset: "spans",
+      query: 'span.description:*"POST',
+    };
+    const parseError = (code?: string) =>
+      new ApiError("Bad request", 400, detail, undefined, { code });
+
+    test("reports an unparseable --query as a query ValidationError", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      queryEventsSpy.mockRejectedValue(parseError("invalid_search_query"));
+      const { context } = createContext();
+
+      const error = await func
+        .call(context, flags, "test-org/")
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ field: "query" });
+      expect((error as Error).message).toContain(detail);
+      expect((error as Error).message).toContain("Check your --query syntax");
+    });
+
+    test("keeps the ApiError when the CLI built the query", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError("invalid_search_query");
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(
+        func.call(context, { ...DEFAULT_FLAGS, dataset: "spans" }, "test-org/"),
+      ).rejects.toBe(original);
+    });
+
+    test("keeps the ApiError when the 400 has no code", async () => {
+      resolveTargetSpy.mockResolvedValue({ org: "test-org" });
+      const original = parseError();
+      queryEventsSpy.mockRejectedValue(original);
+      const { context } = createContext();
+
+      await expect(func.call(context, flags, "test-org/")).rejects.toBe(
+        original,
+      );
     });
   });
 

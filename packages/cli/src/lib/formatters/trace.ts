@@ -5,6 +5,8 @@
  * Includes flat span utilities for `span list` and `span view` commands.
  */
 
+import { tableCell, text } from "@sentry/toolkit-core/markdown";
+import type { InferOutput } from "valibot";
 import type {
   SpanListItem,
   TraceSpan,
@@ -16,8 +18,6 @@ import { stringifyUnknown } from "../errors.js";
 import { filterFields } from "./json.js";
 import {
   colorTag,
-  escapeMarkdownCell,
-  escapeMarkdownInline,
   mdKvTable,
   mdRow,
   mdTableHeader,
@@ -28,6 +28,7 @@ import { colorizeSql, formatSqlBlock, isDbSpanOp } from "./sql.js";
 import { type Column, formatTable } from "./table.js";
 import { renderTextTable } from "./text-table.js";
 import { computeSpanDurationMs, formatRelativeTime } from "./time-utils.js";
+import type { FlatSpanSchema } from "../../output-schemas/span.js";
 
 /**
  * Format a duration in milliseconds to a human-readable string.
@@ -78,7 +79,7 @@ export function buildTraceRowCells(
 ): [string, string, string, string] {
   return [
     `\`${item.trace}\``,
-    escapeMarkdownCell(item.transaction || "unknown"),
+    tableCell(item.transaction || "unknown"),
     formatTraceDuration(item["span.duration"]),
     formatRelativeTime(item.timestamp),
   ];
@@ -170,6 +171,7 @@ const TRACE_FIELD_ROOTS = new Set([
   "rootTransaction",
   "rootOp",
   "startTimestamp",
+  "replayId",
   "spans",
   "spanTreeLines",
 ]);
@@ -238,7 +240,7 @@ function includeTraceAttributes(
 
 /** Project trace JSON, retaining span IDs and topology for bare attributes. */
 export function projectTraceFields(
-  trace: TraceSummary & { spans: TraceSpan[] },
+  trace: TraceSummary & { replayId?: string | null; spans: TraceSpan[] },
   selection: TraceFieldSelection,
 ): Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } {
   const result: Partial<TraceSummary> & { spans?: ProjectedTraceSpan[] } =
@@ -360,15 +362,18 @@ export function computeTraceSummary(
  * @param summary - Computed trace summary
  * @returns Rendered terminal string
  */
-export function formatTraceSummary(summary: TraceSummary): string {
+export function formatTraceSummary(
+  summary: TraceSummary,
+  options: {
+    /** Newest stored replay linked to the trace, or null. */
+    replayId?: string | null;
+  } = {},
+): string {
   const kvRows: [string, string][] = [];
 
   if (summary.rootTransaction) {
     const opPrefix = summary.rootOp ? `[\`${summary.rootOp}\`] ` : "";
-    kvRows.push([
-      "Root",
-      `${opPrefix}${escapeMarkdownCell(summary.rootTransaction)}`,
-    ]);
+    kvRows.push(["Root", `${opPrefix}${tableCell(summary.rootTransaction)}`]);
   }
   kvRows.push(["Duration", formatTraceDuration(summary.duration)]);
   kvRows.push(["Spans", String(summary.spanCount)]);
@@ -378,6 +383,12 @@ export function formatTraceSummary(summary: TraceSummary): string {
   if (Number.isFinite(summary.startTimestamp) && summary.startTimestamp > 0) {
     const date = new Date(summary.startTimestamp * 1000);
     kvRows.push(["Started", date.toLocaleString("sv-SE")]);
+  }
+  if (options.replayId !== undefined) {
+    kvRows.push([
+      "Replay ID",
+      options.replayId ? `\`${options.replayId}\`` : "none",
+    ]);
   }
 
   const md = `## Trace \`${summary.traceId}\`\n\n${mdKvTable(kvRows)}\n`;
@@ -389,19 +400,7 @@ export function formatTraceSummary(summary: TraceSummary): string {
 // ---------------------------------------------------------------------------
 
 /** Flat span for list output — no nested children */
-export type FlatSpan = {
-  span_id: string;
-  trace_id?: string;
-  parent_span_id?: string | null;
-  op?: string;
-  description?: string | null;
-  duration_ms?: number;
-  start_timestamp: number;
-  project_slug?: string;
-  transaction?: string;
-  /** Custom attributes from --fields (index signature) */
-  [key: string]: unknown;
-};
+export type FlatSpan = InferOutput<typeof FlatSpanSchema>;
 
 /** Result of finding a span by ID in the tree */
 export type FoundSpan = {
@@ -524,7 +523,7 @@ export function spanListItemToFlatSpan(
  */
 const PROJECT_COLUMN: Column<FlatSpan> = {
   header: "Project",
-  value: (s) => escapeMarkdownCell(s.project_slug || "—"),
+  value: (s) => tableCell(s.project_slug || "—"),
   minWidth: 8,
 };
 
@@ -551,14 +550,14 @@ const TRACE_ID_COLUMN: Column<FlatSpan> = {
 const SPAN_TABLE_COLUMNS: Column<FlatSpan>[] = [
   {
     header: "Op",
-    value: (s) => escapeMarkdownCell(s.op || "—"),
+    value: (s) => tableCell(s.op || "—"),
     minWidth: 6,
   },
   {
     header: "Description",
     value: (s) => {
       const desc = s.description || "(no description)";
-      return escapeMarkdownCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
+      return tableCell(isDbSpanOp(s.op) ? colorizeSql(desc) : desc);
     },
     truncate: true,
   },
@@ -586,7 +585,7 @@ function buildExtraColumns(extraColumns: string[]): Column<FlatSpan>[] {
       if (v === undefined || v === null) {
         return "—";
       }
-      return escapeMarkdownCell(stringifyUnknown(v));
+      return tableCell(stringifyUnknown(v));
     },
   }));
 }
@@ -650,7 +649,7 @@ function buildSpanKvRows(span: TraceSpan, traceId: string): [string, string][] {
 
   const desc = span.description || span.transaction;
   if (desc) {
-    kvRows.push(["Description", escapeMarkdownCell(desc)]);
+    kvRows.push(["Description", tableCell(desc)]);
   }
 
   const durationMs = computeSpanDurationMs(span);
@@ -690,7 +689,7 @@ function formatAncestorChain(ancestors: TraceSpan[]): string {
     const aDesc = a.description || a.transaction || "(no description)";
     const colorizedDesc = isDbSpanOp(aOp) ? colorizeSql(aDesc) : aDesc;
     lines.push(
-      `${indent}${colorTag("muted", aOp)} — ${escapeMarkdownInline(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
+      `${indent}${colorTag("muted", aOp)} — ${text(colorizedDesc)} ${colorTag("muted", `(${a.span_id})`)}`,
     );
   }
   return `${renderMarkdown(lines.join("\n"))}\n`;
@@ -754,7 +753,7 @@ function appendAttributeRows(
   const shown = attrs.slice(0, MAX_DISPLAY_ATTRS);
   for (const attr of shown) {
     if (attr.value !== undefined && attr.value !== null && attr.value !== "") {
-      kvRows.push([attr.name, escapeMarkdownCell(String(attr.value))]);
+      kvRows.push([attr.name, tableCell(String(attr.value))]);
     }
   }
   if (attrs.length > MAX_DISPLAY_ATTRS) {

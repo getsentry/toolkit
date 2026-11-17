@@ -21,10 +21,10 @@ function jsonResponse(json: unknown, status = 200) {
 
 export default new Hono()
   // Index: advertise available endpoints
-  .get("/", (c) =>
+  .get("/", () =>
     jsonResponse({
       endpoints: ["/.mcp/tools.json"],
     }),
   )
   // Tools
-  .get("/tools.json", (c) => jsonResponse(TOOL_DEFINITIONS));
+  .get("/tools.json", () => jsonResponse(TOOL_DEFINITIONS));

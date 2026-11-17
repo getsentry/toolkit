@@ -1,9 +1,9 @@
 import { Link } from "../../ui/base";
 import CodeSnippet from "../../ui/code-snippet";
-import { NPM_PACKAGE_NAME } from "../../../../constants";
+import { CLI_MCP_SNIPPET } from "../../../../constants";
 
 interface ClaudeCodeInstructionsProps {
-  transport: "cloud" | "stdio";
+  transport: "cloud" | "cli";
 }
 
 export function ClaudeCodeInstructions({
@@ -43,8 +43,6 @@ export function ClaudeCodeInstructions({
     );
   }
 
-  // Stdio transport
-  const mcpStdioSnippet = `npx ${NPM_PACKAGE_NAME}@latest`;
   return (
     <>
       <ol>
@@ -52,27 +50,14 @@ export function ClaudeCodeInstructions({
         <li>
           <CodeSnippet
             noMargin
-            snippet={`claude mcp add sentry -e SENTRY_ACCESS_TOKEN=sentry-user-token -e OPENAI_API_KEY=your-openai-key -- ${mcpStdioSnippet}`}
+            snippet={`claude mcp add sentry -- ${CLI_MCP_SNIPPET}`}
           />
         </li>
         <li>
-          Replace <code>sentry-user-token</code> with your actual User Auth
-          Token.
-        </li>
-        <li>
-          Connecting to self-hosted Sentry? Append
-          <code>-e SENTRY_HOST=your-hostname</code>.
+          Restart Claude Code. The server uses your Sentry CLI login, so there
+          is no token to paste.
         </li>
       </ol>
-      <p>
-        <small>
-          For more details, see the{" "}
-          <Link href="https://docs.anthropic.com/en/docs/claude-code/mcp">
-            Claude Code MCP documentation
-          </Link>
-          .
-        </small>
-      </p>
     </>
   );
 }

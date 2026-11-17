@@ -123,12 +123,30 @@ function Install-SentryCli {
     return @{ Url = "$($entry.Value.url)"; Sha256 = "$($entry.Value.checksums.'sha256-hex')" }
   }
 
+  # Usage: Test-Sha256 <file> <expected-hex>; a missing checksum matches.
+  function Test-Sha256([string]$Path, [string]$Expected) {
+    if (-not $Expected) { return $true }
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    return $actual -eq $Expected.ToLowerInvariant()
+  }
+
   # Usage: Assert-Sha256 <file> <expected-hex>; a missing checksum is a no-op.
   function Assert-Sha256([string]$Path, [string]$Expected) {
-    if (-not $Expected) { return }
+    if (Test-Sha256 $Path $Expected) { return }
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
-    if ($actual -ne $Expected.ToLowerInvariant()) {
-      Stop-Install "Checksum mismatch for $asset ${version}: expected $Expected, got $actual"
+    Stop-Install "Checksum mismatch for $asset ${version}: expected $Expected, got $actual"
+  }
+
+  # Usage: Repair-Download <file> <url> <expected-hex>. Downloads the file once
+  # more when it does not match its checksum, like the bash installer, since
+  # a broken transfer or proxy can corrupt the first copy.
+  function Repair-Download([string]$Path, [string]$Url, [string]$Expected) {
+    if (Test-Sha256 $Path $Expected) { return }
+    Write-Host 'The download was incomplete or corrupt. Downloading it again...' -ForegroundColor DarkGray
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Path
+    } catch {
+      Stop-Install "Failed to download $Url"
     }
   }
 
@@ -218,7 +236,8 @@ function Install-SentryCli {
   Write-Host "Downloading sentry v$version..." -ForegroundColor DarkGray
   try {
     # Prefer the gzip asset (~60% smaller); fall back to the raw binary when it
-    # is missing. A checksum mismatch is fatal, never a reason to fall back.
+    # is missing. A checksum mismatch that a second download does not fix is
+    # fatal, never a reason to fall back.
     $downloaded = $false
     if ($null -ne $gz) {
       try {
@@ -229,6 +248,7 @@ function Install-SentryCli {
       }
     }
     if ($downloaded) {
+      Repair-Download $tmpArchive $gz.Url $gz.Sha256
       Assert-Sha256 $tmpArchive $gz.Sha256
       $source = [System.IO.File]::OpenRead($tmpArchive)
       try {
@@ -244,6 +264,7 @@ function Install-SentryCli {
       } catch {
         Stop-Install "Failed to download $($raw.Url)"
       }
+      Repair-Download $tmpBinary $raw.Url $raw.Sha256
       Assert-Sha256 $tmpBinary $raw.Sha256
     } else {
       Stop-Install "Failed to download $($gz.Url)"
@@ -280,7 +301,7 @@ function Install-SentryCli {
       $state.Step = 'init'
       & $tmpBinary init
       if ($LASTEXITCODE -ne 0) {
-        # Like the bash installer, report wizard failures to the caller but not
+        # Like the bash installer, report init failures to the caller but not
         # to installer telemetry: init errors are not installation failures.
         throw "sentry init failed with exit code $LASTEXITCODE"
       }

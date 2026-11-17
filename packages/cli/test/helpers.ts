@@ -87,7 +87,7 @@ type FetchMockFn =
  * @returns Properly typed fetch function
  */
 export function mockFetch(fn: FetchMockFn): typeof fetch {
-  return fn as unknown as typeof fetch;
+  return fn;
 }
 
 /**
@@ -291,7 +291,7 @@ export function installFetchMock(
   const fallbackStatus = fallback?.status ?? 404;
   const fallbackBody = fallback?.body ?? { detail: "Not found" };
 
-  globalThis.fetch = (async (
+  globalThis.fetch = async (
     input: RequestInfo | URL,
     init?: RequestInit,
     // test mock router requires branching for method/URL/body matching
@@ -342,7 +342,7 @@ export function installFetchMock(
       status: fallbackStatus,
       headers: { "Content-Type": "application/json" },
     });
-  }) as typeof fetch;
+  };
 
   return {
     calls,

@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { listCommand } from "./list.js";
 import { viewCommand } from "./view.js";
 
@@ -15,7 +16,7 @@ export const spanRoute = buildRouteMap({
   },
   defaultCommand: "view",
   docs: {
-    brief: "List and view spans in projects or traces",
+    brief: topLevelBrief("span"),
     fullDescription:
       "List and explore individual spans within distributed traces or across projects.\n\n" +
       "Commands:\n" +

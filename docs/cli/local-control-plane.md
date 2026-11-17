@@ -46,6 +46,13 @@ Both stop and restart wait for the previous daemon to release its state and owne
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
 A temporarily unreachable live daemon keeps its discovery state for retries.
+Discovery is stale when its recorded port refuses connections, or when a server
+that is not a Local daemon answers there, even if its PID is alive. That happens
+after an unclean exit with PID reuse, or while a daemon shuts down. Commands then
+clear it, and the owner lock the same daemon left, and start a new daemon. A live
+daemon that does not answer keeps its discovery. The error then names both
+`local-control-plane.json` and `local-control-plane.owner`; delete them only after
+checking that the PID is not a Sentry Local daemon.
 A short ownership guard serializes claiming, stale recovery and release. If a
 process dies during that critical section, startup preserves the guard and reports
 its path; confirm the owning process has stopped before removing the guard and
@@ -266,6 +273,21 @@ empty capture keeps the workspace visible; Disconnect viewer returns to the conn
 each span's own level, HTTP status, and SDK span status; a failed transaction does not mark healthy child
 spans as failures. The AI workspace matches AI namespaces (`ai`, `gen_ai`,
 `llm`), including dotted origins, rather than substrings of ordinary operations.
+
+Local merges partial deliveries of the same span without losing captured fields
+or timing, and keeps cyclic or missing-parent spans reachable in the waterfall.
+AI interaction summaries reconcile step usage and pair response content with
+its captured finish reason. Profile inspection can combine retained chunks from
+one profiler while keeping each original chunk available. Sampled function rows
+in traces use observed intervals and unambiguous captured parents; gaps between
+chunks and final sample tails do not create inferred work.
+
+Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
+Invalid compression returns 400, oversized bodies 413, unsupported media or
+encoding 415, and temporary admission overload 503. Malformed envelopes remain
+available for raw inspection and byte-exact download through their receiver IDs.
+Clearing a capture invalidates pending admissions, and closing a session drains
+accepted work before its final stream event.
 
 ## Verification
 

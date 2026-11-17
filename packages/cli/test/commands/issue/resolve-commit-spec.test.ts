@@ -23,7 +23,7 @@ function makeRepo(overrides: Partial<SentryRepository>): SentryRepository {
     status: "active",
     externalSlug: "getsentry/cli",
     ...overrides,
-  } as SentryRepository;
+  };
 }
 
 describe("resolveCommitSpec — explicit mode", () => {

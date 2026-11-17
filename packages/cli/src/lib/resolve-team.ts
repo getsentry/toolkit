@@ -10,8 +10,7 @@
  * 2. Fetch org teams via `listTeams`
  *    - On 404: org doesn't exist → resolve effective org via cache, show org list
  *    - On other errors: surface status + generic hint
- * 3. If zero teams → auto-create a team named after the project (slug-based),
- *    or defer init-specific creation until the final slug is known
+ * 3. If zero teams → auto-create a team named after the project (slug-based)
  * 4. Prefer teams the user belongs to (`isMember === true`), falling back to
  *    all org teams when membership is unknown or empty
  * 5. Pick a deterministic default from the candidates (see `pickDefaultTeam`),
@@ -66,8 +65,7 @@ export type ResolveTeamOptions = {
   usageHint: string;
   /**
    * Slug to use when auto-creating a team in an empty org.
-   * If not provided and the org has zero teams, an error is thrown instead
-   * unless empty-org auto-creation is being deferred.
+   * If not provided and the org has zero teams, an error is thrown instead.
    */
   autoCreateSlug?: string;
   /**
@@ -77,43 +75,19 @@ export type ResolveTeamOptions = {
    */
   dryRun?: boolean;
   /**
-   * When true, an empty org returns a deferred result instead of auto-creating
-   * a team immediately. This lets callers wait until they know the final slug.
-   */
-  deferAutoCreateOnEmptyOrg?: boolean;
-  /**
    * Called when multiple candidate teams remain after membership filtering.
    * Return the selected team slug. If not provided, `pickDefaultTeam` decides.
    */
   onAmbiguous?: (candidates: SentryTeam[]) => Promise<string>;
 };
 
-/** Result of team resolution that produced a concrete team slug. */
-export type ResolvedConcreteTeam = {
+/** Result of team resolution. */
+export type ResolvedTeam = {
   /** The resolved team slug */
   slug: string;
   /** How the team was determined */
   source: "explicit" | "auto-selected" | "auto-created";
 };
-
-/** Result of init-specific deferred team resolution for empty organizations. */
-export type DeferredResolvedTeam = {
-  /** Indicates that team creation should happen later once the final slug is known. */
-  source: "deferred";
-};
-
-/** Result of team resolution, including deferred empty-org handling for init. */
-export type ResolvedTeam = ResolvedConcreteTeam | DeferredResolvedTeam;
-
-/**
- * Resolve which team to use for an operation.
- *
- * @param orgSlug - Organization to list teams from
- * @param options - Resolution options (team flag, usage hint, detection source)
- * @returns Resolved team slug with source info
- * @throws {ContextError} When team cannot be resolved
- * @throws {ResolutionError} When org slug returns 404
- */
 
 /**
  * Handle errors from `listTeams` during team resolution.
@@ -155,16 +129,15 @@ async function handleListTeamsError(
   throw error;
 }
 
-export async function resolveOrCreateTeam(
-  orgSlug: string,
-  options: ResolveTeamOptions & {
-    deferAutoCreateOnEmptyOrg?: false | undefined;
-  },
-): Promise<ResolvedConcreteTeam>;
-export async function resolveOrCreateTeam(
-  orgSlug: string,
-  options: ResolveTeamOptions & { deferAutoCreateOnEmptyOrg: true },
-): Promise<ResolvedTeam>;
+/**
+ * Resolve which team to use for an operation.
+ *
+ * @param orgSlug - Organization to list teams from
+ * @param options - Resolution options (team flag, usage hint, detection source)
+ * @returns Resolved team slug with source info
+ * @throws {ContextError} When team cannot be resolved
+ * @throws {ResolutionError} When org slug returns 404
+ */
 export async function resolveOrCreateTeam(
   orgSlug: string,
   options: ResolveTeamOptions,
@@ -199,7 +172,7 @@ export async function resolveOrCreateTeam(
 }
 
 /** Whether the user is Team Admin on a team and can create projects in it. */
-export function canCreateProjectInTeam(team: SentryTeam): boolean {
+function canCreateProjectInTeam(team: SentryTeam): boolean {
   return Array.isArray(team.access) && team.access.includes("team:admin");
 }
 
@@ -215,9 +188,7 @@ function teamCreatedAt(team: SentryTeam): number {
  * team (matching Sentry's own default-team rule), with slug order as a
  * tie-breaker so the choice is stable across runs.
  */
-export function pickDefaultTeam(
-  teams: readonly SentryTeam[],
-): SentryTeam | undefined {
+function pickDefaultTeam(teams: readonly SentryTeam[]): SentryTeam | undefined {
   const adminTeams = teams.filter(canCreateProjectInTeam);
   const pool = adminTeams.length > 0 ? adminTeams : teams;
   return [...pool].sort(
@@ -229,16 +200,12 @@ export function pickDefaultTeam(
 
 /**
  * Handle the case when an org has zero teams.
- * Either defers init-specific creation, auto-creates a team, returns a dry-run
- * preview, or throws.
+ * Either auto-creates a team, returns a dry-run preview, or throws.
  */
 function resolveEmptyTeams(
   orgSlug: string,
   options: ResolveTeamOptions,
 ): Promise<ResolvedTeam> | ResolvedTeam {
-  if (options.deferAutoCreateOnEmptyOrg) {
-    return { source: "deferred" };
-  }
   if (!options.autoCreateSlug) {
     const teamsUrl = `${getSentryBaseUrl()}/settings/${orgSlug}/teams/`;
     throw new ContextError("Team", `${options.usageHint} --team <team-slug>`, [

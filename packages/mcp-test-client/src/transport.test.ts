@@ -57,7 +57,6 @@ describe("buildStdioServerLaunchConfig", () => {
       {
         accessToken: "token-123",
         host: "us.sentry.io",
-        sentryDsn: "https://dsn.example/1",
         useExperimental: true,
       },
       {
@@ -67,15 +66,11 @@ describe("buildStdioServerLaunchConfig", () => {
       },
     );
 
-    expect(launchConfig.args).toEqual([
-      "--sentry-dsn=https://dsn.example/1",
-      "--experimental",
-    ]);
+    expect(launchConfig.args).toEqual(["--experimental"]);
     expect(launchConfig.env).toEqual({
       PATH: "/usr/bin",
       SENTRY_AUTH_TOKEN: "token-123",
       SENTRY_HOST: "us.sentry.io",
-      SENTRY_DSN: "https://dsn.example/1",
     });
   });
 });

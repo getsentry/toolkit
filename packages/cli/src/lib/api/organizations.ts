@@ -9,12 +9,7 @@ import {
   listOrganizations as sdkListOrganizations,
 } from "@sentry/api";
 
-import {
-  type Region,
-  type SentryOrganization,
-  type UserRegionsResponse,
-  UserRegionsResponseSchema,
-} from "../../types/index.js";
+import type { SentryOrganization } from "../../types/index.js";
 import { type CredentialContext, getCredentialContext } from "../db/auth.js";
 import type { OrgRegionEntry } from "../db/regions.js";
 import { ApiError, AuthError } from "../errors.js";
@@ -28,7 +23,6 @@ import { normalizeHttpOrigin, normalizeRegionBaseUrl } from "../sentry-urls.js";
 
 import {
   API_MAX_PER_PAGE,
-  apiRequestToRegion,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
   type PaginatedResponse,
@@ -51,24 +45,24 @@ function normalizeOrganizationRegion(
 }
 
 /**
- * Get the list of regions the user has organization membership in.
- * This endpoint is on the control silo (sentry.io) and returns all regions.
+ * Check that the active token can read the user's organizations, with one
+ * page of `GET /organizations/` on the control silo (or the self-hosted
+ * instance).
  *
- * Kept as a lightweight, side-effect-free call used to validate a token
- * (`auth login`, sentryclirc import) — org listing itself no longer needs
- * region discovery, see {@link listOrganizationsUncached}.
+ * Used to validate a token (`auth login`, sentryclirc import). It accepts
+ * and rejects the same tokens as the internal `/users/me/regions/` this
+ * replaced: org-scoped tokens get a 403, user and OAuth tokens with
+ * `org:read` get a 200, even with no orgs.
  *
- * @returns Array of regions with name and URL
+ * @throws {ApiError} When the request fails (enriched 401/403/etc.)
  */
-export async function getUserRegions(): Promise<Region[]> {
+export async function checkTokenAccess(): Promise<void> {
   const credential = getCredentialContext();
-  // /users/me/regions/ is an internal endpoint - use raw request
-  const { data } = await apiRequestToRegion<UserRegionsResponse>(
+  await listOrganizationsPage(
     getControlSiloUrl(credential),
-    "/users/me/regions/",
-    { schema: UserRegionsResponseSchema, credential, validatedRedirects: true },
+    { perPage: 1 },
+    credential,
   );
-  return data.regions;
 }
 
 /**
@@ -226,10 +220,9 @@ async function listOrganizationPages({
  *
  * Makes a single call to the control silo's org listing endpoint
  * (`GET /organizations/`), which returns every organization the user
- * belongs to across all regions in one paginated response — no more
- * discovering regions via `/users/me/regions/` and fanning out to each
- * one. Self-hosted/monolith deployments serve the same endpoint from the
- * same base URL, so no special-casing is needed there either.
+ * belongs to across all regions in one paginated response. Self-hosted
+ * and monolith deployments serve the same endpoint from the same base URL,
+ * so no special-casing is needed there either.
  *
  * Populates the org_regions cache using each org's own `links.regionUrl`,
  * so subsequent org-scoped commands still route to the right region.
@@ -270,7 +263,7 @@ export async function listOrganizationsUncached(
 export async function getOrganization(
   orgSlug: string,
 ): Promise<SentryOrganization> {
-  const config = await getOrgSdkConfig(orgSlug);
+  const config = getOrgSdkConfig();
 
   const result = await sdkGetOrganization({
     ...config,

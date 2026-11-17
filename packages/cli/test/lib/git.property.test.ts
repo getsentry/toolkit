@@ -1,6 +1,6 @@
 import { array, constantFrom, assert as fcAssert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
-import { parseRemoteUrl } from "../../src/lib/git.js";
+import { isSameRepository, parseRemoteUrl } from "../../src/lib/git.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 
 const slugChars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -106,5 +106,45 @@ describe("unit: parseRemoteUrl edge cases", () => {
 
   test("plain string returns undefined", () => {
     expect(parseRemoteUrl("not-a-url")).toBeUndefined();
+  });
+});
+
+describe("unit: isSameRepository", () => {
+  test.each([
+    {
+      case: "matches a GitHub repository by name",
+      repo: { name: "getsentry/cli", url: "https://github.com/getsentry/cli" },
+      path: "GetSentry/CLI",
+      expected: true,
+    },
+    {
+      case: "matches a GitLab display name by its URL path",
+      repo: { name: "Acme Corp / Web", url: "https://gitlab.com/acme/web" },
+      path: "acme/web",
+      expected: true,
+    },
+    {
+      case: "matches an Azure DevOps repository by its URL path",
+      repo: {
+        name: "storefront",
+        url: "https://dev.azure.com/acme/web/_git/storefront",
+      },
+      path: "acme/web/_git/storefront",
+      expected: true,
+    },
+    {
+      case: "skips a display name whose URL is another project",
+      repo: { name: "Acme / Web", url: "https://gitlab.com/archive/acme/web" },
+      path: "acme/web",
+      expected: false,
+    },
+    {
+      case: "matches a display name when there is no URL",
+      repo: { name: "Acme / Web", url: null },
+      path: "acme/web",
+      expected: true,
+    },
+  ])("$case", ({ repo, path, expected }) => {
+    expect(isSameRepository(repo, path)).toBe(expected);
   });
 });

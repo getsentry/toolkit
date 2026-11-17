@@ -27,21 +27,25 @@
   {
     "key": "custom.count",
     "name": "custom.count",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {
     "key": "custom.score",
     "name": "custom.score",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {
     "key": "custom.latency_ms",
     "name": "custom.latency_ms",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {
     "key": "custom.db.pool_size",
     "name": "custom.db.pool_size",
+    "attributeSource": { "source_type": "user" },
     "context": {}
   },
   {

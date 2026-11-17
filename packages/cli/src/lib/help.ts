@@ -6,7 +6,7 @@
  * Commands are auto-generated from Stricli's route structure.
  */
 
-import { asRunningAppCommand } from "./app-identity.js";
+import { sentry } from "./app-identity.js";
 import { formatBanner } from "./banner.js";
 import { isAuthenticated } from "./db/auth.js";
 import { detectAgent } from "./detect-agent.js";
@@ -137,7 +137,7 @@ function toHelpCommand(
       .filter((sub: RouteMapEntry) => !sub.hidden)
       .map((sub: RouteMapEntry) => sub.name.original);
     return {
-      usage: `sentry ${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
+      usage: sentry`${routeName} ${pickSubcommands(routeName, subNames).join(" | ")}`,
       description: brief,
     };
   }
@@ -149,13 +149,13 @@ function toHelpCommand(
       getPositionalString(entry.target.parameters.positional);
     const usageSuffix = placeholder ? ` ${placeholder}` : "";
     return {
-      usage: `sentry ${routeName}${usageSuffix}`,
+      usage: sentry`${routeName}${usageSuffix}`,
       description: brief,
     };
   }
 
   return {
-    usage: `sentry ${routeName}`,
+    usage: sentry`${routeName}`,
     description: brief,
   };
 }
@@ -217,10 +217,7 @@ function fitToTerminalHeight(
   );
 }
 
-const EXAMPLE_LOGGED_OUT = "sentry auth";
-const EXAMPLE_LOGGED_IN = "sentry issue list";
 const DOCS_URL = "https://cli.sentry.dev/getting-started/";
-const FULL_HELP_COMMAND = "sentry help";
 
 /**
  * Format the command list with aligned descriptions.
@@ -320,7 +317,7 @@ type CustomHelpOptions = {
  */
 export function printCustomHelp(options: CustomHelpOptions = {}): string {
   const loggedIn = isAuthenticated();
-  const example = loggedIn ? EXAMPLE_LOGGED_IN : EXAMPLE_LOGGED_OUT;
+  const example = loggedIn ? sentry`issue list` : sentry`auth`;
   const overview = Boolean(options.overview) && !detectAgent();
 
   const header: string[] = [];
@@ -370,7 +367,7 @@ export function printCustomHelp(options: CustomHelpOptions = {}): string {
   // Example
   lines.push(`  ${muted("try:")} ${magenta(example)}`);
   if (overview) {
-    lines.push(`  ${muted("all commands:")} ${magenta(FULL_HELP_COMMAND)}`);
+    lines.push(`  ${muted("all commands:")} ${magenta(sentry`help`)}`);
   }
   lines.push("");
 
@@ -859,7 +856,7 @@ function formatCommandHuman(cmd: CommandInfo): string {
  */
 function formatGroupHuman(group: RouteInfo): string {
   const lines: string[] = [];
-  lines.push(asRunningAppCommand(`sentry ${group.name}`));
+  lines.push(sentry`${group.name}`);
   lines.push("");
   lines.push(`  ${group.brief}`);
   lines.push("");
@@ -872,6 +869,7 @@ function formatGroupHuman(group: RouteInfo): string {
 
   // Strip "sentry <group> " prefix to get subcommand name.
   // For nested routes like "sentry dashboard widget add", this yields "widget add".
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- matches command paths, not a hint.
   const prefix = `sentry ${group.name} `;
   const subName = (cmd: CommandInfo) =>
     cmd.path.startsWith(prefix)
@@ -905,12 +903,12 @@ export function formatHelpHuman(data: HelpJsonResult): string {
 
   // Route group
   if ("commands" in data && "name" in data) {
-    return formatGroupHuman(data as RouteInfo);
+    return formatGroupHuman(data);
   }
 
   // Single command
   if ("path" in data) {
-    return formatCommandHuman(data as CommandInfo);
+    return formatCommandHuman(data);
   }
 
   // Error (with optional fuzzy suggestions)

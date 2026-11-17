@@ -49,8 +49,8 @@ afterEach(() => {
 
 /** Swap `globalThis.fetch` with a deterministic handler for one test. */
 function installMockFetch(handler: FetchHandler): void {
-  globalThis.fetch = ((input: Request | string | URL, init?: RequestInit) =>
-    handler(input, init)) as typeof fetch;
+  globalThis.fetch = (input: Request | string | URL, init?: RequestInit) =>
+    handler(input, init);
 }
 
 /**

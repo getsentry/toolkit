@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AgenticOnboardingConnectStageInputSchema,
   AgenticOnboardingRunStatusUpdateSchema,
   AgenticOnboardingRunTokenSchema,
   AgenticOnboardingStageSchema,
@@ -8,6 +9,7 @@ import {
 } from "../../api-client/schema";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { ALL_SKILLS } from "../../skills";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
@@ -19,7 +21,7 @@ const updateBaseSchema = z
       "The stage's current status.",
     ),
     runStatus: AgenticOnboardingRunStatusUpdateSchema.optional().describe(
-      "Set only when the entire onboarding run has completed or failed.",
+      "Set only when the whole onboarding run has completed or failed.",
     ),
     eventNote: z
       .string()
@@ -28,7 +30,7 @@ const updateBaseSchema = z
       .max(256)
       .optional()
       .describe(
-        "Short context to display with this progress event. Required when status is failed.",
+        "Short note for the progress UI; required when status is failed. Never include code, file paths, credentials, or error output.",
       ),
   })
   .strict();
@@ -36,7 +38,7 @@ const updateBaseSchema = z
 const createProjectUpdateSchema = updateBaseSchema.extend({
   stage: z
     .literal("create_project")
-    .describe("Report progress while creating or selecting Sentry projects."),
+    .describe("Creating or selecting Sentry projects."),
   extra: z
     .object({
       projectSlugs: z
@@ -44,20 +46,18 @@ const createProjectUpdateSchema = updateBaseSchema.extend({
         .min(1)
         .max(100)
         .describe(
-          "Sentry project slugs created or selected during onboarding. Values accumulate across updates; include each project as it becomes usable while active, then all known projects when completed.",
+          "Project slugs created or selected. Values accumulate across updates: add each project as it becomes usable, then send all of them when completed.",
         ),
     })
     .strict()
     .optional()
-    .describe("Project metadata accepted only by the create_project stage."),
+    .describe("Only for the create_project stage."),
 });
 
 const receiveVerificationErrorUpdateSchema = updateBaseSchema.extend({
   stage: z
     .literal("receive_verification_error")
-    .describe(
-      "Report progress while receiving the verification error in Sentry.",
-    ),
+    .describe("Waiting for the verification error to arrive in Sentry."),
   extra: z
     .object({
       issueIds: z
@@ -65,60 +65,84 @@ const receiveVerificationErrorUpdateSchema = updateBaseSchema.extend({
         .min(1)
         .max(100)
         .describe(
-          "Sentry issue IDs observed after sending the verification error. Values accumulate across updates; include each matching issue as it is confirmed, then all known issues when completed.",
+          "Issue IDs seen for the verification error. Values accumulate across updates: add each issue as it is confirmed, then send all of them when completed.",
         ),
     })
     .strict()
     .optional()
-    .describe(
-      "Issue metadata accepted only by the receive_verification_error stage.",
-    ),
+    .describe("Only for the receive_verification_error stage."),
+});
+
+const connectUpdateSchema = updateBaseSchema.extend({
+  stage: AgenticOnboardingConnectStageInputSchema.describe(
+    "Connecting to the user's Sentry account. connect_mcp is an older name for connect_agent.",
+  ),
 });
 
 const updateWithoutExtraSchema = updateBaseSchema.extend({
   stage: AgenticOnboardingStageSchema.exclude([
+    "connect_mcp",
     "create_project",
     "receive_verification_error",
-  ]).describe(
-    "Report progress for a stage that does not accept extra metadata.",
-  ),
+  ]).describe("A stage that takes no extra metadata."),
 });
 
 const onboardingUpdateSchema = z
   .discriminatedUnion("stage", [
+    connectUpdateSchema,
     createProjectUpdateSchema,
     receiveVerificationErrorUpdateSchema,
     updateWithoutExtraSchema,
   ])
-  .describe("The stage-specific onboarding progress update.");
+  .superRefine((update, ctx) => {
+    if (update.status === "failed" && !update.eventNote) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["eventNote"],
+        message: "eventNote is required when status is failed.",
+      });
+    }
+  })
+  .describe("Progress update for one onboarding stage.");
+
+type OnboardingUpdate = z.infer<typeof onboardingUpdateSchema>;
+
+const CONNECTION_METHOD = "mcp" as const;
+
+function withConnectionMethod(update: OnboardingUpdate) {
+  if (update.stage !== "connect_agent" && update.stage !== "connect_mcp") {
+    return update;
+  }
+  return {
+    ...update,
+    stage: "connect_agent" as const,
+    extra: { method: CONNECTION_METHOD },
+  };
+}
+
+export const onboardingStatusUpdateOutputSchema = z.object({
+  continueUpdates: z
+    .boolean()
+    .describe("False when Sentry wants no further updates for this run."),
+});
 
 export default defineTool({
   name: "onboarding_status_update",
+  title: "Update Onboarding Status",
   skills: ALL_SKILLS,
   includeInSkillDefinitions: false,
   requiredScopes: ["org:read"],
-  description: [
-    "Update the progress shown in Sentry's agentic onboarding UI.",
-    "",
-    "Use this tool only when the Sentry getting started skill provides a run token. Call it at the workflow boundaries described by that skill.",
-    "",
-    "<hints>",
-    "- Progress updates are operational UI state, not user analytics.",
-    "- Keep eventNote brief and limited to context useful in the progress UI.",
-    "- Do not include source code, repository paths, credentials, error output, or other sensitive data.",
-    "- status is required for every update.",
-    "- Set runStatus to completed or failed only when the entire onboarding run reaches that state.",
-    "- A failed status requires a brief eventNote explaining the failure.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Report progress to Sentry's agentic onboarding (getting started) UI for one stage of an SDK setup run. Use only with a run token from the Sentry getting started skill, at the stage boundaries it describes. Returns whether Sentry wants further updates; stop when it does not.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     runToken: AgenticOnboardingRunTokenSchema.describe(
-      "The 10-character onboarding run token supplied by Sentry.",
+      "10-character run token from the Sentry getting started skill.",
     ),
     update: onboardingUpdateSchema,
   },
+  outputSchema: onboardingStatusUpdateOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -135,7 +159,7 @@ export default defineTool({
     const update = AgenticOnboardingStatusUpdateSchema.parse({
       schemaVersion: 1,
       runToken: params.runToken,
-      ...params.update,
+      ...withConnectionMethod(params.update),
     });
 
     const run = await apiService.updateAgenticOnboardingStatus({
@@ -143,6 +167,6 @@ export default defineTool({
       update,
     });
 
-    return `Onboarding status updated. Continue updates: ${run.continueUpdates ? "yes" : "no"}.`;
+    return structuredResult({ continueUpdates: run.continueUpdates });
   },
 });

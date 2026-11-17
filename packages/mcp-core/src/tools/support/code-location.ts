@@ -22,7 +22,7 @@ export async function resolveCodeLocation({
   projectSlug,
   event,
 }: {
-  apiService: Pick<SentryApiService, "getStacktraceLink">;
+  apiService: Pick<SentryApiService, "getStacktraceLink" | "signal">;
   organizationSlug: string;
   projectSlug: string;
   event: Event;
@@ -91,6 +91,7 @@ export async function resolveCodeLocation({
   } catch (error) {
     if (
       !controller.signal.aborted &&
+      !apiService.signal?.aborted &&
       !(error instanceof ApiClientError) &&
       !(error instanceof ConfigurationError)
     ) {
@@ -126,7 +127,7 @@ function findRelevantFrame(event: Event): Frame | undefined {
       parsed.data.values ?? (parsed.data.value ? [parsed.data.value] : []);
     const rootException = [...exceptions]
       .reverse()
-      .find((exception) => exception?.stacktrace?.frames?.length);
+      .find((exception) => exception?.stacktrace?.frames.length);
     if (rootException?.stacktrace?.frames) {
       return findMostRelevantInAppFrame(rootException.stacktrace.frames);
     }
@@ -143,7 +144,7 @@ function findRelevantFrame(event: Event): Frame | undefined {
     }
 
     const crashedThread = parsed.data.values?.find(
-      (thread) => thread.crashed && thread.stacktrace?.frames?.length,
+      (thread) => thread.crashed && thread.stacktrace?.frames.length,
     );
     if (crashedThread?.stacktrace?.frames) {
       return findMostRelevantInAppFrame(crashedThread.stacktrace.frames);

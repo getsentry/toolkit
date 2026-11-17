@@ -38,6 +38,10 @@ export default defineConfig({
       reporter: ["text", "json", "html"],
       include: ["**/*.ts"],
     },
-    setupFiles: ["dotenv/config", "src/test-setup.ts"],
+    setupFiles: [
+      "dotenv/config",
+      "src/test-setup.ts",
+      "src/test-utils/structured-output-guard.ts",
+    ],
   },
 });

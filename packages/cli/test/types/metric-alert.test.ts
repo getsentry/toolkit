@@ -87,6 +87,20 @@ describe("parseMetricTriggers", () => {
     ).not.toThrow();
   });
 
+  // Older CLI releases required a non-empty `actions` array on each trigger
+  // (CLI-20K). Callers still send `actions: []`; it must parse, not fail.
+  test("passes threshold triggers with an empty actions array", () => {
+    expect(
+      parseMetricTriggers([
+        { label: "critical", alertThreshold: 11, actions: [] },
+        { label: "warning", alertThreshold: 5, actions: [] },
+      ]),
+    ).toEqual([
+      { label: "critical", alertThreshold: 11, actions: [] },
+      { label: "warning", alertThreshold: 5, actions: [] },
+    ]);
+  });
+
   test("rejects trigger actions, pointing at --workflow", () => {
     expect(() =>
       parseMetricTriggers([

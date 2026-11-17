@@ -1,39 +1,29 @@
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import {
   assertDashboardWithinProjectConstraint,
-  formatDashboardDetails,
+  dashboardDetailsSchema,
   resolveDashboardId,
   resolveDashboardProjectConstraint,
+  toDashboardDetails,
 } from "../support/dashboards";
+
+export const getDashboardDetailsOutputSchema = z.object({
+  dashboard: dashboardDetailsSchema,
+});
 
 export default defineTool({
   name: "get_dashboard_details",
+  title: "Get Dashboard Details",
   skills: ["inspect"],
   requiredScopes: ["org:read"],
-  description: [
-    "Get detailed information about a specific Sentry dashboard.",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect a dashboard's widgets and saved query definitions",
-    "- View dashboard projects, environments, filters, layout, and widget IDs",
-    "- Resolve a dashboard by exact title or numeric ID",
-    "",
-    "<examples>",
-    "get_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='12345')",
-    "get_dashboard_details(organizationSlug='my-organization', dashboardIdOrTitle='Errors Overview')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Numeric dashboard IDs are resolved directly.",
-    "- Title lookups require one exact case-insensitive match. Use `find_dashboards` first if uncertain.",
-    "- This returns saved widget query definitions, not live widget data.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get one Sentry dashboard by numeric ID or exact title: its widgets with saved query definitions and transformations, projects, environments, filters, and layout. Returns saved queries, not live widget data. To find a dashboard, use find_dashboards.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -41,8 +31,11 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe("The dashboard's numeric ID or exact title."),
+      .describe(
+        "The dashboard's numeric ID or exact title; a title must match exactly one dashboard, ignoring case.",
+      ),
   },
+  outputSchema: getDashboardDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -87,19 +80,20 @@ export default defineTool({
       projectId: scopedProject?.id,
     });
 
-    return formatDashboardDetails({
-      dashboard,
-      organizationSlug,
-      dashboardUrl: apiService.getDashboardUrl(
-        organizationSlug,
-        String(dashboard.id),
-        {
-          projectId:
-            scopedProject?.id ??
-            (dashboard.projects.length === 1 ? dashboard.projects[0] : null),
-          statsPeriod: dashboard.period ?? null,
-        },
-      ),
+    return structuredResult({
+      dashboard: toDashboardDetails({
+        dashboard,
+        dashboardUrl: apiService.getDashboardUrl(
+          organizationSlug,
+          String(dashboard.id),
+          {
+            projectId:
+              scopedProject?.id ??
+              (dashboard.projects.length === 1 ? dashboard.projects[0] : null),
+            statsPeriod: dashboard.period ?? null,
+          },
+        ),
+      }),
     });
   },
 });

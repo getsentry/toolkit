@@ -13,7 +13,13 @@ import {
   parseDebugFile,
   peekFormat,
   selectBundledObject,
+  splitDebugFile,
 } from "../../../src/lib/dif/index.js";
+import {
+  WATCH_ARM64_32_DEBUG_ID,
+  WATCH_ARM64_DEBUG_ID,
+  watchFatMachO,
+} from "../../fixtures/dif/macho.js";
 
 /** A minimal, valid Breakpad symbol file with a known debug id + code id. */
 const BREAKPAD_FIXTURE = [
@@ -95,6 +101,31 @@ describe("parseDebugFile", () => {
     expect(archive.objects[0]?.debugId).toBe(
       "00000000-0000-0000-0000-000000000000",
     );
+  });
+});
+
+describe("splitDebugFile", () => {
+  test("returns a single-object file as-is", () => {
+    const data = toBytes(BREAKPAD_FIXTURE);
+    const files = splitDebugFile(data);
+    expect(files).toHaveLength(1);
+    expect(files[0]?.data).toBe(data);
+    expect(files[0]?.object.debugId).toBe(
+      "0f13a5da-412a-fbf7-c866-2048f3294f3d",
+    );
+  });
+
+  test("splits a fat Mach-O into one standalone file per slice", () => {
+    const files = splitDebugFile(new Uint8Array(watchFatMachO()));
+    expect(files.map((f) => f.object.debugId)).toEqual([
+      WATCH_ARM64_DEBUG_ID,
+      WATCH_ARM64_32_DEBUG_ID,
+    ]);
+    for (const { object, data } of files) {
+      expect(parseDebugFile(data).objects.map((o) => o.debugId)).toEqual([
+        object.debugId,
+      ]);
+    }
   });
 });
 

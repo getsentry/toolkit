@@ -1,7 +1,21 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import getUptimeMonitorDetails from "./get-uptime-monitor-details.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content";
+import getUptimeMonitorDetails, {
+  getUptimeMonitorDetailsOutputSchema,
+} from "./get-uptime-monitor-details.js";
+
+function getOutput(result: unknown) {
+  assertStructuredOnlyResult(result);
+  const content = getStructuredContent(result);
+  const parsed = getUptimeMonitorDetailsOutputSchema.parse(content);
+  expect(parsed).toEqual(content);
+  return parsed;
+}
 
 const context = {
   constraints: {
@@ -25,49 +39,125 @@ describe("get_uptime_monitor_details", () => {
       context,
     );
 
-    expect(result).toMatchInlineSnapshot(`
-      "# Uptime Monitor API Health in **sentry-mcp-evals**
-
-      **ID**: 4509100000001001
-      **Project**: cloudflare-mcp
-      **Status**: active
-      **Uptime Status**: ok
-      **URL**: https://example.com/health
-      **Method**: GET
-      **Interval**: 60s
-      **Timeout**: 5000ms
-      **Environment**: production
-      **Owner**: the-goats
-      **Recovery Threshold**: 1
-      **Downtime Threshold**: 3
-      **Trace Sampling**: false
-      **Response Capture**: true
-      **Web URL**: [Open Monitor](https://sentry-mcp-evals.sentry.io/monitors/4509100000001001/)
-
-      ## Headers
-
-      - Accept: application/json
-      - Authorization: [REDACTED]
-
-      ## Request Payload
-
-      Request body is configured but omitted from this view.
-
-      ## Recent Checks
-
-      - 2025-04-14T02:00:13.000Z: success, HTTP 200, 142ms, US East
-      - 2025-04-14T01:59:13.000Z: failure_incident (timeout), 5000ms, US East
-
-      ## Response Notes
-
-      - Search related issues with \`search_issues\` query \`uptime_rule:4509100000001001\`.
-      "
+    const output = getOutput(result);
+    expect(output).toMatchInlineSnapshot(`
+      {
+        "checks": [
+          {
+            "durationMs": 142,
+            "environment": "production",
+            "httpStatusCode": 200,
+            "region": "US East",
+            "status": "success",
+            "statusReason": null,
+            "time": "2025-04-14T02:00:13.000Z",
+          },
+          {
+            "durationMs": 5000,
+            "environment": "production",
+            "httpStatusCode": null,
+            "region": "US East",
+            "status": "failure_incident",
+            "statusReason": "timeout",
+            "time": "2025-04-14T01:59:13.000Z",
+          },
+        ],
+        "monitor": {
+          "assertion": null,
+          "downtimeThreshold": 3,
+          "environment": "production",
+          "hasRequestBody": true,
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json",
+            },
+            {
+              "name": "Authorization",
+              "value": "[REDACTED]",
+            },
+          ],
+          "id": "4509100000001001",
+          "intervalSeconds": 60,
+          "method": "GET",
+          "name": "API Health",
+          "owner": "the-goats",
+          "projectSlug": "cloudflare-mcp",
+          "recoveryThreshold": 1,
+          "responseCaptureEnabled": true,
+          "status": "active",
+          "timeoutMs": 5000,
+          "traceSampling": false,
+          "uptimeStatus": "ok",
+          "url": "https://example.com/health",
+          "webUrl": "https://sentry-mcp-evals.sentry.io/monitors/4509100000001001/",
+        },
+      }
     `);
-    expect(String(result)).not.toContain("secret-token");
-    expect(String(result)).not.toContain("should-not-appear");
-    expect(String(result)).toContain(
-      "Request body is configured but omitted from this view.",
+    const text = JSON.stringify(output);
+    expect(text).not.toContain("secret-token");
+    expect(text).not.toContain("should-not-appear");
+    expect(output.monitor.hasRequestBody).toBe(true);
+  });
+
+  it("returns the configured assertion tree as stored", async () => {
+    // Shape of DEFAULT_2XX_STATUS_ASSERTION in sentry/uptime/types.py.
+    const assertion = {
+      root: {
+        op: "and",
+        children: [
+          {
+            op: "status_code_check",
+            operator: { cmp: "greater_than" },
+            value: 199,
+          },
+          {
+            op: "status_code_check",
+            operator: { cmp: "less_than" },
+            value: 300,
+          },
+        ],
+      },
+    };
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/4509100000001001/",
+        () =>
+          HttpResponse.json({
+            id: "4509100000001001",
+            projectSlug: "cloudflare-mcp",
+            environment: null,
+            name: "API Health",
+            status: "active",
+            uptimeStatus: 1,
+            url: "https://example.com/health",
+            method: "GET",
+            body: null,
+            headers: [],
+            intervalSeconds: 60,
+            timeoutMs: 5000,
+            assertion,
+          }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/uptime/4509100000001001/checks/",
+        () => HttpResponse.json([]),
+      ),
     );
+
+    const result = await getUptimeMonitorDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        regionUrl: null,
+        projectSlug: "cloudflare-mcp",
+        uptimeMonitorId: "4509100000001001",
+        period: "24h",
+        checkLimit: 10,
+      },
+      context,
+    );
+
+    expect(getOutput(result).monitor.assertion).toEqual(assertion);
   });
 
   it("skips malformed short header arrays", async () => {
@@ -108,7 +198,8 @@ describe("get_uptime_monitor_details", () => {
       context,
     );
 
-    expect(String(result)).toContain("- X-Custom: ok");
-    expect(String(result)).not.toContain("undefined");
+    expect(getOutput(result).monitor.headers).toEqual([
+      { name: "X-Custom", value: "ok" },
+    ]);
   });
 });

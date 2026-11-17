@@ -208,7 +208,7 @@ export async function buildEventFromFlags(
         ? {
             message: flags.message.join("\n"),
             ...(flags["message-arg"]?.length
-              ? { params: flags["message-arg"] as unknown[] }
+              ? { params: flags["message-arg"] }
               : {}),
           }
         : undefined,

@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -w",
-    "start": "tsx src/bin/start-mock-stdio.ts",
+    "start": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs src/bin/start-mock-stdio.ts",
     "eval": "vitest --config=vitest.config.ts",
     "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml"
   },
@@ -27,5 +27,8 @@
     "vitest": "catalog:",
     "vitest-evals": "catalog:",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sentry/roach": "catalog:"
   }
 }

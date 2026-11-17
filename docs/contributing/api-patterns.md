@@ -47,6 +47,25 @@ See `packages/mcp-core/src/api-utils.ts` and
 [adding-tools.md](adding-tools.md#step-2-implement-the-handler) for usage in
 tools.
 
+### Where Endpoint Code Lives
+
+Endpoint wrappers live in the shared client, `@sentry/api/client/endpoints`
+([source](https://github.com/getsentry/sentry/tree/master/static/packages/api/lib/api-client/endpoints)),
+so the CLI and the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
+core and the region origin), its parameters, and a response schema from the
+host, and returns what the schema parses:
+
+- A read with a `@sentry/api` operation builds its path and query through the
+  operation, on `core.sdkClient`. Lists page through `listPage`.
+- Anything else, including writes and routes `@sentry/api` lacks, builds its
+  path with `apiPath` and sends with `core.request` or `core.requestJson`.
+
+`SentryApiService` methods pass `this.target(opts?.host)` and their Zod schema
+to the wrapper. Shaping only the MCP needs, such as unwrapping a `{ data }`
+envelope or picking one entry of a keyed result, stays in the method.
+The host builds the core from its own transport (credentials, timeouts,
+retries), request headers, and logger, so wrappers never import host code.
+
 ### Common Operations
 
 ```typescript
@@ -206,9 +225,15 @@ return HttpResponse.json(page, {
 });
 ```
 
-Use `@sentry/api`'s `parseSentryLinkHeader` to read the next cursor. Sentry's
-`Link` header reports whether the next page has results; a URL query alone does
-not establish that another page exists.
+Read the next cursor with `nextPageCursor(response)` from `@sentry/api/client`.
+Sentry's `Link` header reports whether the next page has results; a URL query
+alone does not establish that another page exists.
+
+Do not write the page walk yourself. Use `@sentry/api/client`'s `paginate()` to
+fill a tool's `limit` and return a resumable cursor, and mcp-core's
+`fetchEveryPage()` (`src/api-client/pagination.ts`) when a lookup needs every
+row. The `sentry-cli/no-manual-pagination` lint rule rejects cursor loops that
+count toward a limit in mcp-core and the CLI.
 
 ## Testing with Mocks
 
@@ -258,33 +283,33 @@ try {
 
 See error patterns in [common-patterns.md](common-patterns.md#error-handling).
 
-`ApiError` and its subclasses live in the shared client,
-`@sentry/toolkit-core/api-client/errors`. `SentryApiService` sends requests
-through the shared request core, `@sentry/toolkit-core/api-client/core`,
-which builds them from `readErrorResponse` in
-`@sentry/toolkit-core/api-client/response`. The CLI reads raw error
-responses with the same helper and maps them to its own exit-coded
-`ApiError`. Endpoints that have moved to the shared client live in
-`@sentry/toolkit-core/api-client/endpoints/*`; `SentryApiService` calls
-them with its Zod schemas, and a malformed response throws
-`ApiResponseValidationError` from
-`@sentry/toolkit-core/api-client/validate`. See
-[`packages/toolkit-core/README.md`](../../packages/toolkit-core/README.md#api-client).
+`ApiError` and its subclasses live in the shared client, `@sentry/api/client`.
+`SentryApiService` sends requests through its request core, which builds them
+from `readErrorResponse`. The CLI reads raw error responses with the same
+helper and maps them to its own exit-coded `ApiError`. Endpoints that have
+moved to the shared client live in `@sentry/api/client/endpoints`;
+`SentryApiService` calls them with its Zod schemas, and a malformed response
+throws `ApiResponseValidationError`. See the
+[`@sentry/api` README](https://github.com/getsentry/sentry/tree/master/static/packages/api#shared-client).
 
 ### Automatic Retries
 
 `SentryApiService` sends every request, including `@sentry/api` operations,
-through the shared transport in `@sentry/toolkit-core/api-client/transport`, which
-retries failed requests using the shared policy in
-`@sentry/toolkit-core/api-client/retry`. `SentryApiService` never retries on top, so
-a request is retried by one layer only. This page describes the
-behavior; the values live only in code, so read them there instead of copying
-them here:
+through the shared transport in `@sentry/api/client`, which retries failed
+requests using the client's shared retry policy. `SentryApiService` never
+retries on top, so a request is retried by one layer only. This page
+describes the behavior; the values live only in code, so read them there
+instead of copying them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`retry.ts`](../../packages/toolkit-core/src/api-client/retry.ts). In short, a
+  [`retry.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
+- Which writes count as idempotent: the ones the installed `@sentry/api`
+  catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
+  The matcher is in
+  [`idempotent-operations.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/idempotent-operations.ts);
+  bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
 
@@ -299,7 +324,8 @@ Retries are:
 - **Abortable** — aborting the request's `signal` ends the wait.
 - **Network failures retry for idempotent requests** — when `fetch` itself
   fails (DNS, connection refused or reset, socket timeout), only GET, HEAD,
-  and OPTIONS retry, since a write may already have reached Sentry.
+  OPTIONS, and writes Sentry marks idempotent retry, since any other write
+  may already have reached Sentry.
 - **Fail-fast otherwise** — configuration errors (such as a malformed token)
   are not retried.
   A rate-limited tool call returns a **Rate Limited** message with the retry
@@ -311,11 +337,41 @@ Callers and tools need no changes: a retried request either resolves normally or
 throws the same error it would have thrown without retries.
 
 The CLI sends its requests through the shared transport in
-`@sentry/toolkit-core/api-client/transport`, configured in
+`@sentry/api/client`, configured in
 `packages/cli/src/lib/sentry-client.ts`. It follows the same shared rule; only
 the caps differ (`RETRY_POLICY`): the hosted MCP keeps its total wait short so
 a Workers request isn't held open, while the CLI can wait longer. The CLI also
-applies its own per-request timeout, which counts as a network failure.
+applies its own per-request timeout, which counts as a network failure. A CLI
+API function can pass `idempotent: true` to its SDK config when the request
+it sends is safe to resend even though Sentry does not mark the whole
+endpoint, such as chunk uploads or a release create without commits; check
+the handler in Sentry's source first.
+
+Node 26's `fetch` uses HTTP/2, and Sentry's edge resets concurrent upload
+streams on one connection with `ENHANCE_YOUR_CALM`. Code that uploads large
+bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
+`createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
+`dispatcher` option of `getSdkConfig`, and destroys it after the upload.
+
+### Cancellation
+
+When an MCP client cancels a tool call, the SDK aborts that call's signal.
+The server puts it on a per-call copy of the context as `context.signal`, and
+`apiServiceFromContext` passes it to `SentryApiService`, which sends it with
+every request. An aborted call's in-flight request, retry waits, and page walks
+stop, and the request rejects with the signal's reason. Concurrent calls on the
+same session keep running.
+
+In a tool:
+
+- Wait with `sleep(ms, context.signal)` from `internal/fetch-utils.ts`, not a
+  bare `setTimeout`, and pass `signal: context.signal` to `retryWithBackoff`
+  and `fetchWithTimeout`.
+- Check `signal.aborted`, not the error, to tell a cancellation apart. The
+  reason can be a string.
+- Key state that calls share, such as caches, on `getSessionContext(context)`,
+  and run shared lookups with it, so one call's cancellation never fails
+  another call waiting on the same lookup.
 
 ## Best Practices
 

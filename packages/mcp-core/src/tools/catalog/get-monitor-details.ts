@@ -7,6 +7,7 @@ import type {
 import { UserInputError } from "../../errors";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
@@ -16,13 +17,81 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
 import {
-  compactLines,
   formatActor,
   formatDate,
   formatId,
-  formatUnknown,
+  readString,
 } from "./support/api-formatting";
 import { assertProjectRefWithinConstraint } from "./support/project-constraints";
+
+const STATS_BUCKET_LIMIT = 10;
+const nullableString = z.string().nullable();
+const nullableNumber = z.number().nullable();
+
+const monitorConfigSchema = z.object({
+  scheduleType: nullableString,
+  schedule: z
+    .union([z.string(), z.array(z.union([z.number(), z.string()]))])
+    .nullable()
+    .describe("Crontab string, or [value, unit] for interval schedules."),
+  timezone: nullableString,
+  checkinMarginMinutes: nullableNumber,
+  maxRuntimeMinutes: nullableNumber,
+});
+
+const checkInSchema = z.object({
+  date: nullableString,
+  status: nullableString,
+  durationMs: nullableNumber,
+  environment: nullableString,
+});
+
+const statBucketSchema = z.object({
+  timestamp: z.string(),
+  ok: nullableNumber,
+  error: nullableNumber,
+  missed: nullableNumber,
+  timeout: nullableNumber,
+  unknown: nullableNumber,
+  avgDurationMs: nullableNumber,
+});
+
+export const getMonitorDetailsOutputSchema = z.object({
+  monitor: z.object({
+    id: z.string(),
+    slug: z.string(),
+    name: nullableString,
+    project: nullableString,
+    status: nullableString,
+    type: nullableString,
+    owner: nullableString,
+    ownerEmail: nullableString.describe("Set when a user owns the monitor."),
+    lastCheckIn: nullableString,
+    nextCheckIn: nullableString,
+    url: z.string(),
+    config: monitorConfigSchema.nullable(),
+  }),
+  environments: z.array(
+    z.object({
+      name: nullableString,
+      status: nullableString,
+      lastCheckIn: nullableString,
+      nextCheckIn: nullableString,
+    }),
+  ),
+  checkIns: z.array(checkInSchema),
+  stats: z
+    .array(statBucketSchema)
+    .nullable()
+    .describe(
+      `At most ${STATS_BUCKET_LIMIT} most recent stat buckets, oldest first. Null when includeStats is false.`,
+    ),
+});
+
+function formatOwner(owner: Monitor["owner"]): string | null {
+  const name = owner ? formatActor(owner) : null;
+  return name === "unknown" ? null : name;
+}
 
 function formatProject(monitor: Monitor): string | null {
   if (!monitor.project) {
@@ -32,61 +101,75 @@ function formatProject(monitor: Monitor): string | null {
   return monitor.project.slug ?? monitor.project.name ?? null;
 }
 
-function formatConfig(monitor: Monitor): string[] {
+function readNumber(
+  value: Record<string, unknown>,
+  key: string,
+): number | null {
+  const field = value[key];
+  return typeof field === "number" ? field : null;
+}
+
+function readSchedule(
+  value: unknown,
+): z.infer<typeof monitorConfigSchema>["schedule"] {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string | number =>
+        typeof item === "string" || typeof item === "number",
+    );
+  }
+  return null;
+}
+
+function toConfig(
+  monitor: Monitor,
+): z.infer<typeof monitorConfigSchema> | null {
   const config = monitor.config;
   if (!config) {
-    return [];
+    return null;
   }
-
-  return [
-    "schedule",
-    "schedule_type",
-    "timezone",
-    "checkin_margin",
-    "max_runtime",
-  ]
-    .filter((key) => config[key] !== undefined)
-    .map((key) => `- **${key}**: ${formatUnknown(config[key])}`);
+  return {
+    scheduleType: readString(config, "schedule_type"),
+    schedule: readSchedule(config.schedule),
+    timezone: readString(config, "timezone"),
+    checkinMarginMinutes: readNumber(config, "checkin_margin"),
+    maxRuntimeMinutes: readNumber(config, "max_runtime"),
+  };
 }
 
-function formatCheckIn(checkIn: MonitorCheckIn): string {
-  const date =
-    formatDate(checkIn.dateCreated) ??
-    formatDate(checkIn.dateUpdated) ??
-    "unknown time";
-  const duration =
-    checkIn.duration === undefined || checkIn.duration === null
-      ? ""
-      : `, ${checkIn.duration}s`;
-  const environment = checkIn.environment ? `, ${checkIn.environment}` : "";
-  return `- ${date}: ${checkIn.status ?? "unknown"}${duration}${environment}`;
+function toCheckIn(checkIn: MonitorCheckIn): z.infer<typeof checkInSchema> {
+  return {
+    date: formatDate(checkIn.dateCreated) ?? formatDate(checkIn.dateUpdated),
+    status: checkIn.status ?? null,
+    durationMs: checkIn.duration ?? null,
+    environment: checkIn.environment ?? null,
+  };
 }
 
-function formatStat(stat: MonitorStat): string {
-  const timestamp =
-    formatDate(new Date(stat.ts * 1000).toISOString()) ?? String(stat.ts);
-  const parts = Object.entries(stat)
-    .filter(([key]) => key !== "ts")
-    .map(([key, value]) => `${key}=${formatUnknown(value)}`);
-  return `- ${timestamp}: ${parts.join(", ") || "no check-ins"}`;
+function toStat(stat: MonitorStat): z.infer<typeof statBucketSchema> {
+  return {
+    timestamp: new Date(stat.ts * 1000).toISOString(),
+    ok: readNumber(stat, "ok"),
+    error: readNumber(stat, "error"),
+    missed: readNumber(stat, "missed"),
+    timeout: readNumber(stat, "timeout"),
+    unknown: readNumber(stat, "unknown"),
+    avgDurationMs: readNumber(stat, "duration"),
+  };
 }
 
 export default defineTool({
   name: "get_monitor_details",
+  title: "Get Cron Monitor Details",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [
-    "Get details for a Sentry cron monitor.",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect a monitor's schedule, status, owner, project, and environments",
-    "- Review recent check-ins for missed, failed, timeout, or OK runs",
-    "- Check monitor stats over a recent time range",
-    "",
-    "<examples>",
-    "get_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')",
-    "get_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')",
-    "</examples>",
+    "Get a Sentry cron monitor (scheduled job): schedule, status, owner, environments, recent check-ins (missed, failed, timeout, OK), and check-in stats.",
+    "Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.",
+    "Issues for a monitor: search_issues with monitor.slug:<slug>.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -98,36 +181,30 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Optional project slug or numeric ID. Use this to disambiguate monitors with the same slug or to scope a monitor URL that includes a project segment.",
+        "Project slug or numeric ID, to pick between monitors that share a slug.",
       ),
     monitorSlug: z.string().trim().min(1).describe("Monitor slug or GUID."),
     environment: z
       .string()
       .trim()
-      .describe(
-        "Optional environment name to filter monitor environments, recent check-ins, and stats.",
-      )
+      .describe("Environment to filter environments, check-ins, and stats by.")
       .nullable()
       .default(null),
     period: ParamPeriod.describe(
-      "Relative time range. Defaults to `24h` when `start` and `end` are omitted.",
+      "Relative time range, such as 24h or 7d. Defaults to 24h without start and end.",
     )
       .nullable()
       .default(null),
     start: z
       .string()
       .datetime()
-      .describe(
-        "Absolute start time. Must be provided with `end`; do not combine with `period`.",
-      )
+      .describe("Absolute start time. Requires end; not with period.")
       .nullable()
       .default(null),
     end: z
       .string()
       .datetime()
-      .describe(
-        "Absolute end time. Must be provided with `start`; do not combine with `period`.",
-      )
+      .describe("Absolute end time. Requires start; not with period.")
       .nullable()
       .default(null),
     checkInLimit: z
@@ -135,7 +212,7 @@ export default defineTool({
       .int()
       .positive()
       .max(50)
-      .describe("Maximum number of recent check-ins to include.")
+      .describe("Maximum recent check-ins to include.")
       .default(10),
     includeStats: z
       .boolean()
@@ -145,12 +222,11 @@ export default defineTool({
       .number()
       .int()
       .positive()
-      .describe(
-        "Optional stats bucket size in seconds. Omit this to let Sentry choose an appropriate rollup.",
-      )
+      .describe("Stats bucket size in seconds. Omit to let Sentry choose.")
       .nullable()
       .default(null),
   },
+  outputSchema: getMonitorDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -251,69 +327,34 @@ export default defineTool({
         : Promise.resolve([]),
     ]);
 
-    const owner = monitor.owner ? formatActor(monitor.owner) : null;
-    const output = compactLines([
-      `# Monitor ${monitor.name ?? monitor.slug} in **${organizationSlug}**`,
-      "",
-      `**Slug**: ${monitor.slug}`,
-      `**ID**: ${formatId(monitor.id)}`,
-      project ? `**Project**: ${project}` : null,
-      monitor.status ? `**Status**: ${monitor.status}` : null,
-      monitor.type ? `**Type**: ${monitor.type}` : null,
-      owner ? `**Owner**: ${owner}` : null,
-      formatDate(monitor.lastCheckIn)
-        ? `**Last Check-In**: ${formatDate(monitor.lastCheckIn)}`
+    return structuredResult({
+      monitor: {
+        id: formatId(monitor.id),
+        slug: monitor.slug,
+        name: monitor.name ?? null,
+        project,
+        status: monitor.status ?? null,
+        type: monitor.type ?? null,
+        owner: formatOwner(monitor.owner),
+        ownerEmail:
+          monitor.owner && typeof monitor.owner === "object"
+            ? monitor.owner.email || null
+            : null,
+        lastCheckIn: formatDate(monitor.lastCheckIn),
+        nextCheckIn: formatDate(monitor.nextCheckIn),
+        url: monitorUrl,
+        config: toConfig(monitor),
+      },
+      environments: (monitor.environments ?? []).map((environment) => ({
+        name: environment.name ?? null,
+        status: environment.status ?? null,
+        lastCheckIn: formatDate(environment.lastCheckIn),
+        nextCheckIn: formatDate(environment.nextCheckIn),
+      })),
+      checkIns: checkIns.slice(0, params.checkInLimit).map(toCheckIn),
+      stats: params.includeStats
+        ? stats.slice(-STATS_BUCKET_LIMIT).map(toStat)
         : null,
-      formatDate(monitor.nextCheckIn)
-        ? `**Next Check-In**: ${formatDate(monitor.nextCheckIn)}`
-        : null,
-      `**URL**: [Open Monitor](${monitorUrl})`,
-    ]);
-
-    const config = formatConfig(monitor);
-    if (config.length > 0) {
-      output.push("", "## Schedule", "", ...config);
-    }
-
-    if (monitor.environments && monitor.environments.length > 0) {
-      output.push("", "## Environments", "");
-      for (const environment of monitor.environments) {
-        output.push(
-          compactLines([
-            `- ${environment.name ?? "unknown"}`,
-            environment.status ? `  - Status: ${environment.status}` : null,
-            formatDate(environment.lastCheckIn)
-              ? `  - Last check-in: ${formatDate(environment.lastCheckIn)}`
-              : null,
-            formatDate(environment.nextCheckIn)
-              ? `  - Next check-in: ${formatDate(environment.nextCheckIn)}`
-              : null,
-          ]).join("\n"),
-        );
-      }
-    }
-
-    output.push("", "## Recent Check-Ins", "");
-    output.push(
-      checkIns.length === 0
-        ? "No check-ins found in this time range."
-        : checkIns.slice(0, params.checkInLimit).map(formatCheckIn).join("\n"),
-    );
-
-    if (params.includeStats) {
-      output.push("", "## Stats", "");
-      output.push(
-        stats.length === 0
-          ? "No stats found in this time range."
-          : stats.slice(-10).map(formatStat).join("\n"),
-      );
-    }
-
-    output.push("", "## Response Notes", "");
-    output.push(
-      `- Search issues from this monitor with \`search_issues\` query \`monitor.slug:${monitor.slug}\`.`,
-    );
-
-    return `${output.join("\n")}\n`;
+    });
   },
 });

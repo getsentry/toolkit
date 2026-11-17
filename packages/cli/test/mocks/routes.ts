@@ -175,26 +175,14 @@ function resolveLogEventsBody(query: string | null) {
 }
 
 export const apiRoutes: MockRoute[] = [
-  // User Regions (multi-region support)
-  // Returns the mock server itself as the only region
-  {
-    method: "GET",
-    path: "/api/0/users/me/regions/",
-    response: (_req, _params, serverUrl) => ({
-      body: {
-        regions: [{ name: "monolith", url: serverUrl }],
-      },
-    }),
-  },
-
-  // Auth / current user (works with all token types including OAuth)
+  // Current user fallback for servers whose /users/me/ rejects tokens
   {
     method: "GET",
     path: "/api/0/auth/",
     response: userFixture,
   },
 
-  // Users (legacy endpoint, kept for backward compatibility)
+  // Current user
   {
     method: "GET",
     path: "/api/0/users/me/",

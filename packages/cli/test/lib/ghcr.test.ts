@@ -31,7 +31,7 @@ let originalFetch: typeof globalThis.fetch;
 function mockFetch(
   fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): void {
-  globalThis.fetch = fn as typeof globalThis.fetch;
+  globalThis.fetch = fn;
 }
 
 /** Minimal valid OCI manifest for testing */

@@ -1,9 +1,10 @@
 /** Human-readable inspection of metric detectors and linked workflows. */
+import { text } from "@sentry/toolkit-core/markdown";
 import type { GetOrganizationWorkflowResponse } from "@sentry/api";
 import { METRIC_MONITOR_PRIORITY } from "@sentry/toolkit-core/metric-monitor";
 import { metricAlertStatusLabel } from "../../commands/alert/metrics/status.js";
 import type { MetricAlertRule } from "../api/alerts.js";
-import { escapeMarkdownInline, mdKvTable, renderMarkdown } from "./markdown.js";
+import { mdKvTable, renderMarkdown } from "./markdown.js";
 
 export type MetricAlertViewResult = {
   orgSlug: string;
@@ -38,7 +39,7 @@ function valueText(value: unknown): string {
 
 function table(rows: Row[], heading?: string): string {
   return mdKvTable(
-    rows.map(([label, value]) => [label, escapeMarkdownInline(value)]),
+    rows.map(([label, value]) => [label, text(value)]),
     heading,
   );
 }
@@ -137,7 +138,7 @@ function workflowGroupSections(value: unknown, heading: string): string[] {
 
 function workflowSections(workflow: GetOrganizationWorkflowResponse): string[] {
   const sections = [
-    `## Workflow ${escapeMarkdownInline(workflow.id)}: ${escapeMarkdownInline(workflow.name)}`,
+    `## Workflow ${text(workflow.id)}: ${text(workflow.name)}`,
     table([
       ["Status", workflow.enabled ? "enabled" : "disabled"],
       ["Environment", workflow.environment ?? "all"],
@@ -161,7 +162,7 @@ function workflowSections(workflow: GetOrganizationWorkflowResponse): string[] {
 export function formatMetricAlertView(data: MetricAlertViewResult): string {
   const { orgSlug, rule, workflows, workflowErrors } = data;
   const sections = [
-    `## Metric alert rule in ${escapeMarkdownInline(orgSlug)}`,
+    `## Metric alert rule in ${text(orgSlug)}`,
     table([
       ["ID", rule.id],
       ["Name", rule.name],
@@ -200,7 +201,7 @@ export function formatMetricAlertView(data: MetricAlertViewResult): string {
     const reason =
       error.status === 403 ? "access denied" : "not found or inaccessible";
     sections.push(
-      `Workflow ${escapeMarkdownInline(error.id)}: ${reason} (HTTP ${error.status}); notification configuration is unverified.`,
+      `Workflow ${text(error.id)}: ${reason} (HTTP ${error.status}); notification configuration is unverified.`,
     );
   }
   return renderMarkdown(sections.join("\n\n"));

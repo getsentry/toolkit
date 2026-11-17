@@ -514,22 +514,4 @@ describe("eventsCommand.func()", () => {
     expect(output).toContain("Next:");
     expect(output).toContain("-c next");
   });
-
-  test("throws ContextError when org is undefined", async () => {
-    resolveIssueSpy.mockResolvedValue({
-      org: undefined,
-      issue: makeMockIssue(),
-    });
-
-    const { context } = createMockContext();
-    const func = await eventsCommand.loader();
-
-    await expect(
-      func.call(
-        context,
-        { limit: 25, json: false, full: false, period: parsePeriod("7d") },
-        "123456789",
-      ),
-    ).rejects.toThrow("organization");
-  });
 });

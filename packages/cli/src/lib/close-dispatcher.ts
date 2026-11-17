@@ -4,14 +4,13 @@
  * so the process lingers instead of exiting on its own (see #1237).
  *
  * Destroying the global dispatcher releases the pooled sockets, letting the
- * loop drain naturally. This is the root-cause complement to the force-exit
- * timer, which stays armed as a last-resort backstop.
+ * loop drain naturally.
  *
  * `destroy()` aborts in-flight requests and returns immediately rather than
  * waiting for them to settle, so it can't hang the exit path. The call runs in
  * a `finally` after the command has already produced its result, so it must
  * never reject — a shutdown error here would otherwise mask the command's
- * outcome and skip the backstop timer.
+ * outcome.
  */
 const GLOBAL_DISPATCHER = Symbol.for("undici.globalDispatcher.1");
 

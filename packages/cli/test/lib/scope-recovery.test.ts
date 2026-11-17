@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
 import { OAUTH_SCOPES } from "../../src/lib/oauth.js";
 import {
-  captureOAuthScopeRecoveryGate,
   ensureCurrentOAuthScopes,
   ensureScopesForAction,
   runWithScopeRecovery,
@@ -251,64 +250,6 @@ describe("runWithScopeRecovery", () => {
   });
 });
 
-describe("scope recovery availability", () => {
-  test("only gives init errors to recovery when authorization can run", async () => {
-    const error = new ApiError("Forbidden", 403);
-    const availableRuntime = runtime({
-      getAuthScopes: vi.fn().mockResolvedValue([]),
-    });
-    expect(
-      await captureOAuthScopeRecoveryGate(availableRuntime).shouldDelegate(
-        error,
-        { unattended: false },
-      ),
-    ).toBe(true);
-
-    const blockedCases = [
-      {
-        unattended: true,
-        runtime: runtime(),
-      },
-      {
-        unattended: false,
-        runtime: runtime({ inputIsTty: () => false }),
-      },
-      {
-        unattended: false,
-        runtime: runtime({ promptsAllowed: () => false }),
-      },
-    ];
-
-    for (const blocked of blockedCases) {
-      const getAuthScopes = vi.mocked(blocked.runtime.getAuthScopes);
-      expect(
-        await captureOAuthScopeRecoveryGate(blocked.runtime).shouldDelegate(
-          error,
-          { unattended: blocked.unattended },
-        ),
-      ).toBe(false);
-      expect(getAuthScopes).not.toHaveBeenCalled();
-    }
-  });
-
-  test("retains OAuth provenance when a failed refresh clears stored auth", async () => {
-    const getAuthSource = vi
-      .fn<() => "oauth" | undefined>()
-      .mockReturnValueOnce("oauth")
-      .mockReturnValueOnce(undefined);
-    const getAuthScopes = vi.fn();
-    const testRuntime = runtime({ getAuthSource, getAuthScopes });
-    const scopeRecovery = captureOAuthScopeRecoveryGate(testRuntime);
-
-    expect(
-      await scopeRecovery.shouldDelegate(new ApiError("Unauthorized", 401), {
-        unattended: false,
-      }),
-    ).toBe(true);
-    expect(getAuthScopes).not.toHaveBeenCalled();
-  });
-});
-
 describe("upgrade scope check", () => {
   test("re-authorizes a stale OAuth grant", async () => {
     const login = vi.fn().mockResolvedValue({ method: "oauth" });
@@ -469,5 +410,60 @@ describe("ensureScopesForAction", () => {
     ).resolves.toBe("ready");
     expect(testRuntime.getAuthScopes).not.toHaveBeenCalled();
     expect(login).not.toHaveBeenCalled();
+  });
+
+  test("requests opt-in scopes on top of the defaults", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await expect(
+      ensureScopesForAction(
+        ["org:tokens", "org:read"],
+        "Listing org auth tokens",
+        login,
+        runtime(),
+      ),
+    ).resolves.toBe("elevated");
+    const requested = login.mock.calls[0]?.[0]?.scope?.split(" ");
+    expect(requested).toEqual([...OAUTH_SCOPES, "org:tokens"]);
+  });
+
+  test("keeps opt-in scopes the grant already holds", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await ensureScopesForAction(
+      ["org:tokens"],
+      "x",
+      login,
+      runtime({
+        getAuthScopes: vi
+          .fn()
+          .mockResolvedValue([...OAUTH_SCOPES, "org:admin", "not-a-scope"]),
+        getReauthorizationAccountId: () => "work-account",
+      }),
+    );
+    const options = login.mock.calls[0]?.[0];
+    expect(options?.accountId).toBe("work-account");
+    const requested = options?.scope?.split(" ");
+    expect(requested).toContain("org:admin");
+    expect(requested).toContain("org:tokens");
+    expect(requested).not.toContain("not-a-scope");
+  });
+
+  test("requests the defaults when only default scopes are missing", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+
+    await ensureScopesForAction(
+      ["org:integrations"],
+      "x",
+      login,
+      runtime({
+        getAuthScopes: vi
+          .fn()
+          .mockResolvedValue(
+            OAUTH_SCOPES.filter((scope) => scope !== "org:integrations"),
+          ),
+      }),
+    );
+    expect(login).toHaveBeenCalledWith();
   });
 });

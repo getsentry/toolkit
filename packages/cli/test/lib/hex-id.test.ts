@@ -202,7 +202,7 @@ describe("validateHexId", () => {
   });
 
   test("throws for newline-separated IDs (not a single valid ID)", () => {
-    const multiLine = `${VALID_ID}\n${"bbbb1111cccc2222dddd3333eeee4444"}`;
+    const multiLine = `${VALID_ID}\nbbbb1111cccc2222dddd3333eeee4444`;
     expect(() => validateHexId(multiLine, "test ID")).toThrow(ValidationError);
   });
 

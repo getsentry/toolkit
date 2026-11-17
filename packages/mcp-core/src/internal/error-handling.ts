@@ -7,11 +7,13 @@ import {
 import {
   ApiError,
   ApiClientError,
+  ApiPermissionError,
   ApiRateLimitError,
   ApiServerError,
   isApiAuthenticationErrorDeep,
 } from "../api-client";
 import { logIssue, logWarn } from "../telem/logging";
+import { formatFeedbackSuggestion } from "./tool-helpers/feedback-suggestion";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import type { ToolConfig } from "../tools/types";
 import type { ServerContext, TransportType } from "../types";
@@ -68,6 +70,27 @@ export function isApiClientError(error: unknown): error is ApiClientError {
  */
 export function isApiServerError(error: unknown): error is ApiServerError {
   return error instanceof ApiServerError;
+}
+
+/**
+ * The 403 from a token that lacks every scope the endpoint accepts, found on
+ * `error` or within the first few levels of its `cause`, since tools may
+ * rewrap API errors.
+ */
+export function findInsufficientScopeError(
+  error: unknown,
+): ApiPermissionError | undefined {
+  let current = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
+    if (
+      current instanceof ApiPermissionError &&
+      current.isInsufficientScopeError()
+    ) {
+      return current;
+    }
+    current = current.cause;
+  }
+  return undefined;
 }
 
 /**
@@ -183,8 +206,36 @@ function formatAiProviderError(
  */
 export async function formatErrorForUser(
   error: unknown,
-  options?: { transport?: TransportType },
+  options?: {
+    transport?: TransportType;
+    /** Tool surface of the session, used to suggest reporting likely bugs. */
+    session?: Pick<ServerContext, "availableToolNames">;
+  },
 ): Promise<string> {
+  // Only failures that point at a Sentry MCP bug suggest feedback; input,
+  // auth, rate limit, configuration, and provider outage errors do not.
+  const withFeedbackSuggestion = (
+    parts: string[],
+    condition: string,
+  ): string[] => {
+    const suggestion = options?.session
+      ? formatFeedbackSuggestion(condition, options.session)
+      : null;
+    return suggestion ? [...parts, suggestion] : parts;
+  };
+
+  // Checked before input errors: a missing scope can arrive wrapped in one,
+  // and its "try again" advice would send the agent into retries that cannot
+  // succeed with the same token.
+  const insufficientScopeError = findInsufficientScopeError(error);
+  if (insufficientScopeError) {
+    return [
+      "**Missing Permission**",
+      insufficientScopeError.toUserMessage(),
+      "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+  }
+
   if (isUserInputError(error)) {
     return [
       "**Input Error**",
@@ -231,7 +282,9 @@ export async function formatErrorForUser(
     if (error.eventId) {
       parts.push(`**Event ID**: ${error.eventId}`);
     }
-    return parts.join("\n\n");
+    return withFeedbackSuggestion(parts, "If rephrasing does not help").join(
+      "\n\n",
+    );
   }
 
   // Handle AI SDK APICallError / RetryError that weren't converted to
@@ -262,10 +315,13 @@ export async function formatErrorForUser(
   // Defensive: NoObjectGeneratedError is normally handled in callEmbeddedAgent,
   // but catch any that escape (e.g., from future code paths).
   if (NoObjectGeneratedError.isInstance(error)) {
-    return [
-      "**AI Processing Error**",
-      "The AI was unable to process your query. Please try rephrasing your request.",
-    ].join("\n\n");
+    return withFeedbackSuggestion(
+      [
+        "**AI Processing Error**",
+        "The AI was unable to process your query. Please try rephrasing your request.",
+      ],
+      "If rephrasing does not help",
+    ).join("\n\n");
   }
 
   // Upstream 401 isn't a user-input problem — prompt re-authorization instead
@@ -315,7 +371,7 @@ export async function formatErrorForUser(
       parts.push(`**Event ID**: ${eventId}`);
     }
     parts.push("Please contact support if the problem persists.");
-    return parts.join("\n\n");
+    return withFeedbackSuggestion(parts, "If this keeps failing").join("\n\n");
   }
 
   // Handle generic ApiError (shouldn't happen with new hierarchy, but just in case)
@@ -348,7 +404,7 @@ export async function formatErrorForUser(
       parts.push(errorMsg);
     }
   }
-  return parts.join("\n\n");
+  return withFeedbackSuggestion(parts, "If this keeps failing").join("\n\n");
 }
 
 /**

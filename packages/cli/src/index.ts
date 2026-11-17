@@ -5,8 +5,6 @@
  * with named methods for every CLI command, plus a `run()` escape hatch for
  * arbitrary command strings.
  *
- * CLI runner is re-exported as `_cli` for the npm bin wrapper (`dist/bin.cjs`).
- *
  * @example
  * ```typescript
  * import createSentrySDK from "sentry";
@@ -22,10 +20,10 @@
  * @module
  */
 
-import { startCli } from "./cli.js";
+import { fileURLToPath } from "node:url";
+import { CLI_VERSION } from "./lib/constants.js";
 import { buildInvoker, buildRunner } from "./lib/sdk-invoke.js";
 import { createSDKMethods } from "./sdk.generated.js";
-import { SENTRY_CLI } from "./sentry-cli.js";
 
 export type { AsyncChannel } from "./lib/async-channel.js";
 // Re-export public types and error class from the shared module.
@@ -63,10 +61,22 @@ export function createSentrySDK(
   return Object.assign(methods, { run });
 }
 
-export default createSentrySDK;
-
-// CLI runner — internal, used by dist/bin.cjs wrapper
-/** @internal Run the full `sentry` CLI on `process.argv`. */
-export function _cli(): Promise<void> {
-  return startCli(SENTRY_CLI);
+/** The version of this `sentry` package (v3's static `SentryCli.getVersion()`). */
+export function getVersion(): string {
+  return CLI_VERSION;
 }
+
+/**
+ * Absolute path to this package's `sentry` executable (v3's static
+ * `SentryCli.getPath()`). It is a Node.js script: spawn it with
+ * `process.execPath` on Windows, where it can't run on its own.
+ */
+export function getPath(): string {
+  return fileURLToPath(new URL("./bin.cjs", import.meta.url));
+}
+
+// v3 exposed these as static methods on the class; keep that spelling working.
+createSentrySDK.getVersion = getVersion;
+createSentrySDK.getPath = getPath;
+
+export default createSentrySDK;

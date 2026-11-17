@@ -58,20 +58,20 @@ pnpm -w run cli --transport stdio \
 
 Passing QA means the local CLI prints `Connected to MCP server (stdio)`, uses
 the expected MCP tool path, and returns real prod data that demonstrates the
-behavior. For catalog tools, expect `search_sentry_tools` followed by
-`execute_sentry_tool(name: <changed_tool>)`. For direct tools, expect the tool name in
-the transcript. `--list-tools` alone is not QA.
+behavior. Expect the changed tool name in the transcript; with
+`EXPOSE_ALL_TOOLS` off, expect `search_sentry_tools` followed by
+`execute_sentry_tool(name: <changed_tool>)` instead. `--list-tools` alone is
+not QA.
 
-For mutating catalog-only tools, avoid live prod changes unless there is a
-disposable resource prepared for the test. Add or run a server-level
-`execute_sentry_tool` dispatch test with MSW coverage to prove catalog
-discovery, generated schema exposure, constraint injection, and tool dispatch
-without changing real Sentry data.
+For mutating tools, avoid live prod changes unless there is a disposable
+resource prepared for the test. Add or run a server-level dispatch test with
+MSW coverage to prove generated schema exposure, constraint injection, and tool
+dispatch without changing real Sentry data.
 
 For output-format changes, also inspect the raw MCP tool result when possible,
 not only the LLM's final answer. The final answer can add model-specific text
 that is not part of the tool response. Review raw tool output against
-`docs/contributing/tool-responses.md`: it should be user-facing, structured,
+`design/mcp-tool-responses.md` and `docs/contributing/tool-responses.md`: it should be user-facing, structured,
 and free of raw API JSON, internal implementation IDs, empty placeholders, and
 unrelated instructions.
 

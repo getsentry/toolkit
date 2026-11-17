@@ -19,7 +19,7 @@ function named(name: string): AgentInfo {
 }
 
 function withEnv(vars: Record<string, string>) {
-  setEnv(vars as NodeJS.ProcessEnv);
+  setEnv(vars);
 }
 
 /** No-op async provider typed to satisfy ProcessInfoProvider. */

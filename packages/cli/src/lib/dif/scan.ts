@@ -19,18 +19,18 @@
  */
 
 import { open, readFile, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import { type WalkEntry, walkFiles } from "../scan/index.js";
 import {
-  type DifArchiveInfo,
+  type DifObjectFile,
   type DifObjectInfo,
   extractEmbeddedPpdb,
-  parseDebugFile,
   peekFormat,
-  selectBundledObject,
+  splitDebugFile,
 } from "./index.js";
+import { type ShaderInfo, ShaderManifestCache } from "./shader-manifest.js";
 import { DEFAULT_MAX_ZIP_TOTAL_SIZE, readZipDifEntries } from "./zip.js";
 
 const log = logger.withTag("dif.scan");
@@ -57,7 +57,14 @@ const TYPE_TO_FORMAT: Readonly<Record<string, string>> = {
   breakpad: "breakpad",
   sourcebundle: "sourcebundle",
   jvm: "sourcebundle",
+  dxil: "dxil",
 };
+
+/** Header every DXIL container (a compiled shader written by DXC) starts with. */
+const DXIL_HEADER = Buffer.from("DXBC", "ascii");
+
+/** A DXIL file is named after its 32-hex compiler hash, which is its debug id. */
+const BARE_HEX32_RE = /^[0-9a-f]{32}$/;
 
 /** Accepted `--type` filter values. */
 export const VALID_DIF_TYPES: readonly string[] = Object.keys(TYPE_TO_FORMAT);
@@ -96,17 +103,23 @@ export type DifFilterOptions = {
 export type PreparedDif = {
   /** Filesystem path the file was read from. */
   path: string;
-  /** Raw file content. */
+  /**
+   * Bytes to upload: the raw file content, or one object's own bytes when the
+   * file holds more than one object, such as a slice of a fat Mach-O (each
+   * object becomes its own `PreparedDif`).
+   */
   content: Buffer;
   /**
-   * Advisory debug id of the primary (first debug-info) object among the
-   * filter-matched set. This is the same id used as the source bundle's
-   * debug id under `--include-sources`, so the bundle's slice matches the
-   * slice whose metadata the main DIF advertises.
+   * Debug id of the object in `content`. This is the same id used as the
+   * source bundle's debug id under `--include-sources`.
    */
   debugId?: string;
-  /** The objects within the file that passed the filters (for reporting). */
+  /** The object in `content` that passed the filters (for reporting). */
   objects: DifObjectInfo[];
+  /** Code id the server cannot derive from the file (DXIL: the Aftermath hash). */
+  codeId?: string;
+  /** Shader group of a DXIL file, from the manifest next to it. */
+  shaderGroup?: string;
 };
 
 /**
@@ -116,7 +129,17 @@ export type PreparedDif = {
  * @returns The normalized form.
  */
 export function normalizeDebugId(id: string): string {
-  return id.trim().toLowerCase().replace(/[{}]/g, "");
+  const normalized = id.trim().toLowerCase().replace(/[{}]/g, "");
+  // A bare 32-hex id (an Apple UUID without hyphens, or a DXIL shader's file
+  // stem) is the hyphenated id with the hyphens dropped; compare them as one.
+  return BARE_HEX32_RE.test(normalized)
+    ? hyphenateHex32(normalized)
+    : normalized;
+}
+
+/** `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` from 32 hex digits. */
+function hyphenateHex32(hex: string): string {
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /**
@@ -396,7 +419,7 @@ async function peekHeader(path: string): Promise<PeekResult | null> {
       if (header.length === 0) {
         return null;
       }
-      const format = peekFormat(header);
+      const format = detectFormat(header);
       if (format === "unknown") {
         return null;
       }
@@ -474,6 +497,7 @@ export async function prepareDifs(
   const maxFileSize = options.maxFileSize ?? 0;
   const scanZips = options.scanZips ?? true;
   const maxZipTotalSize = options.maxZipTotalSize ?? DEFAULT_MAX_ZIP_TOTAL_SIZE;
+  const manifests = new ShaderManifestCache();
   let oversizedCount = 0;
 
   for (const path of paths) {
@@ -505,6 +529,7 @@ export async function prepareDifs(
       path,
       filters,
       maxFileSize,
+      manifests,
     );
     if (oversized) {
       oversizedCount += 1;
@@ -535,6 +560,7 @@ async function prepareFileDif(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
+  manifests: ShaderManifestCache,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   const peeked = await peekHeader(path);
   if (!peeked) {
@@ -566,57 +592,68 @@ async function prepareFileDif(
     );
     return { difs: [], oversized: false };
   }
+  // A shader's code id and group come from the manifest next to it.
+  const shaderInfo =
+    peeked.format === "dxil" ? await manifests.lookup(path) : undefined;
   // readMatchedDif reports an oversized embedded PPDB (of a requested type) so
   // it too drives the exit code, matching the on-disk size gate above.
-  return await readMatchedDif(path, filters, maxFileSize);
+  return await readMatchedDif(path, filters, maxFileSize, shaderInfo);
 }
 
 /**
- * Parse an in-memory object buffer into a single {@link PreparedDif} when at
- * least one contained object passes the per-object filters, or `null` when the
+ * Parse an in-memory object buffer into one {@link PreparedDif} per contained
+ * object that passes the per-object filters. Returns an empty array when the
  * buffer is empty, unparseable, or has no matching object. Pure (no I/O); parse
  * failures are logged at debug level.
+ *
+ * Sentry's assemble step rejects a file that holds more than one object, so
+ * each object of a multi-object archive (e.g. each slice of a fat dSYM) is
+ * prepared as its own file under its own debug id, as the legacy `sentry-cli`
+ * does. A single-object file keeps its original bytes.
  *
  * @param displayPath - Path used for naming and logs (an on-disk path or a
  *   synthetic `"<zip>/<entry>"` path).
  * @param content - The object bytes.
  * @param filters - The resolved filter set.
  */
-function matchedDif(
+function matchedDifs(
   displayPath: string,
   content: Buffer,
   filters: DifFilters,
-): PreparedDif | null {
+): PreparedDif[] {
   if (content.length === 0) {
-    return null;
+    return [];
   }
 
-  let archive: DifArchiveInfo;
+  let files: DifObjectFile[];
   try {
-    archive = parseDebugFile(new Uint8Array(content));
+    files = splitDebugFile(new Uint8Array(content));
   } catch (err) {
     log.debug(`Skipping unparseable file: ${displayPath}`, err);
-    return null;
+    return [];
   }
 
-  const matched = archive.objects.filter((obj) =>
-    objectPassesFilters(obj, filters),
-  );
-  if (matched.length === 0) {
-    return null;
+  const difs: PreparedDif[] = [];
+  for (const { object, data } of files) {
+    if (!objectPassesFilters(object, filters)) {
+      continue;
+    }
+    difs.push({
+      path: displayPath,
+      content:
+        files.length === 1
+          ? content
+          : Buffer.from(data.buffer, data.byteOffset, data.byteLength),
+      debugId: object.debugId,
+      objects: [object],
+    });
   }
-
-  return {
-    path: displayPath,
-    content,
-    debugId: selectBundledObject(matched)?.debugId,
-    objects: matched,
-  };
+  return difs;
 }
 
 /**
  * Extract a Portable PDB embedded in a managed PE buffer and return it as a
- * synthetic {@link PreparedDif}, or `null` when there is none, it is filtered
+ * synthetic {@link PreparedDif}, or nothing when there is none, it is filtered
  * out, or it exceeds the size cap.
  *
  * A managed PE's debug info lives entirely in its embedded Portable PDB, so the
@@ -632,7 +669,7 @@ function matchedDif(
  * @param content - The PE object bytes.
  * @param filters - The resolved filter set (applied to the extracted PPDB).
  * @param maxFileSize - Size gate in bytes for the extracted PPDB (`0` disables).
- * @returns The extracted PPDB DIF (or `null`) and whether it was skipped for
+ * @returns The extracted PPDB DIF (if any) and whether it was skipped for
  *   exceeding the size cap while a Portable PDB was a requested type (so the
  *   caller can fold it into the exit-driving oversized count).
  */
@@ -641,16 +678,12 @@ function embeddedPpdbDif(
   content: Buffer,
   filters: DifFilters,
   maxFileSize: number,
-): { dif: PreparedDif | null; oversized: boolean } {
+): { difs: PreparedDif[]; oversized: boolean } {
   // Only PE images can embed a Portable PDB. Cheap-gate on the header so the
   // vast majority of scanned files (ELF/Mach-O/Breakpad/...) skip the full
   // second parse that extraction would otherwise perform on every buffer.
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  if (peekFormat(header) !== "pe") {
-    return { dif: null, oversized: false };
+  if (peekBufferFormat(content) !== "pe") {
+    return { difs: [], oversized: false };
   }
   let extracted: ReturnType<typeof extractEmbeddedPpdb>;
   try {
@@ -660,10 +693,10 @@ function embeddedPpdbDif(
       `Could not extract embedded Portable PDB from ${displayPath}`,
       err,
     );
-    return { dif: null, oversized: false };
+    return { difs: [], oversized: false };
   }
   if (!extracted) {
-    return { dif: null, oversized: false };
+    return { difs: [], oversized: false };
   }
   if (maxFileSize > 0 && extracted.ppdb.byteLength > maxFileSize) {
     log.warn(
@@ -673,23 +706,96 @@ function embeddedPpdbDif(
     // requested type; otherwise it would never have been uploaded anyway, so it
     // must not turn an empty queue into a spurious "files too large" failure.
     return {
-      dif: null,
+      difs: [],
       oversized: formatMatches("portablepdb", filters.formats),
     };
   }
   const ext = extname(displayPath);
   const ppdbPath = `${displayPath.slice(0, displayPath.length - ext.length)}.pdb`;
   return {
-    dif: matchedDif(ppdbPath, Buffer.from(extracted.ppdb), filters),
+    difs: matchedDifs(ppdbPath, Buffer.from(extracted.ppdb), filters),
     oversized: false,
   };
 }
 
 /**
- * Parse an in-memory object buffer into uploadable debug files: the main DIF
- * (when it matches) plus, for managed PE assemblies, a separate Portable PDB
- * DIF extracted from the PE. Shared by the on-disk path ({@link readMatchedDif})
- * and in-memory ZIP entries ({@link difFromCandidateBuffer}).
+ * Detect a container format from leading header bytes: DXIL containers, which
+ * the object parser does not know, are recognised here; everything else is
+ * delegated to {@link peekFormat}.
+ */
+function detectFormat(header: Uint8Array): string {
+  return isDxil(header) ? "dxil" : peekFormat(header);
+}
+
+/** Whether the bytes start with the DXIL container header. */
+function isDxil(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= DXIL_HEADER.length &&
+    DXIL_HEADER.equals(bytes.subarray(0, DXIL_HEADER.length))
+  );
+}
+
+/** Detect the format of an in-memory buffer from its leading header bytes. */
+function peekBufferFormat(content: Buffer): string {
+  return detectFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
+}
+
+/**
+ * Prepare a DXIL shader binary. Its debug id is the compiler hash the engine
+ * uses as the file name; the code id and shader group come from the manifest
+ * row, when one was found. Shaders carry none of the symbol/debug/unwind/source
+ * features, so only the format and `--id` filters apply.
+ */
+function dxilDif(
+  displayPath: string,
+  content: Buffer,
+  filters: DifFilters,
+  info?: ShaderInfo,
+): PreparedDif[] {
+  const stem = basename(displayPath, extname(displayPath)).toLowerCase();
+  if (!BARE_HEX32_RE.test(stem)) {
+    log.warn(
+      `Skipping ${displayPath}: a DXIL file must be named after its 32-hex shader hash`,
+    );
+    return [];
+  }
+  // normalizeDebugId hyphenates the stem, so `--id` matches either spelling.
+  const debugId = normalizeDebugId(stem);
+  if (
+    !(formatMatches("dxil", filters.formats) && idMatches(debugId, filters.ids))
+  ) {
+    return [];
+  }
+  return [
+    {
+      path: displayPath,
+      content,
+      debugId,
+      objects: [
+        {
+          debugId,
+          codeId: info?.codeId ?? null,
+          arch: "any",
+          fileFormat: "dxil",
+          kind: "shader",
+          hasSymbols: false,
+          hasDebugInfo: false,
+          hasUnwindInfo: false,
+          hasSources: false,
+        },
+      ],
+      ...(info?.codeId ? { codeId: info.codeId } : {}),
+      ...(info?.shaderGroup ? { shaderGroup: info.shaderGroup } : {}),
+    },
+  ];
+}
+
+/**
+ * Parse an in-memory object buffer into uploadable debug files: one main DIF
+ * per matching object (see {@link matchedDifs}) plus, for managed PE
+ * assemblies, a separate Portable PDB DIF extracted from the PE. Shared by the
+ * on-disk path ({@link readMatchedDif}) and in-memory ZIP entries
+ * ({@link difFromCandidateBuffer}).
  *
  * @param displayPath - Path used for naming and logs (an on-disk path or a
  *   synthetic `"<zip>/<entry>"` path).
@@ -704,17 +810,19 @@ function difFromBuffer(
   content: Buffer,
   filters: DifFilters,
   maxFileSize: number,
+  shaderInfo?: ShaderInfo,
 ): { difs: PreparedDif[]; oversized: boolean } {
-  const difs: PreparedDif[] = [];
-  const main = matchedDif(displayPath, content, filters);
-  if (main) {
-    difs.push(main);
+  if (isDxil(content)) {
+    return {
+      difs: dxilDif(displayPath, content, filters, shaderInfo),
+      oversized: false,
+    };
   }
   const ppdb = embeddedPpdbDif(displayPath, content, filters, maxFileSize);
-  if (ppdb.dif) {
-    difs.push(ppdb.dif);
-  }
-  return { difs, oversized: ppdb.oversized };
+  return {
+    difs: [...matchedDifs(displayPath, content, filters), ...ppdb.difs],
+    oversized: ppdb.oversized,
+  };
 }
 
 /**
@@ -733,6 +841,7 @@ async function readMatchedDif(
   path: string,
   filters: DifFilters,
   maxFileSize: number,
+  shaderInfo?: ShaderInfo,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
   let content: Buffer;
   try {
@@ -741,7 +850,7 @@ async function readMatchedDif(
     log.debug(`Skipping unreadable file: ${path}`, err);
     return { difs: [], oversized: false };
   }
-  return difFromBuffer(path, content, filters, maxFileSize);
+  return difFromBuffer(path, content, filters, maxFileSize, shaderInfo);
 }
 
 /**
@@ -768,11 +877,7 @@ function difFromCandidateBuffer(
   if (content.length === 0) {
     return [];
   }
-  const header =
-    content.length > PEEK_HEADER_BYTES
-      ? new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES))
-      : new Uint8Array(content);
-  const format = peekFormat(header);
+  const format = peekBufferFormat(content);
   if (format === "unknown") {
     return [];
   }

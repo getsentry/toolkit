@@ -225,24 +225,6 @@ describe("resolveCommand.func()", () => {
     }
   });
 
-  test("--in @commit without an org context throws ContextError", async () => {
-    // No org resolved from the issue (e.g. bare numeric ID with no DSN cache hit)
-    resolveIssueSpy.mockResolvedValue({
-      org: undefined,
-      issue: makeMockIssue(),
-    });
-
-    const { context } = createMockContext();
-    const func = await resolveCommand.loader();
-    const err = await func
-      .call(context, { json: false, in: "@commit" }, "123456789")
-      .catch((e: Error) => e);
-
-    expect(err).toBeInstanceOf(Error);
-    expect(err.message).toContain("Organization");
-    expect(updateSpy).not.toHaveBeenCalled();
-  });
-
   test("JSON output includes resolved_in metadata", async () => {
     resolveIssueSpy.mockResolvedValue({
       org: "test-org",

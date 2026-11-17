@@ -8,8 +8,8 @@
  * for numeric fields.
  */
 
+import { tableCell } from "@sentry/toolkit-core/markdown";
 import { stringifyUnknown } from "../errors.js";
-import { escapeMarkdownCell } from "./markdown.js";
 import { appendUnitSuffix, formatNumber } from "./numbers.js";
 import type { Column } from "./table.js";
 
@@ -48,7 +48,7 @@ export function formatCellValue(
     }
     return formatNumber(value);
   }
-  return escapeMarkdownCell(stringifyUnknown(value));
+  return tableCell(stringifyUnknown(value));
 }
 
 /**

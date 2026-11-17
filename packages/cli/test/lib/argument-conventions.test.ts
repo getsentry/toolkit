@@ -34,7 +34,6 @@ import { resolveCommand as feedbackResolveCommand } from "../../src/commands/fee
 import { spamCommand as feedbackSpamCommand } from "../../src/commands/feedback/spam.js";
 import { unresolveCommand as feedbackUnresolveCommand } from "../../src/commands/feedback/unresolve.js";
 import { viewCommand as feedbackViewCommand } from "../../src/commands/feedback/view.js";
-import { initCommand } from "../../src/commands/init.js";
 import { deleteCommand as integrationDeleteCommand } from "../../src/commands/integration/delete.js";
 import { archiveCommand } from "../../src/commands/issue/archive.js";
 import { eventsCommand as issueEventsCommand } from "../../src/commands/issue/events.js";
@@ -64,6 +63,8 @@ import { downloadCommand as replayDownloadCommand } from "../../src/commands/rep
 import { viewCommand as replayViewCommand } from "../../src/commands/replay/view.js";
 import { listCommand as spanListCommand } from "../../src/commands/span/list.js";
 import { viewCommand as spanViewCommand } from "../../src/commands/span/view.js";
+import { deleteCommand as tokenDeleteCommand } from "../../src/commands/token/delete.js";
+import { listCommand as tokenListCommand } from "../../src/commands/token/list.js";
 import { logsCommand as traceLogsCommand } from "../../src/commands/trace/logs.js";
 import { viewCommand as traceViewCommand } from "../../src/commands/trace/view.js";
 import { listCommand as trialListCommand } from "../../src/commands/trial/list.js";
@@ -881,6 +882,7 @@ describe.each(RELEASE_COMMANDS)("%s", (_name, command) => {
 const ORG_ID_COMMANDS: readonly (readonly [string, unknown, string])[] = [
   ["agent-conversation view", agentConversationViewCommand, "conv-1"],
   ["integration delete", integrationDeleteCommand, "42"],
+  ["token delete", tokenDeleteCommand, "7"],
 ];
 
 /** The org and ID a command parsed from `[<org>/]<id>`. */
@@ -895,7 +897,7 @@ function parseOrgId(command: unknown, args: readonly string[]) {
   return { org: parsed.org.org, id: parsed.conversationId ?? parsed.id };
 }
 
-describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
+describe.each(ORG_ID_COMMANDS)("%s", (name, command, id) => {
   test("a bare ID auto-detects the org", () => {
     expect(parseOrgId(command, [id])).toEqual({ org: undefined, id });
   });
@@ -908,13 +910,18 @@ describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
     expect(parseOrgId(command, ["my-org", id])).toEqual({ org: "my-org", id });
   });
 
-  test("a project fails to parse: the ID is org-scoped", () => {
-    const error = parseError(command, [`my-org/web/${id}`]);
-    expect(error).toBeInstanceOf(ArgumentParseError);
-    expect((error as ArgumentParseError).exception).toBeInstanceOf(
-      ValidationError,
-    );
-  });
+  // A token name may hold a slash, so `my-org/web/7` names `web/7`
+  // (token/delete.test.ts)
+  test.skipIf(name === "token delete")(
+    "a project fails to parse: the ID is org-scoped",
+    () => {
+      const error = parseError(command, [`my-org/web/${id}`]);
+      expect(error).toBeInstanceOf(ArgumentParseError);
+      expect((error as ArgumentParseError).exception).toBeInstanceOf(
+        ValidationError,
+      );
+    },
+  );
 
   test("a missing ID fails to parse, before the command runs", () => {
     const error = parseError(command, []);
@@ -937,6 +944,7 @@ describe.each(ORG_ID_COMMANDS)("%s", (_name, command, id) => {
 const ORG_COMMANDS: readonly (readonly [string, unknown, readonly string[]])[] =
   [
     ["org view", orgViewCommand, []],
+    ["token list", tokenListCommand, []],
     ["trial list", trialListCommand, []],
     // The trial name comes first
     ["trial start", trialStartCommand, ["seer"]],
@@ -1011,15 +1019,6 @@ const TARGET_THEN_POSITIONALS: readonly {
   readonly url: boolean;
 }[] = [
   {
-    name: "init",
-    command: initCommand,
-    args: ["acme/", "./app"],
-    org: (parsed) => (parsed as { target: ParsedTarget }).target.org,
-    // Two targets, and no directory
-    invalid: ["acme/", "other/"],
-    url: true,
-  },
-  {
     name: "dashboard create",
     command: dashboardCreateCommand,
     args: ["acme/", "My", "Dashboard"],
@@ -1069,26 +1068,6 @@ describe.each(TARGET_THEN_POSITIONALS)("$name", (entry) => {
       expect(applyUrl).toHaveBeenCalledWith(SERVER);
     },
   );
-});
-
-describe("init target and directory", () => {
-  test.each([
-    [["./app"], { directory: "./app", target: { type: "auto-detect" } }],
-    [
-      ["acme/web"],
-      { target: { type: "explicit", org: "acme", project: "web" } },
-    ],
-    [["acme/", "./app"], { directory: "./app" }],
-    [
-      ["./app", "acme/"],
-      { directory: "./app", warning: expect.stringMatching(REVERSED) },
-    ],
-  ])("tells the target from the directory in %j", (args, expected) => {
-    const [bound] = bind(initCommand, args);
-    expect((bound as BoundPositional<unknown, unknown>).parsed).toMatchObject(
-      expected,
-    );
-  });
 });
 
 /** Commands that take an `<org>/<project>/<rule-id-or-name>` issue alert. */

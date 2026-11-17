@@ -1,47 +1,61 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
-import { ApiError } from "../../api-client/index";
+import { createApiError } from "../../api-client/index";
 import { fetchWithTimeout } from "../../internal/fetch-utils";
 import { defineTool } from "../../internal/tool-helpers/define";
-import { formatToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
+import { structuredResult } from "../../internal/tool-helpers/results";
+import {
+  buildSuggestedToolAction,
+  suggestedToolActionSchema,
+} from "../../internal/tool-helpers/suggested-actions";
+import { formatAvailableToolCallInstruction } from "../../internal/tool-helpers/tool-call-formatting";
 import { ParamSentryGuide } from "../../schema";
 import type { ServerContext } from "../../types";
 import type { SearchResponse } from "../types";
 
+// Snippets are search chunks, so only the top results carry one to keep the
+// response small when callers ask for up to 10 results.
+const MAX_SNIPPETS = 3;
+
+export const searchDocsOutputSchema = z.object({
+  query: z.string(),
+  guide: z.string().nullable(),
+  results: z.array(
+    z.object({
+      path: z.string().describe("Pass to get_doc as `path`."),
+      url: z.string(),
+      relevance: z.number().describe("Match score from 0 to 1."),
+      snippet: z
+        .string()
+        .nullable()
+        .describe(
+          `Matching excerpt, not the full page. Null after the first ${MAX_SNIPPETS} results.`,
+        ),
+    }),
+  ),
+  suggestedActions: z.array(suggestedToolActionSchema),
+});
+
 export default defineTool({
   name: "search_docs",
+  title: "Search Sentry Docs",
   skills: ["inspect", "docs"], // Docs is retained for legacy docs-only grants.
   requiredScopes: [],
-  description: ({ experimentalMode, availableToolNames, directToolNames }) =>
-    [
-      "Search Sentry documentation for SDK setup, instrumentation, and configuration guidance.",
-      "",
-      "Use this tool when you need to:",
-      "- Set up Sentry SDK or framework integrations (Django, Flask, Express, Next.js, etc.)",
-      "- Configure features like performance monitoring, error sampling, or release tracking",
-      "- Implement custom instrumentation (spans, transactions, breadcrumbs)",
-      "- Configure data scrubbing, filtering, or sampling rules",
-      "",
-      `Returns snippets only. ${formatToolCallInstruction({
-        toolName: "get_doc",
-        arguments: { path: "..." },
-        experimentalMode,
-        availableToolNames,
-        directToolNames,
-      })} to fetch full documentation content.`,
-      "",
-      "<examples>",
-      "```",
-      "search_docs(query='Django setup configuration SENTRY_DSN', guide='python/django')",
-      "search_docs(query='source maps webpack upload', guide='javascript/nextjs')",
-      "```",
-      "</examples>",
-      "",
-      "<hints>",
-      "- Use guide parameter to filter to specific technologies (e.g., 'javascript/nextjs')",
-      "- Include specific feature names like 'beforeSend', 'tracesSampleRate', 'SENTRY_DSN'",
-      "</hints>",
-    ].join("\n"),
+  description: ({ experimentalMode, availableToolNames, directToolNames }) => {
+    const getDocInstruction = formatAvailableToolCallInstruction({
+      toolName: "get_doc",
+      purpose: "to read a full page.",
+      experimentalMode,
+      availableToolNames,
+      directToolNames,
+    });
+    return [
+      "Search Sentry documentation for SDK setup, framework integrations, instrumentation, and configuration such as sampling, data scrubbing, and source maps. Returns matching page paths and snippets only.",
+      getDocInstruction,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  },
   inputSchema: {
     query: z
       .string()
@@ -55,7 +69,7 @@ export default defineTool({
         "Search query is too long. Please keep your query under 200 characters.",
       )
       .describe(
-        "The search query in natural language. Be specific about what you're looking for.",
+        "Natural-language query. Name the SDK option or feature when you know it, such as `beforeSend` or `tracesSampleRate`.",
       ),
     maxResults: z
       .number()
@@ -63,7 +77,7 @@ export default defineTool({
       .min(1)
       .max(10)
       .default(3)
-      .describe("Maximum number of results to return (1-10)"),
+      .describe("Maximum results to return."),
     guide: ParamSentryGuide.optional(),
   },
   annotations: {
@@ -71,14 +85,8 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
+  outputSchema: searchDocsOutputSchema,
   async handler(params, context: ServerContext) {
-    let output = `# Documentation Search Results\n\n`;
-    output += `**Query**: "${params.query}"\n`;
-    if (params.guide) {
-      output += `**Guide**: ${params.guide}\n`;
-    }
-    output += `\n`;
-
     // Determine the URL - use context.mcpUrl if available, otherwise default to production
     const host = context.mcpUrl || "https://mcp.sentry.dev";
     const searchUrl = new URL("/api/search", host);
@@ -95,6 +103,7 @@ export default defineTool({
           maxResults: params.maxResults,
           guide: params.guide,
         }),
+        signal: context.signal,
       },
       15000, // 15 second timeout
     );
@@ -107,15 +116,16 @@ export default defineTool({
 
       const errorMessage =
         errorData?.error || `Search failed with status ${response.status}`;
-      throw new ApiError(errorMessage, response.status);
+      throw createApiError(errorMessage, response.status, undefined, errorData);
     }
 
     const data = (await response.json()) as SearchResponse;
 
-    // Handle error in response
+    // The search endpoint reports failures with non-2xx statuses. An error in
+    // a 2xx body means it misbehaved, so surface it as a server error rather
+    // than an empty, success-shaped result.
     if ("error" in data && data.error) {
-      output += `**Error**: ${data.error}\n\n`;
-      return output;
+      throw createApiError(data.error, 502);
     }
 
     getActiveSpan()?.setAttribute(
@@ -123,32 +133,32 @@ export default defineTool({
       data.results.length,
     );
 
-    // Display results
-    if (data.results.length === 0) {
-      output += "No documentation found matching your query.\n\n";
-      return output;
-    }
+    const results = data.results.map((result, index) => ({
+      path: result.id,
+      url: result.url,
+      relevance: result.relevance,
+      snippet: index < MAX_SNIPPETS ? result.snippet : null,
+    }));
 
-    output += `Found ${data.results.length} match${data.results.length === 1 ? "" : "es"}\n\n`;
+    // The search route sends an empty path when a hit has no filename.
+    const topPath = results.find((result) => result.path)?.path;
+    const getDocAction = topPath
+      ? buildSuggestedToolAction({
+          toolName: "get_doc",
+          arguments: { path: topPath },
+          reason:
+            "Results are snippets; fetch the full page for the top match.",
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        })
+      : null;
 
-    output += `These are just snippets. ${formatToolCallInstruction({
-      toolName: "get_doc",
-      arguments: { path: "..." },
-      experimentalMode: context.experimentalMode ?? false,
-      availableToolNames: context.availableToolNames,
-      directToolNames: context.directToolNames,
-    })} to fetch the full content.\n\n`;
-
-    for (const [index, result] of data.results.entries()) {
-      output += `## ${index + 1}. ${result.url}\n\n`;
-      output += `**Path**: ${result.id}\n`;
-      output += `**Relevance**: ${(result.relevance * 100).toFixed(1)}%\n\n`;
-      if (index < 3) {
-        output += "**Matching Context**\n";
-        output += `> ${result.snippet.replace(/\n/g, "\n> ")}\n\n`;
-      }
-    }
-
-    return output;
+    return structuredResult({
+      query: params.query,
+      guide: params.guide ?? null,
+      results,
+      suggestedActions: getDocAction ? [getDocAction] : [],
+    });
   },
 });

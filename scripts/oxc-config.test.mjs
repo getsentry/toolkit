@@ -18,10 +18,10 @@ test("Oxlint retains its default correctness plugins alongside accessibility", (
 test("CLI command and color imports retain their wrapper boundary", () => {
   const { overrides } = readRootJson(".oxlintrc.json");
   const cli = overrides.find(({ files }) =>
-    files.includes("packages/cli/src/**/*.{ts,tsx}"),
+    files.includes("packages/cli/src/**/*.ts"),
   );
   const commands = overrides.find(({ files }) =>
-    files.includes("packages/cli/src/commands/**/*.{ts,tsx}"),
+    files.includes("packages/cli/src/commands/**/*.ts"),
   );
   const wrappers = overrides.find(({ files }) =>
     files.includes("packages/cli/src/lib/command.ts"),

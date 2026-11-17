@@ -1159,8 +1159,8 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan, mcpSpan] };
       const lines = formatSpanItem(payload, cfHeader);
       expect(lines).toHaveLength(2);
-      expect(stripAnsi(lines[0]!)).toContain("gen_ai");
-      expect(stripAnsi(lines[1]!)).toContain("mcp");
+      expect(stripAnsi(lines[0])).toContain("gen_ai");
+      expect(stripAnsi(lines[1])).toContain("mcp");
     });
 
     test("returns empty for missing items", () => {
@@ -1174,7 +1174,7 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan] };
       const lines = formatItem("span", payload, cfHeader, "span");
       expect(lines.length).toBeGreaterThanOrEqual(1);
-      expect(stripAnsi(lines[0]!)).toContain("gen_ai");
+      expect(stripAnsi(lines[0])).toContain("gen_ai");
     });
   });
 
@@ -1183,7 +1183,7 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan] };
       const lines = formatItemJson("span", payload, cfHeader);
       expect(lines).toHaveLength(1);
-      const parsed = JSON.parse(lines[0]!);
+      const parsed = JSON.parse(lines[0]);
       expect(parsed.type).toBe("span");
       expect(parsed.trace_id).toBe("a".repeat(32));
       expect(parsed.span_id).toBe("b".repeat(16));

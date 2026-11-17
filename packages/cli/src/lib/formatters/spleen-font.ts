@@ -86,14 +86,17 @@ const EXPECTED_GLYPH_ROWS =
  *
  * Source commit: 57f9219328c9f5873085320fe8bc8f7dd34b8791. Source BDF
  * SHA-256: b38b32a66920068965a3101f98071d310c5c74659fe86e55d346140770f8f6e8.
+ *
+ * Read on first use, not at import, so importing this module reads no file.
  */
-const GLYPH_ROWS = loadGlyphRows();
+let glyphRows: Uint8Array | undefined;
 
 /** Look up a Spleen glyph by character without parsing or rasterizing a font. */
 export function getSpleenGlyph(character: string): Uint8Array {
   const index = getGlyphIndex(character.codePointAt(0));
   const start = (index ?? QUESTION_MARK_INDEX) * SPLEEN_CELL_HEIGHT;
-  return GLYPH_ROWS.subarray(start, start + SPLEEN_CELL_HEIGHT);
+  glyphRows ??= loadGlyphRows();
+  return glyphRows.subarray(start, start + SPLEEN_CELL_HEIGHT);
 }
 
 /** Whether the embedded font can represent a character without substitution. */
@@ -115,13 +118,13 @@ function getGlyphIndex(codePoint: number | undefined): number | undefined {
 }
 
 function loadGlyphRows(): Uint8Array {
-  const glyphRows =
+  const rows =
     getSeaRawAsset(SPLEEN_FONT_ASSET_KEY) ??
     new Uint8Array(readFileSync(SPLEEN_FONT_ASSET_URL));
-  if (glyphRows.length !== EXPECTED_GLYPH_ROWS) {
+  if (rows.length !== EXPECTED_GLYPH_ROWS) {
     throw new Error(
-      `Invalid Spleen dashboard font asset: expected ${EXPECTED_GLYPH_ROWS} bytes, got ${glyphRows.length}`,
+      `Invalid Spleen dashboard font asset: expected ${EXPECTED_GLYPH_ROWS} bytes, got ${rows.length}`,
     );
   }
-  return glyphRows;
+  return rows;
 }

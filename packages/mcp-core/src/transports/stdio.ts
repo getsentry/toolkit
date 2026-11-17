@@ -21,7 +21,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { startNewTrace, startSpan } from "@sentry/core";
-import { LIB_VERSION } from "../version";
+import { getServerVersion } from "../version";
 
 export type StdioServerContext = {
   sentryHost?: string;
@@ -32,12 +32,13 @@ export type StdioServerContext = {
 function getStdioSpanAttributes(
   context: StdioServerContext,
 ): Record<string, string | boolean> {
+  const version = getServerVersion();
   const attributes: Record<string, string | boolean> = {
     "app.transport": "stdio",
-    "app.server.version": LIB_VERSION,
+    "app.server.version": version,
     "app.server.mode.experimental": context.experimentalMode ?? false,
     "network.transport": "pipe",
-    "service.version": LIB_VERSION,
+    "service.version": version,
   };
 
   if (context.sentryHost) {
@@ -62,9 +63,9 @@ export type StdioConnection = {
  * Context is already captured in tool handler closures by `buildServer()`;
  * it is only read here for telemetry attributes.
  */
-export async function startStdio<Context extends StdioServerContext>(
+export async function startStdio(
   server: McpServer,
-  context: Context,
+  context: StdioServerContext,
 ): Promise<StdioConnection> {
   const transport = new StdioServerTransport();
   await startNewTrace(async () => {

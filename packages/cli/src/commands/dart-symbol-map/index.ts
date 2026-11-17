@@ -5,6 +5,7 @@
  */
 
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { uploadCommand } from "./upload.js";
 
 export const dartSymbolMapRoute = buildRouteMap({
@@ -12,7 +13,7 @@ export const dartSymbolMapRoute = buildRouteMap({
     upload: uploadCommand,
   },
   docs: {
-    brief: "Work with Dart/Flutter symbol maps",
+    brief: topLevelBrief("dart-symbol-map"),
     fullDescription:
       "Upload Dart/Flutter obfuscation maps for deobfuscating Dart " +
       "exception types in Sentry.",

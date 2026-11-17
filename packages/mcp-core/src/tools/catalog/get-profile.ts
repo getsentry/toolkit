@@ -16,11 +16,31 @@ import {
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId, validateSlugOrId } from "../../utils/slug-validation";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import { hasProfileData } from "../support/profile/analyzer";
 import {
-  formatFlamegraphAnalysis,
-  formatFlamegraphComparison,
-} from "../support/profile/formatter";
+  buildFlamegraphAnalysis,
+  buildFlamegraphComparison,
+  getProfileOutputSchema,
+} from "../support/profile/flamegraph-output";
+
+/** Explain a missing analysis or comparison; omitted when every period has data. */
+function emptyProfileGuidance(periods: {
+  current: { period: string; hasData: boolean };
+  baseline?: { period: string; hasData: boolean };
+}): string | undefined {
+  const { current, baseline } = periods;
+  if (!current.hasData && (!baseline || !baseline.hasData)) {
+    return "No profiles were found for this transaction. Check the exact, case-sensitive transaction name with search_traces, try a longer period such as 30d, or confirm that profiling is enabled for the project.";
+  }
+  if (baseline && !baseline.hasData) {
+    return `The baseline period (${baseline.period}) has no profiles, so there is no comparison. Choose a different baseline, or analyze ${current.period} alone.`;
+  }
+  if (baseline && !current.hasData) {
+    return `The current period (${current.period}) has no profiles, so there is no comparison. Choose a longer current period, or analyze ${baseline.period} alone.`;
+  }
+  return undefined;
+}
 
 interface ResolvedProfileParams {
   organizationSlug: string;
@@ -79,65 +99,14 @@ function resolveProfileParams(params: {
 
 export default defineTool({
   name: "get_profile",
+  title: "Get Transaction Profile",
   skills: ["inspect"],
   requiredScopes: ["event:read"],
   requiredCapabilities: ["profiles"],
   hideInExperimentalMode: true, // Replaced by get_sentry_resource in experimental mode
 
-  description: [
-    "Analyze CPU profiling data to identify performance bottlenecks and detect regressions.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- User asks why a specific endpoint/transaction is slow",
-    "- User wants to understand where CPU time is spent",
-    "- User asks about performance bottlenecks",
-    "- User wants to compare performance between time periods",
-    "- User shares a Sentry profile URL",
-    "",
-    "RETURNS:",
-    "- Hot paths (call stacks consuming the most CPU time)",
-    "- Performance percentiles (p75, p95, p99) for each function",
-    "- User code vs library code breakdown",
-    "- Actionable recommendations for optimization",
-    "- Regression analysis when comparing periods",
-    "",
-    "<examples>",
-    "### Analyze from URL (with transaction name)",
-    "```",
-    "get_profile(",
-    "  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=abc123',",
-    "  transactionName='/api/users'",
-    ")",
-    "```",
-    "",
-    "### Analyze by transaction name",
-    "```",
-    "get_profile(",
-    "  organizationSlug='my-org',",
-    "  transactionName='/api/users',",
-    "  projectSlugOrId='backend'",
-    ")",
-    "```",
-    "",
-    "### Compare performance between periods",
-    "```",
-    "get_profile(",
-    "  organizationSlug='my-org',",
-    "  transactionName='/api/users',",
-    "  projectSlugOrId='backend',",
-    "  period='7d',",
-    "  compareAgainstPeriod='14d'",
-    ")",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use `focusOnUserCode: true` (default) to filter out library code",
-    "- High p99 relative to p75 indicates inconsistent performance",
-    "- Use compareAgainstPeriod to detect regressions over time",
-    "- Transaction names are case-sensitive",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Analyze aggregated CPU profiles (flamegraph) for one Sentry transaction: hot paths, per-function p75/p95/p99, user versus library code, and regressions against a baseline period. For one profile by ID or URL, use get_profile_details.",
 
   inputSchema: {
     // URL-based input (preferred)
@@ -146,7 +115,7 @@ export default defineTool({
       .url()
       .optional()
       .describe(
-        "Sentry profile URL. If provided, organization and project are extracted from URL. transactionName is still required.",
+        "Sentry profile URL; the organization and project come from it. transactionName is still required.",
       ),
 
     // Explicit params (fallback)
@@ -155,38 +124,40 @@ export default defineTool({
     projectSlugOrId: z
       .union([z.string().trim().superRefine(validateSlugOrId), z.number()])
       .optional()
-      .describe("Project slug or numeric ID"),
+      .describe(
+        "Project slug or numeric ID; required unless profileUrl has it.",
+      ),
     transactionName: z
       .string()
       .trim()
       .optional()
-      .describe("Transaction name (e.g., '/api/users', 'POST /graphql')"),
+      .describe(
+        "Exact, case-sensitive transaction name, such as /api/users or POST /graphql. Required; find names with search_traces.",
+      ),
 
     // Time params
-    period: ParamPeriod.default("7d").describe(
-      "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
-    ),
+    period: ParamPeriod.default("7d"),
 
     // Comparison mode
     compareAgainstPeriod: ParamPeriod.optional().describe(
-      "Compare against this baseline profiling time window. Enables regression detection.",
+      "Baseline time window to compare against, for regression detection.",
     ),
 
     // Analysis options
     focusOnUserCode: z
       .boolean()
       .default(true)
-      .describe(
-        "Show only user code (is_application: true). Set to false to include library code.",
-      ),
+      .describe("Show only application code; false includes library code."),
     maxHotPaths: z
       .number()
       .int()
       .min(1)
       .max(20)
       .default(10)
-      .describe("Number of hot paths to display (1-20, default: 10)"),
+      .describe("Number of hot paths to show."),
   },
+
+  outputSchema: getProfileOutputSchema,
 
   annotations: {
     readOnlyHint: true,
@@ -254,6 +225,14 @@ export default defineTool({
     setTags(profileContext);
     setAttributes(profileContext);
 
+    const baseOutput = {
+      transactionName,
+      projectId: String(projectId),
+      period: params.period,
+      baselinePeriod: params.compareAgainstPeriod ?? null,
+      focusOnUserCode: params.focusOnUserCode,
+    };
+
     // Comparison mode: compare two time periods
     if (params.compareAgainstPeriod) {
       // Fetch both flamegraphs in parallel
@@ -274,56 +253,26 @@ export default defineTool({
 
       const hasBaselineData = hasProfileData(baselineFlamegraph);
       const hasCurrentData = hasProfileData(currentFlamegraph);
+      const guidance = emptyProfileGuidance({
+        current: { period: params.period, hasData: hasCurrentData },
+        baseline: {
+          period: params.compareAgainstPeriod,
+          hasData: hasBaselineData,
+        },
+      });
 
-      // Handle missing data cases
-      if (!hasBaselineData && !hasCurrentData) {
-        return [
-          `# Profile Comparison: ${transactionName}`,
-          "",
-          "## No Profile Data Found",
-          "",
-          `No profiling data found for transaction **${transactionName}** in either time period.`,
-          "",
-          "**Possible reasons:**",
-          "- Transaction name doesn't match exactly (names are case-sensitive)",
-          "- No profiles collected for this transaction",
-          "- Profiling may not be enabled for this project",
-          "",
-          "**Suggestions:**",
-          "- Verify the exact transaction name using search_traces",
-          "- Check if profiling is enabled for this project",
-        ].join("\n");
-      }
-
-      if (!hasBaselineData) {
-        return [
-          `# Profile Comparison: ${transactionName}`,
-          "",
-          "## Insufficient Baseline Data",
-          "",
-          `No profiling data found for the baseline period (${params.compareAgainstPeriod}).`,
-          `Current period (${params.period}) has data.`,
-          "",
-          "**Suggestion:** Try a shorter baseline period or analyze the current period only by removing compareAgainstPeriod.",
-        ].join("\n");
-      }
-
-      if (!hasCurrentData) {
-        return [
-          `# Profile Comparison: ${transactionName}`,
-          "",
-          "## Insufficient Current Data",
-          "",
-          `No profiling data found for the current period (${params.period}).`,
-          `Baseline period (${params.compareAgainstPeriod}) has data.`,
-          "",
-          "**Suggestion:** The transaction may not have been executed recently. Try a longer current period.",
-        ].join("\n");
-      }
-
-      // Format and return the comparison
-      return formatFlamegraphComparison(baselineFlamegraph, currentFlamegraph, {
-        focusOnUserCode: params.focusOnUserCode,
+      return structuredResult({
+        ...baseOutput,
+        hasCurrentData,
+        hasBaselineData,
+        analysis: null,
+        comparison:
+          hasBaselineData && hasCurrentData
+            ? buildFlamegraphComparison(baselineFlamegraph, currentFlamegraph, {
+                focusOnUserCode: params.focusOnUserCode,
+              })
+            : null,
+        ...(guidance ? { guidance } : {}),
       });
     }
 
@@ -334,33 +283,23 @@ export default defineTool({
       transactionName,
       statsPeriod: params.period,
     });
+    const hasCurrentData = hasProfileData(flamegraph);
+    const guidance = emptyProfileGuidance({
+      current: { period: params.period, hasData: hasCurrentData },
+    });
 
-    // Check if we got data
-    if (!hasProfileData(flamegraph)) {
-      return [
-        `# Profile Analysis: ${transactionName}`,
-        "",
-        "## No Profile Data Found",
-        "",
-        `No profiling data found for transaction **${transactionName}** in the last ${params.period}.`,
-        "",
-        "**Possible reasons:**",
-        "- Transaction name doesn't match exactly (names are case-sensitive)",
-        "- No profiles collected for this transaction in the time period",
-        "- Profiling may not be enabled for this project",
-        "- Transaction may not have been executed recently",
-        "",
-        "**Suggestions:**",
-        "- Verify the exact transaction name using search_traces",
-        "- Try a longer time period (e.g., '30d')",
-        "- Check if profiling is enabled for this project",
-      ].join("\n");
-    }
-
-    // Format and return the analysis
-    return formatFlamegraphAnalysis(flamegraph, {
-      focusOnUserCode: params.focusOnUserCode,
-      maxHotPaths: params.maxHotPaths,
+    return structuredResult({
+      ...baseOutput,
+      hasCurrentData,
+      hasBaselineData: null,
+      analysis: hasCurrentData
+        ? buildFlamegraphAnalysis(flamegraph, {
+            focusOnUserCode: params.focusOnUserCode,
+            maxHotPaths: params.maxHotPaths,
+          })
+        : null,
+      comparison: null,
+      ...(guidance ? { guidance } : {}),
     });
   },
 });

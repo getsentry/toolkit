@@ -39,6 +39,9 @@ async function getAvailableTools(): Promise<string[]> {
       SENTRY_AUTH_TOKEN: "mocked-access-token",
       SENTRY_CONFIG_DIR: configDir,
       SENTRY_HOST: "sentry.io",
+      // Evals must not send CLI telemetry. This also skips the lazy
+      // `require("../telemetry.js")` in the CLI, which fails from source.
+      SENTRY_CLI_NO_TELEMETRY: "1",
     },
   });
 
@@ -145,7 +148,7 @@ CRITICAL: The expected tools represent the actual realistic behavior for this sp
  * ```typescript
  * import { ToolPredictionScorer } from './utils/toolPredictionScorer';
  * import { NoOpTaskRunner } from './utils/runner';
- * import { describeEval } from 'vitest-evals';
+ * import { describeEval } from 'vitest-evals/legacy';
  *
  * describeEval("Sentry issue search", {
  *   data: async () => [

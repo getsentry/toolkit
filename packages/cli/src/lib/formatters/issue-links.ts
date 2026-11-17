@@ -1,12 +1,13 @@
 /** Human-readable results for linking and unlinking existing external issues. */
 
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { ExternalIssueLinkResult } from "../issue-links.js";
-import { renderMarkdown, safeCodeSpan } from "./markdown.js";
+import { renderMarkdown } from "./markdown.js";
 
 /** Render the association outcome without implying that either issue was resolved. */
 export function formatIssueLinkResult(result: ExternalIssueLinkResult): string {
-  const external = safeCodeSpan(result.externalIssue.url);
-  const issue = safeCodeSpan(`${result.org}/${result.issueId}`);
+  const external = inlineCode(result.externalIssue.url);
+  const issue = inlineCode(`${result.org}/${result.issueId}`);
   if (result.dryRun) {
     const needsChange =
       result.action === "link" ? !result.linked : result.linked;

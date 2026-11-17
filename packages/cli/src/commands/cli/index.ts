@@ -1,4 +1,5 @@
 import { buildRouteMap } from "../../lib/route-map.js";
+import { topLevelBrief } from "../../top-level-briefs.js";
 import { completionCommand } from "./completion.js";
 import { defaultsCommand } from "./defaults.js";
 import { feedbackCommand } from "./feedback.js";
@@ -20,7 +21,7 @@ export const cliRoute = buildRouteMap({
     upgrade: upgradeCommand,
   },
   docs: {
-    brief: "CLI-related commands",
+    brief: topLevelBrief("cli"),
     fullDescription:
       "Commands for managing the Sentry CLI itself, including configuring defaults, " +
       "sending feedback, upgrading to newer versions, and repairing the local database.",

@@ -138,7 +138,7 @@ describe("search route", () => {
           body: JSON.stringify({ query: "test" }),
         },
         {
-          AI: null as unknown as Ai,
+          AI: null,
         },
       );
 

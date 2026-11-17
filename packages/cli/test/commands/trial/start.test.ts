@@ -261,7 +261,7 @@ describe("trial start command", () => {
         canTrial: true,
         isTrial: false,
         planDetails: { name: "Developer" },
-      } as CustomerTrialInfo);
+      });
 
     const { context } = createMockContext();
     const func = await startCommand.loader();

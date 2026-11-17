@@ -16,7 +16,13 @@ import { resetAccountScopes } from "../../../src/lib/db/account-scope.js";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { getEnvTokenHost } from "../../../src/lib/env-token-host.js";
 import { setUserInfo } from "../../../src/lib/db/user.js";
-import { AuthError, ResolutionError } from "../../../src/lib/errors.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- vi.spyOn needs the module namespace
+import * as apiClient from "../../../src/lib/api-client.js";
+import {
+  AuthError,
+  ResolutionError,
+  TimeoutError,
+} from "../../../src/lib/errors.js";
 import {
   mintSntrysToken,
   resetHostScopingState,
@@ -51,7 +57,7 @@ type Org = { id: string; slug: string; name: string; regionUrl: string };
 
 /** Orgs each token can see; a token missing here gets a 401. */
 let orgsByToken: Record<string, Org[]>;
-/** The `/auth/` user of each token; a token missing here gets a 401. */
+/** The `/users/me/` user of each token; a token missing here gets a 401. */
 let usersByToken: Record<string, { id: string; email: string; name: string }>;
 /** `<origin> <token>` for every org-list request, to check token routing. */
 let requests: string[];
@@ -68,12 +74,12 @@ beforeEach(async () => {
   usersByToken = {};
   requests = [];
   originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const url = new URL(req.url);
     const token = req.headers.get("Authorization")?.replace(/^Bearer /, "");
-    if (url.pathname === "/api/0/auth/") {
-      requests.push(`${url.origin} ${token} /auth/`);
+    if (url.pathname === "/api/0/users/me/") {
+      requests.push(`${url.origin} ${token} /users/me/`);
       const user = token ? usersByToken[token] : undefined;
       return user
         ? Response.json(user)
@@ -95,7 +101,7 @@ beforeEach(async () => {
         links: { organizationUrl: o.regionUrl, regionUrl: o.regionUrl },
       })),
     );
-  }) as typeof globalThis.fetch;
+  };
 });
 
 afterEach(() => {
@@ -153,7 +159,7 @@ async function runListHuman(filter?: string): Promise<string> {
 function slugsWithAccount(entries: Record<string, unknown>[]): string[][] {
   return entries.map((e) => [
     e.slug as string,
-    ((e.account as { email?: string } | undefined)?.email ?? "") as string,
+    (e.account as { email?: string } | undefined)?.email ?? "",
   ]);
 }
 
@@ -260,6 +266,25 @@ describe("org list across stored accounts", () => {
     expect(slugsWithAccount(entries)).toEqual([["alpha", "jane@example.com"]]);
     // Only the rejected account's credentials are touched.
     expect(getAuthToken()).toBe("saas-token");
+  });
+
+  test("an account whose server times out is skipped; the others are still listed", async () => {
+    addAccount("slow-token", ACME, "jane@acme.com");
+    addAccount("saas-token", SAAS, "jane@example.com");
+    orgsByToken["saas-token"] = [org("alpha")];
+    const listOrgs = apiClient.listOrganizationsUncached;
+    vi.spyOn(apiClient, "listOrganizationsUncached").mockImplementation(
+      (...args) => {
+        if (getAuthToken() === "slow-token") {
+          throw new TimeoutError("Request timed out after 30s.");
+        }
+        return listOrgs(...args);
+      },
+    );
+
+    const entries = await runList();
+
+    expect(slugsWithAccount(entries)).toEqual([["alpha", "jane@example.com"]]);
   });
 
   test("fails when every account fails", async () => {
@@ -529,7 +554,7 @@ describe("org list with an env token", () => {
     // Never sent to a stored account's server, nor stored tokens to SaaS
     // on its behalf.
     expect(requests.filter((r) => r.includes("env-token")).sort()).toEqual(
-      [`${SAAS} env-token`, `${SAAS} env-token /auth/`].sort(),
+      [`${SAAS} env-token`, `${SAAS} env-token /users/me/`].sort(),
     );
     expect(requests).toContain(`${ACME} acme-token`);
   });

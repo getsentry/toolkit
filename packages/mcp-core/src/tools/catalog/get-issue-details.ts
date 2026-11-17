@@ -9,32 +9,43 @@ import type {
   Event,
   ExternalIssueList,
   Issue,
+  SourceMapDebug,
   Trace,
-  TransactionEvent,
 } from "../../api-client/types";
 import { ConfigurationError, UserInputError } from "../../errors";
 import type { CodeLocation } from "../../internal/code-location";
+import { buildIssueSideQuests } from "../../internal/issue-side-quests";
+import { sideQuestsSchema } from "../../internal/side-quests";
 import {
-  buildIssueResponseNotes,
   dedupeReplayIds,
-  formatEventOutput,
+  getMetricAlertContext,
+  getMetricAlertFollowUpCalls,
   getReplayIdFromEvent,
   getSeerActionabilityLabel,
   getSuspectCommit,
   isPerformanceIssueType,
   isSupportedEventType,
-  stripReplayMetadata,
+  reportUnsupportedEventType,
 } from "../../internal/formatting";
-import type { AIConversationReference } from "../../internal/tool-helpers/ai-conversation-actions";
+import {
+  type AIConversationReference,
+  getAIConversationSuggestedActions,
+} from "../../internal/tool-helpers/ai-conversation-actions";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   assertIssueWithinProjectConstraint,
-  formatIssueOutput,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import { structuredResult } from "../../internal/tool-helpers/results";
+import type { ToolSession } from "../../internal/tool-helpers/tool-call-formatting";
+import {
+  MAX_SUGGESTED_ACTIONS,
+  type SuggestedToolAction,
+  buildSuggestedToolAction,
+  suggestedToolActionSchema,
+} from "../../internal/tool-helpers/suggested-actions";
 import {
   getAutofixArtifactSummaries,
   getStatusDisplayName,
@@ -44,12 +55,24 @@ import {
   ParamIssueShortId,
   ParamIssueUrl,
   ParamOrganizationSlug,
+  ParamPackageNames,
   ParamRegionUrl,
 } from "../../schema";
 import { logError, logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { resolveCodeLocation } from "../support/code-location";
+import {
+  buildIssueEventPayload,
+  getEventTimestamp,
+  issueEventSchema,
+} from "../support/issue-event-payload";
+import { maybeFetchSourceMapDebug } from "../support/source-map-debug";
+import {
+  nonEmptyString,
+  type StructuredThreadSummary,
+} from "../support/structured-stacktrace";
+import type { StructuredToolOutput } from "../types";
 
 // mirrors MAX_DISPLAY_REPLAYS in the markdown output
 const MAX_RELATED_REPLAYS = 5;
@@ -62,92 +85,89 @@ const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
  *
  * Every field is mapped explicitly rather than spread from an api response, so a passthrough
  * upstream schema cannot leak backend-only fields into the public interface.
- *
- * `event.body` is this server's own markdown rendering of the event.
  */
 export const getIssueDetailsOutputSchema = z.object({
   issue: z.object({
     shortId: z.string(),
     title: z.string(),
-    culprit: z.string().nullish(),
-    firstSeen: z.string().nullish(),
-    lastSeen: z.string().nullish(),
-    occurrences: z.number().nullish(),
-    usersImpacted: z.number().nullish(),
-    status: z.string().nullish(),
-    substatus: z.string().nullish(),
-    assignedTo: z.string().nullish(),
-    issueType: z.string().nullish(),
-    issueCategory: z.string().nullish(),
-    seerActionability: z.string().nullish(),
-    platform: z.string().nullish(),
-    project: z.string().nullish(),
+    culprit: z.string().nullable(),
+    firstSeen: z.string().nullable(),
+    lastSeen: z.string().nullable(),
+    occurrences: z.number().nullable(),
+    usersImpacted: z.number().nullable(),
+    status: z.string().nullable(),
+    substatus: z.string().nullable(),
+    assignedTo: z.string().nullable(),
+    issueType: z.string().nullable(),
+    issueCategory: z.string().nullable(),
+    seerActionability: z.string().nullable(),
+    platform: z.string().nullable(),
+    project: z.string().nullable(),
     url: z.string(),
-    // metadata fields the markdown surfaces for specific issue types
-    location: z.string().nullish(),
-    queryPattern: z.string().nullish(),
+    // metadata fields that only performance issues carry
+    location: z.string().nullable(),
+    queryPattern: z.string().nullable(),
   }),
-  event: z.object({
-    id: z.string(),
-    type: z.string().nullish(),
-    occurredAt: z.string().nullish(),
-    message: z.string().nullish(),
-    body: z.string(),
-  }),
+  event: issueEventSchema,
   seer: z
     .object({
-      status: z.string().nullish(),
-      rootCause: z.string().nullish(),
-      solution: z.string().nullish(),
+      status: z.string().nullable(),
+      rootCause: z.string().nullable(),
+      solution: z.string().nullable(),
+      failureReason: z
+        .string()
+        .nullable()
+        .describe(
+          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
+        ),
     })
-    .nullish(),
+    .nullable(),
   codeLocation: z
     .object({
-      repository: z.string().nullish(),
-      path: z.string().nullish(),
-      line: z.number().nullish(),
+      repository: z.string().nullable(),
+      path: z.string().nullable(),
+      line: z.number().nullable(),
       url: z.string(),
     })
-    .nullish(),
+    .nullable(),
   suspectCommit: z
     .object({
       id: z.string(),
-      message: z.string().nullish(),
-      author: z.string().nullish(),
-      suspectCommitType: z.string().nullish(),
+      message: z.string().nullable(),
+      author: z.string().nullable(),
+      suspectCommitType: z.string().nullable(),
     })
-    .nullish(),
+    .nullable(),
   replays: z
     .object({
-      attached: z.string().nullish(),
+      attached: z.string().nullable(),
       related: z.array(z.string()),
       // the full count, since `related` is capped
       relatedCount: z.number(),
     })
-    .nullish(),
+    .nullable(),
   externalIssues: z
     .array(
       z.object({
-        id: z.string(),
-        issueId: z.string(),
         serviceType: z.string(),
         displayName: z.string(),
         webUrl: z.string(),
       }),
     )
-    .nullish(),
+    .nullable(),
   aiConversations: z
     .array(
       z.object({
         conversationId: z.string(),
-        spanId: z.string().nullish(),
+        spanId: z.string().nullable(),
       }),
     )
-    .nullish(),
-  responseNotes: z.array(z.string()),
+    .nullable(),
+  suggestedActions: z.array(suggestedToolActionSchema),
+  sideQuests: sideQuestsSchema,
 });
 
-export type GetIssueDetailsPayload = z.infer<
+export type GetIssueDetailsPayload = z.output<
   typeof getIssueDetailsOutputSchema
 >;
 
@@ -156,19 +176,6 @@ export type GetIssueDetailsPayload = z.infer<
  * The attached id lives on the event rather than in the related list, so passing that list
  * through alone loses the replay for an issue whose only one is attached.
  */
-/**
- * ``dateCreated`` sits on the error, default, generic and csp event types rather than the base
- * union, and the markdown path normalizes it to ISO. Read it the same way and tolerate a bad value.
- */
-function eventOccurredAt(event: Event): string | null {
-  const raw = "dateCreated" in event ? event.dateCreated : null;
-  if (typeof raw !== "string") {
-    return null;
-  }
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
 function buildReplays(
   event: Event,
   relatedReplayIds?: string[],
@@ -188,31 +195,8 @@ function buildReplays(
   };
 }
 
-type IssueDetailsArgs = Parameters<typeof formatIssueOutput>[0];
-
-function issueDetailsResult(args: IssueDetailsArgs) {
-  if (args.experimentalMode && isSupportedEventType(args.event)) {
-    return structuredResult(buildIssueDetailsPayload(args));
-  }
-  return formatIssueOutput(args);
-}
-
-function buildIssueDetailsPayload({
-  organizationSlug,
-  issue,
-  event,
-  apiService,
-  autofixState,
-  performanceTrace,
-  externalIssues,
-  relatedReplayIds,
-  aiConversations,
-  codeLocation,
-  committers,
-  experimentalMode,
-  availableToolNames,
-  directToolNames,
-}: {
+type IssueDetailsArgs = {
+  packageNames?: string[];
   organizationSlug: string;
   issue: Issue;
   event: Event;
@@ -224,166 +208,318 @@ function buildIssueDetailsPayload({
   aiConversations?: AIConversationReference[];
   codeLocation?: CodeLocation;
   committers?: CommitterList;
+  sourceMapDebug?: SourceMapDebug;
   experimentalMode?: boolean;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
-}): GetIssueDetailsPayload {
+};
+
+function issueDetailsResult(
+  args: IssueDetailsArgs,
+): StructuredToolOutput<GetIssueDetailsPayload> {
+  if (!isSupportedEventType(args.event)) {
+    reportUnsupportedEventType(args);
+  }
+  return structuredResult(buildIssueDetailsPayload(args));
+}
+
+/**
+ * The failure reason the markdown summary explains: only out-of-credits, and only once the run
+ * has errored. Other reasons are Seer internals with no guidance to give.
+ */
+function getSeerFailureReason(
+  autofix: NonNullable<AutofixRunState["autofix"]>,
+): string | null {
+  return autofix.status === "error" &&
+    autofix.failure_reason === "out_of_credits"
+    ? "out_of_credits"
+    : null;
+}
+
+function buildIssueDetailsPayload({
+  packageNames,
+  organizationSlug,
+  issue,
+  event,
+  apiService,
+  autofixState,
+  performanceTrace,
+  externalIssues,
+  relatedReplayIds,
+  aiConversations,
+  codeLocation,
+  committers,
+  sourceMapDebug,
+  experimentalMode,
+  availableToolNames,
+  directToolNames,
+}: IssueDetailsArgs): GetIssueDetailsPayload {
   const autofix = autofixState?.autofix;
   // the run's own artifacts, not the whole state: an AutofixRunState carries every step and
   // would dwarf the rest of the payload
   const summaries = autofix ? getAutofixArtifactSummaries(autofix) : undefined;
   const isPerf = isPerformanceIssueType(issue) && !!issue.metadata;
+  const suspectCommit = getSuspectCommit(committers);
+  const session = {
+    experimentalMode: experimentalMode ?? false,
+    availableToolNames,
+    directToolNames,
+  };
+  const sideQuests = buildIssueSideQuests({ event, sourceMapDebug }, session);
+  const eventPayload = buildIssueEventPayload({
+    event,
+    performanceTrace,
+    packageNames,
+  });
 
   return {
     issue: {
       shortId: issue.shortId,
       // a performance issue's metadata carries the better title, as the markdown path prefers
-      title: (isPerf ? issue.metadata?.title : null) || issue.title,
-      culprit: issue.culprit,
-      firstSeen: issue.firstSeen,
-      lastSeen: issue.lastSeen,
-      occurrences: issue.count == null ? null : Number(issue.count),
-      usersImpacted: issue.userCount == null ? null : Number(issue.userCount),
-      status: issue.status,
-      substatus: issue.substatus,
-      assignedTo:
+      title:
+        (isPerf ? nonEmptyString(issue.metadata?.title) : null) ?? issue.title,
+      culprit: nonEmptyString(issue.culprit),
+      firstSeen: nonEmptyString(issue.firstSeen),
+      lastSeen: nonEmptyString(issue.lastSeen),
+      occurrences: toCount(issue.count),
+      usersImpacted: toCount(issue.userCount),
+      status: nonEmptyString(issue.status),
+      substatus: nonEmptyString(issue.substatus),
+      assignedTo: nonEmptyString(
         typeof issue.assignedTo === "string"
           ? issue.assignedTo
           : issue.assignedTo?.name,
-      issueType: issue.issueType,
-      issueCategory: issue.issueCategory,
+      ),
+      issueType: nonEmptyString(issue.issueType),
+      issueCategory: nonEmptyString(issue.issueCategory),
       seerActionability:
         issue.seerFixabilityScore == null
           ? null
           : getSeerActionabilityLabel(issue.seerFixabilityScore),
-      platform: issue.platform,
-      project: issue.project?.name,
+      platform: nonEmptyString(issue.platform),
+      project: nonEmptyString(issue.project.name),
       url: apiService.getIssueUrl(organizationSlug, issue.shortId),
       // metadata.value is a query pattern only for a performance issue; on an error it is the
       // exception message, so reading it unconditionally would misname the error text
-      location: isPerf ? issue.metadata?.location : null,
-      queryPattern: isPerf ? issue.metadata?.value : null,
+      location: isPerf ? nonEmptyString(issue.metadata?.location) : null,
+      queryPattern: isPerf ? nonEmptyString(issue.metadata?.value) : null,
     },
-    event: {
-      id: event.id,
-      type: typeof event.type === "string" ? event.type : null,
-      occurredAt: eventOccurredAt(event),
-      message:
-        typeof event.message === "string" && event.message.length > 0
-          ? event.message
-          : null,
-      // replays are their own field below
-      body: formatEventOutput(stripReplayMetadata(event), { performanceTrace }),
-    },
+    event: eventPayload,
     seer: autofix
       ? {
-          status: getStatusDisplayName(autofix.status),
-          rootCause: summaries?.rootCause,
-          solution: summaries?.solution,
+          status: nonEmptyString(getStatusDisplayName(autofix.status)),
+          rootCause: nonEmptyString(summaries?.rootCause),
+          solution: nonEmptyString(summaries?.solution),
+          failureReason: getSeerFailureReason(autofix),
         }
       : null,
     codeLocation: codeLocation
       ? {
-          repository: codeLocation.repository,
-          path: codeLocation.path,
-          line: codeLocation.line,
+          repository: codeLocation.repository ?? null,
+          path: codeLocation.path ?? null,
+          line: codeLocation.line ?? null,
           url: codeLocation.url,
         }
       : null,
     replays: buildReplays(event, relatedReplayIds),
-    suspectCommit: getSuspectCommit(committers),
+    suspectCommit: suspectCommit
+      ? {
+          id: suspectCommit.id,
+          message: nonEmptyString(suspectCommit.message),
+          author: nonEmptyString(suspectCommit.author),
+          suspectCommitType: nonEmptyString(suspectCommit.suspectCommitType),
+        }
+      : null,
     // mapped field by field, not handed through: several upstream schemas are passthrough, and
-    // structuredContent is a product contract rather than a view of the api response
+    // the link's own ids and the Sentry group id are integration plumbing, not follow-up handles
     externalIssues: externalIssues?.length
-      ? externalIssues.map((issue) => ({
-          id: String(issue.id),
-          issueId: String(issue.issueId),
-          serviceType: issue.serviceType,
-          displayName: issue.displayName,
-          webUrl: issue.webUrl,
+      ? externalIssues.map((externalIssue) => ({
+          serviceType: externalIssue.serviceType,
+          displayName: externalIssue.displayName,
+          webUrl: externalIssue.webUrl,
         }))
       : null,
     aiConversations: aiConversations?.length
       ? aiConversations.map((conversation) => ({
           conversationId: conversation.conversationId,
-          spanId: conversation.spanId,
+          spanId: conversation.spanId ?? null,
         }))
       : null,
-    responseNotes: buildIssueResponseNotes({
+    suggestedActions: buildIssueSuggestedActions({
       organizationSlug,
       issue,
       event,
       apiService,
       aiConversations,
-      experimentalMode,
-      availableToolNames,
-      directToolNames,
+      otherThread: findOtherThread(eventPayload.threads),
+      session,
     }),
+    // omitted, not empty, when there are none
+    ...(sideQuests && { sideQuests }),
   };
+}
+
+/**
+ * The first thread with frames that neither crashed nor is current, as a
+ * `thread` selector. A thread without frames has no stacktrace to fetch.
+ */
+function findOtherThread(
+  threads: StructuredThreadSummary[] | null,
+): number | string | null {
+  const thread = threads?.find(
+    (candidate) =>
+      !candidate.crashed && !candidate.current && candidate.frameCount > 0,
+  );
+  return thread?.id ?? thread?.name ?? null;
+}
+
+function toCount(value: unknown): number | null {
+  if (value == null || value === "") {
+    return null;
+  }
+  const count = Number(value);
+  return Number.isFinite(count) ? count : null;
+}
+
+/**
+ * Follow-up calls, most specific first: a metric issue's monitor and query, the agent
+ * conversations in the trace, the trace itself, another thread's stacktrace, and the
+ * breadcrumbs.
+ */
+function buildIssueSuggestedActions({
+  organizationSlug,
+  issue,
+  event,
+  apiService,
+  aiConversations,
+  otherThread,
+  session,
+}: {
+  organizationSlug: string;
+  issue: Issue;
+  event: Event;
+  apiService: SentryApiService;
+  aiConversations?: AIConversationReference[];
+  otherThread: number | string | null;
+  session: ToolSession;
+}): SuggestedToolAction[] {
+  const candidates: Array<SuggestedToolAction | null> = [];
+  const metricAlertContext = getMetricAlertContext(event);
+
+  if (metricAlertContext) {
+    const calls = getMetricAlertFollowUpCalls({
+      organizationSlug,
+      issue,
+      event,
+      context: metricAlertContext,
+    });
+    if (calls.monitor) {
+      candidates.push(
+        buildSuggestedToolAction({
+          ...calls.monitor,
+          reason: "Inspect the Metric Monitor and its connected Alerts.",
+          ...session,
+        }),
+      );
+    }
+    if (calls.search) {
+      candidates.push(
+        buildSuggestedToolAction({
+          toolName: calls.search.toolName,
+          arguments: calls.search.arguments,
+          reason: `Search the data the monitor query matched; focus on ${calls.search.window.start.toISOString()} to ${calls.search.window.end.toISOString()}.`,
+          ...session,
+        }),
+      );
+    }
+  }
+
+  if (aiConversations?.length) {
+    candidates.push(
+      ...getAIConversationSuggestedActions({
+        organizationSlug,
+        aiConversations,
+        ...session,
+      }),
+    );
+  }
+
+  // a metric issue's trace belongs to the monitor evaluation, not the data that breached
+  const traceId = getEventTraceId(event);
+  if (traceId && TRACE_ID_PATTERN.test(traceId) && !metricAlertContext) {
+    candidates.push(
+      buildSuggestedToolAction({
+        toolName: "get_trace_details",
+        arguments: { organizationSlug, traceId },
+        reason: "Inspect the distributed trace this event belongs to.",
+        ...session,
+      }),
+    );
+  }
+
+  // event.threads lists them, but only get_event_stacktrace returns another thread's frames
+  if (otherThread !== null) {
+    candidates.push(
+      buildSuggestedToolAction({
+        toolName: "get_event_stacktrace",
+        arguments: {
+          organizationSlug,
+          issueId: issue.shortId,
+          eventId: event.id,
+          thread: otherThread,
+        },
+        reason:
+          "Fetch the full stacktrace of a thread that did not crash; pick another from event.threads by id or name.",
+        ...session,
+      }),
+    );
+  }
+
+  candidates.push(
+    buildSuggestedToolAction({
+      toolName: "get_issue_breadcrumbs",
+      arguments: {
+        issueUrl: apiService.getIssueUrl(organizationSlug, issue.shortId),
+      },
+      reason: "Read the breadcrumb trail leading up to this event.",
+      ...session,
+    }),
+  );
+
+  return candidates
+    .filter((action): action is SuggestedToolAction => action !== null)
+    .slice(0, MAX_SUGGESTED_ACTIONS);
 }
 
 export default defineTool({
   name: "get_issue_details",
+  title: "Get Issue Details",
   skills: ["inspect", "triage", "seer"], // Available in inspect, triage, and seer skills
   requiredScopes: ["event:read"],
-  description: [
-    "Get detailed information about a specific Sentry issue by ID.",
-    "",
-    "USE THIS TOOL WHEN USERS:",
-    "- Provide a specific issue ID (e.g., 'CLOUDFLARE-MCP-41', 'PROJECT-123')",
-    "- Ask to 'explain [ISSUE-ID]', 'tell me about [ISSUE-ID]'",
-    "- Want details/stacktrace/analysis for a known issue",
-    "- Want the suspect commit's SHA, message, author, and source when available",
-    "- Provide a Sentry issue URL",
-    "",
-    "DO NOT USE for:",
-    "- General searching or listing issues (use search_issues)",
-    "",
-    "TRIGGER PATTERNS:",
-    "- 'Explain ISSUE-123' → use get_issue_details",
-    "- 'Tell me about PROJECT-456' → use get_issue_details",
-    "- 'What happened in [issue URL]' → use get_issue_details",
-    "",
-    "<examples>",
-    "### With Sentry URL (recommended - simplest approach)",
-    "```",
-    "get_issue_details(issueUrl='https://sentry.sentry.io/issues/6916805731/?project=4509062593708032&query=is%3Aunresolved')",
-    "```",
-    "",
-    "### With issue ID and organization",
-    "```",
-    "get_issue_details(organizationSlug='my-organization', issueId='CLOUDFLARE-MCP-41')",
-    "```",
-    "",
-    "### With event ID and organization",
-    "```",
-    "get_issue_details(organizationSlug='my-organization', eventId='c49541c747cb4d8aa3efb70ca5aba243')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- **IMPORTANT**: If user provides a Sentry URL, pass the ENTIRE URL to issueUrl parameter unchanged",
-    "- When using issueUrl, all other parameters are automatically extracted - don't provide them separately",
-    "- If using issueId (not URL), then organizationSlug is required",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the details of one Sentry issue, by issue ID, URL, or event ID: title, status, counts, the latest or a chosen event with its stacktrace, Seer root cause, suspect commit, linked tickets, and replays. Can also return installed package versions for one event. Use search_issues to list issues.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
     issueId: ParamIssueShortId.optional(),
     eventId: ParamEventId.optional(),
     issueUrl: ParamIssueUrl.optional(),
+    packageNames: ParamPackageNames.optional().describe(
+      "Exact, case-sensitive package names recorded on the event. Returns their versions. Requires eventId.",
+    ),
   },
-  // outputSchema is deliberately not declared yet. tools/list would export it immediately,
-  // while a session outside experimental mode still gets a markdown result with
-  // no structuredContent -- advertising a schema that some success paths cannot satisfy. Wire
-  // it up once every success path returns structuredContent.
+  outputSchema: getIssueDetailsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
     openWorldHint: true,
   },
   async handler(params, context: ServerContext) {
+    if (params.packageNames && !params.eventId) {
+      throw new UserInputError(
+        "`packageNames` requires an explicit `eventId`.",
+      );
+    }
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
     });
@@ -406,10 +542,11 @@ export default defineTool({
           issueId: params.issueId,
         });
       } else {
-        const [found] = await apiService.listIssues({
+        const issues = await apiService.listIssues({
           organizationSlug: orgSlug,
           query: eventId,
         });
+        const found = issues.at(0);
         if (!found) {
           throw new UserInputError(`No issue found for Event ID: ${eventId}`);
         }
@@ -421,7 +558,14 @@ export default defineTool({
       });
       // For this call, we might want to provide context if it fails
       const [
-        { event, performanceTrace, aiConversations, codeLocation, committers },
+        {
+          event,
+          performanceTrace,
+          aiConversations,
+          codeLocation,
+          committers,
+          sourceMapDebug,
+        },
         { autofixState, externalIssues, relatedReplayIds },
       ] = await Promise.all([
         apiService
@@ -459,6 +603,7 @@ export default defineTool({
       ]);
 
       return issueDetailsResult({
+        packageNames: params.packageNames,
         organizationSlug: orgSlug,
         issue,
         event,
@@ -470,6 +615,7 @@ export default defineTool({
         aiConversations,
         codeLocation,
         committers,
+        sourceMapDebug,
         experimentalMode: context.experimentalMode,
         availableToolNames: context.availableToolNames,
         directToolNames: context.directToolNames,
@@ -503,7 +649,7 @@ export default defineTool({
     try {
       issue = await apiService.getIssue({
         organizationSlug: orgSlug,
-        issueId: parsedIssueId!,
+        issueId: parsedIssueId,
       });
     } catch (error) {
       if (error instanceof ApiNotFoundError) {
@@ -520,7 +666,14 @@ export default defineTool({
     });
 
     const [
-      { event, performanceTrace, aiConversations, codeLocation, committers },
+      {
+        event,
+        performanceTrace,
+        aiConversations,
+        codeLocation,
+        committers,
+        sourceMapDebug,
+      },
       { autofixState, externalIssues, relatedReplayIds },
     ] = await Promise.all([
       apiService
@@ -557,6 +710,7 @@ export default defineTool({
       aiConversations,
       codeLocation,
       committers,
+      sourceMapDebug,
       experimentalMode: context.experimentalMode,
       availableToolNames: context.availableToolNames,
       directToolNames: context.directToolNames,
@@ -579,34 +733,52 @@ async function fetchEventEnrichment({
   aiConversations: AIConversationReference[];
   codeLocation: CodeLocation | undefined;
   committers: CommitterList | undefined;
+  sourceMapDebug: SourceMapDebug | undefined;
 }> {
-  const [performanceTrace, aiConversations, codeLocation, committers] =
-    await Promise.all([
-      maybeFetchPerformanceTrace({
-        apiService,
-        organizationSlug,
-        event,
-      }),
-      maybeFindAIConversationsForIssueEvent({
-        apiService,
-        organizationSlug,
-        event,
-      }),
-      resolveCodeLocation({
-        apiService,
-        organizationSlug,
-        projectSlug: issue.project.slug,
-        event,
-      }),
-      maybeFetchCommitters({
-        apiService,
-        organizationSlug,
-        projectSlug: issue.project.slug,
-        event,
-      }),
-    ]);
+  const [
+    performanceTrace,
+    aiConversations,
+    codeLocation,
+    committers,
+    sourceMapDebug,
+  ] = await Promise.all([
+    maybeFetchPerformanceTrace({
+      apiService,
+      organizationSlug,
+      event,
+    }),
+    maybeFindAIConversationsForIssueEvent({
+      apiService,
+      organizationSlug,
+      event,
+    }),
+    resolveCodeLocation({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+    maybeFetchCommitters({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+    maybeFetchSourceMapDebug({
+      apiService,
+      organizationSlug,
+      projectSlug: issue.project.slug,
+      event,
+    }),
+  ]);
 
-  return { performanceTrace, aiConversations, codeLocation, committers };
+  return {
+    performanceTrace,
+    aiConversations,
+    codeLocation,
+    committers,
+    sourceMapDebug,
+  };
 }
 
 /** Keeps issue details available when optional commit lookup fails, reporting unexpected failures. */
@@ -850,18 +1022,6 @@ function buildConversationLookupTimeParams(event: Event): {
   };
 }
 
-function getEventTimestamp(event: Event): Date | null {
-  const timestamp =
-    getString((event as { dateCreated?: unknown }).dateCreated) ??
-    getString(event.dateReceived);
-  if (!timestamp) {
-    return null;
-  }
-
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function getEventTraceId(event: Event): string | undefined {
   const traceId = event.contexts?.trace?.trace_id;
   return getString(traceId);
@@ -874,10 +1034,6 @@ function getString(value: unknown): string | undefined {
 function isErrorEvent(event: Event): event is ErrorEvent | DefaultEvent {
   // "default" type represents error events without exception data
   return event.type === "error" || event.type === "default";
-}
-
-function isTransactionEvent(event: Event): event is TransactionEvent {
-  return event.type === "transaction";
 }
 
 function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {

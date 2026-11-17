@@ -9,6 +9,7 @@ import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
 import { SentryApiService } from "./client";
+import { setServerVersion } from "../version";
 import {
   ApiClientError,
   ApiNotFoundError,
@@ -16,7 +17,7 @@ import {
   ApiRateLimitError,
   ApiServerError,
   ApiValidationError,
-} from "@sentry/toolkit-core/api-client/errors";
+} from "@sentry/api/client";
 import { z } from "zod";
 
 describe("validateEvents error bodies", () => {
@@ -1569,6 +1570,41 @@ describe("transient 5xx retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries a write Sentry marks idempotent", async () => {
+    const mapped = () =>
+      new Response(
+        JSON.stringify({
+          created: 1,
+          updated: 0,
+          errors: 0,
+          mappings: [{ stackRoot: "", sourceRoot: "", status: "created" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(serviceUnavailable())
+      .mockResolvedValueOnce(mapped());
+    globalThis.fetch = fetchMock;
+
+    const apiService = new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    });
+
+    // `POST /code-mappings/bulk/` carries `x-sentry-idempotent` in the schema.
+    const promise = apiService.linkProjectRepository({
+      organizationSlug: "my-org",
+      projectSlug: "my-project",
+      repository: "my-org/my-repo",
+    });
+    await vi.runAllTimersAsync();
+
+    await expect(promise).resolves.toMatchObject({ created: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+  });
+
   it("returns an allowed 5xx as-is once the transport stops retrying", async () => {
     const fetchMock = vi.fn().mockResolvedValue(serviceUnavailable());
     globalThis.fetch = fetchMock;
@@ -1912,6 +1948,35 @@ describe("request headers", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setServerVersion(undefined);
+  });
+
+  it("sends the host's version in the User-Agent", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "1",
+          name: "Test User",
+          email: "test@example.com",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    setServerVersion("0.48.0-test");
+
+    await new SentryApiService({
+      host: "sentry.io",
+      accessToken: "test-token",
+    }).getAuthenticatedUser();
+
+    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
+      "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
+    );
   });
 
   it("should send MCP client headers when clientId and clientName are set", async () => {
@@ -1995,6 +2060,40 @@ describe("request headers", () => {
   });
 });
 
+/**
+ * Serves one page of an unbounded list the way Sentry's OffsetPaginator does:
+ * a cursor is `per_page:page:0`, the row offset is `per_page * page`, and a
+ * `per_page` above 100 is rejected.
+ */
+function sentryOffsetPage(url: URL, row: (index: number) => object) {
+  const perPage = Number(url.searchParams.get("per_page"));
+  if (perPage > 100) {
+    return HttpResponse.json({ detail: "Invalid per_page" }, { status: 400 });
+  }
+  const [cursorPerPage, page] = (url.searchParams.get("cursor") ?? "0:0:0")
+    .split(":")
+    .map(Number);
+  const start = cursorPerPage * page;
+  const next = `${perPage}:${page + 1}:0`;
+  const nextUrl = new URL(url);
+  nextUrl.searchParams.set("cursor", next);
+  return HttpResponse.json(
+    Array.from({ length: perPage }, (_, offset) => row(start + offset)),
+    {
+      headers: {
+        Link: `<${nextUrl}>; rel="next"; results="true"; cursor="${next}"`,
+      },
+    },
+  );
+}
+
+/** Expects a walk of `limit` rows to use the fewest pages of one size that fit. */
+function expectFewestCappedPages(pageSizes: number[], limit: number) {
+  expect(pageSizes).toHaveLength(Math.ceil(limit / 100));
+  expect(new Set(pageSizes).size).toBe(1);
+  expect(pageSizes[0]).toBeLessThanOrEqual(100);
+}
+
 describe("listOrganizations", () => {
   let originalFetch: typeof globalThis.fetch;
 
@@ -2008,33 +2107,15 @@ describe("listOrganizations", () => {
 
   it("collects a requested page larger than the API maximum without skipping its next cursor", async () => {
     const pageSizes: number[] = [];
-    const cursors: (string | null)[] = [];
     mswServer.use(
       http.get("https://sentry.io/api/0/organizations/", ({ request }) => {
         const url = new URL(request.url);
-        const perPage = Number(url.searchParams.get("per_page"));
-        const cursor = url.searchParams.get("cursor");
-        pageSizes.push(perPage);
-        cursors.push(cursor);
-        if (perPage > 100) {
-          return HttpResponse.json(
-            { detail: "Invalid per_page" },
-            { status: 400 },
-          );
-        }
-        const start = cursor === null ? 0 : Number(cursor);
-        return HttpResponse.json(
-          Array.from({ length: perPage }, (_, offset) => ({
-            id: String(start + offset),
-            slug: `org-${start + offset}`,
-            name: `Org ${start + offset}`,
-          })),
-          {
-            headers: {
-              Link: `<https://sentry.io/api/0/organizations/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
-            },
-          },
-        );
+        pageSizes.push(Number(url.searchParams.get("per_page")));
+        return sentryOffsetPage(url, (index) => ({
+          id: String(index),
+          slug: `org-${index}`,
+          name: `Org ${index}`,
+        }));
       }),
     );
 
@@ -2042,9 +2123,14 @@ describe("listOrganizations", () => {
     const result = await api.listOrganizations({ limit: 205 });
     expect(result.organizations).toHaveLength(205);
     expect(result.organizations[204]?.slug).toBe("org-204");
-    expect(result.nextCursor).toBe("205");
-    expect(pageSizes).toEqual([100, 100, 5]);
-    expect(cursors).toEqual([null, "100", "200"]);
+    expectFewestCappedPages(pageSizes, 205);
+
+    // The rows the last page fetched past the limit start the next call.
+    const next = await api.listOrganizations({
+      limit: 1,
+      cursor: result.nextCursor,
+    });
+    expect(next.organizations.map((org) => org.slug)).toEqual(["org-205"]);
   });
 
   it("should fetch from the organizations endpoint on the root host for SaaS", async () => {
@@ -2150,30 +2236,15 @@ describe("organization SDK list pages", () => {
           `https://de.sentry.io/api/0/organizations/my-org/${resource}/`,
           ({ request }) => {
             const url = new URL(request.url);
-            const perPage = Number(url.searchParams.get("per_page"));
-            pageSizes.push(perPage);
+            pageSizes.push(Number(url.searchParams.get("per_page")));
             expect(url.searchParams.get("query")).toBe("api");
             expect(request.headers.get("authorization")).toBe(
               "Bearer test-token",
             );
-            if (perPage > 100) {
-              return HttpResponse.json(
-                { detail: "Invalid per_page" },
-                { status: 400 },
-              );
-            }
-            const start = Number(url.searchParams.get("cursor") ?? "0");
-            return HttpResponse.json(
-              Array.from({ length: perPage }, (_, offset) => ({
-                ...fixture,
-                id: String(start + offset),
-              })),
-              {
-                headers: {
-                  Link: `<https://de.sentry.io/api/0/organizations/my-org/${resource}/?cursor=${start + perPage}>; rel="next"; results="true"; cursor="${start + perPage}"`,
-                },
-              },
-            );
+            return sentryOffsetPage(url, (index) => ({
+              ...fixture,
+              id: String(index),
+            }));
           },
         ),
       );
@@ -2181,8 +2252,9 @@ describe("organization SDK list pages", () => {
       const result = await list(api);
       const rows = "teams" in result ? result.teams : result.projects;
       expect(rows).toHaveLength(201);
-      expect(result.nextCursor).toBe("201");
-      expect(pageSizes).toEqual([100, 100, 1]);
+      expect(rows[200]?.id).toBe("200");
+      expect(result.nextCursor).toEqual(expect.any(String));
+      expectFewestCappedPages(pageSizes, 201);
     },
   );
 
@@ -2875,7 +2947,7 @@ describe("API query builders", () => {
         },
       ]);
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("project")).toBe("123");
       expect(params.get("statsPeriod")).toBe("7d");
@@ -2913,7 +2985,7 @@ describe("API query builders", () => {
       });
 
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]!).searchParams;
+      const params = new URL(urls[0]).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("expand")).toBe("context");
     });
@@ -3549,7 +3621,7 @@ describe("API query builders", () => {
         }),
       );
       expect(result.created).toBe(1);
-      expect(result.mappings[0]!.status).toBe("created");
+      expect(result.mappings[0].status).toBe("created");
     });
 
     it("should handle updated mappings response", async () => {
@@ -3582,7 +3654,7 @@ describe("API query builders", () => {
       });
 
       expect(result.updated).toBe(1);
-      expect(result.mappings[0]!.status).toBe("updated");
+      expect(result.mappings[0].status).toBe("updated");
     });
   });
 
@@ -3640,6 +3712,90 @@ describe("API query builders", () => {
     });
   });
 
+  describe("visitReplayRecordingSegments", () => {
+    let apiService: SentryApiService;
+
+    const linkHeader = (nextCursor: string | null) =>
+      [
+        '<https://sentry.io/api/0/>; rel="previous"; results="false"; cursor="0:0:1"',
+        `<https://sentry.io/api/0/>; rel="next"; results="${nextCursor ? "true" : "false"}"; cursor="${nextCursor ?? "0:0:0"}"`,
+      ].join(", ");
+
+    const mockPages = (pages: unknown[][][]) => {
+      const requestUrls: string[] = [];
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        const index = requestUrls.length;
+        requestUrls.push(url);
+        const nextCursor = index + 1 < pages.length ? `0:${index + 1}:0` : null;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: {
+            get: (key: string) =>
+              key === "content-type"
+                ? "application/json"
+                : key === "link"
+                  ? linkHeader(nextCursor)
+                  : null,
+          },
+          json: () => Promise.resolve(pages[index]),
+        });
+      });
+      return requestUrls;
+    };
+
+    beforeEach(() => {
+      apiService = new SentryApiService({
+        host: "sentry.io",
+        accessToken: "test-token",
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("follows the Link cursor until every segment is read", async () => {
+      const requestUrls = mockPages([[["a"], ["b"]], [["c"]]]);
+      const segments: unknown[][] = [];
+
+      const result = await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 10,
+        },
+        (events) => segments.push(events),
+      );
+
+      expect(segments).toEqual([["a"], ["b"], ["c"]]);
+      expect(result).toEqual({ segmentsRead: 3, truncated: false });
+      expect(requestUrls).toHaveLength(2);
+      expect(requestUrls[0]).toContain("per_page=100");
+      expect(requestUrls[1]).toContain("cursor=0%3A1%3A0");
+    });
+
+    it("stops at maxSegments and reports truncation", async () => {
+      const requestUrls = mockPages([[["a"], ["b"]], [["c"]]]);
+      const segments: unknown[][] = [];
+
+      const result = await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 2,
+        },
+        (events) => segments.push(events),
+      );
+
+      expect(segments).toEqual([["a"], ["b"]]);
+      expect(result).toEqual({ segmentsRead: 2, truncated: true });
+      expect(requestUrls).toHaveLength(1);
+    });
+  });
+
   describe("project identifier request shape regressions", () => {
     let apiService: SentryApiService;
 
@@ -3669,11 +3825,15 @@ describe("API query builders", () => {
         });
       });
 
-      await apiService.getReplayRecordingSegments({
-        organizationSlug: "test-org",
-        projectSlugOrId: "frontend",
-        replayId: "replay-123",
-      });
+      await apiService.visitReplayRecordingSegments(
+        {
+          organizationSlug: "test-org",
+          projectSlugOrId: "frontend",
+          replayId: "replay-123",
+          maxSegments: 10,
+        },
+        () => {},
+      );
 
       expect(requestUrl).toContain(
         "/projects/test-org/frontend/replays/replay-123/recording-segments/",

@@ -290,7 +290,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
   // Convert valid skills Set to array for OAuth props
   const grantedSkills = [...validSkills];
 
-  const resource = (oauthReqInfo as AuthRequestWithSkills).resource;
+  const resource = oauthReqInfo.resource;
   const resourceScope = parseResourceMcpConstraints(
     typeof resource === "string" ? resource : undefined,
   );
@@ -303,7 +303,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
   const userLabel = getUpstreamUserLabel(payload);
 
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
-    request: oauthReqInfo as AuthRequest,
+    request: oauthReqInfo,
     userId: payload.user.id,
     metadata: {
       label: userLabel,

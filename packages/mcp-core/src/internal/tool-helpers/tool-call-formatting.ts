@@ -1,3 +1,4 @@
+import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { isTopLevelToolName } from "../../tools/surfaces";
 
 type JsonValue =
@@ -51,6 +52,33 @@ function isDirectTool(
     : isTopLevelToolName(toolName, experimentalMode);
 }
 
+/** The tools the current session exposes, for checking a follow-up call. */
+export interface ToolSession {
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}
+
+/**
+ * How the session can call a tool: directly, through `execute_sentry_tool`,
+ * or not at all.
+ */
+export function getToolCallRoute(
+  toolName: string,
+  { experimentalMode, availableToolNames, directToolNames }: ToolSession,
+): "direct" | "execute_sentry_tool" | null {
+  if (!isToolAvailableInSession(toolName, availableToolNames)) {
+    return null;
+  }
+  if (isDirectTool(toolName, experimentalMode, directToolNames)) {
+    return "direct";
+  }
+  return isToolAvailableInSession("execute_sentry_tool", availableToolNames) &&
+    isDirectTool("execute_sentry_tool", experimentalMode, directToolNames)
+    ? "execute_sentry_tool"
+    : null;
+}
+
 export function formatToolCall({
   toolName,
   arguments: args = {},
@@ -65,10 +93,13 @@ export function formatToolCall({
 /**
  * Formats user-facing tool guidance as a direct call, catalog gateway call, or
  * fallback message based on the current session's available/direct tools.
+ * `showArguments` renders the full call when the arguments are concrete values
+ * the agent can run as-is rather than placeholders.
  */
 export function formatToolCallInstruction({
   toolName,
-  arguments: _args = {},
+  arguments: args = {},
+  showArguments = false,
   experimentalMode,
   purpose,
   availableToolNames,
@@ -77,32 +108,34 @@ export function formatToolCallInstruction({
 }: {
   toolName: string;
   arguments?: Record<string, JsonValue>;
+  showArguments?: boolean;
   experimentalMode: boolean;
   purpose?: string;
   availableToolNames?: ReadonlySet<string>;
   directToolNames?: ReadonlySet<string>;
   fallbackInstruction?: string;
 }): string {
-  const targetAvailable = isToolAvailableInSession(
-    toolName,
+  const route = getToolCallRoute(toolName, {
+    experimentalMode,
     availableToolNames,
-  );
+    directToolNames,
+  });
 
-  if (
-    targetAvailable &&
-    isDirectTool(toolName, experimentalMode, directToolNames)
-  ) {
-    return `Use the Sentry tool \`${toolName}\`${formatPurpose(purpose)}`;
+  const toolReference = showArguments
+    ? formatToolCall({ toolName, arguments: args })
+    : toolName;
+
+  if (route === "direct") {
+    return `Use the Sentry tool ${inlineCode(toolReference)}${formatPurpose(purpose)}`;
   }
 
-  const catalogGatewayAvailable =
+  // the catalog gateway also needs search to find the tool
+  if (
+    route === "execute_sentry_tool" &&
     isToolAvailableInSession("search_sentry_tools", availableToolNames) &&
-    isToolAvailableInSession("execute_sentry_tool", availableToolNames) &&
-    isDirectTool("search_sentry_tools", experimentalMode, directToolNames) &&
-    isDirectTool("execute_sentry_tool", experimentalMode, directToolNames);
-
-  if (targetAvailable && catalogGatewayAvailable) {
-    return `Use the Sentry tool \`${toolName}\`${formatPurpose(purpose)}`;
+    isDirectTool("search_sentry_tools", experimentalMode, directToolNames)
+  ) {
+    return `Use the Sentry tool ${inlineCode(toolReference)}${formatPurpose(purpose)}`;
   }
 
   return (

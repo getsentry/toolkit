@@ -32,21 +32,19 @@ export const completionCommand = buildCommand({
       {
         description:
           "Print completions for your current shell (auto-detected from $SHELL)",
-        command: "sentry cli completion",
+        run: "cli completion",
       },
       {
         description: "Install zsh completions",
-        command:
-          "sentry cli completion zsh > ~/.local/share/zsh/site-functions/_sentry",
+        run: "cli completion zsh > ~/.local/share/zsh/site-functions/_sentry",
       },
       {
         description: "Load bash completions into the current shell",
-        command: 'eval "$(sentry cli completion bash)"',
+        run: { prefix: 'eval "$(', args: "cli completion bash", suffix: ')"' },
       },
       {
         description: "Install fish completions",
-        command:
-          "sentry cli completion fish > ~/.config/fish/completions/sentry.fish",
+        run: "cli completion fish > ~/.config/fish/completions/sentry.fish",
       },
     ],
   },
@@ -85,6 +83,6 @@ export const completionCommand = buildCommand({
       );
     }
 
-    yield new CommandOutput<string>(script);
+    yield new CommandOutput(script);
   },
 });

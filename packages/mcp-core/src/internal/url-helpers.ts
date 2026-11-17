@@ -74,7 +74,7 @@ export interface ParsedSentryUrl {
  *
  * Supported URL patterns:
  * - Issue: `/issues/{issueId}` or `/organizations/{org}/issues/{issueId}`
- * - Event: `/issues/{issueId}/events/{eventId}`
+ * - Event: `/issues/{issueId}/events/{eventId}` or `/projects/{project}/events/{eventId}`
  * - Trace: `/explore/traces/trace/{traceId}` or `/performance/trace/{traceId}`
  * - Profile: `/explore/profiling/profile/{project}/{profileId}/flamegraph/`
  * - Continuous profile: `/explore/profiling/profile/{project}/flamegraph/` with query params
@@ -399,6 +399,24 @@ function identifyResource(
         type: "issue",
         organizationSlug,
         issueId,
+      };
+    }
+  }
+
+  // Project event URL: /projects/{project}/events/{eventId}/ (redirects to the
+  // event's issue in the Sentry UI). API URLs share this shape but not the org.
+  const projectsIndex = pathParts.indexOf("projects");
+  if (
+    projectsIndex !== -1 &&
+    pathParts[0] !== "api" &&
+    pathParts[projectsIndex + 2] === "events"
+  ) {
+    const eventId = pathParts[projectsIndex + 3];
+    if (eventId) {
+      return {
+        type: "event",
+        organizationSlug,
+        eventId,
       };
     }
   }

@@ -14,6 +14,7 @@
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
+import { sentry } from "../app-identity.js";
 import { getRealUsername } from "../utils.js";
 import { isReadonlyError, tryRepairAndRetry } from "./schema.js";
 import type { Database } from "./sqlite.js";
@@ -53,7 +54,7 @@ function warnReadonlyDatabase(): void {
   process.stderr.write(
     `\nWarning: Sentry CLI local database is read-only. Caching and preferences won't persist.\n` +
       `  Path: ${dbPath}\n` +
-      "  Fix:  sentry cli fix\n\n",
+      `  Fix:  ${sentry`cli fix`}\n\n`,
   );
 }
 
@@ -75,12 +76,18 @@ let silent = false;
 
 /**
  * Skip read-only writes silently for the rest of this process: no permission
- * repair and no stderr warning. Used by shell completion, where each TAB press
- * is a new process and any stderr output would land in the user's prompt. The
- * next normal command still repairs and warns.
+ * repair and no stderr warning, including the one for a `cli.db` that can't be
+ * opened at all. Used by shell completion, where each TAB press is a new
+ * process and any stderr output would land in the user's prompt. The next
+ * normal command still repairs and warns.
  */
 export function silenceReadonlyHandling(): void {
   silent = true;
+}
+
+/** Whether {@link silenceReadonlyHandling} was called in this process. */
+export function isReadonlyHandlingSilenced(): boolean {
+  return silent;
 }
 
 /**
@@ -149,7 +156,7 @@ function tryRepairReadonly(): boolean {
       "\nWarning: Sentry CLI config directory is owned by root.\n" +
         `  Path:  ${configDir}\n` +
         `  Fix:   sudo chown -R ${username} "${configDir}"\n` +
-        "  Or:    sudo sentry cli fix\n\n",
+        `  Or:    sudo ${sentry`cli fix`}\n\n`,
     );
     return false;
   }
@@ -279,7 +286,7 @@ export function createResilientDatabase(
 ): Database {
   const originalQuery = db.query.bind(db);
 
-  return new Proxy(db as object, {
+  return new Proxy(db, {
     get(target, prop) {
       if (prop === "query") {
         return (sql: string) => {
@@ -309,5 +316,5 @@ export function createResilientDatabase(
       }
       return value;
     },
-  }) as Database;
+  });
 }

@@ -5,8 +5,6 @@
  * Used by both the `auth login` command and auto-auth in bin.ts.
  */
 
-// oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
-import * as Sentry from "@sentry/node";
 import { openBrowser } from "./browser.js";
 import { setupCopyKeyListener } from "./clipboard.js";
 import { getAccountRow } from "./db/accounts.js";
@@ -17,6 +15,7 @@ import { renderInlineMarkdown } from "./formatters/markdown.js";
 import { logger } from "./logger.js";
 import { completeOAuthFlow, performDeviceFlow } from "./oauth.js";
 import { generateQRCode } from "./qrcode.js";
+import { reportCliError } from "./error-reporting.js";
 
 const log = logger.withTag("auth.login");
 
@@ -48,7 +47,7 @@ export function toLoginUser(user: {
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
     Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
-  ) as NonNullable<LoginResult["user"]>;
+  );
 }
 
 /** Options for the interactive login flow */
@@ -66,9 +65,10 @@ export type InteractiveLoginOptions = {
    */
   newAccount?: boolean;
   /**
-   * Only accept a login as this email. Sentry's device flow cannot be told
-   * which account to authorize (the browser's signed-in user approves), so
-   * the check happens here: a mismatching token is discarded, not stored.
+   * Only accept a login as this email. It is sent as the device flow's
+   * `login_hint`, so Sentry refuses approval from another signed-in user.
+   * Servers that ignore the hint let the browser's user approve, so the
+   * token is checked here too: a mismatching token is discarded, not stored.
    */
   expectedEmail?: string;
   /**
@@ -255,7 +255,7 @@ export async function runInteractiveLogin(
           // Setup keyboard listener for 'c' to copy URL
           if (process.stdin.isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
-              process.stdin as NodeJS.ReadStream & { fd: 0 },
+              process.stdin,
               () => urlToCopy,
             );
           }
@@ -263,6 +263,7 @@ export async function runInteractiveLogin(
       },
       timeout,
       scope,
+      expectedEmail,
     );
 
     // Stop the spinner
@@ -288,7 +289,7 @@ export async function runInteractiveLogin(
         });
       } catch (error) {
         // Report to Sentry but don't block auth - user info is not critical
-        Sentry.captureException(error);
+        reportCliError(error);
       }
     } else if (!options?.newAccount) {
       // The active account's credentials were replaced in place; without
@@ -297,7 +298,7 @@ export async function runInteractiveLogin(
       try {
         clearUserInfo();
       } catch (error) {
-        Sentry.captureException(error);
+        reportCliError(error);
       }
     }
 

@@ -48,10 +48,7 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
 
     fetchCalls = [];
     originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
       );
@@ -60,7 +57,7 @@ describe("CVE defense-in-depth: sntrys_ claim vs request mismatch", () => {
         auth: headers.get("Authorization"),
       });
       return new Response("{}", { status: 200 });
-    }) as typeof fetch;
+    };
   });
 
   afterEach(async () => {

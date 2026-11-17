@@ -441,7 +441,7 @@ describe("property: cross-function invariants", () => {
 
         // Aliases should be shorter than full project slugs
         for (const [key, alias] of aliasMap) {
-          const project = key.split("/")[1]!;
+          const project = key.split("/")[1];
           expect(alias.length).toBeLessThanOrEqual(project.length);
         }
       }),
@@ -469,7 +469,7 @@ describe("property: cross-function invariants", () => {
 
           // Aliases should match direct prefixes for simple unique slugs
           for (const [key, alias] of aliasMap) {
-            const project = key.split("/")[1]!;
+            const project = key.split("/")[1];
             expect(directPrefixes.get(project)).toBe(alias);
           }
         },

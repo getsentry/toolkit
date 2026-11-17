@@ -26,7 +26,7 @@ async function runCompletion(
     process: {
       ...process,
       exitCode: undefined,
-    } as typeof process,
+    },
     env,
     cwd: process.cwd(),
     homeDir: "/tmp",

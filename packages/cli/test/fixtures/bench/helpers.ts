@@ -19,6 +19,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { arch, cpus, platform, tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "../../../src/lib/logger.js";
 
 /** Statistics derived from an array of measurements. */
 export type BenchStats = {
@@ -111,8 +112,8 @@ export function summarize(samples: readonly number[]): BenchStats {
   }
   const sorted = [...samples].sort((a, b) => a - b);
   const n = sorted.length;
-  const min = sorted[0] as number;
-  const max = sorted[n - 1] as number;
+  const min = sorted[0];
+  const max = sorted[n - 1];
   const mean = sorted.reduce((acc, x) => acc + x, 0) / n;
   // Population stddev — we're measuring the full sample, not inferring a population.
   const variance = sorted.reduce((acc, x) => acc + (x - mean) ** 2, 0) / n;
@@ -134,7 +135,7 @@ function percentile(sorted: readonly number[], p: number): number {
     sorted.length - 1,
     Math.max(0, Math.ceil(p * sorted.length) - 1),
   );
-  return sorted[idx] as number;
+  return sorted[idx];
 }
 
 /**
@@ -198,7 +199,7 @@ export async function clearDsnDetectionCache(
   await clearProjectRootCacheFor(projectRoot);
 }
 
-/** Pretty-print a bench report to stdout in a fixed-width column layout. */
+/** Pretty-print a bench report in a fixed-width column layout. */
 export function printReport(report: BenchReport): void {
   // Group entries by fixture so related operations read naturally.
   const byFixture = new Map<string, BenchEntry[]>();
@@ -208,14 +209,13 @@ export function printReport(report: BenchReport): void {
     byFixture.set(entry.fixture, list);
   }
 
-  console.log("");
-  console.log(
+  const lines = [
     `Bench report  (${report.runtime.platform}/${report.runtime.arch}, bun ${report.runtime.bun}, ${report.runtime.cpus} cpus)`,
-  );
-  console.log("─".repeat(72));
+    "─".repeat(72),
+  ];
 
   for (const [fixture, entries] of byFixture) {
-    console.log(`\n${fixture}`);
+    lines.push(`\n${fixture}`);
     const longest = entries.reduce(
       (acc, e) => Math.max(acc, e.operation.length),
       0,
@@ -223,12 +223,12 @@ export function printReport(report: BenchReport): void {
     for (const entry of entries) {
       const pad = entry.operation.padEnd(longest);
       const { p50, p95, runs } = entry.stats;
-      console.log(
+      lines.push(
         `  ${pad}  p50 ${fmtMs(p50)}  p95 ${fmtMs(p95)}  (${runs} runs)`,
       );
     }
   }
-  console.log("");
+  logger.log(`\n${lines.join("\n")}\n`);
 }
 
 /** Format milliseconds to a width-stable string (e.g., "  4.2ms"). */
@@ -293,8 +293,8 @@ export function compareReports(
     const [fixture, operation] = key.split("||");
     if (!b) {
       rows.push({
-        fixture: fixture as string,
-        operation: operation as string,
+        fixture: fixture,
+        operation: operation,
         current: c?.stats,
         verdict: "missing-baseline",
       });
@@ -302,8 +302,8 @@ export function compareReports(
     }
     if (!c) {
       rows.push({
-        fixture: fixture as string,
-        operation: operation as string,
+        fixture: fixture,
+        operation: operation,
         baseline: b.stats,
         verdict: "missing-current",
       });
@@ -315,8 +315,8 @@ export function compareReports(
     if (deltaPct > thresholdPct) verdict = "regressed";
     else if (deltaPct < -thresholdPct) verdict = "improved";
     rows.push({
-      fixture: fixture as string,
-      operation: operation as string,
+      fixture: fixture,
+      operation: operation,
       baseline: b.stats,
       current: c.stats,
       deltaMs,
@@ -355,7 +355,7 @@ function formatComparisonRow(
   return `${r.fixture.padEnd(widthFixture)}  ${r.operation.padEnd(widthOp)}  ${base.padStart(10)}  ${cur.padStart(10)}  ${dms.padStart(9)}  ${dpct.padStart(7)}  ${icon} ${r.verdict}`;
 }
 
-/** Render comparison rows to stdout. Returns true when no regressions. */
+/** Render comparison rows. Returns true when no regressions. */
 export function printComparison(
   rows: readonly ComparisonRow[],
   thresholdPct: number,
@@ -365,22 +365,19 @@ export function printComparison(
     8,
   );
   const widthOp = rows.reduce((acc, r) => Math.max(acc, r.operation.length), 9);
-  console.log("");
-  console.log(
+  const lines = [
     `Comparison vs baseline  (threshold ±${(thresholdPct * 100).toFixed(0)}%)`,
-  );
-  console.log("─".repeat(72));
-  console.log(
+    "─".repeat(72),
     `${"fixture".padEnd(widthFixture)}  ${"operation".padEnd(widthOp)}  ${"base p50".padStart(10)}  ${"cur p50".padStart(10)}  ${"Δms".padStart(9)}  ${"Δ%".padStart(7)}  verdict`,
-  );
+  ];
   let ok = true;
   for (const r of rows) {
-    console.log(formatComparisonRow(r, widthFixture, widthOp));
+    lines.push(formatComparisonRow(r, widthFixture, widthOp));
     if (r.verdict === "regressed") {
       ok = false;
     }
   }
-  console.log("");
+  logger.log(`\n${lines.join("\n")}\n`);
   return ok;
 }
 

@@ -10,14 +10,14 @@ describe("tool call formatting", () => {
   it("formats direct calls when a tool is top-level in the current mode", () => {
     expect(
       formatToolCallInstruction({
-        toolName: "search_events",
+        toolName: "search_errors",
         arguments: {
           organizationSlug: "my-org",
           query: "level:error",
         },
         experimentalMode: true,
       }),
-    ).toBe("Use the Sentry tool `search_events`");
+    ).toBe("Use the Sentry tool `search_errors`");
   });
 
   it("formats tool-name guidance when a tool is not top-level in the current mode", () => {

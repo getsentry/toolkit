@@ -11,10 +11,14 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { getAlertRuleDetails } from "../support/alert-rule-details";
+import {
+  alertRuleDetailsSchema,
+  getAlertRuleDetails,
+} from "../support/alert-rule-details";
 import {
   findExactMetricMonitorMatches,
   getMetricMonitor,
+  metricMonitorDetailsSchema,
   toMetricMonitorDetails,
 } from "../support/metric-monitors";
 import {
@@ -27,8 +31,10 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 const AlertRuleKind = z
   .enum(["all", "issue", "metric"])
   .describe(
-    "Which alert family to inspect. Numeric metric IDs are legacy alert-rule IDs, not monitor IDs. `all` performs an exact-name lookup.",
+    "Alert family: `issue` for Alerts (workflows), `metric` for Metric Monitors. `all` matches by exact name only.",
   );
+
+const LIST_HINT = "To list alert rules, use find_alert_rules.";
 
 type AlertRuleMatch =
   | {
@@ -47,27 +53,24 @@ function describeMatch(match: AlertRuleMatch): string {
   return `${match.kind} alert ${String(match.rule.id)} (${match.rule.name})${project}`;
 }
 
+export const getAlertRuleOutputSchema = z.object({
+  alertRule: alertRuleDetailsSchema
+    .optional()
+    .describe("Set when the match is an Issue Alert."),
+  metricMonitor: metricMonitorDetailsSchema
+    .optional()
+    .describe("Set when the match is a Metric Monitor."),
+  guidance: z.string().optional(),
+});
+
 export default defineTool({
   name: "get_alert_rule",
+  title: "Get Alert Rule",
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Get details for a Sentry alert rule.",
-    "",
-    "Use this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.",
-    "",
-    "<examples>",
-    "get_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')",
-    "get_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')",
-    "get_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.",
-    "- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.",
-    "- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.",
-    "- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.",
-    "</hints>",
+    "Get one Sentry alert rule by ID or exact name: its triggers, conditions, notification actions, connected monitors, and project scope.",
+    "Prefer get_metric_monitor_details for Metric Monitors; cron and uptime monitors have their own get tools.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -75,13 +78,18 @@ export default defineTool({
     kind: AlertRuleKind.default("all"),
     projectSlug: ParamProjectSlugOrAll.nullable().default(null),
     ruleIdOrName: z
-      .string()
+      .string({
+        // The SDK rejects a missing value before the handler runs, so this
+        // message is the only hint for callers that wanted a list.
+        error: `Required: one Alert ID or exact name. ${LIST_HINT}`,
+      })
       .trim()
-      .min(1)
+      .min(1, `Required: one Alert ID or exact name. ${LIST_HINT}`)
       .describe(
-        "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs.",
+        "Alert ID or exact name. With `metric`, a number is a legacy alert-rule ID; use detector:<id> for a Metric Monitor ID. With `all`, digits are matched as a name.",
       ),
   },
+  outputSchema: getAlertRuleOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -152,12 +160,12 @@ export default defineTool({
 
       if (matches.length === 0) {
         throw new UserInputError(
-          `Alert rule "${params.ruleIdOrName}" was not found.`,
+          `Alert rule "${params.ruleIdOrName}" was not found. ${LIST_HINT}`,
         );
       }
       if (matches.length > 1) {
         throw new UserInputError(
-          `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID.`,
+          `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID. ${LIST_HINT}`,
         );
       }
       const [found] = matches;

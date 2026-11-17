@@ -1,11 +1,18 @@
 /** Invariants for opaque bearer credentials and removable edge padding. */
 
 import {
+  normalizeAuthToken as clientNormalizeAuthToken,
+  sentryBearerHeader as clientBearerHeader,
+  trimAuthToken as clientTrimAuthToken,
+} from "@sentry/api/client";
+import {
   array,
   constantFrom,
   assert as fcAssert,
   integer,
+  oneof,
   property,
+  string,
 } from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
@@ -84,4 +91,39 @@ describe("auth token normalization", () => {
       );
     },
   );
+});
+
+describe("parity with @sentry/api/client", () => {
+  /** Return the CLI result in the client's `null`-on-invalid shape. */
+  function orNull(fn: () => string): string | null {
+    try {
+      return fn();
+    } catch (error) {
+      if (error instanceof MalformedAuthTokenError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  test("applies the same token rules as the shared client", () => {
+    const anyToken = oneof(
+      string({ unit: "binary", maxLength: 40 }),
+      array(oneof(printable, padding), { maxLength: 4 }).map((parts) =>
+        parts.join(""),
+      ),
+    );
+    fcAssert(
+      property(anyToken, (input) => {
+        expect(trimAuthToken(input)).toBe(clientTrimAuthToken(input));
+        expect(orNull(() => normalizeAuthToken(input))).toBe(
+          clientNormalizeAuthToken(input),
+        );
+        expect(orNull(() => formatAuthHeader(input))).toBe(
+          clientBearerHeader(input),
+        );
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
 });

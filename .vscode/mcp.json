@@ -1,7 +1,9 @@
 {
   "servers": {
     "sentry": {
-      "url": "https://mcp.sentry.dev/mcp"
+      "type": "stdio",
+      "command": "sentry",
+      "args": ["mcp"]
     }
   }
 }

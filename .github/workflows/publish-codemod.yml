@@ -1,0 +1,47 @@
+name: Publish codemod
+
+# Publishes packages/codemod-cli3to4 to the Codemod Registry as `@getsentry/cli3to4`
+# whenever a push to main changes the `version` in its codemod.yaml. Codemod
+# authenticates the publish with this workflow's GitHub Actions OIDC token, so
+# no API key is stored here. The `@getsentry` scope must be verified once on
+# codemod.com; see packages/codemod-cli3to4/README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/codemod-cli3to4/codemod.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check codemod version
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: node scripts/codemod-version-changed.mjs
+
+  publish:
+    name: Publish to Codemod Registry
+    needs: check
+    # Only main is published, also for manual runs from another branch.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || needs.check.outputs.changed == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: codemod/publish-action@dd6c8dbc5ceb1a6146feba41481d88b43da50024 # v1
+        with:
+          path: packages/codemod-cli3to4

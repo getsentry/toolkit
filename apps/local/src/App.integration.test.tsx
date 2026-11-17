@@ -1,5 +1,4 @@
 import { replayEnvelopes, defaultFixtures } from "../scripts/replay.ts";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { EventSource as NodeEventSource } from "eventsource";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -75,7 +74,7 @@ function envelope(transaction: string, options: EnvelopeOptions = {}): string {
 
 async function startReceiver() {
   return await tryListen(
-    buildApp(createSpotlightBuffer(10), { uiActions: true }),
+    buildApp(createLocalRetentionBuffer(10).buffer, { uiActions: true }),
     0,
     "127.0.0.1",
   );

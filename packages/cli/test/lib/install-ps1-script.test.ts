@@ -214,7 +214,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     expect(recorded("post-args")).toEqual(["init"]);
     const [initBinary] = recorded("post-binary");
     expect(initBinary?.startsWith(join(testDir, "sentry-install-"))).toBe(true);
-    expect(existsSync(initBinary!)).toBe(false);
+    expect(existsSync(initBinary)).toBe(false);
   });
 
   test("fails when sentry init fails", () => {
