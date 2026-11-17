@@ -33,6 +33,7 @@ import {
   DEFAULT_PORT,
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
+  probeLocalHealth,
   tryListen,
 } from "./server.js";
 import {
@@ -152,12 +153,13 @@ function daemonBaseUrl(state: LocalDaemonState): string {
 
 /**
  * Probe the recorded daemon: `ok` when it proves its identity, `refused` when
- * nothing listens at its address, and `failed` for a timeout or any other
- * answer, which a busy daemon can also give.
+ * nothing listens at its address, and `failed` for another protocol version,
+ * a timeout, or any other answer, which a busy daemon can also give.
  */
 async function probeLocalDaemon(
   state: LocalDaemonState,
 ): Promise<"ok" | "refused" | "failed"> {
+  if (state.version !== LOCAL_DAEMON_PROTOCOL_VERSION) return "failed";
   try {
     const response = await requestLocalDaemon(state, "/sessions", {
       signal: AbortSignal.timeout(500),
@@ -363,12 +365,29 @@ async function readOwnerPid(path: string): Promise<number> {
 }
 
 /**
- * Whether discovery whose PID is alive but whose address refused a connection
- * is stale, as after an unclean exit and PID reuse; clears it when it is.
+ * Whether a probe proves that no daemon serves the recorded address: the
+ * connection was refused, or a server that is not a Local daemon answers
+ * there, such as a foreground `sentry local serve`. A timeout does not.
+ */
+async function isStaleProbe(
+  state: LocalDaemonState,
+  probe: "ok" | "refused" | "failed",
+): Promise<boolean> {
+  if (probe === "refused") return true;
+  return (
+    probe === "failed" &&
+    (await probeLocalHealth(daemonBaseUrl(state), 500)) === "other"
+  );
+}
+
+/**
+ * Whether discovery whose PID is alive but whose address no daemon serves is
+ * stale, as after an unclean exit, PID reuse, or a shutdown in progress;
+ * clears it when it is.
  *
  * A daemon writes discovery only after it listens, and closes its listener
- * just before it removes discovery. So a refusal that persists after a pause,
- * while discovery stays unchanged, means no daemon serves it. Under the
+ * just before it removes discovery. So a stale probe that persists after a
+ * pause, while discovery stays unchanged, means no daemon serves it. Under the
  * ownership guard, discovery is removed only when no other live owner could
  * be replacing it. The owner lock goes too when it belongs to the same stale
  * daemon: the same PID, and written no later than discovery. A newer lock
@@ -383,7 +402,8 @@ async function releaseStaleLocalDaemon(
 ): Promise<"released" | "ok" | "kept"> {
   await sleep(STALE_DAEMON_RECHECK_MS);
   const recheck = await probeLocalDaemon(state);
-  if (recheck !== "refused") return recheck === "ok" ? "ok" : "kept";
+  if (recheck === "ok") return "ok";
+  if (!(await isStaleProbe(state, recheck))) return "kept";
   return await withDaemonOwnershipGuard(directory, async () => {
     const current = await readLocalDaemonState(directory);
     if (!current) return "released";
@@ -391,10 +411,21 @@ async function releaseStaleLocalDaemon(
     const ownerPath = join(directory, "local-control-plane.owner");
     const owner = await readOwnerPid(ownerPath);
     if (owner === state.pid) {
-      const [ownerFile, stateFile] = await Promise.all([
-        stat(ownerPath),
-        stat(statePath(directory)),
-      ]);
+      let stateFile: Awaited<ReturnType<typeof stat>>;
+      try {
+        stateFile = await stat(statePath(directory));
+      } catch (error) {
+        // A daemon shutting down removes discovery outside the guard.
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return "released";
+        throw error;
+      }
+      // Owner locks change only under the guard, so this one is still there.
+      const ownerFile = await stat(ownerPath);
       if (ownerFile.mtimeMs > stateFile.mtimeMs) return "released";
       await rm(ownerPath, { force: true });
     } else if (isProcessRunning(owner)) {
@@ -415,10 +446,7 @@ async function discoverLocalDaemon(
   const directory = getConfigDir();
   const state = await readLocalDaemonState(directory);
   if (!state) return;
-  const probe =
-    state.version === LOCAL_DAEMON_PROTOCOL_VERSION
-      ? await probeLocalDaemon(state)
-      : "failed";
+  const probe = await probeLocalDaemon(state);
   // A startup or shutdown can replace/remove metadata while the probe is in
   // flight. Rediscover changed state and never unlink based on a stale snapshot.
   const current = await readLocalDaemonState(directory);
@@ -428,7 +456,7 @@ async function discoverLocalDaemon(
   }
   if (probe === "ok") return state;
   if (!isProcessRunning(state.pid)) return;
-  if (probe === "refused") {
+  if (await isStaleProbe(state, probe)) {
     const outcome = await releaseStaleLocalDaemon(directory, state);
     if (outcome === "released") return;
     // A daemon can replace discovery during the stale recheck.
@@ -441,7 +469,7 @@ async function discoverLocalDaemon(
   if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
     return;
   throw new CliError(
-    `The Local daemon (PID ${state.pid}) is still running but did not respond at ${daemonBaseUrl(state)}. If it is busy, retry in a moment. If PID ${state.pid} is not a Sentry Local daemon, delete ${LOCAL_DAEMON_STATE_FILENAME} from the Sentry CLI config directory and retry.`,
+    `The Local daemon (PID ${state.pid}) is still running but did not respond at ${daemonBaseUrl(state)}. If it is busy, retry in a moment. If you have checked that PID ${state.pid} is not a Sentry Local daemon, delete ${statePath(directory)} and ${join(directory, "local-control-plane.owner")}, then retry.`,
   );
 }
 

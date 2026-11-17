@@ -588,6 +588,36 @@ export function tryListen(
 }
 
 /**
+ * Ask `${url}/health` who holds the port: `none` for a transport failure
+ * (connection refused, timeout), `daemon` for a Sentry Local daemon, and
+ * `other` for any other HTTP reply, including an error status.
+ */
+export async function probeLocalHealth(
+  url: string,
+  timeoutMs: number,
+): Promise<"none" | "daemon" | "other"> {
+  let res: Response;
+  try {
+    res = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    logger.debug(
+      `No existing server at ${url}`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return "none";
+  }
+  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
+  if (!res.ok) {
+    logger.debug(
+      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
+    );
+  }
+  return "other";
+}
+
+/**
  * Check whether something is already serving on the given URL.
  *
  * Any HTTP reply — including an error status — means the port is taken, so
@@ -602,28 +632,14 @@ export function tryListen(
  * protocol, {@link consumeSSE} reports that when the stream fails to open.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
-  let res: Response;
-  try {
-    res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
-  } catch (err) {
-    logger.debug(
-      `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
-  }
-  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") {
+  const holder = await probeLocalHealth(url, 2000);
+  if (holder === "daemon") {
     throw new ValidationError(
       "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
       "session",
     );
   }
-  if (!res.ok) {
-    logger.debug(
-      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
-    );
-  }
-  return true;
+  return holder === "other";
 }
 
 /** Apply only an explicitly requested limit when attaching to an existing receiver. */

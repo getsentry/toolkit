@@ -1,5 +1,5 @@
 /** Daemon identity and process invocation regression coverage. */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -70,6 +70,10 @@ describe("Local daemon discovery", () => {
     const probe = vi
       .fn()
       .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      // The busy daemon still answers health as a daemon.
+      .mockResolvedValueOnce(
+        new Response("OK", { headers: { "X-Sentry-Local-Mode": "daemon" } }),
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ sessions: [] }), { status: 200 }),
       );
@@ -175,6 +179,9 @@ async function freePort(): Promise<number> {
  */
 describe("Local daemon discovery after PID reuse", () => {
   const ownerPath = () => join(getConfigDir(), "local-control-plane.owner");
+  const statePath = () => join(getConfigDir(), "local-control-plane.json");
+  // Explicit mtimes keep the lock-age checks independent of timestamp precision.
+  const earlier = () => new Date(Date.now() - 60_000);
   const reusedState = async () => ({
     host: "127.0.0.1",
     port: await freePort(),
@@ -200,8 +207,8 @@ describe("Local daemon discovery after PID reuse", () => {
     );
     await mkdir(getConfigDir(), { recursive: true });
     await writeFile(ownerPath(), String(process.pid));
-    await new Promise((resolve) => setTimeout(resolve, 20));
     await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await utimes(ownerPath(), earlier(), earlier());
     await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
     await expect(readLocalDaemonState(getConfigDir())).resolves.toBeUndefined();
     await expect(readFile(ownerPath(), "utf8")).rejects.toMatchObject({
@@ -216,8 +223,8 @@ describe("Local daemon discovery after PID reuse", () => {
     );
     const state = await reusedState();
     await writeLocalDaemonState(getConfigDir(), state);
-    await new Promise((resolve) => setTimeout(resolve, 20));
     await writeFile(ownerPath(), String(process.pid));
+    await utimes(statePath(), earlier(), earlier());
     await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
     await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
     expect(await readFile(ownerPath(), "utf8")).toBe(String(process.pid));
@@ -292,15 +299,62 @@ describe("Local daemon discovery after PID reuse", () => {
     await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
   });
 
-  test("names the next step when a live daemon does not answer", async () => {
+  test("names both files to delete when a live daemon does not answer", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
     await writeLocalDaemonState(getConfigDir(), await reusedState());
     await expect(getRunningLocalDaemon()).rejects.toMatchObject({
       name: "CliError",
       message: expect.stringContaining(
-        "delete local-control-plane.json from the Sentry CLI config directory",
+        `delete ${statePath()} and ${ownerPath()}, then retry`,
       ),
     });
+  });
+
+  test.each([
+    ["clears discovery when a non-daemon server holds the port", {}],
+    [
+      "keeps discovery when a busy daemon answers health",
+      { "X-Sentry-Local-Mode": "daemon" },
+    ],
+  ])("%s", async (name, healthHeaders) => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    // Like a foreground `sentry local serve`: it rejects the daemon token.
+    const server = createServer((request, response) => {
+      if (request.url === "/health") response.writeHead(200, healthHeaders);
+      else response.statusCode = 401;
+      response.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const state = { ...(await reusedState()), port: address.port };
+    try {
+      await writeLocalDaemonState(getConfigDir(), state);
+      if (name.startsWith("clears")) {
+        await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+        await expect(
+          readLocalDaemonState(getConfigDir()),
+        ).resolves.toBeUndefined();
+      } else {
+        await expect(getRunningLocalDaemon()).rejects.toMatchObject({
+          name: "CliError",
+        });
+        await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(
+          state,
+        );
+      }
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
   });
 });
 
