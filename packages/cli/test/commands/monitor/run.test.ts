@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { runCommand } from "../../../src/commands/monitor/run.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
-import { CliError, ValidationError } from "../../../src/lib/errors.js";
+import { ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -172,16 +172,21 @@ describe("monitor runCommand.func()", () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  test("non-existent binary throws CliError and sends error check-in", async () => {
+  test("non-existent binary throws a command-not-found error and sends error check-in", async () => {
     const { ctx } = makeContext();
-    await expect(
-      func.call(
+    const error = await func
+      .call(
         ctx,
         { dsn: SAAS_DSN, environment: "production" },
         "my-job",
         "this-binary-does-not-exist-xyz",
-      ),
-    ).rejects.toBeInstanceOf(CliError);
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).field).toBe("command.not_found");
+    expect((error as Error).message).toContain(
+      "Command not found: this-binary-does-not-exist-xyz",
+    );
     // Both check-ins are still sent; the close one reports an error.
     expect(sendSpy).toHaveBeenCalledTimes(2);
     const closeBody = sendSpy.mock.calls[1]?.[1] as string;

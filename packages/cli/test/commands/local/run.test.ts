@@ -409,24 +409,24 @@ describe("sentry local run", () => {
     }
   });
 
-  test("throws on ENOENT (command not found)", async () => {
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    const ctx = makeContext();
-
-    try {
-      await func.call(
-        ctx,
-        { port: 19_879, host: "127.0.0.1", verify: false, timeout: 0 },
-        "nonexistent-command-that-does-not-exist",
+  test.each([false, true])(
+    "reports a missing command as command not found (verify: %s, CLI-3NK)",
+    async (verify) => {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify, timeout: 5 },
+          "nonexistent-command-that-does-not-exist",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).field).toBe("command.not_found");
+      expect((error as Error).message).toMatch(
+        /^Command not found: nonexistent-command-that-does-not-exist\n/,
       );
-      expect.unreachable("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toMatch(
-        /exited with code|Failed to start|ENOENT|spawn/i,
-      );
-    }
-  });
+    },
+  );
 
   test("strips leading -- separator from args", async () => {
     const func = (await runCommand.loader()) as unknown as RunFunc;

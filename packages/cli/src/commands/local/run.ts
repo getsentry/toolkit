@@ -38,6 +38,7 @@ import {
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { spawnFailureError } from "../../lib/spawn-failure.js";
 import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
@@ -662,7 +663,7 @@ export const runCommand = buildCommand({
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
-            fail(err);
+            fail(spawnFailureError(wrangler.args[0] ?? "", err));
           }
         });
       });
@@ -804,10 +805,18 @@ async function* runWithVerify(
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
 
+  // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
+  // a negative errno code, which is not a real exit code of the app.
+  let spawnError: Error | undefined;
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
       r({ kind: "exited" as const, code: code ?? 1 }),
     );
+    child.on("error", (err) => {
+      logger.debug(`Child process error: ${err.message}`);
+      spawnError = err;
+      r({ kind: "exited" as const, code: 1 });
+    });
   });
 
   const verifyTimeout =
@@ -880,6 +889,9 @@ async function* runWithVerify(
       );
     }
     case "exited": {
+      if (spawnError) {
+        throw spawnFailureError(wrangler.args[0] ?? "", spawnError);
+      }
       if (outcome.code === 0) {
         logger.warn("Process exited before sending any events");
         throw new CliError(

@@ -174,6 +174,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
+  // A ValidationError with field "command.not_found" means the command the
+  // user asked `sentry local run` or `sentry monitor run` to start is not
+  // installed or not on PATH (spawn ENOENT). The user sees which command is
+  // missing (CLI-3NK).
+  if (error instanceof ValidationError && error.field === "command.not_found") {
+    return "user_input_error";
+  }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not
   // a CLI bug — the user sees a clear "not found" message (CLI-RP).

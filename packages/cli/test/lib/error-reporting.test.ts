@@ -426,6 +426,16 @@ describe("classifySilenced", () => {
     },
   );
 
+  test("silences ValidationError with field 'command.not_found' (CLI-3NK)", () => {
+    // `sentry local run -- <cmd>` where <cmd> is not installed is the user's
+    // environment, not a CLI bug.
+    expect(
+      classifySilenced(
+        new ValidationError("Command not found: python", "command.not_found"),
+      ),
+    ).toBe("user_input_error");
+  });
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
