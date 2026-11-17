@@ -373,17 +373,21 @@ async function readOwnerPid(path: string): Promise<number> {
  * be replacing it. The owner lock goes too when it belongs to the same stale
  * daemon: the same PID, and written no later than discovery. A newer lock
  * with that PID is a daemon starting up.
+ *
+ * Returns `released` when callers should treat the daemon as not running,
+ * `ok` when the recheck reached the daemon, and `kept` otherwise.
  */
 async function releaseStaleLocalDaemon(
   directory: string,
   state: LocalDaemonState,
-): Promise<boolean> {
+): Promise<"released" | "ok" | "kept"> {
   await sleep(STALE_DAEMON_RECHECK_MS);
-  if ((await probeLocalDaemon(state)) !== "refused") return false;
+  const recheck = await probeLocalDaemon(state);
+  if (recheck !== "refused") return recheck === "ok" ? "ok" : "kept";
   return await withDaemonOwnershipGuard(directory, async () => {
     const current = await readLocalDaemonState(directory);
-    if (!current) return true;
-    if (!isSameDaemonState(current, state)) return false;
+    if (!current) return "released";
+    if (!isSameDaemonState(current, state)) return "kept";
     const ownerPath = join(directory, "local-control-plane.owner");
     const owner = await readOwnerPid(ownerPath);
     if (owner === state.pid) {
@@ -391,13 +395,13 @@ async function releaseStaleLocalDaemon(
         stat(ownerPath),
         stat(statePath(directory)),
       ]);
-      if (ownerFile.mtimeMs > stateFile.mtimeMs) return true;
+      if (ownerFile.mtimeMs > stateFile.mtimeMs) return "released";
       await rm(ownerPath, { force: true });
     } else if (isProcessRunning(owner)) {
-      return true;
+      return "released";
     }
     await removeLocalDaemonState(directory);
-    return true;
+    return "released";
   });
 }
 
@@ -425,12 +429,14 @@ async function discoverLocalDaemon(
   if (probe === "ok") return state;
   if (!isProcessRunning(state.pid)) return;
   if (probe === "refused") {
-    if (await releaseStaleLocalDaemon(directory, state)) return;
+    const outcome = await releaseStaleLocalDaemon(directory, state);
+    if (outcome === "released") return;
     // A daemon can replace discovery during the stale recheck.
     const latest = await readLocalDaemonState(directory);
     if (!latest) return;
     if (!isSameDaemonState(latest, state))
       return await discoverLocalDaemon(waitForResponse);
+    if (outcome === "ok") return state;
   }
   if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
     return;

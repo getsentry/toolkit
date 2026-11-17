@@ -277,6 +277,21 @@ describe("Local daemon discovery after PID reuse", () => {
     }
   });
 
+  test("uses a daemon that answers the stale recheck", async () => {
+    const originalFetch = (globalThis as { __originalFetch: typeof fetch })
+      .__originalFetch;
+    let calls = 0;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      calls += 1;
+      if (calls === 1) return await originalFetch(...args);
+      return Response.json({ sessions: [] });
+    });
+    const state = await reusedState();
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toEqual(state);
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+  });
+
   test("names the next step when a live daemon does not answer", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
     await writeLocalDaemonState(getConfigDir(), await reusedState());
