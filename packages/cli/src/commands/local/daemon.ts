@@ -23,6 +23,7 @@ import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { CliError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import {
   CONTROL_PLANE_PREFIX,
@@ -43,6 +44,8 @@ import { createLocalSessionStore, type LocalSession } from "./session-store.js";
 export const LOCAL_DAEMON_STATE_FILENAME = "local-control-plane.json";
 export const LOCAL_DAEMON_PROTOCOL_VERSION = 1;
 export const LOCAL_DAEMON_IDLE_GRACE_MS = 30_000;
+/** Pause before a refused connection is probed again, outlasting a shutdown. */
+const STALE_DAEMON_RECHECK_MS = 250;
 /** Listener retries plus time for CLI bootstrap and discovery persistence. */
 const LOCAL_DAEMON_START_TIMEOUT_MS = PORT_RETRY_TIMEOUT_MS + 5_000;
 
@@ -147,18 +150,41 @@ function daemonBaseUrl(state: LocalDaemonState): string {
   return formatLocalServerUrl(state.host, state.port);
 }
 
-async function daemonResponds(state: LocalDaemonState): Promise<boolean> {
+/**
+ * Probe the recorded daemon: `ok` when it proves its identity, `refused` when
+ * nothing listens at its address, and `failed` for a timeout or any other
+ * answer, which a busy daemon can also give.
+ */
+async function probeLocalDaemon(
+  state: LocalDaemonState,
+): Promise<"ok" | "refused" | "failed"> {
   try {
     const response = await requestLocalDaemon(state, "/sessions", {
       signal: AbortSignal.timeout(500),
     });
-    if (!response.ok) return false;
+    if (!response.ok) return "failed";
     const data = (await response.json()) as { sessions?: unknown };
-    return Array.isArray(data.sessions);
+    return Array.isArray(data.sessions) ? "ok" : "failed";
   } catch (error) {
     logger.debug("Local daemon identity check failed", error);
-    return false;
+    const cause = error instanceof Error ? error.cause : undefined;
+    return cause instanceof Error &&
+      "code" in cause &&
+      cause.code === "ECONNREFUSED"
+      ? "refused"
+      : "failed";
   }
+}
+
+/** Whether two discovery snapshots name the same daemon instance. */
+function isSameDaemonState(a: LocalDaemonState, b: LocalDaemonState): boolean {
+  return (
+    a.pid === b.pid &&
+    a.token === b.token &&
+    a.host === b.host &&
+    a.port === b.port &&
+    a.version === b.version
+  );
 }
 
 /** Arguments for re-executing this CLI as a native binary or Node entrypoint. */
@@ -336,37 +362,75 @@ async function readOwnerPid(path: string): Promise<number> {
   }
 }
 
-/** Keep discovery reads non-destructive; daemon startup replaces stale metadata. */
+/**
+ * Whether discovery whose PID is alive but whose address refused a connection
+ * is stale, as after an unclean exit and PID reuse; clears it when it is.
+ *
+ * A daemon writes discovery only after it listens, and closes its listener
+ * just before it removes discovery. So a refusal that persists after a pause,
+ * while discovery stays unchanged, means no daemon serves it. Under the
+ * ownership guard, discovery is removed only when no other live owner could
+ * be replacing it. The owner lock goes too when it belongs to the same stale
+ * daemon: the same PID, and written no later than discovery. A newer lock
+ * with that PID is a daemon starting up.
+ */
+async function releaseStaleLocalDaemon(
+  directory: string,
+  state: LocalDaemonState,
+): Promise<boolean> {
+  await sleep(STALE_DAEMON_RECHECK_MS);
+  if ((await probeLocalDaemon(state)) !== "refused") return false;
+  return await withDaemonOwnershipGuard(directory, async () => {
+    const current = await readLocalDaemonState(directory);
+    if (!current) return true;
+    if (!isSameDaemonState(current, state)) return false;
+    const ownerPath = join(directory, "local-control-plane.owner");
+    const owner = await readOwnerPid(ownerPath);
+    if (owner === state.pid) {
+      const [ownerFile, stateFile] = await Promise.all([
+        stat(ownerPath),
+        stat(statePath(directory)),
+      ]);
+      if (ownerFile.mtimeMs > stateFile.mtimeMs) return true;
+      await rm(ownerPath, { force: true });
+    } else if (isProcessRunning(owner)) {
+      return true;
+    }
+    await removeLocalDaemonState(directory);
+    return true;
+  });
+}
+
+/**
+ * Find the running daemon. Discovery stays in place for a live process that
+ * may be busy; it is cleared only when it is proven stale.
+ */
 async function discoverLocalDaemon(
   waitForResponse = false,
 ): Promise<LocalDaemonState | undefined> {
   const directory = getConfigDir();
   const state = await readLocalDaemonState(directory);
   if (!state) return;
-  const responds =
-    state.version === LOCAL_DAEMON_PROTOCOL_VERSION &&
-    (await daemonResponds(state));
+  const probe =
+    state.version === LOCAL_DAEMON_PROTOCOL_VERSION
+      ? await probeLocalDaemon(state)
+      : "failed";
   // A startup or shutdown can replace/remove metadata while the probe is in
   // flight. Rediscover changed state and never unlink based on a stale snapshot.
   const current = await readLocalDaemonState(directory);
   if (!current) return;
-  if (
-    current.pid !== state.pid ||
-    current.token !== state.token ||
-    current.host !== state.host ||
-    current.port !== state.port ||
-    current.version !== state.version
-  ) {
+  if (!isSameDaemonState(current, state)) {
     return await discoverLocalDaemon(waitForResponse);
   }
-  if (responds) return state;
-  if (isProcessRunning(state.pid)) {
-    if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
-      return;
-    throw new Error(
-      "The Local daemon is still running but did not respond with a compatible identity. Retry the command; its discovery state has been preserved.",
-    );
-  }
+  if (probe === "ok") return state;
+  if (!isProcessRunning(state.pid)) return;
+  if (probe === "refused" && (await releaseStaleLocalDaemon(directory, state)))
+    return;
+  if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
+    return;
+  throw new CliError(
+    `The Local daemon (PID ${state.pid}) is still running but did not respond at ${daemonBaseUrl(state)}. If it is busy, retry in a moment. If PID ${state.pid} is not a Sentry Local daemon, delete ${LOCAL_DAEMON_STATE_FILENAME} from the Sentry CLI config directory and retry.`,
+  );
 }
 
 /** Return authenticated discovery, preserving unreachable live owners for retries. */

@@ -1,5 +1,5 @@
 /** Daemon identity and process invocation regression coverage. */
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -167,6 +167,87 @@ async function freePort(): Promise<number> {
   await new Promise<void>((resolve) => reserve.close(() => resolve()));
   return address.port;
 }
+
+/**
+ * After an unclean exit, the recorded PID can belong to an unrelated live
+ * process (common in containers). Here that process is the test runner, and
+ * nothing listens on the recorded port (CLI-4TA).
+ */
+describe("Local daemon discovery after PID reuse", () => {
+  const ownerPath = () => join(getConfigDir(), "local-control-plane.owner");
+  const reusedState = async () => ({
+    host: "127.0.0.1",
+    port: await freePort(),
+    pid: process.pid,
+    token: "stale",
+    version: 1,
+  });
+
+  test("clears discovery when the recorded port refuses connections", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toBeUndefined();
+  });
+
+  test("also clears an owner lock that the same stale daemon wrote first", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    await mkdir(getConfigDir(), { recursive: true });
+    await writeFile(ownerPath(), String(process.pid));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toBeUndefined();
+    await expect(readFile(ownerPath(), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  test("preserves an owner lock newer than discovery, a daemon starting up", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    const state = await reusedState();
+    await writeLocalDaemonState(getConfigDir(), state);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await writeFile(ownerPath(), String(process.pid));
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+    expect(await readFile(ownerPath(), "utf8")).toBe(String(process.pid));
+  });
+
+  test("preserves discovery that another live owner is about to replace", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    const state = await reusedState();
+    await mkdir(getConfigDir(), { recursive: true });
+    await writeFile(ownerPath(), String(process.ppid));
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+    expect(await readFile(ownerPath(), "utf8")).toBe(String(process.ppid));
+  });
+
+  test("names the next step when a live daemon does not answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await expect(getRunningLocalDaemon()).rejects.toMatchObject({
+      name: "CliError",
+      message: expect.stringContaining(
+        "delete local-control-plane.json from the Sentry CLI config directory",
+      ),
+    });
+  });
+});
 
 /** Poll `read` until it returns a value `done` accepts. */
 async function eventually<T>(
