@@ -1,6 +1,8 @@
 /** Tests for the error shown when `local run` or `monitor run` cannot start a command. */
 
+import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import { classifySilenced } from "../../src/lib/error-reporting.js";
 import {
   CliError,
   COMMAND_LINE_BREAK_FIELD,
@@ -9,6 +11,7 @@ import {
 } from "../../src/lib/errors.js";
 import { spawnFailureError } from "../../src/lib/spawn-failure.js";
 import { whichSync } from "../../src/lib/which.js";
+import { TEST_TMP_DIR } from "../constants.js";
 
 vi.mock("../../src/lib/which.js", () => ({ whichSync: vi.fn() }));
 
@@ -40,6 +43,23 @@ describe("spawnFailureError", () => {
     expect(spawnFailureError("python", enoent("python")).message).toBe(
       "Command not found: python\n\nDid you mean python3?",
     );
+  });
+
+  test("says the working directory is gone instead of command not found", () => {
+    // Node reports ENOENT for a missing cwd too, even when npm is installed.
+    const cwd = join(TEST_TMP_DIR, "deleted-worktree");
+    const error = spawnFailureError("npm", enoent("npm"), cwd);
+    expect(error).not.toBeInstanceOf(ValidationError);
+    expect(error.message).toBe(
+      `Working directory no longer exists: ${cwd}\n\nRun the command again from a directory that exists.`,
+    );
+    expect(classifySilenced(error)).toBeNull();
+  });
+
+  test("still reports command not found when the cwd exists", () => {
+    vi.mocked(whichSync).mockReturnValue(null);
+    const error = spawnFailureError("npm", enoent("npm"), TEST_TMP_DIR);
+    expect((error as ValidationError).field).toBe(COMMAND_NOT_FOUND_FIELD);
   });
 
   test("returns a CliError unchanged", () => {

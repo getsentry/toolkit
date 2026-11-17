@@ -627,7 +627,7 @@ export const runCommand = buildCommand({
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
       }
-      throw spawnFailureError(wrangler.args[0] ?? "", err);
+      throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
     const onSigint = () => child.kill("SIGINT");
@@ -657,7 +657,7 @@ export const runCommand = buildCommand({
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
-            fail(spawnFailureError(wrangler.args[0] ?? "", err));
+            fail(spawnFailureError(wrangler.args[0] ?? "", err, this.cwd));
           }
         });
       });
@@ -780,7 +780,7 @@ async function* runWithVerify(
     forwardChildOutput(child, useJson);
   } catch (err) {
     await shutdownServer(server);
-    throw spawnFailureError(wrangler.args[0] ?? "", err);
+    throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
   let signalReceived: NodeJS.Signals | null = null;
@@ -880,7 +880,7 @@ async function* runWithVerify(
     }
     case "exited": {
       if (spawnError) {
-        throw spawnFailureError(wrangler.args[0] ?? "", spawnError);
+        throw spawnFailureError(wrangler.args[0] ?? "", spawnError, cwd);
       }
       if (outcome.code === 0) {
         logger.warn("Process exited before sending any events");
