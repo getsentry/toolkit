@@ -23,6 +23,10 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
@@ -201,7 +205,30 @@ export type ApiDenialReason =
   | "access_denied"
   | "expired"
   | "unrecognized"
-  | "daily_cap_exceeded";
+  | SeerDenialReason;
+
+/**
+ * Seer 402 `denialReason`s the CLI acts on. Taken from the generated API types
+ * so a renamed reason fails type-checking.
+ */
+export type SeerDenialReason = Extract<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  "daily_cap_exceeded"
+>;
+
+/**
+ * `values[key]` when `key` is one of the record's own keys, for looking up an
+ * untrusted `code` or `denialReason` from an error body in a map keyed by the
+ * values the API schema defines.
+ */
+export function lookupKnownKey<K extends string, V>(
+  values: Record<K, V>,
+  key: unknown,
+): V | undefined {
+  return typeof key === "string" && Object.hasOwn(values, key)
+    ? values[key as K]
+    : undefined;
+}
 
 /**
  * API request errors from Sentry.
@@ -700,6 +727,19 @@ export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
 export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
 
 /**
+ * `ValidationError` field for a port that another process holds, such as a
+ * foreground `sentry local serve`. Error reporting silences it.
+ */
+export const PORT_IN_USE_FIELD = "port.in_use";
+
+/**
+ * `ValidationError` field for a port that a Sentry Local daemon holds, so a
+ * receiver can't start there without `--session`. Reported on purpose, unlike
+ * PORT_IN_USE_FIELD: it is this CLI's own daemon, not another app.
+ */
+export const PORT_HELD_BY_DAEMON_FIELD = "port.held_by_daemon";
+
+/**
  * Input validation errors.
  *
  * @param message - Validation failure description
@@ -793,14 +833,26 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
+/**
+ * 409 `code`s Sentry sends when it won't start a run until Seer setup is done.
+ * Taken from the generated API types so a renamed code fails type-checking.
+ */
+type SeerSetupRequiredCode = Extract<
+  NonNullable<AutofixConflictResponse["code"]>,
+  "scm_integration_required" | "repos_not_linked"
+>;
+
+/**
+ * `not_enabled`, `no_budget`, `ai_disabled` and `out_of_credits` are the CLI's
+ * own; the rest are what Sentry sends.
+ */
 export type SeerErrorReason =
   | "not_enabled"
   | "no_budget"
   | "ai_disabled"
   | "out_of_credits"
-  | "daily_cap_exceeded"
-  | "scm_integration_required"
-  | "repos_not_linked";
+  | SeerDenialReason
+  | SeerSetupRequiredCode;
 
 /**
  * Seer-specific errors with actionable suggestions.

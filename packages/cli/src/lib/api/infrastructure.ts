@@ -7,6 +7,7 @@
  */
 
 import {
+  type AutofixPaymentRequiredResponse,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -43,6 +44,8 @@ import {
   ApiError,
   CliError,
   type FunctionArgument,
+  lookupKnownKey,
+  type SeerDenialReason,
   stringifyUnknown,
   TimeoutError,
 } from "../errors.js";
@@ -413,6 +416,19 @@ export type ApiRequestOptions<T = unknown> = {
 };
 
 /**
+ * The denial reason for each Seer 402 `denialReason` in the API schema, or
+ * undefined for one the CLI doesn't act on. Keyed by the generated type, so a
+ * reason added to the schema fails type-checking until it is mapped here.
+ */
+const SEER_DENIAL_REASONS: Record<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  SeerDenialReason | undefined
+> = {
+  daily_cap_exceeded: "daily_cap_exceeded",
+  not_enough_credits: undefined,
+};
+
+/**
  * Structured fields of a JSON error body: its string `code` (e.g.
  * `invalid_search_query`), the Seer 402 `denialReason` we act on, and the
  * rejected `function` and `argument`, with an optional `hint` (sent with
@@ -429,10 +445,13 @@ function readErrorFields(body: unknown): {
   const fields = body as Record<string, unknown>;
   const code = typeof fields.code === "string" ? fields.code : undefined;
   // Leave the key out otherwise, so it can't clear the 401/403 denial reason.
-  const denialReason: { denialReason?: ApiDenialReason } =
-    fields.denialReason === "daily_cap_exceeded"
-      ? { denialReason: "daily_cap_exceeded" }
-      : {};
+  const seerDenialReason = lookupKnownKey(
+    SEER_DENIAL_REASONS,
+    fields.denialReason,
+  );
+  const denialReason: { denialReason?: ApiDenialReason } = seerDenialReason
+    ? { denialReason: seerDenialReason }
+    : {};
   if (
     typeof fields.function !== "string" ||
     typeof fields.argument !== "string"

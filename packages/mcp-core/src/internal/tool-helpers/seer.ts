@@ -1,3 +1,7 @@
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { z } from "zod";
 import type { AutofixRunState } from "../../api-client/index";
 import type { Issue } from "../../api-client/types";
@@ -99,26 +103,70 @@ const SEER_NO_QUOTA_MESSAGE =
   "Your organization does not have enough Seer quota to start an Autofix run.";
 
 /**
+ * Whether each 402 `code` in the API schema means out of credits. Keyed by the
+ * generated type, so a code added to the schema fails type-checking until it
+ * is mapped here.
+ */
+const SEER_OUT_OF_CREDITS_CODES: Record<
+  AutofixPaymentRequiredResponse["code"],
+  boolean
+> = {
+  seer_out_of_credits: true,
+  seer_out_of_quota: false,
+};
+
+/** The out-of-credits message for each 402 `denialReason` in the API schema. */
+const SEER_DENIAL_MESSAGES: Record<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  string
+> = {
+  daily_cap_exceeded: SEER_START_DAILY_CAP_MESSAGE,
+  not_enough_credits: SEER_START_OUT_OF_CREDITS_MESSAGE,
+};
+
+/**
+ * Whether each 409 `code` in the API schema means Seer setup is missing.
+ * Exhaustive for the same reason.
+ */
+const SEER_SETUP_REQUIRED_CODES: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  boolean
+> = {
+  scm_integration_required: true,
+  repos_not_linked: true,
+  run_in_flight: false,
+};
+
+/**
+ * `values[key]` when `key` is one of the record's own keys, so an untrusted
+ * value such as `constructor` from an error body matches nothing.
+ */
+function lookupKnownKey<K extends string, V>(
+  values: Record<K, V>,
+  key: unknown,
+): V | undefined {
+  return typeof key === "string" && Object.hasOwn(values, key)
+    ? values[key as K]
+    : undefined;
+}
+
+/**
  * Explain a 402 from starting a run. Sentry tags the 402 with a `code`. Older
  * Sentry versions send the out-of-quota 402 as a bare string with no code, so
  * anything that isn't out of credits is treated as out of quota.
  */
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
   if (
-    isPlainObject(responseBody) &&
-    responseBody.code === "seer_out_of_credits"
+    !isPlainObject(responseBody) ||
+    !lookupKnownKey(SEER_OUT_OF_CREDITS_CODES, responseBody.code)
   ) {
-    return responseBody.denialReason === "daily_cap_exceeded"
-      ? SEER_START_DAILY_CAP_MESSAGE
-      : SEER_START_OUT_OF_CREDITS_MESSAGE;
+    return SEER_NO_QUOTA_MESSAGE;
   }
-  return SEER_NO_QUOTA_MESSAGE;
+  return (
+    lookupKnownKey(SEER_DENIAL_MESSAGES, responseBody.denialReason) ??
+    SEER_START_OUT_OF_CREDITS_MESSAGE
+  );
 }
-
-const SEER_SETUP_REQUIRED_CODES = new Set([
-  "scm_integration_required",
-  "repos_not_linked",
-]);
 
 /**
  * Explain a 409 from starting a run when Seer is not set up for the issue's
@@ -129,8 +177,7 @@ export function getSeerSetupRequiredMessage(
 ): string | null {
   if (
     !isPlainObject(responseBody) ||
-    typeof responseBody.code !== "string" ||
-    !SEER_SETUP_REQUIRED_CODES.has(responseBody.code) ||
+    !lookupKnownKey(SEER_SETUP_REQUIRED_CODES, responseBody.code) ||
     typeof responseBody.detail !== "string"
   ) {
     return null;
