@@ -49,6 +49,7 @@ import {
   isNetworkError,
   MalformedAuthTokenError,
   OutputError,
+  PORT_IN_USE_FIELD,
   ResolutionError,
   SeerError,
   TimeoutError,
@@ -173,6 +174,13 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   // reason (CLI-1FN).
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
+  }
+  // A port-in-use ValidationError means another process, often a foreground
+  // `sentry local serve`, holds the port a Local receiver or daemon needs
+  // (CLI-4R9, CLI-23H). The user's setup has to change, and the message says
+  // how.
+  if (error instanceof ValidationError && error.field === PORT_IN_USE_FIELD) {
+    return "user_validation";
   }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not

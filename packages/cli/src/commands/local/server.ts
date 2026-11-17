@@ -37,7 +37,11 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { ValidationError } from "../../lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../lib/errors.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
 import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
@@ -525,6 +529,20 @@ function waitForShutdown(server: Server): Promise<void> {
   });
 }
 
+/**
+ * Error for a listener port that another process holds. It is the user's
+ * setup, not a CLI bug, so error reporting silences its field.
+ */
+export function portInUseError(
+  port: number,
+  holder = "another process",
+): ValidationError {
+  return new ValidationError(
+    `Port ${port} is already in use by ${holder}. Stop it, or pass --port to use a different port.`,
+    PORT_IN_USE_FIELD,
+  );
+}
+
 /** Maximum retries on EADDRINUSE before giving up. */
 const MAX_PORT_RETRIES = 3;
 
@@ -565,12 +583,7 @@ export function tryListen(
         if (err.code === "EADDRINUSE") {
           attempts += 1;
           if (attempts > MAX_PORT_RETRIES) {
-            reject(
-              new ValidationError(
-                `Port ${port} is in use after ${MAX_PORT_RETRIES} retries`,
-                "port",
-              ),
-            );
+            reject(portInUseError(port));
             return;
           }
           logger.warn(
@@ -608,6 +621,7 @@ export async function probeLocalHealth(
     );
     return "none";
   }
+  await res.body?.cancel();
   if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
   if (!res.ok) {
     logger.debug(
@@ -624,7 +638,7 @@ export async function probeLocalHealth(
  * this deliberately does not require a 2xx. Spotlight's own sidecar can
  * answer `/health` with a 5xx while still holding the port and ingesting
  * envelopes; treating that as "nothing there" made the CLI try to bind the
- * port anyway and abort with `Port 8969 is in use after 3 retries`, killing
+ * port anyway and abort with `Port 8969 is already in use`, killing
  * the user's dev command instead of attaching to the sidecar.
  *
  * Only a transport-level failure (connection refused, timeout) counts as
@@ -636,7 +650,7 @@ export async function isServerRunning(url: string): Promise<boolean> {
   if (holder === "daemon") {
     throw new ValidationError(
       "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
-      "session",
+      PORT_HELD_BY_DAEMON_FIELD,
     );
   }
   return holder === "other";

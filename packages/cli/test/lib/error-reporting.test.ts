@@ -31,6 +31,8 @@ import {
   HostScopeError,
   MalformedAuthTokenError,
   OutputError,
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
   ResolutionError,
   SeerError,
   ValidationError,
@@ -425,6 +427,26 @@ describe("classifySilenced", () => {
       );
     },
   );
+
+  test("silences a port-in-use ValidationError (CLI-4R9, CLI-23H)", () => {
+    // Another process, such as a foreground `local serve`, holds the port.
+    expect(
+      classifySilenced(
+        new ValidationError("Port 8969 is already in use.", PORT_IN_USE_FIELD),
+      ),
+    ).toBe("user_validation");
+  });
+
+  test("keeps reporting a port that a Sentry Local daemon holds", () => {
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "A Sentry Local daemon is using this port.",
+          PORT_HELD_BY_DAEMON_FIELD,
+        ),
+      ),
+    ).toBeNull();
+  });
 
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(

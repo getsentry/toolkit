@@ -26,7 +26,12 @@ import {
   textParser,
 } from "../../lib/completion-target.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
-import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
+import {
+  CliError,
+  EXIT,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
   FILTER_VALUES,
@@ -302,12 +307,12 @@ async function openEventTail({
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
   } catch (err) {
-    if (!(err instanceof ValidationError && err.field === "port")) {
+    if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
       throw err;
     }
     await configureExistingRetention(url, maxEnvelopes);
     // Something grabbed the port between the probe and the bind.
-    logger.warn(`${err.message}; attaching to it instead`);
+    logger.warn(`Port ${port} is in use; attaching to it instead`);
     return attachToExistingServer({
       activeFilters,
       showAttributes,

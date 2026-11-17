@@ -23,7 +23,8 @@ import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { CliError } from "../../lib/errors.js";
+import { sentry } from "../../lib/app-identity.js";
+import { CliError, EXIT } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import {
   CONTROL_PLANE_PREFIX,
@@ -34,6 +35,7 @@ import {
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
   probeLocalHealth,
+  portInUseError,
   tryListen,
 } from "./server.js";
 import {
@@ -571,6 +573,18 @@ export async function ensureLocalDaemon({
       join(directory, "local-control-plane.owner"),
     );
     if (!isProcessRunning(owner)) {
+      // A daemon child would only wait out the listener retries behind a
+      // server that is not a Local daemon. A Local daemon there may be a
+      // foreground owner still publishing discovery, so startup waits for it.
+      if (
+        (await probeLocalHealth(formatLocalServerUrl(host, port), 500)) ===
+        "other"
+      ) {
+        throw portInUseError(
+          port,
+          `another server, such as a foreground '${sentry`local serve`}'`,
+        );
+      }
       child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
         detached: true,
         env: process.env,
@@ -580,9 +594,18 @@ export async function ensureLocalDaemon({
         startupError = error;
       });
       child.once("exit", (code, signal) => {
-        startupError = new Error(
-          `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
-        );
+        // Exit 21 (EXIT.VALIDATION) means the child's port is in use: its
+        // arguments are this loopback host and nonzero port, which its flag
+        // parsing accepts, and its other startup failures are plain Errors
+        // that exit 1. tryListen's port-in-use error is its only
+        // ValidationError.
+        const hostFlag = host === "localhost" ? "" : ` --host ${host}`;
+        startupError =
+          code === EXIT.VALIDATION
+            ? portInUseError(port)
+            : new CliError(
+                `Local daemon exited before startup (status ${code ?? signal}). Run '${sentry`local daemon start --foreground${hostFlag} --port ${port}`}' to see why.`,
+              );
       });
       child.unref();
     }
