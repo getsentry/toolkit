@@ -467,13 +467,14 @@ function normalizeHttpSpans(event: TransactionEvent): void {
       continue;
     }
     // Descriptions are `${method} ${url}`.
+    const method = span.description?.split(" ", 1)[0];
     span.description = span.description?.replace(/\S+$/, (url) =>
-      normalizeEndpoint(url),
+      normalizeEndpoint(url, method),
     );
     for (const key of HTTP_SPAN_URL_KEYS) {
       const value = span.data[key];
       if (typeof value === "string") {
-        span.data[key] = normalizeEndpoint(value);
+        span.data[key] = normalizeEndpoint(value, method);
       }
     }
   }
