@@ -51,6 +51,8 @@ export default Sentry.withSentry(
   (env: Env) => ({
     dsn: env.SENTRY_DSN ?? (env.SENTRY_SPOTLIGHT ? "https://local@localhost/0" : undefined),
     tunnel: env.SENTRY_SPOTLIGHT,
+    // Local capture still works through tunnel. This only stops a second
+    // copy of each event when a bundler picks the SDK's dev build.
     spotlight: false,
   }),
   app,

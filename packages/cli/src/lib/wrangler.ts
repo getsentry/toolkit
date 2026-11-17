@@ -9,9 +9,10 @@
  * `SENTRY_SPOTLIGHT` and the `spotlight` option only in its development
  * build, and Wrangler bundles the production build. Forcing the development
  * build (`WRANGLER_BUILD_CONDITIONS`) still delivered no Worker events without
- * a DSN; its Spotlight fetch is not held open with `waitUntil`. What
- * works is the SDK's `tunnel` option set to the binding, with a DSN set, so
- * the CLI prints that hint.
+ * a DSN; its Spotlight fetch is not held open with `waitUntil`. The prod
+ * build's exported `spotlightIntegration` has the same un-awaited fetch, so
+ * adding it by hand does not help either. What works is the SDK's `tunnel`
+ * option set to the binding, with a DSN set, so the CLI prints that hint.
  */
 
 import { access, readFile } from "node:fs/promises";
