@@ -79,8 +79,8 @@ describe("receiver envelope codec", () => {
   });
 
   test("IDs record when the receiver accepted the envelope", () => {
-    const container = createReceiverEnvelope({ body: Buffer.from("{}\n") });
     const before = Date.now();
+    const container = createReceiverEnvelope({ body: Buffer.from("{}\n") });
     const receivedAt = envelopeReceivedAt(prepareReceiverEnvelope(container));
     expect(receivedAt).toBeGreaterThanOrEqual(before);
     expect(receivedAt).toBeLessThanOrEqual(Date.now());
