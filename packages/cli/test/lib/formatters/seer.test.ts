@@ -438,6 +438,13 @@ describe("createSeerError", () => {
     },
   );
 
+  test("ignores a code that only matches an Object.prototype key", () => {
+    expect(
+      createSeerError(402, undefined, "my-org", "constructor")?.reason,
+    ).toBe("no_budget");
+    expect(createSeerError(409, "Conflict", "my-org", "toString")).toBeNull();
+  });
+
   test("returns no_budget for a 402 with the out-of-quota code", () => {
     const error = createSeerError(
       402,
