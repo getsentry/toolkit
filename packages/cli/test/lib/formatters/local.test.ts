@@ -476,6 +476,12 @@ describe("formatItem", () => {
     expect(stripAnsi(lines[0])).toContain("[ERROR]");
   });
 
+  test("prints nothing for replay recording segments", () => {
+    expect(
+      formatItem("replay_recording", { data: "H4sI" }, header, "fallback"),
+    ).toEqual([]);
+  });
+
   test("dispatches transaction type to transaction formatter", () => {
     const event = {
       timestamp: 1_700_000_001,

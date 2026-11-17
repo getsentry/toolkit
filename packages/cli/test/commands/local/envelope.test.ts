@@ -124,9 +124,9 @@ describe("receiver envelope codec", () => {
     expect(raw?.[1]).toEqual({ data: recording.toString("base64") });
   });
 
-  test("keeps Android Perfetto profile chunks as binary", () => {
-    // sentry-java sends `[JSON metadata][raw .pftrace bytes]` with this
-    // content type; JSON-only chunks from other SDKs still decode as JSON.
+  test("keeps Perfetto profile chunk metadata and its binary trace", () => {
+    // sentry-java sends `[JSON metadata][raw .pftrace bytes]` and sets
+    // `meta_length`; JSON-only chunks from other SDKs still decode as JSON.
     const metadata = Buffer.from(
       '{"chunk_id":"a1b2c3d4e5f60718293a4b5c6d7e8f90","profiler_id":"0f1e2d3c4b5a69788796a5b4c3d2e1f0","platform":"android","version":"2"}',
     );
@@ -135,21 +135,71 @@ describe("receiver envelope codec", () => {
     const json = Buffer.from(
       '{"chunk_id":"cccccccccccccccccccccccccccccccc","platform":"javascript","profile":{"samples":[]}}',
     );
+    const perfettoHeader = (metaLength: number) =>
+      `{"type":"profile_chunk","length":${chunk.length},"content_type":"application/x-perfetto-trace","filename":"profile.pftrace","platform":"android","meta_length":${metaLength}}`;
     const body = Buffer.concat([
-      Buffer.from(
-        `{}\n{"type":"profile_chunk","length":${chunk.length},"content_type":"application/x-perfetto-trace","filename":"profile.pftrace","platform":"android","meta_length":${metadata.length}}\n`,
-      ),
+      Buffer.from(`{}\n${perfettoHeader(metadata.length)}\n`),
       chunk,
       Buffer.from(`\n{"type":"profile_chunk","length":${json.length}}\n`),
       json,
     ]);
-    const container = createReceiverEnvelope({ body });
-    const items = container.getParsedEnvelope()?.envelope[1];
-    expect(items?.[0]?.[1]).toEqual({ data: chunk.toString("base64") });
+    const items = createReceiverEnvelope({ body }).getParsedEnvelope()
+      ?.envelope[1];
+    expect(items?.[0]?.[1]).toEqual({
+      chunk_id: "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      profiler_id: "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      platform: "android",
+      version: "2",
+      type: "profile_chunk",
+      data: trace.toString("base64"),
+    });
     expect(items?.[1]?.[1]).toMatchObject({
       chunk_id: "cccccccccccccccccccccccccccccccc",
       type: "profile_chunk",
     });
+
+    // A meta_length that does not end the JSON keeps the whole chunk raw.
+    const misframed = Buffer.concat([
+      Buffer.from(`{}\n${perfettoHeader(metadata.length - 1)}\n`),
+      chunk,
+    ]);
+    expect(
+      createReceiverEnvelope({ body: misframed }).getParsedEnvelope()
+        ?.envelope[1][0]?.[1],
+    ).toEqual({ data: chunk.toString("base64") });
+  });
+
+  test("keeps non-JSON items raw while the rest of the envelope decodes", () => {
+    const event = Buffer.from(
+      '{"event_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}',
+    );
+    // Unreal crash reports are zip archives without a content type.
+    const zip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x08, 0x00]);
+    // A declared non-JSON content type wins even when the bytes parse as JSON.
+    const protobuf = Buffer.from("{}");
+    const body = Buffer.concat([
+      Buffer.from(`{}\n{"type":"event","length":${event.length}}\n`),
+      event,
+      Buffer.from(`\n{"type":"unreal_report","length":${zip.length}}\n`),
+      zip,
+      Buffer.from(
+        `\n{"type":"integration","content_type":"application/x-protobuf","length":${protobuf.length}}\n`,
+      ),
+      protobuf,
+    ]);
+    const container = createReceiverEnvelope({ body });
+    expect(container.getEventTypes()).toEqual([
+      "event",
+      "unreal_report",
+      "integration",
+    ]);
+    expect(
+      container.getParsedEnvelope()?.envelope[1].map(([, payload]) => payload),
+    ).toEqual([
+      { event_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", type: "event" },
+      { data: zip.toString("base64") },
+      { data: protobuf.toString("base64") },
+    ]);
   });
 
   test("assigns independent stable IDs before parsing untrusted headers", () => {

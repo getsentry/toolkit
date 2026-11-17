@@ -53,16 +53,14 @@ export type ReceiverBuffer = {
 };
 
 const identities = new WeakMap<ReceiverEnvelope, string>();
-// Item payloads that are not one JSON document: replay recordings are a JSON
-// line plus (usually gzip) rrweb bytes, and Android Perfetto profile chunks
-// are JSON metadata followed by a binary trace.
+// Item payloads that are not one JSON document even without a content type:
+// replay recordings are a JSON line plus (usually gzip) rrweb bytes.
 const RAW_TYPES = new Set([
   "attachment",
   "replay_recording",
   "replay_video",
   "statsd",
 ]);
-const PERFETTO_CONTENT_TYPE = "application/x-perfetto-trace";
 const TEXT_CONTENT_TYPES = new Set([
   "text/plain",
   "text/css",
@@ -124,6 +122,16 @@ export function receiverEnvelopeId(container: ReceiverEnvelope): string {
   return prepareReceiverEnvelope(container);
 }
 
+/** Parse JSON item bytes; undefined means they are not JSON. */
+function parseJson(bytes: Buffer): unknown {
+  try {
+    return JSON.parse(bytes.toString("utf8"));
+  } catch {
+    logger.debug("Local receiver kept a non-JSON envelope item raw.");
+    return undefined;
+  }
+}
+
 /**
  * Sentry framing uses byte lengths, not lines, for opaque and multiline items.
  * Unlike @sentry/core's transport parser, reject truncated lengths and retain
@@ -171,12 +179,39 @@ function decode(
       if (offset === body.length) return null;
       bytes = line();
     }
-    let payload: unknown;
+    const contentType =
+      typeof itemHeader.content_type === "string"
+        ? itemHeader.content_type
+        : "";
+    const metaLength = itemHeader.meta_length;
+    let payload: Record<string, unknown> | undefined;
     if (
-      RAW_TYPES.has(itemHeader.type ?? "") ||
-      itemHeader.content_type === PERFETTO_CONTENT_TYPE
+      typeof metaLength === "number" &&
+      Number.isSafeInteger(metaLength) &&
+      metaLength >= 0 &&
+      metaLength <= bytes.length
     ) {
-      if (itemHeader.type === "statsd" && !itemHeader.content_type)
+      // Android Perfetto profile chunks: JSON metadata, then a binary trace.
+      const metadata = parseJson(bytes.subarray(0, metaLength));
+      if (isEnvelopeObject(metadata))
+        payload = {
+          ...metadata,
+          data: bytes.subarray(metaLength).toString("base64"),
+        };
+    } else if (
+      // `json` also matches `+json` suffixes and sentry-java's `application-json`.
+      !RAW_TYPES.has(itemHeader.type ?? "") &&
+      (!contentType || contentType.includes("json"))
+    ) {
+      const parsed = parseJson(bytes);
+      if (parsed !== undefined && !isEnvelopeObject(parsed)) return null;
+      payload = parsed;
+    }
+    if (payload) {
+      if (itemHeader.type) payload.type = itemHeader.type;
+    } else {
+      // Opaque or non-JSON items stay raw; the rest of the envelope decodes.
+      if (itemHeader.type === "statsd" && !contentType)
         itemHeader.content_type = "text/plain";
       payload = {
         data: bytes.toString(
@@ -189,12 +224,7 @@ function decode(
             : "base64",
         ),
       };
-    } else {
-      payload = JSON.parse(bytes.toString("utf8"));
-      if (!isEnvelopeObject(payload)) return null;
-      if (itemHeader.type) payload.type = itemHeader.type;
     }
-    if (!isEnvelopeObject(payload)) return null;
     items.push([itemHeader, payload]);
   }
   header.__spotlight_envelope_id = id;
