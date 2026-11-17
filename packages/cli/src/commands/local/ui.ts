@@ -106,6 +106,18 @@ export function getLocalUiConnectionUrl(
   }
 }
 
+/** The session ID in a session stream path, or undefined if there is none. */
+function sessionIdFromStreamPath(pathname: string): string | undefined {
+  const encoded = SESSION_STREAM_PATH.exec(pathname)?.[1];
+  if (!encoded) return;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    logger.debug("Session stream path has a malformed session ID.");
+    return;
+  }
+}
+
 /** Open the independently served local UI without affecting capture on failure. */
 export async function openLocalUi(
   receiverUrl: string,
@@ -124,8 +136,7 @@ export async function openLocalUi(
   }
   const streamUrl = new URL(receiverUrl);
   if (streamUrl.searchParams.has("cap") || directoryUrl) {
-    const sessionId = SESSION_STREAM_PATH.exec(streamUrl.pathname)?.[1];
-    const session = sessionId ? decodeURIComponent(sessionId) : "<session>";
+    const session = sessionIdFromStreamPath(streamUrl.pathname) ?? "<session>";
     logger.warn(
       `Could not open browser. Use ${sentry`local session view ${session} --json`} to retrieve its stream URL.`,
     );

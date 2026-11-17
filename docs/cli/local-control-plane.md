@@ -289,7 +289,8 @@ Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
 encoding 415, and temporary admission overload 503. SDKs drop an envelope that
 gets 413 without retrying, so `local run` and `local serve` print a warning in
-their tail when that happens, at most one line every five seconds. Session tails
+their tail when that happens, at most one line every five seconds. Drops in
+between are counted and printed as one line when the five seconds end. Session tails
 get the notice from the daemon as a `sentry.local.oversized` stream event. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
 Clearing a capture invalidates pending admissions, and closing a session drains

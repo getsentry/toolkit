@@ -103,27 +103,58 @@ export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 /** Shortest gap between two oversized-envelope warnings in one terminal. */
 const OVERSIZED_WARNING_INTERVAL_MS = 5000;
 
+/** Warns about envelopes rejected as too large (HTTP 413). */
+type OversizedEnvelopeWarning = {
+  /** Report one rejected envelope. */
+  warn: () => void;
+  /** Print the count of envelopes held back since the last line, if any. */
+  flush: () => void;
+};
+
 /**
- * Return a warning for envelopes rejected as too large (HTTP 413). SDKs drop
- * them without retrying, so this is the only sign they were lost. A burst
- * prints one line; the next line counts the ones it skipped.
+ * Warn about envelopes rejected as too large (HTTP 413). SDKs drop them
+ * without retrying, so this is the only sign they were lost. The first one
+ * prints right away; more within {@link OVERSIZED_WARNING_INTERVAL_MS} are
+ * counted and printed as one line when the interval ends.
  */
-function createOversizedEnvelopeWarning(): () => void {
-  let lastWarnedAt = Number.NEGATIVE_INFINITY;
-  let skipped = 0;
-  return () => {
-    const now = Date.now();
-    if (now - lastWarnedAt < OVERSIZED_WARNING_INTERVAL_MS) {
-      skipped += 1;
-      return;
+function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
+  const limit = `${MAX_BODY_BYTES / 1024 / 1024} MiB ingest limit (${MAX_DECODED_BYTES / 1024 / 1024} MiB decompressed)`;
+  let quietUntil = Number.NEGATIVE_INFINITY;
+  let held = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
     }
-    lastWarnedAt = now;
-    const more = skipped > 0 ? ` (${skipped} more since the last warning)` : "";
-    skipped = 0;
+    if (held === 0) return;
+    const count = held;
+    held = 0;
+    quietUntil = Date.now() + OVERSIZED_WARNING_INTERVAL_MS;
     logger.warn(
-      `Dropped an envelope over the ${MAX_BODY_BYTES / 1024 / 1024} MiB ingest limit (${MAX_DECODED_BYTES / 1024 / 1024} MiB decompressed)${more}. SDKs do not retry it, so its events are lost.`,
+      `Dropped ${count} more ${count === 1 ? "envelope" : "envelopes"} over the ${limit}.`,
     );
   };
+
+  const warn = () => {
+    const now = Date.now();
+    if (now < quietUntil) {
+      held += 1;
+      if (timer === undefined) {
+        timer = setTimeout(flush, quietUntil - now);
+        // A pending count must never keep the CLI alive.
+        timer.unref?.();
+      }
+      return;
+    }
+    quietUntil = now + OVERSIZED_WARNING_INTERVAL_MS;
+    logger.warn(
+      `Dropped an envelope over the ${limit}. SDKs do not retry it, so its events are lost.`,
+    );
+  };
+
+  return { warn, flush };
 }
 
 /**
@@ -451,7 +482,7 @@ export function buildApp(
   });
 
   // This receiver runs in the foreground command, so it warns in its terminal.
-  onOversizedEnvelope(buffer, createOversizedEnvelopeWarning());
+  onOversizedEnvelope(buffer, createOversizedEnvelopeWarning().warn);
   const ingest = async (c: Context) => {
     const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
     if (typeof body === "number") {
@@ -826,6 +857,19 @@ async function sleepUnlessAborted(
  * using `Last-Event-ID` to resume from where the stream left off.
  */
 export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
+  const oversized = createOversizedEnvelopeWarning();
+  try {
+    await consumeSSEWithWarning(opts, oversized.warn);
+  } finally {
+    // The tail is ending, so print any count still waiting for its interval.
+    oversized.flush();
+  }
+}
+
+async function consumeSSEWithWarning(
+  opts: ConsumeSSEOptions,
+  warnOversized: () => void,
+): Promise<void> {
   const {
     url,
     streamUrl,
@@ -839,7 +883,6 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
   let retries = 0;
   let retryDelay = SSE_INITIAL_RETRY_MS;
   let hasConnectedBefore = false;
-  const warnOversized = createOversizedEnvelopeWarning();
 
   while (!signal.aborted) {
     const result = await attemptSSEConnection({

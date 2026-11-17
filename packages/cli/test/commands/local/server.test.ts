@@ -1050,8 +1050,13 @@ describe("oversized envelopes", () => {
     );
   }
 
-  test("a plain receiver warns in its terminal, once per burst", async () => {
+  test("a plain receiver warns once per burst, then counts the rest", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const oversizedWarnings = () =>
+      warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
     try {
       const app = buildApp(createLocalRetentionBuffer(10).buffer);
       for (let i = 0; i < 3; i++) {
@@ -1061,12 +1066,14 @@ describe("oversized envelopes", () => {
         );
         expect(response.status).toBe(413);
       }
-      const warnings = warn.mock.calls
-        .map((call) => String(call[0]))
-        .filter((line) => OVERSIZED_WARNING.test(line));
-      expect(warnings).toHaveLength(1);
+      expect(oversizedWarnings()).toHaveLength(1);
+      // The two held back print when the interval ends, without a new drop.
+      vi.advanceTimersByTime(5000);
+      expect(oversizedWarnings()).toHaveLength(2);
+      expect(oversizedWarnings()[1]).toMatch(/^Dropped 2 more envelopes over/);
     } finally {
       warn.mockRestore();
+      vi.useRealTimers();
     }
   });
 
@@ -1123,7 +1130,11 @@ describe("oversized envelopes", () => {
       const warnings = warn.mock.calls
         .map((call) => String(call[0]))
         .filter((line) => OVERSIZED_WARNING.test(line));
-      expect(warnings).toHaveLength(1);
+      // The second drop is held back, then printed when the tail ends.
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 1 more envelope over/),
+      ]);
     } finally {
       globalThis.fetch = savedFetch;
       warn.mockRestore();
