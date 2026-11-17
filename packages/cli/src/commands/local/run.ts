@@ -13,11 +13,7 @@
  * so events still tail to the terminal.
  */
 
-import {
-  type ChildProcess,
-  type StdioOptions,
-  spawn,
-} from "node:child_process";
+import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
@@ -47,6 +43,7 @@ import {
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
+import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
 import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -325,17 +322,29 @@ async function openEventTail({
   }
 }
 
-/** Augment PATH with `./node_modules/.bin` for Node project scripts. */
-function augmentPathForNode(
+/**
+ * Augment PATH with `./node_modules/.bin` for Node project scripts.
+ *
+ * On Windows the variable is usually spelled `Path`, and names are
+ * case-insensitive: prepend to the key the child would read and drop the
+ * other spellings, so it never gets a PATH holding only `node_modules/.bin`.
+ */
+export function augmentPathForNode(
   env: Record<string, string | undefined>,
   cwd: string,
+  platform: NodeJS.Platform = process.platform,
 ): Record<string, string | undefined> {
   const binDir = resolve(cwd, "node_modules", ".bin");
-  const sep = process.platform === "win32" ? ";" : ":";
-  return {
-    ...env,
-    PATH: env.PATH ? `${binDir}${sep}${env.PATH}` : binDir,
-  };
+  if (platform !== "win32") {
+    return { ...env, PATH: env.PATH ? `${binDir}:${env.PATH}` : binDir };
+  }
+  const key = windowsEnvKey(env, "PATH") ?? "PATH";
+  const current = env[key];
+  const augmented = Object.fromEntries(
+    Object.entries(env).filter(([k]) => k.toUpperCase() !== "PATH"),
+  );
+  augmented[key] = current ? `${binDir};${current}` : binDir;
+  return augmented;
 }
 
 /** The error shown when no command was given and none was detected. */
@@ -610,8 +619,9 @@ export const runCommand = buildCommand({
     let child: ChildProcess;
     try {
       const [cmd = "", ...cmdArgs] = wrangler.args;
-      child = spawn(cmd, cmdArgs, {
+      child = spawnUserCommand(cmd, cmdArgs, {
         cwd: this.cwd,
+        resolveCwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
       });
@@ -620,6 +630,9 @@ export const runCommand = buildCommand({
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
+      }
+      if (err instanceof ValidationError) {
+        throw err;
       }
       throw new CliError(
         `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
@@ -766,14 +779,18 @@ async function* runWithVerify(
   const useJson = flags.format === "json";
   try {
     const [cmd = "", ...cmdArgs] = wrangler.args;
-    child = spawn(cmd, cmdArgs, {
+    child = spawnUserCommand(cmd, cmdArgs, {
       cwd,
+      resolveCwd: cwd,
       env: childEnv,
       stdio: childStdio(useJson),
     });
     forwardChildOutput(child, useJson);
   } catch (err) {
     await shutdownServer(server);
+    if (err instanceof ValidationError) {
+      throw err;
+    }
     throw new CliError(
       `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
       EXIT.GENERAL,

@@ -57,7 +57,12 @@ import { formatSavedTransformationLines } from "./saved-transformations.js";
 import { sparkline } from "./sparkline.js";
 import { colorizeSql, isDbSpanOp } from "./sql.js";
 import { type Column, writeTable } from "./table.js";
-import { computeSpanDurationMs, formatRelativeTime } from "./time-utils.js";
+import {
+  computeSpanDurationMs,
+  formatLocalDateTime,
+  formatLocalTime,
+  formatRelativeTime,
+} from "./time-utils.js";
 
 // Color tag maps
 
@@ -890,14 +895,14 @@ export function formatIssueDetails(issue: SentryIssue): string {
   kvRows.push(["Users", String(issue.userCount ?? 0)]);
 
   if (issue.firstSeen) {
-    let firstSeenLine = new Date(issue.firstSeen).toLocaleString();
+    let firstSeenLine = formatLocalDateTime(issue.firstSeen);
     if (firstReleaseVersion) {
       firstSeenLine += ` (in ${tableCell(stringifyUnknown(firstReleaseVersion))})`;
     }
     kvRows.push(["First seen", firstSeenLine]);
   }
   if (issue.lastSeen) {
-    let lastSeenLine = new Date(issue.lastSeen).toLocaleString();
+    let lastSeenLine = formatLocalDateTime(issue.lastSeen);
     if (lastReleaseVersion && lastReleaseVersion !== firstReleaseVersion) {
       lastSeenLine += ` (in ${tableCell(stringifyUnknown(lastReleaseVersion))})`;
     }
@@ -1164,7 +1169,7 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
 
   for (const breadcrumb of breadcrumbs) {
     const timestamp = breadcrumb.timestamp
-      ? new Date(breadcrumb.timestamp).toLocaleTimeString()
+      ? formatLocalTime(breadcrumb.timestamp)
       : "??:??:??";
 
     const level = breadcrumb.level ?? "info";
@@ -1543,10 +1548,7 @@ export function formatEventDetails(
     const infoKvRows: [string, string][] = [];
     infoKvRows.push(["Event ID", `\`${event.eventID}\``]);
     if (event.dateReceived) {
-      infoKvRows.push([
-        "Received",
-        new Date(event.dateReceived).toLocaleString(),
-      ]);
+      infoKvRows.push(["Received", formatLocalDateTime(event.dateReceived)]);
     }
     if (event.location) {
       infoKvRows.push(["Location", inlineCode(event.location)]);
@@ -1660,7 +1662,7 @@ export function formatOrgDetails(org: SentryOrganization): string {
   kvRows.push(["Name", text(org.name || "(unnamed)")]);
   kvRows.push(["ID", String(org.id)]);
   if (org.dateCreated) {
-    kvRows.push(["Created", new Date(org.dateCreated).toLocaleString()]);
+    kvRows.push(["Created", formatLocalDateTime(org.dateCreated)]);
   }
   kvRows.push(["2FA", org.require2FA ? "Required" : "Not required"]);
   kvRows.push(["Early Adopter", org.isEarlyAdopter ? "Yes" : "No"]);
@@ -1706,7 +1708,7 @@ export function formatProjectDetails(
   kvRows.push(["DSN", `\`${dsn || "No DSN available"}\``]);
   kvRows.push(["Status", project.status ?? "unknown"]);
   if (project.dateCreated) {
-    kvRows.push(["Created", new Date(project.dateCreated).toLocaleString()]);
+    kvRows.push(["Created", formatLocalDateTime(project.dateCreated)]);
   }
   if (project.organization) {
     const orgName = resolveOrgDisplayName(
@@ -1719,7 +1721,7 @@ export function formatProjectDetails(
     ]);
   }
   if (project.firstEvent) {
-    kvRows.push(["First Event", new Date(project.firstEvent).toLocaleString()]);
+    kvRows.push(["First Event", formatLocalDateTime(project.firstEvent)]);
   } else {
     kvRows.push(["First Event", "No events yet"]);
   }

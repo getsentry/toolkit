@@ -4,6 +4,10 @@ name: Bump @sentry/api
 # from static/packages/api, to its newest npm release, and moves it to each new
 # release. test.yml then checks the CLI, MCP and shared packages against it, so
 # this repository validates each release as an outside consumer.
+#
+# getsentry/sentry dispatches this workflow once npm serves each api@ release;
+# the daily run is a fallback. The bump itself is getsentry/sentry's reusable
+# bump-sentry-api-consumer.yml.
 on:
   schedule:
     - cron: "41 7 * * *"
@@ -12,7 +16,7 @@ on:
 permissions:
   contents: read
 
-# A manual run and the daily run must not both push the same branch.
+# A dispatch and the daily run must not both push the same branch.
 concurrency:
   group: bump-sentry-api
   cancel-in-progress: false
@@ -20,31 +24,13 @@ concurrency:
 jobs:
   bump:
     name: Bump @sentry/api
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      # A pull request opened with github.token does not start test.yml, so
-      # the bump pushes and opens it with the release bot's token.
-      - name: Get auth token
-        id: token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
-        with:
-          app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
-
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          token: ${{ steps.token.outputs.token }}
-          # The bump compares the open PR's branch with main.
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22.23.4"
-
-      - name: Bump @sentry/api
-        env:
-          GH_TOKEN: ${{ steps.token.outputs.token }}
-        run: node scripts/bump-sentry-api.mjs
+    uses: getsentry/sentry/.github/workflows/bump-sentry-api-consumer.yml@master
+    with:
+      pin: catalog
+      mode: rolling-pr
+      node-version: "22.23.4"
+      # The release bot opens the PR, because a PR opened with github.token
+      # does not start test.yml.
+      app-client-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}

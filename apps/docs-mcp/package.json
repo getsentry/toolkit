@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@hono/mcp": "^0.2.3",
-    "@mastra/core": "^1.63.2",
+    "@mastra/core": "^1.68.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@openrouter/ai-sdk-provider": "^1.5.4",
     "@sentry/cloudflare": "catalog:",

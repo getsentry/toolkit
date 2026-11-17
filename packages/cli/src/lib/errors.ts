@@ -694,6 +694,12 @@ export function validationError(
 export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
 
 /**
+ * `ValidationError` field for an argument with a line break that a `.cmd` or
+ * `.bat` command cannot be given safely on Windows.
+ */
+export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
+
+/**
  * Input validation errors.
  *
  * @param message - Validation failure description
