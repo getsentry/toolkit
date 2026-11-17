@@ -150,7 +150,7 @@ describe("search_issues", () => {
       );
 
       expect(requests).toEqual([
-        "https://tenant.my.sentry.io/api/0/organizations/product-org/issues/?limit=1&sort=date&statsPeriod=24h&query=is%3Aunresolved&project=123&collapse=unhandled",
+        "https://tenant.my.sentry.io/api/0/organizations/product-org/issues/?collapse=unhandled&limit=1&project=123&query=is%3Aunresolved&sort=date&statsPeriod=24h",
       ]);
       expect(result.url).toBe(
         "https://tenant.my.sentry.io/organizations/product-org/issues/?project=123&query=is%3Aunresolved",
