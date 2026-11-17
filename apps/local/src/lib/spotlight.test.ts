@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { sdkException } from "../test-fixtures/sdk-exception.ts";
 import {
+  sessionsAggregateEnvelope,
+  werkzeugBanner,
+  werkzeugLogEnvelope,
+} from "../test-fixtures/sentry-python.ts";
+import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
   parseStreamEndpoint,
@@ -457,5 +462,26 @@ describe("decodeEnvelope", () => {
     expect(() => decodeEnvelope("not json", "event-1")).toThrow(
       "Invalid Sentry envelope",
     );
+  });
+
+  test("strips terminal colour codes from log titles and keeps the raw payload", () => {
+    const [banner, access] = decodeEnvelope(werkzeugLogEnvelope, "logs");
+    expect(banner?.metadata?.title).toBe(
+      "WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.\n * Running on http://127.0.0.1:5050",
+    );
+    expect(access?.metadata?.title).toBe(
+      '127.0.0.1 - - [17/Nov/2026 20:59:55] "GET /missing HTTP/1.1" 404 -',
+    );
+    expect(banner?.payload).toMatchObject({ body: werkzeugBanner });
+    expect(banner?.text).toContain("\\u001b[31m");
+  });
+
+  test("dates and names a sentry-python sessions aggregate", () => {
+    const [sessions] = decodeEnvelope(sessionsAggregateEnvelope, "sessions");
+    expect(sessions).toMatchObject({
+      type: "sessions",
+      timestamp: "2026-11-17T20:59:00.000000Z",
+      metadata: { title: "Session counts: 5 exited" },
+    });
   });
 });

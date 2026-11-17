@@ -79,13 +79,15 @@ receiver's envelope retention limit when replaying a large corpus.
   5,000 per trace. Charts limit displayed depth/nodes for responsiveness; JSON
   preserves the selected original payload.
 - SDKs lists observed names, versions, platforms and last-seen metadata, followed
-  by session/client reports. Feedback links to associated errors in the capture.
+  by session/client reports, including server SDK session aggregates. Feedback
+  links to associated errors in the capture.
 - Attachments show safe text/JSON/image/video previews and downloads. Captured
   HTML, SVG and code remain inert; the viewer never executes them or fetches
   captured resource URLs. Attachments inside a raw envelope stay collapsed and
   are decoded only when you show their preview.
 
-Use severity/logger filters and sorting in event/log views. The Columns control
+Use severity/logger filters and sorting in event/log views. Messages hide
+terminal colour codes; the JSON tab keeps the captured text. The Columns control
 chooses which metadata appears beside each message. In a trace, search spans,
 show only matches, collapse branches, or adjust the tree width.
 

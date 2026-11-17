@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { werkzeugLogEnvelope } from "@/test-fixtures/sentry-python.ts";
 import { EventDetail } from "./event-detail.tsx";
 
 afterEach(() => {
@@ -288,4 +289,16 @@ test("errors without captured attachments show no attachment section", () => {
     screen.queryByRole("region", { name: "Event attachments" }),
   ).toBeNull();
   expect(screen.queryByRole("heading", { name: "Attachments" })).toBeNull();
+});
+
+test("log messages hide terminal colour codes while JSON keeps them", () => {
+  const [banner] = decodeEnvelope(werkzeugLogEnvelope, "logs");
+  if (!banner) throw new Error("Expected log");
+  render(<EventDetail item={banner} />);
+  const overview = screen.getByRole("tabpanel").textContent ?? "";
+  expect(overview).toContain("WARNING: This is a development server.");
+  expect(overview).not.toContain("\u001b");
+  expect(overview).not.toContain("[31m");
+  fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+  expect(screen.getByRole("tabpanel").textContent).toContain("[31m");
 });
