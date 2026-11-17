@@ -1,5 +1,5 @@
-import { Agent } from "@mastra/core/agent";
 import * as Sentry from "@sentry/cloudflare";
+import { generateText, stepCountIs } from "ai";
 import {
   trackAgentCall,
   trackAgentFallbackSynthesis,
@@ -31,13 +31,11 @@ const MAX_STEPS = 10;
  * makes synthesis output stable across repeat runs and easier to debug.
  */
 const TEMPERATURE = 0;
-const AGENT_DEFAULT_OPTIONS = {
-  modelSettings: {
-    temperature: TEMPERATURE,
-    // Disable p-retry's inner retries so the outer fallback loop is the
-    // sole retry/fallback mechanism. See default-options.ts in getsentry/cli-init-api/apps/server.
-    maxRetries: 0,
-  },
+const MODEL_SETTINGS = {
+  temperature: TEMPERATURE,
+  // The model fallback chain is the only retry/fallback mechanism. See
+  // createFallbackModel.
+  maxRetries: 0,
 };
 
 function getUsedModelId(result: {
@@ -127,20 +125,6 @@ export function setSynthesizedMarkdownAttributes(
   span.setAttribute("docs.synthesized_markdown_chars", markdown.length);
 }
 
-function createTailorAgent(apiKey: string | undefined, fetchedUrls: string[]) {
-  return new Agent({
-    id: "docs-tailor-agent",
-    name: "Docs Tailor Agent",
-    instructions: SYSTEM_PROMPT,
-    defaultOptions: AGENT_DEFAULT_OPTIONS,
-    model: createNativeModelFallbacks(PRIMARY_MODEL, apiKey),
-    tools: {
-      search_docs: createSearchDocsTool(),
-      fetch_doc_page: createFetchDocPageTool(fetchedUrls),
-    },
-  });
-}
-
 // ── Agent entry point ───────────────────────────────────────────────
 
 /**
@@ -205,9 +189,14 @@ ${seedSection}
 Produce the tailored integration guide.`;
 
       try {
-        const agent = createTailorAgent(apiKey, fetchedUrls);
-        const result = await agent.generate(userPrompt, {
-          maxSteps: MAX_STEPS,
+        const model = createNativeModelFallbacks(PRIMARY_MODEL, apiKey);
+        const tools = {
+          search_docs: createSearchDocsTool(),
+          fetch_doc_page: createFetchDocPageTool(fetchedUrls),
+        };
+        const result = await generateText({
+          ...MODEL_SETTINGS,
+          model,
           // Force a tool-free synthesis on the final step so the loop
           // never terminates with tool-calls and no text.
           prepareStep: ({ stepNumber }) => {
@@ -216,6 +205,10 @@ Produce the tailored integration guide.`;
             }
             return {};
           },
+          prompt: userPrompt,
+          stopWhen: stepCountIs(MAX_STEPS),
+          system: SYSTEM_PROMPT,
+          tools,
         });
 
         const inputTokens = result.totalUsage?.inputTokens ?? 0;
@@ -253,16 +246,18 @@ Produce the tailored integration guide.`;
         trackAgentFallbackSynthesis();
         span.setAttribute("agent.fallback_synthesis", true);
 
-        const fallback = await agent.generate(
-          [
-            ...(result.response.messages ?? []),
+        const fallback = await generateText({
+          ...MODEL_SETTINGS,
+          messages: [
+            ...result.response.messages,
             { role: "user", content: FALLBACK_SYNTHESIS_INSTRUCTION },
           ],
-          {
-            maxSteps: 1,
-            toolChoice: "none",
-          },
-        );
+          model,
+          stopWhen: stepCountIs(1),
+          system: SYSTEM_PROMPT,
+          toolChoice: "none",
+          tools,
+        });
 
         const fbInputTokens = fallback.totalUsage?.inputTokens ?? 0;
         const fbOutputTokens = fallback.totalUsage?.outputTokens ?? 0;
