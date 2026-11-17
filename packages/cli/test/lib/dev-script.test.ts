@@ -318,6 +318,26 @@ describe("detectDevCommand: FastAPI", () => {
     expect(result!.source).toBe("main.py (FastAPI)");
   });
 
+  test("detects FastAPI declared as a Poetry dependency", async () => {
+    await writeFile(
+      join(tmpDir, "pyproject.toml"),
+      '[tool.poetry.dependencies]\nfastapi = "^0.115"\n',
+    );
+    await writeFile(join(tmpDir, "main.py"), "from .api import app\n");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py (FastAPI)");
+  });
+
+  test("ignores a framework named only in prose or comments", async () => {
+    await writeFile(
+      join(tmpDir, "pyproject.toml"),
+      '[project]\ndescription = "A flask demo"\n# fastapi later\n',
+    );
+    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py");
+  });
+
   test("does not mistake fastapi-users for FastAPI", async () => {
     await writeFile(join(tmpDir, "requirements.txt"), "fastapi-users\n");
     await writeFile(join(tmpDir, "main.py"), "print('hello')");
@@ -367,6 +387,22 @@ describe("detectDevCommand: Flask", () => {
       args: ["python", "-m", "flask", "run"],
       source: "FLASK_APP (Flask)",
     });
+  });
+
+  test("prefers the app in the file over declared dependencies", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "fastapi\nflask\n");
+    await writeFile(join(tmpDir, "app.py"), FLASK_APP);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("app.py (Flask)");
+  });
+
+  test("runs a wsgi.py with a __main__ block as a script", async () => {
+    await writeFile(
+      join(tmpDir, "wsgi.py"),
+      `${FLASK_APP}\nif __name__ == "__main__":\n    app.run()\n`,
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({ args: ["python", "wsgi.py"], source: "wsgi.py" });
   });
 
   test("ignores a wsgi.py that is not Flask", async () => {

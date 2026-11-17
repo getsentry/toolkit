@@ -181,14 +181,15 @@ const FASTAPI_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:\w+\.)?FastAPI\(/m;
 /**
  * Detect a Python web app in `filename`.
  *
- * A file with a `__main__` guard starts its own server, so it runs as
+ * A file with a `__main__` guard starts its own server, so it always runs as
  * `python <file>`. Otherwise a FastAPI or Flask app has no code that serves
  * it, and `python <file>` would exit right away, so its server runs it:
  * uvicorn for FastAPI, `flask run` for Flask. Uvicorn rather than
  * `fastapi dev`, because plain `fastapi` installs a `fastapi` script that
  * fails without `fastapi[standard]`, and any venv that has fastapi-cli has
- * uvicorn too. A file that is neither runs as a script when `runAsScript` is
- * set.
+ * uvicorn too. The app in the file decides the framework before the
+ * declared dependencies do. A file with no app and no guard runs as a script
+ * only when `runAsScript` is set.
  */
 async function tryPythonApp(
   cwd: string,
@@ -202,11 +203,16 @@ async function tryPythonApp(
   }
   const script = { args: [python(), filename], source: filename };
   if (MAIN_GUARD_RE.test(source)) {
-    return runAsScript ? script : null;
+    return script;
   }
   const module = filename.slice(0, -".py".length);
   const fastapiApp = FASTAPI_APP_RE.exec(source)?.[1];
-  if (fastapiApp || (await declaresDependency(cwd, "fastapi"))) {
+  const framework = fastapiApp
+    ? "FastAPI"
+    : source.includes("Flask(")
+      ? "Flask"
+      : await declaredFramework(cwd);
+  if (framework === "FastAPI") {
     return {
       args: [
         python(),
@@ -218,7 +224,7 @@ async function tryPythonApp(
       source: `${filename} (FastAPI)`,
     };
   }
-  if (source.includes("Flask(") || (await declaresDependency(cwd, "flask"))) {
+  if (framework === "Flask") {
     return {
       args: [python(), "-m", "flask", "--app", module, "run"],
       source: `${filename} (Flask)`,
@@ -230,18 +236,27 @@ async function tryPythonApp(
 /** Python dependency manifests checked for a framework. */
 const DEPENDENCY_FILES = ["pyproject.toml", "requirements.txt"] as const;
 
-/** Whether pyproject.toml or requirements.txt declares the package `name`. */
-async function declaresDependency(cwd: string, name: string): Promise<boolean> {
-  // A name followed by a version, extra, marker, or quote, and not by `-` or
-  // `_`, so `fastapi-users` does not count as `fastapi`.
-  const pattern = new RegExp(`(^|["'\\s])${name}(?=[\\s\\[<>=~!;,"']|$)`, "im");
+/**
+ * Matches a requirement for the package named by the group: at the start of
+ * a line (requirements.txt, Poetry keys) or of a quoted string (PEP 621
+ * lists), then a version, extra, marker, comment, or the end. So
+ * `fastapi-users`, comments, and prose such as `"A flask demo"` do not count.
+ */
+const REQUIREMENT_RE = /(?:^\s*|["'])(fastapi|flask)\s*(?:[[<>=~!;@#"']|$)/im;
+
+/** The web framework that pyproject.toml or requirements.txt declares. */
+async function declaredFramework(
+  cwd: string,
+): Promise<"FastAPI" | "Flask" | null> {
   for (const file of DEPENDENCY_FILES) {
     const contents = await readFile(join(cwd, file), "utf-8").catch(() => null);
-    if (contents !== null && pattern.test(contents)) {
-      return true;
+    const name =
+      contents === null ? undefined : REQUIREMENT_RE.exec(contents)?.[1];
+    if (name) {
+      return name.toLowerCase() === "fastapi" ? "FastAPI" : "Flask";
     }
   }
-  return false;
+  return null;
 }
 
 /** Check for go.mod and return `go run .` */

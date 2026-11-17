@@ -17,8 +17,8 @@ With no command, `local run` picks one from the project, in this order:
 1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
 2. `manage.py`: `python manage.py runserver` (Django)
 3. `FLASK_APP` set: `python -m flask run`
-4. `app.py`, then `main.py`: a FastAPI app runs with `python -m uvicorn <module>:app --reload`. A Flask app runs with `python -m flask --app <module> run`. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
-5. `wsgi.py` with a Flask app: `python -m flask --app wsgi run`
+4. `app.py`, then `main.py`: the app in the file decides the framework, then the dependencies in `pyproject.toml` or `requirements.txt`. A FastAPI app runs with `python -m uvicorn <module>:app --reload`. A Flask app runs with `python -m flask --app <module> run`. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
+5. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
 6. `go.mod`: `go run .`
 7. `docker-compose.yml` or `compose.yml`: `docker compose up`
 
