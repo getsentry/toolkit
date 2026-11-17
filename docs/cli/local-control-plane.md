@@ -23,8 +23,10 @@ sentry local daemon stop
 application is started. Omit `--verify` to capture into a retained daemon session.
 The receiver tries port 8969 first. When that port is busy, for example because
 the daemon holds it, verify uses a free port instead, and the app gets URLs for
-that port. A busy `--port` that you pass fails right away. Verify prints no
-viewer link, because its receiver stops after the first envelope.
+that port. If no event arrives in time, the timeout message names the port it
+used, because an SDK that ignores `SENTRY_SPOTLIGHT` still sends to 8969. A busy
+`--port` that you pass fails right away. Verify prints no viewer link, because
+its receiver stops after the first envelope.
 
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in

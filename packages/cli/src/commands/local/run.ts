@@ -743,9 +743,12 @@ async function listenForVerify(
   app: Hono,
   port: number | undefined,
   host: string,
-): Promise<{ server: Server; port: number }> {
+): Promise<{ server: Server; port: number; fellBack: boolean }> {
   try {
-    return await tryListen(app, port ?? DEFAULT_PORT, host, { retries: 0 });
+    const bound = await tryListen(app, port ?? DEFAULT_PORT, host, {
+      retries: 0,
+    });
+    return { ...bound, fellBack: false };
   } catch (err) {
     if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
       throw err;
@@ -757,7 +760,8 @@ async function listenForVerify(
       );
     }
     logger.info(`Port ${DEFAULT_PORT} is in use; verifying on a free port`);
-    return await tryListen(app, 0, host, { retries: 0 });
+    const bound = await tryListen(app, 0, host, { retries: 0 });
+    return { ...bound, fellBack: true };
   }
 }
 
@@ -779,11 +783,11 @@ async function* runWithVerify(
     uiActions: isLoopbackHost(flags.host),
     retention,
   });
-  const { server, port: boundPort } = await listenForVerify(
-    app,
-    flags.port,
-    flags.host,
-  );
+  const {
+    server,
+    port: boundPort,
+    fellBack,
+  } = await listenForVerify(app, flags.port, flags.host);
   const url = formatLocalServerUrl(flags.host, boundPort);
   // No viewer link: this receiver shuts down after the first envelope.
   logger.info(`Verify server listening on ${bold(url)}`);
@@ -915,6 +919,13 @@ async function* runWithVerify(
       logger.warn(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
+      if (fellBack) {
+        // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
+        // port, so it reaches whatever holds that port instead of this receiver.
+        logger.warn(
+          `Verify used port ${boundPort} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
+        );
+      }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s`,
       );

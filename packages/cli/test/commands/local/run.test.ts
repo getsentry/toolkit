@@ -31,6 +31,7 @@ import { logger } from "../../../src/lib/logger.js";
 import {
   CliError,
   COMMAND_NOT_FOUND_FIELD,
+  EXIT,
   PORT_IN_USE_FIELD,
   ValidationError,
   VerifyFailedError,
@@ -38,6 +39,8 @@ import {
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as serverModule from "../../../src/commands/local/server.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -726,6 +729,33 @@ function closeServer(server: Server | undefined): Promise<void> {
   });
 }
 
+/**
+ * Make the default port look busy without binding it, so the test neither
+ * depends on nor disturbs whatever else uses that port.
+ */
+function makeDefaultPortBusy() {
+  const realTryListen = serverModule.tryListen;
+  return vi
+    .spyOn(serverModule, "tryListen")
+    .mockImplementation((listenApp, port, hostname, options) =>
+      port === DEFAULT_PORT
+        ? Promise.reject(serverModule.portInUseError(port))
+        : realTryListen(listenApp, port, hostname, options),
+    );
+}
+
+/** A context for running `local run` through Stricli flag parsing. */
+function makeParsedRunContext() {
+  return {
+    ...makeContext(),
+    process: { ...process, exitCode: undefined },
+    env: process.env,
+    homeDir: tmpDir,
+    configDir: tmpDir,
+    stdin: process.stdin,
+  } as unknown as SentryContext & { process: { exitCode?: number } };
+}
+
 describe("sentry local run --verify receiver", () => {
   useTestConfigDir("local-run-verify-");
 
@@ -752,18 +782,9 @@ describe("sentry local run --verify receiver", () => {
   });
 
   test("verifies on a free port when the default port is busy", async () => {
-    // Holds the default port the way a running daemon does; anything else
-    // already holding it serves the same purpose.
-    const holder = await holdPort(DEFAULT_PORT, "127.0.0.1");
+    const busy = makeDefaultPortBusy();
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    const context = {
-      ...makeContext(),
-      process: { ...process, exitCode: undefined },
-      env: process.env,
-      homeDir: tmpDir,
-      configDir: tmpDir,
-      stdin: process.stdin,
-    } as unknown as SentryContext;
+    const context = makeParsedRunContext();
     try {
       const started = Date.now();
       // Goes through flag parsing, so --port is omitted the way a user omits it.
@@ -788,13 +809,50 @@ describe("sentry local run --verify receiver", () => {
       expect(receiver.pathname).toBe("/stream");
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
+      // Client-side variants get the fallback port too, not the default.
+      expect(spawnCapture.env?.NEXT_PUBLIC_SENTRY_SPOTLIGHT).toBe(
+        receiver.href,
+      );
       expect(warn).not.toHaveBeenCalledWith(
         expect.stringContaining("retrying"),
       );
       expect(Date.now() - started).toBeLessThan(5000);
     } finally {
       warn.mockRestore();
-      await closeServer(holder);
+      busy.mockRestore();
+    }
+  }, 30_000);
+
+  test("says which port it used when verify on a fallback port times out", async () => {
+    const busy = makeDefaultPortBusy();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--verify",
+          "--host",
+          "127.0.0.1",
+          "--timeout",
+          "1",
+          "--",
+          process.execPath,
+          "-e",
+          "setTimeout(() => {}, 30000)",
+        ],
+        context,
+      );
+      expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
+      const port = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "").port;
+      expect(warn).toHaveBeenCalledWith(
+        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
+      );
+    } finally {
+      warn.mockRestore();
+      busy.mockRestore();
     }
   }, 30_000);
 
