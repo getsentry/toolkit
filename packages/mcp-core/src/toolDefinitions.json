@@ -7291,7 +7291,22 @@
                     "type": "string"
                   },
                   "status": {
-                    "type": ["string", "null"]
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "resolved",
+                          "ignored",
+                          "pending_deletion",
+                          "pending_merge",
+                          "reprocessing",
+                          "unresolved"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "project": {
                     "type": ["string", "null"]

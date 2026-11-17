@@ -3373,7 +3373,6 @@ export class SentryApiService {
       query.set("limit", String(limit));
     }
     if (eventId !== undefined) {
-      // camelCase, unlike most Sentry query params; Sentry ignores `event_id`
       query.set("eventId", eventId);
     }
     const queryString = query.toString();

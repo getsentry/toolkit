@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
 import { ApiClientError, ApiNotFoundError } from "../../api-client";
-import { RELATED_ISSUE_TYPES } from "../../api-client/schema";
+import { ISSUE_STATUSES, RELATED_ISSUE_TYPES } from "../../api-client/schema";
 import type {
   AutofixRunState,
   CommitterList,
@@ -118,7 +118,7 @@ export const getIssueDetailsOutputSchema = z.object({
         z.object({
           shortId: z.string(),
           title: z.string(),
-          status: z.string().nullable(),
+          status: z.enum(ISSUE_STATUSES).nullable(),
           project: z.string().nullable(),
           relations: z.array(z.enum(RELATED_ISSUE_TYPES)),
         }),
@@ -239,6 +239,13 @@ type IssueDetailsArgs = {
   directToolNames?: ReadonlySet<string>;
 };
 
+/** null for a status this version doesn't know, so the output still matches its schema. */
+function toIssueStatus(
+  status: string | null | undefined,
+): (typeof ISSUE_STATUSES)[number] | null {
+  return ISSUE_STATUSES.find((known) => known === status) ?? null;
+}
+
 /**
  * The endpoint's top few related issues. Same-trace issues can be in any project, so a
  * project-scoped session drops the ones outside its project, as find_related_issues does.
@@ -256,7 +263,7 @@ function buildRelatedIssues(
       .map(({ issue, relations }) => ({
         shortId: issue.shortId,
         title: issue.title,
-        status: nonEmptyString(issue.status),
+        status: toIssueStatus(issue.status),
         project: nonEmptyString(issue.project.name),
         relations: relations.map((relation) => relation.type),
       })),

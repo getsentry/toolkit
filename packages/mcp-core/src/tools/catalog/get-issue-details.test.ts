@@ -17,6 +17,7 @@ import {
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type { RelatedIssues } from "../../api-client/types";
 import type { Skill } from "../../skills";
 import * as logging from "../../telem/logging";
 import { getStructuredContent } from "../../test-utils/structured-content";
@@ -2173,6 +2174,30 @@ describe("structuredContent", () => {
       expect(parsePayload(result).relatedIssues?.unavailableTypes).toEqual([
         "similar_stacktrace",
       ]);
+    });
+
+    it("reports a status it doesn't know as null", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          ...relatedIssuesFixture,
+          data: relatedIssuesFixture.data.map(
+            (entry: RelatedIssues["data"][number]) => ({
+              ...entry,
+              issue: { ...entry.issue, status: "a_future_status" },
+            }),
+          ),
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(
+        payload.relatedIssues?.issues.map((issue) => issue.status),
+      ).toEqual([null, null]);
+      // the MCP server rejects output that doesn't match the schema's enum
+      expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
     });
 
     it("leaves them out when the lookup fails", async () => {
