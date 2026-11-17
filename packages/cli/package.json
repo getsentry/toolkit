@@ -140,7 +140,7 @@
     "pretty-ms": "^9.3.0",
     "qrcode-terminal": "^0.12.0",
     "semver": "^7.8.5",
-    "shell-quote": "^1.10.0",
+    "shell-quote": "^1.11.0",
     "string-width": "^8.2.1",
     "tinyglobby": "^0.2.17",
     "typescript": "catalog:",
