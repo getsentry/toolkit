@@ -43,6 +43,7 @@ import {
   ApiError,
   AuthError,
   CliError,
+  COMMAND_NOT_FOUND_FIELD,
   ContextError,
   DeviceFlowError,
   HostScopeError,
@@ -174,12 +175,15 @@ export function classifySilenced(error: unknown): SilenceReason | null {
   if (error instanceof ValidationError && error.field === "directory") {
     return "user_input_error";
   }
-  // A ValidationError with field "command.not_found" means the command the
-  // user asked `sentry local run` or `sentry monitor run` to start is not
-  // installed or not on PATH (spawn ENOENT). The user sees which command is
-  // missing (CLI-3NK).
-  if (error instanceof ValidationError && error.field === "command.not_found") {
-    return "user_input_error";
+  // A ValidationError with field COMMAND_NOT_FOUND_FIELD means the command
+  // the user asked `sentry local run` or `sentry monitor run` to start is not
+  // installed or not on PATH (spawn ENOENT, CLI-3NK). Their environment has
+  // to change, and the user sees which command is missing.
+  if (
+    error instanceof ValidationError &&
+    error.field === COMMAND_NOT_FOUND_FIELD
+  ) {
+    return "user_validation";
   }
   // A ResolutionError means the user provided a value (event ID, project slug,
   // etc.) that was looked up but not found. This is pure user-input noise, not

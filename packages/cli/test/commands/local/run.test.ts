@@ -18,7 +18,11 @@ import {
 import { buildApp, tryListen } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
 import { logger } from "../../../src/lib/logger.js";
-import { CliError, ValidationError } from "../../../src/lib/errors.js";
+import {
+  CliError,
+  COMMAND_NOT_FOUND_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 
@@ -421,7 +425,7 @@ describe("sentry local run", () => {
         )
         .catch((err: unknown) => err);
       expect(error).toBeInstanceOf(ValidationError);
-      expect((error as ValidationError).field).toBe("command.not_found");
+      expect((error as ValidationError).field).toBe(COMMAND_NOT_FOUND_FIELD);
       expect((error as Error).message).toMatch(
         /^Command not found: nonexistent-command-that-does-not-exist\n/,
       );

@@ -10,7 +10,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { runCommand } from "../../../src/commands/monitor/run.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import {
+  COMMAND_NOT_FOUND_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import { useTestConfigDir } from "../../helpers.js";
@@ -183,7 +186,7 @@ describe("monitor runCommand.func()", () => {
       )
       .catch((err: unknown) => err);
     expect(error).toBeInstanceOf(ValidationError);
-    expect((error as ValidationError).field).toBe("command.not_found");
+    expect((error as ValidationError).field).toBe(COMMAND_NOT_FOUND_FIELD);
     expect((error as Error).message).toContain(
       "Command not found: this-binary-does-not-exist-xyz",
     );

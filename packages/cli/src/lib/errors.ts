@@ -694,6 +694,12 @@ export function validationError(
 export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
 
 /**
+ * `ValidationError` field for a command the user asked the CLI to run that is
+ * not installed or not on PATH (spawn ENOENT, CLI-3NK).
+ */
+export const COMMAND_NOT_FOUND_FIELD = "command.not_found";
+
+/**
  * Input validation errors.
  *
  * @param message - Validation failure description

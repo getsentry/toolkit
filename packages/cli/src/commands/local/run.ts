@@ -630,10 +630,7 @@ export const runCommand = buildCommand({
       if (err instanceof ValidationError) {
         throw err;
       }
-      throw new CliError(
-        `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-        EXIT.GENERAL,
-      );
+      throw spawnFailureError(wrangler.args[0] ?? "", err);
     }
 
     const onSigint = () => child.kill("SIGINT");
@@ -787,10 +784,7 @@ async function* runWithVerify(
     if (err instanceof ValidationError) {
       throw err;
     }
-    throw new CliError(
-      `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-      EXIT.GENERAL,
-    );
+    throw spawnFailureError(wrangler.args[0] ?? "", err);
   }
 
   let signalReceived: NodeJS.Signals | null = null;
