@@ -55,6 +55,12 @@ export type ReceiverBuffer = {
 const identities = new WeakMap<ReceiverEnvelope, string>();
 /** Epoch milliseconds when each delivery received its identity. */
 const receivedTimes = new WeakMap<ReceiverEnvelope, number>();
+
+/** Record a delivery's identity and the time it was received. */
+function trackDelivery(container: ReceiverEnvelope, id: string): void {
+  identities.set(container, id);
+  receivedTimes.set(container, Date.now());
+}
 const RAW_TYPES = new Set(["attachment", "replay_video", "statsd"]);
 const TEXT_CONTENT_TYPES = new Set([
   "text/plain",
@@ -82,8 +88,7 @@ export function prepareReceiverEnvelope(container: ReceiverEnvelope): string {
   const existing = identities.get(container);
   if (existing) return existing;
   const id = uuidv7();
-  identities.set(container, id);
-  receivedTimes.set(container, Date.now());
+  trackDelivery(container, id);
   const parse = container.getParsedEnvelope.bind(container);
   let attempted = false;
   let parsed: ParsedReceiverEnvelope | null = null;
@@ -236,6 +241,6 @@ export function createReceiverEnvelope(input: {
           header.type ? [header.type] : [],
         ) ?? null,
   };
-  identities.set(container, id);
+  trackDelivery(container, id);
   return container;
 }

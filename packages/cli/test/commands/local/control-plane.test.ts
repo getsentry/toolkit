@@ -798,13 +798,16 @@ describe("Local control plane", () => {
       },
     );
 
-    const listed = await plane.app.request(
-      `/_local/v1/sessions/${session.id}/events`,
-      { headers: controlHeaders() },
-    );
-    const { events } = (await listed.json()) as {
-      events: Record<string, unknown>[];
+    const received = Date.now();
+    const list = async () => {
+      const listed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events`,
+        { headers: controlHeaders() },
+      );
+      return ((await listed.json()) as { events: Record<string, unknown>[] })
+        .events;
     };
+    const events = await list();
     expect(events.map(({ receivedAt: _, ...event }) => event)).toEqual([
       {
         envelopeId: expect.any(String),
@@ -868,8 +871,10 @@ describe("Local control plane", () => {
     for (const event of events) {
       const receivedAt = Date.parse(String(event.receivedAt));
       expect(receivedAt).toBeGreaterThanOrEqual(before);
-      expect(receivedAt).toBeLessThanOrEqual(Date.now());
+      expect(receivedAt).toBeLessThanOrEqual(received);
     }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await list()).toEqual(events);
 
     const viewed = await plane.app.request(
       `/_local/v1/sessions/${session.id}/events/d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a`,
