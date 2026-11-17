@@ -10,7 +10,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { rawApiRequest } from "../../../src/lib/api/infrastructure.js";
+import {
+  listOrganizationIntegrations,
+  listOrganizationProjects,
+} from "@sentry/api";
+import {
+  getOrgSdkConfig,
+  rawApiRequest,
+} from "../../../src/lib/api/infrastructure.js";
 import { markPersistedDefaultUrl } from "../../../src/lib/constants.js";
 import {
   getActiveAccountId,
@@ -498,6 +505,21 @@ describe("requests whose path names an organization", () => {
     expect(sent).toEqual(["Bearer saas-token"]);
     expect(urls).toEqual([
       "https://us.sentry.io/api/0/organizations/us-org/issues/?query=is:unresolved",
+    ]);
+  });
+
+  test("send cell operations to the org's region and control operations to the configured server", async () => {
+    login("saas-token", SAAS, "saas");
+    seeOrg("us-org", SAAS, "https://us.sentry.io");
+    const path = { organization_id_or_slug: "us-org" };
+
+    await listOrganizationProjects({ ...getOrgSdkConfig(), path });
+    await listOrganizationIntegrations({ ...getOrgSdkConfig(), path });
+
+    expect(sent).toEqual(["Bearer saas-token", "Bearer saas-token"]);
+    expect(urls).toEqual([
+      "https://us.sentry.io/api/0/organizations/us-org/projects/",
+      `${SAAS}/api/0/organizations/us-org/integrations/`,
     ]);
   });
 
