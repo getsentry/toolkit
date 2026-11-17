@@ -1,11 +1,18 @@
 import { z } from "zod";
+import type { SentryApiService } from "../../api-client";
 import type {
   AssignedTo,
   Issue,
   IssueActivityList,
   IssueResolutionDetails,
+  RelatedIssues,
 } from "../../api-client/types";
-import { UserInputError } from "../../errors";
+import { ConfigurationError, UserInputError } from "../../errors";
+import { sideQuestsSchema } from "../../internal/side-quests";
+import {
+  RELATED_ISSUES_LIMIT,
+  buildUpdateIssueSideQuests,
+} from "../../internal/update-issue-side-quests";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { formatAssignedTo } from "../../internal/tool-helpers/formatting";
@@ -537,6 +544,7 @@ export const updateIssueOutputSchema = z.object({
     })
     .nullable()
     .describe("Null when no reason was given."),
+  sideQuests: sideQuestsSchema,
 });
 
 type UpdateIssueOutput = z.infer<typeof updateIssueOutputSchema>;
@@ -863,6 +871,37 @@ function getReasonComment(
 }
 
 /**
+ * The issue's related issues, for the side quests. A failed lookup leaves
+ * them out: the update already happened. Client errors are expected, such as
+ * the endpoint's tight rate limit during bulk updates, or a Sentry version
+ * without the endpoint, so only other failures are reported.
+ */
+async function tryGetRelatedIssues(
+  apiService: SentryApiService,
+  organizationSlug: string,
+  issueId: string,
+): Promise<RelatedIssues | undefined> {
+  try {
+    return await apiService.getRelatedIssues({
+      organizationSlug,
+      issueId,
+      limit: RELATED_ISSUES_LIMIT,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof ApiClientError) &&
+      !(error instanceof ConfigurationError)
+    ) {
+      logIssue(error, {
+        loggerScope: ["tools", "update-issue", "related-issues"],
+        contexts: { request: { organizationSlug, issueId } },
+      });
+    }
+    return undefined;
+  }
+}
+
+/**
  * Identifies an assignee by actor so two users with the same display name
  * still count as different assignees.
  */
@@ -1076,12 +1115,32 @@ export default defineTool({
       ignoreUserWindow: updateIgnore?.ignoreUserWindow,
     });
 
-    const commentResult = await tryPostReasonComment(
-      apiService,
-      orgSlug,
-      parsedIssueId,
-      params.reason,
-    );
+    // Experimental for now: each lookup also calls Seer, and the endpoint's
+    // per-user rate limit is tight for bulk updates.
+    const lookUpRelated =
+      context.experimentalMode === true &&
+      updatedIssue.status !== currentIssue.status &&
+      (updatedIssue.status === "resolved" || updatedIssue.status === "ignored");
+    const [commentResult, relatedIssues] = await Promise.all([
+      tryPostReasonComment(apiService, orgSlug, parsedIssueId, params.reason),
+      lookUpRelated
+        ? tryGetRelatedIssues(apiService, orgSlug, String(updatedIssue.id))
+        : undefined,
+    ]);
+    const sideQuests =
+      relatedIssues &&
+      buildUpdateIssueSideQuests(
+        {
+          organizationSlug: orgSlug,
+          relatedIssues,
+          projectSlug: context.constraints.projectSlug,
+        },
+        {
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        },
+      );
 
     const updatedIgnoreState = getIgnoreState(updatedIssue, ignoreUpdate);
     const currentStatusDisplay = getIssueStatusDisplay(currentIssue);
@@ -1153,6 +1212,7 @@ export default defineTool({
       current: getCurrentState(updatedIssue, updatedIgnoreState),
       effect,
       reasonComment: getReasonComment(params.reason, commentResult),
+      ...(sideQuests && { sideQuests }),
     } satisfies UpdateIssueOutput);
   },
 });

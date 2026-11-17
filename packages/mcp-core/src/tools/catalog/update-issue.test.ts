@@ -1,4 +1,8 @@
-import { issueFixture, mswServer } from "@sentry/mcp-server-mocks";
+import {
+  issueFixture,
+  mswServer,
+  relatedIssuesFixture,
+} from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logIssue } from "../../telem/logging";
@@ -1771,4 +1775,132 @@ describe("update_issue", () => {
       ).toThrow();
     },
   );
+
+  describe("related issues side quest", () => {
+    const relatedUrl =
+      "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/related/";
+    const experimentalContext = { ...serverContext, experimentalMode: true };
+    const resolve = {
+      organizationSlug: "sentry-mcp-evals",
+      issueId: "CLOUDFLARE-MCP-41",
+      status: "resolved" as const,
+      assignedTo: undefined,
+      issueUrl: undefined,
+      regionUrl: null,
+    };
+
+    function captureRelatedRequests(
+      response: () => Response = () => HttpResponse.json(relatedIssuesFixture),
+    ) {
+      const requests: URL[] = [];
+      mswServer.use(
+        http.get(relatedUrl, ({ request }) => {
+          requests.push(new URL(request.url));
+          return response();
+        }),
+      );
+      return requests;
+    }
+
+    it("points out related issues still open after a resolve", async () => {
+      const requests = captureRelatedRequests();
+
+      const output = structured(
+        await updateIssue.handler(resolve, experimentalContext),
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+      expect(requests[0]?.searchParams.get("limit")).toBe("5");
+      expect(output.updated).toBe(true);
+      // CLOUDFLARE-MCP-42 is resolved, so only WEB-1A2 is listed
+      expect(output.sideQuests).toEqual([
+        {
+          id: "related_issues_open",
+          tip: "1 issue related to this one is still open. Check whether this change covers it too.",
+          details: ["`WEB-1A2` (same trace): `TypeError: Failed to fetch`"],
+          next: [
+            {
+              tool: "get_sentry_resource",
+              args: {
+                organizationSlug: "sentry-mcp-evals",
+                resourceType: "issue",
+                resourceId: "WEB-1A2",
+              },
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("points them out after an ignore too", async () => {
+      const requests = captureRelatedRequests();
+
+      const output = structured(
+        await updateIssue.handler(
+          { ...resolve, status: "ignored" as const },
+          experimentalContext,
+        ),
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(output.sideQuests?.map(({ id }) => id)).toEqual([
+        "related_issues_open",
+      ]);
+    });
+
+    it("doesn't look them up outside experimental mode", async () => {
+      const requests = captureRelatedRequests();
+
+      const result = await updateIssue.handler(resolve, serverContext);
+
+      expect(requests).toHaveLength(0);
+      expect(getStructuredContent(result)).not.toHaveProperty("sideQuests");
+    });
+
+    it("doesn't look them up when the issue stays open", async () => {
+      const requests = captureRelatedRequests();
+
+      const output = structured(
+        await updateIssue.handler(
+          { ...resolve, status: undefined, priority: "high" },
+          experimentalContext,
+        ),
+      );
+
+      expect(output.changes.priority).toEqual({ from: "medium", to: "high" });
+      expect(requests).toHaveLength(0);
+      expect(output).not.toHaveProperty("sideQuests");
+    });
+
+    it("leaves them out when the lookup is rate limited", async () => {
+      captureRelatedRequests(() =>
+        HttpResponse.json({ detail: "Too many requests" }, { status: 429 }),
+      );
+
+      const output = structured(
+        await updateIssue.handler(resolve, experimentalContext),
+      );
+
+      expect(output.updated).toBe(true);
+      expect(output).not.toHaveProperty("sideQuests");
+      expect(logIssue).not.toHaveBeenCalled();
+    });
+
+    it("leaves them out and reports a server error", async () => {
+      captureRelatedRequests(() => HttpResponse.json({}, { status: 500 }));
+
+      const output = structured(
+        await updateIssue.handler(resolve, experimentalContext),
+      );
+
+      expect(output.updated).toBe(true);
+      expect(output).not.toHaveProperty("sideQuests");
+      expect(logIssue).toHaveBeenCalledTimes(1);
+    });
+  });
 });
