@@ -7,7 +7,6 @@
  */
 
 import {
-  type BaseUrlRequest,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -23,6 +22,7 @@ import {
   paginate as paginateFrom,
   parseInsufficientScopeChallenge,
   readErrorResponse,
+  routeCellOperations,
 } from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
@@ -713,21 +713,24 @@ export function appendSearchParams(
 }
 
 /**
- * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
- * organization goes to that organization's region, on the server of the
- * stored account that knows it ({@link resolveOrgRegion}). An explicit
- * server still limits the accounts. Unscoped paths keep the base URL.
+ * `resolveBaseUrl` for `@sentry/api` clients. Operations Sentry declares
+ * cell-only go to their organization's region, on the server of the stored
+ * account that knows it ({@link resolveOrgRegion}). Control, `both` and
+ * `unknown` operations keep the configured base URL.
+ *
+ * Raw requests (`sentry api`) have no declared routing, so a path that names
+ * an organization also goes through {@link resolveOrgRegion}: it picks the
+ * account and server that know the organization, which the configured base
+ * URL alone can't. An explicit server still limits the accounts, and
+ * unscoped paths keep the base URL.
  */
-async function resolveOrgBaseUrl({
-  baseUrl,
-  scope,
-}: BaseUrlRequest): Promise<string> {
-  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
-}
+const resolveOrgBaseUrl = routeCellOperations(resolveOrgRegion, {
+  rawRequests: "lookup",
+});
 
 /**
- * SDK config that sends each request to the region of the organization its
- * path names ({@link resolveOrgBaseUrl}).
+ * SDK config that sends each cell operation to its organization's region and
+ * every other operation to the configured base URL ({@link resolveOrgBaseUrl}).
  */
 export function getOrgSdkConfig(
   options: Parameters<typeof getSdkClientConfig>[1] = {},
