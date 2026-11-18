@@ -19,6 +19,7 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
+import { terminalSignalsProcess } from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -31,6 +32,7 @@ import {
   CliError,
   EXIT,
   PORT_IN_USE_FIELD,
+  signalExitCode,
   ValidationError,
   VerifyFailedError,
 } from "../../lib/errors.js";
@@ -648,10 +650,20 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const onSigint = () => child.kill("SIGINT");
-    const onSigterm = () => child.kill("SIGTERM");
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
+    let interrupted = false;
+    const interrupts = interruptForwarder(child);
+    const onSigint = () => {
+      interrupted = true;
+      interrupts.forward();
+    };
+    const onSigterm = () => {
+      interrupted = true;
+      child.kill("SIGTERM");
+    };
+    // `on`, not `once`: a second signal must reach the app too, not kill the
+    // CLI and leave the app running.
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
@@ -661,14 +673,14 @@ export const runCommand = buildCommand({
       }, flags.timeout * 1000);
     }
 
-    let exitCode: number;
+    let exit: ChildExit;
     try {
-      exitCode = await new Promise<number>((done, fail) => {
+      exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
-        child.on("close", (code) => {
+        child.on("close", (code, signal) => {
           if (!settled) {
             settled = true;
-            done(code ?? 1);
+            done({ code, signal });
           }
         });
         child.on("error", (err) => {
@@ -683,6 +695,7 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
@@ -691,11 +704,81 @@ export const runCommand = buildCommand({
       }
     }
 
-    if (exitCode !== 0) {
-      throw new CliError(`Process exited with code ${exitCode}`, exitCode);
+    const exitCode = exit.signal
+      ? signalExitCode(exit.signal)
+      : (exit.code ?? EXIT.GENERAL);
+    if (exitCode === 0) {
+      return;
     }
+    // The user stopped the app: however it ended is what they asked for, so
+    // exit with its code and print no error.
+    if (interrupted) {
+      this.process.exitCode = exitCode;
+      return;
+    }
+    throw new CliError(
+      exit.signal
+        ? `Process exited with code ${exitCode} (killed by ${exit.signal})`
+        : `Process exited with code ${exitCode}`,
+      exitCode,
+    );
   },
 });
+
+/** How the wrapped app ended, from the child's `close` event. */
+type ChildExit = {
+  /** Exit code, or `null` when a signal killed it. */
+  code: number | null;
+  /** The signal that killed it, or `null` when it exited. */
+  signal: NodeJS.Signals | null;
+};
+
+/**
+ * How long to wait before passing on a SIGINT that the terminal seemed to
+ * deliver already. Long enough for most apps to finish shutting down, so they
+ * don't get a second SIGINT, which many treat as "force quit".
+ */
+const INTERRUPT_FALLBACK_MS = 3000;
+
+/**
+ * Pass the SIGINTs the CLI receives on to the child.
+ *
+ * Ctrl-C signals the terminal's whole foreground process group, which holds
+ * the child too, so the first SIGINT is not resent while the child is in that
+ * group: sending it twice made apps such as Flask run their shutdown twice.
+ * The CLI can't tell Ctrl-C from `kill -INT <cli pid>`, though, so if the
+ * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
+ * SIGINT anyway. Later SIGINTs are always passed on.
+ */
+function interruptForwarder(child: ChildProcess): {
+  forward: () => void;
+  dispose: () => void;
+} {
+  let received = 0;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  const send = () => {
+    clearTimeout(fallback);
+    fallback = undefined;
+    child.kill("SIGINT");
+  };
+  return {
+    forward() {
+      received += 1;
+      if (received > 1 || !terminalSignalsProcess(child.pid)) {
+        send();
+        return;
+      }
+      logger.debug("The terminal already sent SIGINT to the app");
+      fallback = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          logger.debug("The app is still running; sending it SIGINT");
+          send();
+        }
+      }, INTERRUPT_FALLBACK_MS);
+    },
+    dispose: () => clearTimeout(fallback),
+  };
+}
 
 /** Default timeout for --verify when no explicit --timeout is given. */
 const DEFAULT_VERIFY_TIMEOUT_S = 30;
@@ -802,16 +885,17 @@ async function* runWithVerify(
   }
 
   let signalReceived: NodeJS.Signals | null = null;
+  const interrupts = interruptForwarder(child);
   const onSigint = () => {
     signalReceived = "SIGINT";
-    child.kill("SIGINT");
+    interrupts.forward();
   };
   const onSigterm = () => {
     signalReceived = "SIGTERM";
     child.kill("SIGTERM");
   };
-  process.once("SIGINT", onSigint);
-  process.once("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -870,6 +954,7 @@ async function* runWithVerify(
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
     }
+    interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
     await shutdownServer(server);
