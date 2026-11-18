@@ -162,6 +162,17 @@ describe("summarizeEnvelope", () => {
     });
   });
 
+  test("ranks warn and warning logs the same", () => {
+    expect(
+      summarize("log", {
+        items: [
+          { level: "warn", body: "Retrying", timestamp: 1_794_947_106 },
+          { level: "warning", body: "Disk low", timestamp: 1_794_947_107 },
+        ],
+      }).title,
+    ).toBe("Retrying");
+  });
+
   test("titles session aggregates like the viewer", () => {
     expect(
       summarize("sessions", {
