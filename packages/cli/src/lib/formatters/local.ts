@@ -1,5 +1,6 @@
 /** Tail formatters for the local dev server. */
 
+import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
   getLocalUiConnectionUrl,
@@ -72,19 +73,27 @@ export const FILTER_VALUES = ["error", "transaction", "log", "ai"] as const;
 export type FilterValue = (typeof FILTER_VALUES)[number];
 
 /** Format a local timestamp as HH:MM:SS from a Sentry timestamp. */
-export function formatTime(timestamp?: number | string): string {
+export function formatTime(timestamp?: unknown): string {
   let date: Date;
-  if (!timestamp) {
-    date = new Date();
-  } else if (typeof timestamp === "string") {
-    date = new Date(timestamp);
+  if (timestamp) {
+    const seconds = parseEventTimestamp(timestamp);
+    if (seconds === undefined) {
+      return "??:??:??";
+    }
+    date = new Date(seconds * 1000);
   } else {
-    date = new Date(timestamp * 1000);
-  }
-  if (Number.isNaN(date.getTime())) {
-    return "??:??:??";
+    date = new Date();
   }
   return date.toLocaleTimeString("en-US", { hour12: false });
+}
+
+/** Whole-millisecond duration between two Sentry timestamps, if both parse. */
+function durationMs(start: unknown, end: unknown): number | undefined {
+  const startSeconds = parseEventTimestamp(start);
+  const endSeconds = parseEventTimestamp(end);
+  return startSeconds === undefined || endSeconds === undefined
+    ? undefined
+    : Math.round((endSeconds - startSeconds) * 1000);
 }
 
 /** 32-char lowercase-hex trace ID, as emitted by Sentry SDKs. */
@@ -156,7 +165,14 @@ export function formatType(level: string): string {
 /** Mobile SDK name substrings. */
 const MOBILE_MARKERS = ["cocoa", "android", "react-native", "flutter"];
 
-/** Server-side JS SDK name substrings — exclude from browser detection. */
+/**
+ * JavaScript SDK name substrings treated as server-side when the item itself
+ * doesn't say where it ran (logs, spans, sessions). Meta-framework SDKs send
+ * the same name from the browser and the server, so their events are told
+ * apart by platform and runtime instead (see {@link inferSourceName}).
+ * Envelope headers carry only the SDK name and version, not `sdk.packages`,
+ * so server-only SDKs have to be listed here by name.
+ */
 const SERVER_JS_MARKERS = [
   "node",
   "bun",
@@ -166,7 +182,17 @@ const SERVER_JS_MARKERS = [
   "astro",
   "nuxt",
   "sveltekit",
+  "solidstart",
+  "react-router",
+  "tanstackstart",
   "cloudflare",
+  "hono",
+  "vercel-edge",
+  "aws-serverless",
+  "google-cloud-serverless",
+  "nestjs",
+  "elysia",
+  "nitro",
 ];
 
 /** Source → color map for tail output. */
@@ -176,22 +202,54 @@ const SOURCE_COLORS: Record<string, (s: string) => string> = {
   server: cyan,
 };
 
+/** Where an item was captured, as shown in the source tag. */
+type SourceName = "browser" | "mobile" | "server";
+
 /**
- * Infer the source platform from the envelope header's `sdk.name` field.
- * Returns a colored, bracketed, padded label like `[SERVER] `.
+ * Infer where an item was captured.
+ *
+ * Event payloads say it directly: server SDKs set a `runtime` context (Node,
+ * Cloudflare Workers, Vercel Edge, Bun, Deno) or a non-JavaScript platform,
+ * and browser events have `platform: "javascript"` with no runtime. This is
+ * the only way to split meta-framework SDKs such as Next.js, which use one
+ * SDK name on both sides. Items without those fields fall back to the SDK
+ * name in the envelope header.
  */
-export function inferSource(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
-  const name = sdk?.name ?? "";
-  let source = "server";
+function inferSourceName(
+  header: Record<string, unknown>,
+  payload?: Record<string, unknown>,
+): SourceName {
+  const sdk = header.sdk as { name?: unknown } | undefined;
+  const name = typeof sdk?.name === "string" ? sdk.name : "";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
-    source = "mobile";
-  } else if (
+    return "mobile";
+  }
+  const contexts = payload?.contexts as Record<string, unknown> | undefined;
+  if (contexts?.runtime) {
+    return "server";
+  }
+  if (typeof payload?.platform === "string") {
+    return payload.platform === "javascript" ? "browser" : "server";
+  }
+  if (
     name.startsWith("sentry.javascript.") &&
     !SERVER_JS_MARKERS.some((m) => name.includes(m))
   ) {
-    source = "browser";
+    return "browser";
   }
+  return "server";
+}
+
+/**
+ * Build the source tag for an item, e.g. `[SERVER] `: colored, bracketed, and
+ * padded. Pass the item payload so events can be placed by their platform and
+ * runtime; see {@link inferSourceName}.
+ */
+export function inferSource(
+  header: Record<string, unknown>,
+  payload?: Record<string, unknown>,
+): string {
+  const source = inferSourceName(header, payload);
   const tag = `[${source.toUpperCase()}]`;
   const colorFn = SOURCE_COLORS[source] ?? cyan;
   return colorFn(tag) + " ".repeat(Math.max(0, SOURCE_WIDTH - tag.length));
@@ -206,9 +264,18 @@ export type StackFrame = {
   in_app?: boolean;
 };
 
+/**
+ * Pick the frame to show for a stack. Frames are ordered oldest to newest, so
+ * the last in-app frame is the app code closest to the throw (e.g. `onClick`,
+ * not React's `dispatchDiscreteEvent`). Falls back to the newest frame.
+ */
+function pickFrame(frames: StackFrame[] | undefined): StackFrame | undefined {
+  return frames?.findLast((f) => f.in_app) ?? frames?.at(-1);
+}
+
 /** Build the `[file:line:col] [func]` suffix for the best stack frame. */
 export function formatFrameHint(frames: StackFrame[]): string {
-  const frame = frames.find((f) => f.in_app) ?? frames.at(-1);
+  const frame = pickFrame(frames);
   if (!frame) {
     return "";
   }
@@ -227,42 +294,122 @@ export function formatFrameHint(frames: StackFrame[]): string {
   return hint;
 }
 
+/** Shape of one exception value in an event's `exception.values`. */
+type ExceptionValue = {
+  type?: unknown;
+  value?: unknown;
+  stacktrace?: { frames?: StackFrame[] };
+};
+
 /**
- * Format an error event item into a colored one-liner.
+ * What an `event` item reports, read the same way for tail and JSON output.
  *
- * Output: `HH:MM:SS [ERROR]   [SERVER]  TypeError: x is not a function [file.ts:42:5] [handleRequest]`
+ * `kind` is `message` for events with no typed exception: `captureMessage`,
+ * Python `logging` records, and JavaScript messages that carry only a
+ * synthetic stack. It is `error` otherwise, with the exception type in
+ * `errorType` (`Error` when the event names none).
+ */
+type EventSummary = (
+  | { kind: "message" }
+  | { kind: "error"; errorType: string }
+) & {
+  /** Event level (`fatal`, `error`, `warning`, `info`, `debug`); `error` when unset. */
+  level: string;
+  /** Exception value or message text. */
+  text: string;
+  /** Stack of the newest exception, including a message's synthetic stack. */
+  frames?: StackFrame[];
+  /** Logger name, e.g. a Python logger such as `shop.payments`. */
+  logger?: string;
+};
+
+/**
+ * Read text from an event `message` or `logentry`. Both may be a plain string
+ * or an object whose `formatted` text (with parameters filled in) is
+ * preferred over its `message` template.
+ */
+function readMessageText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value || undefined;
+  }
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  const { formatted, message } = value as {
+    formatted?: unknown;
+    message?: unknown;
+  };
+  if (typeof formatted === "string" && formatted) {
+    return formatted;
+  }
+  if (typeof message === "string" && message) {
+    return message;
+  }
+}
+
+/** Summarize an `event` item for its tail line or JSON record. */
+function summarizeEvent(event: Record<string, unknown>): EventSummary {
+  const exception = event.exception as
+    | { values?: ExceptionValue[] }
+    | undefined;
+  // values is ordered oldest→newest; the last one is what was thrown.
+  const last = exception?.values?.at(-1);
+  const errorType =
+    typeof last?.type === "string" && last.type ? last.type : undefined;
+  const exceptionText =
+    last?.value === undefined || last.value === ""
+      ? undefined
+      : stringifyUnknown(last.value);
+  const messageText =
+    readMessageText(event.logentry) ?? readMessageText(event.message);
+  const level =
+    typeof event.level === "string" && event.level ? event.level : "error";
+  const logger =
+    typeof event.logger === "string" && event.logger ? event.logger : undefined;
+  const frames = last?.stacktrace?.frames;
+
+  const text = errorType ? exceptionText : (messageText ?? exceptionText);
+  if (!errorType && text) {
+    return { kind: "message", level, text, frames, logger };
+  }
+  return {
+    kind: "error",
+    level,
+    errorType: errorType ?? "Error",
+    text: text ?? messageText ?? "Unknown error",
+    frames,
+    logger,
+  };
+}
+
+/**
+ * Format an `event` item into a colored one-liner, labeled with its level.
+ *
+ * Output:
+ * - `HH:MM:SS [ERROR]   [SERVER]  TypeError: x is not a function [file.ts:42:5] [handleRequest]`
+ * - `HH:MM:SS [WARNING] [BROWSER] Hello from captureMessage [page.js:24:19] [onClick]`
  */
 export function formatErrorItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = event.exception as
-    | {
-        values?: {
-          type?: string;
-          value?: string;
-          stacktrace?: { frames?: StackFrame[] };
-        }[];
-      }
-    | undefined;
-  // values is ordered oldest→newest; show the outermost (last) exception
-  const first = exception?.values?.at(-1);
-  const errorType = sanitize(String(first?.type ?? "Error"));
-  const errorValue = sanitize(
-    stringifyUnknown(first?.value ?? event.message ?? "Unknown error"),
-  );
+  const summary = summarizeEvent(event);
+  const text = sanitize(summary.text);
+  let msg =
+    summary.kind === "error" ? `${sanitize(summary.errorType)}: ${text}` : text;
 
-  let msg = `${errorType}: ${errorValue}`;
+  if (summary.frames?.length) {
+    msg += formatFrameHint(summary.frames);
+  }
 
-  const frames = first?.stacktrace?.frames;
-  if (frames?.length) {
-    msg += formatFrameHint(frames);
+  if (summary.logger) {
+    msg += ` ${muted(`[logger:${sanitize(summary.logger)}]`)}`;
   }
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
-  return `${muted(ts)} ${formatType("error")} ${inferSource(header)} ${msg}`;
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType(summary.level)} ${inferSource(header, event)} ${msg}`;
 }
 
 /**
@@ -307,11 +454,9 @@ export function formatTransactionItem(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  const start = event.start_timestamp as number | undefined;
-  const end = event.timestamp as number | undefined;
-  if (start !== undefined && end !== undefined) {
-    const durationMs = Math.round((end - start) * 1000);
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(event.start_timestamp, event.timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   const status = trace?.status;
@@ -326,8 +471,8 @@ export function formatTransactionItem(
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header, event)} ${msg}`;
 }
 
 /**
@@ -469,17 +614,24 @@ export function formatAttributeTable(event: Record<string, unknown>): string[] {
 export type LogEntry = {
   level?: string;
   body?: string;
-  timestamp?: number;
+  timestamp?: number | string;
   attributes?: Record<string, { value?: unknown }>;
 };
 
 /**
  * Whether a log attribute key is an SDK-default (`sentry.*`) attribute rather
- * than a user-supplied one. SDK-default attributes are hidden from the tail
- * line to reduce noise; their content (e.g. trace ID) is surfaced separately.
+ * than a user-supplied one. JSON log records leave out `sentry.*` attributes;
+ * their content (e.g. trace ID) is surfaced separately.
  */
 function isUserLogAttribute(key: string): boolean {
   return !key.startsWith("sentry.");
+}
+
+/** Log attributes that have a value, as `[key, value]` pairs. */
+function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
+  return Object.entries(logEntry.attributes ?? {})
+    .filter(([, v]) => v?.value !== null && v?.value !== undefined)
+    .map(([k, v]) => [k, v.value]);
 }
 
 /**
@@ -501,29 +653,21 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  * Format one log entry into a colored tail line.
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
- * lines align column-for-column and are easy to scan. SDK-default `sentry.*`
- * attributes are omitted from the inline list; the trace ID is surfaced as a
- * compact `[trace:…]` token instead.
+ * lines align column-for-column and are easy to scan. SDK-default attributes
+ * (`sentry.*`, `code.*`, `thread.*`, `server.*`, … see
+ * {@link SDK_ATTRIBUTE_PREFIXES}) are omitted from the inline list; the trace
+ * ID is surfaced as a compact `[trace:…]` token instead.
  */
 export function formatSingleLog(logEntry: LogEntry, source: string): string {
   const level = logEntry.level ?? "log";
   let msg = sanitize(logEntry.body ?? "");
 
-  if (logEntry.attributes) {
-    const attrs = Object.entries(logEntry.attributes)
-      .filter(
-        ([k, v]) =>
-          isUserLogAttribute(k) &&
-          v !== null &&
-          v !== undefined &&
-          v.value !== null &&
-          v.value !== undefined,
-      )
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
-    if (attrs.length > 0) {
-      msg += ` ${attrs.join(" ")}`;
-    }
+  const attrs = logAttributeEntries(logEntry)
+    .filter(([k]) => !isSdkAttribute(k))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v))}]`));
+  if (attrs.length > 0) {
+    msg += ` ${attrs.join(" ")}`;
   }
 
   const traceId = extractLogTraceId(logEntry);
@@ -539,11 +683,15 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
  * Format a log event item. A log envelope item contains an `items` array
  * of individual log entries; each gets its own line.
  *
+ * When `showAttributes` is true, each line is followed by a table of the
+ * SDK-default attributes that the line leaves out.
+ *
  * Output: `HH:MM:SS [INFO]    [SERVER]  User logged in [user_id=1234]`
  */
 export function formatLogItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
+  showAttributes = false,
 ): string[] {
   const items = event.items as LogEntry[] | undefined;
   if (!items?.length) {
@@ -551,7 +699,16 @@ export function formatLogItem(
   }
 
   const source = inferSource(header);
-  return items.map((logEntry) => formatSingleLog(logEntry, source));
+  return items.flatMap((logEntry) => {
+    const line = formatSingleLog(logEntry, source);
+    if (!showAttributes) {
+      return [line];
+    }
+    const sdk = logAttributeEntries(logEntry).filter(([k]) =>
+      isSdkAttribute(k),
+    );
+    return [line, ...formatAttrGroup("sdk attributes", sdk)];
+  });
 }
 
 /** Shape of a single span in a standalone span envelope item (v2 span streaming). */
@@ -559,8 +716,8 @@ export type StreamedSpan = {
   trace_id?: string;
   span_id?: string;
   name?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
+  start_timestamp?: number | string;
+  end_timestamp?: number | string;
   status?: string;
   attributes?: Record<string, { type?: string; value?: unknown }>;
 };
@@ -609,11 +766,9 @@ export function formatSingleSpan(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  if (span.start_timestamp !== undefined && span.end_timestamp !== undefined) {
-    const durationMs = Math.round(
-      (span.end_timestamp - span.start_timestamp) * 1000,
-    );
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(span.start_timestamp, span.end_timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   if (span.status && span.status !== "ok") {
@@ -781,37 +936,31 @@ function formatJsonObservation(
   );
 }
 
-/** Format an error item as a JSON object, including the best stack frame. */
+/**
+ * Format an `event` item as a JSON object, including the best stack frame.
+ * Exceptions get `type: "error"` and an `error_type`; messages get
+ * `type: "message"` and no `error_type`.
+ */
 function formatErrorJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = payload.exception as
-    | {
-        values?: {
-          type?: string;
-          value?: string;
-          stacktrace?: { frames?: StackFrame[] };
-        }[];
-      }
-    | undefined;
-  const first = exception?.values?.at(-1);
-  const frame =
-    first?.stacktrace?.frames?.find((f) => f.in_app) ??
-    first?.stacktrace?.frames?.at(-1);
+  const summary = summarizeEvent(payload);
+  const frame = pickFrame(summary.frames);
   return formatJsonObservation(
     {
-      type: "error",
-      timestamp: payload.timestamp,
+      type: summary.kind,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
-      error_type: jsonSafe(first?.type) ?? "Error",
-      message:
-        jsonSafe(first?.value) ?? jsonSafe(payload.message) ?? "Unknown error",
+      level: summary.level,
+      error_type: summary.kind === "error" ? summary.errorType : undefined,
+      message: summary.text,
+      logger: summary.logger,
       filename: jsonSafe(frame?.filename),
       lineno: frame?.lineno,
       colno: frame?.colno,
       function: jsonSafe(frame?.function),
-      source: inferSourceName(header),
+      source: inferSourceName(header, payload),
     },
     payload,
     header,
@@ -862,16 +1011,10 @@ function formatTransactionJson(
       payload.transaction ?? trace?.description ?? "Transaction",
     ),
   );
-  const start = payload.start_timestamp as number | undefined;
-  const end = payload.timestamp as number | undefined;
-  const durationMs =
-    start !== undefined && end !== undefined
-      ? Math.round((end - start) * 1000)
-      : undefined;
   return formatJsonObservation(
     {
       type: "transaction",
-      timestamp: payload.timestamp,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
       op: inferSemanticOp(attrs) ?? trace?.op,
       label: stripBidi(semantic.label),
@@ -879,11 +1022,11 @@ function formatTransactionJson(
         semantic.metadata.length > 0
           ? semantic.metadata.map(stripBidi)
           : undefined,
-      duration_ms: durationMs,
+      duration_ms: durationMs(payload.start_timestamp, payload.timestamp),
       status: trace?.status,
       span_count: (payload.spans as unknown[] | undefined)?.length,
       attributes: includeAttributes ? buildJsonAttributes(payload) : undefined,
-      source: inferSourceName(header),
+      source: inferSourceName(header, payload),
     },
     payload,
     header,
@@ -904,7 +1047,7 @@ function formatLogJson(
     formatJsonObservation(
       {
         type: "log",
-        timestamp: entry.timestamp,
+        timestamp: parseEventTimestamp(entry.timestamp),
         trace_id: extractLogTraceId(entry),
         level: entry.level ?? "log",
         message: stripBidi(entry.body ?? ""),
@@ -948,14 +1091,10 @@ function formatSpanJson(
       flat,
       span.name ?? "unnamed span",
     );
-    const durationMs =
-      span.start_timestamp !== undefined && span.end_timestamp !== undefined
-        ? Math.round((span.end_timestamp - span.start_timestamp) * 1000)
-        : undefined;
     return formatJsonObservation(
       {
         type: "span",
-        timestamp: span.end_timestamp,
+        timestamp: parseEventTimestamp(span.end_timestamp),
         trace_id: span.trace_id,
         span_id: span.span_id,
         op: inferSemanticOp(flat) ?? flat["sentry.op"],
@@ -964,7 +1103,7 @@ function formatSpanJson(
           semantic.metadata.length > 0
             ? semantic.metadata.map(stripBidi)
             : undefined,
-        duration_ms: durationMs,
+        duration_ms: durationMs(span.start_timestamp, span.end_timestamp),
         status: span.status,
         attributes: includeAttributes
           ? buildJsonAttributes({ contexts: { trace: { data: flat } } })
@@ -1013,28 +1152,12 @@ export function formatItemJson(
     formatJsonObservation(
       {
         type: itemType ?? "unknown",
-        timestamp: payload.timestamp,
+        timestamp: parseEventTimestamp(payload.timestamp),
       },
       payload,
       header,
     ),
   ];
-}
-
-/** Infer the source platform name from the SDK header (for JSON output). */
-function inferSourceName(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
-  const name = sdk?.name ?? "";
-  if (MOBILE_MARKERS.some((m) => name.includes(m))) {
-    return "mobile";
-  }
-  if (
-    name.startsWith("sentry.javascript.") &&
-    !SERVER_JS_MARKERS.some((m) => name.includes(m))
-  ) {
-    return "browser";
-  }
-  return "server";
 }
 
 /**
@@ -1064,7 +1187,12 @@ export function formatItem(
     return formatSpanItem(payload, header, showAttributes);
   }
   if (itemType === "log") {
-    return formatLogItem(payload, header);
+    return formatLogItem(payload, header, showAttributes);
+  }
+  // Active replays send a recording segment every few seconds; its
+  // replay_event already gets a line.
+  if (itemType === "replay_recording") {
+    return [];
   }
   return [formatFallbackLine(fallbackLabel)];
 }

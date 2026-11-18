@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { inspectAi } from "./inspection.ts";
+import { eventKind, inspectAi } from "./inspection.ts";
 
 const messages = [
   {
@@ -82,4 +82,14 @@ test("meaningful standard content keeps precedence over populated aliases", () =
       },
     }),
   ).toMatchObject({ messages, response: "Standard answer", tools: calls });
+});
+
+test.each([
+  [{ message: null }, "Event"],
+  [{ message: "" }, "Event"],
+  [{ logentry: { message: "", params: [] } }, "Event"],
+  [{ message: "Payment retry limit reached" }, "Message"],
+  [{ logentry: { formatted: "Database query failed for orders" } }, "Message"],
+])("event kind for %j is %s", (payload, kind) => {
+  expect(eventKind(payload)).toBe(kind);
 });

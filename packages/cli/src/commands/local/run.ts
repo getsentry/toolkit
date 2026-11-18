@@ -2,10 +2,11 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read automatically by server-side SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js and Python SDKs) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
- * browser bundles regardless of bundler.
+ * browser bundles. Browser SDKs do not read those variants yet; the app
+ * passes the URL to `spotlightBrowserIntegration` itself.
  *
  * If no server is already running on the target port, one is started
  * automatically in the background and shut down when the child exits.
@@ -18,6 +19,7 @@ import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
+import { terminalSignalsProcess } from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -31,6 +33,7 @@ import {
   CliError,
   EXIT,
   PORT_IN_USE_FIELD,
+  signalExitCode,
   ValidationError,
   VerifyFailedError,
 } from "../../lib/errors.js";
@@ -47,7 +50,10 @@ import {
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { spawnFailureError } from "../../lib/spawn-failure.js";
 import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
-import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import {
+  injectWranglerSpotlightBinding,
+  wranglerInjectedMessage,
+} from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
   retainLocalDaemonSession,
@@ -359,9 +365,14 @@ function autoDetectErrorMessage(): string {
     "Supported auto-detection:",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
-    "  - app.py / main.py (Python)",
+    "  - a FastAPI app in app.py / main.py (uvicorn)",
+    "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
+    "  - app.py / main.py (Python script)",
+    "  - FLASK_APP in a Python project (flask run)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
+    "",
+    "Python commands use the project's .venv or venv interpreter when present.",
   ].join("\n");
 }
 
@@ -410,17 +421,25 @@ export const runCommand = buildCommand({
   docs: {
     brief: "Run a command with the local dev server enabled",
     fullDescription:
-      "Run a command with the SENTRY_SPOTLIGHT environment variable\n" +
-      "injected so the Sentry SDK automatically sends envelopes to the\n" +
-      "local server.\n\n" +
+      "Run a command with the SENTRY_SPOTLIGHT environment variable set\n" +
+      "to the local server's URL.\n\n" +
       "If no server is already listening on the port, one is started\n" +
       "automatically and shut down when the child process exits.\n\n" +
       "The child process inherits all current env vars plus\n" +
-      "SENTRY_SPOTLIGHT (server-side SDKs read this automatically), the\n" +
-      "framework-prefixed client variants (NEXT_PUBLIC_, VITE_, etc.), and\n" +
-      "SENTRY_TRACES_SAMPLE_RATE=1. Use --format json to stream versioned\n" +
-      "NDJSON observations to stdout for agents. Use --open to launch the\n" +
-      "Sentry Local UI.",
+      "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
+      "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
+      "What your SDK needs:\n" +
+      "  - Node.js and Python servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - Browser SDKs ignore the prefixed variables. Add\n" +
+      "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
+      "  - Cloudflare Workers (wrangler dev) need\n" +
+      "    tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).\n" +
+      "  - Without a DSN, browser replays are dropped and browser-to-server\n" +
+      "    traces do not link. Python also drops logs buffered at exit.\n" +
+      "  - The Next.js edge runtime sends no messages or logs here; its\n" +
+      "    errors still arrive through the Node.js server.\n\n" +
+      "Use --format json to stream versioned NDJSON observations to stdout\n" +
+      "for agents. Use --open to launch the Sentry Local UI.",
     examples: [
       {
         description: "Run a Node.js dev server with the local server enabled",
@@ -608,7 +627,7 @@ export const runCommand = buildCommand({
       this.cwd,
     );
     if (wrangler.injected) {
-      logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+      logger.info(wranglerInjectedMessage());
     }
     // A session's Wrangler binding carries its ingest capability.
     logger.info(
@@ -640,10 +659,20 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const onSigint = () => child.kill("SIGINT");
-    const onSigterm = () => child.kill("SIGTERM");
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
+    let interrupted = false;
+    const interrupts = interruptForwarder(child);
+    const onSigint = () => {
+      interrupted = true;
+      interrupts.forward();
+    };
+    const onSigterm = () => {
+      interrupted = true;
+      child.kill("SIGTERM");
+    };
+    // `on`, not `once`: a second signal must reach the app too, not kill the
+    // CLI and leave the app running.
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
@@ -653,14 +682,14 @@ export const runCommand = buildCommand({
       }, flags.timeout * 1000);
     }
 
-    let exitCode: number;
+    let exit: ChildExit;
     try {
-      exitCode = await new Promise<number>((done, fail) => {
+      exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
-        child.on("close", (code) => {
+        child.on("close", (code, signal) => {
           if (!settled) {
             settled = true;
-            done(code ?? 1);
+            done({ code, signal });
           }
         });
         child.on("error", (err) => {
@@ -675,6 +704,7 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
@@ -683,11 +713,81 @@ export const runCommand = buildCommand({
       }
     }
 
-    if (exitCode !== 0) {
-      throw new CliError(`Process exited with code ${exitCode}`, exitCode);
+    const exitCode = exit.signal
+      ? signalExitCode(exit.signal)
+      : (exit.code ?? EXIT.GENERAL);
+    if (exitCode === 0) {
+      return;
     }
+    // The user stopped the app: however it ended is what they asked for, so
+    // exit with its code and print no error.
+    if (interrupted) {
+      this.process.exitCode = exitCode;
+      return;
+    }
+    throw new CliError(
+      exit.signal
+        ? `Process exited with code ${exitCode} (killed by ${exit.signal})`
+        : `Process exited with code ${exitCode}`,
+      exitCode,
+    );
   },
 });
+
+/** How the wrapped app ended, from the child's `close` event. */
+type ChildExit = {
+  /** Exit code, or `null` when a signal killed it. */
+  code: number | null;
+  /** The signal that killed it, or `null` when it exited. */
+  signal: NodeJS.Signals | null;
+};
+
+/**
+ * How long to wait before passing on a SIGINT that the terminal seemed to
+ * deliver already. Long enough for most apps to finish shutting down, so they
+ * don't get a second SIGINT, which many treat as "force quit".
+ */
+const INTERRUPT_FALLBACK_MS = 3000;
+
+/**
+ * Pass the SIGINTs the CLI receives on to the child.
+ *
+ * Ctrl-C signals the terminal's whole foreground process group, which holds
+ * the child too, so the first SIGINT is not resent while the child is in that
+ * group: sending it twice made apps such as Flask run their shutdown twice.
+ * The CLI can't tell Ctrl-C from `kill -INT <cli pid>`, though, so if the
+ * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
+ * SIGINT anyway. Later SIGINTs are always passed on.
+ */
+function interruptForwarder(child: ChildProcess): {
+  forward: () => void;
+  dispose: () => void;
+} {
+  let received = 0;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  const send = () => {
+    clearTimeout(fallback);
+    fallback = undefined;
+    child.kill("SIGINT");
+  };
+  return {
+    forward() {
+      received += 1;
+      if (received > 1 || !terminalSignalsProcess(child.pid)) {
+        send();
+        return;
+      }
+      logger.debug("The terminal already sent SIGINT to the app");
+      fallback = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          logger.debug("The app is still running; sending it SIGINT");
+          send();
+        }
+      }, INTERRUPT_FALLBACK_MS);
+    },
+    dispose: () => clearTimeout(fallback),
+  };
+}
 
 /** Default timeout for --verify when no explicit --timeout is given. */
 const DEFAULT_VERIFY_TIMEOUT_S = 30;
@@ -774,7 +874,7 @@ async function* runWithVerify(
     cwd,
   );
   if (wrangler.injected) {
-    logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+    logger.info(wranglerInjectedMessage());
   }
 
   let child: ChildProcess;
@@ -794,16 +894,17 @@ async function* runWithVerify(
   }
 
   let signalReceived: NodeJS.Signals | null = null;
+  const interrupts = interruptForwarder(child);
   const onSigint = () => {
     signalReceived = "SIGINT";
-    child.kill("SIGINT");
+    interrupts.forward();
   };
   const onSigterm = () => {
     signalReceived = "SIGTERM";
     child.kill("SIGTERM");
   };
-  process.once("SIGINT", onSigint);
-  process.once("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -862,6 +963,7 @@ async function* runWithVerify(
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
     }
+    interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
     await shutdownServer(server);

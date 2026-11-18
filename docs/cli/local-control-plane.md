@@ -46,6 +46,11 @@ Restart preserves its configured host and port and clears all in-memory data.
 Both stop and restart wait for the previous daemon to release its state and ownership
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
+`daemon stop` and `daemon restart` warn about sessions that were still
+capturing, and `daemon stop` lists them in `capturingSessions`. A `local run --session` or `local serve --session` attached to
+one prints a single warning once the daemon is gone and stops reconnecting. A
+wrapped app keeps running, but nothing captures its telemetry until the command
+is restarted.
 A temporarily unreachable live daemon keeps its discovery state for retries.
 Discovery is stale when its recorded port refuses connections, or when a server
 that is not a Local daemon answers there, even if its PID is alive. That happens
@@ -259,6 +264,11 @@ when the event carries a request transaction name. Overview shows the current
 exception, its causes, and stack frames with function names, source locations, and
 captured source lines. Frames appear most recent first; the JSON tab preserves the
 complete original payload.
+Message and logging events use their message (`message` or `logentry`) as the
+title. The list and inspector badge says Exception, Message, or Event by what
+the event carries; its level only sets the color. Overview also shows the level,
+handled state, environment, release, server name, and user. Empty contexts are
+hidden.
 
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open
@@ -293,6 +303,9 @@ their tail when that happens, at most one line every five seconds. Drops in
 between are counted and printed as one line when the five seconds end. Session tails
 get the notice from the daemon as a `sentry.local.oversized` stream event. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
+Receivers drop `http.client` spans and breadcrumbs for requests to their own
+loopback `/_local/` and `/stream` routes on the same port, which SDKs record for
+their own deliveries, and do not retain an envelope that has nothing else left.
 Clearing a capture invalidates pending admissions, and closing a session drains
 accepted work before its final stream event.
 
