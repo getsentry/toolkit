@@ -626,6 +626,11 @@ process.exitCode = result.status ?? 1;
   });
 
   test("directs musl users to the npm package before downloading a glibc binary", () => {
+    writeFileSync(
+      join(binDir, "uname"),
+      '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
+      { mode: 0o700 },
+    );
     // Like the real musl ldd: version on stderr, non-zero exit.
     writeFileSync(
       join(binDir, "ldd"),

@@ -21,6 +21,12 @@ sentry local daemon stop
 `local run --verify` uses an ephemeral receiver and cannot be combined with
 `--session` or `--open`. Invalid combinations are rejected before a receiver or
 application is started. Omit `--verify` to capture into a retained daemon session.
+The receiver tries port 8969 first. When that port is busy, for example because
+the daemon holds it, verify uses a free port instead, and the app gets URLs for
+that port. If no event arrives in time, the timeout message names the port it
+used, because an SDK that ignores `SENTRY_SPOTLIGHT` still sends to 8969. A busy
+`--port` that you pass fails right away. Verify prints no viewer link, because
+its receiver stops after the first envelope.
 
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
@@ -79,8 +85,9 @@ process dies during that critical section, startup preserves the guard and repor
 its path; confirm the owning process has stopped before removing the guard and
 retrying.
 Startup waits through the listener retry window and preserves active startup locks.
-If a server that is not a Local daemon, such as a foreground `local serve`, already
-answers on the port, startup fails right away and asks you to stop it or pass `--port`.
+If a server that is not a Local daemon, such as a foreground `local serve` or a
+`local run` without `--session`, already answers on the port, startup fails right
+away and asks you to stop it or pass `--port`.
 Concurrent foreground and managed starts join the same daemon: session creation
 waits for a live foreground owner to publish authenticated discovery, even if a
 competing child exits before that owner finishes binding.

@@ -129,6 +129,10 @@ test("fails fast with a port-in-use error when a foreground `local serve` holds 
       field: PORT_IN_USE_FIELD,
       message: expect.stringContaining(`Port ${port} is already in use`),
     });
+    // A plain `local run` holds the port the same way, so name both.
+    await expect(
+      ensureLocalDaemon({ host: "127.0.0.1", port }),
+    ).rejects.toThrow(/local serve.*local run/);
     expect(spawn).not.toHaveBeenCalled();
     await expectStartupLockReleased();
   } finally {
