@@ -258,4 +258,5 @@ share a label.
 `sentry local envelope list` print tables; add `--json` for the full records.
 The event table shows each event ID cut to the shortest unique prefix of at
 least 8 characters, and `sentry local event view` accepts that prefix. A prefix
-that matches more than one event fails and lists the matching IDs.
+that matches more than one event fails and lists the matching IDs. A bare replay
+ID opens the replay's first segment; add `:<segment_id>` for another one.
