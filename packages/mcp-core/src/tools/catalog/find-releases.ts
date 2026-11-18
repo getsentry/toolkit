@@ -85,7 +85,7 @@ export default defineTool({
 
     return structuredResult({
       releases: releases.slice(0, RESULT_LIMIT).map((release) => ({
-        version: release.shortVersion,
+        version: release.version,
         dateCreated: new Date(release.dateCreated).toISOString(),
         dateReleased: release.dateReleased
           ? new Date(release.dateReleased).toISOString()

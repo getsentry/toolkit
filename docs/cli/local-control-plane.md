@@ -42,6 +42,8 @@ Session lookup commands accept names quoted or as separate words. For `event vie
 form the session name. Event lookup uses the Sentry event ID from the envelope
 header, event/transaction item header, or payload, in that order; envelopes
 without an event ID retain their generated envelope ID as the lookup key.
+Replay SDKs send every segment of a replay with the replay ID as its event ID,
+so a replay segment's lookup key is `<replay_id>:<segment_id>`.
 
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
 a summary of the envelope's main item (the first event or transaction, else the
@@ -49,8 +51,12 @@ first log or span batch, else the first item), so an agent can pick what to open
 without viewing every event. Events get the same `type`, `level`, and `title`
 as their `local tail` line: `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
-(`transaction`, `log`, `span`, `session`, …). `level`, `title` (cut to 200
-characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
+(`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
+`title`, and `timestamp` from its most severe log. A span batch takes its
+`title` and `timestamp` from its segment root: the span marked `is_segment`,
+else the span whose parent is not in the batch. A `sessions` aggregate is
+titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+(cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs or spans in a
 batch (not a standalone span), and `receivedAt` is
 when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
@@ -96,8 +102,11 @@ Incomplete owner files receive a five-second grace period. Once safely reclaimed
 ownership is claimed under the same guard, including on the final retry.
 
 When a managed daemon owns the requested port, plain `local run` and `local serve`
-require `--session <name>` or a different `--port`; they cannot use its protected
-receiver as a legacy `/stream` endpoint.
+cannot use its protected receiver as a legacy `/stream` endpoint. A plain
+`local run` without `--port` then captures on a free port and says so, because the
+daemon keeps the default port while it retains sessions. With an explicit
+`--port`, and for `local serve`, they require `--session <name>` or a different
+`--port`.
 
 ## Envelope retention
 
@@ -324,7 +333,13 @@ AI interaction summaries reconcile step usage and pair response content with
 its captured finish reason. Profile inspection can combine retained chunks from
 one profiler while keeping each original chunk available. Sampled function rows
 in traces use observed intervals and unambiguous captured parents; gaps between
-chunks and final sample tails do not create inferred work.
+chunks and final sample tails do not create inferred work. They are folded
+under their captured span until **Show sampled functions** is used, and a trace
+links its profile once even when the profile arrived in several chunks.
+
+A trace's "N spans" counts the captured spans below its transactions and
+segments, like the tail's `[N spans]`: the transaction or segment span itself and
+sampled function rows are not counted.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or

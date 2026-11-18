@@ -6,7 +6,8 @@
 //   check-results.mjs read-only DIR   mcp-access#inspect-read-only
 //   check-results.mjs scoped DIR      mcp-access#scope-hides-org
 //   check-results.mjs subset WIDE DIR mcp-access#skills-narrow (DIR lists fewer tools)
-import { appendFileSync, readFileSync, readdirSync } from "node:fs";
+//   check-results.mjs local DIR       sentry-local session claims (local-session.mjs DIR)
+import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Tools every skill keeps, though they send data to Sentry (design/mcp-access.md). */
@@ -23,7 +24,7 @@ const [mode, ...dirs] = process.argv.slice(2);
 const dir = dirs.at(-1);
 if (!dir) {
   console.error(
-    "usage: check-results.mjs responses|surface|read-only|scoped DIR | subset WIDE DIR",
+    "usage: check-results.mjs responses|surface|read-only|scoped|local DIR | subset WIDE DIR",
   );
   process.exit(2);
 }
@@ -87,13 +88,22 @@ function responses() {
         `${file}, ${actions.length} actions`,
       );
       if (Array.isArray(sc?.sideQuests)) {
+        const problems = [];
+        for (const quest of sc.sideQuests) {
+          const next = quest.next ?? [];
+          if (!quest.tip) problems.push(`${quest.id} has no tip`);
+          if (!quest.docs?.startsWith("https://") && next.length === 0)
+            problems.push(`${quest.id} has no docs link or next call`);
+          for (const call of next) {
+            if (!byName.has(call.tool))
+              problems.push(
+                `${quest.id} next ${call.tool} is not in tools/list`,
+              );
+          }
+        }
         check(
-          "mcp-tool-responses#side-quest-fix",
-          sc.sideQuests
-            .filter(
-              (quest) => !quest.tip || !quest.docs?.startsWith("https://"),
-            )
-            .map((quest) => `${quest.id} has no tip or docs link`),
+          "mcp-tool-responses#side-quest-actionable",
+          problems,
           `${file}, ${sc.sideQuests.length} side quests`,
         );
       }
@@ -191,7 +201,98 @@ function subset() {
   );
 }
 
-const modes = { responses, surface, "read-only": readOnly, scoped, subset };
+/** Each step-<n> of a local-session.mjs run, with its command and output. */
+function localSteps() {
+  return readdirSync(dir)
+    .filter((name) => /^step-\d+$/.test(name))
+    .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)))
+    .map((name) => {
+      const read = (file) => {
+        const path = join(dir, name, file);
+        return existsSync(path) ? readFileSync(path, "utf8") : "";
+      };
+      return {
+        name,
+        command: read("command.txt").trim(),
+        stdout: read("stdout.txt"),
+        stderr: read("stderr.txt"),
+      };
+    });
+}
+
+function local() {
+  const steps = localSteps();
+  const run = steps.find((step) =>
+    step.command.startsWith("sentry local run --session"),
+  );
+  const view = steps.find(
+    (step) =>
+      step.command.startsWith("sentry local session view") &&
+      step.command.endsWith("--json"),
+  );
+  const list = steps.find(
+    (step) =>
+      step.command.startsWith("sentry local event list") &&
+      step.command.endsWith("--json"),
+  );
+  const missing = [
+    !run && "a `local run --session` step",
+    !view && "a `local session view --json` step",
+    !list && "a `local event list --json` step",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    check("sentry-local#session-retained", [`no ${missing.join(", ")}`]);
+    return;
+  }
+  const eventId = run.stderr.match(/SDK_EVENT:([a-f0-9]{32})/)?.[1];
+  const events = JSON.parse(list.stdout).events ?? [];
+  const event = events.find((entry) => entry.eventId === eventId);
+  check(
+    "sentry-local#session-retained",
+    !eventId
+      ? [`${run.name} printed no SDK_EVENT id`]
+      : event
+        ? []
+        : [`${list.name} does not list event ${eventId}`],
+    `${list.name}, ${events.length} entries`,
+  );
+  const problems = events.flatMap((entry) =>
+    ["envelopeId", "eventId", "itemTypes", "type"]
+      .filter((key) => entry[key] === undefined)
+      .map((key) => `${entry.envelopeId ?? "entry"} has no ${key}`),
+  );
+  if (event) {
+    if (event.type !== "error") problems.push(`event type is ${event.type}`);
+    if (event.level !== "error") problems.push(`event level is ${event.level}`);
+    if (!event.title?.includes("verify-toolkit local error"))
+      problems.push(`event title is ${event.title}`);
+  }
+  check("sentry-local#event-list-summary", problems, list.name);
+  const session = JSON.parse(view.stdout);
+  const secrets = [
+    new URL(session.ingestUrl).pathname.split("/").at(-1),
+    new URL(session.streamUrl).searchParams.get("cap"),
+    new URL(session.directoryUrl).searchParams.get("cap"),
+  ].filter(Boolean);
+  check(
+    "sentry-local#capability-redacted",
+    secrets.length !== 3
+      ? [`${view.name} has ${secrets.length} of 3 capabilities`]
+      : secrets
+          .filter((secret) => `${run.stdout}${run.stderr}`.includes(secret))
+          .map(() => `${run.name} printed a session capability`),
+    run.name,
+  );
+}
+
+const modes = {
+  responses,
+  surface,
+  "read-only": readOnly,
+  scoped,
+  subset,
+  local,
+};
 if (!modes[mode]) {
   console.error(`unknown mode: ${mode}`);
   process.exit(2);

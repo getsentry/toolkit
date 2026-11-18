@@ -1,3 +1,4 @@
+import { classifyEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
@@ -286,16 +287,12 @@ export function errorMarkdown(item: LocalFeedItem): string {
 
 /** Name an event by what it carries; severity alone does not make it an exception. */
 export function eventKind(payload: unknown): "Exception" | "Message" | "Event" {
-  const p = record(payload);
-  const exceptions = record(p.exception).values;
-  if (Array.isArray(exceptions) && exceptions.length) return "Exception";
-  const hasText = (value: unknown) =>
-    Boolean(
-      text(value) ??
-      text(record(value).formatted) ??
-      text(record(value).message),
-    );
-  return hasText(p.message) || hasText(p.logentry) ? "Message" : "Event";
+  const kind = classifyEvent(record(payload));
+  return kind === "exception"
+    ? "Exception"
+    : kind === "message"
+      ? "Message"
+      : "Event";
 }
 
 /** Top-level event fields that otherwise only appear in the raw JSON. */
@@ -303,7 +300,9 @@ export function eventSummaryFields(
   payload: unknown,
 ): { label: string; value: string }[] {
   const p = record(payload);
-  const exceptions = record(p.exception).values;
+  // A message's synthetic exception only carries its stack.
+  const exceptions =
+    classifyEvent(p) === "exception" ? record(p.exception).values : [];
   const handled = (Array.isArray(exceptions) ? exceptions : [])
     .map((exception) => record(record(exception).mechanism).handled)
     .filter((value): value is boolean => typeof value === "boolean");

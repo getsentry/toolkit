@@ -10,6 +10,8 @@ type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
   selectedSpanId?: string;
+  /** A span whose sampled rows start shown, such as the last one inspected. */
+  revealSpanId?: string;
   onSelectSpan?: (spanId: string) => void;
 };
 
@@ -22,6 +24,8 @@ type PositionedSpan = {
   span: TraceSpan;
   depth: number;
   isLastChild: boolean;
+  /** For a sampled profile row, the captured span whose samples it shows. */
+  owner?: string;
 };
 
 function formatDuration(durationMs: number | undefined): string {
@@ -76,10 +80,20 @@ function flattenSpans(spans: TraceSpan[]): PositionedSpan[] {
           span: child,
           depth: current.depth + 1,
           isLastChild: index === children.length - 1,
+          owner: child.sampled ? (current.owner ?? current.span.id) : undefined,
         });
     }
   }
   return positioned;
+}
+
+function toggle(id: string) {
+  return (previous: Set<string>) => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  };
 }
 
 function isFailingSpan(span: TraceSpan): boolean {
@@ -100,11 +114,19 @@ function SpanRow({
   onSelectSpan,
   collapsed,
   onToggle,
+  expandable,
+  sampleCount,
+  samplesShown,
+  onToggleSamples,
   treeWidth,
   matched,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  expandable: boolean;
+  sampleCount: number;
+  samplesShown: boolean;
+  onToggleSamples: () => void;
   treeWidth: number;
   matched: boolean;
   positionedSpan: PositionedSpan;
@@ -155,7 +177,7 @@ function SpanRow({
           </>
         ) : null}
         {/* Leaf rows keep the expand control's slot so siblings line up. */}
-        {span.children.length ? (
+        {expandable ? (
           <button
             type="button"
             aria-label={`${collapsed ? "Expand" : "Collapse"} ${span.description}`}
@@ -200,6 +222,18 @@ function SpanRow({
               {span.description}
             </span>
           )}
+          {sampleCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={samplesShown}
+              className="text-xs text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring outline-none"
+              onClick={onToggleSamples}
+            >
+              {samplesShown
+                ? "Hide sampled functions"
+                : `Show ${sampleCount} sampled function${sampleCount === 1 ? "" : "s"}`}
+            </button>
+          ) : null}
         </div>
       </div>
       <div
@@ -240,13 +274,28 @@ export function TraceWaterfall({
   compact = false,
   trace,
   selectedSpanId,
+  revealSpanId,
   onSelectSpan,
 }: TraceWaterfallProps) {
   const [query, setQuery] = useState("");
   const [onlyMatches, setOnlyMatches] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [treeWidth, setTreeWidth] = useState(40);
   const allSpans = useMemo(() => flattenSpans(trace.roots), [trace]);
+  // Sampled profile rows stay folded under their captured span until shown.
+  // A selected or revealed sampled row starts with its siblings shown.
+  const [shownSamples, setShownSamples] = useState<Set<string>>(() => {
+    const owner = allSpans.find(
+      ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
+    )?.owner;
+    return new Set(owner ? [owner] : []);
+  });
+  const [treeWidth, setTreeWidth] = useState(40);
+  const sampleCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const { owner } of allSpans)
+      if (owner) counts.set(owner, (counts.get(owner) ?? 0) + 1);
+    return counts;
+  }, [allSpans]);
   const matching = useMemo(
     () =>
       new Set(
@@ -306,11 +355,15 @@ export function TraceWaterfall({
     );
   }
 
+  // Search shows every sampled row so matches are not hidden.
+  const samplesVisible = (owner: string) =>
+    Boolean(query.trim()) || shownSamples.has(owner);
   const spans: PositionedSpan[] = [];
   let hiddenBelow: number | undefined;
   for (const entry of allSpans) {
     if (!query.trim()) {
       if (hiddenBelow !== undefined && entry.depth > hiddenBelow) continue;
+      if (entry.owner && !samplesVisible(entry.owner)) continue;
       hiddenBelow = collapsed.has(entry.span.id) ? entry.depth : undefined;
     }
     if (!query.trim() || !onlyMatches || matching.has(entry.span.id))
@@ -353,7 +406,7 @@ export function TraceWaterfall({
             className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
           >
             <span>
-              {trace.spans.length} span{trace.spans.length === 1 ? "" : "s"}
+              {trace.spanCount} span{trace.spanCount === 1 ? "" : "s"}
             </span>
             {trace.errorCount > 0 ? (
               <span className="text-red-500 dark:text-red-400">
@@ -464,14 +517,18 @@ export function TraceWaterfall({
               Boolean(query.trim()) && matching.has(positionedSpan.span.id)
             }
             collapsed={!query.trim() && collapsed.has(positionedSpan.span.id)}
-            onToggle={() =>
-              setCollapsed((previous) => {
-                const next = new Set(previous);
-                if (next.has(positionedSpan.span.id))
-                  next.delete(positionedSpan.span.id);
-                else next.add(positionedSpan.span.id);
-                return next;
-              })
+            onToggle={() => setCollapsed(toggle(positionedSpan.span.id))}
+            expandable={positionedSpan.span.children.some(
+              (child) =>
+                !child.sampled ||
+                samplesVisible(positionedSpan.owner ?? positionedSpan.span.id),
+            )}
+            sampleCount={
+              query.trim() ? 0 : (sampleCounts.get(positionedSpan.span.id) ?? 0)
+            }
+            samplesShown={shownSamples.has(positionedSpan.span.id)}
+            onToggleSamples={() =>
+              setShownSamples(toggle(positionedSpan.span.id))
             }
           />
         ))}
