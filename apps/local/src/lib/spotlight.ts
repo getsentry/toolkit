@@ -1,6 +1,7 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -164,9 +165,10 @@ export function getEventMetadata(
     getString(data["http.url"]) ??
     getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
-  const startTimestamp = getNumber(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event.start_timestamp);
   const timestamp =
-    getNumber(event.timestamp) ?? getNumber(event.end_timestamp);
+    parseEventTimestamp(event.timestamp) ??
+    parseEventTimestamp(event.end_timestamp);
   const durationMs =
     startTimestamp !== undefined && timestamp !== undefined
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100

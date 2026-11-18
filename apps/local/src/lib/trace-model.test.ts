@@ -962,3 +962,70 @@ test.each([
     ]);
   },
 );
+
+test("reads durations from sentry-python ISO 8601 timestamps", () => {
+  // sentry-python sends transaction and span timestamps as ISO 8601 strings,
+  // while JavaScript SDKs send epoch seconds.
+  const traceId = "8b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e";
+  const sdk = { name: "sentry.python.flask", version: "2.75.0" };
+  const items = decodeEnvelope(
+    JSON.stringify([
+      { event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d", sdk },
+      [
+        [
+          { type: "transaction" },
+          {
+            event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d",
+            type: "transaction",
+            platform: "python",
+            transaction: "/sync-error",
+            transaction_info: { source: "url" },
+            start_timestamp: "2026-11-17T20:25:06.425134Z",
+            timestamp: "2026-11-17T20:25:06.497301Z",
+            contexts: {
+              trace: {
+                trace_id: traceId,
+                span_id: "a1b2c3d4e5f60718",
+                op: "http.server",
+                status: "internal_error",
+                origin: "auto.http.flask",
+              },
+            },
+            spans: [
+              {
+                trace_id: traceId,
+                span_id: "b2c3d4e5f6071829",
+                parent_span_id: "a1b2c3d4e5f60718",
+                same_process_as_parent: true,
+                op: "db",
+                description: "SELECT 1",
+                origin: "auto.db.sqlalchemy",
+                start_timestamp: "2026-11-17T20:25:06.430001Z",
+                timestamp: "2026-11-17T20:25:06.430412Z",
+              },
+            ],
+            sdk,
+          },
+        ],
+      ],
+    ]),
+    "python-transaction",
+  );
+
+  expect(items[0]?.metadata?.durationMs).toBeCloseTo(72.17, 2);
+  const trace = buildTraceGroups(items)[0]!;
+  expect(trace.durationMs).toBeCloseTo(72.17, 2);
+  expect(trace.startTimestamp).toBeCloseTo(
+    Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134,
+    6,
+  );
+  expect(trace.roots).toMatchObject([
+    {
+      id: "a1b2c3d4e5f60718",
+      durationMs: expect.closeTo(72.17, 2),
+      children: [
+        { id: "b2c3d4e5f6071829", durationMs: expect.closeTo(0.41, 2) },
+      ],
+    },
+  ]);
+});

@@ -2,13 +2,13 @@
 
 `sentry local` runs a local development server that captures Sentry SDK envelopes from your dev stack and surfaces errors, traces, and logs in real time — right in your terminal. No authentication required.
 
-No DSN is required either. If your app has no DSN configured, events flow **only** to the local server — nothing reaches your Sentry organization and no production quota is used. If a DSN *is* set, the SDK sends to both Sentry and the local server.
+Most apps don't need a DSN either. If your app has no DSN configured, events flow **only** to the local server — nothing reaches your Sentry organization and no production quota is used. If a DSN *is* set, the SDK sends to both Sentry and the local server. A few features need a DSN to work; see [SDK setup](#sdk-setup).
 
 If a server is already running on the port, the command attaches as an SSE consumer instead of starting a duplicate.
 
 ## `sentry local run`
 
-Runs a command with `SENTRY_SPOTLIGHT` injected into the environment. The Sentry SDK automatically detects this variable and sends envelopes to the local server. No code changes needed.
+Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js and Python SDKs read it and send envelopes to the local server with no code changes. Other runtimes need a line of setup; see [SDK setup](#sdk-setup).
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
@@ -21,21 +21,56 @@ Env vars injected into the child process:
 | `SENTRY_TRACES_SAMPLE_RATE` | `1` (unless already set) |
 | `SENTRY_RELEASE` | `sentry-cli-local` (unless already set) |
 
-The `<PREFIX>` variants cover every common framework client prefix so the spotlight URL is inlined into your browser bundle no matter which bundler you use: `PUBLIC_` (SvelteKit, Astro, Qwik), `NEXT_PUBLIC_` (Next.js), `VITE_` (Vite), `NUXT_PUBLIC_` (Nuxt), `REACT_APP_` (Create React App), `VUE_APP_` (Vue CLI), and `GATSBY_` (Gatsby).
+The `<PREFIX>` variants put the URL where your bundler can inline it into browser code: `PUBLIC_` (SvelteKit, Astro, Qwik), `NEXT_PUBLIC_` (Next.js), `VITE_` (Vite), `NUXT_PUBLIC_` (Nuxt), `REACT_APP_` (Create React App), `VUE_APP_` (Vue CLI), and `GATSBY_` (Gatsby). The browser SDK does not read them on its own yet.
 
-**Server vs. client.** Server-side SDKs (`@sentry/node`, Python, and friends) read `SENTRY_SPOTLIGHT` automatically — no code changes needed.
+When `local run` sees `wrangler dev` and a `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml`, it also adds `--var SENTRY_SPOTLIGHT:<url>`, because Wrangler does not pass process env vars to Worker code. An explicit `--var SENTRY_SPOTLIGHT:...` is kept. No project file is changed.
 
-**Cloudflare Workers.** Wrangler does not expose inherited process environment variables to Worker code. When `local run` detects `wrangler dev` together with a `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml`, it automatically adds `--var SENTRY_SPOTLIGHT:http://localhost:<port>/stream`.
+## SDK setup
 
-This creates an ephemeral Worker binding that `@sentry/cloudflare` reads from its `env` object, so you do not need `spotlight: true` in `withSentry()` and no project file is modified. An explicit `--var SENTRY_SPOTLIGHT:...` is preserved.
+**Node.js and Python servers.** Nothing to do. They read `SENTRY_SPOTLIGHT`.
 
-For browser/client events, the CLI exposes the spotlight URL under every framework client prefix above. Once the [browser SDK reads these variables automatically](https://github.com/getsentry/sentry-javascript/pull/18198), client-side capture will be zero-config too. **Until then**, reference the variable matching your framework in your client config:
+**Browser apps** (Next.js, Vite, and other bundlers). Pass the prefixed variable to the Spotlight integration in your client config:
 
 ```ts
-// Next.js example — other frameworks use their own env access pattern
-// (e.g. import.meta.env.VITE_SENTRY_SPOTLIGHT for Vite-based frameworks).
-Sentry.init({ spotlight: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT ?? false });
+// Next.js: instrumentation-client.ts
+const spotlight = process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT;
+// Vite: const spotlight = import.meta.env.VITE_SENTRY_SPOTLIGHT;
+
+Sentry.init({
+  dsn: "...",
+  integrations: spotlight
+    ? [Sentry.spotlightBrowserIntegration({ sidecarUrl: spotlight })]
+    : [],
+});
 ```
+
+**Cloudflare Workers.** `@sentry/cloudflare` ignores the `SENTRY_SPOTLIGHT` binding in the build that Wrangler bundles. Send through `tunnel` instead, with a DSN set. A placeholder DSN works, because the tunnel sends everything to the local server:
+
+```ts
+export default Sentry.withSentry(
+  (env: Env) => ({
+    dsn: env.SENTRY_DSN ?? (env.SENTRY_SPOTLIGHT ? "https://local@localhost/0" : undefined),
+    tunnel: env.SENTRY_SPOTLIGHT,
+    // Local capture still works through tunnel. This only stops a second
+    // copy of each event when a bundler picks the SDK's dev build.
+    spotlight: false,
+  }),
+  app,
+);
+```
+
+While `local run` is active, `tunnel` sends Worker events only to the local server, even with a real DSN.
+
+**Features that need a DSN.** Without one, the browser SDK drops session replays and does not add trace headers to its requests, so browser and server traces do not link. The Python SDK drops logs still buffered when the process exits. To get these, set a placeholder DSN such as `https://local@localhost/0` while you run under `local run`. In the browser, send through `tunnel` instead of the integration, so nothing goes to the placeholder and nothing arrives twice:
+
+```ts
+Sentry.init({
+  dsn: spotlight ? "https://local@localhost/0" : "...",
+  tunnel: spotlight,
+});
+```
+
+**Not supported yet.** The Next.js edge runtime (`@sentry/vercel-edge`) has no Spotlight support. Edge errors still arrive through the Node.js server, but edge messages and logs do not.
 
 ## Browser UI
 
@@ -106,7 +141,8 @@ In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
-`envelope_id` for exact correlation. In `local run --format json`, the wrapped
+`envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
+when the SDK sends ISO 8601 strings. In `local run --format json`, the wrapped
 app's standard output is also forwarded to standard error, leaving standard
 output exclusively for NDJSON observations.
 
