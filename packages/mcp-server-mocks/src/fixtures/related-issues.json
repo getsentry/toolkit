@@ -1,0 +1,129 @@
+{
+  "data": [
+    {
+      "issue": {
+        "id": "6507376931",
+        "shareId": null,
+        "shortId": "CLOUDFLARE-MCP-42",
+        "title": "Error: Tool list_projects is already registered",
+        "culprit": "Object.fetch(index)",
+        "permalink": "https://sentry-mcp-evals.sentry.io/issues/6507376931/",
+        "logger": null,
+        "level": "error",
+        "status": "resolved",
+        "statusDetails": { "inRelease": "1.4.2" },
+        "substatus": null,
+        "isPublic": false,
+        "platform": "javascript",
+        "project": {
+          "id": "4509062593708032",
+          "name": "CLOUDFLARE-MCP",
+          "slug": "CLOUDFLARE-MCP",
+          "platform": "bun"
+        },
+        "type": "error",
+        "metadata": {
+          "value": "Tool list_projects is already registered",
+          "type": "Error",
+          "filename": "index.js",
+          "function": "Object.fetch",
+          "title": "Error: Tool list_projects is already registered"
+        },
+        "numComments": 0,
+        "assignedTo": null,
+        "isBookmarked": false,
+        "isSubscribed": false,
+        "subscriptionDetails": null,
+        "hasSeen": true,
+        "annotations": [],
+        "issueType": "error",
+        "issueCategory": "error",
+        "priority": "medium",
+        "priorityLockedAt": null,
+        "isUnhandled": true,
+        "count": "12",
+        "userCount": 1,
+        "firstSeen": "2025-04-03T22:52:01.118000Z",
+        "lastSeen": "2025-04-11T09:12:44Z",
+        "seerFixabilityScore": null,
+        "seerAutofixLastTriggered": null,
+        "seerExplorerAutofixLastTriggered": null
+      },
+      "relations": [
+        { "type": "similar_stacktrace", "score": 0.9787 },
+        { "type": "same_trace" }
+      ]
+    },
+    {
+      "issue": {
+        "id": "6507377102",
+        "shareId": null,
+        "shortId": "WEB-1A2",
+        "title": "TypeError: Failed to fetch",
+        "culprit": "loadOrganizations(app/organizations)",
+        "permalink": "https://sentry-mcp-evals.sentry.io/issues/6507377102/",
+        "logger": null,
+        "level": "error",
+        "status": "unresolved",
+        "statusDetails": {},
+        "substatus": "ongoing",
+        "isPublic": false,
+        "platform": "javascript",
+        "project": {
+          "id": "4509062593708033",
+          "name": "web",
+          "slug": "web",
+          "platform": "javascript-react"
+        },
+        "type": "error",
+        "metadata": {
+          "value": "Failed to fetch",
+          "type": "TypeError",
+          "filename": "app/organizations.tsx",
+          "function": "loadOrganizations",
+          "title": "TypeError: Failed to fetch"
+        },
+        "numComments": 0,
+        "assignedTo": null,
+        "isBookmarked": false,
+        "isSubscribed": false,
+        "subscriptionDetails": null,
+        "hasSeen": false,
+        "annotations": [],
+        "issueType": "error",
+        "issueCategory": "error",
+        "priority": "high",
+        "priorityLockedAt": null,
+        "isUnhandled": true,
+        "count": "48",
+        "userCount": 9,
+        "firstSeen": "2025-04-03T22:51:20.010000Z",
+        "lastSeen": "2025-04-12T11:34:12Z",
+        "seerFixabilityScore": null,
+        "seerAutofixLastTriggered": null,
+        "seerExplorerAutofixLastTriggered": null
+      },
+      "relations": [{ "type": "same_trace" }]
+    }
+  ],
+  "meta": {
+    "types": [
+      {
+        "type": "similar_stacktrace",
+        "status": "ok",
+        "eventId": "7ca573c0f4814912aaa9bdc77d1a7d51"
+      },
+      {
+        "type": "same_trace",
+        "status": "ok",
+        "eventId": "7ca573c0f4814912aaa9bdc77d1a7d51",
+        "traceId": "3032af8bcdfe4423b937fc5c041d5d82"
+      },
+      {
+        "type": "contributing",
+        "status": "not_applicable",
+        "detail": "Only metric issues have contributing issues."
+      }
+    ]
+  }
+}

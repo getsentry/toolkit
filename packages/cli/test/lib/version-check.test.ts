@@ -36,7 +36,7 @@ import { mockFetch, useTestConfigDir } from "../helpers.js";
  * must simulate a TTY first. Restores the previous value on cleanup.
  */
 function withStderrTTY(value: boolean): () => void {
-  const original = process.stderr.isTTY;
+  const original = (process.stderr as { isTTY?: boolean }).isTTY;
   (process.stderr as { isTTY?: boolean }).isTTY = value;
   return () => {
     if (original === undefined) {

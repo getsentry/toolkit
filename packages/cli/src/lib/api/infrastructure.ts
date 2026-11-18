@@ -7,7 +7,7 @@
  */
 
 import {
-  type BaseUrlRequest,
+  type AutofixPaymentRequiredResponse,
   createSentryClient,
   parseSentryLinkHeader,
   type SdkResult,
@@ -23,6 +23,7 @@ import {
   paginate as paginateFrom,
   parseInsufficientScopeChallenge,
   readErrorResponse,
+  routeCellOperations,
 } from "@sentry/api/client";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
@@ -43,6 +44,8 @@ import {
   ApiError,
   CliError,
   type FunctionArgument,
+  lookupKnownKey,
+  type SeerDenialReason,
   stringifyUnknown,
   TimeoutError,
 } from "../errors.js";
@@ -413,12 +416,27 @@ export type ApiRequestOptions<T = unknown> = {
 };
 
 /**
+ * The denial reason for each Seer 402 `denialReason` in the API schema, or
+ * undefined for one the CLI doesn't act on. Keyed by the generated type, so a
+ * reason added to the schema fails type-checking until it is mapped here.
+ */
+const SEER_DENIAL_REASONS: Record<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  SeerDenialReason | undefined
+> = {
+  daily_cap_exceeded: "daily_cap_exceeded",
+  not_enough_credits: undefined,
+};
+
+/**
  * Structured fields of a JSON error body: its string `code` (e.g.
- * `invalid_search_query`) and the rejected `function` and `argument`, with an
- * optional `hint` (sent with `invalid_function_argument`).
+ * `invalid_search_query`), the Seer 402 `denialReason` we act on, and the
+ * rejected `function` and `argument`, with an optional `hint` (sent with
+ * `invalid_function_argument`).
  */
 function readErrorFields(body: unknown): {
   code?: string;
+  denialReason?: ApiDenialReason;
   functionArgument?: FunctionArgument;
 } {
   if (body === null || typeof body !== "object") {
@@ -426,11 +444,19 @@ function readErrorFields(body: unknown): {
   }
   const fields = body as Record<string, unknown>;
   const code = typeof fields.code === "string" ? fields.code : undefined;
+  // Leave the key out otherwise, so it can't clear the 401/403 denial reason.
+  const seerDenialReason = lookupKnownKey(
+    SEER_DENIAL_REASONS,
+    fields.denialReason,
+  );
+  const denialReason: { denialReason?: ApiDenialReason } = seerDenialReason
+    ? { denialReason: seerDenialReason }
+    : {};
   if (
     typeof fields.function !== "string" ||
     typeof fields.argument !== "string"
   ) {
-    return { code };
+    return { code, ...denialReason };
   }
   const functionArgument: FunctionArgument = {
     function: fields.function,
@@ -439,7 +465,7 @@ function readErrorFields(body: unknown): {
   if (typeof fields.hint === "string") {
     functionArgument.hint = fields.hint;
   }
-  return { code, functionArgument };
+  return { code, ...denialReason, functionArgument };
 }
 
 const CONNECT_TIMEOUT_HINT =
@@ -706,21 +732,24 @@ export function appendSearchParams(
 }
 
 /**
- * `resolveBaseUrl` for `@sentry/api` clients: a request whose path names an
- * organization goes to that organization's region, on the server of the
- * stored account that knows it ({@link resolveOrgRegion}). An explicit
- * server still limits the accounts. Unscoped paths keep the base URL.
+ * `resolveBaseUrl` for `@sentry/api` clients. Operations Sentry declares
+ * cell-only go to their organization's region, on the server of the stored
+ * account that knows it ({@link resolveOrgRegion}). Control, `both` and
+ * `unknown` operations keep the configured base URL.
+ *
+ * Raw requests (`sentry api`) have no declared routing, so a path that names
+ * an organization also goes through {@link resolveOrgRegion}: it picks the
+ * account and server that know the organization, which the configured base
+ * URL alone can't. An explicit server still limits the accounts, and
+ * unscoped paths keep the base URL.
  */
-async function resolveOrgBaseUrl({
-  baseUrl,
-  scope,
-}: BaseUrlRequest): Promise<string> {
-  return scope ? await resolveOrgRegion(scope.organization) : baseUrl;
-}
+const resolveOrgBaseUrl = routeCellOperations(resolveOrgRegion, {
+  rawRequests: "lookup",
+});
 
 /**
- * SDK config that sends each request to the region of the organization its
- * path names ({@link resolveOrgBaseUrl}).
+ * SDK config that sends each cell operation to its organization's region and
+ * every other operation to the configured base URL ({@link resolveOrgBaseUrl}).
  */
 export function getOrgSdkConfig(
   options: Parameters<typeof getSdkClientConfig>[1] = {},

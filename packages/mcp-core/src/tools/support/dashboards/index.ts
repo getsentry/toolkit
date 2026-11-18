@@ -1,3 +1,4 @@
+import { API_MAX_PER_PAGE } from "@sentry/api/client";
 import { listSavedAggregateTransformations } from "@sentry/toolkit-core/dashboard-transformations";
 import { z } from "zod";
 import type {
@@ -7,6 +8,7 @@ import type {
   DashboardWidget,
   SentryApiService,
 } from "../../../api-client";
+import { fetchEveryPage } from "../../../api-client/pagination";
 import { UserInputError } from "../../../errors";
 import { isNumericId } from "../../../utils/slug-validation";
 import { isPlainObject } from "../../../internal/type-guards";
@@ -320,37 +322,22 @@ export async function resolveDashboardId({
     return ref;
   }
 
-  const visibleDashboards: DashboardListItem[] = [];
-  const exactMatches: DashboardListItem[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
-
-  do {
-    const { dashboards, nextCursor } = await apiService.listDashboards({
-      organizationSlug,
-      query: ref,
-      sortBy: "title",
-      limit: 100,
-      cursor,
-    });
-
-    const visiblePage = filterDashboardsByProjectConstraint({
-      dashboards,
-      projectId,
-    });
-    visibleDashboards.push(...visiblePage);
-    exactMatches.push(
-      ...visiblePage.filter(
-        (dashboard) => dashboard.title.toLowerCase() === ref.toLowerCase(),
-      ),
-    );
-
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      break;
-    }
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
+  const visibleDashboards = filterDashboardsByProjectConstraint({
+    dashboards: await fetchEveryPage(async (cursor) => {
+      const page = await apiService.listDashboards({
+        organizationSlug,
+        query: ref,
+        sortBy: "title",
+        limit: API_MAX_PER_PAGE,
+        cursor,
+      });
+      return { data: page.dashboards, nextCursor: page.nextCursor };
+    }, "resolving the dashboard title"),
+    projectId,
+  });
+  const exactMatches = visibleDashboards.filter(
+    (dashboard) => dashboard.title.toLowerCase() === ref.toLowerCase(),
+  );
 
   if (exactMatches.length === 1) {
     return String(exactMatches[0].id);

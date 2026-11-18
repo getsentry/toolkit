@@ -1,6 +1,6 @@
 {
   "name": "sentry",
-  "version": "0.50.0-dev.0",
+  "version": "0.51.0-dev.0",
   "description": "Sentry CLI - A command-line interface for using Sentry built by robots and humans for robots and humans",
   "repository": {
     "type": "git",
@@ -140,7 +140,7 @@
     "pretty-ms": "^9.3.0",
     "qrcode-terminal": "^0.12.0",
     "semver": "^7.8.5",
-    "shell-quote": "^1.10.0",
+    "shell-quote": "^1.11.0",
     "string-width": "^8.2.1",
     "tinyglobby": "^0.2.17",
     "typescript": "catalog:",

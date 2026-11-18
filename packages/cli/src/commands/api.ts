@@ -1233,6 +1233,25 @@ function resolveRequestEndpoint(
   return appendSearchParams(withoutFragment, params);
 }
 
+/**
+ * Remove every `cursor` from an endpoint's query, keeping the other parameters
+ * and their encoding as written.
+ */
+function withoutCursor(endpoint: string): string {
+  const queryIndex = endpoint.indexOf("?");
+  if (queryIndex === -1) {
+    return endpoint;
+  }
+  const kept = endpoint
+    .slice(queryIndex + 1)
+    .split("&")
+    .filter(
+      (part) => new URLSearchParams(part).keys().next().value !== "cursor",
+    );
+  const path = endpoint.slice(0, queryIndex);
+  return kept.length > 0 ? `${path}?${kept.join("&")}` : path;
+}
+
 /** Pagination resolved for one GET, without mutating its saved history. */
 type ApiPagination = {
   /** SDK-prepared request with the resolved server cursor and page size. */
@@ -1263,9 +1282,8 @@ async function resolveApiNavigation(
     queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
   const inputCursor = query.getAll("cursor").at(-1);
-  const context = await prepareRawApiRequest(endpoint, request, {
-    cursor: null,
-  });
+  const endpointWithoutCursor = withoutCursor(endpoint);
+  const context = await prepareRawApiRequest(endpointWithoutCursor, request);
   const contextUrl = context.request.url;
   const effectiveHeaders = new Headers(context.request.headers);
   applyCustomHeaders(effectiveHeaders, contextUrl);
@@ -1292,8 +1310,8 @@ async function resolveApiNavigation(
     prepared:
       cursorFlag === undefined && inputCursor === undefined
         ? context
-        : await prepareRawApiRequest(endpoint, request, {
-            cursor: position.cursor ?? null,
+        : await prepareRawApiRequest(endpointWithoutCursor, request, {
+            cursor: position.cursor,
             per_page: position.perPage,
           }),
     contextKey,
@@ -1440,7 +1458,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint, method));
     span.setAttribute("api_error.method", method);
   }
 }

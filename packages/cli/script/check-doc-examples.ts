@@ -153,7 +153,7 @@ function resolve(
   let target: RouteTarget = routes as unknown as RouteMap;
   let i = 0;
   while (isRouteMap(target)) {
-    const word = tokens[i];
+    const word = tokens.at(i);
     if (word === undefined || word.startsWith("-")) {
       const fallback = target.getDefaultCommand?.();
       if (fallback && isCommand(fallback)) {

@@ -1,18 +1,32 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
+import {
+  isLogOnlyTrace,
+  type TraceGroup,
+  type TraceSpan,
+} from "@/lib/trace-model.ts";
+import { pluralize } from "@/lib/presentation.ts";
 
 type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
   selectedSpanId?: string;
+  /** A span whose sampled rows start shown, such as the last one inspected. */
+  revealSpanId?: string;
   onSelectSpan?: (spanId: string) => void;
 };
+
+/** Tree cell geometry, in rem: `px-3` padding, `size-3` expand control. */
+const CELL_PADDING_REM = 0.75;
+const TOGGLE_REM = 0.75;
+const INDENT_REM = 1;
 
 type PositionedSpan = {
   span: TraceSpan;
   depth: number;
   isLastChild: boolean;
+  /** For a sampled profile row, the captured span whose samples it shows. */
+  owner?: string;
 };
 
 function formatDuration(durationMs: number | undefined): string {
@@ -67,10 +81,20 @@ function flattenSpans(spans: TraceSpan[]): PositionedSpan[] {
           span: child,
           depth: current.depth + 1,
           isLastChild: index === children.length - 1,
+          owner: child.sampled ? (current.owner ?? current.span.id) : undefined,
         });
     }
   }
   return positioned;
+}
+
+function toggle(id: string) {
+  return (previous: Set<string>) => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  };
 }
 
 function isFailingSpan(span: TraceSpan): boolean {
@@ -91,11 +115,19 @@ function SpanRow({
   onSelectSpan,
   collapsed,
   onToggle,
+  expandable,
+  sampleCount,
+  samplesShown,
+  onToggleSamples,
   treeWidth,
   matched,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  expandable: boolean;
+  sampleCount: number;
+  samplesShown: boolean;
+  onToggleSamples: () => void;
   treeWidth: number;
   matched: boolean;
   positionedSpan: PositionedSpan;
@@ -108,6 +140,9 @@ function SpanRow({
   const position = getSpanPosition(span, trace);
   const visualDepth = Math.min(depth, 4);
   const failed = isFailingSpan(span);
+  // Guides start under the parent's expand control and end at this row's.
+  const guideLeft =
+    CELL_PADDING_REM + (visualDepth - 1) * INDENT_REM + TOGGLE_REM / 2;
 
   return (
     <div
@@ -120,23 +155,30 @@ function SpanRow({
     >
       <div
         role="cell"
-        className="relative flex min-w-0 items-center gap-2 border-r border-border px-3 py-2"
+        className="relative flex min-w-0 items-center gap-2 border-r border-border py-2 pr-3"
+        style={{
+          paddingLeft: `${CELL_PADDING_REM + visualDepth * INDENT_REM}rem`,
+        }}
       >
         {depth > 0 ? (
           <>
             <span
               aria-hidden="true"
               className={`absolute border-l border-border/70 ${isLastChild ? "top-0 h-1/2" : "inset-y-0"}`}
-              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
+              style={{ left: `${guideLeft}rem` }}
             />
             <span
               aria-hidden="true"
-              className="absolute top-1/2 h-px w-[0.85rem] -translate-y-1/2 bg-border/70"
-              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
+              className="absolute top-1/2 h-px -translate-y-1/2 bg-border/70"
+              style={{
+                left: `${guideLeft}rem`,
+                width: `${INDENT_REM - TOGGLE_REM / 2}rem`,
+              }}
             />
           </>
         ) : null}
-        {span.children.length ? (
+        {/* Leaf rows keep the expand control's slot so siblings line up. */}
+        {expandable ? (
           <button
             type="button"
             aria-label={`${collapsed ? "Expand" : "Collapse"} ${span.description}`}
@@ -150,11 +192,12 @@ function SpanRow({
               <ChevronDown className="size-3" />
             )}
           </button>
-        ) : null}
+        ) : (
+          <span aria-hidden="true" className="size-3 shrink-0" />
+        )}
         <span
           aria-hidden="true"
           className={`relative size-1.5 shrink-0 ${failed ? "bg-red-500" : depth === 0 ? "bg-primary" : "bg-muted-foreground"}`}
-          style={{ marginLeft: `${visualDepth * 0.65}rem` }}
         />
         <div className="flex min-w-0 flex-col items-start gap-1">
           <span
@@ -180,6 +223,18 @@ function SpanRow({
               {span.description}
             </span>
           )}
+          {sampleCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={samplesShown}
+              className="text-xs text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring outline-none"
+              onClick={onToggleSamples}
+            >
+              {samplesShown
+                ? "Hide sampled functions"
+                : `Show ${sampleCount} sampled function${sampleCount === 1 ? "" : "s"}`}
+            </button>
+          ) : null}
         </div>
       </div>
       <div
@@ -220,13 +275,28 @@ export function TraceWaterfall({
   compact = false,
   trace,
   selectedSpanId,
+  revealSpanId,
   onSelectSpan,
 }: TraceWaterfallProps) {
   const [query, setQuery] = useState("");
   const [onlyMatches, setOnlyMatches] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [treeWidth, setTreeWidth] = useState(40);
   const allSpans = useMemo(() => flattenSpans(trace.roots), [trace]);
+  // Sampled profile rows stay folded under their captured span until shown.
+  // A selected or revealed sampled row starts with its siblings shown.
+  const [shownSamples, setShownSamples] = useState<Set<string>>(() => {
+    const owner = allSpans.find(
+      ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
+    )?.owner;
+    return new Set(owner ? [owner] : []);
+  });
+  const [treeWidth, setTreeWidth] = useState(40);
+  const sampleCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const { owner } of allSpans)
+      if (owner) counts.set(owner, (counts.get(owner) ?? 0) + 1);
+    return counts;
+  }, [allSpans]);
   const matching = useMemo(
     () =>
       new Set(
@@ -240,7 +310,7 @@ export function TraceWaterfall({
       ),
     [allSpans, query],
   );
-  const capturedItemLabel = `${trace.itemCount} captured item${trace.itemCount === 1 ? "" : "s"} in this trace`;
+  const capturedItemLabel = `${pluralize(trace.itemCount, "captured item")} in this trace`;
 
   if (trace.spans.length === 0) {
     return (
@@ -278,17 +348,23 @@ export function TraceWaterfall({
           </p>
         ) : null}
         <p className="p-4 text-sm text-muted-foreground">
-          This trace has no timestamped spans to display yet.
+          {isLogOnlyTrace(trace)
+            ? "Only logs were captured with this trace ID."
+            : "This trace has no timestamped spans to display yet."}
         </p>
       </section>
     );
   }
 
+  // Search shows every sampled row so matches are not hidden.
+  const samplesVisible = (owner: string) =>
+    Boolean(query.trim()) || shownSamples.has(owner);
   const spans: PositionedSpan[] = [];
   let hiddenBelow: number | undefined;
   for (const entry of allSpans) {
     if (!query.trim()) {
       if (hiddenBelow !== undefined && entry.depth > hiddenBelow) continue;
+      if (entry.owner && !samplesVisible(entry.owner)) continue;
       hiddenBelow = collapsed.has(entry.span.id) ? entry.depth : undefined;
     }
     if (!query.trim() || !onlyMatches || matching.has(entry.span.id))
@@ -330,18 +406,14 @@ export function TraceWaterfall({
             aria-label="Trace summary"
             className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
           >
-            <span>
-              {trace.spans.length} span{trace.spans.length === 1 ? "" : "s"}
-            </span>
+            <span>{pluralize(trace.spanCount, "span")}</span>
             {trace.errorCount > 0 ? (
               <span className="text-red-500 dark:text-red-400">
-                {trace.errorCount} error{trace.errorCount === 1 ? "" : "s"}
+                {pluralize(trace.errorCount, "error")}
               </span>
             ) : null}
             {trace.logCount > 0 ? (
-              <span>
-                {trace.logCount} log{trace.logCount === 1 ? "" : "s"}
-              </span>
+              <span>{pluralize(trace.logCount, "log")}</span>
             ) : null}
             <span>
               Trace ID <code>{trace.id.slice(0, 8)}</code>
@@ -442,14 +514,18 @@ export function TraceWaterfall({
               Boolean(query.trim()) && matching.has(positionedSpan.span.id)
             }
             collapsed={!query.trim() && collapsed.has(positionedSpan.span.id)}
-            onToggle={() =>
-              setCollapsed((previous) => {
-                const next = new Set(previous);
-                if (next.has(positionedSpan.span.id))
-                  next.delete(positionedSpan.span.id);
-                else next.add(positionedSpan.span.id);
-                return next;
-              })
+            onToggle={() => setCollapsed(toggle(positionedSpan.span.id))}
+            expandable={positionedSpan.span.children.some(
+              (child) =>
+                !child.sampled ||
+                samplesVisible(positionedSpan.owner ?? positionedSpan.span.id),
+            )}
+            sampleCount={
+              query.trim() ? 0 : (sampleCounts.get(positionedSpan.span.id) ?? 0)
+            }
+            samplesShown={shownSamples.has(positionedSpan.span.id)}
+            onToggleSamples={() =>
+              setShownSamples(toggle(positionedSpan.span.id))
             }
           />
         ))}

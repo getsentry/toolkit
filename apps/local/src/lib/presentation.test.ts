@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
+  formatDateTime,
+  formatTimestamp,
   getConnectionPresentation,
   getWorkspaceEmptyState,
+  pluralize,
 } from "./presentation.ts";
 import { workspaceViews } from "./workspace.ts";
 
@@ -108,4 +111,39 @@ describe("getWorkspaceEmptyState", () => {
     expect(empty.description).toMatch(/reload.*capture/i);
     expect(empty.description).toMatch(/receiver.*trim/i);
   });
+});
+
+describe("formatTimestamp", () => {
+  test("reads naive ISO times as UTC and numeric strings as epoch seconds", () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "Asia/Kolkata";
+    try {
+      const utc = new Date("2026-11-17T20:30:20.913Z");
+      // sentry-python can send ISO times with no timezone; Relay reads them as UTC.
+      expect(formatTimestamp("2026-11-17T20:30:20.913")).toBe(
+        utc.toLocaleTimeString(),
+      );
+      expect(formatTimestamp("2026-11-17T20:30:20.913")).not.toBe(
+        new Date("2026-11-17T20:30:20.913").toLocaleTimeString(),
+      );
+      expect(formatTimestamp("1794947420.913")).toBe(
+        new Date(1794947420913).toLocaleTimeString(),
+      );
+      expect(formatDateTime("1794947420.913")).toContain(
+        new Date(1794947420913).toLocaleTimeString(),
+      );
+      expect(formatTimestamp("not a time")).toBe("not a time");
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+});
+
+test.each([
+  [0, "0 spans"],
+  [1, "1 span"],
+  [2, "2 spans"],
+])('pluralize(%i, "span") is %s', (count, label) => {
+  expect(pluralize(count, "span")).toBe(label);
 });

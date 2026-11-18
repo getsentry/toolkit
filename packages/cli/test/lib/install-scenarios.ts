@@ -174,9 +174,11 @@ export const INSTALL_SCENARIOS: InstallScenario[] = [
     name: "rejects a download whose checksum does not match the registry",
     registry: { status: 200, tamper: true },
     ok: false,
-    output: ["Checksum mismatch"],
+    output: ["Downloading it again", "Checksum mismatch"],
+    // A mismatch can come from a broken transfer, so it downloads once more.
     requests: (asset) => [
       `${REGISTRY}/latest`,
+      toolkitDownload(LATEST_VERSION, `${asset}.gz`),
       toolkitDownload(LATEST_VERSION, `${asset}.gz`),
     ],
   },

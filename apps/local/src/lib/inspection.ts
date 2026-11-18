@@ -1,3 +1,4 @@
+import { classifyEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
@@ -284,7 +285,52 @@ export function errorMarkdown(item: LocalFeedItem): string {
     .join("\n\n");
 }
 
+/** Name an event by what it carries; severity alone does not make it an exception. */
+export function eventKind(payload: unknown): "Exception" | "Message" | "Event" {
+  const kind = classifyEvent(record(payload));
+  return kind === "exception"
+    ? "Exception"
+    : kind === "message"
+      ? "Message"
+      : "Event";
+}
+
+/** Top-level event fields that otherwise only appear in the raw JSON. */
+export function eventSummaryFields(
+  payload: unknown,
+): { label: string; value: string }[] {
+  const p = record(payload);
+  // A message's synthetic exception only carries its stack.
+  const exceptions =
+    classifyEvent(p) === "exception" ? record(p.exception).values : [];
+  const handled = (Array.isArray(exceptions) ? exceptions : [])
+    .map((exception) => record(record(exception).mechanism).handled)
+    .filter((value): value is boolean => typeof value === "boolean");
+  return Object.entries({
+    Level: text(p.level),
+    Handled: handled.length
+      ? handled.every(Boolean)
+        ? "Yes"
+        : "No"
+      : undefined,
+    Environment: text(p.environment),
+    Release: text(p.release),
+    Server: text(p.server_name),
+  }).flatMap(([label, value]) => (value ? [{ label, value }] : []));
+}
+
+const CONTEXT_LABELS: Record<string, string> = {
+  os: "OS",
+  client_os: "Client OS",
+  gpu: "GPU",
+};
+export function contextLabel(name: string): string {
+  const label = CONTEXT_LABELS[name] ?? name.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export const EVENT_CONTEXT_SECTIONS = [
+  "user",
   "request",
   "contexts",
   "tags",
@@ -298,8 +344,18 @@ export function hasEventContext(payload: unknown): boolean {
     : record(value.breadcrumbs).values;
   return (
     (Array.isArray(breadcrumbs) && breadcrumbs.length > 0) ||
-    EVENT_CONTEXT_SECTIONS.some(
-      (key) => Object.keys(record(value[key])).length > 0,
-    )
+    EVENT_CONTEXT_SECTIONS.some((key) => hasEventSection(value, key))
   );
+}
+/** Whether a context section has fields to show; empty named contexts do not count. */
+export function hasEventSection(
+  payload: unknown,
+  key: (typeof EVENT_CONTEXT_SECTIONS)[number],
+): boolean {
+  const section = record(record(payload)[key]);
+  return key === "contexts"
+    ? Object.values(section).some(
+        (context) => Object.keys(record(context)).length > 0,
+      )
+    : Object.keys(section).length > 0;
 }

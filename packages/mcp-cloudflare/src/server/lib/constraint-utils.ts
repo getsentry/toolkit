@@ -189,6 +189,9 @@ export async function verifyConstraintsAccess(
       // Only the project lookup has a time limit, to avoid blocking on slow
       // API responses.
       projectTimeoutMs: CAPABILITIES_TIMEOUT_MS,
+      // Only `links.regionUrl` is used; skip serializing every project and
+      // team in the organization.
+      detailed: false,
     },
   );
 
@@ -224,15 +227,18 @@ export async function verifyConstraintsAccess(
   } else if (project) {
     const { error } = project;
     if (error instanceof ConstraintLookupTimeoutError) {
-      // Timeout - log and proceed with null capabilities (fail-open for tool filtering)
-      // Note: We couldn't verify project access in time, but we allow through
-      // to avoid blocking users due to slow API responses. Tools will still
-      // require valid auth tokens to actually execute.
-      logIssue(
-        new Error(
-          `Project verification timed out after ${CAPABILITIES_TIMEOUT_MS}ms for ${projectSlug}`,
-        ),
-      );
+      // Fail open with unknown capabilities: tools still need the user's
+      // token to read project data. A slow Sentry API is not an MCP fault,
+      // so log a warning instead of creating an issue.
+      logWarn("Project verification timed out", {
+        loggerScope: ["cloudflare", "constraint-utils"],
+        extra: {
+          organizationSlug,
+          projectSlug,
+          regionUrl,
+          timeoutMs: CAPABILITIES_TIMEOUT_MS,
+        },
+      });
     } else if (error instanceof ApiError) {
       // API errors (404, 401, 403, etc.) should fail verification
       const message =

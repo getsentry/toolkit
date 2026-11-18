@@ -112,6 +112,8 @@ import type {
   ProjectListSchema,
   ProjectRepositoryMappingSchema,
   ProjectSchema,
+  RELATED_ISSUE_TYPES,
+  RelatedIssuesResponseSchema,
   ReleaseDetailsSchema,
   ReleaseListSchema,
   ReleaseSchema,
@@ -120,6 +122,7 @@ import type {
   SentryAppComponentListSchema,
   SentryAppExternalRequestOptionsSchema,
   SentryAppInstallationListSchema,
+  SourceMapDebugSchema,
   StacktraceLinkSchema,
   TagListSchema,
   TagSchema,
@@ -250,6 +253,9 @@ export type Event =
   | GenericEvent
   | UnknownEvent;
 export type StacktraceLink = z.infer<typeof StacktraceLinkSchema>;
+export type SourceMapDebug = z.infer<typeof SourceMapDebugSchema>;
+export type RelatedIssues = z.infer<typeof RelatedIssuesResponseSchema>;
+export type RelatedIssueType = (typeof RELATED_ISSUE_TYPES)[number];
 
 export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;

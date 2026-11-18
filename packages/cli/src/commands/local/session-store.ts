@@ -49,13 +49,22 @@ export type CreateLocalSessionInput = {
   readonly maxEnvelopes?: number;
 };
 
+/** `code` of the control plane's 409 body for an ambiguous session name. */
+export const AMBIGUOUS_SESSION_CODE = "ambiguous_session";
+
 /** A label matches multiple sessions; callers must select an explicit ID. */
 export class AmbiguousLocalSessionError extends Error {
-  constructor(reference: string) {
+  readonly reference: string;
+  /** IDs of the sessions that share the label. */
+  readonly sessionIds: string[];
+
+  constructor(reference: string, sessionIds: string[]) {
     super(
       `Local session name "${reference}" is ambiguous; use its session ID.`,
     );
     this.name = "AmbiguousLocalSessionError";
+    this.reference = reference;
+    this.sessionIds = sessionIds;
   }
 }
 
@@ -130,7 +139,10 @@ export function createLocalSessionStore({
       throw new Error(`Local session "${reference}" was not found.`);
     }
     if (matches.length > 1) {
-      throw new AmbiguousLocalSessionError(reference);
+      throw new AmbiguousLocalSessionError(
+        reference,
+        matches.map((session) => session.id),
+      );
     }
     const [match] = matches;
     if (!match) {

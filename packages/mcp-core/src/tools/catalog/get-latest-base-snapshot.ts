@@ -63,69 +63,26 @@ export default defineTool({
   title: "Get Latest Base Snapshot",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
-  description: ({ experimentalMode, availableToolNames, directToolNames }) =>
-    [
-      "Get the latest UI screenshots/images for an app from the preprod snapshot system.",
-      "",
-      "This is the primary tool for retrieving app screenshots.",
-      "",
-      "Use this tool when you need to:",
-      "- Get screenshots, screens, golden images, or reference images for an app",
-      "- Find what the current UI looks like (latest screenshots from the main/default branch)",
-      "- List available snapshots or browse images before requesting specific ones",
-      "- Look up dark mode, light mode, or other variant screenshots",
-      "- Understand what baseline images exist when investigating snapshot test or visual regression CI failures",
-      "",
-      "The appId parameter is the app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews').",
-      "Returns compact metadata (imageFileName, displayName, description) for every image, bucketed by group.",
-      "",
-      "<examples>",
-      "### Get the latest screenshots for an app",
-      "",
-      "```",
-      'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend")',
-      "```",
-      "",
-      "### Get the latest screenshots for a specific branch",
-      "",
-      "```",
-      'get_latest_base_snapshot(organizationSlug="sentry", appId="sentry-frontend", project="frontend", branch="main")',
-      "```",
-      "</examples>",
-      "",
-      "<hints>",
-      "- The response includes compact metadata per image. Scan the groups to find images matching what you need (e.g. filter by group or name containing 'button').",
-      `- ${viewImageInstruction(
-        {
-          organizationSlug: "<organizationSlug>",
-          snapshotId: "<snapshotId>",
-          snapshotUrl: "<url>",
-        },
-        { experimentalMode, availableToolNames, directToolNames },
-      )}`,
-      "- If you need to investigate a specific snapshot comparison, use get_sentry_resource with the snapshot URL.",
-      "</hints>",
-    ].join("\n"),
+  description:
+    "Get an app's latest UI screenshots (baseline or golden images) from preprod snapshots, such as the current screens, dark mode variants, or the baseline behind a visual regression. Returns each image's file name, display name, and description, grouped. For a snapshot comparison by ID, use get_snapshot.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     appId: z
       .string()
       .trim()
       .describe(
-        "The app identifier (e.g. 'sentry-frontend', 'com.emergetools.hackernews'). Required.",
+        "App identifier, such as `sentry-frontend` or `com.emergetools.hackernews`.",
       ),
     branch: z
       .string()
       .trim()
-      .describe(
-        "Filter by git branch (e.g. 'main'). Omit to use the app's default branch.",
-      )
+      .describe("Git branch. Omit for the app's default branch.")
       .nullable()
       .default(null),
     project: z
       .string()
       .trim()
-      .describe("Project slug or numeric ID for scoping (e.g. 'frontend').")
+      .describe("Project slug or numeric ID.")
       .nullable()
       .default(null),
     regionUrl: ParamRegionUrl.nullable().default(null),

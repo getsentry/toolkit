@@ -154,6 +154,7 @@ describe("get_profile", () => {
           "baselinePeriod": null,
           "comparison": null,
           "focusOnUserCode": true,
+          "guidance": "No profiles were found for this transaction. Check the exact, case-sensitive transaction name with search_traces, try a longer period such as 30d, or confirm that profiling is enabled for the project.",
           "hasBaselineData": null,
           "hasCurrentData": false,
           "period": "7d",
@@ -322,6 +323,7 @@ describe("get_profile", () => {
           "baselinePeriod": "14d",
           "comparison": null,
           "focusOnUserCode": true,
+          "guidance": "No profiles were found for this transaction. Check the exact, case-sensitive transaction name with search_traces, try a longer period such as 30d, or confirm that profiling is enabled for the project.",
           "hasBaselineData": false,
           "hasCurrentData": false,
           "period": "7d",
@@ -495,6 +497,8 @@ describe("get_profile", () => {
       hasBaselineData: false,
       analysis: null,
       comparison: null,
+      guidance:
+        "The baseline period (14d) has no profiles, so there is no comparison. Choose a different baseline, or analyze 7d alone.",
     });
   });
 

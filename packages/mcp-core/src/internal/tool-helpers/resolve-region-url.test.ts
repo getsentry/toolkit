@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerContext } from "../../types";
+import { apiServiceFromContext } from "./api";
+import { withCallSignal } from "./call-signal";
 import { resolveRegionUrlForOrganization } from "./resolve-region-url";
 
 const { getOrganization } = vi.hoisted(() => ({
@@ -204,5 +206,28 @@ describe("resolveRegionUrlForOrganization", () => {
     expect(second).toBeNull();
     expect(getOrganization).toHaveBeenCalledOnce();
     expect(getOrganization).toHaveBeenCalledWith("self-hosted-org");
+  });
+
+  it("shares one lookup across a session's calls without their signals", async () => {
+    getOrganization.mockResolvedValue({
+      links: { regionUrl: "https://de.sentry.io" },
+    });
+    const session = createContext();
+    const lookup = (signal: AbortSignal) =>
+      resolveRegionUrlForOrganization({
+        context: withCallSignal(session, signal),
+        organizationSlug: "my-org",
+        regionUrl: null,
+      });
+
+    const cancelled = new AbortController();
+    cancelled.abort("client cancelled");
+    expect(await lookup(cancelled.signal)).toBe("https://de.sentry.io");
+    expect(await lookup(new AbortController().signal)).toBe(
+      "https://de.sentry.io",
+    );
+
+    expect(getOrganization).toHaveBeenCalledOnce();
+    expect(apiServiceFromContext).toHaveBeenCalledWith(session);
   });
 });

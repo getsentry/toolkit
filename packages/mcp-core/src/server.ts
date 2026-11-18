@@ -35,6 +35,7 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
+import { withCallSignal } from "./internal/tool-helpers/call-signal";
 import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { MCP_SERVER_INFO } from "./constants";
@@ -407,7 +408,14 @@ function configureServer({
         (experimentalMode ? tool.experimentalOutputSchema : undefined),
       annotations: tool.annotations,
     };
-    const handleToolCall = async (params: unknown): Promise<CallToolResult> => {
+    const handleToolCall = async (
+      params: unknown,
+      mcpContext?: { mcpReq?: { signal?: AbortSignal } },
+    ): Promise<CallToolResult> => {
+      // Cancellation stays scoped to this call; concurrent calls on the
+      // session keep running.
+      const signal = mcpContext?.mcpReq?.signal;
+      const callContext = withCallSignal(contextWithToolAvailability, signal);
       // Get the active MCP server span and attach request-scoped attributes.
       const activeSpan = getActiveSpan();
 
@@ -466,7 +474,7 @@ function configureServer({
           await executeToolHandler({
             tool,
             params: rawParams,
-            context: contextWithToolAvailability,
+            context: callContext,
           }),
         );
 
@@ -505,6 +513,16 @@ function configureServer({
           `Invalid tool output: ${typeof output === "object" ? JSON.stringify(output) : String(output)}`,
         );
       } catch (error) {
+        // The SDK drops the response of a cancelled call, and the error is
+        // only the abort reason (which MCP clients may send as a string), so
+        // it is neither recorded nor formatted.
+        if (signal?.aborted) {
+          activeSpan?.setStatus({ code: 2, message: "cancelled" });
+          return {
+            content: [{ type: "text" as const, text: "Tool call cancelled." }],
+            isError: true,
+          };
+        }
         if (activeSpan) {
           activeSpan.setStatus({
             code: 2, // error

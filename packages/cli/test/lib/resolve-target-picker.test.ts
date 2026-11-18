@@ -68,7 +68,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  server?.stop();
+  server.stop();
 });
 
 beforeEach(() => {

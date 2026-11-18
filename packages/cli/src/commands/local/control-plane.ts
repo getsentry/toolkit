@@ -10,8 +10,12 @@ import { Buffer } from "node:buffer";
 import {
   drainReceiver,
   ingestReceiverEnvelope,
+  onOversizedEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
+  receiverEnvelopeReceivedAt,
+  reportIngestStatus,
+  type ReceiverEnvelope,
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
@@ -20,6 +24,9 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { AMBIGUOUS_EVENT_CODE, matchEventIds } from "./event-lookup.js";
+import { summarizeEnvelope } from "./event-summary.js";
+import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
 import {
   buildSSEHandler,
@@ -28,6 +35,7 @@ import {
 } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
+  AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
   AmbiguousLocalSessionError,
   type LocalSessionStore,
@@ -36,6 +44,7 @@ import {
 import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
+  LOCAL_OVERSIZED_EVENT,
   LOCAL_SESSION_EVENT,
   type LocalSessionEvent,
 } from "./viewer-protocol.js";
@@ -91,6 +100,39 @@ function eventIdFrom(value: unknown): string | undefined {
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
+/**
+ * The segment number of a replay envelope. Replay SDKs send every segment of
+ * a replay with the replay ID as the envelope `event_id`, so the segment is
+ * what tells them apart.
+ */
+function replaySegmentId(items: unknown[]): number | undefined {
+  for (const item of items) {
+    if (!Array.isArray(item)) {
+      continue;
+    }
+    const [itemHeader, payload] = item as [unknown, unknown];
+    const segmentId =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>).segment_id
+        : undefined;
+    if (
+      typeof itemHeader === "object" &&
+      itemHeader !== null &&
+      (itemHeader as Record<string, unknown>).type === "replay_event" &&
+      typeof segmentId === "number" &&
+      Number.isInteger(segmentId)
+    ) {
+      return segmentId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Identity of a retained envelope. `eventId` is the Sentry event ID, or
+ * `<replay_id>:<segment_id>` for a replay segment, or the envelope ID when
+ * the envelope has no event ID.
+ */
 function eventSummary(parsed: {
   envelope: [Record<string, unknown>, unknown[]];
 }): { envelopeId: string; eventId: string; itemTypes: string[] } {
@@ -110,14 +152,40 @@ function eventSummary(parsed: {
     const id = eventIdFrom(item[0]) ?? eventIdFrom(item[1]);
     return id ? [id] : [];
   })[0];
+  const envelopeId = spotlightEnvelopeId(header);
+  const eventId = eventIdFrom(header) ?? itemEventId;
+  const segmentId = replaySegmentId(items);
   return {
-    envelopeId: spotlightEnvelopeId(header),
-    eventId: eventIdFrom(header) ?? itemEventId ?? spotlightEnvelopeId(header),
+    envelopeId,
+    eventId:
+      eventId === undefined
+        ? envelopeId
+        : segmentId === undefined
+          ? eventId
+          : `${eventId}:${segmentId}`,
     itemTypes: items.map((item) =>
       Array.isArray(item) && typeof item[0] === "object" && item[0]
         ? stringifyUnknown((item[0] as { type?: unknown }).type ?? "unknown")
         : "unknown",
     ),
+  };
+}
+
+/**
+ * List and view entry for a retained envelope: its identity plus a decoded
+ * summary and the time the receiver accepted it.
+ */
+function describeEvent(
+  container: ReceiverEnvelope,
+  parsed: ParsedReceiverEnvelope,
+) {
+  const receivedAt = receiverEnvelopeReceivedAt(container);
+  return {
+    ...eventSummary(parsed),
+    ...summarizeEnvelope(parsed),
+    ...(receivedAt === undefined
+      ? {}
+      : { receivedAt: new Date(receivedAt).toISOString() }),
   };
 }
 
@@ -143,7 +211,15 @@ export function createLocalControlPlane({
     } catch (error) {
       if (error instanceof AmbiguousLocalSessionError) {
         throw new HTTPException(409, {
-          res: Response.json({ error: error.message }, { status: 409 }),
+          res: Response.json(
+            {
+              error: error.message,
+              code: AMBIGUOUS_SESSION_CODE,
+              reference: error.reference,
+              sessionIds: error.sessionIds,
+            },
+            { status: 409 },
+          ),
         });
       }
       logger.debug("Local session was not found", error);
@@ -405,7 +481,10 @@ export function createLocalControlPlane({
     }
 
     const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
-    if (typeof body === "number") return c.body(null, body);
+    if (typeof body === "number") {
+      reportIngestStatus(sessionStore.getBuffer(reference), body);
+      return c.body(null, body);
+    }
     const encoding = c.req.header("content-encoding");
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
@@ -416,17 +495,17 @@ export function createLocalControlPlane({
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
-    const status = await ingestReceiverEnvelope(
-      sessionStore.getBuffer(reference),
-      {
-        body,
-        contentType: browserBeacon
-          ? SENTRY_CONTENT_TYPE
-          : (c.req.header("content-type") ?? ""),
-        encoding,
-        userAgent: c.req.header("user-agent"),
-      },
-    );
+    const buffer = sessionStore.getBuffer(reference);
+    const status = await ingestReceiverEnvelope(buffer, {
+      body,
+      contentType: browserBeacon
+        ? SENTRY_CONTENT_TYPE
+        : (c.req.header("content-type") ?? ""),
+      encoding,
+      receiverUrl: c.req.url,
+      userAgent: c.req.header("user-agent"),
+    });
+    reportIngestStatus(buffer, status);
     if (status === 503) c.header("Retry-After", "1");
     if (status === 204) sessionStore.recordActivity(reference);
     return c.body(null, status);
@@ -481,6 +560,9 @@ export function createLocalControlPlane({
         buildSSEHandler(writer, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
       );
+      const unsubscribeOversized = onOversizedEnvelope(buffer, () => {
+        void writer.writeSSE({ event: LOCAL_OVERSIZED_EVENT, data: "{}" });
+      });
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => {
         finish = resolve;
@@ -513,6 +595,7 @@ export function createLocalControlPlane({
       } finally {
         buffer.unsubscribe(readerId);
         unsubscribeSettings();
+        unsubscribeOversized();
         unsubscribeSession();
       }
     });
@@ -618,11 +701,7 @@ export function createLocalControlPlane({
         if (!parsed) {
           return [];
         }
-        return [
-          {
-            ...eventSummary(parsed),
-          },
-        ];
+        return [describeEvent(container, parsed)];
       })
       .reverse();
     return c.json({ events });
@@ -632,22 +711,39 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    const container = sessionStore
+    const reference = c.req.param("eventId");
+    const events = sessionStore
       .getBuffer(c.req.param("id"))
       .read({ all: true })
-      .find((candidate) => {
-        const parsed = candidate.getParsedEnvelope();
-        return (
-          parsed && eventSummary(parsed).eventId === c.req.param("eventId")
-        );
+      .flatMap((container) => {
+        const parsed = container.getParsedEnvelope();
+        return parsed
+          ? [{ container, parsed, eventId: eventSummary(parsed).eventId }]
+          : [];
       });
-    const parsed = container?.getParsedEnvelope();
-    if (!parsed) {
+    const eventIds = matchEventIds(
+      events.map(({ eventId }) => eventId),
+      reference,
+    );
+    if (eventIds.length > 1) {
+      return c.json(
+        {
+          error: `Local event ID "${reference}" matches more than one event.`,
+          code: AMBIGUOUS_EVENT_CODE,
+          session: c.req.param("id"),
+          reference,
+          eventIds,
+        },
+        409,
+      );
+    }
+    const match = events.find(({ eventId }) => eventId === eventIds[0]);
+    if (!match) {
       return c.body(null, 404);
     }
     return c.json({
-      ...eventSummary(parsed),
-      envelope: parsed.envelope,
+      ...describeEvent(match.container, match.parsed),
+      envelope: match.parsed.envelope,
     });
   });
 

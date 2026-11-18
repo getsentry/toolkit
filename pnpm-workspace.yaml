@@ -25,21 +25,30 @@ allowBuilds:
   workerd: true
 
 overrides:
-  "ajv@8.20.0>fast-uri": 3.1.8
+  "@ai-sdk/provider-utils@4": ^4.0.33
+  "@babel/core@7": ^7.29.6
   "express-rate-limit@8>ip-address": 10.7.4
   "js-yaml@3.15.2>argparse": 2.0.1
   "@modelcontextprotocol/sdk": 1.32.2
+  browserslist: ^4.28.7
+  defu: ^6.1.5
+  "diff@8": ^8.0.3
+  "fast-uri@3": ^3.1.9
   fast-xml-parser: 5.7.2
+  mdast-util-to-hast: ^13.2.1
+  "path-to-regexp@8": ^8.4.0
   "picomatch@2.3.1": 2.3.2
-  seroval: ^1.5.4
+  "postcss-selector-parser@6": ^6.1.5
+  seroval: ^1.6.11
   sharp: ^0.35.5
+  source-map-js: ^1.2.2
   undici: ^7.30.1
   # GHSA-mrhx-c7xc-m3w5: keep every zod copy at or above the patched release.
   zod: ^4.6.6
 
 catalog:
   "@ast-grep/cli": ^0.43.0
-  "@ai-sdk/anthropic": ^3.0.33
+  "@ai-sdk/anthropic": ^3.0.137
   "@ai-sdk/mcp": ^1.0.16
   "@ai-sdk/openai": ^3.0.23
   "@ai-sdk/react": ^3.0.232
@@ -51,14 +60,14 @@ catalog:
   "@modelcontextprotocol/server": 2.4.0
   "@radix-ui/react-accordion": ^1.2.20
   "@radix-ui/react-slot": ^1.2.3
-  "@sentry/api": 2.0.0
+  "@sentry/api": 2.15.0
   "@sentry/cloudflare": 11.12.0
   "@sentry/core": 11.12.0
   "@sentry/node": 11.12.0
   "@sentry/react": 11.12.0
   "@sentry/roach": 0.3.0
   "@sentry/search-syntax": ^1.0.0
-  "@sentry/vite-plugin": ^4.6.1
+  "@sentry/vite-plugin": 11.12.0
   "@tailwindcss/typography": ^0.5.16
   "@tailwindcss/vite": ^4.3.3
   "@types/node": ^22.15.33
@@ -103,7 +112,6 @@ catalog:
   vite: ^6.4.5
   vitest: ^5.0.5
   vitest-evals: ^0.18.0
-  workers-mcp: 0.1.0-3
   wrangler: 4.156.1
   zod: ^4.6.6
 
@@ -169,7 +177,7 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.87.0"
   - oxfmt@0.72.0
   - oxlint@1.87.0
-  - "@sentry/api@2.0.0"
+  - "@sentry/api@2.15.0"
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
   - "@sentry/symbolic@14.0.0-alpha.5"

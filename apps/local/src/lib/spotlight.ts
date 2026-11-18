@@ -1,5 +1,11 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import {
+  sessionAggregates,
+  sessionCountsTitle,
+} from "../../../../packages/cli/src/commands/local/session-counts.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -81,6 +87,13 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+/** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
+function getLogEntry(value: unknown): string | undefined {
+  return isRecord(value)
+    ? (getString(value.formatted) ?? getString(value.message))
+    : undefined;
+}
+
 function contextFeedback(
   event: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -98,15 +111,22 @@ export function getEventMetadata(
     type === "event" ? getEventExceptions(payload)[0] : undefined;
   const transaction = getString(event.transaction);
   const description = getString(event.description);
-  const message =
-    getString(event.message) ??
-    getString(event.body) ??
-    getString(event.name) ??
-    getString(
-      isRecord(contextFeedback(event))
-        ? contextFeedback(event).message
-        : undefined,
-    );
+  // Dev servers colour their console logs; captured messages keep the escapes.
+  const message = getString(
+    stripAnsi(
+      getString(event.message) ??
+        getLogEntry(event.message) ??
+        getLogEntry(event.logentry) ??
+        getString(event.body) ??
+        getString(event.name) ??
+        getString(
+          isRecord(contextFeedback(event))
+            ? contextFeedback(event).message
+            : undefined,
+        ) ??
+        "",
+    ),
+  );
   const transactionMatch = transaction?.match(/^([A-Z]+)\s+(.+)$/);
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   const trace = isRecord(contexts.trace) ? contexts.trace : event;
@@ -128,9 +148,10 @@ export function getEventMetadata(
     getString(data["http.url"]) ??
     getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
-  const startTimestamp = getNumber(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event.start_timestamp);
   const timestamp =
-    getNumber(event.timestamp) ?? getNumber(event.end_timestamp);
+    parseEventTimestamp(event.timestamp) ??
+    parseEventTimestamp(event.end_timestamp);
   const durationMs =
     startTimestamp !== undefined && timestamp !== undefined
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100
@@ -147,8 +168,9 @@ export function getEventMetadata(
       message ??
       route ??
       (exception ? formatExceptionTitle(exception) : undefined) ??
+      (type === "sessions" ? sessionCountsTitle(event) : undefined) ??
       type,
-    ...(type === "event" && message ? { message } : {}),
+    ...((type === "event" || type === "log") && message ? { message } : {}),
     level: getString(event.level),
     method,
     route,
@@ -204,7 +226,10 @@ function getItemTimestamp(payload: unknown): number | string | undefined {
   if (!isRecord(payload)) {
     return undefined;
   }
-  const timestamp = payload.timestamp ?? payload.end_timestamp;
+  const timestamp =
+    payload.timestamp ??
+    payload.end_timestamp ??
+    sessionAggregates(payload)[0]?.started;
   return typeof timestamp === "number" || typeof timestamp === "string"
     ? timestamp
     : undefined;

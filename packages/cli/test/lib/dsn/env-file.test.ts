@@ -313,7 +313,7 @@ describe("integration: file-based detection", () => {
       // Invalid DSN should be parsed but createDetectedDsn may return null
       // depending on DSN validation
       // For this test, we just verify it doesn't crash
-      expect(result === null || result?.raw === "not-a-valid-dsn").toBe(true);
+      expect(result === null || result.raw === "not-a-valid-dsn").toBe(true);
     });
 
     test("respects ENV_FILES priority order", async () => {

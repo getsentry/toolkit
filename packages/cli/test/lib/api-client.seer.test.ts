@@ -108,6 +108,36 @@ describe("triggerRootCauseAnalysis", () => {
     expect(error).toMatchObject({ status: 402, code: "seer_out_of_credits" });
   });
 
+  test.each([
+    [{ denialReason: "daily_cap_exceeded" }, "daily_cap_exceeded"],
+    [{ denialReason: "not_enough_credits" }, undefined],
+    [{ denialReason: null }, undefined],
+    [{ denialReason: "constructor" }, undefined],
+    [{}, undefined],
+  ])(
+    "reads the denial reason from a 402 body (%j)",
+    async (extra, expected) => {
+      globalThis.fetch = async () =>
+        new Response(
+          JSON.stringify({
+            detail:
+              "Your organization does not have enough credits to start an Autofix run.",
+            code: "seer_out_of_credits",
+            ...extra,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+
+      const error = await triggerRootCauseAnalysis(
+        "test-org",
+        "123456789",
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).denialReason).toBe(expected);
+    },
+  );
+
   test("throws ApiError on 403 response", async () => {
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "AI Autofix is not enabled" }), {

@@ -39,6 +39,7 @@ export function apiServiceFromContext(
     utmSource: context.utmSource,
     // The cache identity belongs to `accessToken`; a router swaps tokens.
     responseCache: context.credentialRouter ? null : context.responseCache,
+    signal: context.signal,
   });
 }
 

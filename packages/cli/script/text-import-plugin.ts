@@ -27,7 +27,7 @@ export const textImportPlugin: Plugin = {
     }));
 
     build.onResolve({ filter: ANY_FILTER }, (args) => {
-      if (args.with?.type === "text") {
+      if (args.with.type === "text") {
         return {
           path: resolvePath(args.resolveDir, args.path),
           namespace: TEXT_IMPORT_NS,

@@ -60,6 +60,7 @@ import analyzeIssueWithSeer from "./analyze-issue-with-seer";
 import searchDocs from "./search-docs";
 import getDoc from "./get-doc";
 import searchIssues from "./search-issues";
+import findRelatedIssues from "./find-related-issues";
 import searchIssueEvents from "./search-issue-events";
 import getProfile from "./get-profile";
 import getProfileDetails from "./get-profile-details";
@@ -82,11 +83,8 @@ const legacyGetAIConversationDetails = {
   title: "Get AI Conversation Details (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["get_agent_conversation_details"] },
-  description: [
-    "Deprecated alias for get_agent_conversation_details.",
-    "",
-    "Use get_agent_conversation_details for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
+  description:
+    "Deprecated alias for get_agent_conversation_details; use that tool instead.",
 } satisfies ToolConfig<any>;
 
 const legacySearchAIConversations = {
@@ -95,11 +93,8 @@ const legacySearchAIConversations = {
   title: "Search AI Conversations (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["search_agent_conversations"] },
-  description: [
-    "Deprecated alias for search_agent_conversations.",
-    "",
-    "Use search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
+  description:
+    "Deprecated alias for search_agent_conversations; use that tool instead.",
 } satisfies ToolConfig<any>;
 
 // The docs tools read docs.sentry.io, not the Sentry API, so they have no
@@ -193,6 +188,7 @@ const catalogTools = withFreshReadInputs({
   search_docs: searchDocs,
   get_doc: getDoc,
   search_issues: searchIssues,
+  find_related_issues: findRelatedIssues,
   search_issue_events: searchIssueEvents,
   find_dropped_events: findDroppedEvents,
   get_profile: getProfile,

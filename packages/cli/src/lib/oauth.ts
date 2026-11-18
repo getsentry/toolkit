@@ -402,7 +402,7 @@ async function attemptPoll(
       case "denied":
         return {
           status: "error",
-          message: "Authorization was denied. Please try again.",
+          message: `You denied the authorization request. Y tho? Run '${getLoginCommand()}' if you change your mind.`,
         };
       case "unexpected":
         return { status: "error", message: error.message };
@@ -621,6 +621,7 @@ export async function refreshAccessToken(
 export async function exchangeSetupCode(
   code: string,
   host: string,
+  clientId: string = getClientId(),
 ): Promise<TokenResponse> {
   const response = await fetchWithConnectionError(
     host + "/oauth/token/",
@@ -630,7 +631,7 @@ export async function exchangeSetupCode(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
-        client_id: getClientId(),
+        client_id: clientId,
         setup_code: code,
       }),
     },

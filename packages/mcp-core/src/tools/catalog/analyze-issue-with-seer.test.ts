@@ -451,6 +451,36 @@ describe("analyze_issue_with_seer", () => {
       "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
     ],
     [
+      "out of credits, not enough credits",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: "not_enough_credits",
+      },
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+    ],
+    [
+      "out of credits, null denial reason",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: null,
+      },
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+    ],
+    [
+      "daily spend limit reached",
+      {
+        detail:
+          "Your organization does not have enough credits to start an Autofix run.",
+        code: "seer_out_of_credits",
+        denialReason: "daily_cap_exceeded",
+      },
+      "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.",
+    ],
+    [
       "out of quota",
       { detail: "No budget for Seer Autofix.", code: "seer_out_of_quota" },
       "Your organization does not have enough Seer quota to start an Autofix run.",
@@ -500,6 +530,89 @@ describe("analyze_issue_with_seer", () => {
       expect(getCallCount).toBe(1);
     },
   );
+
+  it.each([
+    [
+      "repos_not_linked",
+      "Seer Autofix requires repositories to be connected to this project before a new run can be started.",
+    ],
+    [
+      "scm_integration_required",
+      "Seer Autofix requires a supported SCM integration (GitHub or GitLab) to be installed for your organization before a new run can be started.",
+    ],
+  ])(
+    "explains why the run did not start when Sentry answers 409 (%s)",
+    async (code, detail) => {
+      let getCallCount = 0;
+
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-409/autofix/",
+          () => {
+            getCallCount++;
+            return HttpResponse.json({ autofix: null });
+          },
+        ),
+        http.post(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-409/autofix/",
+          () => HttpResponse.json({ detail, code }, { status: 409 }),
+        ),
+      );
+
+      const result = await analyzeIssueWithSeer.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          issueId: "CLOUDFLARE-MCP-409",
+          instruction: undefined,
+        },
+        {
+          constraints: { organizationSlug: undefined },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      );
+
+      expect(result).toBe(
+        `# Seer Analysis for Issue CLOUDFLARE-MCP-409\n\n## Analysis Not Started\n\n${detail}\n\nRetrying won't help until someone sets this up in Sentry. Investigate without Seer by reading the issue and its events.\n`,
+      );
+      // No polling after a refused start.
+      expect(getCallCount).toBe(1);
+    },
+  );
+
+  it("still throws a 409 that is not a setup code", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-409-OTHER/autofix/",
+        () => HttpResponse.json({ autofix: null }),
+      ),
+      http.post(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-409-OTHER/autofix/",
+        () =>
+          HttpResponse.json(
+            { detail: "Something else conflicted" },
+            { status: 409 },
+          ),
+      ),
+    );
+
+    await expect(
+      analyzeIssueWithSeer.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          issueId: "CLOUDFLARE-MCP-409-OTHER",
+          instruction: undefined,
+        },
+        {
+          constraints: { organizationSlug: undefined },
+          accessToken: "access-token",
+          userId: "1",
+        },
+      ),
+    ).rejects.toThrow("Something else conflicted");
+  });
 
   it("names the accepted scopes when Sentry refuses the start for a missing scope", async () => {
     mswServer.use(

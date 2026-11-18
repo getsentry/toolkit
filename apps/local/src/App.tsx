@@ -35,6 +35,7 @@ import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
   LOCAL_SESSION_EVENT,
+  envelopeReceivedAt,
 } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -51,6 +52,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { useNavigate } from "react-router";
 import { ConnectionLanding } from "@/components/connection-landing.tsx";
 import {
   EventCommandDialog,
@@ -78,6 +80,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.tsx";
 import {
+  formatTimestamp,
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
@@ -85,6 +88,7 @@ import {
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
+  getStreamUrlFromHash,
   parseStreamEndpoint,
   isLoopbackHost,
   REMOTE_STREAM_STORAGE_KEY,
@@ -98,6 +102,7 @@ import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
 import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
 import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
 import {
+  eventListLabel,
   isErrorEvent,
   matchesSearch,
   type WorkspaceView,
@@ -119,20 +124,6 @@ const SCOPED_SESSION_STREAM_PATH_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 function isScopedSessionStream(pathname: string): boolean {
   return SCOPED_SESSION_STREAM_PATH_RE.test(pathname);
-}
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]): string {
-  if (timestamp === undefined) {
-    return "unknown time";
-  }
-  const milliseconds =
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp;
-  const date = new Date(milliseconds);
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
 }
 
 function formatDuration(durationMs: number | undefined): string | undefined {
@@ -196,6 +187,15 @@ function saveRemoteStreamUrl(streamUrl: string): void {
   }
 }
 
+const MAX_LABEL_TITLE = 100;
+
+/** Keep row labels short; the full title stays visible in the row. */
+function shortLabel(title: string): string {
+  return title.length > MAX_LABEL_TITLE
+    ? `${title.slice(0, MAX_LABEL_TITLE).trimEnd()}…`
+    : title;
+}
+
 function EventEntry({
   item,
   isSelected,
@@ -206,23 +206,13 @@ function EventEntry({
   const metadata = getMetadata(item);
   const duration = formatDuration(metadata.durationMs);
   const isError = isErrorEvent(item);
-  const typeLabel =
-    item.type === "event"
-      ? isError
-        ? "Exception"
-        : "Event"
-      : (metadata.method ??
-        (item.type === "transaction"
-          ? "Request"
-          : item.type === "log"
-            ? "Log"
-            : (metadata.operation ?? item.type)));
+  const label = eventListLabel(item);
 
   return (
     <li>
       <button
         type="button"
-        aria-label={`View ${item.type} event`}
+        aria-label={`View ${item.type.replaceAll("_", " ")}: ${shortLabel(label.title)}`}
         aria-current={isSelected ? "true" : undefined}
         className={`flex w-full cursor-pointer items-center justify-between gap-3 px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
           isSelected ? "bg-muted text-foreground" : "hover:bg-muted/60"
@@ -233,13 +223,11 @@ function EventEntry({
           <div className="flex min-w-0 items-center gap-2">
             {showTypeBadge && columns.includes("type") ? (
               <Badge variant={isError ? "destructive" : "default"}>
-                {typeLabel}
+                {label.badge}
               </Badge>
             ) : null}
             <span className="line-clamp-2 min-w-0 break-words text-sm [overflow-wrap:anywhere]">
-              {item.type === "event"
-                ? metadata.title
-                : (metadata.route ?? metadata.title)}
+              {label.title}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground">
@@ -714,6 +702,36 @@ export default function App() {
     setIsEditingReceiver(false);
   };
 
+  // A new CLI link pasted into an open tab switches to its session and
+  // directory. The startup link is read on first render instead.
+  const navigate = useNavigate();
+  const connectToEndpointRef = useRef(connectToEndpoint);
+  useEffect(() => {
+    connectToEndpointRef.current = connectToEndpoint;
+  });
+  useEffect(() => {
+    const onHashChange = () => {
+      const linkedStreamUrl = getStreamUrlFromHash(window.location.hash);
+      if (!linkedStreamUrl) return;
+      const directory = parseSessionDirectoryUrl(
+        new URLSearchParams(window.location.hash.slice(1)).get("directory"),
+        linkedStreamUrl,
+      );
+      connectToEndpointRef.current(linkedStreamUrl);
+      if (directory) {
+        saveSessionDirectory(directory);
+        setDirectoryUrl(directory);
+      }
+      // The link carries capabilities; keep them out of the address bar.
+      void navigate(
+        { pathname: window.location.pathname, search: window.location.search },
+        { replace: true },
+      );
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [navigate]);
+
   const connectReceiver = (url: string) => {
     const endpoint = parseStreamEndpoint(url);
     if (!endpoint || (connection !== "connected" && !hasRetainedItems)) {
@@ -902,28 +920,47 @@ export default function App() {
         return;
       }
       setIsViewCleared(false);
-      setLatestEventTime(Date.now());
       const messageEvent = event as MessageEvent<string>;
       const eventId =
         messageEvent.lastEventId || `event-${fallbackEventId.current++}`;
-      const rawEnvelope: LocalFeedItem = {
-        id: eventId,
-        type: "envelope",
-        timestamp: Date.now(),
-        text: messageEvent.data,
-        payload: messageEvent.data,
-        metadata: { title: `Envelope ${eventId.slice(-8)}` },
-      };
+      let items: LocalFeedItem[] | undefined;
       try {
-        telemetryStore.recordEnvelope(
-          rawEnvelope,
-          decodeEnvelope(messageEvent.data, eventId),
-        );
-        setMessage(undefined);
+        items = decodeEnvelope(messageEvent.data, eventId);
       } catch {
-        telemetryStore.recordEnvelope(rawEnvelope, []);
-        setMessage("Received an event that could not be decoded.");
+        // Undecodable envelopes stay inspectable as raw text.
       }
+      // Replayed history must keep its receive time, not the time it loaded.
+      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
+      const receivedAt =
+        envelopeReceivedAt(eventId) ??
+        (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
+      // Items with no SDK time, such as replay recordings, show when they arrived.
+      items = items?.map((item) =>
+        item.timestamp === undefined
+          ? { ...item, timestamp: receivedAt / 1000 }
+          : item,
+      );
+      const itemTypes = [...new Set(items?.map((item) => item.type))];
+      setLatestEventTime((latest) =>
+        latest === undefined ? receivedAt : Math.max(latest, receivedAt),
+      );
+      telemetryStore.recordEnvelope(
+        {
+          id: eventId,
+          type: "envelope",
+          timestamp: receivedAt,
+          text: messageEvent.data,
+          payload: messageEvent.data,
+          metadata: {
+            title: `Envelope ${eventId.slice(-8)}${itemTypes.length ? ` · ${itemTypes.join(", ")}` : ""}`,
+          },
+        },
+        items ?? [],
+      );
+      setMessage(
+        items ? undefined : "Received an event that could not be decoded.",
+      );
     };
 
     source.addEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);

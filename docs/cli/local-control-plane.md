@@ -4,7 +4,10 @@
 isolated session owned by a background, loopback-only daemon. The foreground
 command retains its session when it exits. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All
-telemetry disappears when the daemon stops.
+telemetry disappears when the daemon stops. The daemon exits on its own once it
+has had no sessions, open or closed, for 30 seconds (`LOCAL_DAEMON_IDLE_GRACE_MS`
+in `daemon.ts`). A `daemon start` with no session therefore stops shortly
+after, and the next session command starts it again.
 
 ```sh
 sentry local run --session web -- npm run dev
@@ -21,11 +24,18 @@ sentry local daemon stop
 `local run --verify` uses an ephemeral receiver and cannot be combined with
 `--session` or `--open`. Invalid combinations are rejected before a receiver or
 application is started. Omit `--verify` to capture into a retained daemon session.
+The receiver tries port 8969 first. When that port is busy, for example because
+the daemon holds it, verify uses a free port instead, and the app gets URLs for
+that port. If no event arrives in time, the timeout message names the port it
+used, because an SDK that ignores `SENTRY_SPOTLIGHT` still sends to 8969. A busy
+`--port` that you pass fails right away. Verify prints no viewer link, because
+its receiver stops after the first envelope.
 
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
-Treat those URLs as credentials.
+Treat those URLs as credentials. Terminal output redacts them, including the
+`Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
 retained session expires, reusing its key creates a fresh session with new capabilities.
 Names must be unique for name-based queries; ambiguous names return HTTP 409 with guidance
@@ -35,6 +45,40 @@ Session lookup commands accept names quoted or as separate words. For `event vie
 form the session name. Event lookup uses the Sentry event ID from the envelope
 header, event/transaction item header, or payload, in that order; envelopes
 without an event ID retain their generated envelope ID as the lookup key.
+Replay SDKs send every segment of a replay with the replay ID as its event ID,
+so a replay segment's lookup key is `<replay_id>:<segment_id>`.
+`event view` also takes a prefix of 8 or more characters when exactly one
+event ID starts with it. An exact ID always wins. A prefix that matches several
+events gets HTTP 409 with code `ambiguous_event` and the matching `eventIds`,
+which the CLI reports as an error (exit code 23) that lists them. A shorter
+reference matches only exactly, so short lookup keys keep working. Segments of
+one replay share a prefix, so open one with its full `<replay_id>:<segment_id>`
+key.
+
+Without `--json`, `session list`, `event list`, and `envelope list` print
+tables. The event table shows each ID as its shortest unique prefix of at least
+8 characters, so it can be passed to `event view`. `--json` prints the control
+plane's response unchanged.
+
+Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
+a summary of the envelope's main item (the first event or transaction, else the
+first log or span batch, else the first item), so an agent can pick what to open
+without viewing every event. Events get the same `type`, `level`, and `title`
+as their `local tail` line: `type` is `error` for an exception, `message` for
+an event without one (`captureMessage`, Python `logging`), or the item type
+(`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
+`title`, and `timestamp` from its most severe log. A span batch takes its
+`title` and `timestamp` from its segment root: the span marked `is_segment`,
+else the span whose parent is not in the batch. A `sessions` aggregate is
+titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+(cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
+appear when the item has them, `count` gives the number of logs or spans in a
+batch (not a standalone span), and `receivedAt` is
+when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
+
+A session, event, or envelope that does not exist, or that retention has
+evicted, fails with a not-found error (exit code 23) that names what is missing
+and the list command to run, including with `--json`.
 
 The daemon stores its discovery token under `SENTRY_CONFIG_DIR` in an owner-only
 state file. It binds only to localhost, 127.0.0.1, or ::1 and uses a nonzero port.
@@ -45,12 +89,27 @@ Restart preserves its configured host and port and clears all in-memory data.
 Both stop and restart wait for the previous daemon to release its state and ownership
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
+`daemon stop` and `daemon restart` warn about sessions that were still
+capturing, and `daemon stop` lists them in `capturingSessions`. A `local run --session` or `local serve --session` attached to
+one prints a single warning once the daemon is gone and stops reconnecting. A
+wrapped app keeps running, but nothing captures its telemetry until the command
+is restarted.
 A temporarily unreachable live daemon keeps its discovery state for retries.
+Discovery is stale when its recorded port refuses connections, or when a server
+that is not a Local daemon answers there, even if its PID is alive. That happens
+after an unclean exit with PID reuse, or while a daemon shuts down. Commands then
+clear it, and the owner lock the same daemon left, and start a new daemon. A live
+daemon that does not answer keeps its discovery. The error then names both
+`local-control-plane.json` and `local-control-plane.owner`; delete them only after
+checking that the PID is not a Sentry Local daemon.
 A short ownership guard serializes claiming, stale recovery and release. If a
 process dies during that critical section, startup preserves the guard and reports
 its path; confirm the owning process has stopped before removing the guard and
 retrying.
 Startup waits through the listener retry window and preserves active startup locks.
+If a server that is not a Local daemon, such as a foreground `local serve` or a
+`local run` without `--session`, already answers on the port, startup fails right
+away and asks you to stop it or pass `--port`.
 Concurrent foreground and managed starts join the same daemon: session creation
 waits for a live foreground owner to publish authenticated discovery, even if a
 competing child exits before that owner finishes binding.
@@ -58,8 +117,11 @@ Incomplete owner files receive a five-second grace period. Once safely reclaimed
 ownership is claimed under the same guard, including on the final retry.
 
 When a managed daemon owns the requested port, plain `local run` and `local serve`
-require `--session <name>` or a different `--port`; they cannot use its protected
-receiver as a legacy `/stream` endpoint.
+cannot use its protected receiver as a legacy `/stream` endpoint. A plain
+`local run` without `--port` then captures on a free port and says so, because the
+daemon keeps the default port while it retains sessions. With an explicit
+`--port`, and for `local serve`, they require `--session <name>` or a different
+`--port`.
 
 ## Envelope retention
 
@@ -199,7 +261,9 @@ The daemon-wide `/stream` emits discovery metadata to loopback viewers and the
 trusted hosted Local origins. Other browser origins cannot read it. Discovery
 uses a separate `directoryUrl` capability, also returned by session create and
 session view. `--open` passes it alongside the initial stream in the URL fragment,
-which is removed after startup and is never sent to the hosting server. The directory
+which is removed after startup and is never sent to the hosting server. Opening a
+new session link in a tab that is already open switches to that session and clears
+the link from the URL the same way. The directory
 is kept only in tab session storage, so reloads can retain the picker. The capability
 allows discovery of all sessions and their stream capabilities on this daemon; treat
 it as a credential. It does not grant ingestion or the CLI control API, and expires
@@ -249,12 +313,30 @@ when the event carries a request transaction name. Overview shows the current
 exception, its causes, and stack frames with function names, source locations, and
 captured source lines. Frames appear most recent first; the JSON tab preserves the
 complete original payload.
+Message and logging events use their message (`message` or `logentry`) as the
+title. The list and inspector badge says Exception, Message, or Event by what
+the event carries; its level only sets the color. Overview also shows the level,
+handled state, environment, release, server name, and user. Empty contexts are
+hidden.
+
+In Events, request (`http.server`) transactions show their method and route.
+Other transactions, such as pageloads, navigations, and custom `task`
+transactions, show their op and transaction name.
+
+A trace's error count is its error events: exceptions and error-level messages.
+Failing spans and error-level logs are not counted again. A span or segment
+named only by its HTTP method, such as a Next.js edge `GET`, is labeled with its
+`http.route`, or else its `url.path` or URL path.
 
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open
 their own timing, attributes, original payload, and trace-related errors/logs in
 the inspector; **Back to trace** returns to the waterfall and its selected span.
 Raw envelopes and other diagnostic types open directly in JSON.
+Envelope rows list their item types and show when the receiver accepted them,
+read from the receiver's UUIDv7 SSE event ID, so reloaded history keeps its
+original times. Envelopes without that ID use their `sent_at` header.
+Breadcrumb and SDK last-seen times use the same local time format as the lists.
 
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.
@@ -273,12 +355,25 @@ AI interaction summaries reconcile step usage and pair response content with
 its captured finish reason. Profile inspection can combine retained chunks from
 one profiler while keeping each original chunk available. Sampled function rows
 in traces use observed intervals and unambiguous captured parents; gaps between
-chunks and final sample tails do not create inferred work.
+chunks and final sample tails do not create inferred work. They are folded
+under their captured span until **Show sampled functions** is used, and a trace
+links its profile once even when the profile arrived in several chunks.
+
+A trace's "N spans" counts the captured spans below its transactions and
+segments, like the tail's `[N spans]`: the transaction or segment span itself and
+sampled function rows are not counted.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
-encoding 415, and temporary admission overload 503. Malformed envelopes remain
+encoding 415, and temporary admission overload 503. SDKs drop an envelope that
+gets 413 without retrying, so `local run` and `local serve` print a warning in
+their tail when that happens, at most one line every five seconds. Drops in
+between are counted and printed as one line when the five seconds end. Session tails
+get the notice from the daemon as a `sentry.local.oversized` stream event. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
+Receivers drop `http.client` spans and breadcrumbs for requests to their own
+loopback `/_local/` and `/stream` routes on the same port, which SDKs record for
+their own deliveries, and do not retain an envelope that has nothing else left.
 Clearing a capture invalidates pending admissions, and closing a session drains
 accepted work before its final stream event.
 

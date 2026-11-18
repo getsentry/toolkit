@@ -18,7 +18,7 @@ export const ParamAlertTriggers = z
     conditions: z.array(condition),
   })
   .describe(
-    "The complete trigger group. Preserve existing condition IDs when editing; omitted conditions are removed. Use the configuration returned by get_alert_rule.",
+    "Complete trigger group, copied from get_alert_rule. Keep existing condition IDs; omitted conditions are removed.",
   );
 
 const action = z.object({
@@ -26,7 +26,11 @@ const action = z.object({
   type: z.string(),
   integrationId: componentId.nullable().optional(),
   data: z.record(z.string(), z.unknown()),
-  config: z.record(z.string(), z.unknown()),
+  config: z
+    .record(z.string(), z.unknown())
+    .describe(
+      "Provider config. Slack and Teams: set targetDisplay to the channel name in the integrationId workspace; Sentry resolves the ID. Discord, PagerDuty, Opsgenie, email: set targetIdentifier; a new display name alone keeps the old target.",
+    ),
   status: z.string().optional(),
 });
 
@@ -40,7 +44,7 @@ export const ParamAlertActionFilters = z
     }),
   )
   .describe(
-    "The complete list of action groups, conditions, and notification actions. Preserve their IDs and all unchanged groups and actions; omitted entries are removed. Slack and Microsoft Teams resolve config.targetDisplay as a channel name within integrationId. Other providers use their native config.targetIdentifier and data fields.",
+    "Complete list of action groups with their conditions and notification actions, copied from get_alert_rule. Keep IDs and unchanged entries; omitted groups, conditions, and actions are removed.",
   );
 
 // Creation allocates new components; copied IDs must never reach the API.
@@ -56,7 +60,7 @@ export const ParamNewAlertTriggers = ParamAlertTriggers.omit({ id: true })
     },
   )
   .describe(
-    "Trigger conditions. Nonempty groups require logicType='any-short' for new Alerts. Copied component IDs are discarded. Omit, pass null, or use an empty group for no trigger conditions.",
+    "Trigger conditions, in the shape get_alert_rule returns; copied IDs are dropped. Null or an empty group means no triggers.",
   );
 
 export const ParamNewAlertActionFilters = z
@@ -67,7 +71,7 @@ export const ParamNewAlertActionFilters = z
     }),
   )
   .describe(
-    "Action groups with conditions and notification actions, from get_alert_options or get_alert_rule. Copied component IDs are discarded; integration and destination IDs are retained. Pass [] explicitly for no notification actions.",
+    "Action groups with conditions and notification actions, from get_alert_options or copied from get_alert_rule. Component IDs are dropped; integration and destination IDs are kept. Pass [] for none.",
   );
 
 export const alertRuleConfigFields = {
@@ -79,13 +83,18 @@ export const alertRuleConfigFields = {
     .min(0)
     .optional()
     .describe("Minimum interval between notifications, in minutes."),
-  environment: z.string().min(1).nullable().optional(),
+  environment: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Environment the Alert applies to. Null means all environments."),
   owner: z
     .string()
     .regex(/^(user|team):\d+$/)
     .nullable()
     .optional()
-    .describe("Owner actor user:ID or team:ID. Pass null to clear."),
+    .describe("Owner as user:<id> or team:<id>. Null clears it."),
 };
 
 export const alertRuleSummarySchema = z.object({
