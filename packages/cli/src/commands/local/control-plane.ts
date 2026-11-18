@@ -24,6 +24,7 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { AMBIGUOUS_EVENT_CODE, matchEventIds } from "./event-lookup.js";
 import { summarizeEnvelope } from "./event-summary.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
@@ -710,22 +711,39 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    const container = sessionStore
+    const reference = c.req.param("eventId");
+    const events = sessionStore
       .getBuffer(c.req.param("id"))
       .read({ all: true })
-      .find((candidate) => {
-        const parsed = candidate.getParsedEnvelope();
-        return (
-          parsed && eventSummary(parsed).eventId === c.req.param("eventId")
-        );
+      .flatMap((container) => {
+        const parsed = container.getParsedEnvelope();
+        return parsed
+          ? [{ container, parsed, eventId: eventSummary(parsed).eventId }]
+          : [];
       });
-    const parsed = container?.getParsedEnvelope();
-    if (!(container && parsed)) {
+    const eventIds = matchEventIds(
+      events.map(({ eventId }) => eventId),
+      reference,
+    );
+    if (eventIds.length > 1) {
+      return c.json(
+        {
+          error: `Local event ID "${reference}" matches more than one event.`,
+          code: AMBIGUOUS_EVENT_CODE,
+          session: c.req.param("id"),
+          reference,
+          eventIds,
+        },
+        409,
+      );
+    }
+    const match = events.find(({ eventId }) => eventId === eventIds[0]);
+    if (!match) {
       return c.body(null, 404);
     }
     return c.json({
-      ...describeEvent(container, parsed),
-      envelope: parsed.envelope,
+      ...describeEvent(match.container, match.parsed),
+      envelope: match.parsed.envelope,
     });
   });
 

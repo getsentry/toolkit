@@ -151,6 +151,49 @@ describe("Local daemon E2E", () => {
     expect(JSON.parse(json.stdout).label).toBe("viewer-link");
   }, 30_000);
 
+  test("human list output is a table, and event view takes a unique ID prefix", async () => {
+    const env = {
+      SENTRY_CONFIG_DIR: getConfigDir(),
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      SENTRY_AUTH_TOKEN: "",
+      SENTRY_TOKEN: "",
+    };
+    const session = await createSession("lists", await availablePort());
+    const first = `c0ffee00${"1".repeat(24)}`;
+    const second = `c0ffee00${"2".repeat(24)}`;
+    await ingest(session, first, "first listed event");
+    await ingest(session, second, "second listed event");
+
+    for (const command of ["session", "event", "envelope"]) {
+      const human = await runCli(
+        ["local", command, "list", ...(command === "session" ? [] : ["lists"])],
+        { env },
+      );
+      expect(human.exitCode, human.stderr).toBe(0);
+      expect(human.stdout).toMatch(/│ ID +│/);
+      expect(human.stdout).not.toContain("{");
+    }
+    const events = await runCli(["local", "event", "list", "lists"], { env });
+    expect(events.stdout).toContain("c0ffee001");
+    expect(events.stdout).toContain("first listed event");
+    const json = JSON.parse((await cli("event", "list", "lists")).stdout) as {
+      events: { eventId: string }[];
+    };
+    expect(json.events.map(({ eventId }) => eventId).sort()).toEqual([
+      first,
+      second,
+    ]);
+
+    const viewed = await cli("event", "view", "lists", "c0ffee001");
+    expect(viewed.exitCode, viewed.stderr).toBe(0);
+    expect(JSON.parse(viewed.stdout)).toMatchObject({ eventId: first });
+    const ambiguous = await cli("event", "view", "lists", "c0ffee00");
+    expect(ambiguous.exitCode).toBe(23);
+    expect(ambiguous.stderr).toContain(
+      'Local event ID "c0ffee00" matches more than one event in session "lists".',
+    );
+  }, 30_000);
+
   test("hosted session discovery switches isolated streams and preserves retained sessions", async () => {
     const port = await availablePort();
     const web = await createSession("web", port);
