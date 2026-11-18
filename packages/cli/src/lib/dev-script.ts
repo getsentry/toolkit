@@ -41,13 +41,16 @@ export type DetectOptions = {
  * Detect the project's dev command by inspecting filesystem markers in priority order.
  *
  * Detection priority:
- * 1. package.json scripts (dev > develop > serve > start)
- * 2. manage.py (Django)
- * 3. app.py, then main.py (FastAPI, Flask, or a plain Python script)
- * 4. wsgi.py (Flask, or a script with a `__main__` guard)
- * 5. FLASK_APP env var, in a project with a Python marker (Flask)
- * 6. go.mod (Go)
- * 7. docker-compose.yml / compose.yml (Docker Compose)
+ * 1. artisan (Laravel), ahead of the `dev: vite` script Laravel ships
+ * 2. package.json scripts (dev > develop > serve > start)
+ * 3. manage.py (Django)
+ * 4. app.py, then main.py (FastAPI, Flask, or a plain Python script)
+ * 5. wsgi.py (Flask, or a script with a `__main__` guard)
+ * 6. FLASK_APP env var, in a project with a Python marker (Flask)
+ * 7. Gemfile with bin/rails (Rails) or config.ru (Rack)
+ * 8. Cargo.toml (Rust)
+ * 9. go.mod (Go)
+ * 10. docker-compose.yml / compose.yml (Docker Compose)
  *
  * Python commands run the project's virtualenv interpreter when one exists,
  * even if it is not activated (see `findPython`).
@@ -65,12 +68,15 @@ export async function detectDevCommand(
   // Looked up on first use: the PATH lookup spawns a process.
   const python = () => (found ??= findPython(cwd, env, platform));
   const result =
+    tryLaravel(cwd) ??
     (await tryPackageJson(cwd, platform)) ??
     tryDjango(cwd, python) ??
     (await tryPythonApp(cwd, "app.py", python, true)) ??
     (await tryPythonApp(cwd, "main.py", python, true)) ??
     (await tryPythonApp(cwd, "wsgi.py", python, false)) ??
     tryFlaskAppEnv(cwd, env, python) ??
+    tryRuby(cwd, platform) ??
+    tryCargo(cwd) ??
     (await tryGoMod(cwd)) ??
     (await tryDockerCompose(cwd));
   return result;
@@ -549,6 +555,47 @@ function pyprojectDependencies(contents: string): string[] {
     }
   }
   return names;
+}
+
+/** Check for artisan and return `php artisan serve` (Laravel). */
+function tryLaravel(cwd: string): DetectedCommand | null {
+  if (!existsSync(join(cwd, "artisan"))) {
+    return null;
+  }
+  return { args: ["php", "artisan", "serve"], source: "artisan (Laravel)" };
+}
+
+/**
+ * Check for a Gemfile with `bin/rails` (`bin/rails server`) or `config.ru`
+ * (`bundle exec rackup`). Windows cannot run the extensionless `bin/rails`
+ * script, so it runs through `ruby` there.
+ */
+function tryRuby(
+  cwd: string,
+  platform: NodeJS.Platform,
+): DetectedCommand | null {
+  if (!existsSync(join(cwd, "Gemfile"))) {
+    return null;
+  }
+  if (existsSync(join(cwd, "bin", "rails"))) {
+    const rails = ["bin/rails", "server"];
+    return {
+      args: platform === "win32" ? ["ruby", ...rails] : rails,
+      source: "bin/rails (Rails)",
+    };
+  }
+  if (existsSync(join(cwd, "config.ru"))) {
+    return { args: ["bundle", "exec", "rackup"], source: "config.ru (Rack)" };
+  }
+  return null;
+}
+
+/** Check for Cargo.toml and return `cargo run`. */
+function tryCargo(cwd: string): DetectedCommand | null {
+  if (!existsSync(join(cwd, "Cargo.toml"))) {
+    return null;
+  }
+  return { args: ["cargo", "run"], source: "Cargo.toml" };
 }
 
 /** Check for go.mod and return `go run .` */
