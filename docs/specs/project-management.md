@@ -85,7 +85,36 @@ creating the project. Unknown or ambiguous repositories fail before the project
 is created. After creation, the tool links the repository by creating a root
 code mapping (`/` to `/`) through Sentry's organization code-mappings endpoint.
 If linking fails after project creation, the response still includes the project
-slug and DSN and notes that the repository must be linked manually.
+slug and DSN, with `repository.linked: false`.
+
+When DSN setup fails, the project still comes back with `dsn: null`, and
+`suggestedActions` holds a `create_dsn` call for it. Otherwise
+`suggestedActions` is empty.
+
+### Setup Knowledge
+
+The response includes `setup` for the project's platform, or `null` when the
+project has no platform or the platform has no Sentry setup guide:
+
+- `platform`: display name, such as `Next.js`.
+- `docsUrl`: the platform's setup guide on docs.sentry.io.
+- `signals`: the core signals the platform supports, in this order: Errors,
+  Traces, Logs, Metrics, and Session Replay. Each has a `name`, a one-line
+  `usefulFor`, and its `docsUrl`. Errors and Traces set `recommended: true`,
+  because the SDK's default setup turns them on.
+
+Signals the organization has not enabled are left out, using the organization
+features Sentry's own onboarding checks: `ourlogs-enabled` for Logs,
+`tracemetrics-enabled` for Metrics, and `session-replay` for Session Replay.
+The features lookup is best effort. When it fails, `signals` lists everything
+the platform supports.
+
+Which signals each platform supports, and their docs pages, come from
+`packages/mcp-core/src/tools/support/project-setup/platforms.json`. Regenerate
+it with `pnpm --filter @sentry/mcp-core run generate-platform-setup`, which reads
+Sentry's platform list (`static/app/data/platforms.tsx` in getsentry/sentry) and
+the published docs tree (`https://docs.sentry.io/doctree.json`). A platform
+supports a signal when its docs page has that signal's child page.
 
 ## Metadata Updates
 

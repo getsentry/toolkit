@@ -5,6 +5,10 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { structuredResult } from "../../internal/tool-helpers/results";
 import {
+  buildSuggestedToolAction,
+  suggestedToolActionSchema,
+} from "../../internal/tool-helpers/suggested-actions";
+import {
   ParamOrganizationSlug,
   ParamPlatform,
   ParamProjectSlug,
@@ -14,6 +18,10 @@ import {
 import { logWarn } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+import {
+  buildProjectSetup,
+  projectSetupSchema,
+} from "../support/project-setup/project-setup";
 
 export const createProjectOutputSchema = z.object({
   project: z.object({
@@ -33,7 +41,8 @@ export const createProjectOutputSchema = z.object({
       linked: z.boolean(),
     })
     .nullable(),
-  guidance: z.string(),
+  setup: projectSetupSchema,
+  suggestedActions: z.array(suggestedToolActionSchema),
 });
 
 type RepositoryMatch = {
@@ -82,6 +91,29 @@ function findRepositoryMatch(
 
 function getRepositoryProvider(repository: RepositoryMatch): string | null {
   return repository.provider.id.replace(/^integrations:/, "") || null;
+}
+
+async function getOrganizationFeatures({
+  apiService,
+  organizationSlug,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+}): Promise<string[] | null> {
+  try {
+    // Sentry omits `features` unless explicitly requested.
+    const organization = await apiService.getOrganization(organizationSlug, {
+      includeFeatureFlags: true,
+      detailed: false,
+    });
+    return organization.features ?? null;
+  } catch (err) {
+    logWarn(err, {
+      loggerScope: ["runtime", "project-management"],
+      extra: { action: "get_organization_features" },
+    });
+    return null;
+  }
 }
 
 async function getOrCreateClientKey({
@@ -134,7 +166,7 @@ export default defineTool({
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write", "team:read", "org:read"],
   description:
-    "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
+    "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, whether the repository linked, and the Sentry signals its platform supports, each with a docs link.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -215,22 +247,33 @@ export default defineTool({
       }
     }
 
-    const clientKey = await getOrCreateClientKey({
-      apiService,
-      organizationSlug,
-      projectSlug: project.slug,
-    });
+    const platform = params.platform ?? project.platform ?? null;
+    const [clientKey, organizationFeatures] = await Promise.all([
+      getOrCreateClientKey({
+        apiService,
+        organizationSlug,
+        projectSlug: project.slug,
+      }),
+      // Only needed to filter setup signals, so skip it without a platform.
+      platform
+        ? getOrganizationFeatures({ apiService, organizationSlug })
+        : null,
+    ]);
     const dsn = clientKey?.dsn.public ?? null;
-    const guidance = [
-      dsn
-        ? "Tell the user the project slug and DSN; the SDK needs the DSN."
-        : "The project exists, but its DSN could not be set up. Create one with create_dsn.",
-    ];
-    if (repositoryMatch && !repositoryLinked) {
-      guidance.push(
-        "The repository did not link. Ask the user to check that the integration can access it, or link it in the project's Sentry settings.",
-      );
-    }
+    const createDsnAction = dsn
+      ? null
+      : buildSuggestedToolAction({
+          toolName: "create_dsn",
+          arguments: {
+            organizationSlug,
+            projectSlug: project.slug,
+            name: "Default",
+          },
+          reason: "The project was created without a DSN.",
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        });
     return structuredResult({
       project: {
         id: String(project.id),
@@ -241,7 +284,8 @@ export default defineTool({
       repository: repositoryMatch
         ? { name: repositoryMatch.name, linked: repositoryLinked }
         : null,
-      guidance: guidance.join(" "),
+      setup: buildProjectSetup(platform, organizationFeatures),
+      suggestedActions: createDsnAction ? [createDsnAction] : [],
     });
   },
 });

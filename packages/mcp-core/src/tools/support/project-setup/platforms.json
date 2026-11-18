@@ -1,0 +1,989 @@
+{
+  "android": {
+    "name": "Android",
+    "docsPath": "/platforms/android/",
+    "signals": {
+      "traces": "/platforms/android/tracing/",
+      "logs": "/platforms/android/logs/",
+      "metrics": "/platforms/android/metrics/",
+      "sessionReplay": "/platforms/android/session-replay/"
+    }
+  },
+  "apple": {
+    "name": "Apple",
+    "docsPath": "/platforms/apple/",
+    "signals": {
+      "traces": "/platforms/apple/tracing/",
+      "logs": "/platforms/apple/logs/",
+      "metrics": "/platforms/apple/metrics/",
+      "sessionReplay": "/platforms/apple/session-replay/"
+    }
+  },
+  "apple-ios": {
+    "name": "iOS",
+    "docsPath": "/platforms/apple/guides/ios/",
+    "signals": {
+      "traces": "/platforms/apple/guides/ios/tracing/",
+      "logs": "/platforms/apple/guides/ios/logs/",
+      "metrics": "/platforms/apple/guides/ios/metrics/",
+      "sessionReplay": "/platforms/apple/guides/ios/session-replay/"
+    }
+  },
+  "apple-macos": {
+    "name": "macOS",
+    "docsPath": "/platforms/apple/guides/macos/",
+    "signals": {
+      "traces": "/platforms/apple/guides/macos/tracing/",
+      "logs": "/platforms/apple/guides/macos/logs/",
+      "metrics": "/platforms/apple/guides/macos/metrics/",
+      "sessionReplay": "/platforms/apple/guides/macos/session-replay/"
+    }
+  },
+  "bun": {
+    "name": "Bun",
+    "docsPath": "/platforms/javascript/guides/bun/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/bun/tracing/",
+      "logs": "/platforms/javascript/guides/bun/logs/",
+      "metrics": "/platforms/javascript/guides/bun/metrics/"
+    }
+  },
+  "capacitor": {
+    "name": "Capacitor",
+    "docsPath": "/platforms/javascript/guides/capacitor/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/capacitor/tracing/",
+      "logs": "/platforms/javascript/guides/capacitor/logs/",
+      "sessionReplay": "/platforms/javascript/guides/capacitor/session-replay/"
+    }
+  },
+  "cordova": {
+    "name": "Cordova",
+    "docsPath": "/platforms/javascript/guides/cordova/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/cordova/tracing/"
+    }
+  },
+  "dart": {
+    "name": "Dart",
+    "docsPath": "/platforms/dart/",
+    "signals": {
+      "traces": "/platforms/dart/tracing/",
+      "logs": "/platforms/dart/logs/",
+      "metrics": "/platforms/dart/metrics/"
+    }
+  },
+  "deno": {
+    "name": "Deno",
+    "docsPath": "/platforms/javascript/guides/deno/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/deno/tracing/",
+      "logs": "/platforms/javascript/guides/deno/logs/",
+      "metrics": "/platforms/javascript/guides/deno/metrics/"
+    }
+  },
+  "dotnet": {
+    "name": ".NET",
+    "docsPath": "/platforms/dotnet/",
+    "signals": {
+      "traces": "/platforms/dotnet/tracing/",
+      "logs": "/platforms/dotnet/logs/",
+      "metrics": "/platforms/dotnet/metrics/"
+    }
+  },
+  "dotnet-aspnet": {
+    "name": "ASP.NET",
+    "docsPath": "/platforms/dotnet/guides/aspnet/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/aspnet/tracing/",
+      "logs": "/platforms/dotnet/guides/aspnet/logs/",
+      "metrics": "/platforms/dotnet/guides/aspnet/metrics/"
+    }
+  },
+  "dotnet-aspnetcore": {
+    "name": "ASP.NET Core",
+    "docsPath": "/platforms/dotnet/guides/aspnetcore/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/aspnetcore/tracing/",
+      "logs": "/platforms/dotnet/guides/aspnetcore/logs/",
+      "metrics": "/platforms/dotnet/guides/aspnetcore/metrics/"
+    }
+  },
+  "dotnet-awslambda": {
+    "name": "AWS Lambda (.NET)",
+    "docsPath": "/platforms/dotnet/guides/aws-lambda/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/aws-lambda/tracing/",
+      "logs": "/platforms/dotnet/guides/aws-lambda/logs/",
+      "metrics": "/platforms/dotnet/guides/aws-lambda/metrics/"
+    }
+  },
+  "dotnet-gcpfunctions": {
+    "name": "Google Cloud Functions (.NET)",
+    "docsPath": "/platforms/dotnet/guides/google-cloud-functions/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/google-cloud-functions/tracing/",
+      "metrics": "/platforms/dotnet/guides/google-cloud-functions/metrics/"
+    }
+  },
+  "dotnet-maui": {
+    "name": ".NET MAUI",
+    "docsPath": "/platforms/dotnet/guides/maui/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/maui/tracing/",
+      "logs": "/platforms/dotnet/guides/maui/logs/",
+      "metrics": "/platforms/dotnet/guides/maui/metrics/"
+    }
+  },
+  "dotnet-winforms": {
+    "name": "Windows Forms",
+    "docsPath": "/platforms/dotnet/guides/winforms/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/winforms/tracing/",
+      "logs": "/platforms/dotnet/guides/winforms/logs/",
+      "metrics": "/platforms/dotnet/guides/winforms/metrics/"
+    }
+  },
+  "dotnet-wpf": {
+    "name": "WPF",
+    "docsPath": "/platforms/dotnet/guides/wpf/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/wpf/tracing/",
+      "logs": "/platforms/dotnet/guides/wpf/logs/",
+      "metrics": "/platforms/dotnet/guides/wpf/metrics/"
+    }
+  },
+  "dotnet-xamarin": {
+    "name": "Xamarin",
+    "docsPath": "/platforms/dotnet/guides/xamarin/",
+    "signals": {
+      "traces": "/platforms/dotnet/guides/xamarin/tracing/"
+    }
+  },
+  "electron": {
+    "name": "Electron",
+    "docsPath": "/platforms/javascript/guides/electron/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/electron/tracing/",
+      "logs": "/platforms/javascript/guides/electron/logs/",
+      "metrics": "/platforms/javascript/guides/electron/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/electron/session-replay/"
+    }
+  },
+  "elixir": {
+    "name": "Elixir",
+    "docsPath": "/platforms/elixir/",
+    "signals": {
+      "traces": "/platforms/elixir/tracing/",
+      "logs": "/platforms/elixir/logs/",
+      "metrics": "/platforms/elixir/metrics/"
+    }
+  },
+  "expo": {
+    "name": "Expo",
+    "docsPath": "/platforms/react-native/guides/expo/",
+    "signals": {
+      "traces": "/platforms/react-native/guides/expo/tracing/",
+      "logs": "/platforms/react-native/guides/expo/logs/",
+      "metrics": "/platforms/react-native/guides/expo/metrics/",
+      "sessionReplay": "/platforms/react-native/guides/expo/session-replay/"
+    }
+  },
+  "flutter": {
+    "name": "Flutter",
+    "docsPath": "/platforms/dart/guides/flutter/",
+    "signals": {
+      "traces": "/platforms/dart/guides/flutter/tracing/",
+      "logs": "/platforms/dart/guides/flutter/logs/",
+      "metrics": "/platforms/dart/guides/flutter/metrics/",
+      "sessionReplay": "/platforms/dart/guides/flutter/session-replay/"
+    }
+  },
+  "go": {
+    "name": "Go",
+    "docsPath": "/platforms/go/",
+    "signals": {
+      "traces": "/platforms/go/tracing/",
+      "logs": "/platforms/go/logs/",
+      "metrics": "/platforms/go/metrics/"
+    }
+  },
+  "go-echo": {
+    "name": "Echo",
+    "docsPath": "/platforms/go/guides/echo/",
+    "signals": {
+      "traces": "/platforms/go/guides/echo/tracing/",
+      "logs": "/platforms/go/guides/echo/logs/",
+      "metrics": "/platforms/go/guides/echo/metrics/"
+    }
+  },
+  "go-fasthttp": {
+    "name": "FastHTTP",
+    "docsPath": "/platforms/go/guides/fasthttp/",
+    "signals": {
+      "traces": "/platforms/go/guides/fasthttp/tracing/",
+      "logs": "/platforms/go/guides/fasthttp/logs/",
+      "metrics": "/platforms/go/guides/fasthttp/metrics/"
+    }
+  },
+  "go-fiber": {
+    "name": "Fiber",
+    "docsPath": "/platforms/go/guides/fiber/",
+    "signals": {
+      "traces": "/platforms/go/guides/fiber/tracing/",
+      "logs": "/platforms/go/guides/fiber/logs/",
+      "metrics": "/platforms/go/guides/fiber/metrics/"
+    }
+  },
+  "go-gin": {
+    "name": "Gin",
+    "docsPath": "/platforms/go/guides/gin/",
+    "signals": {
+      "traces": "/platforms/go/guides/gin/tracing/",
+      "logs": "/platforms/go/guides/gin/logs/",
+      "metrics": "/platforms/go/guides/gin/metrics/"
+    }
+  },
+  "go-http": {
+    "name": "Net/Http",
+    "docsPath": "/platforms/go/guides/http/",
+    "signals": {
+      "traces": "/platforms/go/guides/http/tracing/",
+      "logs": "/platforms/go/guides/http/logs/",
+      "metrics": "/platforms/go/guides/http/metrics/"
+    }
+  },
+  "go-iris": {
+    "name": "Iris",
+    "docsPath": "/platforms/go/guides/iris/",
+    "signals": {
+      "traces": "/platforms/go/guides/iris/tracing/",
+      "logs": "/platforms/go/guides/iris/logs/",
+      "metrics": "/platforms/go/guides/iris/metrics/"
+    }
+  },
+  "go-negroni": {
+    "name": "Negroni",
+    "docsPath": "/platforms/go/guides/negroni/",
+    "signals": {
+      "traces": "/platforms/go/guides/negroni/tracing/",
+      "logs": "/platforms/go/guides/negroni/logs/",
+      "metrics": "/platforms/go/guides/negroni/metrics/"
+    }
+  },
+  "godot": {
+    "name": "Godot",
+    "docsPath": "/platforms/godot/",
+    "signals": {
+      "traces": "/platforms/godot/tracing/",
+      "logs": "/platforms/godot/logs/",
+      "metrics": "/platforms/godot/metrics/"
+    }
+  },
+  "ionic": {
+    "name": "Ionic",
+    "docsPath": "/platforms/javascript/guides/capacitor/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/capacitor/tracing/",
+      "logs": "/platforms/javascript/guides/capacitor/logs/",
+      "sessionReplay": "/platforms/javascript/guides/capacitor/session-replay/"
+    }
+  },
+  "java": {
+    "name": "Java",
+    "docsPath": "/platforms/java/",
+    "signals": {
+      "traces": "/platforms/java/tracing/",
+      "logs": "/platforms/java/logs/",
+      "metrics": "/platforms/java/metrics/"
+    }
+  },
+  "java-log4j2": {
+    "name": "Log4j 2.x",
+    "docsPath": "/platforms/java/guides/log4j2/",
+    "signals": {
+      "traces": "/platforms/java/guides/log4j2/tracing/",
+      "logs": "/platforms/java/guides/log4j2/logs/",
+      "metrics": "/platforms/java/guides/log4j2/metrics/"
+    }
+  },
+  "java-logback": {
+    "name": "Logback",
+    "docsPath": "/platforms/java/guides/logback/",
+    "signals": {
+      "traces": "/platforms/java/guides/logback/tracing/",
+      "logs": "/platforms/java/guides/logback/logs/",
+      "metrics": "/platforms/java/guides/logback/metrics/"
+    }
+  },
+  "java-spring": {
+    "name": "Spring",
+    "docsPath": "/platforms/java/guides/spring/",
+    "signals": {
+      "traces": "/platforms/java/guides/spring/tracing/",
+      "logs": "/platforms/java/guides/spring/logs/",
+      "metrics": "/platforms/java/guides/spring/metrics/"
+    }
+  },
+  "java-spring-boot": {
+    "name": "Spring Boot",
+    "docsPath": "/platforms/java/guides/spring-boot/",
+    "signals": {
+      "traces": "/platforms/java/guides/spring-boot/tracing/",
+      "logs": "/platforms/java/guides/spring-boot/logs/",
+      "metrics": "/platforms/java/guides/spring-boot/metrics/"
+    }
+  },
+  "javascript": {
+    "name": "Browser JavaScript",
+    "docsPath": "/platforms/javascript/",
+    "signals": {
+      "traces": "/platforms/javascript/tracing/",
+      "logs": "/platforms/javascript/logs/",
+      "metrics": "/platforms/javascript/metrics/",
+      "sessionReplay": "/platforms/javascript/session-replay/"
+    }
+  },
+  "javascript-angular": {
+    "name": "Angular",
+    "docsPath": "/platforms/javascript/guides/angular/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/angular/tracing/",
+      "logs": "/platforms/javascript/guides/angular/logs/",
+      "metrics": "/platforms/javascript/guides/angular/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/angular/session-replay/"
+    }
+  },
+  "javascript-astro": {
+    "name": "Astro",
+    "docsPath": "/platforms/javascript/guides/astro/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/astro/tracing/",
+      "logs": "/platforms/javascript/guides/astro/logs/",
+      "metrics": "/platforms/javascript/guides/astro/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/astro/session-replay/"
+    }
+  },
+  "javascript-ember": {
+    "name": "Ember",
+    "docsPath": "/platforms/javascript/guides/ember/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/ember/tracing/",
+      "logs": "/platforms/javascript/guides/ember/logs/",
+      "metrics": "/platforms/javascript/guides/ember/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/ember/session-replay/"
+    }
+  },
+  "javascript-gatsby": {
+    "name": "Gatsby",
+    "docsPath": "/platforms/javascript/guides/gatsby/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/gatsby/tracing/",
+      "logs": "/platforms/javascript/guides/gatsby/logs/",
+      "metrics": "/platforms/javascript/guides/gatsby/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/gatsby/session-replay/"
+    }
+  },
+  "javascript-nextjs": {
+    "name": "Next.js",
+    "docsPath": "/platforms/javascript/guides/nextjs/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/nextjs/tracing/",
+      "logs": "/platforms/javascript/guides/nextjs/logs/",
+      "metrics": "/platforms/javascript/guides/nextjs/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/nextjs/session-replay/"
+    }
+  },
+  "javascript-react": {
+    "name": "React",
+    "docsPath": "/platforms/javascript/guides/react/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/react/tracing/",
+      "logs": "/platforms/javascript/guides/react/logs/",
+      "metrics": "/platforms/javascript/guides/react/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/react/session-replay/"
+    }
+  },
+  "javascript-react-router": {
+    "name": "React Router Framework",
+    "docsPath": "/platforms/javascript/guides/react-router/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/react-router/tracing/",
+      "logs": "/platforms/javascript/guides/react-router/logs/",
+      "metrics": "/platforms/javascript/guides/react-router/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/react-router/session-replay/"
+    }
+  },
+  "javascript-remix": {
+    "name": "Remix",
+    "docsPath": "/platforms/javascript/guides/remix/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/remix/tracing/",
+      "logs": "/platforms/javascript/guides/remix/logs/",
+      "metrics": "/platforms/javascript/guides/remix/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/remix/session-replay/"
+    }
+  },
+  "javascript-solid": {
+    "name": "Solid",
+    "docsPath": "/platforms/javascript/guides/solid/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/solid/tracing/",
+      "logs": "/platforms/javascript/guides/solid/logs/",
+      "metrics": "/platforms/javascript/guides/solid/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/solid/session-replay/"
+    }
+  },
+  "javascript-solidstart": {
+    "name": "SolidStart",
+    "docsPath": "/platforms/javascript/guides/solidstart/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/solidstart/tracing/",
+      "logs": "/platforms/javascript/guides/solidstart/logs/",
+      "metrics": "/platforms/javascript/guides/solidstart/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/solidstart/session-replay/"
+    }
+  },
+  "javascript-svelte": {
+    "name": "Svelte",
+    "docsPath": "/platforms/javascript/guides/svelte/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/svelte/tracing/",
+      "logs": "/platforms/javascript/guides/svelte/logs/",
+      "metrics": "/platforms/javascript/guides/svelte/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/svelte/session-replay/"
+    }
+  },
+  "javascript-sveltekit": {
+    "name": "SvelteKit",
+    "docsPath": "/platforms/javascript/guides/sveltekit/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/sveltekit/tracing/",
+      "logs": "/platforms/javascript/guides/sveltekit/logs/",
+      "metrics": "/platforms/javascript/guides/sveltekit/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/sveltekit/session-replay/"
+    }
+  },
+  "javascript-tanstackstart-react": {
+    "name": "TanStack Start React",
+    "docsPath": "/platforms/javascript/guides/tanstackstart-react/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/tanstackstart-react/tracing/",
+      "logs": "/platforms/javascript/guides/tanstackstart-react/logs/",
+      "metrics": "/platforms/javascript/guides/tanstackstart-react/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/tanstackstart-react/session-replay/"
+    }
+  },
+  "javascript-vue": {
+    "name": "Vue",
+    "docsPath": "/platforms/javascript/guides/vue/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/vue/tracing/",
+      "logs": "/platforms/javascript/guides/vue/logs/",
+      "metrics": "/platforms/javascript/guides/vue/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/vue/session-replay/"
+    }
+  },
+  "javascript-nuxt": {
+    "name": "Nuxt",
+    "docsPath": "/platforms/javascript/guides/nuxt/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/nuxt/tracing/",
+      "logs": "/platforms/javascript/guides/nuxt/logs/",
+      "metrics": "/platforms/javascript/guides/nuxt/metrics/",
+      "sessionReplay": "/platforms/javascript/guides/nuxt/session-replay/"
+    }
+  },
+  "kotlin": {
+    "name": "Kotlin",
+    "docsPath": "/platforms/kotlin/",
+    "signals": {}
+  },
+  "minidump": {
+    "name": "Minidump",
+    "docsPath": "/platforms/native/guides/minidumps/",
+    "signals": {
+      "traces": "/platforms/native/guides/minidumps/tracing/"
+    }
+  },
+  "native": {
+    "name": "Native",
+    "docsPath": "/platforms/native/",
+    "signals": {
+      "traces": "/platforms/native/tracing/",
+      "logs": "/platforms/native/logs/",
+      "metrics": "/platforms/native/metrics/"
+    }
+  },
+  "native-qt": {
+    "name": "Qt",
+    "docsPath": "/platforms/native/guides/qt/",
+    "signals": {
+      "traces": "/platforms/native/guides/qt/tracing/"
+    }
+  },
+  "nintendo-switch": {
+    "name": "Nintendo Switch",
+    "docsPath": "/platforms/nintendo-switch/",
+    "signals": {}
+  },
+  "node": {
+    "name": "Node.js",
+    "docsPath": "/platforms/javascript/guides/node/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-awslambda": {
+    "name": "AWS Lambda (Node)",
+    "docsPath": "/platforms/javascript/guides/aws-lambda/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/aws-lambda/tracing/",
+      "logs": "/platforms/javascript/guides/aws-lambda/logs/",
+      "metrics": "/platforms/javascript/guides/aws-lambda/metrics/"
+    }
+  },
+  "node-azurefunctions": {
+    "name": "Azure Functions (Node)",
+    "docsPath": "/platforms/javascript/guides/azure-functions/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/azure-functions/tracing/",
+      "logs": "/platforms/javascript/guides/azure-functions/logs/",
+      "metrics": "/platforms/javascript/guides/azure-functions/metrics/"
+    }
+  },
+  "node-cloudflare-pages": {
+    "name": "Cloudflare (Node)",
+    "docsPath": "/platforms/javascript/guides/cloudflare/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/cloudflare/tracing/",
+      "logs": "/platforms/javascript/guides/cloudflare/logs/",
+      "metrics": "/platforms/javascript/guides/cloudflare/metrics/"
+    }
+  },
+  "node-cloudflare-workers": {
+    "name": "Cloudflare (Node)",
+    "docsPath": "/platforms/javascript/guides/cloudflare/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/cloudflare/tracing/",
+      "logs": "/platforms/javascript/guides/cloudflare/logs/",
+      "metrics": "/platforms/javascript/guides/cloudflare/metrics/"
+    }
+  },
+  "node-connect": {
+    "name": "Connect",
+    "docsPath": "/platforms/javascript/guides/node/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-eve": {
+    "name": "Eve",
+    "docsPath": "/platforms/javascript/guides/eve/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/eve/tracing/",
+      "logs": "/platforms/javascript/guides/eve/logs/",
+      "metrics": "/platforms/javascript/guides/eve/metrics/"
+    }
+  },
+  "node-express": {
+    "name": "Express",
+    "docsPath": "/platforms/javascript/guides/express/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-fastify": {
+    "name": "Fastify",
+    "docsPath": "/platforms/javascript/guides/fastify/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-flue": {
+    "name": "Flue",
+    "docsPath": "/platforms/javascript/guides/flue/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/flue/tracing/",
+      "logs": "/platforms/javascript/guides/flue/logs/",
+      "metrics": "/platforms/javascript/guides/flue/metrics/"
+    }
+  },
+  "node-hapi": {
+    "name": "Hapi",
+    "docsPath": "/platforms/javascript/guides/hapi/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-hono": {
+    "name": "Hono",
+    "docsPath": "/platforms/javascript/guides/hono/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/hono/tracing/",
+      "logs": "/platforms/javascript/guides/hono/logs/",
+      "metrics": "/platforms/javascript/guides/hono/metrics/"
+    }
+  },
+  "node-gcpfunctions": {
+    "name": "Google Cloud Functions (Node)",
+    "docsPath": "/platforms/javascript/guides/gcp-functions/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/gcp-functions/tracing/",
+      "logs": "/platforms/javascript/guides/gcp-functions/logs/",
+      "metrics": "/platforms/javascript/guides/gcp-functions/metrics/"
+    }
+  },
+  "node-koa": {
+    "name": "Koa",
+    "docsPath": "/platforms/javascript/guides/koa/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/node/tracing/",
+      "logs": "/platforms/javascript/guides/node/logs/",
+      "metrics": "/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-mastra": {
+    "name": "Mastra",
+    "docsPath": "/platforms/javascript/guides/mastra/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/mastra/tracing/",
+      "logs": "/platforms/javascript/guides/mastra/logs/",
+      "metrics": "/platforms/javascript/guides/mastra/metrics/"
+    }
+  },
+  "node-nestjs": {
+    "name": "Nest.js",
+    "docsPath": "/platforms/javascript/guides/nestjs/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/nestjs/tracing/",
+      "logs": "/platforms/javascript/guides/nestjs/logs/",
+      "metrics": "/platforms/javascript/guides/nestjs/metrics/"
+    }
+  },
+  "node-pi-durable": {
+    "name": "Pi Durable",
+    "docsPath": "/platforms/javascript/guides/pi-durable/",
+    "signals": {
+      "traces": "/platforms/javascript/guides/pi-durable/tracing/",
+      "logs": "/platforms/javascript/guides/pi-durable/logs/",
+      "metrics": "/platforms/javascript/guides/pi-durable/metrics/"
+    }
+  },
+  "php": {
+    "name": "PHP",
+    "docsPath": "/platforms/php/",
+    "signals": {
+      "traces": "/platforms/php/tracing/",
+      "logs": "/platforms/php/logs/",
+      "metrics": "/platforms/php/metrics/"
+    }
+  },
+  "php-laravel": {
+    "name": "Laravel",
+    "docsPath": "/platforms/php/guides/laravel/",
+    "signals": {
+      "traces": "/platforms/php/guides/laravel/tracing/",
+      "logs": "/platforms/php/guides/laravel/logs/",
+      "metrics": "/platforms/php/guides/laravel/metrics/"
+    }
+  },
+  "php-symfony": {
+    "name": "Symfony",
+    "docsPath": "/platforms/php/guides/symfony/",
+    "signals": {
+      "traces": "/platforms/php/guides/symfony/tracing/",
+      "logs": "/platforms/php/guides/symfony/logs/",
+      "metrics": "/platforms/php/guides/symfony/metrics/"
+    }
+  },
+  "playstation": {
+    "name": "PlayStation",
+    "docsPath": "/platforms/playstation/",
+    "signals": {}
+  },
+  "powershell": {
+    "name": "PowerShell",
+    "docsPath": "/platforms/powershell/",
+    "signals": {
+      "traces": "/platforms/powershell/tracing/"
+    }
+  },
+  "python": {
+    "name": "Python",
+    "docsPath": "/platforms/python/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-aiohttp": {
+    "name": "AIOHTTP",
+    "docsPath": "/platforms/python/integrations/aiohttp/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-asgi": {
+    "name": "ASGI",
+    "docsPath": "/platforms/python/integrations/asgi/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-awslambda": {
+    "name": "AWS Lambda (Python)",
+    "docsPath": "/platforms/python/integrations/aws-lambda/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-bottle": {
+    "name": "Bottle",
+    "docsPath": "/platforms/python/integrations/bottle/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-celery": {
+    "name": "Celery",
+    "docsPath": "/platforms/python/integrations/celery/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-chalice": {
+    "name": "Chalice",
+    "docsPath": "/platforms/python/integrations/chalice/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-django": {
+    "name": "Django",
+    "docsPath": "/platforms/python/integrations/django/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-falcon": {
+    "name": "Falcon",
+    "docsPath": "/platforms/python/integrations/falcon/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-fastapi": {
+    "name": "FastAPI",
+    "docsPath": "/platforms/python/integrations/fastapi/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-flask": {
+    "name": "Flask",
+    "docsPath": "/platforms/python/integrations/flask/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-litestar": {
+    "name": "Litestar",
+    "docsPath": "/platforms/python/integrations/litestar/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-gcpfunctions": {
+    "name": "Google Cloud Functions (Python)",
+    "docsPath": "/platforms/python/integrations/gcp-functions/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-pyramid": {
+    "name": "Pyramid",
+    "docsPath": "/platforms/python/integrations/pyramid/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-quart": {
+    "name": "Quart",
+    "docsPath": "/platforms/python/integrations/quart/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-rq": {
+    "name": "RQ (Redis Queue)",
+    "docsPath": "/platforms/python/integrations/rq/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-sanic": {
+    "name": "Sanic",
+    "docsPath": "/platforms/python/integrations/sanic/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-serverless": {
+    "name": "Serverless (Python)",
+    "docsPath": "/platforms/python/integrations/serverless/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-starlette": {
+    "name": "Starlette",
+    "docsPath": "/platforms/python/integrations/starlette/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-tornado": {
+    "name": "Tornado",
+    "docsPath": "/platforms/python/integrations/tornado/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-tryton": {
+    "name": "Tryton",
+    "docsPath": "/platforms/python/integrations/tryton/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "python-wsgi": {
+    "name": "WSGI",
+    "docsPath": "/platforms/python/integrations/wsgi/",
+    "signals": {
+      "traces": "/platforms/python/tracing/",
+      "logs": "/platforms/python/logs/",
+      "metrics": "/platforms/python/metrics/"
+    }
+  },
+  "react-native": {
+    "name": "React Native",
+    "docsPath": "/platforms/react-native/",
+    "signals": {
+      "traces": "/platforms/react-native/tracing/",
+      "logs": "/platforms/react-native/logs/",
+      "metrics": "/platforms/react-native/metrics/",
+      "sessionReplay": "/platforms/react-native/session-replay/"
+    }
+  },
+  "ruby": {
+    "name": "Ruby",
+    "docsPath": "/platforms/ruby/",
+    "signals": {
+      "traces": "/platforms/ruby/tracing/",
+      "logs": "/platforms/ruby/logs/",
+      "metrics": "/platforms/ruby/metrics/"
+    }
+  },
+  "ruby-rack": {
+    "name": "Rack Middleware",
+    "docsPath": "/platforms/ruby/guides/rack/",
+    "signals": {
+      "traces": "/platforms/ruby/guides/rack/tracing/",
+      "metrics": "/platforms/ruby/guides/rack/metrics/"
+    }
+  },
+  "ruby-rails": {
+    "name": "Rails",
+    "docsPath": "/platforms/ruby/guides/rails/",
+    "signals": {
+      "traces": "/platforms/ruby/guides/rails/tracing/",
+      "logs": "/platforms/ruby/guides/rails/logs/",
+      "metrics": "/platforms/ruby/guides/rails/metrics/"
+    }
+  },
+  "rust": {
+    "name": "Rust",
+    "docsPath": "/platforms/rust/",
+    "signals": {
+      "traces": "/platforms/rust/tracing/",
+      "logs": "/platforms/rust/logs/",
+      "metrics": "/platforms/rust/metrics/"
+    }
+  },
+  "unity": {
+    "name": "Unity",
+    "docsPath": "/platforms/unity/",
+    "signals": {
+      "traces": "/platforms/unity/tracing/",
+      "logs": "/platforms/unity/logs/",
+      "metrics": "/platforms/unity/metrics/"
+    }
+  },
+  "unreal": {
+    "name": "Unreal Engine",
+    "docsPath": "/platforms/unreal/",
+    "signals": {
+      "traces": "/platforms/unreal/tracing/",
+      "logs": "/platforms/unreal/logs/",
+      "metrics": "/platforms/unreal/metrics/",
+      "sessionReplay": "/platforms/unreal/session-replay/"
+    }
+  },
+  "xbox": {
+    "name": "Xbox",
+    "docsPath": "/platforms/xbox/",
+    "signals": {}
+  }
+}
