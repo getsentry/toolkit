@@ -4,6 +4,7 @@
  */
 
 import { summarizeEvent } from "../../lib/formatters/local.js";
+import { stripAnsi } from "../../lib/formatters/strip-ansi.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { parseEventTimestamp } from "./timestamp.js";
 
@@ -131,12 +132,23 @@ function summarizeContainer(
   };
 }
 
-/** Cut a long title (a big log body or exception message) to one line's worth. */
+/**
+ * Drop ANSI colors from a title, which colored log formatters (werkzeug,
+ * uvicorn) put in log text, and cut a long one (a big log body or exception
+ * message) to one line's worth.
+ */
 function shortTitle(details: LocalEventDetails): LocalEventDetails {
-  const { title } = details;
-  return title && title.length > MAX_TITLE_LENGTH
-    ? { ...details, title: `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` }
-    : details;
+  if (!details.title) {
+    return details;
+  }
+  const title = stripAnsi(details.title);
+  return {
+    ...details,
+    title:
+      title.length > MAX_TITLE_LENGTH
+        ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…`
+        : title,
+  };
 }
 
 /** Pick the item that best describes the envelope. */

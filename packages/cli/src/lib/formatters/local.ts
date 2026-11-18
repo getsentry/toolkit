@@ -154,9 +154,13 @@ const TYPE_WIDTH = 9;
 /** Longest bracketed source label: `[BROWSER]` = 9 chars. */
 const SOURCE_WIDTH = 9;
 
-/** Format a type/level label as `[TYPE]` padded to fixed width. */
+/**
+ * Format a type/level label as `[TYPE]` padded to fixed width. Logs send
+ * `warn` and events send `warning`; both show as `[WARNING]`.
+ */
 export function formatType(level: string): string {
-  const tag = `[${sanitize(level).toUpperCase()}]`;
+  const label = level.toLowerCase() === "warn" ? "warning" : level;
+  const tag = `[${sanitize(label).toUpperCase()}]`;
   const colorFn = LEVEL_COLORS[level.toLowerCase()];
   const colored = colorFn ? colorFn(tag) : tag;
   return colored + " ".repeat(Math.max(0, TYPE_WIDTH - tag.length));
@@ -509,7 +513,16 @@ const SDK_ATTRIBUTE_PREFIXES = [
   "exception.",
   "error.",
   "user_agent.",
+  "logger.",
+  "user.",
 ];
+
+/**
+ * Exact keys that SDK logging integrations add, such as the Python `logging`
+ * record's `asctime` and the `request` and `server_time` extras that Django's
+ * dev server sets on every access log.
+ */
+const SDK_ATTRIBUTE_KEYS = new Set(["asctime", "request", "server_time"]);
 
 /** Two-space indent prefix for nested attribute-table lines. */
 const ATTR_INDENT = "  ";
@@ -521,7 +534,10 @@ const ATTR_INDENT = "  ";
  */
 function isSdkAttribute(key: string): boolean {
   const lower = key.toLowerCase();
-  return SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+  return (
+    SDK_ATTRIBUTE_KEYS.has(lower) ||
+    SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+  );
 }
 
 /**
@@ -654,9 +670,10 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
  * lines align column-for-column and are easy to scan. SDK-default attributes
- * (`sentry.*`, `code.*`, `thread.*`, `server.*`, … see
- * {@link SDK_ATTRIBUTE_PREFIXES}) are omitted from the inline list; the trace
- * ID is surfaced as a compact `[trace:…]` token instead.
+ * (`sentry.*`, `code.*`, `logger.*`, `user.*`, … see
+ * {@link SDK_ATTRIBUTE_PREFIXES} and {@link SDK_ATTRIBUTE_KEYS}) are omitted
+ * from the inline list; the trace ID is surfaced as a compact `[trace:…]`
+ * token instead.
  */
 export function formatSingleLog(logEntry: LogEntry, source: string): string {
   const level = logEntry.level ?? "log";
@@ -895,16 +912,23 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 }
 
+/** Strip ANSI escapes, C1 controls, and BiDi overrides from a JSON string. */
+function jsonText(value: string): string {
+  return stripBidi(stripAnsi(value));
+}
+
 /**
  * Remove terminal-affecting characters from every string in an observation.
  *
  * Envelope payloads are untrusted, and `JSON.stringify()` does not escape C1
- * controls or BiDi overrides. Normalizing the final record in one place keeps
- * new JSON fields from accidentally bypassing the terminal-safety contract.
+ * controls or BiDi overrides. Colored log formatters (werkzeug, uvicorn) also
+ * put ANSI escapes in log text and attributes, which mean nothing to a JSON
+ * reader. Normalizing the final record in one place keeps new JSON fields
+ * from accidentally bypassing the terminal-safety contract.
  */
 function sanitizeJsonValue(value: unknown): unknown {
   if (typeof value === "string") {
-    return stripBidi(value);
+    return jsonText(value);
   }
   if (Array.isArray(value)) {
     return value.map(sanitizeJsonValue);
@@ -912,7 +936,7 @@ function sanitizeJsonValue(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, nestedValue]) => [
-        stripBidi(key),
+        jsonText(key),
         sanitizeJsonValue(nestedValue),
       ]),
     );
@@ -1033,10 +1057,17 @@ function formatTransactionJson(
   );
 }
 
-/** Format a log item as JSON objects (one per entry). */
+/**
+ * Format a log item as JSON objects (one per entry).
+ *
+ * `attributes` holds the custom attributes, like the tail line. When
+ * `includeAttributes` is true it also holds the SDK-default ones, except
+ * `sentry.*`, whose content (e.g. trace ID) is surfaced separately.
+ */
 function formatLogJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
+  includeAttributes = false,
 ): string[] {
   const items = payload.items as LogEntry[] | undefined;
   if (!items?.length) {
@@ -1057,6 +1088,7 @@ function formatLogJson(
                 .filter(
                   ([k, v]) =>
                     isUserLogAttribute(k) &&
+                    (includeAttributes || !isSdkAttribute(k)) &&
                     v?.value !== null &&
                     v?.value !== undefined,
                 )
@@ -1123,12 +1155,12 @@ function formatSpanJson(
  * and item-specific fields. Designed for machine consumption by AI
  * coding agents and automation tools.
  *
- * Unlike the human formatters, JSON output uses `stripBidi()` instead of
- * the full `sanitize()`. `JSON.stringify()` escapes C0 control characters
+ * Unlike the human formatters, JSON output does not use the full
+ * `sanitize()`. `JSON.stringify()` escapes C0 control characters
  * (U+0000–U+001F) but leaves C1 controls (U+0080–U+009F) and BiDi overrides
- * intact. `stripBidi()` strips both, preventing terminal injection when
- * JSON output is viewed in a terminal, while preserving the original data
- * structure for downstream consumers.
+ * intact. Every string loses those and its ANSI escapes, preventing terminal
+ * injection when JSON output is viewed in a terminal, while preserving the
+ * original data structure for downstream consumers.
  */
 export function formatItemJson(
   itemType: string | undefined,
@@ -1146,7 +1178,7 @@ export function formatItemJson(
     return formatSpanJson(payload, header, showAttributes);
   }
   if (itemType === "log") {
-    return formatLogJson(payload, header);
+    return formatLogJson(payload, header, showAttributes);
   }
   return [
     formatJsonObservation(

@@ -12,6 +12,18 @@ describe("summarizeEnvelope", () => {
     expect(body.startsWith(title?.slice(0, -1) ?? "")).toBe(true);
   });
 
+  test("drops ANSI colors from a log title", () => {
+    const body = "\u001b[35m\u001b[1mGET /boom HTTP/1.1\u001b[0m 500";
+    expect(
+      summarizeEnvelope({
+        envelope: [
+          {},
+          [[{ type: "log" }, { items: [{ level: "info", body }] }]],
+        ],
+      }).title,
+    ).toBe("GET /boom HTTP/1.1 500");
+  });
+
   test("keeps a title at the limit as is", () => {
     const message = "x".repeat(200);
     expect(

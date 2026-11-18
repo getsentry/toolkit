@@ -530,7 +530,8 @@ export const runCommand = buildCommand({
       },
       attributes: {
         kind: "boolean",
-        brief: "Include selected event attributes in output",
+        brief:
+          "Also show SDK attributes, under each transaction and log or in JSON",
         default: false,
       },
       open: {
