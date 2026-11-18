@@ -6,9 +6,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-02-26",
   "compatibility_flags": ["nodejs_compat"],
-  "alias": {
-    "execa": "./src/stubs/execa.ts",
-  },
   "upload_source_maps": true,
   "version_metadata": {
     "binding": "CF_VERSION_METADATA",
