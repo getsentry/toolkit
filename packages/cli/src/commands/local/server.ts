@@ -5,7 +5,11 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
-import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
+import {
+  isHostedUiOrigin,
+  LOCAL_OVERSIZED_EVENT,
+  LOCAL_SESSION_EVENT,
+} from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
 /**
@@ -27,8 +31,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
   ingestReceiverEnvelope,
+  MAX_DECODED_BYTES,
+  onOversizedEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
+  reportIngestStatus,
   type ReceiverEnvelope,
   type ReceiverBuffer,
 } from "./receiver-ingest.js";
@@ -92,6 +99,70 @@ const CR_RE = /\r$/;
 
 /** Maximum ingest body size (10 MB). Rejects oversized payloads early. */
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+
+/** Shortest gap between two oversized-envelope warnings in one terminal. */
+const OVERSIZED_WARNING_INTERVAL_MS = 5000;
+
+/**
+ * Flush for each foreground receiver's oversized-envelope warning. The count it
+ * holds back would be lost if the CLI exits within the interval, so the
+ * receiver's HTTP server runs it on close.
+ */
+const receiverShutdownFlushes = new WeakMap<Hono, () => void>();
+
+/** Warns about envelopes rejected as too large (HTTP 413). */
+type OversizedEnvelopeWarning = {
+  /** Report one rejected envelope. */
+  warn: () => void;
+  /** Print the count of envelopes held back since the last line, if any. */
+  flush: () => void;
+};
+
+/**
+ * Warn about envelopes rejected as too large (HTTP 413). SDKs drop them
+ * without retrying, so this is the only sign they were lost. The first one
+ * prints right away; more within {@link OVERSIZED_WARNING_INTERVAL_MS} are
+ * counted and printed as one line when the interval ends.
+ */
+function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
+  const limit = `${MAX_BODY_BYTES / 1024 / 1024} MiB ingest limit (${MAX_DECODED_BYTES / 1024 / 1024} MiB decompressed)`;
+  let quietUntil = Number.NEGATIVE_INFINITY;
+  let held = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (held === 0) return;
+    const count = held;
+    held = 0;
+    quietUntil = Date.now() + OVERSIZED_WARNING_INTERVAL_MS;
+    logger.warn(
+      `Dropped ${count} more ${count === 1 ? "envelope" : "envelopes"} over the ${limit}.`,
+    );
+  };
+
+  const warn = () => {
+    const now = Date.now();
+    if (now < quietUntil) {
+      held += 1;
+      if (timer === undefined) {
+        timer = setTimeout(flush, quietUntil - now);
+        // A pending count must never keep the CLI alive.
+        timer.unref?.();
+      }
+      return;
+    }
+    quietUntil = now + OVERSIZED_WARNING_INTERVAL_MS;
+    logger.warn(
+      `Dropped an envelope over the ${limit}. SDKs do not retry it, so its events are lost.`,
+    );
+  };
+
+  return { warn, flush };
+}
 
 /**
  * Parse and validate a `--format` value.
@@ -417,9 +488,16 @@ export function buildApp(
     }
   });
 
+  // This receiver runs in the foreground command, so it warns in its terminal.
+  const oversized = createOversizedEnvelopeWarning();
+  onOversizedEnvelope(buffer, oversized.warn);
+  receiverShutdownFlushes.set(app, oversized.flush);
   const ingest = async (c: Context) => {
     const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
-    if (typeof body === "number") return c.body(null, body);
+    if (typeof body === "number") {
+      reportIngestStatus(buffer, body);
+      return c.body(null, body);
+    }
     // Browser SDKs using sendBeacon() set Content-Type to text/plain to
     // avoid CORS preflight. Detect this via the sentry_client query param
     // and override to the canonical Sentry envelope content type.
@@ -441,6 +519,7 @@ export function buildApp(
       userAgent,
     });
 
+    reportIngestStatus(buffer, status);
     if (status === 503) c.header("Retry-After", "1");
     return c.body(null, status);
   };
@@ -484,11 +563,17 @@ export function buildApp(
       if (retention && c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
       const readerId = buffer.subscribe(onEnvelope, lastEventId);
+      const unsubscribeOversized = onOversizedEnvelope(buffer, () => {
+        void stream
+          .writeSSE({ event: LOCAL_OVERSIZED_EVENT, data: "{}" })
+          .catch((error) => logger.debug("Local stream closed", error));
+      });
 
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
           buffer.unsubscribe(readerId);
           unsubscribeSettings();
+          unsubscribeOversized();
           resolve();
         });
       });
@@ -577,6 +662,9 @@ export function tryListen(
       }) as unknown as Server;
 
       server.once("listening", () => {
+        // Print held-back drop counts before the process can exit.
+        const flush = receiverShutdownFlushes.get(app);
+        if (flush) server.once("close", flush);
         const addr = server.address();
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });
@@ -792,6 +880,19 @@ async function sleepUnlessAborted(
  * using `Last-Event-ID` to resume from where the stream left off.
  */
 export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
+  const oversized = createOversizedEnvelopeWarning();
+  try {
+    await consumeSSEWithWarning(opts, oversized.warn);
+  } finally {
+    // The tail is ending, so print any count still waiting for its interval.
+    oversized.flush();
+  }
+}
+
+async function consumeSSEWithWarning(
+  opts: ConsumeSSEOptions,
+  warnOversized: () => void,
+): Promise<void> {
   const {
     url,
     streamUrl,
@@ -819,6 +920,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       onId: (id) => {
         lastEventId = id;
       },
+      onOversized: warnOversized,
     });
 
     if (signal.aborted || result === "retained") {
@@ -921,6 +1023,8 @@ type ConsumeSSEOnceOptions = {
   showAttributes: boolean;
   lastEventId: string | undefined;
   onId: (id: string) => void;
+  /** Called when the receiver rejects an envelope as too large. */
+  onOversized: () => void;
   /** Called when the HTTP response is received (200 OK with body). */
   onConnected?: () => void;
 };
@@ -944,6 +1048,7 @@ async function consumeSSEOnce(
     showAttributes,
     lastEventId,
     onId,
+    onOversized,
     onConnected,
   } = opts;
   const headers: Record<string, string> = { Accept: "text/event-stream" };
@@ -991,6 +1096,8 @@ async function consumeSSEOnce(
       } catch {
         logger.debug("Ignoring invalid Local session lifecycle event.");
       }
+    } else if (type === LOCAL_OVERSIZED_EVENT) {
+      onOversized();
     } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
       processSSEEvent(data, activeFilters, useJson, showAttributes);
     }

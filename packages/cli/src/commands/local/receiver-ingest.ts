@@ -23,6 +23,30 @@ type ReceiverState = {
   pending: Set<Promise<unknown>>;
 };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
+const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
+
+/** Call `listener` whenever this receiver rejects an oversized envelope. */
+export function onOversizedEnvelope(
+  buffer: ReceiverBuffer,
+  listener: () => void,
+): () => void {
+  let listeners = oversizedListeners.get(buffer);
+  if (!listeners) {
+    listeners = new Set();
+    oversizedListeners.set(buffer, listeners);
+  }
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Tell this receiver's listeners when a delivery got HTTP 413. */
+export function reportIngestStatus(
+  buffer: ReceiverBuffer,
+  status: number,
+): void {
+  if (status !== 413) return;
+  for (const listener of oversizedListeners.get(buffer) ?? []) listener();
+}
 
 /** Stop consuming chunked input as soon as its encoded body exceeds the limit. */
 export async function readReceiverBody(

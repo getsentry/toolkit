@@ -16,6 +16,7 @@ import {
   configureExistingRetention,
   feedSSELine,
   isServerRunning,
+  MAX_BODY_BYTES,
   parsePort,
   SERVER_IDENTIFIER,
   serverCommand,
@@ -1089,5 +1090,146 @@ describe("isServerRunning", () => {
     // Verify the function handles connection errors gracefully.
     const result = await isServerRunning("http://127.0.0.1:19999");
     expect(result).toBe(false);
+  });
+});
+
+describe("oversized envelopes", () => {
+  /** One byte over the encoded ingest limit; SDKs ignore the 413 and drop it. */
+  const OVERSIZED_BODY = "x".repeat(MAX_BODY_BYTES + 1);
+  const OVERSIZED_WARNING = /over the .*ingest limit/;
+
+  function postOversized(app: Hono, url: string): Promise<Response> {
+    return Promise.resolve(
+      app.request(url, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: OVERSIZED_BODY,
+      }),
+    );
+  }
+
+  test("a plain receiver warns once per burst, then counts the rest", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const oversizedWarnings = () =>
+      warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+    try {
+      const app = buildApp(createLocalRetentionBuffer(10).buffer);
+      for (let i = 0; i < 3; i++) {
+        const response = await postOversized(
+          app,
+          "http://localhost:8969/stream",
+        );
+        expect(response.status).toBe(413);
+      }
+      expect(oversizedWarnings()).toHaveLength(1);
+      // The two held back print when the interval ends, without a new drop.
+      vi.advanceTimersByTime(5000);
+      expect(oversizedWarnings()).toHaveLength(2);
+      expect(oversizedWarnings()[1]).toMatch(/^Dropped 2 more envelopes over/);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test("a plain receiver prints held-back drops when it shuts down early", async () => {
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) {
+      throw new Error("Expected the test preload to retain the native fetch");
+    }
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const { server, port } = await tryListen(app, 0, "127.0.0.1");
+    try {
+      for (let i = 0; i < 3; i++) {
+        const response = await realFetch(`http://127.0.0.1:${port}/stream`, {
+          method: "POST",
+          headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+          body: OVERSIZED_BODY,
+        });
+        expect(response.status).toBe(413);
+      }
+      // `local run` and `local serve` close the server and exit well inside
+      // the five-second interval, so closing must print the count.
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 2 more envelopes over/),
+      ]);
+    } finally {
+      server.closeAllConnections();
+      warn.mockRestore();
+    }
+  });
+
+  test("a plain receiver tells stream consumers about a rejected envelope", async () => {
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2000);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const response = await app.request("http://localhost:8969/stream", {
+        signal: controller.signal,
+      });
+      const reader = response.body!.getReader();
+      await postOversized(app, "http://localhost:8969/stream");
+      const decoder = new TextDecoder();
+      let text = "";
+      while (!text.includes("\n\n")) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      expect(text).toContain("event: sentry.local.oversized");
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      warn.mockRestore();
+    }
+  });
+
+  test("a session tail warns when the daemon rejects an oversized envelope", async () => {
+    const plane = createLocalControlPlane({ controlToken: "oversize-test" });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest, stream } = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://localhost:8969/_local/v1/sessions/${session.id}`;
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      const response = await plane.app.request(url, init);
+      setTimeout(async () => {
+        await postOversized(plane.app, `${base}/ingest/${ingest}`);
+        await postOversized(plane.app, `${base}/ingest/${ingest}`);
+        plane.sessionStore.close(session.id);
+      }, 50);
+      return response;
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await consumeSSE({
+        url: "http://localhost:8969",
+        streamUrl: `${base}/stream?cap=${stream}`,
+        activeFilters: new Set(),
+        signal: AbortSignal.timeout(3000),
+      });
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      // The second drop is held back, then printed when the tail ends.
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 1 more envelope over/),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+    }
   });
 });

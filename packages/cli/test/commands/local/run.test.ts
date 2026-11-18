@@ -42,6 +42,8 @@ import * as childSignals from "../../../src/lib/child-signals.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as daemon from "../../../src/commands/local/daemon.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as serverModule from "../../../src/commands/local/server.js";
 import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
@@ -345,6 +347,58 @@ describe("sentry local run", () => {
         /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/,
       ),
     ]);
+  });
+
+  test("keeps the session ingest capability out of the Starting line", async () => {
+    await writeFile(join(tmpDir, "wrangler.jsonc"), "{}");
+    const fakeWrangler = join(tmpDir, "wrangler");
+    await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
+    await chmod(fakeWrangler, 0o755);
+    const base = "http://127.0.0.1:1/_local/v1/sessions/session-1";
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        cwd: tmpDir,
+        id: "session-1",
+        label: "web",
+        ingestUrl: `${base}/ingest/ingest-secret`,
+        streamUrl: `${base}/stream?cap=stream-secret`,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        {
+          port: 0,
+          host: "127.0.0.1",
+          verify: false,
+          timeout: 0,
+          session: "web",
+        },
+        fakeWrangler,
+        "dev",
+      );
+      const logged = [...info.mock.calls, ...warn.mock.calls]
+        .map((c) => String(c[0]))
+        .join("\n");
+      expect(logged).toContain("Starting:");
+      expect(logged).toContain("/ingest/[REDACTED]");
+      expect(logged).not.toContain("secret");
+      // The wrapped app still gets the working capability.
+      expect(spawnCapture.args).toContain(
+        `SENTRY_SPOTLIGHT:${base}/ingest/ingest-secret`,
+      );
+    } finally {
+      create.mockRestore();
+      retain.mockRestore();
+      info.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   test("prints the Worker setup hint in --verify mode too", async () => {

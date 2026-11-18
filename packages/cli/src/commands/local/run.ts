@@ -28,6 +28,7 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
+import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
 import {
   CliError,
@@ -631,7 +632,10 @@ export const runCommand = buildCommand({
     if (wrangler.injected) {
       logger.info(wranglerInjectedMessage());
     }
-    logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
+    // A session's Wrangler binding carries its ingest capability.
+    logger.info(
+      `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
+    );
     logger.info(
       daemonSessionId
         ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
