@@ -223,7 +223,7 @@ test.each([
       expect(requests).toBe(2);
       expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([
         expect.stringContaining(
-          "The Local daemon stopped, so this session is no longer capturing",
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
         ),
       ]);
     } finally {

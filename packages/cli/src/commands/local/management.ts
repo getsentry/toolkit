@@ -191,6 +191,24 @@ async function listCapturingSessions(
   }
 }
 
+/** Warn that stopping the daemon ended sessions whose apps still send to it. */
+function warnCapturingSessions(
+  action: "Stopped" | "Restarted",
+  sessions: CapturingSession[],
+): void {
+  if (sessions.length === 0) {
+    return;
+  }
+  const count =
+    sessions.length === 1
+      ? "1 session was"
+      : `${sessions.length} sessions were`;
+  const names = sessions.map(({ id, label }) => `${label} (${id})`).join(", ");
+  logger.warn(
+    `${action} the Local daemon while ${count} still capturing: ${names}. Their apps' telemetry is no longer captured; restart their commands to capture again.`,
+  );
+}
+
 /** Request shutdown and confirm discovery and ownership have been released. */
 async function stopLocalDaemon(state: LocalDaemonState): Promise<void> {
   const response = await requestLocalDaemon(state, "/daemon/stop", {
@@ -258,23 +276,16 @@ const daemonStopCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (!state) {
-      yield new CommandOutput({ stopped: false, reason: "not running" });
+      yield new CommandOutput({
+        stopped: false,
+        reason: "not running",
+        capturingSessions: [],
+      });
       return;
     }
     const capturingSessions = await listCapturingSessions(state);
     await stopLocalDaemon(state);
-    if (capturingSessions.length > 0) {
-      const count =
-        capturingSessions.length === 1
-          ? "1 session was"
-          : `${capturingSessions.length} sessions were`;
-      const names = capturingSessions
-        .map(({ id, label }) => `${label} (${id})`)
-        .join(", ");
-      logger.warn(
-        `Stopped the Local daemon while ${count} still capturing: ${names}. Their apps' telemetry is no longer captured; restart their commands to capture again.`,
-      );
-    }
+    warnCapturingSessions("Stopped", capturingSessions);
     yield new CommandOutput({ stopped: true, capturingSessions });
   },
 });
@@ -286,7 +297,9 @@ const daemonRestartCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
+      const capturingSessions = await listCapturingSessions(state);
       await stopLocalDaemon(state);
+      warnCapturingSessions("Restarted", capturingSessions);
     }
     yield new CommandOutput(
       publicDaemonState(

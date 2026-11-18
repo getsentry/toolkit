@@ -826,7 +826,7 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
     // while the app sends telemetry nowhere.
     if (hasConnectedBefore && result === "session-gone") {
       logger.warn(
-        "The Local daemon stopped, so this session is no longer capturing telemetry. Restart this command to capture into a new session.",
+        "The Local daemon stopped or restarted, so this session is no longer capturing telemetry. Restart this command to capture into a new session.",
       );
       return;
     }

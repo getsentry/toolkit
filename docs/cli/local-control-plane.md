@@ -45,8 +45,8 @@ Restart preserves its configured host and port and clears all in-memory data.
 Both stop and restart wait for the previous daemon to release its state and ownership
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
-`daemon stop` warns about sessions that were still capturing and lists them in
-`capturingSessions`. A `local run --session` or `local serve --session` attached to
+`daemon stop` and `daemon restart` warn about sessions that were still
+capturing, and `daemon stop` lists them in `capturingSessions`. A `local run --session` or `local serve --session` attached to
 one prints a single warning once the daemon is gone and stops reconnecting. A
 wrapped app keeps running, but nothing captures its telemetry until the command
 is restarted.

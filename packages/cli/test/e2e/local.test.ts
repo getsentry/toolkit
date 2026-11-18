@@ -1096,7 +1096,7 @@ setTimeout(() => {}, 20000);`,
       await expect
         .poll(() => stderr, { timeout: 10_000 })
         .toContain(
-          "The Local daemon stopped, so this session is no longer capturing",
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
         );
       // The app keeps running; only the event tail stops.
       expect(run.exitCode, stderr).toBeNull();
@@ -1109,9 +1109,12 @@ setTimeout(() => {}, 20000);`,
 
   test("restarts on the configured port and preserves singleton discovery", async () => {
     const port = await availablePort();
-    await createSession("restart", port);
+    const session = await createSession("restart", port);
     const result = await cli("daemon", "restart");
     expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Restarted the Local daemon while 1 session was still capturing: restart (${session.id})`,
+    );
     expect(JSON.parse(result.stdout)).toMatchObject({
       host: "127.0.0.1",
       port,
