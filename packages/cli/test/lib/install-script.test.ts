@@ -862,7 +862,9 @@ exec /usr/bin/gunzip "$@"
 
     const failure = '(exit 1): chmod +x "$tmp_binary"';
     expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(/Unexpected failure at line \d+ \(exit 1\)/);
+    expect(result.output).toMatch(
+      /Unexpected failure at line \d+ in main\(\) \(exit 1\)/,
+    );
     expect(result.output).toContain(failure);
     // spawnSync returns only after the backgrounded report_error subshell
     // exits, because it keeps the installer's stdout and stderr open.
