@@ -3342,6 +3342,9 @@ export class SentryApiService {
    * @param params.types Relation types to return; every known type when empty
    *   or omitted
    * @param params.limit Maximum issues per relation type (Sentry allows 1-100)
+   * @param params.eventId One of the issue's events to find relations from,
+   *   such as its trace; the issue's latest event when omitted. Sentry returns
+   *   404 when the event isn't in the issue.
    * @see https://github.com/getsentry/sentry/blob/master/src/sentry/issues/endpoints/group_related.py
    */
   async getRelatedIssues(
@@ -3350,11 +3353,13 @@ export class SentryApiService {
       issueId,
       types,
       limit,
+      eventId,
     }: {
       organizationSlug: string;
       issueId: string;
       types?: readonly RelatedIssueType[];
       limit?: number;
+      eventId?: string;
     },
     opts?: RequestOptions,
   ): Promise<RelatedIssues> {
@@ -3366,6 +3371,9 @@ export class SentryApiService {
     }
     if (limit !== undefined) {
       query.set("limit", String(limit));
+    }
+    if (eventId !== undefined) {
+      query.set("eventId", eventId);
     }
     const queryString = query.toString();
 
