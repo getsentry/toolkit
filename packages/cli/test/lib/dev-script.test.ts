@@ -391,7 +391,10 @@ describe("detectDevCommand: FastAPI", () => {
       "from fastapi import FastAPI\n\ndef describe(api: FastAPI) -> str:\n    return api.title\n",
     );
     const result = await detectDevCommand(tmpDir);
-    expect(result).toEqual({ args: ["python", "main.py"], source: "main.py" });
+    expect(result).toMatchObject({
+      args: ["python", "main.py"],
+      source: "main.py",
+    });
   });
 });
 
@@ -427,14 +430,16 @@ describe("detectDevCommand: Flask", () => {
     });
   });
 
-  test("runs a factory with no top-level app as a script", async () => {
-    await writeFile(join(tmpDir, "requirements.txt"), "flask\n");
+  test("serves a create_app factory with no top-level app", async () => {
     await writeFile(
       join(tmpDir, "app.py"),
       "from flask import Flask\n\ndef create_app():\n    app = Flask(__name__)\n    return app\n",
     );
     const result = await detectDevCommand(tmpDir);
-    expect(result).toEqual({ args: ["python", "app.py"], source: "app.py" });
+    expect(result).toEqual({
+      args: ["python", "-m", "flask", "--app", "app:create_app", "run"],
+      source: "app.py (Flask)",
+    });
   });
 
   test("passes the Flask app variable to --app", async () => {
@@ -522,5 +527,124 @@ describe("detectDevCommand: Flask", () => {
       env: { FLASK_APP: "app" },
     });
     expect(result!.source).toBe("manage.py");
+  });
+});
+
+describe("detectDevCommand: Python app scanning", () => {
+  const PYPROJECT_FASTAPI = '[project]\ndependencies = ["fastapi"]\n';
+
+  beforeEach(async () => {
+    await writeFile(join(tmpDir, "pyproject.toml"), PYPROJECT_FASTAPI);
+  });
+
+  test.each([
+    [
+      "an annotated app that is not built",
+      "from fastapi import FastAPI\n\napp: FastAPI | None = None\nprint(app)\n",
+    ],
+    ["an app that is a dict", 'app = {"name": "cli"}\nprint(app)\n'],
+    [
+      "an app in a docstring",
+      '"""Usage:\n\napp = FastAPI()\n"""\nprint("hi")\n',
+    ],
+    [
+      "an app in a single-quoted docstring",
+      "'''\napp = FastAPI()\n'''\nprint('hi')\n",
+    ],
+    ["an app in a comment", "# app = FastAPI()\nprint('hi')\n"],
+    [
+      "an app compared, not assigned",
+      "app = None\nif app == FastAPI():\n    pass\n",
+    ],
+  ])("runs %s as a script", async (_name, source) => {
+    await writeFile(join(tmpDir, "main.py"), source);
+    const result = await detectDevCommand(tmpDir);
+    expect(result?.args).toEqual(["python", "main.py"]);
+  });
+
+  test("finds an app after a docstring that mentions one", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      '"""Run app = Flask() elsewhere."""\nfrom fastapi import FastAPI\n\napi = FastAPI(title="x")\n',
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "uvicorn",
+      "main:api",
+      "--reload",
+    ]);
+  });
+
+  test("serves a FastAPI create_app factory with --factory", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from fastapi import FastAPI\n\ndef create_app():\n    api = FastAPI()\n    return api\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: [
+        "python",
+        "-m",
+        "uvicorn",
+        "main:create_app",
+        "--factory",
+        "--reload",
+      ],
+      source: "main.py (FastAPI)",
+    });
+  });
+
+  test("serves a make_app factory from the declared dependency", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from myapp.api import build\n\ndef make_app():\n    return build()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "uvicorn",
+      "main:make_app",
+      "--factory",
+      "--reload",
+    ]);
+  });
+
+  test("prefers a top-level app over a factory", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from fastapi import FastAPI\n\ndef create_app():\n    return FastAPI()\n\napp = create_app()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toContain("main:app");
+    expect(result!.args).not.toContain("--factory");
+  });
+
+  test("ignores a factory nested in a class", async () => {
+    await writeFile(join(tmpDir, "pyproject.toml"), "[project]\n");
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "class Builder:\n    def create_app(self):\n        return 1\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({ args: ["python", "main.py"], source: "main.py" });
+  });
+
+  test("hints when a file imports a framework but no app is found", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from fastapi import FastAPI\n\napp: FastAPI | None = None\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual(["python", "main.py"]);
+    expect(result!.hint).toContain("local run -- python -m uvicorn main:app");
+  });
+
+  test("gives no hint for a plain script", async () => {
+    await writeFile(join(tmpDir, "main.py"), "print('hi')\n");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.hint).toBeUndefined();
   });
 });
