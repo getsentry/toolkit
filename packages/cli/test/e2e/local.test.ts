@@ -381,7 +381,10 @@ describe("Local daemon E2E", () => {
             };
             expect(after.pid).not.toBe(before.pid);
           } else {
-            expect(JSON.parse(result.stdout)).toEqual({ stopped: true });
+            expect(JSON.parse(result.stdout)).toEqual({
+              stopped: true,
+              capturingSessions: [],
+            });
             await expect(readFile(statePath, "utf8")).rejects.toMatchObject({
               code: "ENOENT",
             });
@@ -1028,11 +1031,92 @@ describe("Local daemon E2E", () => {
     expect(serve.stderr).toContain("--session");
   }, 30_000);
 
+  test("stop names the sessions still capturing, and their run stops waiting for the daemon", async () => {
+    const { spawn } = await import("node:child_process");
+    const { getCliCommand } = await import("../fixture.js");
+    const dir = getConfigDir();
+    const ready = join(dir, "app-ready");
+    const script = join(dir, "long-app.cjs");
+    // Ends by itself so a run that the test kills never leaves it behind.
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");
+setTimeout(() => {}, 20000);`,
+    );
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const run = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "run",
+        "--session",
+        "capturing",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    run.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    run.stdout.resume();
+    const closed = new Promise<void>((resolve, reject) => {
+      run.once("close", () => resolve());
+      run.once("error", reject);
+    });
+    try {
+      await expect
+        .poll(() => stat(ready).then(Boolean, () => false), {
+          timeout: 15_000,
+        })
+        .toBe(true);
+      const stopped = await cli("daemon", "stop");
+      expect(stopped.exitCode, stopped.stderr).toBe(0);
+      expect(JSON.parse(stopped.stdout)).toMatchObject({
+        stopped: true,
+        capturingSessions: [{ label: "capturing" }],
+      });
+      expect(stopped.stderr).toContain("1 session was still capturing");
+      await expect
+        .poll(() => stderr, { timeout: 10_000 })
+        .toContain(
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
+        );
+      // The app keeps running; only the event tail stops.
+      expect(run.exitCode, stderr).toBeNull();
+      expect(stderr).not.toContain("reconnecting in 2s");
+    } finally {
+      run.kill("SIGTERM");
+      await closed;
+    }
+  }, 30_000);
+
   test("restarts on the configured port and preserves singleton discovery", async () => {
     const port = await availablePort();
-    await createSession("restart", port);
+    const session = await createSession("restart", port);
     const result = await cli("daemon", "restart");
     expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Restarted the Local daemon while 1 session was still capturing: restart (${session.id})`,
+    );
     expect(JSON.parse(result.stdout)).toMatchObject({
       host: "127.0.0.1",
       port,

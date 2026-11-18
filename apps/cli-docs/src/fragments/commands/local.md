@@ -196,7 +196,9 @@ after your foreground command exits. Sessions keep up to 500 envelopes by defaul
 (`--max-envelopes` accepts 1 to 50,000) for three hours after closing and
 subsequent ingestion. Session commands start the daemon when it isn't running;
 `sentry local daemon start` starts it ahead of time. Stopping or restarting the
-daemon (`sentry local daemon restart`) clears all sessions.
+daemon (`sentry local daemon restart`) clears all sessions. A running
+`sentry local run --session` then warns that its session stopped capturing. Your
+app keeps running, so restart the command to capture again.
 
 The `sentry local run` examples above walk through a full session lifecycle:
 capture, inspect sessions, events, and envelopes, then reset, close, and stop
