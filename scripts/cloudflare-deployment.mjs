@@ -252,6 +252,16 @@ export async function listSettled(
   return deployments;
 }
 
+// After a verified promotion, Cloudflare can still list the stage first on a
+// later read. Re-read until the promotion is newest before checking ownership.
+export function listPromoted(env, journal, options = {}) {
+  return listSettled(
+    env,
+    (listed) => newestMessage(listed) === `${journal.marker}:promote`,
+    options,
+  );
+}
+
 function runMarker(env) {
   if (
     !/^[1-9]\d*$/.test(env.SOURCE_RUN_ID ?? env.GITHUB_RUN_ID ?? "") ||
@@ -377,7 +387,7 @@ async function main(command, env) {
     throw new DeploymentError("RUNNER_TEMP is required");
   }
   const path = join(env.RUNNER_TEMP, "mcp-production-deployment.json");
-  const deployments = await listDeployments(env);
+  let deployments = await listDeployments(env);
   if (command === "capture") {
     const journal = capturePrevious(deployments, runMarker(env));
     await writeFile(path, JSON.stringify(journal), { mode: 0o600 });
@@ -480,6 +490,9 @@ async function main(command, env) {
     );
     await writeFile(path, JSON.stringify(promoted), { mode: 0o600 });
     return;
+  }
+  if ((command === "verify" || command === "recover") && journal.candidate) {
+    deployments = await listPromoted(env, journal);
   }
   if (command === "verify") {
     const verified = journal.staged

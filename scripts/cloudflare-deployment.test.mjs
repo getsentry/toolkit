@@ -10,6 +10,7 @@ import {
   verifyPromotedCandidate,
   recoverManualSnapshot,
   listSettled,
+  listPromoted,
   recoverUnverifiedStage,
 } from "./cloudflare-deployment.mjs";
 
@@ -411,6 +412,25 @@ test("re-reads deployments until Cloudflare lists the expected one", async () =>
   });
   assert.equal(stale[0].id, priorId);
   assert.equal(attempts, 15);
+});
+
+test("re-reads until a verified promotion is listed newest again", async () => {
+  const journal = {
+    ...capturePrevious([previous], marker),
+    candidateVersion,
+    staged: { id: stagedId },
+    candidate: { id: candidateId, version: candidateVersion },
+  };
+  const reads = [
+    [staged, previous],
+    [promoted, staged, previous],
+  ];
+  const listed = await listPromoted({}, journal, {
+    list: async () => reads.shift(),
+    sleep: noSleep,
+  });
+  assert.equal(listed[0].id, candidateId);
+  assert.deepEqual(verifyPromotedCandidate(listed, journal), journal);
 });
 
 test("recovery rolls back a stage that Cloudflare lists late", async () => {
