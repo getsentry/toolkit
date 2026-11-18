@@ -1066,6 +1066,11 @@ export function formatItem(
   if (itemType === "log") {
     return formatLogItem(payload, header);
   }
+  // Active replays send a recording segment every few seconds; its
+  // replay_event already gets a line.
+  if (itemType === "replay_recording") {
+    return [];
+  }
   return [formatFallbackLine(fallbackLabel)];
 }
 

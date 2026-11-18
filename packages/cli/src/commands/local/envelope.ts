@@ -54,7 +54,14 @@ export type ReceiverBuffer = {
 };
 
 const identities = new WeakMap<ReceiverEnvelope, string>();
-const RAW_TYPES = new Set(["attachment", "replay_video", "statsd"]);
+// Item payloads that are not one JSON document even without a content type:
+// replay recordings are a JSON line plus (usually gzip) rrweb bytes.
+const RAW_TYPES = new Set([
+  "attachment",
+  "replay_recording",
+  "replay_video",
+  "statsd",
+]);
 const TEXT_CONTENT_TYPES = new Set([
   "text/plain",
   "text/css",
@@ -117,6 +124,16 @@ export function receiverEnvelopeId(container: ReceiverEnvelope): string {
 }
 
 type FramedItem = { header: ItemHeader; headerBytes: Buffer; bytes: Buffer };
+
+/** Parse JSON item bytes; undefined means they are not JSON. */
+function parseJson(bytes: Buffer): unknown {
+  try {
+    return JSON.parse(bytes.toString("utf8"));
+  } catch {
+    logger.debug("Local receiver kept a non-JSON envelope item raw.");
+    return undefined;
+  }
+}
 
 /**
  * Sentry framing uses byte lengths, not lines, for opaque and multiline items.
@@ -182,9 +199,39 @@ function decode(
   const { header } = framed;
   const items: ParsedReceiverEnvelope["envelope"][1] = [];
   for (const { header: itemHeader, bytes } of framed.items) {
-    let payload: unknown;
-    if (RAW_TYPES.has(itemHeader.type ?? "")) {
-      if (itemHeader.type === "statsd" && !itemHeader.content_type)
+    const contentType =
+      typeof itemHeader.content_type === "string"
+        ? itemHeader.content_type
+        : "";
+    const metaLength = itemHeader.meta_length;
+    let payload: Record<string, unknown> | undefined;
+    if (
+      typeof metaLength === "number" &&
+      Number.isSafeInteger(metaLength) &&
+      metaLength >= 0 &&
+      metaLength <= bytes.length
+    ) {
+      // Android Perfetto profile chunks: JSON metadata, then a binary trace.
+      const metadata = parseJson(bytes.subarray(0, metaLength));
+      if (isEnvelopeObject(metadata))
+        payload = {
+          ...metadata,
+          data: bytes.subarray(metaLength).toString("base64"),
+        };
+    } else if (
+      // `json` also matches `+json` suffixes and sentry-java's `application-json`.
+      !RAW_TYPES.has(itemHeader.type ?? "") &&
+      (!contentType || contentType.includes("json"))
+    ) {
+      const parsed = parseJson(bytes);
+      if (parsed !== undefined && !isEnvelopeObject(parsed)) return null;
+      payload = parsed;
+    }
+    if (payload) {
+      if (itemHeader.type) payload.type = itemHeader.type;
+    } else {
+      // Opaque or non-JSON items stay raw; the rest of the envelope decodes.
+      if (itemHeader.type === "statsd" && !contentType)
         itemHeader.content_type = "text/plain";
       payload = {
         data: bytes.toString(
@@ -197,12 +244,7 @@ function decode(
             : "base64",
         ),
       };
-    } else {
-      payload = JSON.parse(bytes.toString("utf8"));
-      if (!isEnvelopeObject(payload)) return null;
-      if (itemHeader.type) payload.type = itemHeader.type;
     }
-    if (!isEnvelopeObject(payload)) return null;
     items.push([itemHeader, payload]);
   }
   header.__spotlight_envelope_id = id;
@@ -283,7 +325,7 @@ function withoutOwnRequests(
   const { type } = item.header;
   if (type !== "span" && type !== "transaction" && type !== "event")
     return item;
-  const payload: unknown = JSON.parse(item.bytes.toString("utf8"));
+  const payload = parseJson(item.bytes);
   if (!isEnvelopeObject(payload)) return item;
   const header: ItemHeader = { ...item.header };
   const isOwnSpan = (span: unknown) => isOwnRequestSpan(span, isOwnRoute);
