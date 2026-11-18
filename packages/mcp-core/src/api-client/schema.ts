@@ -892,6 +892,16 @@ export const IssueSchema = z
 
 export const IssueListSchema = z.array(IssueSchema);
 
+/** Issue statuses the Sentry API returns (`GroupStatusStr`). */
+export const ISSUE_STATUSES = [
+  "resolved",
+  "ignored",
+  "pending_deletion",
+  "pending_merge",
+  "reprocessing",
+  "unresolved",
+] as const;
+
 /** Relation types the related issues endpoint supports (`RelationType`). */
 export const RELATED_ISSUE_TYPES = [
   "similar_stacktrace",
