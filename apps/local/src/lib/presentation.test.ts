@@ -4,6 +4,7 @@ import {
   formatTimestamp,
   getConnectionPresentation,
   getWorkspaceEmptyState,
+  pluralize,
 } from "./presentation.ts";
 import { workspaceViews } from "./workspace.ts";
 
@@ -137,4 +138,12 @@ describe("formatTimestamp", () => {
       else process.env.TZ = previous;
     }
   });
+});
+
+test.each([
+  [0, "0 spans"],
+  [1, "1 span"],
+  [2, "2 spans"],
+])('pluralize(%i, "span") is %s', (count, label) => {
+  expect(pluralize(count, "span")).toBe(label);
 });

@@ -4,6 +4,7 @@ import {
   type EventMetadata,
   type LocalFeedItem,
 } from "./spotlight.js";
+import { getEventExceptions } from "./exceptions.ts";
 import { isErrorEvent } from "./workspace.js";
 import { addProfileSpans, profileSources } from "./profile-spans.ts";
 import { spanData } from "./inspection.ts";
@@ -103,22 +104,56 @@ function getPayloadSpan(
 }
 
 /**
+ * A trace's errors are its error events: exceptions and error-level messages.
+ * Failing spans and error logs are not counted again; the waterfall marks
+ * failing spans and logs have their own count.
+ */
+function isTraceError(item: LocalFeedItem): boolean {
+  return (
+    item.type === "event" &&
+    (getEventExceptions(item.payload).length > 0 || isErrorEvent(item))
+  );
+}
+
+const HTTP_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "CONNECT",
+  "TRACE",
+]);
+
+/**
  * Browser resource and fetch spans can be named by host only
  * ("localhost", "GET localhost"), with the resource in `url.full`
  * (span v2 attributes or transaction span data).
  * Label them with the URL's origin and path so rows can be told apart,
  * grouped and searched. The query (cache busters, tokens) and fragment
- * stay in the span's attributes.
+ * stay in the span's attributes. Spans named by method only get the
+ * route, or else the path, after the method.
  */
 function withCapturedUrl(description: string, payload: unknown): string {
-  const url = getString(spanData(payload)["url.full"]);
-  if (!url) return description;
-  let parsed: URL;
+  const data = spanData(payload);
+  const url = getString(data["url.full"]);
+  let parsed: URL | undefined;
   try {
-    parsed = new URL(url);
+    parsed = url ? new URL(url) : undefined;
   } catch {
-    return description;
+    parsed = undefined;
   }
+  // Next.js edge `http.server` segments are named by method only ("GET").
+  if (HTTP_METHODS.has(description)) {
+    const path =
+      getString(data["http.route"]) ??
+      getString(data["url.path"]) ??
+      parsed?.pathname;
+    return path ? `${description} ${path}` : description;
+  }
+  if (!parsed) return description;
   const [, method = "", target] = description.match(/^([A-Z]+ )?(.*)$/)!;
   return target === parsed.hostname || target === parsed.host
     ? `${method}${parsed.origin}${parsed.pathname}`
@@ -338,7 +373,7 @@ export function buildTraceGroups(
     if (item.type === "log") {
       trace.logCount += 1;
     }
-    if (isErrorEvent(item)) {
+    if (isTraceError(item)) {
       trace.errorCount += 1;
     }
 

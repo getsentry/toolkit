@@ -96,6 +96,11 @@ export function getWorkspaceEmptyState({
   return { title: `No ${items} captured`, description: triggers[view] };
 }
 
+/** A count with its noun, such as "1 span" or "3 spans". */
+export function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 function toDate(timestamp: number | string): Date | undefined {
   const value = parseEventTimestamp(timestamp);
   if (value === undefined) return;

@@ -5,6 +5,7 @@ import {
   type TraceGroup,
   type TraceSpan,
 } from "@/lib/trace-model.ts";
+import { pluralize } from "@/lib/presentation.ts";
 
 type TraceWaterfallProps = {
   compact?: boolean;
@@ -260,7 +261,7 @@ export function TraceWaterfall({
       ),
     [allSpans, query],
   );
-  const capturedItemLabel = `${trace.itemCount} captured item${trace.itemCount === 1 ? "" : "s"} in this trace`;
+  const capturedItemLabel = `${pluralize(trace.itemCount, "captured item")} in this trace`;
 
   if (trace.spans.length === 0) {
     return (
@@ -352,18 +353,14 @@ export function TraceWaterfall({
             aria-label="Trace summary"
             className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
           >
-            <span>
-              {trace.spans.length} span{trace.spans.length === 1 ? "" : "s"}
-            </span>
+            <span>{pluralize(trace.spans.length, "span")}</span>
             {trace.errorCount > 0 ? (
               <span className="text-red-500 dark:text-red-400">
-                {trace.errorCount} error{trace.errorCount === 1 ? "" : "s"}
+                {pluralize(trace.errorCount, "error")}
               </span>
             ) : null}
             {trace.logCount > 0 ? (
-              <span>
-                {trace.logCount} log{trace.logCount === 1 ? "" : "s"}
-              </span>
+              <span>{pluralize(trace.logCount, "log")}</span>
             ) : null}
             <span>
               Trace ID <code>{trace.id.slice(0, 8)}</code>

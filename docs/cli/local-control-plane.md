@@ -297,6 +297,11 @@ In Events, request (`http.server`) transactions show their method and route.
 Other transactions, such as pageloads, navigations, and custom `task`
 transactions, show their op and transaction name.
 
+A trace's error count is its error events: exceptions and error-level messages.
+Failing spans and error-level logs are not counted again. A span or segment
+named only by its HTTP method, such as a Next.js edge `GET`, is labeled with its
+`http.route`, or else its `url.path` or URL path.
+
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open
 their own timing, attributes, original payload, and trace-related errors/logs in

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { decodeEnvelope, type LocalFeedItem } from "./spotlight.js";
 import { buildTraceGroups, traceIdForItem } from "./trace-model.js";
+import { spanEnvelope } from "../test-fixtures/streamed-pageload.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
   return {
@@ -1029,3 +1030,110 @@ test("reads durations from sentry-python ISO 8601 timestamps", () => {
     },
   ]);
 });
+
+const envelope = (id: string, items: [string, unknown][]) =>
+  decodeEnvelope(
+    JSON.stringify([{}, items.map(([type, payload]) => [{ type }, payload])]),
+    id,
+  );
+
+test("an unhandled error counts once, not again for its 5xx request", () => {
+  // Hono: one thrown error showed "2 errors".
+  const [trace] = buildTraceGroups(
+    envelope("hono", [
+      [
+        "transaction",
+        {
+          transaction: "GET /boom",
+          start_timestamp: 1,
+          timestamp: 1.1,
+          contexts: {
+            trace: {
+              trace_id: "hono",
+              span_id: "root",
+              op: "http.server",
+              status: "internal_error",
+              data: { "http.response.status_code": 500 },
+            },
+          },
+        },
+      ],
+      [
+        "event",
+        {
+          level: "error",
+          exception: {
+            values: [
+              { type: "Error", value: "boom", mechanism: { handled: false } },
+            ],
+          },
+          contexts: { trace: { trace_id: "hono", span_id: "root" } },
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount: 1 });
+});
+
+test("error logs are counted as logs, not as errors", () => {
+  // Flask /logerror: one Message event and one error log showed "2 errors".
+  const [trace] = buildTraceGroups(
+    envelope("flask", [
+      [
+        "event",
+        {
+          level: "error",
+          logentry: { message: "Something went wrong" },
+          contexts: { trace: { trace_id: "flask", span_id: "root" } },
+        },
+      ],
+      [
+        "log",
+        {
+          items: [
+            {
+              timestamp: 1,
+              level: "error",
+              body: "Something went wrong",
+              trace_id: "flask",
+            },
+          ],
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount: 1, logCount: 1 });
+});
+
+test.each([
+  [{ "url.full": "http://localhost:3000/api/edge" }, "GET /api/edge"],
+  [{ "url.path": "/api/edge" }, "GET /api/edge"],
+  [{ "http.route": "/api/[id]", "url.path": "/api/7" }, "GET /api/[id]"],
+  [{}, "GET"],
+])(
+  "a segment named only by its method gets its route or path: %o",
+  (attributes, title) => {
+    // Next.js edge http.server segments are named "GET".
+    const [trace] = buildTraceGroups(
+      decodeEnvelope(
+        spanEnvelope([
+          {
+            trace_id: "edge",
+            span_id: "segment",
+            is_segment: true,
+            name: "GET",
+            start_timestamp: 1,
+            end_timestamp: 1.1,
+            attributes: Object.fromEntries(
+              Object.entries({ "sentry.op": "http.server", ...attributes }).map(
+                ([key, value]) => [key, { type: "string", value }],
+              ),
+            ),
+          },
+        ]),
+        "edge",
+      ),
+    );
+    expect(trace?.title).toBe(title);
+  },
+);
