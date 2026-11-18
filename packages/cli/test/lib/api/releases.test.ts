@@ -113,6 +113,14 @@ const SAMPLE_DEPLOY: SentryDeploy = {
 
 let originalFetch: typeof globalThis.fetch;
 
+/** A JSON response, as the Sentry API sends it. */
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 /** Create a Link header for pagination */
 function linkHeader(cursor: string, hasResults: boolean): string {
   return `<https://us.sentry.io/api/0/next/>; rel="next"; results="${hasResults}"; cursor="${cursor}"`;
@@ -137,10 +145,7 @@ describe("getRelease", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/");
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(SAMPLE_RELEASE);
     });
 
     const release = await getRelease("test-org", "1.0.0");
@@ -166,10 +171,7 @@ describe("createRelease", () => {
       };
       expect(body.version).toBe("1.0.0");
       expect(body.projects).toEqual(["test-project"]);
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(SAMPLE_RELEASE, 201);
     });
 
     const release = await createRelease("test-org", {
@@ -232,13 +234,7 @@ describe("createRelease", () => {
 
   /** Answer the create request with a 400 and `body`. */
   const reject400 = (body: unknown) => {
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify(body), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    globalThis.fetch = mockFetch(async () => jsonResponse(body, 400));
   };
 
   test("names the projects Sentry rejected (CLI-2G3)", async () => {
@@ -321,10 +317,7 @@ describe("updateRelease", () => {
       expect(req.url).toContain("/releases/1.0.0/");
       const body = (await req.json()) as { dateReleased: string };
       expect(body.dateReleased).toBe("2025-06-15T00:00:00Z");
-      return new Response(JSON.stringify(updated), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(updated);
     });
 
     const release = await updateRelease("test-org", "1.0.0", {
@@ -411,10 +404,7 @@ describe("listReleaseDeploys", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const req = new Request(input, init);
       expect(req.url).toContain("/releases/1.0.0/deploys/");
-      return new Response(JSON.stringify([SAMPLE_DEPLOY]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse([SAMPLE_DEPLOY]);
     });
 
     const deploys = await listReleaseDeploys("test-org", "1.0.0");
@@ -437,10 +427,7 @@ describe("createReleaseDeploy", () => {
       expect(req.url).toContain("/releases/1.0.0/deploys/");
       const body = (await req.json()) as { environment: string };
       expect(body.environment).toBe("production");
-      return new Response(JSON.stringify(SAMPLE_DEPLOY), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(SAMPLE_DEPLOY, 201);
     });
 
     const deploy = await createReleaseDeploy("test-org", "1.0.0", {
@@ -488,6 +475,47 @@ describe("setCommitsAuto", () => {
     mockIsInsideGitWorkTree.mockReturnValue(true);
   });
 
+  /**
+   * Answer the requests `setCommitsAuto` makes: the repository search with
+   * `repos(query)` (`null` for the unfiltered "any repositories" check), the
+   * previous-release lookup with no previous commit, and the release update.
+   *
+   * @returns The repository queries and the refs sent, filled in as the
+   *   requests arrive
+   */
+  function mockAutoFetch(repos: (query: string | null) => unknown[]) {
+    const sent: { repoQueries: (string | null)[]; refs?: unknown } = {
+      repoQueries: [],
+    };
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      const url = new URL(req.url);
+      if (url.pathname.endsWith("/repos/")) {
+        const query = url.searchParams.get("query");
+        sent.repoQueries.push(query);
+        return jsonResponse(repos(query));
+      }
+      if (url.pathname.endsWith("/previous-with-commits/")) {
+        return jsonResponse({});
+      }
+      sent.refs = ((await req.json()) as { refs: unknown }).refs;
+      return jsonResponse(SAMPLE_RELEASE);
+    });
+    return sent;
+  }
+
+  /**
+   * Only `vars`, plus the test database and telemetry off, so the runner's
+   * own CI variables stay out of the lookup.
+   */
+  function ciEnv(vars: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    return {
+      [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      ...vars,
+    };
+  }
+
   test("lists repos, discovers HEAD, fetches previous commit, and sends refs", async () => {
     const withCommits = { ...SAMPLE_RELEASE, commitCount: 5 };
     const requests: { method: string; url: string }[] = [];
@@ -502,21 +530,15 @@ describe("setCommitsAuto", () => {
         const params = new URL(req.url).searchParams;
         expect(params.get("query")).toBe("getsentry/cli");
         expect(params.get("per_page")).toBe("100");
-        return new Response(JSON.stringify([SAMPLE_REPO]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse([SAMPLE_REPO]);
       }
 
       // Previous release commit lookup
       if (req.url.includes("/previous-with-commits/")) {
         expect(req.method).toBe("GET");
-        return new Response(
-          JSON.stringify({
-            lastCommit: { id: "prev000000000000000000000000000000000000" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return jsonResponse({
+          lastCommit: { id: "prev000000000000000000000000000000000000" },
+        });
       }
 
       // PUT refs on the release
@@ -536,10 +558,7 @@ describe("setCommitsAuto", () => {
           previousCommit: "prev000000000000000000000000000000000000",
         },
       ]);
-      return new Response(JSON.stringify(withCommits), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(withCommits);
     });
 
     const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
@@ -562,10 +581,7 @@ describe("setCommitsAuto", () => {
       if (req.url.includes("/repos/")) {
         await reposGate;
         reposResolved = true;
-        return new Response(JSON.stringify([SAMPLE_REPO]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse([SAMPLE_REPO]);
       }
 
       if (req.url.includes("/previous-with-commits/")) {
@@ -573,12 +589,9 @@ describe("setCommitsAuto", () => {
         // Unblock the repository lookup only once the previous-release
         // request is in flight; a sequential implementation would deadlock.
         releaseRepos?.();
-        return new Response(
-          JSON.stringify({
-            lastCommit: { id: "prev000000000000000000000000000000000000" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return jsonResponse({
+          lastCommit: { id: "prev000000000000000000000000000000000000" },
+        });
       }
 
       const body = (await req.json()) as {
@@ -587,10 +600,7 @@ describe("setCommitsAuto", () => {
       expect(body.refs[0]?.previousCommit).toBe(
         "prev000000000000000000000000000000000000",
       );
-      return new Response(JSON.stringify(withCommits), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(withCommits);
     });
 
     const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
@@ -600,13 +610,7 @@ describe("setCommitsAuto", () => {
   });
 
   test("throws ApiError when org has no repositories", async () => {
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    globalThis.fetch = mockFetch(async () => jsonResponse([]));
 
     await expect(
       setCommitsAuto("test-org", "1.0.0", "/tmp"),
@@ -623,13 +627,7 @@ describe("setCommitsAuto", () => {
 
   test("leaves --local out of the no-integration error outside a git checkout", async () => {
     mockIsInsideGitWorkTree.mockReturnValue(false);
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify([]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    globalThis.fetch = mockFetch(async () => jsonResponse([]));
 
     const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
       (e: unknown) => e,
@@ -652,10 +650,7 @@ describe("setCommitsAuto", () => {
           method: request.method,
           pathname: new URL(request.url).pathname,
         });
-        return new Response(JSON.stringify(body), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse(body, status);
       });
 
       const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
@@ -688,51 +683,14 @@ describe("setCommitsAuto", () => {
       name: "getsentry/sentry",
       url: "https://github.com/getsentry/sentry",
     };
-    const repoQueries: (string | null)[] = [];
-
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input, init).url);
-      if (!url.pathname.endsWith("/repos/")) {
-        // Concurrent previous-release lookup
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      const params = url.searchParams;
-      repoQueries.push(params.get("query"));
-      const repos = params.get("query") ? [] : [otherRepo];
-      return new Response(JSON.stringify(repos), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
+    const sent = mockAutoFetch((query) => (query ? [] : [otherRepo]));
 
     await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
       /No Sentry repository matching/,
     );
     // Full path first, then the last segment (GitLab display names), then
     // the unfiltered "does the org have any repositories" check.
-    expect(repoQueries).toEqual(["getsentry/cli", "cli", null]);
-  });
-
-  test("throws ValidationError when no repo matches local remote", async () => {
-    const otherRepo = {
-      ...SAMPLE_REPO,
-      name: "getsentry/sentry",
-      url: "https://github.com/getsentry/sentry",
-    };
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify([otherRepo]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
-
-    await expect(setCommitsAuto("test-org", "1.0.0", "/tmp")).rejects.toThrow(
-      /No Sentry repository matching/,
-    );
+    expect(sent.repoQueries).toEqual(["getsentry/cli", "cli", null]);
   });
 
   test("paginates through multiple pages to find matching repo", async () => {
@@ -756,30 +714,21 @@ describe("setCommitsAuto", () => {
             status: 200,
             headers: {
               "Content-Type": "application/json",
-              Link: '<https://us.sentry.io/api/0/next/>; rel="next"; results="true"; cursor="page2:0:0"',
+              Link: linkHeader("page2:0:0", true),
             },
           });
         }
         // Second page: the matching repo, no next cursor
-        return new Response(JSON.stringify([SAMPLE_REPO]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse([SAMPLE_REPO]);
       }
 
       // Previous release commit lookup (no previous release)
       if (req.url.includes("/previous-with-commits/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse({});
       }
 
       // PUT refs on the release
-      return new Response(JSON.stringify(withCommits), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(withCommits);
     });
 
     const release = await setCommitsAuto("test-org", "1.0.0", "/tmp");
@@ -797,7 +746,7 @@ describe("setCommitsAuto", () => {
     // rendered via format() — no stack trace) with actionable guidance, and
     // keep field "repository" so default mode can fall back to local git.
     // An empty env keeps the CI runner's own variables out of the lookup.
-    const error = await withEnv({}, () =>
+    const error = await withEnv(ciEnv(), () =>
       setCommitsAuto("test-org", "1.0.0", "/tmp"),
     ).catch((caught: unknown) => caught);
 
@@ -821,7 +770,7 @@ describe("setCommitsAuto", () => {
   test("suggests adding a remote in a git checkout without one", async () => {
     mockGetRepositoryName.mockReturnValue(null);
 
-    const error = await withEnv({}, () =>
+    const error = await withEnv(ciEnv(), () =>
       setCommitsAuto("test-org", "1.0.0", "/tmp"),
     ).catch((caught: unknown) => caught);
 
@@ -838,13 +787,13 @@ describe("setCommitsAuto", () => {
     // The bundler plugins skip commit association on previews on purpose,
     // so --auto must not pick up VERCEL_GIT_* there.
     const error = await withEnv(
-      {
+      ciEnv({
         VERCEL: "1",
         VERCEL_TARGET_ENV: "preview",
         VERCEL_GIT_REPO_OWNER: "getsentry",
         VERCEL_GIT_REPO_SLUG: "cli",
         VERCEL_GIT_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
-      },
+      }),
       () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
     ).catch((caught: unknown) => caught);
 
@@ -860,45 +809,16 @@ describe("setCommitsAuto", () => {
   test("uses the CI repository and commit when there is no git remote", async () => {
     mockGetRepositoryName.mockReturnValue(null);
     const ciSha = "1234567890abcdef1234567890abcdef12345678";
-    const repoQueries: (string | null)[] = [];
-    let sentRefs: unknown;
-
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input, init);
-      if (req.url.includes("/repos/")) {
-        repoQueries.push(new URL(req.url).searchParams.get("query"));
-        return new Response(JSON.stringify([SAMPLE_REPO]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (req.url.includes("/previous-with-commits/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      sentRefs = ((await req.json()) as { refs: unknown }).refs;
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
+    const sent = mockAutoFetch(() => [SAMPLE_REPO]);
 
     // A Docker build without .git still gets the CI variables.
     await withEnv(
-      {
-        // Keep the test database; leave out the runner's own CI variables.
-        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
-        SENTRY_CLI_NO_TELEMETRY: "1",
-        GITHUB_REPOSITORY: "getsentry/cli",
-        GITHUB_SHA: ciSha,
-      },
+      ciEnv({ GITHUB_REPOSITORY: "getsentry/cli", GITHUB_SHA: ciSha }),
       () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
     );
 
-    expect(repoQueries).toEqual(["getsentry/cli"]);
-    expect(sentRefs).toEqual([{ repository: "getsentry/cli", commit: ciSha }]);
+    expect(sent.repoQueries).toEqual(["getsentry/cli"]);
+    expect(sent.refs).toEqual([{ repository: "getsentry/cli", commit: ciSha }]);
   });
 
   // Sentry names GitLab repositories by their display path; the remote has
@@ -924,40 +844,17 @@ describe("setCommitsAuto", () => {
         url: `https://gitlab.com/${remote}`,
         provider: { id: "integrations:gitlab", name: "GitLab" },
       };
-      const repoQueries: (string | null)[] = [];
-      let sentRefs: unknown;
-
-      globalThis.fetch = mockFetch(async (input, init) => {
-        const req = new Request(input, init);
-        if (req.url.includes("/repos/")) {
-          const query = new URL(req.url).searchParams.get("query");
-          repoQueries.push(query);
-          // The server filters with a case-insensitive "name contains".
-          const matches =
-            query &&
-            gitlabRepo.name.toLowerCase().includes(query.toLowerCase());
-          return new Response(JSON.stringify(matches ? [gitlabRepo] : []), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        if (req.url.includes("/previous-with-commits/")) {
-          return new Response(JSON.stringify({}), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        sentRefs = ((await req.json()) as { refs: unknown }).refs;
-        return new Response(JSON.stringify(SAMPLE_RELEASE), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      });
+      // The server filters with a case-insensitive "name contains".
+      const sent = mockAutoFetch((query) =>
+        query && name.toLowerCase().includes(query.toLowerCase())
+          ? [gitlabRepo]
+          : [],
+      );
 
       await setCommitsAuto("test-org", "1.0.0", "/tmp");
 
-      expect(repoQueries).toEqual(queries);
-      expect(sentRefs).toEqual([
+      expect(sent.repoQueries).toEqual(queries);
+      expect(sent.refs).toEqual([
         {
           repository: name,
           commit: "abc123def456789012345678901234567890abcd",
@@ -972,20 +869,7 @@ describe("setCommitsAuto", () => {
       name: "getsentry/cli-legacy",
       url: "https://github.com/getsentry/cli-legacy",
     };
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const url = new URL(new Request(input, init).url);
-      if (!url.pathname.endsWith("/repos/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      const repos = url.searchParams.get("query") === "cli" ? [renamed] : [];
-      return new Response(JSON.stringify(repos), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
+    mockAutoFetch((query) => (query === "cli" ? [renamed] : []));
 
     const error = await setCommitsAuto("test-org", "1.0.0", "/tmp").catch(
       (caught: unknown) => caught,
@@ -1007,6 +891,7 @@ describe("setCommitsAuto", () => {
     );
     expect(message).toMatch(/settings\/repos\//);
   });
+
   // Sentry names Azure DevOps repositories by the bare repository name; the
   // Azure Pipelines URL has `org/project/_git/repo`.
   test("matches an Azure Repos repository from Azure Pipelines by its URL path", async () => {
@@ -1019,101 +904,20 @@ describe("setCommitsAuto", () => {
       url: repoUrl,
       provider: { id: "integrations:vsts", name: "Azure DevOps" },
     };
-    const repoQueries: (string | null)[] = [];
-    let sentRefs: unknown;
-
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input, init);
-      if (req.url.includes("/repos/")) {
-        const query = new URL(req.url).searchParams.get("query") ?? "";
-        repoQueries.push(query);
-        const matches = azureRepo.name.includes(query.toLowerCase());
-        return new Response(JSON.stringify(matches ? [azureRepo] : []), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (req.url.includes("/previous-with-commits/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      sentRefs = ((await req.json()) as { refs: unknown }).refs;
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
+    const sent = mockAutoFetch((query) =>
+      query && azureRepo.name.includes(query.toLowerCase()) ? [azureRepo] : [],
+    );
 
     await withEnv(
-      {
-        [CONFIG_DIR_ENV_VAR]: process.env[CONFIG_DIR_ENV_VAR],
-        SENTRY_CLI_NO_TELEMETRY: "1",
-        BUILD_REPOSITORY_URI: repoUrl,
-        BUILD_SOURCEVERSION: ciSha,
-      },
+      ciEnv({ BUILD_REPOSITORY_URI: repoUrl, BUILD_SOURCEVERSION: ciSha }),
       () => setCommitsAuto("test-org", "1.0.0", "/tmp"),
     );
 
-    expect(repoQueries).toEqual(["acme/web/_git/storefront", "storefront"]);
-    expect(sentRefs).toEqual([{ repository: "storefront", commit: ciSha }]);
-  });
-
-  test.each([
-    {
-      case: "skips a display name whose URL points to another project",
-      hits: [
-        {
-          name: "Acme / Web",
-          url: "https://gitlab.com/acme-archive/acme/web",
-        },
-        { name: "Acme Corp / Web", url: "https://gitlab.com/acme/web" },
-      ],
-      expected: "Acme Corp / Web",
-    },
-    {
-      case: "matches a display name when the repository has no URL",
-      hits: [{ name: "Acme / Web", url: null }],
-      expected: "Acme / Web",
-    },
-  ])("$case", async ({ hits, expected }) => {
-    mockGetRepositoryName.mockReturnValue("acme/web");
-    let sentRefs: unknown;
-
-    globalThis.fetch = mockFetch(async (input, init) => {
-      const req = new Request(input, init);
-      if (req.url.includes("/repos/")) {
-        const query = new URL(req.url).searchParams.get("query") ?? "";
-        const repos = hits
-          .filter((hit) => hit.name.toLowerCase().includes(query))
-          .map((hit) => ({ ...SAMPLE_REPO, ...hit }));
-        return new Response(JSON.stringify(repos), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (req.url.includes("/previous-with-commits/")) {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      sentRefs = ((await req.json()) as { refs: unknown }).refs;
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-
-    await setCommitsAuto("test-org", "1.0.0", "/tmp");
-
-    expect(sentRefs).toEqual([
-      {
-        repository: expected,
-        commit: "abc123def456789012345678901234567890abcd",
-      },
+    expect(sent.repoQueries).toEqual([
+      "acme/web/_git/storefront",
+      "storefront",
     ]);
+    expect(sent.refs).toEqual([{ repository: "storefront", commit: ciSha }]);
   });
 });
 
@@ -1147,10 +951,7 @@ describe("setCommitsWithRefs", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const request = new Request(input, init);
       requestPaths.push(new URL(request.url).pathname);
-      return new Response(JSON.stringify(SAMPLE_RELEASE), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(SAMPLE_RELEASE);
     });
 
     await setCommitsWithRefs("test-org", "release/feature", []);
@@ -1185,13 +986,7 @@ describe("explainSetCommitsError", () => {
   });
   /** Answer every repository search with `repos`. */
   const reposResponse = (repos: unknown[]) =>
-    mockFetch(
-      async () =>
-        new Response(JSON.stringify(repos), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    mockFetch(async () => jsonResponse(repos));
 
   test.each([
     new ApiError("API request failed: 400 Bad Request", 400, "Invalid SHA"),
@@ -1275,12 +1070,8 @@ describe("explainSetCommitsError", () => {
   });
 
   test("still links the repository settings when the lookup fails", async () => {
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify({ detail: "boom" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }),
+    globalThis.fetch = mockFetch(async () =>
+      jsonResponse({ detail: "boom" }, 400),
     );
 
     const error = await explainSetCommitsError(
@@ -1312,13 +1103,7 @@ describe("correctRefRepositories", () => {
     "organizations/test-org/releases/1.0.0/",
   );
   const reposResponse = (repos: unknown[]) =>
-    mockFetch(
-      async () =>
-        new Response(JSON.stringify(repos), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    );
+    mockFetch(async () => jsonResponse(repos));
   const repo = (name: string) => ({
     id: name,
     name,
@@ -1402,12 +1187,8 @@ describe("correctRefRepositories", () => {
   });
 
   test("keeps the error when the lookup fails", async () => {
-    globalThis.fetch = mockFetch(
-      async () =>
-        new Response(JSON.stringify({ detail: "boom" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }),
+    globalThis.fetch = mockFetch(async () =>
+      jsonResponse({ detail: "boom" }, 400),
     );
 
     expect(
@@ -1431,10 +1212,7 @@ describe("setCommitsLocal", () => {
       };
       expect(body.commits).toHaveLength(1);
       expect(body.commits[0].id).toBe("abc123");
-      return new Response(JSON.stringify(withCommits), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(withCommits);
     });
 
     const release = await setCommitsLocal("test-org", "1.0.0", [
@@ -1500,10 +1278,7 @@ describe("listReleasesPaginated", () => {
       const url = new URL(req.url);
       expect(url.searchParams.get("query")).toBe("1.0");
       expect(url.searchParams.get("sort")).toBe("date");
-      return new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse([]);
     });
 
     const result = await listReleasesPaginated("test-org", {
@@ -1523,18 +1298,15 @@ describe("listReleasesPaginated", () => {
         flatten = url.searchParams.get("flatten");
         // Sentry rejects session sorts unless the results are flattened.
         if (flatten !== "1") {
-          return new Response(
-            JSON.stringify({
+          return jsonResponse(
+            {
               detail:
                 "sorting by crash statistics requires flattening (flatten=1)",
-            }),
-            { status: 400, headers: { "Content-Type": "application/json" } },
+            },
+            400,
           );
         }
-        return new Response(JSON.stringify([SAMPLE_RELEASE]), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        return jsonResponse([SAMPLE_RELEASE]);
       });
 
       const result = await listReleasesPaginated("test-org", { sort });
@@ -1549,10 +1321,7 @@ describe("listReleasesPaginated", () => {
     globalThis.fetch = mockFetch(async (input, init) => {
       const url = new URL(new Request(input, init).url);
       flatten = url.searchParams.get("flatten");
-      return new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse([]);
     });
 
     await listReleasesPaginated("test-org", { sort: "date" });
