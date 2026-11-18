@@ -18,10 +18,10 @@ const SEGMENT_SUFFIX = /^:(\d+)$/;
 /**
  * Distinct event IDs that `reference` selects, in this order: the ID equal to
  * it; for a bare replay ID, whose every match is `<reference>:<segment>`, the
- * lowest segment; else every ID it is a prefix of. Hex references match in any
- * case. A reference shorter than {@link EVENT_ID_PREFIX_MIN_LENGTH} matches no
- * prefix, so short non-hex lookup keys keep working without matching half the
- * session.
+ * lowest segment; else every ID it is a prefix of. Hex references match stored
+ * IDs in any case. A reference shorter than {@link EVENT_ID_PREFIX_MIN_LENGTH}
+ * matches no prefix, so short non-hex lookup keys keep working without
+ * matching half the session.
  */
 export function matchEventIds(
   eventIds: readonly string[],
@@ -30,36 +30,37 @@ export function matchEventIds(
   if (eventIds.includes(reference)) {
     return [reference];
   }
-  const normalized = HEX_REFERENCE.test(reference)
-    ? reference.toLowerCase()
-    : reference;
-  if (eventIds.includes(normalized)) {
-    return [normalized];
+  const key = HEX_REFERENCE.test(reference)
+    ? (value: string) => value.toLowerCase()
+    : (value: string) => value;
+  const wanted = key(reference);
+  const exact = eventIds.filter((id) => key(id) === wanted);
+  if (exact.length > 0) {
+    return [...new Set(exact)];
   }
-  const segment = firstReplaySegment(eventIds, normalized);
+  const startingWith = eventIds.filter((id) => key(id).startsWith(wanted));
+  const segment = firstReplaySegment(startingWith, wanted.length);
   if (segment !== undefined) {
     return [segment];
   }
-  if (normalized.length < EVENT_ID_PREFIX_MIN_LENGTH) {
+  if (wanted.length < EVENT_ID_PREFIX_MIN_LENGTH) {
     return [];
   }
-  return [...new Set(eventIds.filter((id) => id.startsWith(normalized)))];
+  return [...new Set(startingWith)];
 }
 
 /**
- * The lowest-numbered segment key of `replayId`, or undefined when no ID
- * starts with it or one that does is not one of its segment keys.
+ * The lowest-numbered segment key among `ids`, which all start with a
+ * `replayIdLength`-character replay ID, or undefined when there are none or
+ * one of them is not a segment key of that replay.
  */
 function firstReplaySegment(
-  eventIds: readonly string[],
-  replayId: string,
+  ids: readonly string[],
+  replayIdLength: number,
 ): string | undefined {
   let first: { id: string; segment: number } | undefined;
-  for (const id of eventIds) {
-    if (!id.startsWith(replayId)) {
-      continue;
-    }
-    const match = SEGMENT_SUFFIX.exec(id.slice(replayId.length));
+  for (const id of ids) {
+    const match = SEGMENT_SUFFIX.exec(id.slice(replayIdLength));
     if (!match) {
       return;
     }

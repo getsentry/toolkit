@@ -29,6 +29,16 @@ describe("matchEventIds", () => {
     expect(matchEventIds([replayId], "AAAAAAAA")).toEqual([replayId]);
   });
 
+  test("an upper-case stored ID opens from its prefix, as typed or folded", () => {
+    const stored = replayId.toUpperCase();
+    for (const reference of [stored.slice(0, 8), replayId.slice(0, 8)]) {
+      expect(matchEventIds([stored], reference)).toEqual([stored]);
+    }
+    expect(matchEventIds([`${stored}:1`, `${stored}:0`], replayId)).toEqual([
+      `${stored}:0`,
+    ]);
+  });
+
   test("a short non-hex key still matches only exactly", () => {
     expect(matchEventIds(["One", "one"], "One")).toEqual(["One"]);
   });
