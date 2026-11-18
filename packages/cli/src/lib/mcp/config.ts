@@ -40,6 +40,10 @@ export type McpServerConfig = {
   agentProvider?: McpAgentProvider;
   agentProviderFromFlag: boolean;
   experimental: boolean;
+  /** Serve each CLI command as its own tool instead of the tool catalog. */
+  commands: boolean;
+  /** With `commands`: list no write tools, and refuse write calls. */
+  readOnly: boolean;
   /** Skills granted for this session. */
   finalSkills: Set<Skill>;
   /** Skills removed with `--disable-skills` or `MCP_DISABLE_SKILLS`. */
@@ -180,6 +184,17 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     );
   }
   const { finalSkills, disabledSkills } = resolveSkills(input, sentryHost);
+  if (input.readOnly && !input.commands) {
+    throw new ValidationError(
+      "--read-only works only with --commands. To limit the tool catalog, pass --skills.",
+    );
+  }
+  // Command tools check targets against the session's organization.
+  if (input.commands && input.projectSlug && !input.organizationSlug) {
+    throw new ValidationError(
+      "--commands needs the organization of --project. Pass <org>/<project>.",
+    );
+  }
 
   return {
     sentryHost,
@@ -199,6 +214,8 @@ export function finalizeMcpConfig(input: McpMergedArgs): McpServerConfig {
     agentProvider: resolveAgentProvider(input.agentProvider),
     agentProviderFromFlag: input.agentProviderFromFlag,
     experimental: input.experimental,
+    commands: input.commands,
+    readOnly: input.readOnly,
     finalSkills,
     disabledSkills,
     organizationSlug: input.organizationSlug,

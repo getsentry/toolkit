@@ -18,6 +18,12 @@ const SRC = join(import.meta.dirname, "../../src");
 const APP = join(SRC, "app.ts");
 /** Library-mode runner: executes the full application, reached only from `src/index.ts`. */
 const SDK_RUNNER = join(SRC, "lib/sdk-invoke.ts");
+/**
+ * The SDK entry. `sentry mcp --commands` runs catalog commands through it;
+ * the runner loads `app.ts` only for `help` and unknown names, so the check
+ * stops at the SDK as it does at the runner.
+ */
+const SDK_ENTRY = join(SRC, "index.ts");
 
 const ANY_IMPORT = /.*/;
 const RELATIVE_IMPORT = /^\.\.?\//;
@@ -122,6 +128,9 @@ describe("route registry", () => {
                   JS_EXTENSION,
                   ".ts",
                 );
+                if (target === SDK_ENTRY) {
+                  return { path: args.path, external: true };
+                }
                 if (target === APP) {
                   return {
                     errors: [

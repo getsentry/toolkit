@@ -9,6 +9,7 @@ import { describe, expect, test } from "vitest";
 import {
   applyFlagDefaults,
   buildInvoker,
+  buildRunner,
   type FlagDef,
   parseOutput,
 } from "../../src/lib/sdk-invoke.js";
@@ -278,5 +279,15 @@ describe("buildInvoker: lazily parsed positionals", () => {
     await expect(
       invoke(["project", "delete"], { yes: true }, []) as Promise<unknown>,
     ).rejects.toThrow("sentry project delete <org>/<project>");
+  });
+});
+
+describe("buildRunner: failures", () => {
+  test("rejects with the command's error when Stricli fails without throwing", async () => {
+    // Stricli's run() records an argument error as `exitCode ??= code`.
+    const run = buildRunner({ token: "sntrys_test", telemetry: false });
+    await expect(
+      run("org", "list", "--limit=abc") as Promise<unknown>,
+    ).rejects.toThrow('Failed to parse "abc" for limit');
   });
 });

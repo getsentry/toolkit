@@ -209,6 +209,16 @@ describe("@sentry/mcp-server flag parity", () => {
       allSkills: true,
       disableSkills: "seer",
       experimental: true,
+      commands: false,
+      readOnly: false,
+    });
+  });
+
+  it("reads --commands and --read-only", async () => {
+    const flags = await parseMcpFlags(["--commands", "--read-only"]);
+    expect(mergeMcpArgs(flags, {})).toMatchObject({
+      commands: true,
+      readOnly: true,
     });
   });
 

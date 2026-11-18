@@ -271,6 +271,18 @@ The same availability filters (skills, constraints, experimental mode, and
 required capabilities) apply before either direct registration or catalog
 execution.
 
+`sentry mcp --commands` (a preview) serves CLI commands instead of the
+catalog, through `packages/mcp-core/src/command-surface/`: every `exposed`
+command in the generated `command-catalog.json` is its own tool, named from
+its path (`sentry issue list` → `sentry_issue_list`), with the catalog's
+brief, examples, and parameter schema, and hints from its permission class.
+There is no search or execute meta-tool; harnesses search the tool list
+themselves. A call is checked against the command's schema and the
+session's constraints before a runner executes it. The stdio runner
+(`packages/cli/src/lib/mcp/command-surface.ts`) runs calls through
+`createSentrySDK().run()`; the hosted server will pass its own.
+`--read-only` drops the write tools.
+
 ### 6. Error Handling Philosophy
 
 Two-tier error system:

@@ -33,6 +33,10 @@
       "types": "./dist/command-catalog.d.ts",
       "default": "./dist/command-catalog.js"
     },
+    "./command-surface": {
+      "types": "./dist/command-surface/index.d.ts",
+      "default": "./dist/command-surface/index.js"
+    },
     "./constants": {
       "types": "./dist/constants.d.ts",
       "default": "./dist/constants.js"
