@@ -9,6 +9,7 @@ import {
 } from "@/lib/inspection.ts";
 import { formatTimestamp } from "@/lib/presentation.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
+import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
 import { DetailFields } from "./span-detail.tsx";
 import { attributeFields } from "./inspector-data.ts";
 
@@ -42,7 +43,9 @@ export function EventContext({ payload }: { payload: unknown }) {
                   </div>
                   {crumb.message !== undefined ? (
                     <p className="whitespace-pre-wrap break-words text-sm">
-                      {display(crumb.message)}
+                      {typeof crumb.message === "string"
+                        ? stripAnsi(crumb.message)
+                        : display(crumb.message)}
                     </p>
                   ) : null}
                   {Object.keys(record(crumb.data)).length ? (
