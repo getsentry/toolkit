@@ -42,6 +42,45 @@ readable axes. The CLI never averages buckets to fit an Explore chart. Use
 `SENTRY_NO_GRAPHICS=1` or the graphics default setting to keep table output.
 Graphics do not change `--json` or `--fields`.
 
+### Transformations
+
+Repeat `--transform 'axis:stage'` to fill gaps or smooth a time series. The axis
+is the zero-based position in the `--field` list. Stages for each axis run in
+the order you supply them. Duplicate aggregates remain independent axes.
+
+Without `--field`, axis `0` refers to `count()`. With `--metric`, axis `0`
+refers to the resolved metric aggregate. Transformations require `--time-series`.
+Each axis supports at most one `fill` and one `smooth` stage, in either order.
+Fill modes are `zero`, `locf`, and `linear`. Smoothing supports `smooth(sma,window)`,
+`smooth(ema,window[,factor])`, and `smooth(asap[,max_window])`.
+Sentry validates modes and arguments and applies the transformations.
+
+The public CLI SDK accepts the same ordered inputs.
+
+```typescript
+await sdk.explore({
+  target: "my-org/",
+  dataset: "spans",
+  timeSeries: "5m",
+  field: ["p95(span.duration)", "p95(span.duration)"],
+  transform: ["0:fill(linear)", "0:smooth(sma,3)", "1:smooth(asap)"],
+});
+```
+
+For transformed requests, each returned series includes `axisIndex` and
+`requestedTransformations`. An untouched axis has an empty list of requested
+transformations.
+Bucket `filled` and `smoothed` flags report Sentry's provenance. Human output
+shows each axis, its transformations, and counts of filled and smoothed buckets.
+Tables also retain per-bucket provenance. JSON preserves null values, units,
+the executed interval, and all returned metadata. `--fields` projects buckets
+and retains the series identity and requested transformations.
+
+If Sentry rejects a transformation, the command reports the server's error. If the
+response lacks transformation provenance, the command fails without displaying
+unverified values. This includes disabled or unsupported transformations and
+empty transformed series, where the current response cannot prove execution.
+
 ## Metrics
 
 Use `--metric` (`-m`) to query metrics by name. The CLI auto-resolves the metric's type and unit.

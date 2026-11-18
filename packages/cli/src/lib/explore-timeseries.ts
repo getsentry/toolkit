@@ -3,6 +3,7 @@
  * by Sentry's spans, logs, and metrics datasets.
  */
 
+import { parseFunction } from "@sentry/toolkit-core/events-fields";
 import { ValidationError } from "./errors.js";
 import { type TimeRangeApiParams, timeRangeToSeconds } from "./time-range.js";
 
@@ -39,6 +40,59 @@ const DEFAULT_INTERVALS: readonly [number, keyof typeof INTERVAL_SECONDS][] = [
 
 /** Sentry's ungrouped timeseries query budget; includes boundary buckets. */
 const MAX_BUCKETS = 10_100;
+
+/** Ordered transformation expressions keyed by zero-based request axis position. */
+export type TimeSeriesTransformations = Readonly<
+  Record<number, readonly string[]>
+>;
+
+/** Parse CLI and SDK axis:stage inputs without merging duplicate aggregate axes. */
+export function parseTimeSeriesTransformations(
+  values: readonly string[] | undefined,
+  axisCount: number,
+): TimeSeriesTransformations | undefined {
+  if (!values?.length) {
+    return;
+  }
+  const transformations: Record<number, string[]> = {};
+  for (const value of values) {
+    const separator = value.indexOf(":");
+    const axis = value.slice(0, separator);
+    const stage = value.slice(separator + 1).trim();
+    const index = Number(axis);
+    if (
+      separator < 1 ||
+      !/^(0|[1-9]\d*)$/.test(axis) ||
+      !Number.isSafeInteger(index) ||
+      index >= axisCount
+    ) {
+      throw new ValidationError(
+        `Invalid transformation axis in "${value}". Use a zero-based --field position from 0 to ${axisCount - 1}, followed by a colon and a stage.`,
+        "transform",
+      );
+    }
+    const parsed = parseFunction(stage);
+    if (!parsed || (parsed.name !== "fill" && parsed.name !== "smooth")) {
+      throw new ValidationError(
+        `Invalid transformation "${stage}". Use fill(mode) or smooth(mode,...), such as fill(linear) or smooth(sma,3).`,
+        "transform",
+      );
+    }
+    const axisTransformations = (transformations[index] ??= []);
+    if (
+      axisTransformations.some(
+        (existing) => parseFunction(existing)?.name === parsed.name,
+      )
+    ) {
+      throw new ValidationError(
+        `Axis ${index} allows only one ${parsed.name} stage. Each axis may have one fill and one smooth transformation in either order.`,
+        "transform",
+      );
+    }
+    axisTransformations.push(stage);
+  }
+  return transformations;
+}
 
 /** Validate an explicit bucket duration without silently changing it. */
 export function parseTimeSeriesInterval(

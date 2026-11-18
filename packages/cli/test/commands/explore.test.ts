@@ -776,6 +776,81 @@ describe("sentry explore", () => {
   });
 
   describe("time series", () => {
+    test("accepts ordered indexed stages through the public SDK", async () => {
+      const sdk = createSentrySDK({ cwd: "/tmp/test-explore" });
+      const result = await sdk.explore({
+        target: "test-org/",
+        dataset: "spans",
+        timeSeries: "auto",
+        field: ["count()", "count()"],
+        transform: ["1:smooth(sma,3)", "0:fill(linear)", "1:fill(zero)"],
+      });
+
+      expect(queryEventsTimeSeriesSpy).toHaveBeenCalledWith(
+        "test-org",
+        expect.objectContaining({
+          fields: ["count()", "count()"],
+          transformations: {
+            0: ["fill(linear)"],
+            1: ["smooth(sma,3)", "fill(zero)"],
+          },
+        }),
+      );
+      expect(result).toEqual({
+        ...MOCK_TIME_SERIES_RESPONSE,
+        dataset: "spans",
+      });
+    });
+
+    test.each([
+      {
+        args: ["--transform", "0:fill(linear)"],
+        error: "requires --time-series",
+      },
+      {
+        args: ["-b", "--transform", "1:fill(linear)"],
+        error: "Invalid transformation axis",
+      },
+      {
+        args: ["-b", "--transform", "00:fill(linear)"],
+        error: "Invalid transformation axis",
+      },
+      {
+        args: ["-b", "--transform", "0:unknown()"],
+        error: "Invalid transformation",
+      },
+      {
+        args: [
+          "-b",
+          "--transform",
+          "0:fill(linear)",
+          "--transform",
+          "0:fill(zero)",
+        ],
+        error: "only one fill",
+      },
+    ])(
+      "rejects invalid transformation flags $args",
+      async ({ args, error }) => {
+        const result = await runExploreArgs(["test-org/", ...args]);
+        expect(result.exitCode).not.toBe(0);
+        expect(result.getStderr()).toContain(error);
+        expect(result.getStdout()).toBe("");
+        expect(queryEventsTimeSeriesSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    test("validates explicit SDK stages even though SDK invocation bypasses flag parsers", async () => {
+      const sdk = createSentrySDK({ cwd: "/tmp/test-explore" });
+      await expect(
+        sdk.explore({
+          target: "test-org/",
+          timeSeries: "auto",
+          transform: ["9:fill(zero)"],
+        }),
+      ).rejects.toThrow("Invalid transformation axis");
+    });
+
     test.each([
       {
         name: "--time-series before another flag",
@@ -904,6 +979,7 @@ describe("sentry explore", () => {
           metric: "cache.hit_rate",
           agg: "avg",
           period: parsePeriod("7d"),
+          transform: ["0:smooth(asap)"],
         },
         "test-org/web",
       );
@@ -919,6 +995,7 @@ describe("sentry explore", () => {
           dataset: "tracemetrics",
           query: "project:web",
           statsPeriod: "7d",
+          transformations: { 0: ["smooth(asap)"] },
         }),
       );
     });

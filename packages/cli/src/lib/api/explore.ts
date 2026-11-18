@@ -14,7 +14,8 @@ import {
 import type { EventsTableResponse } from "../../types/dashboard.js";
 import { EventsTableResponseSchema } from "../../types/dashboard.js";
 import type { EventsDataset } from "../datasets.js";
-import { stringifyUnknown } from "../errors.js";
+import { stringifyUnknown, ValidationError } from "../errors.js";
+import type { TimeSeriesTransformations } from "../explore-timeseries.js";
 import { resolveOrgRegion } from "../region.js";
 import { getSdkClientConfig } from "../sentry-sdk-client.js";
 import {
@@ -69,6 +70,8 @@ export type ExploreTimeSeriesQueryOptions = Pick<
 > & {
   /** Bucket width as a duration, such as `5m`. Must be valid for the requested range. */
   interval: string;
+  /** Ordered transformations keyed by zero-based position in fields, including duplicate fields. */
+  transformations?: TimeSeriesTransformations;
 };
 
 type SdkTimeSeries = OrganizationEventsTimeseriesResponse["timeSeries"][number];
@@ -84,6 +87,10 @@ export type EventsTimeSeriesResponse = Omit<
 > & {
   /** One series per aggregate, including bucket accuracy and completeness metadata. */
   timeSeries: (Omit<SdkTimeSeries, "values"> & {
+    /** Zero-based request position, included when transformations were requested. */
+    axisIndex?: number;
+    /** Requested stages in execution order, distinct from returned bucket provenance. */
+    requestedTransformations?: readonly string[];
     /** Buckets retain API timestamps in milliseconds and null values for missing data. */
     values: (Omit<SdkTimeSeries["values"][number], "value"> & {
       /** Aggregate result, without coercion of strings or missing values. */
@@ -101,6 +108,10 @@ export async function queryEventsTimeSeries(
   orgSlug: string,
   options: ExploreTimeSeriesQueryOptions,
 ): Promise<EventsTimeSeriesResponse> {
+  const transformationParams: Record<string, readonly string[]> = {};
+  for (const [index, stages] of Object.entries(options.transformations ?? {})) {
+    transformationParams[`transformations[${index}]`] = stages;
+  }
   const result = await listOrganizationEventsTimeseries({
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
@@ -117,12 +128,46 @@ export async function queryEventsTimeSeries(
           : (options.statsPeriod ?? "24h"),
       start: options.start,
       end: options.end,
+      ...transformationParams,
     },
   });
-  return unwrapResult<EventsTimeSeriesResponse>(
+  const data = unwrapResult<EventsTimeSeriesResponse>(
     result,
     "Failed to query events time series",
   );
+  if (Object.keys(transformationParams).length > 0) {
+    const axesMatch =
+      data.timeSeries.length === options.fields.length &&
+      data.timeSeries.every(
+        (series, index) => series.yAxis === options.fields[index],
+      );
+    for (const index of Object.keys(options.transformations ?? {})) {
+      const series = data.timeSeries[Number(index)];
+      if (
+        !axesMatch ||
+        !series?.values.length ||
+        series.values.some(
+          (bucket) =>
+            typeof bucket.filled !== "boolean" ||
+            typeof bucket.smoothed !== "boolean",
+        )
+      ) {
+        throw new ValidationError(
+          `Sentry could not verify transformations for axis ${index}. The organization or dataset may not support them, or no buckets were returned. No unverified values were displayed.`,
+          "transform",
+        );
+      }
+    }
+    return {
+      ...data,
+      timeSeries: data.timeSeries.map((series, axisIndex) => ({
+        ...series,
+        axisIndex,
+        requestedTransformations: options.transformations?.[axisIndex] ?? [],
+      })),
+    };
+  }
+  return data;
 }
 
 /**
