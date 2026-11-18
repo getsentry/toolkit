@@ -11,11 +11,20 @@ const NEEDS_TYPESCRIPT6_API = new Set([
   "@sentry/api",
 ]);
 
+// Type-aware lint runs on `tsrs-lint` from the `tsrs` package. pnpm installs
+// oxlint's optional `oxlint-tsgolint` peer anyway, leaving a second backend
+// that nothing runs. Remove this once oxlint drops that peer.
+const UNUSED_OXLINT_PEER = "oxlint-tsgolint";
+
 function readPackage(pkg) {
   if (NEEDS_TYPESCRIPT6_API.has(pkg.name) && pkg.peerDependencies?.typescript) {
     delete pkg.peerDependencies.typescript;
     delete pkg.peerDependenciesMeta?.typescript;
     pkg.dependencies = { ...pkg.dependencies, typescript: TYPESCRIPT6_API };
+  }
+  if (pkg.name === "oxlint" && pkg.peerDependencies?.[UNUSED_OXLINT_PEER]) {
+    delete pkg.peerDependencies[UNUSED_OXLINT_PEER];
+    delete pkg.peerDependenciesMeta?.[UNUSED_OXLINT_PEER];
   }
   return pkg;
 }

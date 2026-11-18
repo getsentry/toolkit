@@ -96,7 +96,6 @@ catalog:
   open: ^10.1.2
   oxfmt: 0.78.0
   oxlint: 1.93.0
-  oxlint-tsgolint: 7.0.2007
   react: ^19.2.8
   react-dom: ^19.2.8
   react-markdown: ^9.1.0
@@ -105,6 +104,7 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.3.3
   tsdown: ^0.23.7
+  tsrs: 7.1.0-beta.tsrs3
   tw-animate-css: ^1.3.4
   typescript: ^7.0.2
   # TypeScript 7 has no JavaScript compiler API. Scripts that parse or print
@@ -157,3 +157,12 @@ minimumReleaseAgeExclude:
   - "@vitest-evals/core@0.18.0"
   - "@vitest-evals/report-ui@0.18.0"
   - vitest-evals@0.18.0
+  - "tsrs@7.1.0-beta.tsrs3"
+  - "@tsrs/darwin-arm64@7.1.0-beta.tsrs3"
+  - "@tsrs/darwin-x64@7.1.0-beta.tsrs3"
+  - "@tsrs/linux-arm64-gnu@7.1.0-beta.tsrs3"
+  - "@tsrs/linux-arm64-musl@7.1.0-beta.tsrs3"
+  - "@tsrs/linux-x64-gnu@7.1.0-beta.tsrs3"
+  - "@tsrs/linux-x64-musl@7.1.0-beta.tsrs3"
+  - "@tsrs/win32-arm64@7.1.0-beta.tsrs3"
+  - "@tsrs/win32-x64@7.1.0-beta.tsrs3"
