@@ -42,6 +42,8 @@ Session lookup commands accept names quoted or as separate words. For `event vie
 form the session name. Event lookup uses the Sentry event ID from the envelope
 header, event/transaction item header, or payload, in that order; envelopes
 without an event ID retain their generated envelope ID as the lookup key.
+Replay SDKs send every segment of a replay with the replay ID as its event ID,
+so a replay segment's lookup key is `<replay_id>:<segment_id>`.
 
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
 a summary of the envelope's main item (the first event or transaction, else the
@@ -49,8 +51,12 @@ first log or span batch, else the first item), so an agent can pick what to open
 without viewing every event. Events get the same `type`, `level`, and `title`
 as their `local tail` line: `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
-(`transaction`, `log`, `span`, `session`, …). `level`, `title` (cut to 200
-characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
+(`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
+`title`, and `timestamp` from its most severe log. A span batch takes its
+`title` and `timestamp` from its segment root: the span marked `is_segment`,
+else the span whose parent is not in the batch. A `sessions` aggregate is
+titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+(cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs or spans in a
 batch (not a standalone span), and `receivedAt` is
 when the receiver accepted the envelope. `event view` returns the same fields with the envelope.

@@ -5,6 +5,7 @@
 
 import { summarizeEvent } from "../../lib/formatters/local.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
+import { sessionCountsTitle } from "./session-counts.js";
 import { parseEventTimestamp } from "./timestamp.js";
 
 /** What an envelope holds, read from its main item. Every field is optional. */
@@ -39,6 +40,17 @@ const TRACE_ID_RE = /^[0-9a-f]{32}$/i;
 
 /** Longest title kept in a summary; longer ones end in `…`. */
 const MAX_TITLE_LENGTH = 200;
+
+/** Log levels from least to most severe; logs send `warn`, events `warning`. */
+const LOG_LEVEL_ORDER = [
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "warning",
+  "error",
+  "fatal",
+];
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -88,9 +100,58 @@ function summarizeEventItem(
   };
 }
 
+/** A log's trace ID, from the log or its `sentry.trace.trace_id` attribute. */
+function logTraceId(log: Record<string, unknown>): string | undefined {
+  return (
+    traceId(log.trace_id) ??
+    traceId(record(record(log.attributes)["sentry.trace.trace_id"]).value)
+  );
+}
+
+/** Severity rank of a log level; unknown levels rank lowest. */
+function levelRank(level: unknown): number {
+  return typeof level === "string"
+    ? LOG_LEVEL_ORDER.indexOf(level.toLowerCase())
+    : -1;
+}
+
+/** The first log with the batch's most severe level. */
+function mostSevereLog(
+  logs: Record<string, unknown>[],
+): Record<string, unknown> {
+  return logs.reduce(
+    (worst, log) =>
+      levelRank(log.level) > levelRank(worst.level) ? log : worst,
+    logs[0] ?? {},
+  );
+}
+
+/**
+ * The span that names a batch: the one the SDK marks `is_segment`, else the
+ * first span whose parent is not in the batch, else the first span. SDKs list
+ * child spans first, because they end first.
+ */
+function segmentRoot(
+  spans: Record<string, unknown>[],
+): Record<string, unknown> {
+  const ids = new Set(spans.map((span) => span.span_id));
+  return (
+    spans.find((span) => span.is_segment === true) ??
+    spans.find(
+      (span) =>
+        typeof span.parent_span_id !== "string" ||
+        !ids.has(span.parent_span_id),
+    ) ??
+    spans[0] ??
+    {}
+  );
+}
+
 /**
  * Summarize a log batch, or a span item: a v2 batch with an `items` array, or
- * a standalone span whose payload is the span itself.
+ * a standalone span whose payload is the span itself. A log batch takes its
+ * level, title, and time from its most severe log; a span batch takes its
+ * title and time from its segment root.
  */
 function summarizeContainer(
   itemType: string,
@@ -107,26 +168,26 @@ function summarizeContainer(
       traceId: traceId(payload.trace_id),
     };
   }
-  const entries = Array.isArray(payload.items) ? payload.items : [];
-  const first = record(entries[0]);
+  const entries = (Array.isArray(payload.items) ? payload.items : []).map(
+    record,
+  );
   if (itemType === "log") {
-    const attributes = record(first.attributes);
+    const log = mostSevereLog(entries);
     return {
       type: "log",
-      level: text(first.level),
-      title: text(first.body),
-      timestamp: isoTimestamp(first.timestamp),
-      traceId:
-        traceId(first.trace_id) ??
-        traceId(record(attributes["sentry.trace.trace_id"]).value),
+      level: text(log.level),
+      title: text(log.body),
+      timestamp: isoTimestamp(log.timestamp),
+      traceId: logTraceId(log) ?? entries.map(logTraceId).find(Boolean),
       count: entries.length,
     };
   }
+  const root = segmentRoot(entries);
   return {
     type: "span",
-    title: text(first.name),
-    timestamp: isoTimestamp(first.end_timestamp ?? first.start_timestamp),
-    traceId: traceId(first.trace_id),
+    title: text(root.name),
+    timestamp: isoTimestamp(root.end_timestamp ?? root.start_timestamp),
+    traceId: traceId(root.trace_id),
     count: entries.length,
   };
 }
@@ -178,7 +239,10 @@ export function summarizeEnvelope(
   return shortTitle({
     type: itemType,
     level: text(payload.level),
-    title: text(payload.transaction) ?? text(payload.status),
+    title:
+      text(payload.transaction) ??
+      text(payload.status) ??
+      (itemType === "sessions" ? sessionCountsTitle(payload) : undefined),
     ...(itemType === "event" ? summarizeEventItem(payload) : {}),
     timestamp: isoTimestamp(payload.timestamp),
     traceId:
