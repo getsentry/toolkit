@@ -87,13 +87,22 @@ function responses() {
         `${file}, ${actions.length} actions`,
       );
       if (Array.isArray(sc?.sideQuests)) {
+        const problems = [];
+        for (const quest of sc.sideQuests) {
+          const next = quest.next ?? [];
+          if (!quest.tip) problems.push(`${quest.id} has no tip`);
+          if (!quest.docs?.startsWith("https://") && next.length === 0)
+            problems.push(`${quest.id} has no docs link or next call`);
+          for (const call of next) {
+            if (!byName.has(call.tool))
+              problems.push(
+                `${quest.id} next ${call.tool} is not in tools/list`,
+              );
+          }
+        }
         check(
-          "mcp-tool-responses#side-quest-fix",
-          sc.sideQuests
-            .filter(
-              (quest) => !quest.tip || !quest.docs?.startsWith("https://"),
-            )
-            .map((quest) => `${quest.id} has no tip or docs link`),
+          "mcp-tool-responses#side-quest-actionable",
+          problems,
           `${file}, ${sc.sideQuests.length} side quests`,
         );
       }

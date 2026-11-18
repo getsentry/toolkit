@@ -64,13 +64,14 @@ makes the MCP SDK validate every structured result against the tool's
 
 ```bash
 node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --out DIR \
-  [--server mock|cli] [--no-token] [--server-arg ARG]... \
+  [--server mock|cli] [--no-token | --token TOKEN] [--server-arg ARG]... \
   [--call TOOL 'JSON_ARGS']...
 ```
 
 - `--server-arg` passes one argument to `sentry mcp`, such as
   `--server-arg --skills --server-arg inspect` or `--server-arg acme/`.
-- `--no-token` starts `sentry mcp` with no token and no login.
+- `--no-token` starts `sentry mcp` with no token and no login. `--token TOKEN`
+  sets `SENTRY_AUTH_TOKEN` to `TOKEN` instead of the fake token.
 - Mock fixtures use the org `sentry-mcp-evals`, project `cloudflare-mcp`,
   issue `CLOUDFLARE-MCP-41`, and trace `a4d1aae7216b47ff8117cf4e09ce9d0a`.
 
@@ -110,7 +111,8 @@ claim it proves. Proof standards:
   the server, the transport, or the CLI.
 - Offline `sentry mcp` makes network attempts, such as a scope check at
   startup. They go to `127.0.0.1:9` and fail; check `server-stderr.txt` and
-  do not assume a skipped network call.
+  do not assume a skipped network call. The scripts turn off the CLI's
+  telemetry and its update check.
 - Cite the claim ID (`<file>#<id>`) with each artifact you report.
 
 ## Cleanup

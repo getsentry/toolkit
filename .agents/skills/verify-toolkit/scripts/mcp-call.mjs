@@ -10,7 +10,7 @@ import { offlineEnv } from "./offline-env.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const usage =
-  "usage: mcp-call.mjs --out DIR [--server mock|cli] [--no-token] [--server-arg ARG]... [--call TOOL JSON_ARGS]...";
+  "usage: mcp-call.mjs --out DIR [--server mock|cli] [--no-token | --token TOKEN] [--server-arg ARG]... [--call TOOL JSON_ARGS]...";
 
 const opts = { server: "mock", token: true, serverArgs: [], calls: [] };
 const argv = process.argv.slice(2);
@@ -19,6 +19,7 @@ for (let i = 0; i < argv.length; i++) {
   if (arg === "--out") opts.out = argv[++i];
   else if (arg === "--server") opts.server = argv[++i];
   else if (arg === "--no-token") opts.token = false;
+  else if (arg === "--token") opts.token = argv[++i];
   else if (arg === "--server-arg") opts.serverArgs.push(argv[++i]);
   else if (arg === "--call")
     opts.calls.push([argv[++i], JSON.parse(argv[++i])]);
@@ -47,7 +48,7 @@ const { StdioClientTransport } = await sdk("client/stdio.js");
 
 // Both servers get the offline env. The mock server answers the Sentry API
 // from MSW fixtures and ignores it; `sentry mcp` gets a fake token (unless
-// --no-token), an empty config dir, and an unreachable Sentry host.
+// --no-token or --token), an empty config dir, and an unreachable Sentry host.
 const { env, cleanup } = offlineEnv({ token: opts.token });
 // The mock server answers for its default host, sentry.io.
 if (opts.server === "mock") delete env.SENTRY_HOST;
