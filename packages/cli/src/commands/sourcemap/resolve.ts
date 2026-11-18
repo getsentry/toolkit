@@ -24,9 +24,9 @@ import {
   renderMarkdown,
 } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
+import { buildIgnoreMatcher } from "../../lib/scan/index.js";
 import {
   assertDirectoryReadable,
-  buildIgnoreMatcher,
   DEFAULT_EXTENSIONS,
   resolveDirectorySourcemaps,
 } from "../../lib/sourcemap/inject.js";
