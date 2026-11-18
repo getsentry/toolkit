@@ -3,8 +3,9 @@
  * agents can pick what to open without one `event view` call per entry.
  */
 
-import { stringifyUnknown } from "../../lib/errors.js";
+import { summarizeEvent } from "../../lib/formatters/local.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
+import { parseEventTimestamp } from "./timestamp.js";
 
 /** What an envelope holds, read from its main item. Every field is optional. */
 type LocalEventDetails = {
@@ -22,7 +23,7 @@ type LocalEventDetails = {
   timestamp?: string;
   /** 32-character trace ID, when the item or envelope header has one. */
   traceId?: string;
-  /** Number of logs or spans in a log or span container item. */
+  /** Number of logs or spans in a log or span batch; unset for a standalone span. */
   count?: number;
 };
 
@@ -31,7 +32,7 @@ type Item = ParsedReceiverEnvelope["envelope"][1][number];
 /** Item types that carry one event each, preferred as an envelope's main item. */
 const EVENT_ITEM_TYPES = new Set(["event", "transaction"]);
 
-/** Item types that hold an `items` array of logs or spans. */
+/** Item types that can hold an `items` array of logs or spans. */
 const CONTAINER_ITEM_TYPES = new Set(["log", "span"]);
 
 const TRACE_ID_RE = /^[0-9a-f]{32}$/i;
@@ -56,53 +57,56 @@ function traceId(value: unknown): string | undefined {
 }
 
 /**
- * Convert an SDK timestamp to ISO 8601. SDKs send epoch seconds (JavaScript)
- * or ISO strings (Python); anything else is dropped.
+ * Convert an SDK timestamp to ISO 8601 with the parser the tail and viewer
+ * use: epoch seconds, numeric strings, and ISO strings, with a time that has
+ * no timezone read as UTC.
  */
 function isoTimestamp(value: unknown): string | undefined {
-  let date: Date | undefined;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    date = new Date(value * 1000);
-  } else if (typeof value === "string" && value) {
-    date = new Date(value);
+  const seconds = parseEventTimestamp(value);
+  if (seconds === undefined) {
+    return;
   }
-  return date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined;
+  const date = new Date(seconds * 1000);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-/** Text of an event `message` or `logentry`: a string, or `{ formatted, message }`. */
-function messageText(value: unknown): string | undefined {
-  const entry = record(value);
-  return text(value) ?? text(entry.formatted) ?? text(entry.message);
-}
-
-/** Summarize an `event` item as an error or a message. */
-function summarizeEvent(
+/**
+ * Summarize an `event` item the way the tail labels it, so `event list` and
+ * the tail agree on type, level, and title.
+ */
+function summarizeEventItem(
   payload: Record<string, unknown>,
-): Pick<LocalEventDetails, "type" | "title"> {
-  const values = record(payload.exception).values;
-  // values is ordered oldest→newest; the last one is what was thrown.
-  const last = record(Array.isArray(values) ? values.at(-1) : undefined);
-  const errorType = text(last.type);
-  const value =
-    last.value === undefined || last.value === ""
-      ? undefined
-      : stringifyUnknown(last.value);
-  if (errorType) {
-    return {
-      type: "error",
-      title: value ? `${errorType}: ${value}` : errorType,
-    };
-  }
-  const message =
-    messageText(payload.logentry) ?? messageText(payload.message) ?? value;
-  return message ? { type: "message", title: message } : { type: "error" };
+): Pick<LocalEventDetails, "type" | "level" | "title"> {
+  const summary = summarizeEvent(payload);
+  return {
+    type: summary.kind,
+    level: summary.level,
+    title:
+      summary.kind === "error"
+        ? `${summary.errorType}: ${summary.text}`
+        : summary.text,
+  };
 }
 
-/** Summarize a log or span container from its first entry. */
+/**
+ * Summarize a log batch, or a span item: a v2 batch with an `items` array, or
+ * a standalone span whose payload is the span itself.
+ */
 function summarizeContainer(
   itemType: string,
   payload: Record<string, unknown>,
 ): LocalEventDetails {
+  if (itemType === "span" && !Array.isArray(payload.items)) {
+    return {
+      type: "span",
+      title:
+        text(payload.description) ?? text(payload.name) ?? text(payload.op),
+      timestamp: isoTimestamp(
+        payload.timestamp ?? payload.end_timestamp ?? payload.start_timestamp,
+      ),
+      traceId: traceId(payload.trace_id),
+    };
+  }
   const entries = Array.isArray(payload.items) ? payload.items : [];
   const first = record(entries[0]);
   if (itemType === "log") {
@@ -175,7 +179,7 @@ export function summarizeEnvelope(
     type: itemType,
     level: text(payload.level),
     title: text(payload.transaction) ?? text(payload.status),
-    ...(itemType === "event" ? summarizeEvent(payload) : {}),
+    ...(itemType === "event" ? summarizeEventItem(payload) : {}),
     timestamp: isoTimestamp(payload.timestamp),
     traceId:
       (isEvent

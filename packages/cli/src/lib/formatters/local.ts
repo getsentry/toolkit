@@ -347,8 +347,8 @@ function readMessageText(value: unknown): string | undefined {
   }
 }
 
-/** Summarize an `event` item for its tail line or JSON record. */
-function summarizeEvent(event: Record<string, unknown>): EventSummary {
+/** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
+export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const exception = event.exception as
     | { values?: ExceptionValue[] }
     | undefined;

@@ -39,11 +39,13 @@ without an event ID retain their generated envelope ID as the lookup key.
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
 a summary of the envelope's main item (the first event or transaction, else the
 first log or span batch, else the first item), so an agent can pick what to open
-without viewing every event. `type` is `error` for an exception, `message` for
+without viewing every event. Events get the same `type`, `level`, and `title`
+as their `local tail` line: `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
 (`transaction`, `log`, `span`, `session`, …). `level`, `title` (cut to 200
-characters), `timestamp` (ISO 8601), and `traceId` appear when the item has
-them, `count` gives the number of logs or spans in a batch, and `receivedAt` is
+characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
+appear when the item has them, `count` gives the number of logs or spans in a
+batch (not a standalone span), and `receivedAt` is
 when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
 
 A session, event, or envelope that does not exist, or that retention has
