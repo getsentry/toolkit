@@ -52,7 +52,12 @@ const child = (
   attributes: attributes({ ...values, ...segment }),
 });
 
-const resource = (span_id: string, op: string, path: string, start: number) =>
+export const resource = (
+  span_id: string,
+  op: string,
+  path: string,
+  start: number,
+) =>
   child(span_id, "localhost", start, start + 0.04, {
     "sentry.op": op,
     "sentry.origin": "auto.resource.browser.metrics",

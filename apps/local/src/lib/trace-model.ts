@@ -113,9 +113,12 @@ function getPayloadSpan(
 }
 
 /**
- * Streamed browser resource and fetch spans are named by host only
- * ("localhost", "GET localhost"), with the resource in `url.full`.
- * Show the captured URL so rows can be told apart, grouped and searched.
+ * Browser resource and fetch spans can be named by host only
+ * ("localhost", "GET localhost"), with the resource in `url.full`
+ * (span v2 attributes or transaction span data).
+ * Label them with the URL's origin and path so rows can be told apart,
+ * grouped and searched. The query (cache busters, tokens) and fragment
+ * stay in the span's attributes.
  */
 function withCapturedUrl(description: string, payload: unknown): string {
   const url = getString(spanData(payload)["url.full"]);
@@ -128,7 +131,7 @@ function withCapturedUrl(description: string, payload: unknown): string {
   }
   const [, method = "", target] = description.match(/^([A-Z]+ )?(.*)$/)!;
   return target === parsed.hostname || target === parsed.host
-    ? `${method}${url}`
+    ? `${method}${parsed.origin}${parsed.pathname}`
     : description;
 }
 
@@ -247,7 +250,10 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         id,
         parentId: getString(value.parent_span_id),
         operation,
-        description: getString(value.description) ?? operation ?? id,
+        description: withCapturedUrl(
+          getString(value.description) ?? operation ?? id,
+          value,
+        ),
         startTimestamp,
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),

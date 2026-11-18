@@ -4,6 +4,7 @@ import { buildTraceGroups } from "./trace-model.ts";
 import { spanInsights, webVitalPages } from "./performance.ts";
 import { parseProfile, profileMatchesTrace } from "./profiles.ts";
 import {
+  resource,
   spanEnvelope,
   streamedPageloadSpans,
   streamedWebVitalSpans,
@@ -313,5 +314,60 @@ test("a later name-less update keeps the streamed resource URL label", () => {
     "resources",
   );
   expect(rest).toEqual([]);
+  expect(group?.name).toBe("http://localhost:4000/app.js");
+});
+test("resource labels drop cache-busting queries and fragments", () => {
+  const start = 1794949298.4756;
+  const groups = spanInsights(
+    buildTraceGroups(
+      decodeEnvelope(
+        spanEnvelope([
+          streamedPageloadSpans[0],
+          resource(
+            "e5a0feefbd6a1dd8",
+            "resource.script",
+            "/app.js?v=1a2b",
+            start,
+          ),
+          resource(
+            "f5a0feefbd6a1dd8",
+            "resource.script",
+            "/app.js?t=17",
+            start,
+          ),
+          resource(
+            "a6a0feefbd6a1dd8",
+            "resource.script",
+            "/app.js?token=secret#x",
+            start,
+          ),
+        ]),
+        "pageload",
+      ),
+    ),
+    "resources",
+  );
+  expect(groups.map((group) => [group.name, group.count])).toEqual([
+    ["http://localhost:4000/app.js", 3],
+  ]);
+});
+test("transaction child spans named by host use their URL like span v2 items", () => {
+  const transaction = decode("transaction", {
+    transaction: "/orders",
+    start_timestamp: 1,
+    timestamp: 2,
+    contexts: { trace: { trace_id: "t", span_id: "root", op: "pageload" } },
+    spans: [
+      {
+        span_id: "r1",
+        op: "resource.script",
+        description: "localhost",
+        start_timestamp: 1,
+        timestamp: 1.1,
+        data: { "url.full": "http://localhost:4000/app.js?v=1" },
+      },
+    ],
+  });
+  const [group] = spanInsights(buildTraceGroups([transaction]), "resources");
   expect(group?.name).toBe("http://localhost:4000/app.js");
 });
