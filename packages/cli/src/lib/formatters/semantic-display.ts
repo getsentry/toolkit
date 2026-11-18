@@ -279,6 +279,11 @@ function formatHttpSpanDisplay(
 /** Label for a span that has no name. */
 export const UNNAMED_SPAN = "unnamed span";
 
+/** Whether a fallback label is a placeholder for a span with no name. */
+function isUnnamed(label: string): boolean {
+  return label === "unnamed" || label === UNNAMED_SPAN;
+}
+
 const HTTP_METHOD_RE =
   /^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)$/i;
 
@@ -292,7 +297,7 @@ function hasOwnName(name: string, url: string | undefined): boolean {
     words.shift();
   }
   const rest = words.join(" ");
-  if (!rest || name === UNNAMED_SPAN) {
+  if (!rest || isUnnamed(name)) {
     return false;
   }
   return !url || formatHttpTarget(rest) !== formatHttpTarget(url);
@@ -645,17 +650,16 @@ function formatExceptionSpanDisplay(
     return null;
   }
 
-  const label =
-    fallbackLabel === "unnamed"
-      ? exceptionType || exceptionMessage || fallbackLabel
-      : fallbackLabel;
-  const metadata =
-    fallbackLabel === "unnamed"
-      ? []
-      : compactStrings([
-          exceptionType,
-          exceptionType ? undefined : exceptionMessage,
-        ]);
+  const unnamed = isUnnamed(fallbackLabel);
+  const label = unnamed
+    ? exceptionType || exceptionMessage || fallbackLabel
+    : fallbackLabel;
+  const metadata = unnamed
+    ? []
+    : compactStrings([
+        exceptionType,
+        exceptionType ? undefined : exceptionMessage,
+      ]);
 
   return { label, metadata };
 }
@@ -751,7 +755,7 @@ function formatHttpLabel({
   }
 
   const normalized = fallbackLabel.toUpperCase();
-  if (method && normalized !== method && fallbackLabel !== "unnamed") {
+  if (method && normalized !== method && !isUnnamed(fallbackLabel)) {
     return normalized.startsWith(`${method} `)
       ? fallbackLabel
       : joinParts([method, fallbackLabel]);

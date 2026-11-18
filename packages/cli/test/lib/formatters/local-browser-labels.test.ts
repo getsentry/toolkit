@@ -234,6 +234,18 @@ describe("page URL on browser spans", () => {
       "localhost:3000/cart",
     ],
     [
+      "a nameless span with an exception uses the exception type",
+      undefined,
+      { "url.full": "", "exception.type": "TypeError" },
+      "TypeError",
+    ],
+    [
+      "a nameless span with only an HTTP method shows the method",
+      undefined,
+      { "url.full": "", "http.request.method": "GET" },
+      "GET",
+    ],
+    [
       "an op-less span with an HTTP method uses the URL",
       "submit",
       { "http.request.method": "POST" },
