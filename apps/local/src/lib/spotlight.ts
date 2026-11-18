@@ -1,5 +1,7 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -81,11 +83,39 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+/** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
+function getLogEntry(value: unknown): string | undefined {
+  return isRecord(value)
+    ? (getString(value.formatted) ?? getString(value.message))
+    : undefined;
+}
+
 function contextFeedback(
   event: Record<string, unknown>,
 ): Record<string, unknown> {
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   return isRecord(contexts.feedback) ? contexts.feedback : {};
+}
+
+/** Server SDKs send `sessions` aggregates: per-bucket counts by session status. */
+function sessionAggregates(event: Record<string, unknown>) {
+  return Array.isArray(event.aggregates)
+    ? event.aggregates.filter(isRecord)
+    : [];
+}
+
+function sessionCountsTitle(
+  event: Record<string, unknown>,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const bucket of sessionAggregates(event))
+    for (const status of ["exited", "errored", "abnormal", "crashed"]) {
+      const count = getNumber(bucket[status]);
+      if (count) counts.set(status, (counts.get(status) ?? 0) + count);
+    }
+  return counts.size
+    ? `Session counts: ${[...counts].map(([status, count]) => `${count} ${status}`).join(", ")}`
+    : undefined;
 }
 
 /** Derive display metadata from this payload without inheriting its parent event. */
@@ -98,15 +128,22 @@ export function getEventMetadata(
     type === "event" ? getEventExceptions(payload)[0] : undefined;
   const transaction = getString(event.transaction);
   const description = getString(event.description);
-  const message =
-    getString(event.message) ??
-    getString(event.body) ??
-    getString(event.name) ??
-    getString(
-      isRecord(contextFeedback(event))
-        ? contextFeedback(event).message
-        : undefined,
-    );
+  // Dev servers colour their console logs; captured messages keep the escapes.
+  const message = getString(
+    stripAnsi(
+      getString(event.message) ??
+        getLogEntry(event.message) ??
+        getLogEntry(event.logentry) ??
+        getString(event.body) ??
+        getString(event.name) ??
+        getString(
+          isRecord(contextFeedback(event))
+            ? contextFeedback(event).message
+            : undefined,
+        ) ??
+        "",
+    ),
+  );
   const transactionMatch = transaction?.match(/^([A-Z]+)\s+(.+)$/);
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   const trace = isRecord(contexts.trace) ? contexts.trace : event;
@@ -128,9 +165,10 @@ export function getEventMetadata(
     getString(data["http.url"]) ??
     getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
-  const startTimestamp = getNumber(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event.start_timestamp);
   const timestamp =
-    getNumber(event.timestamp) ?? getNumber(event.end_timestamp);
+    parseEventTimestamp(event.timestamp) ??
+    parseEventTimestamp(event.end_timestamp);
   const durationMs =
     startTimestamp !== undefined && timestamp !== undefined
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100
@@ -147,8 +185,9 @@ export function getEventMetadata(
       message ??
       route ??
       (exception ? formatExceptionTitle(exception) : undefined) ??
+      (type === "sessions" ? sessionCountsTitle(event) : undefined) ??
       type,
-    ...(type === "event" && message ? { message } : {}),
+    ...((type === "event" || type === "log") && message ? { message } : {}),
     level: getString(event.level),
     method,
     route,
@@ -204,7 +243,10 @@ function getItemTimestamp(payload: unknown): number | string | undefined {
   if (!isRecord(payload)) {
     return undefined;
   }
-  const timestamp = payload.timestamp ?? payload.end_timestamp;
+  const timestamp =
+    payload.timestamp ??
+    payload.end_timestamp ??
+    sessionAggregates(payload)[0]?.started;
   return typeof timestamp === "number" || typeof timestamp === "string"
     ? timestamp
     : undefined;

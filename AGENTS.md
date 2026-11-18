@@ -97,13 +97,6 @@ toolkit/
 - docs/integrations/claude-code-plugin.md — Plugin structure and agent prompts
 - docs/integrations/ide-instructions-refactor.md — IDE instruction refactor notes
 
-**MCP specs:**
-
-- docs/specs/README.md — Specs index
-- docs/specs/embedded-agent-openai-routing.md — Embedded agent OpenAI routing spec
-- docs/specs/search-events.md — Search Events spec
-- docs/specs/subpath-constraints.md — Subpath constraints spec
-
 **MCP releases:**
 
 - docs/releases/stdio.md — `@sentry/mcp-server` release and the MCP registry

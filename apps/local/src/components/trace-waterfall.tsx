@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
+import {
+  isLogOnlyTrace,
+  type TraceGroup,
+  type TraceSpan,
+} from "@/lib/trace-model.ts";
 
 type TraceWaterfallProps = {
   compact?: boolean;
@@ -8,6 +12,11 @@ type TraceWaterfallProps = {
   selectedSpanId?: string;
   onSelectSpan?: (spanId: string) => void;
 };
+
+/** Tree cell geometry, in rem: `px-3` padding, `size-3` expand control. */
+const CELL_PADDING_REM = 0.75;
+const TOGGLE_REM = 0.75;
+const INDENT_REM = 1;
 
 type PositionedSpan = {
   span: TraceSpan;
@@ -108,6 +117,9 @@ function SpanRow({
   const position = getSpanPosition(span, trace);
   const visualDepth = Math.min(depth, 4);
   const failed = isFailingSpan(span);
+  // Guides start under the parent's expand control and end at this row's.
+  const guideLeft =
+    CELL_PADDING_REM + (visualDepth - 1) * INDENT_REM + TOGGLE_REM / 2;
 
   return (
     <div
@@ -120,22 +132,29 @@ function SpanRow({
     >
       <div
         role="cell"
-        className="relative flex min-w-0 items-center gap-2 border-r border-border px-3 py-2"
+        className="relative flex min-w-0 items-center gap-2 border-r border-border py-2 pr-3"
+        style={{
+          paddingLeft: `${CELL_PADDING_REM + visualDepth * INDENT_REM}rem`,
+        }}
       >
         {depth > 0 ? (
           <>
             <span
               aria-hidden="true"
               className={`absolute border-l border-border/70 ${isLastChild ? "top-0 h-1/2" : "inset-y-0"}`}
-              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
+              style={{ left: `${guideLeft}rem` }}
             />
             <span
               aria-hidden="true"
-              className="absolute top-1/2 h-px w-[0.85rem] -translate-y-1/2 bg-border/70"
-              style={{ left: `${0.95 + (visualDepth - 1) * 0.65}rem` }}
+              className="absolute top-1/2 h-px -translate-y-1/2 bg-border/70"
+              style={{
+                left: `${guideLeft}rem`,
+                width: `${INDENT_REM - TOGGLE_REM / 2}rem`,
+              }}
             />
           </>
         ) : null}
+        {/* Leaf rows keep the expand control's slot so siblings line up. */}
         {span.children.length ? (
           <button
             type="button"
@@ -150,11 +169,12 @@ function SpanRow({
               <ChevronDown className="size-3" />
             )}
           </button>
-        ) : null}
+        ) : (
+          <span aria-hidden="true" className="size-3 shrink-0" />
+        )}
         <span
           aria-hidden="true"
           className={`relative size-1.5 shrink-0 ${failed ? "bg-red-500" : depth === 0 ? "bg-primary" : "bg-muted-foreground"}`}
-          style={{ marginLeft: `${visualDepth * 0.65}rem` }}
         />
         <div className="flex min-w-0 flex-col items-start gap-1">
           <span
@@ -278,7 +298,9 @@ export function TraceWaterfall({
           </p>
         ) : null}
         <p className="p-4 text-sm text-muted-foreground">
-          This trace has no timestamped spans to display yet.
+          {isLogOnlyTrace(trace)
+            ? "Only logs were captured with this trace ID."
+            : "This trace has no timestamped spans to display yet."}
         </p>
       </section>
     );

@@ -32,6 +32,7 @@ import {
 } from "./control-plane.js";
 import {
   DEFAULT_PORT,
+  isConnectionRefused,
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
   probeLocalHealth,
@@ -171,12 +172,7 @@ async function probeLocalDaemon(
     return Array.isArray(data.sessions) ? "ok" : "failed";
   } catch (error) {
     logger.debug("Local daemon identity check failed", error);
-    const cause = error instanceof Error ? error.cause : undefined;
-    return cause instanceof Error &&
-      "code" in cause &&
-      cause.code === "ECONNREFUSED"
-      ? "refused"
-      : "failed";
+    return isConnectionRefused(error) ? "refused" : "failed";
   }
 }
 
@@ -580,9 +576,11 @@ export async function ensureLocalDaemon({
         (await probeLocalHealth(formatLocalServerUrl(host, port), 500)) ===
         "other"
       ) {
+        // A plain receiver answers /health like Spotlight's sidecar does, so
+        // the probe cannot tell `local serve` from `local run`; name both.
         throw portInUseError(
           port,
-          `another server, such as a foreground '${sentry`local serve`}'`,
+          `another server, such as '${sentry`local serve`}' or '${sentry`local run`}' without --session`,
         );
       }
       child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {

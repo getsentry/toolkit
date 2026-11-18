@@ -8,8 +8,10 @@ import { createLocalRetentionBuffer } from "../../../src/commands/local/retentio
 
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { run } from "@stricli/core";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -17,19 +19,35 @@ import {
   runCommand,
   shutdownServer,
 } from "../../../src/commands/local/run.js";
-import { buildApp, tryListen } from "../../../src/commands/local/server.js";
+import {
+  buildApp,
+  DEFAULT_PORT,
+  tryListen,
+} from "../../../src/commands/local/server.js";
+import { app } from "../../../src/app.js";
+import type { SentryContext } from "../../../src/context.js";
 import { openBrowser } from "../../../src/lib/browser.js";
 import { logger } from "../../../src/lib/logger.js";
 import {
   CliError,
   COMMAND_NOT_FOUND_FIELD,
+  EXIT,
+  PORT_IN_USE_FIELD,
   ValidationError,
   VerifyFailedError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as childSignals from "../../../src/lib/child-signals.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as daemon from "../../../src/commands/local/daemon.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as serverModule from "../../../src/commands/local/server.js";
+import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
+import { useTestConfigDir } from "../../helpers.js";
 
 /**
  * Records the env passed to the most recent `spawn` call so tests can assert
@@ -39,6 +57,7 @@ import { TEST_TMP_DIR } from "../../constants.js";
  */
 const spawnCapture: {
   args?: readonly string[];
+  child?: ChildProcess;
   env?: NodeJS.ProcessEnv;
   stdio?: Parameters<typeof import("node:child_process").spawn>[2]["stdio"];
 } = {};
@@ -55,7 +74,8 @@ vi.mock("node:child_process", async (importOriginal) => {
       spawnCapture.args = args;
       spawnCapture.env = options?.env;
       spawnCapture.stdio = options?.stdio;
-      return actual.spawn(cmd, args as string[], options);
+      spawnCapture.child = actual.spawn(cmd, args as string[], options);
+      return spawnCapture.child;
     },
   };
 });
@@ -67,7 +87,7 @@ vi.mock("../../../src/lib/browser.js", () => ({
 type RunFunc = (
   this: unknown,
   flags: {
-    port: number;
+    port?: number;
     host: string;
     verify: boolean;
     timeout: number;
@@ -107,6 +127,7 @@ describe("sentry local run", () => {
     spawnCapture.args = undefined;
     spawnCapture.env = undefined;
     spawnCapture.stdio = undefined;
+    spawnCapture.child = undefined;
   });
 
   test.each(["human", "json"] as const)(
@@ -301,13 +322,23 @@ describe("sentry local run", () => {
     await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
     await chmod(fakeWrangler, 0o755);
 
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    await func.call(
-      makeContext(),
-      { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
-      fakeWrangler,
-      "dev",
-    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        fakeWrangler,
+        "dev",
+      );
+      // The binding alone captures nothing with @sentry/cloudflare, so the
+      // notice must name the Worker setup that does.
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("tunnel: env.SENTRY_SPOTLIGHT"),
+      );
+    } finally {
+      info.mockRestore();
+    }
 
     expect(spawnCapture.args).toEqual([
       "dev",
@@ -316,6 +347,84 @@ describe("sentry local run", () => {
         /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/,
       ),
     ]);
+  });
+
+  test("keeps the session ingest capability out of the Starting line", async () => {
+    await writeFile(join(tmpDir, "wrangler.jsonc"), "{}");
+    const fakeWrangler = join(tmpDir, "wrangler");
+    await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
+    await chmod(fakeWrangler, 0o755);
+    const base = "http://127.0.0.1:1/_local/v1/sessions/session-1";
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        cwd: tmpDir,
+        id: "session-1",
+        label: "web",
+        ingestUrl: `${base}/ingest/ingest-secret`,
+        streamUrl: `${base}/stream?cap=stream-secret`,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        {
+          port: 0,
+          host: "127.0.0.1",
+          verify: false,
+          timeout: 0,
+          session: "web",
+        },
+        fakeWrangler,
+        "dev",
+      );
+      const logged = [...info.mock.calls, ...warn.mock.calls]
+        .map((c) => String(c[0]))
+        .join("\n");
+      expect(logged).toContain("Starting:");
+      expect(logged).toContain("/ingest/[REDACTED]");
+      expect(logged).not.toContain("secret");
+      // The wrapped app still gets the working capability.
+      expect(spawnCapture.args).toContain(
+        `SENTRY_SPOTLIGHT:${base}/ingest/ingest-secret`,
+      );
+    } finally {
+      create.mockRestore();
+      retain.mockRestore();
+      info.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  test("prints the Worker setup hint in --verify mode too", async () => {
+    await writeFile(join(tmpDir, "wrangler.jsonc"), "{}");
+    const fakeWrangler = join(tmpDir, "wrangler");
+    await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
+    await chmod(fakeWrangler, 0o755);
+
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      // The fake Worker exits without sending, so verification fails.
+      await expect(
+        func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 0 },
+          fakeWrangler,
+          "dev",
+        ),
+      ).rejects.toBeInstanceOf(VerifyFailedError);
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        wranglerInjectedMessage(),
+      );
+    } finally {
+      info.mockRestore();
+    }
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
@@ -357,6 +466,190 @@ describe("sentry local run", () => {
       expect(err).toBeInstanceOf(CliError);
       expect((err as CliError).message).toContain("exited with code");
     }
+  });
+
+  test("reports a child killed by a signal with its name and 128+N", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+    const error = await func
+      .call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        "sh",
+        "-c",
+        "kill -KILL $$",
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).message).toBe(
+      "Process exited with code 137 (killed by SIGKILL)",
+    );
+    expect((error as CliError).exitCode).toBe(137);
+  });
+
+  describe("on SIGINT or SIGTERM", () => {
+    /**
+     * A child that counts the SIGINTs it gets in `count`, and exits 0 half a
+     * second after the first one so a duplicate still has time to arrive.
+     */
+    async function countingChild(): Promise<{ script: string; count: string }> {
+      const count = join(tmpDir, "sigint-count");
+      const script = join(tmpDir, "count-sigint.cjs");
+      await writeFile(
+        script,
+        `const fs = require("node:fs");
+let n = 0;
+fs.writeFileSync(${JSON.stringify(count)}, "0");
+process.on("SIGINT", () => {
+  fs.writeFileSync(${JSON.stringify(count)}, String(++n));
+  if (n === 1) setTimeout(() => process.exit(0), 500);
+});
+setInterval(() => {}, 1000);
+`,
+      );
+      return { script, count };
+    }
+
+    /**
+     * Catch the SIGINT/SIGTERM handlers `run` installs, so a test can call
+     * them. Emitting the real event would also run the test preload's own
+     * handler, which exits the worker.
+     */
+    function captureSignalHandlers() {
+      const handlers = new Map<string | symbol, () => void>();
+      const on = process.on.bind(process);
+      const spy = vi
+        .spyOn(process, "on")
+        .mockImplementation((event, listener) => {
+          if (event === "SIGINT" || event === "SIGTERM") {
+            handlers.set(event, listener as () => void);
+            return process;
+          }
+          return on(event, listener);
+        });
+      return {
+        send(signal: "SIGINT" | "SIGTERM") {
+          const handler = handlers.get(signal);
+          if (!handler) {
+            throw new Error(`run installed no ${signal} handler`);
+          }
+          handler();
+        },
+        restore: () => spy.mockRestore(),
+      };
+    }
+
+    let signals: ReturnType<typeof captureSignalHandlers>;
+    beforeEach(() => {
+      signals = captureSignalHandlers();
+    });
+    afterEach(() => {
+      signals.restore();
+    });
+
+    /** Wait until the spawned child is running, then return its pid. */
+    async function childPid(count: string): Promise<number> {
+      await vi.waitFor(async () => {
+        await readFile(count, "utf8");
+      });
+      const pid = spawnCapture.child?.pid;
+      if (pid === undefined) {
+        throw new Error("child not spawned");
+      }
+      return pid;
+    }
+
+    test("forwards a SIGINT sent only to the CLI, once, and exits quietly", async () => {
+      const { script, count } = await countingChild();
+      const ctx = { ...makeContext(), process: { exitCode: undefined } };
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const run = func.call(
+        ctx,
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        process.execPath,
+        script,
+      );
+      await childPid(count);
+      signals.send("SIGINT");
+      await expect(run).resolves.toBeUndefined();
+      expect(await readFile(count, "utf8")).toBe("1");
+      expect(ctx.process.exitCode).toBeUndefined();
+    });
+
+    test("does not resend a Ctrl-C the terminal already sent to the child", async () => {
+      const { script, count } = await countingChild();
+      const foreground = vi
+        .spyOn(childSignals, "terminalSignalsProcess")
+        .mockReturnValue(true);
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          { ...makeContext(), process: { exitCode: undefined } },
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          script,
+        );
+        const pid = await childPid(count);
+        // What the terminal does on Ctrl-C: signal the whole foreground
+        // group, which holds both the CLI and the child.
+        process.kill(pid, "SIGINT");
+        signals.send("SIGINT");
+        await expect(run).resolves.toBeUndefined();
+        expect(await readFile(count, "utf8")).toBe("1");
+      } finally {
+        foreground.mockRestore();
+      }
+    });
+
+    test("passes on a second SIGINT even when the terminal sent the first", async () => {
+      const { script, count } = await countingChild();
+      const foreground = vi
+        .spyOn(childSignals, "terminalSignalsProcess")
+        .mockReturnValue(true);
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          { ...makeContext(), process: { exitCode: undefined } },
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          script,
+        );
+        await childPid(count);
+        // Neither SIGINT came through the terminal, so only the second one
+        // reaches the child.
+        signals.send("SIGINT");
+        signals.send("SIGINT");
+        await expect(run).resolves.toBeUndefined();
+        expect(await readFile(count, "utf8")).toBe("1");
+        expect(foreground).toHaveBeenCalledTimes(1);
+      } finally {
+        foreground.mockRestore();
+      }
+    });
+
+    test.each([
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ] as const)(
+      "exits %s's code without an error when the child dies from it",
+      async (signal, code) => {
+        const ctx = { ...makeContext(), process: { exitCode: undefined } };
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const ready = join(tmpDir, "ready");
+        const run = func.call(
+          ctx,
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");setInterval(() => {}, 1000);`,
+        );
+        await vi.waitFor(async () => {
+          await readFile(ready, "utf8");
+        });
+        signals.send(signal);
+        await expect(run).resolves.toBeUndefined();
+        expect(ctx.process.exitCode).toBe(code);
+      },
+    );
   });
 
   test("--timeout kills the child after N seconds", async () => {
@@ -682,4 +975,195 @@ describe("sentry local run", () => {
       expect(capturedEnv?.[`${prefix}SENTRY_SPOTLIGHT`]).toBe(expectedUrl);
     }
   });
+});
+
+/** A wrapped app that sends one error envelope to the injected receiver. */
+const SEND_ONE_EVENT = [
+  "-e",
+  [
+    'const id = "a".repeat(32);',
+    "const body = [JSON.stringify({ event_id: id }), JSON.stringify({ type: 'event' }), JSON.stringify({ event_id: id, message: 'verify me' })].join(String.fromCharCode(10));",
+    "fetch(process.env.SENTRY_SPOTLIGHT, { method: 'POST', headers: { 'content-type': 'application/x-sentry-envelope' }, body }).then(() => setTimeout(() => {}, 30000));",
+  ].join(" "),
+];
+
+/** Hold `port` on `host`; resolves undefined when something already holds it. */
+async function holdPort(
+  port: number,
+  host: string,
+): Promise<Server | undefined> {
+  const server = createServer((_req, res) => res.end("OK"));
+  return await new Promise((resolve, reject) => {
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") resolve(undefined);
+      else reject(err);
+    });
+    server.listen(port, host, () => resolve(server));
+  });
+}
+
+function closeServer(server: Server | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (!server) resolve();
+    else server.close(() => resolve());
+  });
+}
+
+/**
+ * Make the default port look busy without binding it, so the test neither
+ * depends on nor disturbs whatever else uses that port.
+ */
+function makeDefaultPortBusy() {
+  const realTryListen = serverModule.tryListen;
+  return vi
+    .spyOn(serverModule, "tryListen")
+    .mockImplementation((listenApp, port, hostname, options) =>
+      port === DEFAULT_PORT
+        ? Promise.reject(serverModule.portInUseError(port))
+        : realTryListen(listenApp, port, hostname, options),
+    );
+}
+
+/** A context for running `local run` through Stricli flag parsing. */
+function makeParsedRunContext() {
+  return {
+    ...makeContext(),
+    process: { ...process, exitCode: undefined },
+    env: process.env,
+    homeDir: tmpDir,
+    configDir: tmpDir,
+    stdin: process.stdin,
+  } as unknown as SentryContext & { process: { exitCode?: number } };
+}
+
+describe("sentry local run --verify receiver", () => {
+  useTestConfigDir("local-run-verify-");
+
+  test("reports events as reaching Sentry Local, without a viewer link", async () => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: true, timeout: 20 },
+        process.execPath,
+        ...SEND_ONE_EVENT,
+      );
+      const lines = info.mock.calls.map((c) => String(c[0]));
+      expect(lines).toContain(
+        "Setup verified — your app is sending events to Sentry Local",
+      );
+      expect(lines.some((line) => line.startsWith("View events at "))).toBe(
+        false,
+      );
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test("verifies on a free port when the default port is busy", async () => {
+    const busy = makeDefaultPortBusy();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      const started = Date.now();
+      // Goes through flag parsing, so --port is omitted the way a user omits it.
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--verify",
+          "--host",
+          "127.0.0.1",
+          "--timeout",
+          "20",
+          "--",
+          process.execPath,
+          ...SEND_ONE_EVENT,
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      expect(receiver.pathname).toBe("/stream");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(Number(receiver.port)).toBeGreaterThan(0);
+      // Client-side variants get the fallback port too, not the default.
+      expect(spawnCapture.env?.NEXT_PUBLIC_SENTRY_SPOTLIGHT).toBe(
+        receiver.href,
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("retrying"),
+      );
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      warn.mockRestore();
+      busy.mockRestore();
+    }
+  }, 30_000);
+
+  test("says which port it used when verify on a fallback port times out", async () => {
+    const busy = makeDefaultPortBusy();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--verify",
+          "--host",
+          "127.0.0.1",
+          "--timeout",
+          "1",
+          "--",
+          process.execPath,
+          "-e",
+          "setTimeout(() => {}, 30000)",
+        ],
+        context,
+      );
+      expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
+      const port = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "").port;
+      expect(warn).toHaveBeenCalledWith(
+        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
+      );
+    } finally {
+      warn.mockRestore();
+      busy.mockRestore();
+    }
+  }, 30_000);
+
+  test("fails fast when an explicit --port is busy", async () => {
+    const holder = await holdPort(0, "127.0.0.1");
+    const address = holder?.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    spawnCapture.env = undefined;
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const started = Date.now();
+      const error = await func
+        .call(
+          makeContext(),
+          { port: address.port, host: "127.0.0.1", verify: true, timeout: 20 },
+          "true",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${address.port} is already in use`,
+        ),
+      });
+      expect((error as Error).message).toContain("omit --port");
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(spawnCapture.env).toBeUndefined();
+    } finally {
+      await closeServer(holder);
+    }
+  }, 30_000);
 });

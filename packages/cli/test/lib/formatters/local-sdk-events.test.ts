@@ -1,0 +1,506 @@
+/**
+ * Tail and NDJSON output for envelopes shaped like the ones real SDKs send to
+ * `sentry local`: sentry-python messages and logging events, JavaScript SDK
+ * messages with a synthetic stack, Next.js browser and server events, and a
+ * Hono app on Cloudflare Workers.
+ */
+
+import { describe, expect, test } from "vitest";
+import {
+  formatItem,
+  formatItemJson,
+} from "../../../src/lib/formatters/local.js";
+import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
+
+const TRACE_ID = "4c79f60c11214eb38604f4ae0781bfb2";
+
+/** One tail line for an event item, without colors. */
+function tail(
+  payload: Record<string, unknown>,
+  header: Record<string, unknown>,
+): string {
+  const lines = formatItem("event", payload, header, "event");
+  expect(lines).toHaveLength(1);
+  return stripAnsi(lines[0] ?? "");
+}
+
+/** The NDJSON record for an event item. */
+function json(
+  payload: Record<string, unknown>,
+  header: Record<string, unknown>,
+): Record<string, unknown> {
+  const lines = formatItemJson("event", payload, header);
+  expect(lines).toHaveLength(1);
+  return JSON.parse(lines[0] ?? "{}") as Record<string, unknown>;
+}
+
+const pythonHeader = {
+  event_id: "9ec79c33ec9942ab8353589fcb2e04dc",
+  sent_at: "2026-11-17T10:00:00.120000Z",
+  sdk: { name: "sentry.python.flask", version: "2.42.0" },
+};
+
+/** `logging.error("Payment failed for order %s", 42)` with the logging integration. */
+const pythonLoggingEvent = {
+  event_id: "9ec79c33ec9942ab8353589fcb2e04dc",
+  level: "error",
+  logger: "shop.payments",
+  logentry: {
+    message: "Payment failed for order %s",
+    params: [42],
+    formatted: "Payment failed for order 42",
+  },
+  platform: "python",
+  timestamp: "2026-11-17T10:00:00.100000Z",
+  contexts: {
+    runtime: { name: "CPython", version: "3.12.4" },
+    trace: { trace_id: TRACE_ID, span_id: "a7e1f3b5c9d2e4f6" },
+  },
+  sdk: { name: "sentry.python.flask", version: "2.42.0" },
+};
+
+/** `sentry_sdk.capture_message("Hello from capture_message", level="warning")`. */
+const pythonMessageEvent = {
+  event_id: "1f2e3d4c5b6a49788796a5b4c3d2e1f0",
+  level: "warning",
+  message: "Hello from capture_message",
+  platform: "python",
+  timestamp: "2026-11-17T10:00:01.000000Z",
+  contexts: { runtime: { name: "CPython", version: "3.12.4" } },
+  sdk: { name: "sentry.python.flask", version: "2.42.0" },
+};
+
+const nextjsHeader = {
+  event_id: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+  sent_at: "2026-11-17T10:00:02.000Z",
+  sdk: { name: "sentry.javascript.nextjs", version: "11.0.0" },
+};
+
+/** Oldest to newest, as SDKs send them: React's dispatcher first, the click handler last. */
+const browserClickFrames = [
+  {
+    filename:
+      "app:///_next/static/chunks/node_modules_next_dist_compiled_react-dom_client.js",
+    function: "dispatchDiscreteEvent",
+    lineno: 18512,
+    colno: 7,
+    in_app: true,
+  },
+  {
+    filename: "app:///_next/static/chunks/app_page_tsx.js",
+    function: "onClick",
+    lineno: 24,
+    colno: 19,
+    in_app: true,
+  },
+];
+
+/**
+ * `Sentry.captureMessage("Hello from captureMessage", "warning")` in a
+ * Next.js page. With `attachStacktrace`, JavaScript SDK 11 adds a synthetic
+ * exception that has a value and a stack but no type.
+ */
+const nextjsBrowserMessage = {
+  event_id: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+  level: "warning",
+  message: "Hello from captureMessage",
+  exception: {
+    values: [
+      {
+        value: "Hello from captureMessage",
+        stacktrace: { frames: browserClickFrames },
+        mechanism: { type: "generic", handled: true, synthetic: true },
+      },
+    ],
+  },
+  platform: "javascript",
+  timestamp: 1_794_045_602.123,
+  request: {
+    url: "http://localhost:3000/",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    },
+  },
+  contexts: { trace: { trace_id: TRACE_ID, span_id: "b2c3d4e5f6a7b8c9" } },
+  sdk: { name: "sentry.javascript.nextjs", version: "11.0.0" },
+};
+
+/** A thrown `Error` in a Next.js client component. */
+const nextjsBrowserError = {
+  event_id: "c1d2e3f4a5b64c7d8e9f0a1b2c3d4e5f",
+  level: "error",
+  exception: {
+    values: [
+      {
+        type: "Error",
+        value: "Client button exploded",
+        stacktrace: { frames: browserClickFrames },
+        mechanism: {
+          type: "auto.browser.global_handlers.onerror",
+          handled: false,
+        },
+      },
+    ],
+  },
+  platform: "javascript",
+  timestamp: 1_794_045_603.5,
+  request: {
+    url: "http://localhost:3000/",
+    headers: { "User-Agent": "Mozilla/5.0" },
+  },
+  contexts: { trace: { trace_id: TRACE_ID, span_id: "c3d4e5f6a7b8c9d0" } },
+  sdk: { name: "sentry.javascript.nextjs", version: "11.0.0" },
+};
+
+/** An error thrown in a Next.js route handler on the Node.js runtime. */
+const nextjsServerError = {
+  event_id: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a",
+  level: "error",
+  exception: {
+    values: [
+      {
+        type: "TypeError",
+        value: "Cannot read properties of undefined (reading 'id')",
+        stacktrace: {
+          frames: [
+            {
+              filename: "node:internal/process/task_queues",
+              function: "process.processTicksAndRejections",
+              lineno: 105,
+              colno: 5,
+              in_app: false,
+            },
+            {
+              filename: "/app/.next/server/app/api/users/route.js",
+              function: "GET",
+              lineno: 12,
+              colno: 22,
+              in_app: true,
+            },
+            {
+              filename: "/app/node_modules/next/dist/server/base-server.js",
+              function: "renderToResponse",
+              lineno: 900,
+              colno: 3,
+              in_app: false,
+            },
+          ],
+        },
+        mechanism: { type: "auto.function.nextjs", handled: false },
+      },
+    ],
+  },
+  platform: "node",
+  timestamp: 1_794_045_604.25,
+  contexts: {
+    runtime: { name: "node", version: "v22.11.0" },
+    trace: { trace_id: TRACE_ID, span_id: "d4e5f6a7b8c9d0e1" },
+  },
+  sdk: { name: "sentry.javascript.nextjs", version: "11.0.0" },
+};
+
+const honoHeader = {
+  event_id: "e1f2a3b4c5d64e7f8a9b0c1d2e3f4a5b",
+  sent_at: "2026-11-17T10:00:05.000Z",
+  sdk: { name: "sentry.javascript.hono", version: "11.0.0" },
+};
+
+/** An error thrown three calls deep in a Hono route on Cloudflare Workers. */
+const honoWorkerError = {
+  event_id: "e1f2a3b4c5d64e7f8a9b0c1d2e3f4a5b",
+  level: "error",
+  exception: {
+    values: [
+      {
+        type: "Error",
+        value: "Boom from deepFunction",
+        stacktrace: {
+          frames: [
+            {
+              filename: "/index.js",
+              function: "dispatch",
+              lineno: 410,
+              colno: 27,
+              in_app: true,
+            },
+            {
+              filename: "/index.js",
+              function: "handler",
+              lineno: 1203,
+              colno: 10,
+              in_app: true,
+            },
+            {
+              filename: "/index.js",
+              function: "deepFunction",
+              lineno: 1190,
+              colno: 9,
+              in_app: true,
+            },
+          ],
+        },
+        mechanism: { type: "auto.faas.hono.error_handler", handled: false },
+      },
+    ],
+  },
+  platform: "javascript",
+  timestamp: 1_794_045_605.75,
+  contexts: {
+    runtime: { name: "cloudflare", version: "2025-06-01" },
+    cloud_resource: { "cloud.provider": "cloudflare" },
+    trace: { trace_id: TRACE_ID, span_id: "e5f6a7b8c9d0e1f2" },
+  },
+  sdk: { name: "sentry.javascript.hono", version: "11.0.0" },
+};
+
+describe("message events", () => {
+  test("a JavaScript captureMessage shows its level and text, not an error", () => {
+    const line = tail(nextjsBrowserMessage, nextjsHeader);
+    expect(line).toContain("[WARNING] [BROWSER] Hello from captureMessage");
+    expect(line).not.toContain("[ERROR]");
+    expect(line).not.toContain("Error:");
+
+    expect(json(nextjsBrowserMessage, nextjsHeader)).toMatchObject({
+      type: "message",
+      level: "warning",
+      message: "Hello from captureMessage",
+      function: "onClick",
+      source: "browser",
+    });
+    expect(json(nextjsBrowserMessage, nextjsHeader)).not.toHaveProperty(
+      "error_type",
+    );
+  });
+
+  test("a Python capture_message shows its level and text", () => {
+    const line = tail(pythonMessageEvent, pythonHeader);
+    expect(line).toContain("[WARNING] [SERVER]  Hello from capture_message");
+    expect(line).not.toContain("Error:");
+
+    expect(json(pythonMessageEvent, pythonHeader)).toMatchObject({
+      type: "message",
+      level: "warning",
+      message: "Hello from capture_message",
+      source: "server",
+    });
+  });
+
+  test("a Python logging event shows the formatted logentry and logger", () => {
+    const line = tail(pythonLoggingEvent, pythonHeader);
+    expect(line).toContain("[ERROR]   [SERVER]  Payment failed for order 42");
+    expect(line).toContain("[logger:shop.payments]");
+    expect(line).not.toContain("Unknown error");
+
+    expect(json(pythonLoggingEvent, pythonHeader)).toMatchObject({
+      type: "message",
+      level: "error",
+      message: "Payment failed for order 42",
+      logger: "shop.payments",
+    });
+  });
+
+  test("falls back to the logentry template when it has no formatted text", () => {
+    const { formatted: _formatted, ...logentry } = pythonLoggingEvent.logentry;
+    const event = { ...pythonLoggingEvent, logentry };
+    expect(tail(event, pythonHeader)).toContain("Payment failed for order %s");
+  });
+});
+
+describe("exception events", () => {
+  test("captureException with a string is an Error, not a message", () => {
+    // SDK 11 wraps the string in a synthetic exception and fills in the
+    // "Error" type (addExceptionTypeValue), so it stays an error record.
+    const event = {
+      ...nextjsBrowserMessage,
+      level: "error",
+      message: "Checkout failed",
+      exception: {
+        values: [
+          {
+            type: "Error",
+            value: "Checkout failed",
+            stacktrace: { frames: browserClickFrames },
+            mechanism: { type: "generic", handled: true, synthetic: true },
+          },
+        ],
+      },
+    };
+    expect(tail(event, nextjsHeader)).toContain(
+      "[ERROR]   [BROWSER] Error: Checkout failed",
+    );
+    expect(json(event, nextjsHeader)).toMatchObject({
+      type: "error",
+      error_type: "Error",
+      message: "Checkout failed",
+    });
+  });
+
+  test("keep the exception type and use the event level", () => {
+    const line = tail(nextjsServerError, nextjsHeader);
+    expect(line).toContain(
+      "[ERROR]   [SERVER]  TypeError: Cannot read properties of undefined (reading 'id')",
+    );
+
+    const fatal = { ...nextjsServerError, level: "fatal" };
+    expect(tail(fatal, nextjsHeader)).toContain("[FATAL]");
+
+    expect(json(nextjsServerError, nextjsHeader)).toMatchObject({
+      type: "error",
+      level: "error",
+      error_type: "TypeError",
+    });
+  });
+});
+
+describe("frame hint", () => {
+  test("points at the newest in-app frame, not React's dispatcher", () => {
+    const line = tail(nextjsBrowserError, nextjsHeader);
+    expect(line).toContain(
+      "[app:///_next/static/chunks/app_page_tsx.js:24:19]",
+    );
+    expect(line).toContain("[onClick]");
+    expect(line).not.toContain("dispatchDiscreteEvent");
+
+    expect(json(nextjsBrowserError, nextjsHeader)).toMatchObject({
+      filename: "app:///_next/static/chunks/app_page_tsx.js",
+      lineno: 24,
+      colno: 19,
+      function: "onClick",
+    });
+  });
+
+  test("points at the throwing function in a Hono route, not dispatch", () => {
+    const line = tail(honoWorkerError, honoHeader);
+    expect(line).toContain("[/index.js:1190:9] [deepFunction]");
+    expect(json(honoWorkerError, honoHeader).function).toBe("deepFunction");
+  });
+
+  test("skips library frames newer than the app frame", () => {
+    const line = tail(nextjsServerError, nextjsHeader);
+    expect(line).toContain("[GET]");
+    expect(json(nextjsServerError, nextjsHeader).function).toBe("GET");
+  });
+});
+
+describe("source tag", () => {
+  test("a Hono app on Cloudflare Workers is a server", () => {
+    expect(tail(honoWorkerError, honoHeader)).toContain("[SERVER]");
+    expect(json(honoWorkerError, honoHeader).source).toBe("server");
+  });
+
+  test.each([
+    "sentry.javascript.hono",
+    "sentry.javascript.vercel-edge",
+    "sentry.javascript.aws-serverless",
+    "sentry.javascript.google-cloud-serverless",
+    "sentry.javascript.nestjs",
+    "sentry.javascript.solidstart",
+    "sentry.javascript.react-router",
+    "sentry.javascript.tanstackstart-react",
+    "sentry.javascript.elysia",
+    "sentry.javascript.nitro",
+  ])("%s logs without event contexts are a server", (sdkName) => {
+    const lines = formatItem(
+      "log",
+      { items: [{ level: "info", body: "request handled" }] },
+      { sdk: { name: sdkName, version: "11.0.0" } },
+      "log",
+    );
+    expect(stripAnsi(lines[0] ?? "")).toContain("[SERVER]");
+  });
+
+  test("a Next.js browser event is a browser, a server event is a server", () => {
+    expect(tail(nextjsBrowserError, nextjsHeader)).toContain("[BROWSER]");
+    expect(json(nextjsBrowserError, nextjsHeader).source).toBe("browser");
+
+    expect(tail(nextjsServerError, nextjsHeader)).toContain("[SERVER]");
+    expect(json(nextjsServerError, nextjsHeader).source).toBe("server");
+  });
+
+  test("a Next.js edge runtime event is a server", () => {
+    const edge = {
+      ...nextjsServerError,
+      platform: "javascript",
+      contexts: { runtime: { name: "vercel-edge" } },
+    };
+    expect(tail(edge, nextjsHeader)).toContain("[SERVER]");
+  });
+
+  test.each([
+    "sentry.javascript.nuxt",
+    "sentry.javascript.sveltekit",
+    "sentry.javascript.remix",
+    "sentry.javascript.astro",
+    "sentry.javascript.solidstart",
+    "sentry.javascript.react-router",
+  ])("%s events follow the platform and runtime", (sdkName) => {
+    const header = { sdk: { name: sdkName, version: "11.0.0" } };
+    const sdk = header.sdk;
+    expect(tail({ ...nextjsBrowserError, sdk }, header)).toContain("[BROWSER]");
+    expect(tail({ ...nextjsServerError, sdk }, header)).toContain("[SERVER]");
+  });
+});
+
+describe("log attributes", () => {
+  /** A werkzeug access log from sentry-python's logs integration. */
+  const werkzeugLog = {
+    items: [
+      {
+        timestamp: 1_794_045_606.1,
+        trace_id: TRACE_ID,
+        level: "info",
+        body: '127.0.0.1 - - [17/Nov/2026 10:00:06] "GET /boom HTTP/1.1" 500 -',
+        attributes: {
+          "sentry.sdk.name": { value: "sentry.python.flask", type: "string" },
+          "sentry.sdk.version": { value: "2.42.0", type: "string" },
+          "sentry.environment": { value: "production", type: "string" },
+          "sentry.origin": { value: "auto.log.stdlib", type: "string" },
+          "sentry.message.template": {
+            value: "%s - - [%s] %s %s %s\n",
+            type: "string",
+          },
+          "sentry.trace.trace_id": { value: TRACE_ID, type: "string" },
+          "server.address": { value: "dev-laptop.local", type: "string" },
+          "logger.name": { value: "werkzeug", type: "string" },
+          "code.file.path": {
+            value:
+              "/app/.venv/lib/python3.12/site-packages/werkzeug/_internal.py",
+            type: "string",
+          },
+          "code.function.name": { value: "_log", type: "string" },
+          "code.line.number": { value: 97, type: "integer" },
+          "thread.id": { value: 6_171_455_488, type: "integer" },
+          "thread.name": {
+            value: "Thread-3 (process_request_thread)",
+            type: "string",
+          },
+          "process.pid": { value: 41_822, type: "integer" },
+          request_id: { value: "req-7f3a", type: "string" },
+        },
+      },
+    ],
+  };
+  const header = { sdk: { name: "sentry.python.flask", version: "2.42.0" } };
+
+  test("without --attributes, a log line shows only custom attributes", () => {
+    const lines = formatItem("log", werkzeugLog, header, "log").map(stripAnsi);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[request_id=req-7f3a]");
+    expect(lines[0]).toContain("[logger.name=werkzeug]");
+    expect(lines[0]).not.toContain("code.file.path");
+    expect(lines[0]).not.toContain("thread.name");
+    expect(lines[0]).not.toContain("server.address");
+  });
+
+  test("with --attributes, SDK attributes are listed under the line", () => {
+    const lines = formatItem("log", werkzeugLog, header, "log", true).map(
+      stripAnsi,
+    );
+    expect(lines.length).toBeGreaterThan(1);
+    const table = lines.slice(1).join("\n");
+    expect(table).toContain("sdk attributes");
+    expect(table).toContain("code.file.path");
+    expect(table).toContain("thread.name");
+  });
+});

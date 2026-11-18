@@ -152,12 +152,15 @@ sentry local run --open -- npm run dev
 # Watch only AI/agent (gen_ai, mcp) spans while iterating on an agent.
 sentry local -f ai
 
-# Server-side SDKs read SENTRY_SPOTLIGHT automatically. The CLI also injects
-# the URL under every framework client prefix (NEXT_PUBLIC_, VITE_, PUBLIC_,
-# NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_). Until the browser SDK reads
-# these automatically (getsentry/sentry-javascript#18198), reference the var
-# matching your framework in the client config:
-# Sentry.init({ spotlight: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT ?? false })
+# Node.js and Python SDKs read SENTRY_SPOTLIGHT on their own. The CLI also
+# injects the URL under framework client prefixes (NEXT_PUBLIC_, VITE_,
+# PUBLIC_, NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_), but browser SDKs
+# ignore them. Pass the var to the integration in the client config:
+# integrations: [Sentry.spotlightBrowserIntegration({ sidecarUrl: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT })]
+# Cloudflare Workers capture nothing until withSentry() sets
+# tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).
+# Replays and browser-to-server trace links need a DSN too. Next.js edge code
+# sends only errors (through the Node.js server). See `sentry help local run`.
 ```
 
 #### Query Sentry Documentation

@@ -1,6 +1,7 @@
 import {
   clientKeyFixture,
   mswServer,
+  organizationFixture,
   projectFixture,
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
@@ -59,13 +60,41 @@ describe("create_project", () => {
     expect(output).toMatchInlineSnapshot(`
       {
         "dsn": "https://d20df0a1ab5031c7f3c7edca9c02814d@o4509106732793856.ingest.us.sentry.io/4509109104082945",
-        "guidance": "Tell the user the project slug and DSN; the SDK needs the DSN.",
         "project": {
           "id": "4509109104082945",
           "name": "cloudflare-mcp",
           "slug": "cloudflare-mcp",
         },
         "repository": null,
+        "setup": {
+          "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/",
+          "platform": "Node.js",
+          "signals": [
+            {
+              "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/",
+              "name": "Errors",
+              "recommended": true,
+              "usefulFor": "Unhandled exceptions and crashes, grouped into issues with stack traces and the state that led to them",
+            },
+            {
+              "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+              "name": "Traces",
+              "recommended": true,
+              "usefulFor": "Debugging how requests, background jobs, and AI agent runs flow across services, and where they fail or slow down",
+            },
+            {
+              "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+              "name": "Logs",
+              "usefulFor": "Structured app logs linked to the trace and error they came from, for context a stack trace lacks",
+            },
+            {
+              "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/",
+              "name": "Metrics",
+              "usefulFor": "Counters, gauges, and distributions to chart and alert on, such as signups, queue depth, or token usage",
+            },
+          ],
+        },
+        "suggestedActions": [],
       }
     `);
     // Only the public DSN is exposed; secret keys and other key metadata stay private.
@@ -260,7 +289,264 @@ describe("create_project", () => {
       project: { slug: "cloudflare-mcp" },
       dsn: null,
       repository: null,
-      guidance: expect.stringContaining("Create one with create_dsn."),
+      suggestedActions: [
+        {
+          type: "tool_call",
+          toolName: "create_dsn",
+          arguments: {
+            organizationSlug: "sentry-mcp-evals",
+            projectSlug: "cloudflare-mcp",
+            name: "Default",
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps the region in the create_dsn suggestion when DSN setup fails", async () => {
+    mswServer.use(
+      http.post(
+        "https://us.sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () => HttpResponse.json(projectFixture),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/keys/",
+        () => HttpResponse.json({ detail: "lookup failed" }, { status: 500 }),
+      ),
+      http.post(
+        "https://us.sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/keys/",
+        () => HttpResponse.json({ detail: "create failed" }, { status: 500 }),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/organizations/sentry-mcp-evals/",
+        () => HttpResponse.json(organizationFixture),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "node",
+        regionUrl: "https://us.sentry.io",
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result).suggestedActions).toEqual([
+      {
+        type: "tool_call",
+        toolName: "create_dsn",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: "https://us.sentry.io",
+          projectSlug: "cloudflare-mcp",
+          name: "Default",
+        },
+        reason: "The project was created without a DSN.",
+      },
+    ]);
+  });
+
+  it("lists only the setup signals the organization has enabled", async () => {
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () =>
+          HttpResponse.json({
+            ...projectFixture,
+            platform: "javascript-nextjs",
+          }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/",
+        ({ request }) => {
+          expect(
+            new URL(request.url).searchParams.get("include_feature_flags"),
+          ).toBe("1");
+          return HttpResponse.json({
+            ...organizationFixture,
+            features: ["session-replay", "ourlogs-enabled"],
+          });
+        },
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "javascript-nextjs",
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result).setup).toMatchInlineSnapshot(`
+      {
+        "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/",
+        "platform": "Next.js",
+        "signals": [
+          {
+            "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/",
+            "name": "Errors",
+            "recommended": true,
+            "usefulFor": "Unhandled exceptions and crashes, grouped into issues with stack traces and the state that led to them",
+          },
+          {
+            "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/tracing/",
+            "name": "Traces",
+            "recommended": true,
+            "usefulFor": "Debugging how requests, background jobs, and AI agent runs flow across services, and where they fail or slow down",
+          },
+          {
+            "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/logs/",
+            "name": "Logs",
+            "usefulFor": "Structured app logs linked to the trace and error they came from, for context a stack trace lacks",
+          },
+          {
+            "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/session-replay/",
+            "name": "Session Replay",
+            "usefulFor": "Understanding how users behave in a web or mobile UI: clicks, navigation, network calls, and errors in a replay, to reproduce bugs and find friction",
+          },
+        ],
+      }
+    `);
+  });
+
+  it("lists every supported setup signal when organization features fail to load", async () => {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/sentry-mcp-evals/", () =>
+        HttpResponse.json({ detail: "lookup failed" }, { status: 500 }),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "node",
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    const output = getOutput(result);
+    expect(output.dsn).not.toBeNull();
+    expect(output.setup?.signals.map((signal) => signal.name)).toEqual([
+      "Errors",
+      "Traces",
+      "Logs",
+      "Metrics",
+    ]);
+  });
+
+  it("returns no setup knowledge without a platform", async () => {
+    let organizationRequested = false;
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () => HttpResponse.json({ ...projectFixture, platform: null }),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/",
+        () => {
+          organizationRequested = true;
+          return HttpResponse.json(organizationFixture);
+        },
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: null,
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result)).toMatchObject({
+      setup: null,
+      suggestedActions: [],
+    });
+    expect(organizationRequested).toBe(false);
+  });
+
+  it("uses the created project's platform when none is passed", async () => {
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () =>
+          HttpResponse.json({ ...projectFixture, platform: "python-django" }),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: null,
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    const setup = getOutput(result).setup;
+    expect(setup).toMatchObject({
+      platform: "Django",
+      docsUrl: "https://docs.sentry.io/platforms/python/integrations/django/",
+    });
+    // Integration pages take their signals from the Python SDK page.
+    expect(setup?.signals.map((signal) => signal.docsUrl)).toEqual([
+      "https://docs.sentry.io/platforms/python/integrations/django/",
+      "https://docs.sentry.io/platforms/python/tracing/",
+      "https://docs.sentry.io/platforms/python/logs/",
+      "https://docs.sentry.io/platforms/python/metrics/",
+    ]);
+  });
+
+  it("returns no setup knowledge for a platform without a setup guide", async () => {
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () => HttpResponse.json({ ...projectFixture, platform: "other" }),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "other",
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result)).toMatchObject({
+      dsn: expect.any(String),
+      setup: null,
+      suggestedActions: [],
     });
   });
 
@@ -437,7 +723,7 @@ describe("create_project", () => {
       project: { slug: "cloudflare-mcp" },
       dsn: expect.any(String),
       repository: { name: "getsentry/sentry", linked: false },
-      guidance: expect.stringContaining("The repository did not link."),
+      suggestedActions: [],
     });
   });
 

@@ -35,7 +35,7 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
-import { AMBIGUOUS_SESSION_CODE } from "./session-store.js";
+import { AMBIGUOUS_SESSION_CODE, type LocalSession } from "./session-store.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -88,13 +88,28 @@ const SESSION_REFERENCE_POSITIONAL = {
   },
 } as const;
 
+/**
+ * Options for one control-plane request. `notFound` builds the error for an
+ * HTTP 404, which the control plane returns for a missing session, event, or
+ * envelope; without it a 404 is a generic request failure.
+ */
+type ControlOptions = {
+  host?: string;
+  port?: number;
+  notFound?: () => CliError | Promise<CliError>;
+};
+
 async function controlJson(
   path: string,
   init: RequestInit = {},
-  options: { host?: string; port?: number } = {},
+  { notFound, ...daemon }: ControlOptions = {},
 ): Promise<ControlResult> {
-  const state = await ensureLocalDaemon(options);
+  const state = await ensureLocalDaemon(daemon);
   const response = await requestLocalDaemon(state, path, init);
+  if (response.status === 404 && notFound) {
+    await response.body?.cancel();
+    throw await notFound();
+  }
   if (!response.ok) {
     const body: unknown = await response.json().catch((error: unknown) => {
       logger.debug("Could not read Local control-plane error details", error);
@@ -149,6 +164,45 @@ function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   );
 }
 
+/** A session reference that matches no session, open or closed, on the daemon. */
+function sessionNotFoundError(reference: string): ResolutionError {
+  return new ResolutionError(
+    `Local session "${reference}"`,
+    "not found",
+    sentry`local session list`,
+    [
+      "Closed sessions are kept for three hours, and every session ends when the Local daemon stops",
+    ],
+  );
+}
+
+/**
+ * Error for an event or envelope lookup that got a 404. The control plane
+ * answers 404 both for a missing session and for a missing ID inside it, so
+ * this checks the session first and throws its error when it is the one gone.
+ */
+async function telemetryNotFoundError(
+  kind: "event" | "envelope",
+  session: string,
+  id: string,
+): Promise<ResolutionError> {
+  await controlJson(
+    `/sessions/${encodeURIComponent(session)}`,
+    {},
+    { notFound: () => sessionNotFoundError(session) },
+  );
+  return new ResolutionError(
+    `Local ${kind} "${id}"`,
+    `not found in session "${session}"`,
+    kind === "event"
+      ? sentry`local event list ${session}`
+      : sentry`local envelope list ${session}`,
+    [
+      `It may have been evicted when the session reached its envelope limit; raise it with ${sentry`local session retention ${session} --max-envelopes <count>`}`,
+    ],
+  );
+}
+
 function singleReference(parts: string[]): string {
   const reference = parts.join(" ").trim();
   if (!reference) {
@@ -158,6 +212,55 @@ function singleReference(parts: string[]): string {
     );
   }
   return reference;
+}
+
+/** A session that still accepts telemetry, named in `daemon stop` output. */
+type CapturingSession = Pick<LocalSession, "id" | "label">;
+
+/**
+ * Sessions that still accept telemetry. Stopping the daemon ends them, and
+ * their apps keep sending to an address nobody answers. Listing them is best
+ * effort, so it never blocks a stop.
+ */
+async function listCapturingSessions(
+  state: LocalDaemonState,
+): Promise<CapturingSession[]> {
+  try {
+    const response = await requestLocalDaemon(state, "/sessions", {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      logger.debug(`Could not list Local sessions (HTTP ${response.status})`);
+      return [];
+    }
+    const { sessions = [] } = (await response.json()) as {
+      sessions?: LocalSession[];
+    };
+    return sessions
+      .filter((session) => session.state === "open")
+      .map(({ id, label }) => ({ id, label }));
+  } catch (error) {
+    logger.debug("Could not list Local sessions before stopping", error);
+    return [];
+  }
+}
+
+/** Warn that stopping the daemon ended sessions whose apps still send to it. */
+function warnCapturingSessions(
+  action: "Stopped" | "Restarted",
+  sessions: CapturingSession[],
+): void {
+  if (sessions.length === 0) {
+    return;
+  }
+  const count =
+    sessions.length === 1
+      ? "1 session was"
+      : `${sessions.length} sessions were`;
+  const names = sessions.map(({ id, label }) => `${label} (${id})`).join(", ");
+  logger.warn(
+    `${action} the Local daemon while ${count} still capturing: ${names}. Their apps' telemetry is no longer captured; restart their commands to capture again.`,
+  );
 }
 
 /** Request shutdown and confirm discovery and ownership have been released. */
@@ -227,11 +330,17 @@ const daemonStopCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (!state) {
-      yield new CommandOutput({ stopped: false, reason: "not running" });
+      yield new CommandOutput({
+        stopped: false,
+        reason: "not running",
+        capturingSessions: [],
+      });
       return;
     }
+    const capturingSessions = await listCapturingSessions(state);
     await stopLocalDaemon(state);
-    yield new CommandOutput({ stopped: true });
+    warnCapturingSessions("Stopped", capturingSessions);
+    yield new CommandOutput({ stopped: true, capturingSessions });
   },
 });
 
@@ -242,7 +351,9 @@ const daemonRestartCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
+      const capturingSessions = await listCapturingSessions(state);
       await stopLocalDaemon(state);
+      warnCapturingSessions("Restarted", capturingSessions);
     }
     yield new CommandOutput(
       publicDaemonState(
@@ -318,10 +429,12 @@ function buildSessionCommand(
     docs: { brief },
     parameters: { flags: {}, positional: SESSION_REFERENCE_POSITIONAL },
     async *func(_flags, ...parts: string[]) {
+      const reference = singleReference(parts);
       yield new CommandOutput(
         await controlJson(
-          `/sessions/${encodeURIComponent(singleReference(parts))}${suffix}`,
+          `/sessions/${encodeURIComponent(reference)}${suffix}`,
           { method },
+          { notFound: () => sessionNotFoundError(reference) },
         ),
       );
     },
@@ -356,6 +469,8 @@ function buildTelemetryViewCommand(
       yield new CommandOutput(
         await controlJson(
           `/sessions/${encodeURIComponent(session)}/${kind}s/${encodeURIComponent(id)}`,
+          {},
+          { notFound: () => telemetryNotFoundError(kind, session, id) },
         ),
       );
     },
@@ -373,7 +488,8 @@ const sessionRetentionCommand = buildCommand({
     flags: { readonly "max-envelopes"?: number },
     ...parts: string[]
   ) {
-    const path = `/sessions/${encodeURIComponent(singleReference(parts))}/retention`;
+    const reference = singleReference(parts);
+    const path = `/sessions/${encodeURIComponent(reference)}/retention`;
     const value = flags["max-envelopes"];
     yield new CommandOutput(
       await controlJson(
@@ -385,6 +501,7 @@ const sessionRetentionCommand = buildCommand({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ maxEnvelopes: value }),
             },
+        { notFound: () => sessionNotFoundError(reference) },
       ),
     );
   },

@@ -189,7 +189,7 @@ Run a command with the local dev server enabled
 | `<command...>` | Command to run |
 
 **Flags:**
-- `-p, --port <value> - Port for the local server - (default: "8969")`
+- `-p, --port <value> - Port for the local server (default: 8969)`
 - `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-V, --verify - Verify SDK sends events, then exit`

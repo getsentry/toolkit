@@ -1,4 +1,5 @@
 /** Real CLI process coverage for daemon discovery, isolated telemetry and leases. */
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { rmSync } from "node:fs";
@@ -13,6 +14,7 @@ import {
 } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
 import { runCli } from "../fixture.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -379,7 +381,10 @@ describe("Local daemon E2E", () => {
             };
             expect(after.pid).not.toBe(before.pid);
           } else {
-            expect(JSON.parse(result.stdout)).toEqual({ stopped: true });
+            expect(JSON.parse(result.stdout)).toEqual({
+              stopped: true,
+              capturingSessions: [],
+            });
             await expect(readFile(statePath, "utf8")).rejects.toMatchObject({
               code: "ENOENT",
             });
@@ -1026,11 +1031,92 @@ describe("Local daemon E2E", () => {
     expect(serve.stderr).toContain("--session");
   }, 30_000);
 
+  test("stop names the sessions still capturing, and their run stops waiting for the daemon", async () => {
+    const { spawn } = await import("node:child_process");
+    const { getCliCommand } = await import("../fixture.js");
+    const dir = getConfigDir();
+    const ready = join(dir, "app-ready");
+    const script = join(dir, "long-app.cjs");
+    // Ends by itself so a run that the test kills never leaves it behind.
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");
+setTimeout(() => {}, 20000);`,
+    );
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const run = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "run",
+        "--session",
+        "capturing",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    run.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    run.stdout.resume();
+    const closed = new Promise<void>((resolve, reject) => {
+      run.once("close", () => resolve());
+      run.once("error", reject);
+    });
+    try {
+      await expect
+        .poll(() => stat(ready).then(Boolean, () => false), {
+          timeout: 15_000,
+        })
+        .toBe(true);
+      const stopped = await cli("daemon", "stop");
+      expect(stopped.exitCode, stopped.stderr).toBe(0);
+      expect(JSON.parse(stopped.stdout)).toMatchObject({
+        stopped: true,
+        capturingSessions: [{ label: "capturing" }],
+      });
+      expect(stopped.stderr).toContain("1 session was still capturing");
+      await expect
+        .poll(() => stderr, { timeout: 10_000 })
+        .toContain(
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
+        );
+      // The app keeps running; only the event tail stops.
+      expect(run.exitCode, stderr).toBeNull();
+      expect(stderr).not.toContain("reconnecting in 2s");
+    } finally {
+      run.kill("SIGTERM");
+      await closed;
+    }
+  }, 30_000);
+
   test("restarts on the configured port and preserves singleton discovery", async () => {
     const port = await availablePort();
-    await createSession("restart", port);
+    const session = await createSession("restart", port);
     const result = await cli("daemon", "restart");
     expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Restarted the Local daemon while 1 session was still capturing: restart (${session.id})`,
+    );
     expect(JSON.parse(result.stdout)).toMatchObject({
       host: "127.0.0.1",
       port,
@@ -1108,6 +1194,138 @@ describe("Local foreground commands", () => {
       expect(lines.map((line) => line.trim())).not.toContain("INJECTED");
     },
     30000,
+  );
+
+  /**
+   * An app that counts its SIGINTs in `count` and writes its pid next to it,
+   * then dies from SIGINT half a second after the first one, which leaves
+   * time for a duplicate to arrive.
+   */
+  async function sigintCountingApp() {
+    const dir = getConfigDir();
+    const count = join(dir, "sigint-count");
+    const pidFile = join(dir, "sigint-app.pid");
+    const script = join(dir, "sigint-app.cjs");
+    await writeFile(
+      script,
+      `const fs = require("node:fs");
+let n = 0;
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+fs.writeFileSync(${JSON.stringify(count)}, "0");
+process.on("SIGINT", () => {
+  fs.writeFileSync(${JSON.stringify(count)}, String(++n));
+  if (n === 1) setTimeout(() => { process.removeAllListeners("SIGINT"); process.kill(process.pid, "SIGINT"); }, 500);
+});
+setInterval(() => {}, 1000);
+`,
+    );
+    const { getCliCommand } = await import("../fixture.js");
+    const command = [
+      ...getCliCommand(),
+      "local",
+      "run",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(await availablePort()),
+      "--",
+      process.execPath,
+      script,
+    ];
+    const env = {
+      ...process.env,
+      SENTRY_CONFIG_DIR: dir,
+      SENTRY_CLI_NO_TELEMETRY: "1",
+    };
+    /** Kill the app if it outlived the CLI, and say whether it had. */
+    const killOrphan = async () => {
+      const pid = Number(await readFile(pidFile, "utf8").catch(() => "0"));
+      if (pid <= 0) return false;
+      try {
+        process.kill(pid, "SIGKILL");
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    return { command, env, count, killOrphan };
+  }
+
+  test.skipIf(process.platform === "win32")(
+    "passes a SIGINT sent only to the CLI on to the app once and exits like the app",
+    async () => {
+      const app = await sigintCountingApp();
+      const [executable, ...args] = app.command;
+      if (!executable) throw new Error("Missing CLI executable");
+      // Detached: its own session with no terminal, so a Ctrl-C in the
+      // terminal running the tests can't reach the app.
+      const cli = spawn(executable, args, {
+        cwd: join(import.meta.dirname, "../.."),
+        detached: true,
+        env: app.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      cli.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      cli.stdout.resume();
+      const closed = new Promise<number | null>((resolve, reject) => {
+        cli.once("close", (code) => resolve(code));
+        cli.once("error", reject);
+      });
+      try {
+        await expect
+          .poll(() => readFile(app.count, "utf8").catch(() => ""), {
+            timeout: 15000,
+          })
+          .toBe("0");
+        // Only the CLI's own pid, never its process group.
+        cli.kill("SIGINT");
+        expect(await closed, stderr).toBe(130);
+        expect(await readFile(app.count, "utf8")).toBe("1");
+        expect(stderr).not.toContain("Error:");
+      } finally {
+        cli.kill("SIGKILL");
+        await app.killOrphan();
+      }
+    },
+    30000,
+  );
+
+  // On a terminal the app is in the foreground process group with the CLI,
+  // so Ctrl-C reaches both, while `kill -INT <cli pid>` reaches only the CLI.
+  const hasPython =
+    process.platform !== "win32" &&
+    spawnSync("python3", ["--version"]).status === 0;
+  test.skipIf(!hasPython).each([
+    ["Ctrl-C in the terminal", "ctrl-c"],
+    ["a SIGINT sent only to the CLI", "kill"],
+  ])(
+    "on a terminal, %s stops the app with one SIGINT",
+    async (_name, mode) => {
+      const app = await sigintCountingApp();
+      let stdout: string;
+      let orphaned: boolean;
+      try {
+        ({ stdout } = await promisify(execFile)(
+          "python3",
+          [
+            join(import.meta.dirname, "../fixtures/pty-interrupt.py"),
+            app.count,
+            mode,
+            ...app.command,
+          ],
+          { cwd: join(import.meta.dirname, "../.."), env: app.env },
+        ));
+      } finally {
+        orphaned = await app.killOrphan();
+      }
+      expect(orphaned, "the app outlived the CLI").toBe(false);
+      expect(JSON.parse(stdout)).toEqual({ exitCode: 130 });
+      expect(await readFile(app.count, "utf8")).toBe("1");
+    },
+    60000,
   );
 
   test("rejects verification with a retained session before running the application", async () => {

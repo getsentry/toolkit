@@ -52,6 +52,10 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
     "bash-hook traceback template only; inherited SDK convention",
   ],
   [
+    "SENTRY_SPOTLIGHT",
+    "set by `local run` for the child app; the CLI only names it in Worker setup hints",
+  ],
+  [
     "SENTRY_TRACES_SAMPLE_RATE",
     "inherited from the SDK when spawning subprocesses, not a CLI config knob",
   ],

@@ -1,3 +1,4 @@
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
 import { finite, record, text } from "./inspection.ts";
 import { profileMatchesTrace } from "./profiles.ts";
 import {
@@ -229,13 +230,6 @@ function number(value: unknown): number | undefined {
   if (typeof value === "string" && value.trim()) return finite(Number(value));
   return finite(value);
 }
-function absoluteTimestamp(value: unknown): number | undefined {
-  const numeric = number(value);
-  if (numeric !== undefined) return numeric;
-  if (typeof value !== "string") return;
-  const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) ? milliseconds / 1000 : undefined;
-}
 function matchingTransaction(
   item: LocalFeedItem,
   trace: TraceGroup,
@@ -310,15 +304,15 @@ export function addProfileSpans(
       );
     });
     const transactionStart =
-      number(record(matched?.payload).start_timestamp) ??
-      number(transaction.start_timestamp);
+      parseEventTimestamp(record(matched?.payload).start_timestamp) ??
+      parseEventTimestamp(transaction.start_timestamp);
     // relative_start_ns is the transaction's offset from profile start.
     // Prefer the captured profile clock; derive it from the matched event only
     // when that clock is absent.
     const base =
       item.type === "profile_chunk"
         ? undefined
-        : (absoluteTimestamp(payload.timestamp) ??
+        : (parseEventTimestamp(payload.timestamp) ??
           (transactionStart === undefined
             ? undefined
             : transactionStart - (relativeStart ?? 0) / 1e9));

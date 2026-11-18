@@ -1,11 +1,16 @@
 /** Bounded HTTP decoding and raw delivery identity for the Local receiver. */
 import { brotliDecompress, gunzip, inflate } from "node:zlib";
 import { logger } from "../../lib/logger.js";
-import { createReceiverEnvelope, type ReceiverBuffer } from "./envelope.js";
+import {
+  createReceiverEnvelope,
+  type ReceiverBuffer,
+  withoutOwnDeliveries,
+} from "./envelope.js";
 export {
   createReceiverEnvelope,
   prepareReceiverEnvelope,
   receiverEnvelopeId,
+  receiverEnvelopeReceivedAt,
   type ReceiverBuffer,
   type ReceiverEnvelope,
 } from "./envelope.js";
@@ -18,6 +23,30 @@ type ReceiverState = {
   pending: Set<Promise<unknown>>;
 };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
+const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
+
+/** Call `listener` whenever this receiver rejects an oversized envelope. */
+export function onOversizedEnvelope(
+  buffer: ReceiverBuffer,
+  listener: () => void,
+): () => void {
+  let listeners = oversizedListeners.get(buffer);
+  if (!listeners) {
+    listeners = new Set();
+    oversizedListeners.set(buffer, listeners);
+  }
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Tell this receiver's listeners when a delivery got HTTP 413. */
+export function reportIngestStatus(
+  buffer: ReceiverBuffer,
+  status: number,
+): void {
+  if (status !== 413) return;
+  for (const listener of oversizedListeners.get(buffer) ?? []) listener();
+}
 
 /** Stop consuming chunked input as soon as its encoded body exceeds the limit. */
 export async function readReceiverBody(
@@ -95,6 +124,8 @@ export function ingestReceiverEnvelope(
     body: Buffer;
     contentType?: string;
     encoding?: string;
+    /** URL the delivery was posted to, which identifies the receiver's own routes. */
+    receiverUrl?: string;
     userAgent?: string;
   },
 ): Promise<204 | 400 | 413 | 415 | 503> {
@@ -138,9 +169,14 @@ export function ingestReceiverEnvelope(
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
+      const delivery = input.receiverUrl
+        ? withoutOwnDeliveries(body, input.receiverUrl)
+        : body;
+      // Envelopes with only Local's own delivery telemetry use no retention.
+      if (!delivery) return 204;
       buffer.put(
         createReceiverEnvelope({
-          body,
+          body: delivery,
           contentType: CONTENT_TYPE,
           userAgent: input.userAgent,
         }),

@@ -1218,7 +1218,7 @@
   {
     "name": "create_project",
     "title": "Create Project",
-    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
+    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, whether the repository linked, and the Sentry signals its platform supports, each with a docs link.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1321,11 +1321,83 @@
             }
           ]
         },
-        "guidance": {
-          "type": "string"
+        "setup": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "type": "string",
+                  "description": "Platform display name, such as `Next.js`."
+                },
+                "docsUrl": {
+                  "type": "string",
+                  "description": "Sentry setup guide for the platform."
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "usefulFor": {
+                        "type": "string"
+                      },
+                      "recommended": {
+                        "description": "Set on signals the SDK's default setup turns on.",
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "docsUrl": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "usefulFor", "docsUrl"],
+                    "additionalProperties": false
+                  },
+                  "description": "Core signals the platform supports and the organization has enabled."
+                }
+              },
+              "required": ["platform", "docsUrl", "signals"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Setup knowledge for the project's platform, or null without one."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
         }
       },
-      "required": ["project", "dsn", "repository", "guidance"],
+      "required": ["project", "dsn", "repository", "setup", "suggestedActions"],
       "additionalProperties": false
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
@@ -7275,6 +7347,76 @@
           ],
           "additionalProperties": false
         },
+        "relatedIssues": {
+          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.",
+          "type": "object",
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "shortId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "resolved",
+                          "ignored",
+                          "pending_deletion",
+                          "pending_merge",
+                          "reprocessing",
+                          "unresolved"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "project": {
+                    "type": ["string", "null"]
+                  },
+                  "relations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "similar_stacktrace",
+                        "same_trace",
+                        "contributing"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "shortId",
+                  "title",
+                  "status",
+                  "project",
+                  "relations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "unavailableTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+              },
+              "description": "Relation types that failed, so some may be missing."
+            }
+          },
+          "required": ["issues", "unavailableTypes"],
+          "additionalProperties": false
+        },
         "event": {
           "type": "object",
           "properties": {
@@ -8219,7 +8361,7 @@
           }
         },
         "sideQuests": {
-          "description": "Optional setup fixes, most useful first. Not needed for the current task.",
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
           "type": "array",
           "items": {
             "type": "object",
@@ -16330,6 +16472,52 @@
             }
           ],
           "description": "Null when no reason was given."
+        },
+        "sideQuests": {
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tip": {
+                "type": "string"
+              },
+              "next": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": ["tool", "args"],
+                  "additionalProperties": false
+                }
+              },
+              "docs": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id", "tip"],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
