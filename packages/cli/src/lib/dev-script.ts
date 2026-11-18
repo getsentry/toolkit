@@ -395,10 +395,12 @@ async function findPythonApp(
     return null;
   }
   const name = FACTORY_DEF_RE.exec(lines[start]?.code ?? "")?.[1] ?? "";
+  // The body runs to the next top-level statement. A `)` at column 0 still
+  // belongs to a signature that spans lines.
   const end = lines.findIndex(
-    (line, i) => i > start && line.topLevel && line.code.trim() !== "",
+    (line, i) => i > start && line.topLevel && !/^\)|^\s*$/.test(line.code),
   );
-  const body = lines.slice(start + 1, end === -1 ? undefined : end);
+  const body = lines.slice(start, end === -1 ? undefined : end);
   const call = body
     .map((line) => FRAMEWORK_CALL_RE.exec(line.code))
     .find(Boolean);

@@ -596,6 +596,29 @@ describe("detectDevCommand: Python app scanning", () => {
     });
   });
 
+  test.each([
+    ["a one-line factory", "def create_app(): return Flask(__name__)\n"],
+    [
+      "a factory with a multi-line signature",
+      "def create_app(\n    config=None,\n):\n    return Flask(__name__)\n",
+    ],
+  ])("finds the framework in %s", async (_name, source) => {
+    await writeFile(join(tmpDir, "pyproject.toml"), "[project]\n");
+    await writeFile(
+      join(tmpDir, "app.py"),
+      `from flask import Flask\n\n${source}`,
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "flask",
+      "--app",
+      "app:create_app",
+      "run",
+    ]);
+  });
+
   test("serves a make_app factory from the declared dependency", async () => {
     await writeFile(
       join(tmpDir, "main.py"),
