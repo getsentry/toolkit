@@ -639,16 +639,19 @@ export const runCommand = buildCommand({
     }
 
     let interrupted = false;
+    const interrupts = interruptForwarder(child);
     const onSigint = () => {
       interrupted = true;
-      forwardInterrupt(child);
+      interrupts.forward();
     };
     const onSigterm = () => {
       interrupted = true;
       child.kill("SIGTERM");
     };
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
+    // `on`, not `once`: a second signal must reach the app too, not kill the
+    // CLI and leave the app running.
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
@@ -680,6 +683,7 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
@@ -718,18 +722,50 @@ type ChildExit = {
 };
 
 /**
- * Pass a SIGINT the CLI received on to the child, unless the terminal already
- * sent it there: Ctrl-C signals the whole foreground process group, which
- * holds the child too. Sending it twice made apps such as Flask run their
- * shutdown twice. It is still sent when only the CLI was signalled, e.g.
- * `kill -INT <pid>` from a script.
+ * How long to wait before passing on a SIGINT that the terminal seemed to
+ * deliver already. Long enough for most apps to finish shutting down, so they
+ * don't get a second SIGINT, which many treat as "force quit".
  */
-function forwardInterrupt(child: ChildProcess): void {
-  if (terminalSignalsProcess(child.pid)) {
-    logger.debug("The terminal already sent SIGINT to the app");
-    return;
-  }
-  child.kill("SIGINT");
+const INTERRUPT_FALLBACK_MS = 3000;
+
+/**
+ * Pass the SIGINTs the CLI receives on to the child.
+ *
+ * Ctrl-C signals the terminal's whole foreground process group, which holds
+ * the child too, so the first SIGINT is not resent while the child is in that
+ * group: sending it twice made apps such as Flask run their shutdown twice.
+ * The CLI can't tell Ctrl-C from `kill -INT <cli pid>`, though, so if the
+ * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
+ * SIGINT anyway. Later SIGINTs are always passed on.
+ */
+function interruptForwarder(child: ChildProcess): {
+  forward: () => void;
+  dispose: () => void;
+} {
+  let received = 0;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  const send = () => {
+    clearTimeout(fallback);
+    fallback = undefined;
+    child.kill("SIGINT");
+  };
+  return {
+    forward() {
+      received += 1;
+      if (received > 1 || !terminalSignalsProcess(child.pid)) {
+        send();
+        return;
+      }
+      logger.debug("The terminal already sent SIGINT to the app");
+      fallback = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          logger.debug("The app is still running; sending it SIGINT");
+          send();
+        }
+      }, INTERRUPT_FALLBACK_MS);
+    },
+    dispose: () => clearTimeout(fallback),
+  };
 }
 
 /** Default timeout for --verify when no explicit --timeout is given. */
@@ -837,16 +873,17 @@ async function* runWithVerify(
   }
 
   let signalReceived: NodeJS.Signals | null = null;
+  const interrupts = interruptForwarder(child);
   const onSigint = () => {
     signalReceived = "SIGINT";
-    forwardInterrupt(child);
+    interrupts.forward();
   };
   const onSigterm = () => {
     signalReceived = "SIGTERM";
     child.kill("SIGTERM");
   };
-  process.once("SIGINT", onSigint);
-  process.once("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -905,6 +942,7 @@ async function* runWithVerify(
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
     }
+    interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
     await shutdownServer(server);

@@ -412,15 +412,15 @@ setInterval(() => {}, 1000);
      */
     function captureSignalHandlers() {
       const handlers = new Map<string | symbol, () => void>();
-      const once = process.once.bind(process);
+      const on = process.on.bind(process);
       const spy = vi
-        .spyOn(process, "once")
+        .spyOn(process, "on")
         .mockImplementation((event, listener) => {
           if (event === "SIGINT" || event === "SIGTERM") {
             handlers.set(event, listener as () => void);
             return process;
           }
-          return once(event, listener);
+          return on(event, listener);
         });
       return {
         send(signal: "SIGINT" | "SIGTERM") {
@@ -491,6 +491,32 @@ setInterval(() => {}, 1000);
         signals.send("SIGINT");
         await expect(run).resolves.toBeUndefined();
         expect(await readFile(count, "utf8")).toBe("1");
+      } finally {
+        foreground.mockRestore();
+      }
+    });
+
+    test("passes on a second SIGINT even when the terminal sent the first", async () => {
+      const { script, count } = await countingChild();
+      const foreground = vi
+        .spyOn(childSignals, "terminalSignalsProcess")
+        .mockReturnValue(true);
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          { ...makeContext(), process: { exitCode: undefined } },
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          script,
+        );
+        await childPid(count);
+        // Neither SIGINT came through the terminal, so only the second one
+        // reaches the child.
+        signals.send("SIGINT");
+        signals.send("SIGINT");
+        await expect(run).resolves.toBeUndefined();
+        expect(await readFile(count, "utf8")).toBe("1");
+        expect(foreground).toHaveBeenCalledTimes(1);
       } finally {
         foreground.mockRestore();
       }
