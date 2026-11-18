@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { EventSource as NodeEventSource } from "eventsource";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -744,5 +745,41 @@ test("hosted standalone receiver edits retention without losing saved events", a
       server.close(() => resolve());
       server.closeAllConnections();
     });
+  }
+});
+
+test("a new session link in an open tab switches to that run's sessions", async () => {
+  // `sentry local run` restarted on another port, and its link was pasted into the open tab.
+  const first = await startDaemon();
+  const second = await startDaemon();
+  try {
+    const web = await first.create("web");
+    await first.ingest(web, "/first-run");
+    renderSession(web);
+    await screen.findAllByText("/first-run");
+    await screen.findByRole("combobox", { name: "Session" });
+    await first.stop();
+    const api = await second.create("api");
+    await second.ingest(api, "/second-run");
+    await act(async () => {
+      window.location.hash = new URLSearchParams({
+        stream: api.streamUrl,
+        directory: api.directoryUrl,
+      }).toString();
+    });
+    await screen.findAllByText("/second-run");
+    expect(screen.queryByText("/first-run")).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session", exact: true })
+          .textContent,
+      ).toContain("api"),
+    );
+    expect(screen.queryByText(/Could not refresh sessions/)).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe(""));
+  } finally {
+    cleanup();
+    await first.stop();
+    await second.stop();
   }
 });

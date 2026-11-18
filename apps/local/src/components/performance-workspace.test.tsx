@@ -110,3 +110,37 @@ test("profile chart supports zoom, visualization switching and independent threa
     screen.getByRole("table", { name: "Profile functions" }).textContent,
   ).not.toContain("mainWork");
 });
+test("the Resources caption says resources are grouped by origin and path", () => {
+  render(
+    <SpanAnalysis
+      kind="resources"
+      traces={buildTraceGroups([
+        item("transaction", {
+          transaction: "/orders",
+          contexts: { trace: { trace_id: "t", span_id: "root" } },
+          spans: [
+            {
+              span_id: "script",
+              op: "resource.script",
+              description: "localhost",
+              start_timestamp: 1,
+              timestamp: 1.05,
+              data: { "url.full": "http://localhost:5173/assets/app.js?v=3" },
+            },
+          ],
+        }),
+      ])}
+      query=""
+      onSelectSpan={() => {}}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "http://localhost:5173/assets/app.js" }),
+  ).toBeDefined();
+  expect(screen.getByText(/Grouped by/).textContent).toContain(
+    "origin and path",
+  );
+  expect(screen.getByText(/Grouped by/).textContent).not.toContain(
+    "exact description",
+  );
+});

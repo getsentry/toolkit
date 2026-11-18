@@ -424,3 +424,26 @@ test("events whose contexts are all empty show no Contexts section", () => {
   expect(screen.queryByText(/^contexts$/i)).toBeNull();
   expect(screen.getByRole("table", { name: "Event tags" })).toBeDefined();
 });
+
+test("log attribute values hide terminal colour codes while JSON keeps them", () => {
+  // uvicorn's startup log keeps its coloured template in `color_message`.
+  render(
+    <EventDetail
+      item={item("log", {
+        body: "Started server process [41234]",
+        level: "info",
+        attributes: {
+          color_message: {
+            type: "string",
+            value: "Started server process [\u001b[36m%d\u001b[0m]",
+          },
+        },
+      })}
+    />,
+  );
+  const attributes = screen.getByRole("table", { name: "Log attributes" });
+  expect(attributes.textContent).toContain("Started server process [%d]");
+  expect(attributes.textContent).not.toContain("[36m");
+  fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+  expect(screen.getByRole("tabpanel").textContent).toContain("[36m");
+});

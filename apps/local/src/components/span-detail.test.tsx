@@ -72,3 +72,33 @@ test("span inspection shows its own timing, attributes and JSON plus navigable t
   fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
   expect(back).toHaveBeenCalledOnce();
 });
+
+test("span start and end times use local time, not raw epoch seconds", () => {
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /orders",
+              start_timestamp: 1795010400.538,
+              timestamp: 1795010400.65,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+            },
+          ],
+        ],
+      ]),
+      "fixture",
+    ),
+  );
+  const span = trace?.spans.find((entry) => entry.id === "root");
+  if (!trace || !span) throw new Error("Expected trace span");
+  render(<SpanDetail trace={trace} span={span} />);
+  const details =
+    screen.getByRole("table", { name: "Span details" }).textContent ?? "";
+  expect(details).not.toContain("1795010400.538");
+  expect(details).toContain(new Date(1795010400538).toLocaleTimeString());
+  expect(details).toContain(new Date(1795010400650).toLocaleTimeString());
+});
