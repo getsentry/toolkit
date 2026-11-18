@@ -266,6 +266,7 @@ export default defineTool({
           toolName: "create_dsn",
           arguments: {
             organizationSlug,
+            ...(params.regionUrl ? { regionUrl: params.regionUrl } : {}),
             projectSlug: project.slug,
             name: "Default",
           },

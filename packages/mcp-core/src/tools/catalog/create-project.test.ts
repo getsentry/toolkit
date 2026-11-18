@@ -303,6 +303,54 @@ describe("create_project", () => {
     });
   });
 
+  it("keeps the region in the create_dsn suggestion when DSN setup fails", async () => {
+    mswServer.use(
+      http.post(
+        "https://us.sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () => HttpResponse.json(projectFixture),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/keys/",
+        () => HttpResponse.json({ detail: "lookup failed" }, { status: 500 }),
+      ),
+      http.post(
+        "https://us.sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/keys/",
+        () => HttpResponse.json({ detail: "create failed" }, { status: 500 }),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/organizations/sentry-mcp-evals/",
+        () => HttpResponse.json(organizationFixture),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "node",
+        regionUrl: "https://us.sentry.io",
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result).suggestedActions).toEqual([
+      {
+        type: "tool_call",
+        toolName: "create_dsn",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: "https://us.sentry.io",
+          projectSlug: "cloudflare-mcp",
+          name: "Default",
+        },
+        reason: "The project was created without a DSN.",
+      },
+    ]);
+  });
+
   it("lists only the setup signals the organization has enabled", async () => {
     mswServer.use(
       http.post(
