@@ -31,13 +31,7 @@ type OrganizationResult = z.infer<
 >["organizations"][number];
 
 function normalizeUrl(url: string | undefined): string | null {
-  const trimmed = url?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  // Self-hosted Sentry may return values that are not absolute URLs
-  // (e.g. a `system.url-prefix` without a scheme).
-  return z.string().url().safeParse(trimmed).success ? trimmed : null;
+  return url?.trim() ? url : null;
 }
 
 function toResult(organization: {

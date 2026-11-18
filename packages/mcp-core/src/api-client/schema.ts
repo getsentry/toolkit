@@ -65,9 +65,7 @@ export const OrganizationSchema = z
             },
           )
           .optional(),
-        // Self-hosted Sentry returns `system.url-prefix` here, which may be
-        // empty or lack a scheme, so this is not validated as a URL.
-        organizationUrl: z.string().optional(),
+        organizationUrl: z.string().url(),
       })
       .optional(),
     // Only returned by the organization details endpoint, not the list endpoint.
