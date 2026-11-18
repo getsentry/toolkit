@@ -41,7 +41,7 @@ import {
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
 import { at } from "../helpers.js";
 
-const generatedCommands: CommandCompletions = generatedTargets.commands;
+const generatedCommands = generatedTargets.commands as CommandCompletions;
 
 // -- Arbitraries --
 

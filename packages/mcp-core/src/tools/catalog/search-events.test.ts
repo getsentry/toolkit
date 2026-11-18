@@ -3555,7 +3555,7 @@ describe("search_events", () => {
       );
 
       expect(requests).toHaveLength(1);
-      return requests[0];
+      return requests[0]!;
     };
 
     it("searches the agent's absolute window inside the period", async () => {

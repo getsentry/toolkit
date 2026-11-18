@@ -188,7 +188,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
 
   test("passes setup environment and hands off PATH handling", () => {
     const handoffCode = `sntryh_${"a".repeat(43)}`;
-    env.SENTRY_HANDOFF = handoffCode;
+    env[""] = handoffCode;
 
     const result = run();
 

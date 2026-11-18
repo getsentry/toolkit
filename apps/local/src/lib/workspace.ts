@@ -132,7 +132,7 @@ export function eventListLabel(item: LocalFeedItem): {
 
 function feedbackMessage(payload: unknown): string | undefined {
   const feedback = feedbackData(payload);
-  return text(feedback.message) ?? text(feedback.comments);
+  return text(feedback["message"]) ?? text(feedback["comments"]);
 }
 
 export function matchesSearch(item: LocalFeedItem, query: string) {

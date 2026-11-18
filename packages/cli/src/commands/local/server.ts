@@ -151,7 +151,7 @@ function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
       if (timer === undefined) {
         timer = setTimeout(flush, quietUntil - now);
         // A pending count must never keep the CLI alive.
-        timer.unref?.();
+        timer.unref();
       }
       return;
     }
@@ -984,11 +984,11 @@ async function attemptSSEConnection(
 ): Promise<
   "no-connection" | "connected-then-lost" | "retained" | "session-gone"
 > {
-  let wasConnected = false;
+  const conn = { wasConnected: false };
   const augmented = {
     ...opts,
     onConnected: () => {
-      wasConnected = true;
+      conn.wasConnected = true;
     },
   };
   try {
@@ -1003,12 +1003,12 @@ async function attemptSSEConnection(
     logger.debug(
       `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
-    if (opts.streamUrl && !wasConnected && isConnectionRefused(err)) {
+    if (opts.streamUrl && !conn.wasConnected && isConnectionRefused(err)) {
       return "session-gone";
     }
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
-    return wasConnected ? "connected-then-lost" : "no-connection";
+    return conn.wasConnected ? "connected-then-lost" : "no-connection";
   }
 }
 

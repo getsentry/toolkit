@@ -27,7 +27,7 @@ type PositionedSpan = {
   depth: number;
   isLastChild: boolean;
   /** For a sampled profile row, the captured span whose samples it shows. */
-  owner?: string;
+  owner?: string | undefined;
 };
 
 function formatDuration(durationMs: number | undefined): string {

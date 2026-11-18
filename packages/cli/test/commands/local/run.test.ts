@@ -62,8 +62,8 @@ import type { Writer } from "../../../src/types/index.js";
  */
 const spawnCapture: {
   args?: readonly string[];
-  child?: ChildProcess;
-  env?: NodeJS.ProcessEnv;
+  child?: ChildProcess | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
   stdio?: Parameters<typeof import("node:child_process").spawn>[2]["stdio"];
 } = {};
 
@@ -83,7 +83,7 @@ vi.mock("node:child_process", async (importOriginal) => {
         spawnCapture.env = options.env;
       }
       spawnCapture.stdio = options?.stdio;
-      const child = actual.spawn(cmd, [...args], options);
+      const child = actual.spawn(cmd, [...args], options ?? {});
       spawnCapture.child = child;
       return child;
     },
@@ -1095,12 +1095,12 @@ describe("sentry local run --verify receiver", () => {
         context,
       );
       expect(context.process.exitCode ?? 0).toBe(0);
-      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
       expect(receiver.pathname).toBe("/stream");
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       // Client-side variants get the fallback port too, not the default.
-      expect(spawnCapture.env?.NEXT_PUBLIC_SENTRY_SPOTLIGHT).toBe(
+      expect(spawnCapture.env?.["NEXT_PUBLIC_SENTRY_SPOTLIGHT"]).toBe(
         receiver.href,
       );
       expect(warn).not.toHaveBeenCalledWith(
@@ -1136,7 +1136,7 @@ describe("sentry local run --verify receiver", () => {
         context,
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
-      const port = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "").port;
+      const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
       expect(warn).toHaveBeenCalledWith(
         `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
       );
@@ -1219,7 +1219,7 @@ describe("sentry local run messages", () => {
         context,
       );
       expect(context.process.exitCode ?? 0).toBe(0);
-      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       expect(info).toHaveBeenCalledWith(

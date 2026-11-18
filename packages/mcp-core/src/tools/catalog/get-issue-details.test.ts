@@ -17,7 +17,6 @@ import {
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { RelatedIssues } from "../../api-client/types";
 import type { Skill } from "../../skills";
 import * as logging from "../../telem/logging";
 import { getStructuredContent } from "../../test-utils/structured-content";
@@ -2163,12 +2162,10 @@ describe("structuredContent", () => {
       captureRelatedRequest(() =>
         HttpResponse.json({
           ...relatedIssuesFixture,
-          data: relatedIssuesFixture.data.map(
-            (entry: RelatedIssues["data"][number]) => ({
-              ...entry,
-              issue: { ...entry.issue, status: "a_future_status" },
-            }),
-          ),
+          data: relatedIssuesFixture.data.map((entry) => ({
+            ...entry,
+            issue: { ...entry.issue, status: "a_future_status" },
+          })),
         }),
       );
 

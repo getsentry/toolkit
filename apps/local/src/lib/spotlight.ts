@@ -24,7 +24,7 @@ export type StreamEndpoint = {
 export type LocalFeedItem = {
   id: string;
   type: string;
-  timestamp?: number | string;
+  timestamp?: number | string | undefined;
   text: string;
   payload: unknown;
   metadata?: EventMetadata;
@@ -91,7 +91,7 @@ function getRoute(url: string | undefined): string | undefined {
 /** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
 function getLogEntry(value: unknown): string | undefined {
   return isRecord(value)
-    ? (getString(value.formatted) ?? getString(value.message))
+    ? (getString(value["formatted"]) ?? getString(value["message"]))
     : undefined;
 }
 
@@ -237,7 +237,7 @@ function getItemTimestamp(payload: unknown): number | string | undefined {
   const timestamp =
     payload["timestamp"] ??
     payload["end_timestamp"] ??
-    sessionAggregates(payload)[0]?.started;
+    sessionAggregates(payload)[0]?.["started"];
   return typeof timestamp === "number" || typeof timestamp === "string"
     ? timestamp
     : undefined;

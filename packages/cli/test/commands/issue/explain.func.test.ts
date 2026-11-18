@@ -200,7 +200,7 @@ describe("issue explain multiple IDs", () => {
       ),
     );
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
     ).rejects.toMatchObject({

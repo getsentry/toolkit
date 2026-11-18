@@ -85,7 +85,8 @@ function getPayloadSpan(
     parseEventTimestamp(event["end_timestamp"]) ??
     parseEventTimestamp(item.timestamp);
   const operation = getString(trace["op"]) ?? item.metadata?.operation;
-  const title = item.metadata?.title?.trim();
+  const titleMeta = item.metadata;
+  const title = titleMeta?.title.trim();
   const description = withCapturedUrl(
     getString(event["transaction"]) ??
       (title && title !== item.type ? title : undefined) ??
@@ -163,7 +164,9 @@ function withCapturedUrl(description: string, payload: unknown): string {
     return path ? `${description} ${path}` : description;
   }
   if (!parsed) return description;
-  const [, method = "", target] = description.match(/^([A-Z]+ )?(.*)$/)!;
+  const match = description.match(/^([A-Z]+ )?(.*)$/);
+  const method = match?.[1] ?? "";
+  const target = match?.[2] ?? description;
   return target === parsed.hostname || target === parsed.host
     ? `${method}${parsed.origin}${parsed.pathname}`
     : description;

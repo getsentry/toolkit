@@ -699,14 +699,14 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    let interrupted = false;
+    const interruptState = { interrupted: false };
     const interrupts = interruptForwarder(child);
     const onSigint = () => {
-      interrupted = true;
+      interruptState.interrupted = true;
       interrupts.forward();
     };
     const onSigterm = () => {
-      interrupted = true;
+      interruptState.interrupted = true;
       child.kill("SIGTERM");
     };
     // `on`, not `once`: a second signal must reach the app too, not kill the
@@ -761,7 +761,7 @@ export const runCommand = buildCommand({
     }
     // The user stopped the app: however it ended is what they asked for, so
     // exit with its code and print no error.
-    if (interrupted) {
+    if (interruptState.interrupted) {
       this.process.exitCode = exitCode;
       return;
     }
@@ -970,14 +970,14 @@ async function* runWithVerify(
     throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
-  let signalReceived: NodeJS.Signals | null = null;
+  const signalState: { current: NodeJS.Signals | null } = { current: null };
   const interrupts = interruptForwarder(child);
   const onSigint = () => {
-    signalReceived = "SIGINT";
+    signalState.current = "SIGINT";
     interrupts.forward();
   };
   const onSigterm = () => {
-    signalReceived = "SIGTERM";
+    signalState.current = "SIGTERM";
     child.kill("SIGTERM");
   };
   process.on("SIGINT", onSigint);
@@ -1048,8 +1048,8 @@ async function* runWithVerify(
 
   // Re-emit the signal after cleanup so the default handler terminates the
   // process instead of continuing with the outcome switch below.
-  if (signalReceived) {
-    process.kill(process.pid, signalReceived);
+  if (signalState.current) {
+    process.kill(process.pid, signalState.current);
     return;
   }
 

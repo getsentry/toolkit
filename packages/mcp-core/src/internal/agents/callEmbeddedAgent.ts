@@ -123,7 +123,7 @@ export async function callEmbeddedAgent<TOutput>({
   /** Whether this step produced a result that permits a final response. */
   isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
   /** Cancels the model calls, such as when the MCP client cancels the tool call. */
-  abortSignal?: AbortSignal;
+  abortSignal?: AbortSignal | undefined;
 }): Promise<EmbeddedAgentResult<TOutput>> {
   const capturedToolCalls: ToolCall[] = [];
 
@@ -147,7 +147,7 @@ export async function callEmbeddedAgent<TOutput>({
       system,
       prompt,
       tools,
-      abortSignal,
+      ...(abortSignal === undefined ? {} : { abortSignal }),
       stopWhen: ({ steps }) =>
         steps.length >= MAX_WORK_STEPS && !shouldAllowFinalResponseStep(steps),
       prepareStep: ({ steps }) => {

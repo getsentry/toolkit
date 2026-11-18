@@ -177,7 +177,7 @@ function escapeControlCharsInStrings(text: string): string {
   let result = "";
   let inString = false;
   for (let i = 0; i < text.length; i++) {
-    const char = text[i];
+    const char = text.charAt(i);
     if (char === "\\" && i + 1 < text.length) {
       result += char + text[++i];
     } else {

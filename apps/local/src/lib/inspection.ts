@@ -308,20 +308,20 @@ export function eventSummaryFields(
   const p = record(payload);
   // A message's synthetic exception only carries its stack.
   const exceptions =
-    classifyEvent(p) === "exception" ? record(p.exception).values : [];
+    classifyEvent(p) === "exception" ? record(p["exception"])["values"] : [];
   const handled = (Array.isArray(exceptions) ? exceptions : [])
-    .map((exception) => record(record(exception).mechanism).handled)
+    .map((exception) => record(record(exception)["mechanism"])["handled"])
     .filter((value): value is boolean => typeof value === "boolean");
   return Object.entries({
-    Level: text(p.level),
+    Level: text(p["level"]),
     Handled: handled.length
       ? handled.every(Boolean)
         ? "Yes"
         : "No"
       : undefined,
-    Environment: text(p.environment),
-    Release: text(p.release),
-    Server: text(p.server_name),
+    Environment: text(p["environment"]),
+    Release: text(p["release"]),
+    Server: text(p["server_name"]),
   }).flatMap(([label, value]) => (value ? [{ label, value }] : []));
 }
 

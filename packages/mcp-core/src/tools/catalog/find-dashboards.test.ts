@@ -196,7 +196,7 @@ describe("find_dashboards", () => {
         ({ request }) => {
           requestUrls.push(request.url);
           const cursor = new URL(request.url).searchParams.get("cursor");
-          return pages[cursor ?? "first"].clone();
+          return pages[cursor ?? "first"]!.clone();
         },
       ),
     );
@@ -362,7 +362,7 @@ describe("find_dashboards", () => {
       projectConstrainedContext,
     );
 
-    const searchParams = new URL(requestUrls[0]).searchParams;
+    const searchParams = new URL(requestUrls[0]!).searchParams;
     expect(searchParams.has("cursor")).toBe(false);
     expect(searchParams.get("per_page")).toBe("2");
     assertStructuredOnlyResult(result);

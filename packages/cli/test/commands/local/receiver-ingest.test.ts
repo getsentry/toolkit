@@ -260,12 +260,14 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
     fixture: ReturnType<typeof receiver>,
     body: string,
   ): Promise<Response> =>
-    fixture.app.request(
-      new Request(`${receiverOrigin}${fixture.path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-sentry-envelope" },
-        body,
-      }),
+    Promise.resolve(
+      fixture.app.request(
+        new Request(`${receiverOrigin}${fixture.path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-sentry-envelope" },
+          body,
+        }),
+      ),
     );
 
   test("does not retain an envelope holding only its own ingest span", async () => {
@@ -306,12 +308,15 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       ]),
     );
     expect(response.status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     const [, items] = container.getParsedEnvelope()!.envelope;
     expect(items).toHaveLength(1);
-    expect(items[0][0]).toMatchObject({ type: "span", item_count: 2 });
+    const [itemHeader, itemPayload] = at(items, 0);
+    expect(itemHeader).toMatchObject({ type: "span", item_count: 2 });
     expect(
-      (items[0][1].items as { span_id: string }[]).map((span) => span.span_id),
+      (itemPayload["items"] as { span_id: string }[]).map(
+        (span) => span.span_id,
+      ),
     ).toEqual(["3333333333333333", "4444444444444444"]);
   });
 
@@ -319,7 +324,7 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
     const fixture = receiver(scoped);
     const body = `{}\n{"type":"span"}\n{"name":"POST ${receiverOrigin}${fixture.path}"`;
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).toBe(body);
   });
 
@@ -349,9 +354,11 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       event,
     ].join("\n");
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).not.toContain(self);
-    expect(container.getParsedEnvelope()!.envelope[1][0][1]).toMatchObject({
+    const parsedItems = container.getParsedEnvelope()!.envelope[1];
+    const parsedPayload = at(parsedItems, 0)[1];
+    expect(parsedPayload).toMatchObject({
       exception: { values: [{ value: "Checkout failed" }] },
       breadcrumbs: [{ data: { url: "http://localhost:5173/api/orders" } }],
     });
@@ -414,13 +421,14 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       transaction,
     ].join("\n");
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).not.toContain(self);
-    const payload = container.getParsedEnvelope()!.envelope[1][0][1];
-    expect(payload.spans).toEqual([
+    const parsedItems2 = container.getParsedEnvelope()!.envelope[1];
+    const payload = at(parsedItems2, 0)[1];
+    expect(payload["spans"]).toEqual([
       expect.objectContaining({ span_id: "3333333333333333" }),
     ]);
-    expect(payload.breadcrumbs).toEqual({
+    expect(payload["breadcrumbs"]).toEqual({
       values: [expect.objectContaining({ category: "query" })],
     });
   });

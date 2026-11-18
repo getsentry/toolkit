@@ -303,22 +303,25 @@ function isOwnRequestSpan(
   isOwnRoute: (value: unknown) => boolean,
 ): boolean {
   if (!isEnvelopeObject(span)) return false;
-  const data = isEnvelopeObject(span.data) ? span.data : {};
-  const attributes = isEnvelopeObject(span.attributes) ? span.attributes : {};
+  const data = isEnvelopeObject(span["data"]) ? span["data"] : {};
+  const attributes = isEnvelopeObject(span["attributes"])
+    ? span["attributes"]
+    : {};
   const field = (key: string): unknown => {
     const attribute = attributes[key];
     return (
-      data[key] ?? (isEnvelopeObject(attribute) ? attribute.value : attribute)
+      data[key] ??
+      (isEnvelopeObject(attribute) ? attribute["value"] : attribute)
     );
   };
   return (
-    (span.op ?? field("sentry.op")) === "http.client" &&
+    (span["op"] ?? field("sentry.op")) === "http.client" &&
     [
       field("url.full"),
       field("http.url"),
       field("url"),
-      span.description,
-      span.name,
+      span["description"],
+      span["name"],
     ].some(isOwnRoute)
   );
 }
@@ -351,7 +354,8 @@ function withoutOwnRequests(
   const isOwnSpan = (span: unknown) => isOwnRequestSpan(span, isOwnRoute);
   if (type === "span") {
     // Legacy standalone span, or a v2 container of spans.
-    if (!Array.isArray(payload["items"])) return isOwnSpan(payload) ? null : item;
+    if (!Array.isArray(payload["items"]))
+      return isOwnSpan(payload) ? null : item;
     if (!prune(payload, "items", isOwnSpan)) return item;
     const { length } = payload["items"] as unknown[];
     if (!length) return null;

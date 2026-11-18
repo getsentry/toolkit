@@ -157,9 +157,9 @@ export function formatAvailableToolCallInstruction({
 }: {
   toolName: string;
   experimentalMode: boolean;
-  purpose?: string;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  purpose?: string | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string | null {
   if (!isToolAvailableInSession(toolName, availableToolNames)) {
     return null;

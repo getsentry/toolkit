@@ -2089,7 +2089,9 @@ function sentryOffsetPage(url: URL, row: (index: number) => object) {
   if (perPage > 100) {
     return HttpResponse.json({ detail: "Invalid per_page" }, { status: 400 });
   }
-  const [cursorPerPage, page] = (url.searchParams.get("cursor") ?? "0:0:0")
+  const [cursorPerPage = 0, page = 0] = (
+    url.searchParams.get("cursor") ?? "0:0:0"
+  )
     .split(":")
     .map(Number);
   const start = cursorPerPage * page;

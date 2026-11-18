@@ -112,15 +112,19 @@ function streamedVitalVisits(
 ) {
   const visits = new Map<
     string,
-    { name?: string; item?: LocalFeedItem; metrics: VitalVisit["metrics"] }
+    {
+      name?: string | undefined;
+      item?: LocalFeedItem | undefined;
+      metrics: VitalVisit["metrics"];
+    }
   >();
   for (const item of items) {
     if (item.type !== "span") continue;
     const p = record(item.payload),
       data = spanData(p);
-    const segment = p.is_segment === true;
+    const segment = p["is_segment"] === true;
     const pageloadId = segment
-      ? text(p.span_id)
+      ? text(p["span_id"])
       : (text(data["sentry.pageload.span_id"]) ??
         text(data["sentry.segment.id"]));
     if (!pageloadId) continue;
@@ -141,7 +145,7 @@ function streamedVitalVisits(
           ? text(data["url.path"])
           : undefined) ??
         text(data["sentry.segment.name"]) ??
-        text(p.name);
+        text(p["name"]);
     }
     visits.set(pageloadId, visit);
   }

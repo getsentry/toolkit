@@ -926,7 +926,7 @@ describe("Local control plane", () => {
       },
     ]);
     for (const event of events) {
-      const receivedAt = Date.parse(String(event.receivedAt));
+      const receivedAt = Date.parse(String(event["receivedAt"]));
       expect(receivedAt).toBeGreaterThanOrEqual(before);
       expect(receivedAt).toBeLessThanOrEqual(received);
     }

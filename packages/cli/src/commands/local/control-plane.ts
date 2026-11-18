@@ -113,12 +113,12 @@ function replaySegmentId(items: unknown[]): number | undefined {
     const [itemHeader, payload] = item as [unknown, unknown];
     const segmentId =
       typeof payload === "object" && payload !== null
-        ? (payload as Record<string, unknown>).segment_id
+        ? (payload as Record<string, unknown>)["segment_id"]
         : undefined;
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
-      (itemHeader as Record<string, unknown>).type === "replay_event" &&
+      (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
       typeof segmentId === "number" &&
       Number.isInteger(segmentId)
     ) {

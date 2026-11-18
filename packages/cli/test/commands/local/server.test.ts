@@ -1213,10 +1213,12 @@ describe("oversized envelopes", () => {
     globalThis.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : input.toString();
       const response = await plane.app.request(url, init);
-      setTimeout(async () => {
-        await postOversized(plane.app, `${base}/ingest/${ingest}`);
-        await postOversized(plane.app, `${base}/ingest/${ingest}`);
-        plane.sessionStore.close(session.id);
+      setTimeout(() => {
+        void (async () => {
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          plane.sessionStore.close(session.id);
+        })();
       }, 50);
       return response;
     };

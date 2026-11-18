@@ -929,7 +929,7 @@ export default function App() {
         // Undecodable envelopes stay inspectable as raw text.
       }
       // Replayed history must keep its receive time, not the time it loaded.
-      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAt = items?.[0]?.envelopeHeader?.["sent_at"];
       const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
       const receivedAt =
         envelopeReceivedAt(eventId) ??

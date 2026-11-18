@@ -154,7 +154,7 @@
     "test": "pnpm run validate-skills && vitest run",
     "test:ci": "pnpm run generate-definitions && pnpm run validate-skills && vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "pnpm run generate-definitions && vitest",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
     "generate-definitions": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-definitions.ts && oxfmt --write src/toolDefinitions.json src/skillDefinitions.json",
     "generate-platform-setup": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-platform-setup.ts && oxfmt --write src/tools/support/project-setup/platforms.json",
     "generate-otel-namespaces": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs scripts/generate-otel-namespaces.ts",

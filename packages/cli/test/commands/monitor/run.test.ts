@@ -13,7 +13,6 @@ import { runCommand } from "../../../src/commands/monitor/run.js";
 import * as transport from "../../../src/lib/envelope/transport.js";
 import {
   COMMAND_NOT_FOUND_FIELD,
-  CliError,
   ValidationError,
 } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn

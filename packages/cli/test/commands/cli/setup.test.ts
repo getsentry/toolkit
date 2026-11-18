@@ -95,7 +95,7 @@ import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { whichSync } from "../../../src/lib/which.js";
 import { addToWindowsUserPath } from "../../../src/lib/windows-path.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { at, useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
@@ -1152,7 +1152,7 @@ describe("sentry cli setup", () => {
           await fixture.run();
 
           expect(fetch).toHaveBeenCalledTimes(2);
-          const [, tokenInit] = fetch.mock.calls[1];
+          const [, tokenInit] = at(fetch.mock.calls, 1);
           expect(tokenInit.body.get("setup_code")).toBe(handoffSetupCode);
           expect(tokenInit.body.get("client_id")).toBe("handoff-client");
           expect(getAuthConfig()?.token).toBe("handoff-token");

@@ -381,7 +381,7 @@ process.exitCode = result.status ?? 1;
 
   test("passes setup environment and flags through without a terminal", () => {
     const handoffCode = `sntryh_${"a".repeat(43)}`;
-    env.SENTRY_HANDOFF = handoffCode;
+    env["SENTRY_HANDOFF"] = handoffCode;
 
     const result = spawnSync(
       "bash",
@@ -460,7 +460,7 @@ process.exitCode = result.status ?? 1;
     "stages nightly from a $response in the install directory without a temp directory",
     ({ redirect }) => {
       configureNightlyDownload(redirect);
-      env.TMPDIR = join(testDir, "deleted");
+      env["TMPDIR"] = join(testDir, "deleted");
       const result = spawnSync(
         "bash",
         [installScript, "--version", "nightly", "--no-modify-path"],
@@ -656,7 +656,7 @@ process.exitCode = result.status ?? 1;
     expect(recorded("curl-urls")).toEqual([]);
   });
 
-  function install(): ReturnType<typeof spawnSync> & { output: string } {
+  function install() {
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
       env,
       encoding: "utf8",
@@ -723,7 +723,7 @@ exec ${realCurl} "\${args[@]}"
   }, 30_000);
 
   test("downloads a corrupt archive again", () => {
-    env.SENTRY_TEST_GZ_CORRUPT = "1";
+    env["SENTRY_TEST_GZ_CORRUPT"] = "1";
     const result = install();
 
     expect(result.status, result.output).toBe(0);
@@ -762,7 +762,7 @@ exec /usr/bin/gunzip "$@"
   });
 
   test("downloads into the install directory when the temp directory is missing", () => {
-    env.TMPDIR = join(testDir, "deleted");
+    env["TMPDIR"] = join(testDir, "deleted");
     const result = install();
 
     expect(result.status, result.output).toBe(0);
@@ -775,9 +775,9 @@ exec /usr/bin/gunzip "$@"
   test("stages in a home bin directory listed in PATH with a trailing slash", () => {
     const homeBin = join(testDir, "home", "bin");
     mkdirSync(homeBin);
-    delete env.SENTRY_INSTALL_DIR;
-    env.PATH = `${env.PATH}:${homeBin}/`;
-    env.TMPDIR = join(testDir, "deleted");
+    delete env["SENTRY_INSTALL_DIR"];
+    env["PATH"] = `${env["PATH"]}:${homeBin}/`;
+    env["TMPDIR"] = join(testDir, "deleted");
     const result = install();
 
     expect(result.status, result.output).toBe(0);
@@ -812,18 +812,18 @@ exec /usr/bin/gunzip "$@"
 
   describe("when the registry is down", () => {
     beforeEach(() => {
-      env.SENTRY_TEST_REGISTRY_STATUS = "503";
+      env["SENTRY_TEST_REGISTRY_STATUS"] = "503";
       const page = join(testDir, "releases-1.json");
       writeFileSync(
         page,
         JSON.stringify([{ tag_name: "cli@0.46.0", prerelease: false }]),
       );
-      env.SENTRY_TEST_RELEASES_PAGE_1 = page;
+      env["SENTRY_TEST_RELEASES_PAGE_1"] = page;
     });
 
     test("authenticates to GitHub without exposing the token", () => {
-      env.GITHUB_TOKEN = "test-token-value";
-      delete env.SENTRY_CLI_NO_TELEMETRY;
+      env["GITHUB_TOKEN"] = "test-token-value";
+      delete env["SENTRY_CLI_NO_TELEMETRY"];
       const result = install();
 
       expect(result.status, result.output).toBe(0);
@@ -837,7 +837,7 @@ exec /usr/bin/gunzip "$@"
     });
 
     test("waits out a GitHub rate limit", () => {
-      env.SENTRY_TEST_GITHUB_RATE_LIMITED = "1";
+      env["SENTRY_TEST_GITHUB_RATE_LIMITED"] = "1";
       const result = install();
 
       expect(result.status, result.output).toBe(0);
@@ -858,7 +858,7 @@ exec /usr/bin/gunzip "$@"
       "#!/bin/sh\necho 'chmod: Operation not permitted' >&2\nexit 1\n",
       { mode: 0o755 },
     );
-    delete env.SENTRY_CLI_NO_TELEMETRY;
+    delete env["SENTRY_CLI_NO_TELEMETRY"];
     const result = install();
 
     const failure = '(exit 1): chmod +x "$tmp_binary"';

@@ -674,12 +674,9 @@ test("hosted standalone receiver edits retention without losing saved events", a
     });
     renderSession({ streamUrl });
     await screen.findByRole("button", { name: /^View event:/ });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings", exact: true }),
-    );
-    const input = (await screen.findByLabelText(
-      "Envelope limit",
-    )) as HTMLInputElement;
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const input =
+      await screen.findByLabelText<HTMLInputElement>("Envelope limit");
     fireEvent.change(input, { target: { value: "1000" } });
     fireEvent.click(
       screen.getByRole("button", { name: "Apply envelope limit" }),
@@ -721,8 +718,7 @@ test("a new session link in an open tab switches to that run's sessions", async 
     expect(screen.queryByText("/first-run")).toBeNull();
     await waitFor(() =>
       expect(
-        screen.getByRole("combobox", { name: "Session", exact: true })
-          .textContent,
+        screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("api"),
     );
     expect(screen.queryByText(/Could not refresh sessions/)).toBeNull();

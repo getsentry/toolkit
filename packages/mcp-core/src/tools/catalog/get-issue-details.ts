@@ -219,24 +219,24 @@ function buildReplays(
 }
 
 type IssueDetailsArgs = {
-  packageNames?: string[];
+  packageNames?: string[] | undefined;
   organizationSlug: string;
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
-  relatedIssues?: RelatedIssues;
-  projectSlug?: string | null;
-  aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  sourceMapDebug?: SourceMapDebug;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  autofixState?: AutofixRunState | undefined;
+  performanceTrace?: Trace | undefined;
+  externalIssues?: ExternalIssueList | undefined;
+  relatedReplayIds?: string[] | undefined;
+  relatedIssues?: RelatedIssues | undefined;
+  projectSlug?: string | null | undefined;
+  aiConversations?: AIConversationReference[] | undefined;
+  codeLocation?: CodeLocation | undefined;
+  committers?: CommitterList | undefined;
+  sourceMapDebug?: SourceMapDebug | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 };
 
 /** null for a status this version doesn't know, so the output still matches its schema. */
@@ -976,7 +976,7 @@ async function maybeFetchRelatedIssues({
   apiService: SentryApiService;
   organizationSlug: string;
   issueId: string;
-  eventId?: string;
+  eventId?: string | undefined;
 }): Promise<RelatedIssues | undefined> {
   try {
     return await apiService.getRelatedIssues({

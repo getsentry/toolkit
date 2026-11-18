@@ -613,7 +613,7 @@ export class SentryApiService {
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
   /** Cancels every request this service sends, such as a tool call's signal. */
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   private readonly core = this.withSignal(
     createApiClientCore({
       transport,
@@ -3405,9 +3405,9 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       issueId: string;
-      types?: readonly RelatedIssueType[];
-      limit?: number;
-      eventId?: string;
+      types?: readonly RelatedIssueType[] | undefined;
+      limit?: number | undefined;
+      eventId?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<RelatedIssues> {
@@ -5299,7 +5299,7 @@ export class SentryApiService {
     imageUrl: string,
   ): Promise<{ blob: Blob; contentType: string }> {
     const response = imageUrl.startsWith("https://")
-      ? await fetch(imageUrl, { signal: this.signal })
+      ? await fetch(imageUrl, this.signal ? { signal: this.signal } : {})
       : await this.request(
           imageUrl.startsWith(API_BASE_PATH)
             ? imageUrl.slice(API_BASE_PATH.length)

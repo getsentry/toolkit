@@ -929,9 +929,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(second.port, "GET /past-second");
       renderViewer(first.port);
       await screen.findByLabelText(/^View transaction:/);
-      fireEvent.click(
-        screen.getByRole("button", { name: "Switch receiver", exact: true }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
         target: { value: `http://127.0.0.1:${second.port}/stream` },
       });
@@ -944,9 +942,7 @@ describe("local receiver to viewer integration", () => {
       cleanup();
       renderBareViewer();
       await screen.findByLabelText(/^View transaction:/);
-      fireEvent.click(
-        screen.getByRole("button", { name: "Switch receiver", exact: true }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       const firstLabel = `http://127.0.0.1:${first.port}/stream`;
       const secondLabel = `http://127.0.0.1:${second.port}/stream`;
       expect(
@@ -1874,7 +1870,7 @@ describe("local receiver to viewer integration", () => {
     expect(
       screen.queryByRole("button", { name: "Apply envelope limit" }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.getByRole("button", { name: /^View event:/ })).not.toBeNull();
   });
 

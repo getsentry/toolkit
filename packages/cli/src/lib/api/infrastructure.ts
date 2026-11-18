@@ -444,8 +444,7 @@ function readErrorFields(body: unknown): {
     return {};
   }
   const fields = body as Record<string, unknown>;
-  const code =
-    typeof fields["code"] === "string" ? fields["code"] : undefined;
+  const code = typeof fields["code"] === "string" ? fields["code"] : undefined;
   // Leave the key out otherwise, so it can't clear the 401/403 denial reason.
   const seerDenialReason = lookupKnownKey(
     SEER_DENIAL_REASONS,

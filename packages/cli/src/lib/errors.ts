@@ -111,10 +111,10 @@ export const EXIT = {
  * The exit code a shell reports for a process killed by `signal`: 128 plus
  * the signal number, so 130 for SIGINT and 143 for SIGTERM. A command that
  * wraps a child (`sentry local run`) exits with it when the child dies from
- * a signal. A signal Node has no number for counts as 0.
+ * a signal.
  */
 export function signalExitCode(signal: NodeJS.Signals): number {
-  return 128 + (osConstants.signals[signal] ?? 0);
+  return 128 + osConstants.signals[signal];
 }
 
 /**
