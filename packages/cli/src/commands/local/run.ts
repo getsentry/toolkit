@@ -789,7 +789,8 @@ async function* runWithVerify(
     throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
-  let signalReceived: NodeJS.Signals | null = null;
+  // Widened: set in a signal handler, which control-flow narrowing cannot see.
+  let signalReceived = null as NodeJS.Signals | null;
   const onSigint = () => {
     signalReceived = "SIGINT";
     child.kill("SIGINT");

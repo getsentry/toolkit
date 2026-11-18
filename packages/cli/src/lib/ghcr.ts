@@ -81,7 +81,7 @@ function rethrowExternalAbort(
   externalSignal?: AbortSignal,
 ): void {
   if (externalSignal?.aborted) {
-    throw externalSignal?.reason;
+    throw externalSignal.reason;
   }
 }
 

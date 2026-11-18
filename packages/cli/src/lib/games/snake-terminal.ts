@@ -28,10 +28,12 @@ export type SnakeTerminal = {
     NodeJS.ReadStream,
     "off" | "on" | "pause" | "resume" | "setEncoding" | "setRawMode"
   >;
-  readonly output: Pick<
-    NodeJS.WriteStream,
-    "columns" | "off" | "on" | "rows" | "write"
-  >;
+  readonly output: Pick<NodeJS.WriteStream, "off" | "on" | "write"> & {
+    /** Undefined when the output is not a TTY. */
+    readonly columns?: number;
+    /** Undefined when the output is not a TTY. */
+    readonly rows?: number;
+  };
 };
 
 export type SnakeOptions = {

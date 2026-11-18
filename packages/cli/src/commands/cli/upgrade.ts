@@ -1366,7 +1366,7 @@ export const upgradeCommand = buildCommand({
         versionArg,
         target,
         execPath: this.process.execPath,
-        entryPath: this.process.argv?.[1],
+        entryPath: this.process.argv[1],
         pathEnv: this.process.env.PATH,
         offline,
         json: flags.json,

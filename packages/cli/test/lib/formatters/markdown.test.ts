@@ -296,6 +296,11 @@ describe("isPlainOutput", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderMarkdown", () => {
+  test("renders null and undefined as empty", () => {
+    expect(renderMarkdown(null)).toBe("");
+    expect(renderMarkdown(undefined)).toBe("");
+  });
+
   test("plain mode: parses markdown and strips ANSI (not raw CommonMark)", () => {
     withEnv({ SENTRY_PLAIN_OUTPUT: "1", NO_COLOR: undefined }, false, () => {
       const md = "## Hello\n\n| A | B |\n|---|---|\n| 1 | 2 |\n";
@@ -335,6 +340,11 @@ describe("renderMarkdown", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderInlineMarkdown", () => {
+  test("renders null and undefined as empty", () => {
+    expect(renderInlineMarkdown(null)).toBe("");
+    expect(renderInlineMarkdown(undefined)).toBe("");
+  });
+
   test("plain mode: strips markdown syntax", () => {
     withEnv({ SENTRY_PLAIN_OUTPUT: "1", NO_COLOR: undefined }, false, () => {
       expect(renderInlineMarkdown("`trace-id`")).toBe("trace-id");

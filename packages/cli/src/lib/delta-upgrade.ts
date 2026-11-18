@@ -122,13 +122,6 @@ export function normalizeStableReleases(
   return normalized;
 }
 
-function getPrimaryUpgradeSource(): UpgradeSource {
-  if (!PRIMARY_UPGRADE_SOURCE) {
-    throw new Error("No primary upgrade source is configured");
-  }
-  return PRIMARY_UPGRADE_SOURCE;
-}
-
 const instrument: InstrumentHook = (name, fn) =>
   withTracing(name, "http.client", fn);
 
@@ -240,7 +233,7 @@ export function canAttemptDelta(targetVersion: string): boolean {
 
 export async function fetchRecentReleases(
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<NormalizedGitHubReleases> {
   try {
     const response = await customFetch(
@@ -361,7 +354,7 @@ export function resolveStableChain(
   currentVersion: string,
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<PatchChain | null> {
   return stableSource(source).resolveChain(
     currentVersion,
@@ -379,7 +372,7 @@ export async function resolveNightlyChain(opts: {
   signal?: AbortSignal;
   source?: UpgradeSource;
 }): Promise<PatchChain | null> {
-  const { source = getPrimaryUpgradeSource() } = opts;
+  const { source = PRIMARY_UPGRADE_SOURCE } = opts;
   const client = new OciClient({
     registry: "https://ghcr.io",
     repo: source.ghcrRepo,
@@ -398,7 +391,8 @@ export async function resolveNightlyChain(opts: {
     return null;
   }
 
-  let manifests: OciManifest[];
+  // Registry JSON is not validated, so a manifest may be `null`.
+  let manifests: (OciManifest | null)[];
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     manifests = await Promise.all(
@@ -589,7 +583,7 @@ export function resolveStableDelta(
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DeltaResult | null> {
   return resolveDelta(
     stableSource(source),
@@ -608,7 +602,7 @@ export function resolveNightlyDelta(
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DeltaResult | null> {
   return resolveDelta(
     nightlySource(source),
@@ -627,7 +621,7 @@ export function attemptDeltaUpgrade(
   destPath: string,
   offline?: boolean,
   setMessage?: SetMessage,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<DeltaResult | null> {
   if (!canAttemptDelta(targetVersion)) {
     return Promise.resolve(null);
@@ -717,7 +711,7 @@ async function prefetch(
 export function prefetchNightlyPatches(
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<void> {
   return prefetch(nightlySource(source), targetVersion, signal);
 }
@@ -725,7 +719,7 @@ export function prefetchNightlyPatches(
 export function prefetchStablePatches(
   targetVersion: string,
   signal?: AbortSignal,
-  source: UpgradeSource = getPrimaryUpgradeSource(),
+  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
 ): Promise<void> {
   return prefetch(stableSource(source), targetVersion, signal);
 }

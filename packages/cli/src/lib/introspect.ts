@@ -228,12 +228,8 @@ export function getPositionalString(params?: PositionalParams): string {
       .join(" ");
   }
 
-  if (params.kind === "array") {
-    const placeholder = params.parameter.placeholder ?? "args";
-    return `<${placeholder}...>`;
-  }
-
-  return "";
+  const placeholder = params.parameter.placeholder ?? "args";
+  return `<${placeholder}...>`;
 }
 
 /**
@@ -262,18 +258,14 @@ export function extractPositionals(
     }));
   }
 
-  if (params.kind === "array") {
-    return [
-      {
-        placeholder: params.parameter.placeholder ?? "args",
-        brief: params.parameter.brief ?? "",
-        optional: false,
-        variadic: true,
-      },
-    ];
-  }
-
-  return [];
+  return [
+    {
+      placeholder: params.parameter.placeholder ?? "args",
+      brief: params.parameter.brief ?? "",
+      optional: false,
+      variadic: true,
+    },
+  ];
 }
 
 /**

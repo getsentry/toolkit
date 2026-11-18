@@ -253,6 +253,17 @@ describe("playSnake", () => {
     await game;
   });
 
+  test("treats a zero-size terminal as too small", async () => {
+    const { output, writes, terminal, press } = fakeTerminal();
+    output.columns = 0;
+    output.rows = 0;
+    const game = playSnake(terminal, { color: false });
+    // The too-small message, truncated to zero width; no board.
+    expect(writes.at(-1)).toBe("\x1b[H\x1b[K\x1b[J");
+    press("q");
+    await game;
+  });
+
   test("pauses a running game when the terminal resizes", async () => {
     const { output, writes, terminal, press } = fakeTerminal();
     const game = playSnake(terminal, { color: false });

@@ -134,7 +134,8 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     });
   };
 
-  let producerDone = false;
+  // Widened: set by the producer, which control-flow narrowing cannot see.
+  let producerDone = false as boolean;
   let producerError: unknown = null;
   const tasks: Promise<void>[] = [];
 
