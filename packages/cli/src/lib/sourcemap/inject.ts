@@ -53,7 +53,7 @@ export type InjectResult = {
    * Path to the companion sourcemap on disk. Set only for external maps;
    * `undefined` for inline maps (which have no standalone file).
    */
-  mapPath?: string;
+  mapPath?: string | undefined;
   /** Whether injection changed the files (or would change them in dry-run mode). */
   injected: boolean;
   /** The debug ID (injected or pre-existing). */
@@ -64,21 +64,21 @@ export type InjectResult = {
    * ship it as a standalone artifact. `undefined` for external maps — read
    * those from `mapPath` instead.
    */
-  injectedMapContent?: Buffer;
+  injectedMapContent?: Buffer | undefined;
 };
 
 /** Options for directory-level injection. */
 export type InjectDirectoryOptions = {
   /** File extensions to process (default: .js, .cjs, .mjs). */
-  extensions?: string[];
+  extensions?: string[] | undefined;
   /** If true, report what would be modified without writing. */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
   /** Glob patterns (gitignore-style) to exclude from processing. */
   ignorePatterns?: string[];
   /** Pre-built ignore matcher (takes precedence over ignorePatterns). */
-  ignoreMatcher?: ReturnType<typeof ignore>;
+  ignoreMatcher?: ReturnType<typeof ignore> | undefined;
   /** Keep only pairs this filter accepts. See {@link UploadTarget.include}. */
-  include?: PathFilter;
+  include?: PathFilter | undefined;
 };
 
 /**
@@ -804,12 +804,12 @@ export type SourcemapResolution = {
    * Absolute path to the resolved companion sourcemap, or `undefined`
    * when no external `.map` file could be located on disk.
    */
-  mapPath?: string;
+  mapPath?: string | undefined;
   /**
    * Raw value of the last `//# sourceMappingURL=` directive in the file,
    * or `undefined` when no directive is present.
    */
-  sourceMappingUrl?: string;
+  sourceMappingUrl?: string | undefined;
   /**
    * True when the `sourceMappingURL` is an inline `data:` URL (embedded
    * base64 sourcemap) rather than an external file reference.
@@ -823,7 +823,7 @@ export type SourcemapResolution = {
    * The embedded `//# debugId=<uuid>` value, or `undefined` when the
    * file has not been injected yet.
    */
-  debugId?: string;
+  debugId?: string | undefined;
 };
 
 /**

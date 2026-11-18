@@ -175,7 +175,11 @@ const NUL = "\x00";
  */
 export function getCommitLog(
   cwd?: string,
-  options: { from?: string; depth?: number; paths?: string[] } = {},
+  options: {
+    from?: string | undefined;
+    depth?: number | undefined;
+    paths?: string[] | undefined;
+  } = {},
 ): GitCommit[] {
   const { from, depth = 20, paths } = options;
 

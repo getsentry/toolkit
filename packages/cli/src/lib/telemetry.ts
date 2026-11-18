@@ -57,6 +57,7 @@ import {
   type StoringTransport,
 } from "./telemetry/offline-transport.js";
 import { makeCompressedTransport } from "./telemetry/zstd-transport.js";
+import { omitUndefined } from "./omit-undefined.js";
 
 export type { Span } from "@sentry/core";
 
@@ -77,7 +78,10 @@ async function initTelemetryContext(): Promise<void> {
     const instanceId = getInstanceId();
 
     if (user) {
-      Sentry.setUser({ id: user.userId, email: user.email });
+      Sentry.setUser({
+        id: user.userId,
+        ...(user.email !== undefined && { email: user.email }),
+      });
     }
 
     if (instanceId) {
@@ -375,7 +379,7 @@ export function isEpipeError(event: Sentry.ErrorEvent): boolean {
   }
 
   // Check Node.js system error context (set by the SDK for system errors)
-  const systemError = event.contexts?.node_system_error as
+  const systemError = event.contexts?.["node_system_error"] as
     | { code?: string }
     | undefined;
   if (systemError?.code === "EPIPE") {
@@ -404,7 +408,7 @@ export function isEbadfError(event: Sentry.ErrorEvent): boolean {
     }
   }
 
-  const systemError = event.contexts?.node_system_error as
+  const systemError = event.contexts?.["node_system_error"] as
     | { code?: string }
     | undefined;
   if (systemError?.code === "EBADF") {
@@ -481,9 +485,11 @@ function normalizeHttpSpans(event: TransactionEvent): void {
     }
     // Descriptions are `${method} ${url}`.
     const method = span.description?.split(" ", 1)[0];
-    span.description = span.description?.replace(/\S+$/, (url) =>
-      normalizeSpanUrl(url, method),
-    );
+    if (span.description !== undefined) {
+      span.description = span.description.replace(/\S+$/, (url) =>
+        normalizeSpanUrl(url, method),
+      );
+    }
     for (const key of HTTP_SPAN_URL_KEYS) {
       const value = span.data[key];
       if (typeof value === "string") {
@@ -544,7 +550,7 @@ const hasGetSystemErrorMap = (() => {
   try {
     // Dynamic require to avoid bundler issues — the check only matters at runtime
     const util = _require("node:util") as Record<string, unknown>;
-    return typeof util.getSystemErrorMap === "function";
+    return typeof util["getSystemErrorMap"] === "function";
   } catch {
     return false;
   }
@@ -646,7 +652,7 @@ export function initSentry(
   const libraryMode = options?.libraryMode ?? false;
   const environment = getCliEnvironment();
   manualHttpTracing =
-    libraryMode || typeof process.versions.bun !== "undefined";
+    libraryMode || typeof process.versions["bun"] !== "undefined";
 
   /**
    * Ensure frame paths are absolute so Sentry's symbolicator can match them.
@@ -746,7 +752,7 @@ export function initSentry(
     // Pass custom CA certificates to the transport for corporate TLS proxies.
     // The zstd-transport reads `caCerts` and passes it as `ca:` to
     // `http.request()`, and the SDK's fallback `makeNodeTransport` does the same.
-    transportOptions: { caCerts: getCustomCaCerts() },
+    transportOptions: omitUndefined({ caCerts: getCustomCaCerts() }),
     // Filter out default integrations that add overhead without benefit.
     // NodeSystemError is excluded on runtimes missing util.getSystemErrorMap (Bun) — CLI-K1.
     // Library mode uses the extended exclusion set to avoid polluting the host process.
@@ -798,14 +804,14 @@ export function initSentry(
 
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)
-      event.server_name = undefined;
+      delete event.server_name;
       normalizeHttpSpans(event);
       return event;
     },
 
     beforeSend: (event) => {
       // Remove server_name which may contain hostname (PII)
-      event.server_name = undefined;
+      delete event.server_name;
 
       // EPIPE errors are expected when stdout is piped and the consumer closes
       // early (e.g., `sentry issue list | head`). Not actionable — drop them.
@@ -849,15 +855,16 @@ export function initSentry(
   }
 
   if (client?.getOptions().enabled) {
-    const isBun = typeof process.versions.bun !== "undefined";
+    const isBun = typeof process.versions["bun"] !== "undefined";
     const runtime = isBun ? "bun" : "node";
 
     // NodeClient defaults runtime to { name: 'node' }. Override it so
     // events carry the correct runtime when the npm package runs under Bun.
     const opts = client.getOptions();
+    const version = isBun ? process.versions["bun"] : process.version;
     opts.runtime = {
       name: runtime,
-      version: isBun ? process.versions.bun : process.version,
+      ...(version !== undefined && { version }),
     };
 
     // Tag whether running under Bun or Node.
@@ -1109,7 +1116,7 @@ export function withTracing<T>(
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
   return Sentry.startSpan(
-    { name, op, attributes, onlyIfParent: true },
+    { name, op, ...(attributes && { attributes }), onlyIfParent: true },
     async (span) => {
       try {
         const result = await fn();
@@ -1158,10 +1165,10 @@ export function withTracingSpan<T>(
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
   return Sentry.startSpan(
-    { name, op, attributes, onlyIfParent: true },
+    { name, op, ...(attributes && { attributes }), onlyIfParent: true },
     async (span) => {
       // Track if callback sets status, so we don't override it
-      let statusWasSet = false;
+      let statusWasSet = false as boolean;
       const originalSetStatus = span.setStatus.bind(span);
       span.setStatus = (...args) => {
         statusWasSet = true;
@@ -1305,7 +1312,7 @@ export function withCacheSpan<T>(
   attributes?: Record<string, string | number | boolean | string[]>,
 ): Promise<T> {
   return Sentry.startSpan(
-    { name, op, attributes, onlyIfParent: true },
+    { name, op, ...(attributes && { attributes }), onlyIfParent: true },
     async (span) => {
       try {
         const result = await fn(span);

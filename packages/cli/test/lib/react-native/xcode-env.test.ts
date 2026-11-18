@@ -81,9 +81,9 @@ describe("parseInfoPlistStrings", () => {
   <key>CFBundleName</key><string>A &amp; B</string>
 </dict></plist>`;
     const parsed = parseInfoPlistStrings(xml);
-    expect(parsed.CFBundleIdentifier).toBe("com.example.app");
-    expect(parsed.CFBundleShortVersionString).toBe("1.2.3");
-    expect(parsed.CFBundleName).toBe("A & B");
+    expect(parsed["CFBundleIdentifier"]).toBe("com.example.app");
+    expect(parsed["CFBundleShortVersionString"]).toBe("1.2.3");
+    expect(parsed["CFBundleName"]).toBe("A & B");
   });
 });
 

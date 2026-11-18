@@ -41,13 +41,13 @@ describe("DSN detection from $HOME fallback", () => {
     mkdirSync(home, { recursive: true });
     fakeHome.path = home;
     clearDsnCache(home);
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
   });
 
   afterEach(() => {
     fakeHome.path = "";
     fakeTmp.path = "";
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
   });
 
   test("does not scan into sensitive dirs under $HOME", async () => {
@@ -96,7 +96,7 @@ describe("DSN detection from $HOME fallback", () => {
 
   test("still returns SENTRY_DSN env var when set from $HOME", async () => {
     const envDsn = "https://var@o111.ingest.sentry.io/111";
-    process.env.SENTRY_DSN = envDsn;
+    process.env["SENTRY_DSN"] = envDsn;
 
     const result = await detectDsn(home);
     expect(result?.raw).toBe(envDsn);
@@ -236,7 +236,7 @@ describe("DSN detection from $HOME fallback", () => {
 
     test("still returns SENTRY_DSN env var when set from an ancestor", async () => {
       const envDsn = "https://var@o333.ingest.sentry.io/333";
-      process.env.SENTRY_DSN = envDsn;
+      process.env["SENTRY_DSN"] = envDsn;
 
       const result = await detectDsn(ancestor);
       expect(result?.raw).toBe(envDsn);

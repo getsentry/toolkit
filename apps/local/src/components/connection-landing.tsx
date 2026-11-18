@@ -13,7 +13,7 @@ import {
 
 export type ConnectionFormProps = {
   endpoint: string;
-  error?: string;
+  error?: string | undefined;
   isConnecting: boolean;
   onConnect: () => void;
   onEndpointChange: (value: string) => void;
@@ -196,7 +196,9 @@ export function ConnectionLanding({ phase, ...form }: ConnectionLandingProps) {
             type="button"
             className="w-full"
             aria-label="Copy local run command"
-            onClick={() => copyToClipboard(command)}
+            onClick={() => {
+              void copyToClipboard(command);
+            }}
           >
             {copied === command ? (
               <Check className="size-4" aria-hidden="true" />

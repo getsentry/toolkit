@@ -18,7 +18,8 @@ afterEach(async () => {
 
 test("binds the client when init runs inside the command's pre-init span", async () => {
   // Disabled, so the client never sends; it is still created and bound.
-  process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  // Disabled, so the client never sends; it is still created and bound.
+  process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
   // `buildCommand` wraps every command in a `withTracing("exec")` span.
   await Sentry.startSpan({ name: "exec", onlyIfParent: true }, async () => {
     await Promise.resolve();

@@ -55,8 +55,8 @@ function isDirectTool(
 /** The tools the current session exposes, for checking a follow-up call. */
 export interface ToolSession {
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -110,9 +110,9 @@ export function formatToolCallInstruction({
   arguments?: Record<string, JsonValue>;
   showArguments?: boolean;
   experimentalMode: boolean;
-  purpose?: string;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  purpose?: string | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   fallbackInstruction?: string;
 }): string {
   const route = getToolCallRoute(toolName, {
@@ -157,9 +157,9 @@ export function formatAvailableToolCallInstruction({
 }: {
   toolName: string;
   experimentalMode: boolean;
-  purpose?: string;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  purpose?: string | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string | null {
   if (!isToolAvailableInSession(toolName, availableToolNames)) {
     return null;

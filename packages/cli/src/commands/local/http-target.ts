@@ -22,4 +22,5 @@ export function httpTargetAttribute(
     const value = read(key);
     if (value) return { key, value };
   }
+  return undefined;
 }

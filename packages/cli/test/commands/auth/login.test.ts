@@ -11,7 +11,15 @@
  * `prompt()` is controllable).
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Mock isatty to simulate interactive terminal for the re-auth prompt path.
 // Bun's ESM wrapper for CJS built-ins exposes `default` + `ReadStream` +
@@ -93,12 +101,8 @@ vi.mock("../../../src/lib/account-selection.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/lib/account-selection.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -107,12 +111,8 @@ import * as accountSelection from "../../../src/lib/account-selection.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -121,12 +121,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/auth.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -135,12 +131,8 @@ import * as dbAuth from "../../../src/lib/db/auth.js";
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/user.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -170,18 +162,15 @@ vi.mock("../../../src/lib/interactive-login.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/lib/interactive-login.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as interactiveLogin from "../../../src/lib/interactive-login.js";
 import type { SentryCliRcConfig } from "../../../src/lib/sentryclirc.js";
 import { useEnvSandbox } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type LoginFlags = {
   readonly token?: string;
@@ -198,6 +187,9 @@ type LoginFunc = (
   flags: LoginFlags,
   email?: string,
 ) => Promise<void>;
+
+/** Account id that the mocked `setAuthToken` hands back. */
+const TEST_ACCOUNT_ID = "test-account";
 
 const SAMPLE_USER = {
   id: "42",
@@ -236,7 +228,7 @@ function createContext() {
 
 /** Assert setAuthToken was called with the expected token and a host option. */
 function expectTokenStored(
-  spy: ReturnType<typeof spyOn>,
+  spy: MockInstance<(typeof dbAuth)["setAuthToken"]>,
   expectedToken: string,
   newAccount = true,
 ): void {
@@ -254,17 +246,23 @@ function expectTokenStored(
 describe("loginCommand.func --token path", () => {
   useEnvSandbox(["SENTRY_HOST", "SENTRY_URL"]);
 
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let setAuthTokenSpy: ReturnType<typeof spyOn>;
-  let checkTokenAccessSpy: ReturnType<typeof spyOn>;
-  let clearAuthSpy: ReturnType<typeof spyOn>;
-  let removeAccountSpy: ReturnType<typeof spyOn>;
-  let getCurrentUserSpy: ReturnType<typeof spyOn>;
-  let setUserInfoSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let hasStoredAuthCredentialsSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let setAuthTokenSpy: MockInstance<(typeof dbAuth)["setAuthToken"]>;
+  let checkTokenAccessSpy: MockInstance<(typeof apiClient)["checkTokenAccess"]>;
+  let clearAuthSpy: MockInstance<(typeof dbAuth)["clearAuth"]>;
+  let removeAccountSpy: MockInstance<(typeof dbAuth)["removeAccount"]>;
+  let getCurrentUserSpy: MockInstance<(typeof apiClient)["getCurrentUser"]>;
+  let setUserInfoSpy: MockInstance<(typeof dbUser)["setUserInfo"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let hasStoredAuthCredentialsSpy: MockInstance<
+    (typeof dbAuth)["hasStoredAuthCredentials"]
+  >;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   beforeEach(async () => {
@@ -517,7 +515,8 @@ describe("loginCommand.func --token path", () => {
     isEnvTokenActiveSpy.mockReturnValue(true);
     hasStoredAuthCredentialsSpy.mockReturnValue(false);
     // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
-    process.env.SENTRY_TOKEN = "sntrys_token_456";
+    // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
+    process.env["SENTRY_TOKEN"] = "sntrys_token_456";
     runInteractiveLoginSpy.mockResolvedValue({
       method: "oauth",
       configPath: "/fake",
@@ -529,13 +528,13 @@ describe("loginCommand.func --token path", () => {
 
       expect(runInteractiveLoginSpy).toHaveBeenCalled();
     } finally {
-      delete process.env.SENTRY_TOKEN;
+      delete process.env["SENTRY_TOKEN"];
     }
   });
 
   test("--token: stores token, fetches user, writes success", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -571,8 +570,8 @@ describe("loginCommand.func --token path", () => {
     "--force --token rejects %s before changing the session or host",
     async (_, token) => {
       isAuthenticatedSpy.mockReturnValue(true);
-      process.env.SENTRY_HOST = "https://previous.example.com";
-      process.env.SENTRY_URL = "https://previous.example.com";
+      process.env["SENTRY_HOST"] = "https://previous.example.com";
+      process.env["SENTRY_URL"] = "https://previous.example.com";
       const fetchSpy = vi.spyOn(globalThis, "fetch");
 
       try {
@@ -586,8 +585,8 @@ describe("loginCommand.func --token path", () => {
           }),
         ).rejects.toBeInstanceOf(MalformedAuthTokenError);
 
-        expect(process.env.SENTRY_HOST).toBe("https://previous.example.com");
-        expect(process.env.SENTRY_URL).toBe("https://previous.example.com");
+        expect(process.env["SENTRY_HOST"]).toBe("https://previous.example.com");
+        expect(process.env["SENTRY_URL"]).toBe("https://previous.example.com");
         expect(clearAuthSpy).not.toHaveBeenCalled();
         expect(setAuthTokenSpy).not.toHaveBeenCalled();
         expect(setUserInfoSpy).not.toHaveBeenCalled();
@@ -608,7 +607,7 @@ describe("loginCommand.func --token path", () => {
     "--token normalizes surrounding whitespace and controls before storage %#",
     async (token) => {
       isAuthenticatedSpy.mockReturnValue(false);
-      setAuthTokenSpy.mockReturnValue(undefined);
+      setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
       checkTokenAccessSpy.mockResolvedValue(undefined);
       getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
       setUserInfoSpy.mockReturnValue(undefined);
@@ -623,7 +622,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: null user.name is converted to undefined in setUserInfo", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({
       id: "5",
@@ -672,7 +671,7 @@ describe("loginCommand.func --token path", () => {
     // A network/server failure during validation is not a token problem:
     // surface the real error and do NOT clear a possibly-valid token (CLI-19).
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     const cause = new ApiError("Server error", 503);
     checkTokenAccessSpy.mockRejectedValue(cause);
     clearAuthSpy.mockResolvedValue(undefined);
@@ -689,7 +688,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: shows 'Logged in as' when user info fetch succeeds", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue({ id: "5", email: "only@email.com" });
     setUserInfoSpy.mockReturnValue(undefined);
@@ -707,7 +706,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: login succeeds even when getCurrentUser() fails transiently", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockRejectedValue(new Error("Network error"));
 
@@ -730,7 +729,7 @@ describe("loginCommand.func --token path", () => {
 
   test("--token: warms caches once the result is printed", async () => {
     isAuthenticatedSpy.mockReturnValue(false);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -819,7 +818,7 @@ describe("loginCommand.func --token path", () => {
   test("--force --token when authenticated: replaces the active account's token", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     clearAuthSpy.mockResolvedValue(undefined);
-    setAuthTokenSpy.mockReturnValue(undefined);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     checkTokenAccessSpy.mockResolvedValue(undefined);
     getCurrentUserSpy.mockResolvedValue(SAMPLE_USER);
     setUserInfoSpy.mockReturnValue(undefined);
@@ -861,18 +860,22 @@ describe("loginCommand.func --token path", () => {
  * true) and the prompt module (so `prompt()` is controllable).
  */
 describe("login re-authentication interactive prompt", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let clearAuthSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let getUserInfoSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let clearAuthSpy: MockInstance<(typeof dbAuth)["clearAuth"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let getUserInfoSpy: MockInstance<(typeof dbUser)["getUserInfo"]>;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   function createPromptContext() {
     return {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     };
   }
@@ -890,7 +893,10 @@ describe("login re-authentication interactive prompt", () => {
     // Defaults
     isEnvTokenActiveSpy.mockReturnValue(false);
     clearAuthSpy.mockResolvedValue(undefined);
-    runInteractiveLoginSpy.mockResolvedValue(true);
+    runInteractiveLoginSpy.mockResolvedValue({
+      method: "oauth",
+      configPath: "/fake",
+    });
     mockIsatty.mockReturnValue(true);
     mockPrompt.mockClear();
 
@@ -996,7 +1002,7 @@ describe("login re-authentication interactive prompt", () => {
     mockPrompt.mockResolvedValue(true);
 
     const setAuthTokenSpy = vi.spyOn(dbAuth, "setAuthToken");
-    setAuthTokenSpy.mockImplementation(noop);
+    setAuthTokenSpy.mockReturnValue(TEST_ACCOUNT_ID);
     const checkTokenAccessSpy = vi.spyOn(apiClient, "checkTokenAccess");
     checkTokenAccessSpy.mockResolvedValue(undefined);
     const getCurrentUserSpy = vi.spyOn(apiClient, "getCurrentUser");
@@ -1069,22 +1075,22 @@ describe("applyLoginUrl (host resolution)", () => {
   let savedUrl: string | undefined;
 
   beforeEach(() => {
-    savedHost = process.env.SENTRY_HOST;
-    savedUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    savedHost = process.env["SENTRY_HOST"];
+    savedUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
   });
 
   afterEach(() => {
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (savedUrl !== undefined) {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
   });
 
@@ -1093,8 +1099,8 @@ describe("applyLoginUrl (host resolution)", () => {
       await import("../../../src/commands/auth/login.js");
     const host = applyLoginUrl("https://sentry.example.com");
     expect(host).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_HOST).toBe("https://sentry.example.com");
-    expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_HOST"]).toBe("https://sentry.example.com");
+    expect(process.env["SENTRY_URL"]).toBe("https://sentry.example.com");
   });
 
   test("no --url + no env falls back to SaaS default", async () => {
@@ -1104,7 +1110,7 @@ describe("applyLoginUrl (host resolution)", () => {
   });
 
   test("no --url + SENTRY_HOST with scheme uses env host", async () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
@@ -1114,22 +1120,25 @@ describe("applyLoginUrl (host resolution)", () => {
     // Regression: applyLoginUrl previously called normalizeOrigin directly
     // on bare hostnames. new URL("sentry.acme.com") throws → silent fallback
     // to SaaS default → token mis-scoped.
-    process.env.SENTRY_HOST = "sentry.acme.com";
+    // Regression: applyLoginUrl previously called normalizeOrigin directly
+    // on bare hostnames. new URL("sentry.acme.com") throws → silent fallback
+    // to SaaS default → token mis-scoped.
+    process.env["SENTRY_HOST"] = "sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("no --url + bare hostname SENTRY_URL prefixes https://", async () => {
-    process.env.SENTRY_URL = "sentry.acme.com";
+    process.env["SENTRY_URL"] = "sentry.acme.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://sentry.acme.com");
   });
 
   test("SENTRY_HOST takes precedence over SENTRY_URL", async () => {
-    process.env.SENTRY_HOST = "https://host.example.com";
-    process.env.SENTRY_URL = "https://url.example.com";
+    process.env["SENTRY_HOST"] = "https://host.example.com";
+    process.env["SENTRY_URL"] = "https://url.example.com";
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
     expect(applyLoginUrl(undefined)).toBe("https://host.example.com");
@@ -1141,10 +1150,10 @@ describe("applyLoginUrl (trust anchor registration)", () => {
   let savedUrl: string | undefined;
 
   beforeEach(async () => {
-    savedHost = process.env.SENTRY_HOST;
-    savedUrl = process.env.SENTRY_URL;
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    savedHost = process.env["SENTRY_HOST"];
+    savedUrl = process.env["SENTRY_URL"];
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     const { resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
     const { resetLoginTrustAnchorForTesting } =
@@ -1155,14 +1164,14 @@ describe("applyLoginUrl (trust anchor registration)", () => {
 
   afterEach(async () => {
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     } else {
-      delete process.env.SENTRY_HOST;
+      delete process.env["SENTRY_HOST"];
     }
     if (savedUrl !== undefined) {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     } else {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     }
     const { resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
@@ -1186,7 +1195,7 @@ describe("applyLoginUrl (trust anchor registration)", () => {
   });
 
   test("SENTRY_HOST from boot env registers trust anchor (shell export is trusted)", async () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     const { captureEnvTokenHost } =
       await import("../../../src/lib/env-token-host.js");
     captureEnvTokenHost();
@@ -1210,7 +1219,9 @@ describe("applyLoginUrl (trust anchor registration)", () => {
 
     // Simulate .sentryclirc shim writing env.SENTRY_URL AFTER boot (the
     // auth login has skipRcUrlCheck: true). This is the attacker path.
-    process.env.SENTRY_URL = "https://evil.com";
+    // Simulate .sentryclirc shim writing env.SENTRY_URL AFTER boot (the
+    // auth login has skipRcUrlCheck: true). This is the attacker path.
+    process.env["SENTRY_URL"] = "https://evil.com";
 
     const { applyLoginUrl } =
       await import("../../../src/commands/auth/login.js");
@@ -1234,9 +1245,9 @@ function makeRcConfig(
   url?: string,
 ): SentryCliRcConfig {
   return {
-    token,
-    url,
-    sources: { token: token ? "~/.sentryclirc" : undefined },
+    ...(token === undefined ? {} : { token }),
+    ...(url === undefined ? {} : { url }),
+    sources: token ? { token: "~/.sentryclirc" } : {},
   };
 }
 
@@ -1279,11 +1290,17 @@ describe("rcTokenHint", () => {
 });
 
 describe("loginCommand.func scope selection (--read-only / --scope)", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let hasStoredAuthCredentialsSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
-  let listOrgsUncachedSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let hasStoredAuthCredentialsSpy: MockInstance<
+    (typeof dbAuth)["hasStoredAuthCredentials"]
+  >;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
+  let listOrgsUncachedSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: LoginFunc;
 
   beforeEach(async () => {

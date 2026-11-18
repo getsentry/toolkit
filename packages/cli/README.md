@@ -136,7 +136,7 @@ Errors are thrown as `SentryError` with `.exitCode` and `.stderr`.
 ### Prerequisites
 
 <!-- GENERATED:START dev-prereq -->
-- [Node.js](https://nodejs.org) v22.15+ and [pnpm](https://pnpm.io) v11.8+
+- [Node.js](https://nodejs.org) v22.15+ and [pnpm](https://pnpm.io) v12.18+
 <!-- GENERATED:END dev-prereq -->
 
 ### Setup

@@ -250,10 +250,10 @@ describe("resolveEffectiveOrg with API refresh", () => {
     const { clearAuth } = await import("../../src/lib/db/auth.js");
     await clearAuth();
 
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    const savedSentryToken = process.env.SENTRY_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    const savedSentryToken = process.env["SENTRY_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_TOKEN"];
 
     const debugSpy = vi.spyOn(logger, "debug");
     try {
@@ -266,14 +266,14 @@ describe("resolveEffectiveOrg with API refresh", () => {
     } finally {
       debugSpy.mockRestore();
       if (savedAuthToken === undefined) {
-        delete process.env.SENTRY_AUTH_TOKEN;
+        delete process.env["SENTRY_AUTH_TOKEN"];
       } else {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
       if (savedSentryToken === undefined) {
-        delete process.env.SENTRY_TOKEN;
+        delete process.env["SENTRY_TOKEN"];
       } else {
-        process.env.SENTRY_TOKEN = savedSentryToken;
+        process.env["SENTRY_TOKEN"] = savedSentryToken;
       }
     }
   });

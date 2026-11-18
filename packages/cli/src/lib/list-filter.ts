@@ -111,7 +111,7 @@ export async function fetchByName<T>(options: {
   filter: string;
   namesOf: (item: T) => readonly string[];
   fetchAll: () => Promise<T[]>;
-  search?: (query: string) => Promise<T[]>;
+  search?: ((query: string) => Promise<T[]>) | undefined;
 }): Promise<T[]> {
   const { filter, namesOf, fetchAll, search } = options;
   const query = search ? serverSearchText(filter) : undefined;

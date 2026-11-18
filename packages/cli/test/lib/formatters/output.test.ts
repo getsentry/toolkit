@@ -313,7 +313,7 @@ describe("renderCommandOutput", () => {
     const calls: number[] = [];
     const config: OutputConfig<{ n: number }> = {
       human: () => ({
-        render: (d) => {
+        render: (d: { n: number }) => {
           calls.push(d.n);
           return `#${d.n}`;
         },
@@ -335,8 +335,8 @@ describe("renderCommandOutput", () => {
     const w = createTestWriter();
     const config: OutputConfig<{ value: string }> = {
       human: () => ({
-        render: (d) => `[${d.value}]`,
-        finalize: (hint) => `=== END ===${hint ? `\n${hint}` : ""}`,
+        render: (d: { value: string }) => `[${d.value}]`,
+        finalize: (hint?: string) => `=== END ===${hint ? `\n${hint}` : ""}`,
       }),
     };
 

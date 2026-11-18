@@ -547,16 +547,18 @@ describe("get_profile_details", () => {
     });
 
     it("maps transaction profile fields without leaking raw API data", async () => {
+      const fixture = structuredClone(transactionProfileV1Fixture);
       const body = {
-        ...structuredClone(transactionProfileV1Fixture),
+        ...fixture,
         backendOnly: "must-not-leak-root",
+        profile: {
+          ...fixture.profile,
+          frames: fixture.profile.frames.map((frame) => ({
+            ...frame,
+            instruction_addr: "0xmust-not-leak",
+          })),
+        },
       };
-      body.profile.frames = body.profile.frames.map(
-        (frame: Record<string, unknown>) => ({
-          ...frame,
-          instruction_addr: "0xmust-not-leak",
-        }),
-      );
       for (const host of ["sentry.io", "us.sentry.io"]) {
         mswServer.use(
           http.get(

@@ -4,7 +4,15 @@ import {
   teamFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  assert,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { parseSentryUrl } from "../internal/url-helpers";
@@ -1918,9 +1926,14 @@ describe("rate limit retry", () => {
     const fetchMock = vi.fn(
       (_input: Request | string | URL, init?: RequestInit) =>
         new Promise<Response>((_, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(init.signal?.reason),
-          );
+          init?.signal?.addEventListener("abort", () => {
+            const abortReason: unknown = init.signal?.reason;
+            reject(
+              abortReason instanceof Error
+                ? abortReason
+                : new Error(String(abortReason)),
+            );
+          });
         }),
     );
     globalThis.fetch = fetchMock;
@@ -1972,8 +1985,10 @@ describe("request headers", () => {
       accessToken: "test-token",
     }).getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0];
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(new Headers(requestInit.headers).get("User-Agent")).toBe(
       "sentry-mcp/0.48.0-test (https://mcp.sentry.dev)",
     );
@@ -2005,8 +2020,10 @@ describe("request headers", () => {
 
     await apiService.getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0];
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id")).toBe(
       "abc123",
     );
@@ -2043,8 +2060,10 @@ describe("request headers", () => {
 
     await apiService.getAuthenticatedUser();
 
-    const [, requestInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
-      .calls[0];
+    const [fetchCall] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls;
+    assert(fetchCall, "fetch was not called");
+    const [, requestInit] = fetchCall;
     expect(
       new Headers(requestInit.headers).get("X-Sentry-MCP-Client-Id"),
     ).toBeNull();
@@ -2070,7 +2089,9 @@ function sentryOffsetPage(url: URL, row: (index: number) => object) {
   if (perPage > 100) {
     return HttpResponse.json({ detail: "Invalid per_page" }, { status: 400 });
   }
-  const [cursorPerPage, page] = (url.searchParams.get("cursor") ?? "0:0:0")
+  const [cursorPerPage = 0, page = 0] = (
+    url.searchParams.get("cursor") ?? "0:0:0"
+  )
     .split(":")
     .map(Number);
   const start = cursorPerPage * page;
@@ -2947,7 +2968,9 @@ describe("API query builders", () => {
         },
       ]);
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]).searchParams;
+      const [url] = urls;
+      assert(url, "Expected one request");
+      const params = new URL(url).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("project")).toBe("123");
       expect(params.get("statsPeriod")).toBe("7d");
@@ -2985,7 +3008,9 @@ describe("API query builders", () => {
       });
 
       expect(urls).toHaveLength(1);
-      const params = new URL(urls[0]).searchParams;
+      const [url] = urls;
+      assert(url, "Expected one request");
+      const params = new URL(url).searchParams;
       expect(params.get("itemType")).toBe("spans");
       expect(params.get("expand")).toBe("context");
     });
@@ -3426,7 +3451,7 @@ describe("API query builders", () => {
         expect.any(Object),
       );
       expect(repos).toHaveLength(1);
-      expect(repos[0].name).toBe("getsentry/sentry");
+      expect(repos[0]?.name).toBe("getsentry/sentry");
     });
 
     it("should paginate repos", async () => {
@@ -3476,8 +3501,8 @@ describe("API query builders", () => {
         "getsentry/sentry-javascript",
       ]);
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock.mock.calls[0][0]).toContain("per_page=100");
-      expect(fetchMock.mock.calls[1][0]).toContain("cursor=cursor-2");
+      expect(fetchMock.mock.calls[0]?.[0]).toContain("per_page=100");
+      expect(fetchMock.mock.calls[1]?.[0]).toContain("cursor=cursor-2");
     });
 
     it("should include query parameter when provided", async () => {
@@ -3554,8 +3579,8 @@ describe("API query builders", () => {
       });
 
       expect(repos).toHaveLength(1);
-      expect(repos[0].externalSlug).toBeNull();
-      expect(repos[0].externalId).toBeNull();
+      expect(repos[0]?.externalSlug).toBeNull();
+      expect(repos[0]?.externalId).toBeNull();
     });
   });
 
@@ -3621,7 +3646,7 @@ describe("API query builders", () => {
         }),
       );
       expect(result.created).toBe(1);
-      expect(result.mappings[0].status).toBe("created");
+      expect(result.mappings[0]?.status).toBe("created");
     });
 
     it("should handle updated mappings response", async () => {
@@ -3654,7 +3679,7 @@ describe("API query builders", () => {
       });
 
       expect(result.updated).toBe(1);
-      expect(result.mappings[0].status).toBe("updated");
+      expect(result.mappings[0]?.status).toBe("updated");
     });
   });
 

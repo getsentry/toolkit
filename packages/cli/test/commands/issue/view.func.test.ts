@@ -9,12 +9,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -28,12 +24,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -42,12 +34,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -56,12 +44,8 @@ import * as browser from "../../../src/lib/browser.js";
 vi.mock("../../../src/lib/region.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/region.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -72,6 +56,8 @@ import {
   parseIssueArgument,
 } from "../../../src/lib/issue-arguments.js";
 import type { SentryEvent, SentryIssue } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const SECOND_REPLAY_ID = "aaaaaaaa03f6454384f1de473b8b9fcc";
@@ -97,11 +83,11 @@ function sampleEvent(overrides: Partial<SentryEvent> = {}): SentryEvent {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -145,7 +131,7 @@ describe("issue view replay integration", () => {
     ]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, VIEW_FLAGS, "CLI-123");
 
     const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
@@ -164,7 +150,7 @@ describe("issue view replay integration", () => {
     listReplayIdsForIssueSpy.mockResolvedValue([REPLAY_ID, SECOND_REPLAY_ID]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false, force: false, spans: 0, fresh: false },
@@ -217,7 +203,7 @@ describe("issue view multiple IDs", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, VIEW_FLAGS, "IOS-1", "IOS-2");
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(2);
@@ -242,7 +228,7 @@ describe("issue view multiple IDs", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, VIEW_FLAGS, "IOS-1\nIOS-2\nIOS-3");
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(3);
@@ -263,7 +249,7 @@ describe("issue view multiple IDs", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, VIEW_FLAGS, "IOS-1,IOS-2");
 
     expect(resolveIssueSpy).toHaveBeenCalledTimes(1);
@@ -288,7 +274,7 @@ describe("issue view multiple IDs", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, VIEW_FLAGS, "IOS-1", "MISSING");
 
     const parsed = JSON.parse(
@@ -304,7 +290,7 @@ describe("issue view multiple IDs", () => {
     resolveIssueSpy.mockRejectedValue(error);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await expect(func.call(context, VIEW_FLAGS, "IOS-1", "IOS-2")).rejects.toBe(
       error,
     );
@@ -312,7 +298,7 @@ describe("issue view multiple IDs", () => {
 
   test("fails to parse when no issue ID is provided", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await expect(func.call(context, VIEW_FLAGS)).rejects.toMatchObject({
       exception: expect.any(ContextError),
     });
@@ -331,7 +317,7 @@ describe("issue view multiple IDs", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: true, force: false, spans: 0, fresh: false },
@@ -364,7 +350,7 @@ describe("issue view multiple IDs", () => {
       (_, index) => `IOS-${index + 1}`,
     );
 
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       createMockContext().context,
       { json: false, web: true, force: false, spans: 0, fresh: false },

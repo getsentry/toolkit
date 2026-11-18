@@ -107,7 +107,8 @@ function fieldErrors(issues: z.core.$ZodIssue[]): FieldErrors {
 }
 
 function truncateArguments(input: unknown): string {
-  const text = JSON.stringify(input, null, 2) ?? "undefined";
+  const text =
+    (JSON.stringify(input, null, 2) as string | undefined) ?? "undefined";
   return text.length <= 200 ? text : `${text.slice(0, 200)}... (truncated)`;
 }
 

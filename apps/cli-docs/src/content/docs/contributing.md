@@ -11,7 +11,7 @@ We welcome contributions to the Sentry CLI! This guide will help you get started
 
 <!-- GENERATED:START dev-prereq -->
 - [Node.js](https://nodejs.org) (v22.15 or later)
-- [pnpm](https://pnpm.io) (v11.8 or later)
+- [pnpm](https://pnpm.io) (v12.18 or later)
 <!-- GENERATED:END dev-prereq -->
 - Git
 

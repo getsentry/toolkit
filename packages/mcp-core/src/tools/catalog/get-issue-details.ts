@@ -219,24 +219,24 @@ function buildReplays(
 }
 
 type IssueDetailsArgs = {
-  packageNames?: string[];
+  packageNames?: string[] | undefined;
   organizationSlug: string;
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
-  relatedIssues?: RelatedIssues;
-  projectSlug?: string | null;
-  aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  sourceMapDebug?: SourceMapDebug;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  autofixState?: AutofixRunState | undefined;
+  performanceTrace?: Trace | undefined;
+  externalIssues?: ExternalIssueList | undefined;
+  relatedReplayIds?: string[] | undefined;
+  relatedIssues?: RelatedIssues | undefined;
+  projectSlug?: string | null | undefined;
+  aiConversations?: AIConversationReference[] | undefined;
+  codeLocation?: CodeLocation | undefined;
+  committers?: CommitterList | undefined;
+  sourceMapDebug?: SourceMapDebug | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 };
 
 /** null for a status this version doesn't know, so the output still matches its schema. */
@@ -467,7 +467,7 @@ function buildIssueSuggestedActions({
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
+  aiConversations?: AIConversationReference[] | undefined;
   hasRelatedIssues: boolean;
   otherThread: number | string | null;
   session: ToolSession;
@@ -976,7 +976,7 @@ async function maybeFetchRelatedIssues({
   apiService: SentryApiService;
   organizationSlug: string;
   issueId: string;
-  eventId?: string;
+  eventId?: string | undefined;
 }): Promise<RelatedIssues | undefined> {
   try {
     return await apiService.getRelatedIssues({
@@ -1131,7 +1131,7 @@ async function findAIConversationsForTrace({
 
     references.set(conversationId, {
       conversationId,
-      spanId: getString(record.span_id),
+      spanId: getString(record["span_id"]),
     });
 
     if (references.size >= MAX_AI_CONVERSATION_MATCHES) {
@@ -1163,7 +1163,7 @@ function buildConversationLookupTimeParams(event: Event): {
 }
 
 function getEventTraceId(event: Event): string | undefined {
-  const traceId = event.contexts?.trace?.trace_id;
+  const traceId = event.contexts?.["trace"]?.["trace_id"];
   return getString(traceId);
 }
 
@@ -1183,7 +1183,7 @@ function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
   }
 
   // Check if we have a trace ID
-  const traceId = event.contexts?.trace?.trace_id;
+  const traceId = event.contexts?.["trace"]?.["trace_id"];
 
   if (typeof traceId !== "string" || traceId.length === 0) {
     return null;
