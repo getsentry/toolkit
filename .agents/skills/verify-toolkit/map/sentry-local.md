@@ -3,9 +3,8 @@
 How `sentry local` captures an app's Sentry telemetry with no account: `run
 --verify` reports whether the app's SDK sends events, a `--session` run keeps
 its events queryable after the app exits, terminal output hides session
-credentials, and stopping the daemon ends every session. No design doc states
-its goals yet; the user docs are `docs/cli/local-control-plane.md` and the
-`sentry local` page of the CLI docs.
+credentials, and stopping the daemon ends every session. The goals are in
+`design/sentry-local.md`.
 
 ## Claims
 

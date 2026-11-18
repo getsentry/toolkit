@@ -36,3 +36,4 @@ such as `automations#run-now`, and do not restate it.
 - [MCP tool responses](./mcp-tool-responses.md): what a tool result gives an agent to answer a Sentry question.
 - [MCP access](./mcp-access.md): who can use Sentry MCP, over which transport, and what a session can reach.
 - [Sentry CLI](./sentry-cli.md): the `sentry` command for people and agents in a terminal.
+- [Sentry Local](./sentry-local.md): the app telemetry `sentry local` captures on a developer's machine, with no account.
