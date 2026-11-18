@@ -112,7 +112,9 @@ By default, incoming envelopes are pretty-printed to the terminal:
 
 Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
 
-The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
+The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged `[BROWSER]` when they show signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and from the SDK name otherwise. A browser log sent while no replay is recording has none of these, so it is tagged from the SDK name.
+
+A session replay prints one line when it starts, with its short ID and first page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter

@@ -249,8 +249,14 @@ function formatHttpSpanDisplay(
 ): SemanticSpanDisplay | null {
   const method = getAttr(attrs, ["http.request.method"])?.toUpperCase();
   const statusCode = getAttr(attrs, ["http.response.status_code"]);
+  const op = getAttr(attrs, ["sentry.op"]);
   const target = getHttpTarget(attrs, {
     includeServerTarget: Boolean(method || statusCode),
+    // The browser SDK puts the page URL on every segment span, so a custom
+    // `ui.action` or `pageload` span is not a request to that URL.
+    includeFullUrl: Boolean(
+      method || statusCode || !op || /^(?:http|resource)\./.test(op),
+    ),
   });
   const errorType = getErrorType(attrs);
 
@@ -626,7 +632,10 @@ function getGenAiModelIdentifier(attrs: AttributeSource): string | undefined {
 
 function getHttpTarget(
   attrs: AttributeSource,
-  { includeServerTarget = false }: { includeServerTarget?: boolean } = {},
+  {
+    includeServerTarget = false,
+    includeFullUrl = true,
+  }: { includeServerTarget?: boolean; includeFullUrl?: boolean } = {},
 ): string | undefined {
   const route = getAttr(
     attrs,
@@ -640,7 +649,7 @@ function getHttpTarget(
   if (route) {
     return formatHttpTarget(route);
   }
-  if (fullUrl) {
+  if (fullUrl && includeFullUrl) {
     return formatHttpTarget(fullUrl);
   }
   if (path) {
