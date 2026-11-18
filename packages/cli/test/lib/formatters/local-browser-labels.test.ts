@@ -154,6 +154,78 @@ describe("Next.js browser spans and logs", () => {
     expect(jsonSource("log", payload)).toBe("browser");
   });
 
+  describe("server-only SDKs ignore browser hints", () => {
+    const nodeHeader = {
+      sdk: { name: "sentry.javascript.node", version: "11.14.0" },
+    };
+    const lines = (
+      header: Record<string, unknown>,
+      itemType: string,
+      payload: Record<string, unknown>,
+    ) =>
+      formatItem(itemType, payload, header, itemType).map((line) =>
+        stripAnsi(line),
+      );
+
+    test("a Node log with a user agent stays [SERVER]", () => {
+      const payload = {
+        items: [
+          {
+            level: "info",
+            body: "request handled",
+            attributes: attributes({ "user_agent.original": USER_AGENT }),
+          },
+        ],
+      };
+      expect(lines(nodeHeader, "log", payload)[0]).toContain("[SERVER]");
+    });
+
+    test("a Node span with a custom navigation op stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "route change",
+        attributes: attributes({ "sentry.op": "navigation" }),
+      };
+      expect(lines(nodeHeader, "span", { items: [span] })[0]).toContain(
+        "[SERVER]",
+      );
+    });
+
+    test("late Node spans with a navigation op stay [SERVER]", () => {
+      const late = (span_id: string) => ({
+        ...serverRequestSpan,
+        span_id,
+        parent_span_id: "a000000000000001",
+        is_segment: false,
+        attributes: attributes({
+          "sentry.op": "navigation",
+          "sentry.segment.id": "a000000000000001",
+          "sentry.segment.name": "GET /orders",
+        }),
+      });
+      const payload = {
+        items: [late("c000000000000001"), late("c000000000000002")],
+      };
+      expect(lines(nodeHeader, "span", payload)[0]).toContain(
+        "[SERVER]  GET /orders [+2 spans]",
+      );
+    });
+
+    test("a Next.js server function span with a user agent stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "generateMetadata",
+        attributes: attributes({
+          "sentry.op": "function.nextjs",
+          "sentry.origin": "auto.function.nextjs",
+          "user_agent.original": USER_AGENT,
+        }),
+      };
+      expect(tail("span", { items: [span] })[0]).toContain("[SERVER]");
+      expect(jsonSource("span", { items: [span] })).toBe("server");
+    });
+  });
+
   test("a server log stays [SERVER]", () => {
     const payload = {
       items: [
@@ -297,7 +369,36 @@ describe("session replays", () => {
     expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/client");
   });
 
-  test("later segments print nothing", () => {
+  test("later segments of a replay already shown print nothing", () => {
+    formatEnvelopeLines(replayEnvelope(0, []), new Set());
     expect(formatEnvelopeLines(replayEnvelope(1, []), new Set())).toEqual([]);
+  });
+
+  test("a tail that starts mid-replay prints the first segment it sees", () => {
+    const midReplayId = "5e2d6c1f0b4a4d8f9c3b7a2e1d0f9c8b";
+    const envelope = {
+      ...replayEnvelope(7, ["http://localhost:3000/cart"]),
+      getParsedEnvelope: () => ({
+        envelope: [
+          nextjsHeader,
+          [
+            [
+              { type: "replay_event" },
+              {
+                ...replayEvent(7, ["http://localhost:3000/cart"]),
+                replay_id: midReplayId,
+                event_id: midReplayId,
+              },
+            ],
+          ],
+        ] as [Record<string, unknown>, [{ type?: string }, unknown][]],
+      }),
+    };
+    const lines = formatEnvelopeLines(envelope, new Set()).map((line) =>
+      stripAnsi(line),
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("replay 5e2d6c1f http://localhost:3000/cart");
+    expect(formatEnvelopeLines(envelope, new Set())).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import { summarizeEvent } from "../../lib/formatters/local.js";
 import { stripAnsi } from "../../lib/formatters/strip-ansi.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { sessionCountsTitle } from "./session-counts.js";
+import { batchSegment } from "./span-segments.js";
 import { parseEventTimestamp } from "./timestamp.js";
 
 /** What an envelope holds, read from its main item. Every field is optional. */
@@ -128,31 +129,10 @@ function mostSevereLog(
 }
 
 /**
- * The span that names a batch: the one the SDK marks `is_segment`, else the
- * first span whose parent is not in the batch, else the first span. SDKs list
- * child spans first, because they end first.
- */
-function segmentRoot(
-  spans: Record<string, unknown>[],
-): Record<string, unknown> {
-  const ids = new Set(spans.map((span) => span.span_id));
-  return (
-    spans.find((span) => span.is_segment === true) ??
-    spans.find(
-      (span) =>
-        typeof span.parent_span_id !== "string" ||
-        !ids.has(span.parent_span_id),
-    ) ??
-    spans[0] ??
-    {}
-  );
-}
-
-/**
  * Summarize a log batch, or a span item: a v2 batch with an `items` array, or
  * a standalone span whose payload is the span itself. A log batch takes its
  * level, title, and time from its most severe log; a span batch takes its
- * title and time from its segment root.
+ * title and time from its segment (see {@link batchSegment}).
  */
 function summarizeContainer(
   itemType: string,
@@ -183,10 +163,11 @@ function summarizeContainer(
       count: entries.length,
     };
   }
-  const root = segmentRoot(entries);
+  const segment = batchSegment(entries);
+  const root = segment?.head ?? {};
   return {
     type: "span",
-    title: text(root.name),
+    title: segment?.name,
     timestamp: isoTimestamp(root.end_timestamp ?? root.start_timestamp),
     traceId: traceId(root.trace_id),
     count: entries.length,
