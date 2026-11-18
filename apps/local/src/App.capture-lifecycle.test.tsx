@@ -687,3 +687,19 @@ test("feedback rows show the feedback message, not the page path", async () => {
     "The checkout button did not complete my order.",
   );
 });
+
+test("long event titles are shortened in row labels", async () => {
+  renderCapture({ path: "/errors" });
+  const source = await openSource();
+  const message = `Query failed: ${"SELECT * FROM orders ".repeat(20)}`;
+  await sendItems(source, "long", [
+    [{ type: "event" }, { level: "error", message }],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: /^View event: Query failed/,
+  });
+  const label = row.getAttribute("aria-label") ?? "";
+  expect(label.length).toBeLessThanOrEqual(140);
+  expect(label.endsWith("…")).toBe(true);
+  expect(row.textContent).toContain(message.trim());
+});

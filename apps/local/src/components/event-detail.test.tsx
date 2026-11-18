@@ -356,3 +356,17 @@ test("contexts use readable names and skip empty sections", () => {
   expect(headings).not.toContain("Cloud resource");
   expect(headings).not.toContain("cloud_resource");
 });
+
+test("events whose contexts are all empty show no Contexts section", () => {
+  render(
+    <EventDetail
+      item={item("event", {
+        message: "Cache warmed",
+        contexts: { cloud_resource: {}, culture: {} },
+        tags: { region: "eu" },
+      })}
+    />,
+  );
+  expect(screen.queryByText(/^contexts$/i)).toBeNull();
+  expect(screen.getByRole("table", { name: "Event tags" })).toBeDefined();
+});

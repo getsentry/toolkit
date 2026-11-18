@@ -3,6 +3,7 @@ import {
   display,
   text,
   contextLabel,
+  hasEventSection,
   feedbackData,
   EVENT_CONTEXT_SECTIONS,
 } from "@/lib/inspection.ts";
@@ -55,7 +56,7 @@ export function EventContext({ payload }: { payload: unknown }) {
         </section>
       ) : null}
       {EVENT_CONTEXT_SECTIONS.map((key) =>
-        Object.keys(record(p[key])).length ? (
+        hasEventSection(p, key) ? (
           <details key={key} open className="border-t border-border pt-2">
             <summary className="cursor-pointer text-sm font-semibold capitalize">
               {key === "extra" ? "Additional data" : key}

@@ -289,9 +289,13 @@ export function eventKind(payload: unknown): "Exception" | "Message" | "Event" {
   const p = record(payload);
   const exceptions = record(p.exception).values;
   if (Array.isArray(exceptions) && exceptions.length) return "Exception";
-  return p.message !== undefined || p.logentry !== undefined
-    ? "Message"
-    : "Event";
+  const hasText = (value: unknown) =>
+    Boolean(
+      text(value) ??
+      text(record(value).formatted) ??
+      text(record(value).message),
+    );
+  return hasText(p.message) || hasText(p.logentry) ? "Message" : "Event";
 }
 
 /** Top-level event fields that otherwise only appear in the raw JSON. */
@@ -341,8 +345,18 @@ export function hasEventContext(payload: unknown): boolean {
     : record(value.breadcrumbs).values;
   return (
     (Array.isArray(breadcrumbs) && breadcrumbs.length > 0) ||
-    EVENT_CONTEXT_SECTIONS.some(
-      (key) => Object.keys(record(value[key])).length > 0,
-    )
+    EVENT_CONTEXT_SECTIONS.some((key) => hasEventSection(value, key))
   );
+}
+/** Whether a context section has fields to show; empty named contexts do not count. */
+export function hasEventSection(
+  payload: unknown,
+  key: (typeof EVENT_CONTEXT_SECTIONS)[number],
+): boolean {
+  const section = record(record(payload)[key]);
+  return key === "contexts"
+    ? Object.values(section).some(
+        (context) => Object.keys(record(context)).length > 0,
+      )
+    : Object.keys(section).length > 0;
 }
