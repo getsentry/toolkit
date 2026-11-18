@@ -1,3 +1,4 @@
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
 import {
   getEventMetadata,
   type EventMetadata,
@@ -51,17 +52,6 @@ function getString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-function getTimestamp(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
 function getTraceContext(payload: unknown): Record<string, unknown> {
   if (!isRecord(payload)) {
     return {};
@@ -80,11 +70,11 @@ function getPayloadSpan(
   if (!id) {
     return undefined;
   }
-  const startTimestamp = getTimestamp(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event.start_timestamp);
   const endTimestamp =
-    getTimestamp(event.timestamp) ??
-    getTimestamp(event.end_timestamp) ??
-    getTimestamp(item.timestamp);
+    parseEventTimestamp(event.timestamp) ??
+    parseEventTimestamp(event.end_timestamp) ??
+    parseEventTimestamp(item.timestamp);
   const operation = getString(trace.op) ?? item.metadata?.operation;
   const title = item.metadata?.title?.trim();
   const description = withCapturedUrl(
@@ -242,8 +232,8 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
     if (!id) {
       return [];
     }
-    const startTimestamp = getTimestamp(value.start_timestamp);
-    const endTimestamp = getTimestamp(value.timestamp);
+    const startTimestamp = parseEventTimestamp(value.start_timestamp);
+    const endTimestamp = parseEventTimestamp(value.timestamp);
     const operation = getString(value.op);
     return [
       {
@@ -305,7 +295,7 @@ function updateTraceTiming(trace: MutableTraceGroup): void {
     end = Math.max(end, timestamp);
   }
   for (const item of trace.items)
-    includeTimestamp(getTimestamp(item.timestamp));
+    includeTimestamp(parseEventTimestamp(item.timestamp));
   for (const span of trace.spanMap.values()) {
     includeTimestamp(span.startTimestamp);
     includeTimestamp(span.endTimestamp);

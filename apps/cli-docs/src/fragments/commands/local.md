@@ -106,7 +106,8 @@ In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
-`envelope_id` for exact correlation. In `local run --format json`, the wrapped
+`envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
+when the SDK sends ISO 8601 strings. In `local run --format json`, the wrapped
 app's standard output is also forwarded to standard error, leaving standard
 output exclusively for NDJSON observations.
 
