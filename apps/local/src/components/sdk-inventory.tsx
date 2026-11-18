@@ -1,5 +1,5 @@
 import { sdkInventory } from "@/lib/inspection.ts";
-import { formatTimestamp } from "@/lib/presentation.ts";
+import { formatDateTime } from "@/lib/presentation.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 export function SdkInventory({
   items,
@@ -56,7 +56,7 @@ export function SdkInventory({
                   <td className="px-2 py-2">
                     {entry.lastSeen === undefined
                       ? "Unknown"
-                      : formatTimestamp(entry.lastSeen)}
+                      : formatDateTime(entry.lastSeen)}
                   </td>
                 </tr>
               ))}

@@ -672,3 +672,34 @@ test("envelopes without a receiver time fall back to their sent_at header", asyn
     new Date("2026-11-17T20:30:30.000Z").toLocaleTimeString(),
   );
 });
+
+test("Last received never moves back when a later envelope only has sent_at", async () => {
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          {},
+          [[{ type: "event" }, { message: "Checkout failed" }]],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:00:00.000Z" },
+          [[{ type: "event" }, { message: "Retry queued" }]],
+        ]),
+        lastEventId: "legacy-envelope",
+      }),
+    ),
+  );
+  expect(
+    screen.getByText(/Last received/).querySelector("time")?.dateTime,
+  ).toBe(new Date(receivedAt).toISOString());
+});

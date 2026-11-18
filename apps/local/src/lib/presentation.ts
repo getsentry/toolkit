@@ -94,17 +94,30 @@ export function getWorkspaceEmptyState({
   return { title: `No ${items} captured`, description: triggers[view] };
 }
 
+function toDate(timestamp: number | string): Date {
+  return new Date(
+    typeof timestamp === "number" && timestamp < 1_000_000_000_000
+      ? timestamp * 1_000
+      : timestamp,
+  );
+}
+
 /** Show an SDK timestamp (epoch seconds or milliseconds, or ISO) in local time. */
 export function formatTimestamp(
   timestamp: number | string | undefined,
 ): string {
   if (timestamp === undefined) return "unknown time";
-  const date = new Date(
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp,
-  );
+  const date = toDate(timestamp);
   return Number.isNaN(date.getTime())
     ? String(timestamp)
     : date.toLocaleTimeString();
+}
+
+/** Like formatTimestamp, with the local date added when it is not today. */
+export function formatDateTime(timestamp: number | string): string {
+  const date = toDate(timestamp);
+  if (Number.isNaN(date.getTime())) return String(timestamp);
+  return date.toDateString() === new Date().toDateString()
+    ? date.toLocaleTimeString()
+    : `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }

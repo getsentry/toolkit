@@ -906,7 +906,9 @@ export default function App() {
         envelopeReceivedAt(eventId) ??
         (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
       const itemTypes = [...new Set(items?.map((item) => item.type))];
-      setLatestEventTime(receivedAt);
+      setLatestEventTime((latest) =>
+        latest === undefined ? receivedAt : Math.max(latest, receivedAt),
+      );
       telemetryStore.recordEnvelope(
         {
           id: eventId,

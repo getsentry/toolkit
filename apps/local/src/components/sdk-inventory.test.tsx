@@ -1,9 +1,17 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { SdkInventory } from "./sdk-inventory.tsx";
 
-afterEach(cleanup);
+beforeEach(() => {
+  // "Last seen" adds the date only for other days, so pin today.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-17T20:31:00.000Z"));
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 test("Last seen uses local time for epoch and ISO timestamps", () => {
   const items = [
@@ -36,4 +44,22 @@ test("Last seen uses local time for epoch and ISO timestamps", () => {
     new Date("2026-11-17T20:30:25.000Z").toLocaleTimeString(),
     new Date(1794947420913).toLocaleTimeString(),
   ]);
+});
+
+test("Last seen adds the date when it is not today", () => {
+  const seenAt = new Date("2026-11-10T09:15:00.000Z");
+  render(
+    <SdkInventory
+      items={decodeEnvelope(
+        JSON.stringify([
+          { sdk: { name: "sentry.ruby.rails", version: "5.22.0" } },
+          [[{ type: "event" }, { timestamp: seenAt.getTime() / 1000 }]],
+        ]),
+        "rails",
+      )}
+    />,
+  );
+  expect(screen.getAllByRole("row")[1]?.lastElementChild?.textContent).toBe(
+    `${seenAt.toLocaleDateString()} ${seenAt.toLocaleTimeString()}`,
+  );
 });
