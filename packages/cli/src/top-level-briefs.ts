@@ -25,7 +25,7 @@ export const TOP_LEVEL_BRIEFS = {
   "dart-symbol-map": "Work with Dart/Flutter symbol maps",
   "debug-files": "Work with debug information files",
   dashboard: "Manage Sentry dashboards",
-  docs: "Search and query current Sentry documentation",
+  docs: "Search the Sentry documentation",
   dsn: "Find Sentry DSNs",
   org: "Work with Sentry organizations",
   platform: "List valid Sentry platform identifiers",

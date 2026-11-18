@@ -14,15 +14,15 @@ the current docs before you write any Sentry code, and follow them over what
 you remember:
 
 ```bash
-sentry docs "How do I set up Sentry in a Next.js app?"   # cited answer
-sentry docs list "nextjs tracing"                         # matching doc pages
+sentry docs nextjs setup                       # matching pages, best first
+sentry docs -e 'guides/nextjs/manual-setup$'   # filter URL paths by regex
 ```
 
-Every docs.sentry.io page is also available as Markdown: add `.md` to its
+Each result is a page title and its Markdown URL; fetch the URL to read the
+page. Every docs.sentry.io page is available as Markdown: add `.md` to its
 path, as in `https://docs.sentry.io/platforms/javascript/guides/nextjs.md`.
-`sentry docs` needs a sentry.io login; with a self-hosted Sentry, read those
-`.md` pages instead. Never write an SDK version number from memory. Install
-without a version so the package manager picks the current release.
+Never write an SDK version number from memory. Install without a version so
+the package manager picks the current release.
 
 ## 1. Install the Sentry CLI
 
@@ -80,8 +80,7 @@ your memory. Search for each part's exact framework and runtime, and read the
 setup pages before you choose:
 
 ```bash
-sentry docs list "tanstack start cloudflare"
-sentry docs "How do I set up Sentry in TanStack Start on Cloudflare?"
+sentry docs tanstack start cloudflare
 ```
 
 Use the SDKs those pages name, and no others: a page can say one SDK is
@@ -96,7 +95,7 @@ to the init call or need an extra package. Check each SDK's integrations
 against the app's dependencies:
 
 ```bash
-sentry docs list "nextjs integrations"
+sentry docs nextjs integrations
 ```
 
 **Whether Sentry is already there.** Look for Sentry packages in the
@@ -112,7 +111,7 @@ dependency manifests (`package.json`, `requirements.txt`, `pyproject.toml`,
   what they ask for. Compare the installed version with the latest release
   (`npm view @sentry/nextjs version`, `pip index versions sentry-sdk`, or the
   ecosystem's equivalent). Before a major-version upgrade, read the migration
-  guide with `sentry docs "migrate <sdk> from v<old> to v<new>"`.
+  guide, found with `sentry docs migrate <sdk> v<new>`.
 - **Sentry is not set up.** Continue with step 4.
 
 ## 4. Pick the Sentry project
@@ -175,9 +174,9 @@ add.
 For each SDK and integration from step 3, read its docs page and follow it:
 
 ```bash
-sentry docs "How do I set up Sentry in <framework> on <runtime>?"
-sentry docs "How do I enable <feature> in <framework>?"
-sentry docs "How do I add the <library> integration in <framework>?"
+sentry docs <framework> <runtime> setup
+sentry docs <framework> <feature>
+sentry docs <framework> <library> integration
 ```
 
 - Install every package the new code imports, with the project's package

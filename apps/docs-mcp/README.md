@@ -41,10 +41,9 @@ parsing, whether or not the request declares `Content-Length`. An oversized
 at most 10,000 array elements plus object keys across `arguments`; larger calls
 return an `isError` result before the tool runs.
 
-The existing `sentry docs` CLI calls Init Server's authenticated `/api/docs/*`
-facade, which forwards requests through its `DOCS_MCP` binding. Moving this app
-does not change that contract. Retiring Init Server would require a separate
-decision about the CLI's entry point; it would not stop this Worker. Toolkit's
+Init Server's authenticated `/api/docs/*` facade forwards requests to this
+Worker through its `DOCS_MCP` binding. The `sentry docs` CLI command no longer
+uses it: it searches docs.sentry.io's page index locally. Toolkit's
 main MCP server has its own `search_docs` and `get_doc` tools and does not consume
 this Worker.
 

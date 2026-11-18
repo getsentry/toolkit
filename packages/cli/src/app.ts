@@ -14,7 +14,7 @@ import { dartSymbolMapRoute } from "./commands/dart-symbol-map/index.js";
 import { dashboardRoute } from "./commands/dashboard/index.js";
 import { listCommand as dashboardListCommand } from "./commands/dashboard/list.js";
 import { debugFilesRoute } from "./commands/debug-files/index.js";
-import { docsRoute } from "./commands/docs/index.js";
+import { docsCommand } from "./commands/docs.js";
 import { dsnRoute } from "./commands/dsn/index.js";
 import { listCommand as dsnListCommand } from "./commands/dsn/list.js";
 import { eventRoute } from "./commands/event/index.js";
@@ -86,7 +86,7 @@ export const routes = buildSentryRoutes({
   "dart-symbol-map": dartSymbolMapRoute,
   "debug-files": debugFilesRoute,
   dashboard: dashboardRoute,
-  docs: docsRoute,
+  docs: docsCommand,
   dsn: dsnRoute,
   org: orgRoute,
   platform: platformRoute,

@@ -1,29 +1,24 @@
 import { buildApplication, run } from "@stricli/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { docsRoute } from "../../src/commands/docs/index.js";
 import type { SentryContext } from "../../src/context.js";
+import { ValidationError } from "../../src/lib/errors.js";
 
-const { detectDocsContext, listDocs, queryDocs, withProgress } = vi.hoisted(
-  () => ({
-    detectDocsContext: vi.fn(),
-    listDocs: vi.fn(),
-    queryDocs: vi.fn(),
-    withProgress: vi.fn(),
-  }),
-);
+const { loadDocsIndex } = vi.hoisted(() => ({ loadDocsIndex: vi.fn() }));
+vi.mock("../../src/lib/docs-index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/docs-index.js")>()),
+  loadDocsIndex,
+}));
 
-vi.mock("../../src/lib/docs-context.js", () => ({ detectDocsContext }));
-vi.mock("../../src/lib/docs-service.js", () => ({ listDocs, queryDocs }));
-vi.mock("../../src/lib/polling.js", () => ({ withProgress }));
+import { docsCommand } from "../../src/commands/docs.js";
+import { fixtureDocsIndex } from "../fixtures/docs/index.js";
 
-import { listCommand } from "../../src/commands/docs/list.js";
-import { queryCommand } from "../../src/commands/docs/query.js";
+const index = fixtureDocsIndex();
 
 function createContext(): {
   context: SentryContext;
-  stdoutWrite: ReturnType<typeof vi.fn>;
+  stdout: () => string;
 } {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn((_chunk: string) => true);
   return {
     context: {
       configDir: "/tmp",
@@ -35,113 +30,102 @@ function createContext(): {
       stdin: process.stdin,
       stdout: { write: stdoutWrite },
     },
-    stdoutWrite,
+    stdout: () => stdoutWrite.mock.calls.map((call) => call[0]).join(""),
   };
 }
 
-async function runDocsRoute(
-  context: SentryContext,
-  args: string[],
-): Promise<void> {
-  const app = buildApplication(docsRoute, { name: "sentry docs" });
-  await run(app, args, context);
+async function runDocs(args: string[]) {
+  const harness = createContext();
+  const app = buildApplication(docsCommand, { name: "sentry docs" });
+  await run(app, args, harness.context);
+  return harness;
+}
+
+function jsonUrls(output: string): string[] {
+  return (JSON.parse(output) as { results: { url: string }[] }).results.map(
+    (result) => result.url.replace("https://docs.sentry.io", ""),
+  );
 }
 
 beforeEach(() => {
-  withProgress.mockReset();
-  withProgress.mockImplementation(async (_options, fn) =>
-    fn(() => {
-      /* Progress rendering is covered by polling tests. */
-    }),
-  );
-  detectDocsContext.mockResolvedValue({
-    frameworks: ["nextjs"],
-    languages: ["javascript"],
-    sentryConfigured: true,
-  });
-  listDocs.mockResolvedValue({
-    results: [
-      {
-        description: "Configure tracing.",
-        title: "Tracing",
-        url: "https://docs.sentry.io/platforms/javascript/tracing/",
-      },
-    ],
-  });
-  queryDocs.mockResolvedValue({
-    answer:
-      "Use [tracing](https://docs.sentry.io/platforms/javascript/tracing/).\n\n## Sources\n\n- <https://docs.sentry.io/platforms/javascript/tracing/>",
-    sources: ["https://docs.sentry.io/platforms/javascript/tracing/"],
-  });
+  loadDocsIndex.mockReset();
+  loadDocsIndex.mockResolvedValue({ index });
 });
 
-describe("docs commands", () => {
-  test("queries docs with automatic safe context and returns it in JSON", async () => {
-    const { context, stdoutWrite } = createContext();
-    const func = await queryCommand.loader();
+describe("sentry docs", () => {
+  test("prints titles and Markdown URLs", async () => {
+    const { stdout } = await runDocs(["nextjs", "tracing", "-n", "1"]);
 
-    await func.call(context, { json: true }, "How", "do", "I", "trace?");
-
-    expect(queryDocs).toHaveBeenCalledWith("How do I trace?", {
-      frameworks: ["nextjs"],
-      languages: ["javascript"],
-      sentryConfigured: true,
-    });
-    expect(
-      JSON.parse(stdoutWrite.mock.calls.map((call) => call[0]).join("")),
-    ).toEqual({
-      answer:
-        "Use [tracing](https://docs.sentry.io/platforms/javascript/tracing/).\n\n## Sources\n\n- <https://docs.sentry.io/platforms/javascript/tracing/>",
-      detectedContext: {
-        frameworks: ["nextjs"],
-        languages: ["javascript"],
-        sentryConfigured: true,
-      },
-      sources: ["https://docs.sentry.io/platforms/javascript/tracing/"],
-    });
-    expect(withProgress).toHaveBeenCalledWith(
-      {
-        json: true,
-        interactiveOnly: true,
-        message: "Searching Sentry docs…",
-        rotatingMessages: [
-          "Finding the relevant bits…",
-          "Cross-checking the details…",
-          "It’s getting there…",
-          "Collecting trusted sources…",
-        ],
-        rotationIntervalMs: 4000,
-      },
-      expect.any(Function),
+    expect(stdout()).toBe(
+      "Set Up Tracing\n  https://docs.sentry.io/platforms/javascript/guides/nextjs/tracing.md\n",
     );
+    expect(loadDocsIndex).toHaveBeenCalledWith({ fresh: false });
+  });
+
+  test("outputs results and warnings as JSON", async () => {
+    const { stdout } = await runDocs(["djnago", "--json", "-n", "1"]);
+
+    expect(JSON.parse(stdout())).toEqual({
+      results: [
+        {
+          title: "Django",
+          description: expect.any(String),
+          url: "https://docs.sentry.io/platforms/python/integrations/django.md",
+          breadcrumbs: ["Platforms", "Python", "Integrations"],
+        },
+      ],
+      warnings: ['Searched "django" for "djnago".'],
+    });
   });
 
   test.each([
-    ["default query", ["How", "do", "I", "trace?", "--json"]],
-    ["explicit query", ["query", "How", "do", "I", "trace?", "--json"]],
-    ["search alias", ["search", "How", "do", "I", "trace?", "--json"]],
-  ])("routes %s to the docs query command", async (_name, args) => {
-    const { context } = createContext();
+    [["-e", "integrations/(django|celery)$"]],
+    [["--regexp", "integrations/(django|celery)$"]],
+    [["--regex", "integrations/(django|celery)$"]],
+    [["-E", "integrations/(django|celery)$", "-i"]],
+    [["-e", "integrations/django$", "-e", "integrations/celery$"]],
+  ])("filters with grep-style patterns: %j", async (args) => {
+    const { stdout } = await runDocs([...args, "--json"]);
 
-    await runDocsRoute(context, args);
-
-    expect(queryDocs).toHaveBeenLastCalledWith("How do I trace?", {
-      frameworks: ["nextjs"],
-      languages: ["javascript"],
-      sentryConfigured: true,
-    });
+    expect(jsonUrls(stdout())).toEqual([
+      "/platforms/python/integrations/celery.md",
+      "/platforms/python/integrations/django.md",
+    ]);
   });
 
-  test("lists deterministic keyword matches with a bounded limit", async () => {
-    const { context, stdoutWrite } = createContext();
-    const func = await listCommand.loader();
+  test("passes --fresh to the index loader", async () => {
+    await runDocs(["celery", "--fresh", "--json"]);
 
-    await func.call(context, { json: false, limit: 5 }, "nextjs", "tracing");
+    expect(loadDocsIndex).toHaveBeenCalledWith({ fresh: true });
+  });
 
-    expect(listDocs).toHaveBeenCalledWith("nextjs tracing", 5);
-    expect(stdoutWrite.mock.calls.map((call) => call[0]).join("")).toContain(
-      "Tracing",
-    );
-    expect(withProgress).not.toHaveBeenCalled();
+  test("shows the loader's warning", async () => {
+    loadDocsIndex.mockResolvedValue({ index, warning: "Using a stale copy." });
+
+    const { stdout } = await runDocs(["celery", "--json"]);
+
+    expect(JSON.parse(stdout()).warnings).toEqual(["Using a stale copy."]);
+  });
+
+  test("succeeds with a hint when nothing matches", async () => {
+    const { context, stdout } = await runDocs(["-e", "^nothing-here$"]);
+
+    expect(stdout()).toContain("No documentation pages match");
+    expect(context.process.exitCode ?? 0).toBe(0);
+  });
+
+  test("asks for words when given none", async () => {
+    const { context } = createContext();
+    const func = await docsCommand.loader();
+
+    await expect(
+      func.call(context, {
+        fresh: false,
+        ignoreCase: false,
+        json: false,
+        limit: 8,
+      }),
+    ).rejects.toThrow(ValidationError);
+    expect(loadDocsIndex).not.toHaveBeenCalled();
   });
 });

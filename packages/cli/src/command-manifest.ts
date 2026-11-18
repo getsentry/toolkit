@@ -85,7 +85,7 @@ export const COMMAND_MANIFEST: Readonly<Record<string, ManifestEntry>> = {
     () => import("./commands/dashboard/index.js"),
     "dashboardRoute",
   ),
-  docs: route(() => import("./commands/docs/index.js"), "docsRoute"),
+  docs: route(() => import("./commands/docs.js"), "docsCommand"),
   dsn: route(() => import("./commands/dsn/index.js"), "dsnRoute"),
   org: route(() => import("./commands/org/index.js"), "orgRoute"),
   platform: route(

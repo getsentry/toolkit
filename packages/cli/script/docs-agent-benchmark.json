@@ -1,0 +1,432 @@
+{
+  "$comment": "Agent tasks for script/docs-agent-benchmark.ts. Each task is a small repository and a request phrased the way a person asks a coding agent. checks are regexes on the files after the run: every check needs one file whose path matches `file` (an empty `file` matches any file) and whose content matches `pattern`. They were checked against docs.sentry.io in November 2026.",
+  "tasks": [
+    {
+      "id": "nextjs-setup",
+      "tier": "common",
+      "platform": "Next.js",
+      "request": "Set up Sentry in this app. We want errors and performance traces from both the browser and the server.",
+      "files": {
+        "package.json": "{\n  \"name\": \"shop\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\"\n  },\n  \"dependencies\": {\n    \"next\": \"15.3.0\",\n    \"react\": \"19.1.0\",\n    \"react-dom\": \"19.1.0\"\n  },\n  \"devDependencies\": {\n    \"typescript\": \"5.8.3\"\n  }\n}\n",
+        "next.config.ts": "import type { NextConfig } from \"next\";\n\nconst nextConfig: NextConfig = {};\n\nexport default nextConfig;\n",
+        "app/layout.tsx": "export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
+        "app/page.tsx": "export default function Home() {\n  return <main>Shop</main>;\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^package\\.json$",
+          "pattern": "@sentry/nextjs"
+        },
+        {
+          "file": "^next\\.config\\.",
+          "pattern": "withSentryConfig"
+        },
+        {
+          "file": "^(src/)?instrumentation\\.(ts|js)$",
+          "pattern": "register"
+        }
+      ]
+    },
+    {
+      "id": "laravel-queue",
+      "tier": "common",
+      "platform": "PHP / Laravel",
+      "request": "Exceptions from this app, including the ones thrown in queued jobs, aren't reported anywhere. Report them to Sentry.",
+      "files": {
+        "composer.json": "{\n  \"name\": \"acme/billing\",\n  \"require\": {\n    \"php\": \"^8.2\",\n    \"laravel/framework\": \"^11.0\"\n  }\n}\n",
+        "bootstrap/app.php": "<?php\n\nuse Illuminate\\Foundation\\Application;\nuse Illuminate\\Foundation\\Configuration\\Exceptions;\nuse Illuminate\\Foundation\\Configuration\\Middleware;\n\nreturn Application::configure(basePath: dirname(__DIR__))\n    ->withRouting(\n        web: __DIR__.'/../routes/web.php',\n        commands: __DIR__.'/../routes/console.php',\n    )\n    ->withMiddleware(function (Middleware $middleware) {\n        //\n    })\n    ->withExceptions(function (Exceptions $exceptions) {\n        //\n    })->create();\n",
+        "app/Jobs/SendInvoice.php": "<?php\n\nnamespace App\\Jobs;\n\nuse Illuminate\\Contracts\\Queue\\ShouldQueue;\nuse Illuminate\\Foundation\\Queue\\Queueable;\n\nclass SendInvoice implements ShouldQueue\n{\n    use Queueable;\n\n    public function handle(): void\n    {\n        // ...\n    }\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^composer\\.json$",
+          "pattern": "sentry/sentry-laravel"
+        },
+        {
+          "file": "^bootstrap/app\\.php$",
+          "pattern": "Integration::handles"
+        }
+      ]
+    },
+    {
+      "id": "laravel-crons",
+      "tier": "niche",
+      "platform": "PHP / Laravel",
+      "request": "We need to know when the scheduled commands in this app fail or don't run at all. Use Sentry for it; the SDK is already installed and configured.",
+      "files": {
+        "composer.json": "{\n  \"name\": \"acme/reports\",\n  \"require\": {\n    \"php\": \"^8.2\",\n    \"laravel/framework\": \"^11.0\",\n    \"sentry/sentry-laravel\": \"^4.13\"\n  }\n}\n",
+        "routes/console.php": "<?php\n\nuse Illuminate\\Support\\Facades\\Schedule;\n\nSchedule::command('reports:send')->dailyAt('06:00');\nSchedule::command('invoices:prune')->weekly();\n"
+      },
+      "checks": [
+        {
+          "file": "^routes/console\\.php$",
+          "pattern": "sentryMonitor"
+        }
+      ]
+    },
+    {
+      "id": "symfony-setup",
+      "tier": "niche",
+      "platform": "PHP / Symfony",
+      "request": "Add Sentry error reporting to this Symfony app.",
+      "files": {
+        "composer.json": "{\n  \"name\": \"acme/api\",\n  \"require\": {\n    \"php\": \">=8.2\",\n    \"symfony/framework-bundle\": \"7.2.*\",\n    \"symfony/runtime\": \"7.2.*\"\n  }\n}\n",
+        "config/bundles.php": "<?php\n\nreturn [\n    Symfony\\Bundle\\FrameworkBundle\\FrameworkBundle::class => ['all' => true],\n];\n",
+        ".env": "APP_ENV=dev\nAPP_SECRET=change-me\n"
+      },
+      "checks": [
+        {
+          "file": "^composer\\.json$",
+          "pattern": "sentry/sentry-symfony"
+        },
+        {
+          "file": "^config/",
+          "pattern": "SentryBundle|sentry:"
+        }
+      ]
+    },
+    {
+      "id": "php-plain",
+      "tier": "niche",
+      "platform": "PHP",
+      "request": "This is a plain PHP app without a framework. Send its errors to Sentry.",
+      "files": {
+        "composer.json": "{\n  \"name\": \"acme/legacy\",\n  \"require\": {\n    \"php\": \">=8.1\"\n  }\n}\n",
+        "public/index.php": "<?php\n\nrequire __DIR__ . '/../vendor/autoload.php';\n\n$page = $_GET['page'] ?? 'home';\nrequire __DIR__ . \"/../pages/{$page}.php\";\n"
+      },
+      "checks": [
+        {
+          "file": "^composer\\.json$",
+          "pattern": "\"sentry/sentry\""
+        },
+        {
+          "file": "\\.php$",
+          "pattern": "Sentry\\\\init\\("
+        }
+      ]
+    },
+    {
+      "id": "rails-sidekiq",
+      "tier": "common",
+      "platform": "Ruby / Rails",
+      "request": "Report errors from this Rails app and its Sidekiq workers to Sentry, with performance tracing.",
+      "files": {
+        "Gemfile": "source \"https://rubygems.org\"\n\ngem \"rails\", \"~> 7.2.0\"\ngem \"pg\", \"~> 1.5\"\ngem \"puma\", \">= 6.0\"\ngem \"sidekiq\", \"~> 7.3\"\n",
+        "config/application.rb": "require_relative \"boot\"\nrequire \"rails/all\"\n\nBundler.require(*Rails.groups)\n\nmodule Shop\n  class Application < Rails::Application\n    config.load_defaults 7.2\n    config.active_job.queue_adapter = :sidekiq\n  end\nend\n"
+      },
+      "checks": [
+        {
+          "file": "^Gemfile$",
+          "pattern": "sentry-rails"
+        },
+        {
+          "file": "^Gemfile$",
+          "pattern": "sentry-sidekiq"
+        },
+        {
+          "file": "\\.rb$",
+          "pattern": "traces_sample_rate|traces_sampler"
+        }
+      ]
+    },
+    {
+      "id": "django-celery",
+      "tier": "common",
+      "platform": "Python / Django",
+      "request": "Set up Sentry for this Django project. We also run Celery workers; their task errors and traces should show up too.",
+      "files": {
+        "requirements.txt": "Django==5.1.4\ncelery==5.4.0\nredis==5.2.1\n",
+        "mysite/settings.py": "from pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\nSECRET_KEY = \"dev\"\nDEBUG = False\nINSTALLED_APPS = [\"django.contrib.contenttypes\", \"orders\"]\nCELERY_BROKER_URL = \"redis://localhost:6379/0\"\n",
+        "mysite/celery.py": "import os\n\nfrom celery import Celery\n\nos.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"mysite.settings\")\n\napp = Celery(\"mysite\")\napp.config_from_object(\"django.conf:settings\", namespace=\"CELERY\")\napp.autodiscover_tasks()\n"
+      },
+      "checks": [
+        {
+          "file": "^requirements\\.txt$",
+          "pattern": "sentry-sdk"
+        },
+        {
+          "file": "\\.py$",
+          "pattern": "sentry_sdk\\.init"
+        },
+        {
+          "file": "\\.py$",
+          "pattern": "traces_sample_rate|traces_sampler"
+        }
+      ]
+    },
+    {
+      "id": "phoenix-setup",
+      "tier": "niche",
+      "platform": "Elixir / Phoenix",
+      "request": "Report errors from this Phoenix app to Sentry.",
+      "files": {
+        "mix.exs": "defmodule MyApp.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :my_app, version: \"0.1.0\", elixir: \"~> 1.17\", deps: deps()]\n  end\n\n  def application do\n    [mod: {MyApp.Application, []}, extra_applications: [:logger]]\n  end\n\n  defp deps do\n    [\n      {:phoenix, \"~> 1.7.14\"},\n      {:jason, \"~> 1.4\"},\n      {:bandit, \"~> 1.5\"}\n    ]\n  end\nend\n",
+        "lib/my_app_web/endpoint.ex": "defmodule MyAppWeb.Endpoint do\n  use Phoenix.Endpoint, otp_app: :my_app\n\n  plug Plug.RequestId\n  plug Plug.Parsers, parsers: [:urlencoded, :json], json_decoder: Jason\n  plug MyAppWeb.Router\nend\n",
+        "config/config.exs": "import Config\n\nconfig :my_app, MyAppWeb.Endpoint, url: [host: \"localhost\"]\n"
+      },
+      "checks": [
+        {
+          "file": "^mix\\.exs$",
+          "pattern": "\\{:sentry,"
+        },
+        {
+          "file": "^lib/my_app_web/endpoint\\.ex$",
+          "pattern": "Sentry\\.PlugContext"
+        }
+      ]
+    },
+    {
+      "id": "elixir-oban",
+      "tier": "niche",
+      "platform": "Elixir / Oban",
+      "request": "We use Oban for background jobs and its cron plugin for scheduled ones. Make failed jobs show up in Sentry and monitor the scheduled jobs too. Sentry itself is already set up.",
+      "files": {
+        "mix.exs": "defmodule Worker.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :worker, version: \"0.1.0\", elixir: \"~> 1.17\", deps: deps()]\n  end\n\n  defp deps do\n    [\n      {:oban, \"~> 2.18\"},\n      {:sentry, \"~> 11.0\"},\n      {:jason, \"~> 1.4\"}\n    ]\n  end\nend\n",
+        "config/config.exs": "import Config\n\nconfig :worker, Oban,\n  repo: Worker.Repo,\n  queues: [default: 10],\n  plugins: [{Oban.Plugins.Cron, crontab: [{\"0 6 * * *\", Worker.DailyReport}]}]\n\nconfig :sentry,\n  dsn: System.get_env(\"SENTRY_DSN\"),\n  environment_name: config_env()\n"
+      },
+      "checks": [
+        {
+          "file": "^config/",
+          "pattern": "oban:\\s*\\["
+        },
+        {
+          "file": "^config/",
+          "pattern": "cron:\\s*\\[\\s*enabled:\\s*true"
+        }
+      ]
+    },
+    {
+      "id": "flutter-setup",
+      "tier": "niche",
+      "platform": "Dart / Flutter",
+      "request": "Add crash and error reporting with Sentry to this Flutter app.",
+      "files": {
+        "pubspec.yaml": "name: notes\ndescription: A notes app.\nversion: 1.0.0+1\n\nenvironment:\n  sdk: \">=3.5.0 <4.0.0\"\n\ndependencies:\n  flutter:\n    sdk: flutter\n\nflutter:\n  uses-material-design: true\n",
+        "lib/main.dart": "import 'package:flutter/material.dart';\n\nvoid main() {\n  runApp(const NotesApp());\n}\n\nclass NotesApp extends StatelessWidget {\n  const NotesApp({super.key});\n\n  @override\n  Widget build(BuildContext context) => const MaterialApp(home: Scaffold());\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^pubspec\\.yaml$",
+          "pattern": "sentry_flutter"
+        },
+        {
+          "file": "^lib/main\\.dart$",
+          "pattern": "SentryFlutter\\.init"
+        }
+      ]
+    },
+    {
+      "id": "unity-setup",
+      "tier": "niche",
+      "platform": "Unity",
+      "request": "Add Sentry to this Unity game so we get crash and error reports.",
+      "files": {
+        "Packages/manifest.json": "{\n  \"dependencies\": {\n    \"com.unity.inputsystem\": \"1.11.2\",\n    \"com.unity.render-pipelines.universal\": \"17.0.3\"\n  }\n}\n",
+        "ProjectSettings/ProjectVersion.txt": "m_EditorVersion: 6000.0.32f1\n"
+      },
+      "checks": [
+        {
+          "file": "^Packages/manifest\\.json$",
+          "pattern": "getsentry/unity"
+        }
+      ]
+    },
+    {
+      "id": "go-gin",
+      "tier": "common",
+      "platform": "Go / Gin",
+      "request": "Report panics and errors from this Gin service to Sentry.",
+      "files": {
+        "go.mod": "module example.com/api\n\ngo 1.23\n\nrequire github.com/gin-gonic/gin v1.10.0\n",
+        "main.go": "package main\n\nimport \"github.com/gin-gonic/gin\"\n\nfunc main() {\n\tr := gin.Default()\n\tr.GET(\"/health\", func(c *gin.Context) { c.String(200, \"ok\") })\n\tr.Run(\":8080\")\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^go\\.mod$",
+          "pattern": "getsentry/sentry-go"
+        },
+        {
+          "file": "\\.go$",
+          "pattern": "sentrygin\\.New"
+        }
+      ]
+    },
+    {
+      "id": "rust-axum",
+      "tier": "niche",
+      "platform": "Rust / Axum",
+      "request": "Send errors and request traces from this Axum server to Sentry.",
+      "files": {
+        "Cargo.toml": "[package]\nname = \"api\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\naxum = \"0.8\"\ntokio = { version = \"1\", features = [\"full\"] }\n",
+        "src/main.rs": "use axum::{routing::get, Router};\n\n#[tokio::main]\nasync fn main() {\n    let app = Router::new().route(\"/\", get(|| async { \"ok\" }));\n    let listener = tokio::net::TcpListener::bind(\"0.0.0.0:3000\").await.unwrap();\n    axum::serve(listener, app).await.unwrap();\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^Cargo\\.toml$",
+          "pattern": "^sentry\\s*="
+        },
+        {
+          "file": "\\.rs$",
+          "pattern": "NewSentryLayer|SentryHttpLayer"
+        }
+      ]
+    },
+    {
+      "id": "aspnetcore-setup",
+      "tier": "common",
+      "platform": ".NET / ASP.NET Core",
+      "request": "Set up Sentry in this ASP.NET Core API for errors and performance monitoring.",
+      "files": {
+        "Api.csproj": "<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net9.0</TargetFramework>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n</Project>\n",
+        "Program.cs": "var builder = WebApplication.CreateBuilder(args);\nvar app = builder.Build();\n\napp.MapGet(\"/\", () => \"ok\");\n\napp.Run();\n"
+      },
+      "checks": [
+        {
+          "file": "\\.csproj$",
+          "pattern": "Sentry\\.AspNetCore"
+        },
+        {
+          "file": "^Program\\.cs$",
+          "pattern": "UseSentry"
+        }
+      ]
+    },
+    {
+      "id": "spring-boot-setup",
+      "tier": "common",
+      "platform": "Java / Spring Boot",
+      "request": "Report errors from this Spring Boot 3 service to Sentry.",
+      "files": {
+        "build.gradle": "plugins {\n    id 'java'\n    id 'org.springframework.boot' version '3.4.1'\n    id 'io.spring.dependency-management' version '1.1.7'\n}\n\njava { toolchain { languageVersion = JavaLanguageVersion.of(21) } }\n\nrepositories { mavenCentral() }\n\ndependencies {\n    implementation 'org.springframework.boot:spring-boot-starter-web'\n}\n",
+        "src/main/resources/application.properties": "spring.application.name=orders\n"
+      },
+      "checks": [
+        {
+          "file": "^build\\.gradle$",
+          "pattern": "sentry-spring-boot-starter-jakarta|io\\.sentry\\.jvm\\.gradle"
+        },
+        {
+          "file": "application\\.(properties|ya?ml)$",
+          "pattern": "sentry\\.dsn|dsn:"
+        }
+      ]
+    },
+    {
+      "id": "expo-setup",
+      "tier": "common",
+      "platform": "React Native / Expo",
+      "request": "Add Sentry to this Expo app for crash reporting with readable stack traces.",
+      "files": {
+        "package.json": "{\n  \"name\": \"field-app\",\n  \"main\": \"expo-router/entry\",\n  \"dependencies\": {\n    \"expo\": \"~52.0.0\",\n    \"expo-router\": \"~4.0.0\",\n    \"react\": \"18.3.1\",\n    \"react-native\": \"0.76.5\"\n  }\n}\n",
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"field-app\",\n    \"slug\": \"field-app\",\n    \"plugins\": [\n      \"expo-router\"\n    ]\n  }\n}\n",
+        "app/_layout.tsx": "import { Stack } from \"expo-router\";\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n"
+      },
+      "checks": [
+        {
+          "file": "^package\\.json$",
+          "pattern": "@sentry/react-native"
+        },
+        {
+          "file": "^(app\\.json|app\\.config\\.(js|ts))$",
+          "pattern": "@sentry/react-native"
+        },
+        {
+          "file": "^metro\\.config\\.js$",
+          "pattern": "getSentryExpoConfig"
+        }
+      ]
+    },
+    {
+      "id": "sveltekit-sourcemaps",
+      "tier": "niche",
+      "platform": "SvelteKit",
+      "request": "Errors from this SvelteKit app show up in Sentry with minified stack traces. Fix it so our CI builds give readable ones.",
+      "files": {
+        "package.json": "{\n  \"name\": \"blog\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"build\": \"vite build\"\n  },\n  \"devDependencies\": {\n    \"@sveltejs/kit\": \"^2.15.0\",\n    \"@sveltejs/adapter-node\": \"^5.2.0\",\n    \"svelte\": \"^5.16.0\",\n    \"vite\": \"^6.0.0\"\n  },\n  \"dependencies\": {\n    \"@sentry/sveltekit\": \"^9.0.0\"\n  }\n}\n",
+        "vite.config.ts": "import { sveltekit } from \"@sveltejs/kit/vite\";\nimport { defineConfig } from \"vite\";\n\nexport default defineConfig({\n  plugins: [sveltekit()],\n});\n",
+        "src/hooks.server.ts": "import * as Sentry from \"@sentry/sveltekit\";\n\nSentry.init({ dsn: process.env.SENTRY_DSN });\n\nexport const handleError = Sentry.handleErrorWithSentry();\n"
+      },
+      "checks": [
+        {
+          "file": "^vite\\.config\\.(ts|js)$",
+          "pattern": "sentrySvelteKit"
+        },
+        {
+          "file": "",
+          "pattern": "SENTRY_AUTH_TOKEN|authToken"
+        }
+      ]
+    },
+    {
+      "id": "hono-cloudflare",
+      "tier": "niche",
+      "platform": "Hono on Cloudflare Workers",
+      "request": "Add Sentry error monitoring to this Hono API that runs on Cloudflare Workers.",
+      "files": {
+        "package.json": "{\n  \"name\": \"edge-api\",\n  \"scripts\": {\n    \"deploy\": \"wrangler deploy\"\n  },\n  \"dependencies\": {\n    \"hono\": \"^4.7.0\"\n  },\n  \"devDependencies\": {\n    \"wrangler\": \"^4.0.0\"\n  }\n}\n",
+        "wrangler.toml": "name = \"edge-api\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2024-01-01\"\n",
+        "src/index.ts": "import { Hono } from \"hono\";\n\nconst app = new Hono();\n\napp.get(\"/\", (c) => c.text(\"ok\"));\n\nexport default app;\n"
+      },
+      "checks": [
+        {
+          "file": "^package\\.json$",
+          "pattern": "@sentry/hono"
+        },
+        {
+          "file": "^src/index\\.ts$",
+          "pattern": "@sentry/hono"
+        },
+        {
+          "file": "^wrangler\\.(toml|jsonc?)$",
+          "pattern": "nodejs_compat"
+        }
+      ]
+    },
+    {
+      "id": "bun-server",
+      "tier": "niche",
+      "platform": "Bun",
+      "request": "Report errors from this Bun HTTP server to Sentry.",
+      "files": {
+        "package.json": "{\n  \"name\": \"bun-api\",\n  \"module\": \"index.ts\",\n  \"scripts\": {\n    \"start\": \"bun run index.ts\"\n  },\n  \"devDependencies\": {\n    \"@types/bun\": \"latest\"\n  }\n}\n",
+        "index.ts": "Bun.serve({\n  port: 3000,\n  fetch() {\n    return new Response(\"ok\");\n  },\n});\n"
+      },
+      "checks": [
+        {
+          "file": "^package\\.json$",
+          "pattern": "@sentry/bun"
+        },
+        {
+          "file": "\\.ts$",
+          "pattern": "Sentry\\.init"
+        }
+      ]
+    },
+    {
+      "id": "electron-setup",
+      "tier": "niche",
+      "platform": "Electron",
+      "request": "Add Sentry to this Electron app so we get errors from both the main process and the renderer.",
+      "files": {
+        "package.json": "{\n  \"name\": \"desk\",\n  \"main\": \"main.js\",\n  \"scripts\": {\n    \"start\": \"electron .\"\n  },\n  \"devDependencies\": {\n    \"electron\": \"^33.0.0\"\n  }\n}\n",
+        "main.js": "const { app, BrowserWindow } = require(\"electron\");\n\napp.whenReady().then(() => {\n  const win = new BrowserWindow({ webPreferences: { preload: __dirname + \"/preload.js\" } });\n  win.loadFile(\"index.html\");\n});\n",
+        "renderer.js": "document.getElementById(\"save\").addEventListener(\"click\", () => {\n  window.api.save();\n});\n",
+        "index.html": "<!doctype html>\n<html><body><button id=\"save\">Save</button><script src=\"renderer.js\"></script></body></html>\n"
+      },
+      "checks": [
+        {
+          "file": "^package\\.json$",
+          "pattern": "@sentry/electron"
+        },
+        {
+          "file": "^main\\.js$",
+          "pattern": "@sentry/electron/main"
+        },
+        {
+          "file": "",
+          "pattern": "@sentry/electron/renderer"
+        }
+      ]
+    }
+  ]
+}
