@@ -283,6 +283,10 @@ the event carries; its level only sets the color. Overview also shows the level,
 handled state, environment, release, server name, and user. Empty contexts are
 hidden.
 
+In Events, request (`http.server`) transactions show their method and route.
+Other transactions, such as pageloads, navigations, and custom `task`
+transactions, show their op and transaction name.
+
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open
 their own timing, attributes, original payload, and trace-related errors/logs in
