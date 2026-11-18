@@ -615,9 +615,42 @@ describe("get_issue_details structuredContent for a realistic error", () => {
           "url": "https://sentry-mcp-evals.sentry.io/issues/SHOP-4F2",
           "usersImpacted": 41,
         },
+        "relatedIssues": {
+          "issues": [
+            {
+              "project": "CLOUDFLARE-MCP",
+              "relations": [
+                "similar_stacktrace",
+                "same_trace",
+              ],
+              "shortId": "CLOUDFLARE-MCP-42",
+              "status": "resolved",
+              "title": "Error: Tool list_projects is already registered",
+            },
+            {
+              "project": "web",
+              "relations": [
+                "same_trace",
+              ],
+              "shortId": "WEB-1A2",
+              "status": "unresolved",
+              "title": "TypeError: Failed to fetch",
+            },
+          ],
+          "unavailableTypes": [],
+        },
         "replays": null,
         "seer": null,
         "suggestedActions": [
+          {
+            "arguments": {
+              "issueId": "SHOP-4F2",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
+            "toolName": "find_related_issues",
+            "type": "tool_call",
+          },
           {
             "arguments": {
               "organizationSlug": "sentry-mcp-evals",
