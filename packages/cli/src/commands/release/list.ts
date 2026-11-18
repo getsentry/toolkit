@@ -632,6 +632,7 @@ type ListFlags = {
 // ---------------------------------------------------------------------------
 
 export const listCommand = buildListCommand("release", {
+  exposure: "exposed",
   docs: {
     brief: "List releases with adoption and health metrics",
     fullDescription:

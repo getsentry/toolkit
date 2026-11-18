@@ -1590,6 +1590,8 @@ export function resolveBinaryTtyOutput(
 }
 
 export const apiCommand = buildCommand({
+  exposure: "exposed",
+  permission: "method",
   output: { human: formatApiResponse, jsonTransform: formatApiResponseJson },
   docs: {
     brief: topLevelBrief("api"),

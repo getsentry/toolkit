@@ -108,6 +108,7 @@ function parseAddPositionalArgs(args: readonly string[]): {
 }
 
 export const addCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Add a widget to a dashboard",
     fullDescription:

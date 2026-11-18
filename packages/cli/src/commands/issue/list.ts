@@ -1643,6 +1643,7 @@ const issueListOutput = {
 // ---------------------------------------------------------------------------
 
 export const listCommand = buildListCommand("issue", {
+  exposure: "exposed",
   docs: {
     brief: "List issues in a project",
     fullDescription:

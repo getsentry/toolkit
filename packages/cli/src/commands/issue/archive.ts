@@ -325,6 +325,7 @@ function specToApiOptions(spec: UntilSpec): {
 }
 
 export const archiveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Archive (ignore) an issue",
     fullDescription:

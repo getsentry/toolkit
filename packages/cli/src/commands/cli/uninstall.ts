@@ -428,6 +428,7 @@ function formatUninstallHuman(result: UninstallResult): string {
 }
 
 export const uninstallCommand = buildDeleteCommand({
+  exposure: "hidden",
   docs: {
     brief: "Uninstall Sentry CLI",
     fullDescription:

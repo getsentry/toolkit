@@ -12,6 +12,9 @@ import { applyLoginUrl, formatLoginResult, parseLoginUrl } from "./login.js";
 
 /** Authenticate without opening a browser using a private, one-use setup code. */
 export const bootstrapCommand = buildCommand({
+  exposure: "hidden",
+  // Redeems a one-use setup code and stores the session
+  permission: "write",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

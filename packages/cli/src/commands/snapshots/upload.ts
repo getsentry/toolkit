@@ -333,6 +333,7 @@ function formatUploadResult(data: SnapshotUploadResult): string {
 }
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Upload snapshots to a project",
     fullDescription:

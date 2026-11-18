@@ -12,6 +12,7 @@ import { AuthError } from "../../lib/errors.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 
 export const tokenCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Print the stored authentication token",
     fullDescription:

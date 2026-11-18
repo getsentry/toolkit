@@ -290,6 +290,7 @@ async function stopLocalDaemon(state: LocalDaemonState): Promise<void> {
 }
 
 const daemonStartCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "Start the Local control-plane daemon" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: {
@@ -312,6 +313,7 @@ const daemonStartCommand = buildCommand({
 });
 
 const daemonStatusCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "Show Local control-plane status" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
@@ -324,6 +326,7 @@ const daemonStatusCommand = buildCommand({
 });
 
 const daemonStopCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "Stop the Local control-plane daemon" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
@@ -345,6 +348,7 @@ const daemonStopCommand = buildCommand({
 });
 
 const daemonRestartCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "Restart the Local control-plane daemon" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
@@ -366,6 +370,7 @@ const daemonRestartCommand = buildCommand({
 });
 
 const sessionCreateCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "Create a Local telemetry session" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: {
@@ -410,6 +415,7 @@ const sessionCreateCommand = buildCommand({
 });
 
 const sessionListCommand = buildCommand({
+  exposure: "hidden",
   docs: { brief: "List Local telemetry sessions" },
   ...CONTROL_COMMAND_DEFAULTS,
   parameters: { flags: {} },
@@ -425,6 +431,7 @@ function buildSessionCommand(
   method: "GET" | "POST" = "GET",
 ): ReturnType<typeof buildCommand> {
   return buildCommand({
+    exposure: "hidden",
     ...CONTROL_COMMAND_DEFAULTS,
     docs: { brief },
     parameters: { flags: {}, positional: SESSION_REFERENCE_POSITIONAL },
@@ -447,6 +454,7 @@ function buildTelemetryViewCommand(
   brief: string,
 ): ReturnType<typeof buildCommand> {
   return buildCommand({
+    exposure: "hidden",
     ...CONTROL_COMMAND_DEFAULTS,
     docs: { brief },
     parameters: {
@@ -478,6 +486,7 @@ function buildTelemetryViewCommand(
 }
 
 const sessionRetentionCommand = buildCommand({
+  exposure: "hidden",
   ...CONTROL_COMMAND_DEFAULTS,
   docs: { brief: "View or change session envelope retention" },
   parameters: {

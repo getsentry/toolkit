@@ -110,6 +110,7 @@ function formatResolveResult(data: ResolveCommandResult): string {
 }
 
 export const resolveCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Resolve and report sourcemap linkage for JavaScript files",
     fullDescription:

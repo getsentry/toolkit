@@ -37,6 +37,7 @@ type DeleteFlags = {
 
 export const deleteCommand = buildDeleteCommand(
   {
+    exposure: "exposed",
     docs: {
       brief: "Delete a widget from a dashboard",
       fullDescription:

@@ -36,6 +36,7 @@ const GRAMMAR_OUTPUTS = [
 const DOCS_OUTPUTS = [
   "src/generated/output-schemas",
   "src/generated/command-api.json",
+  "src/generated/command-api-access.json",
   "src/generated/skill-content.ts",
   "src/generated/completion-targets.json",
   "src/generated/top-level-routes.json",

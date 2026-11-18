@@ -178,6 +178,7 @@ async function uploadOne(
 }
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Upload builds to a project",
     fullDescription:

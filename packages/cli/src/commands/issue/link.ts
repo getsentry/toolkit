@@ -23,6 +23,7 @@ type LinkFlags = {
 };
 
 export const linkCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Link an existing external issue",
     fullDescription:

@@ -23,6 +23,7 @@ import {
 import { topLevelBrief } from "../top-level-briefs.js";
 
 export const helpCommand = buildCommand({
+  exposure: "exposed",
   auth: false,
   docs: {
     brief: topLevelBrief("help"),

@@ -420,6 +420,7 @@ async function resolveArgs(
 }
 
 export const runCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Run a command with the local dev server enabled",
     fullDescription:

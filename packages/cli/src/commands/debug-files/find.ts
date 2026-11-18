@@ -113,6 +113,7 @@ async function resolveSearchPaths(
 }
 
 export const findCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Locate debug files for given debug identifiers",
     fullDescription:

@@ -28,6 +28,7 @@ export type FeedbackResult = {
 };
 
 export const feedbackCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "Send feedback about the CLI",

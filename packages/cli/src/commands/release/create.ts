@@ -54,6 +54,7 @@ function formatReleaseCreated(release: SentryRelease): string {
 }
 
 export const createCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create a release",
     fullDescription:

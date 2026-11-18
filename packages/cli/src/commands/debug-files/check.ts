@@ -112,6 +112,7 @@ function isUsable(archive: DifArchiveInfo): boolean {
 }
 
 export const checkCommand = buildCommand({
+  exposure: "stdio-only",
   // Local-only: parses the file in-process, no API calls.
   auth: false,
   docs: {

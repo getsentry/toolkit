@@ -4,37 +4,15 @@
  * raw requests that cannot be linked to a public API operation.
  */
 
-import { readFile } from "node:fs/promises";
-import { glob } from "tinyglobby";
-import { getAllEndpoints } from "../src/lib/api-schema.js";
-import { analyzeSourceApiUsage } from "./lib/source-api-usage.js";
+import { analyzeCliSources } from "./lib/source-api-usage.js";
 import { logger } from "../src/lib/logger.js";
 
-const files = await glob("src/**/*.{ts,tsx}", {
-  ignore: ["src/generated/**", "**/*.test.ts"],
-});
-const sources = new Map(
-  await Promise.all(
-    files.map(async (file) => [file, await readFile(file, "utf-8")] as const),
-  ),
-);
-const operations = getAllEndpoints().flatMap((endpoint) =>
-  endpoint.fn
-    ? [
-        {
-          functionName: endpoint.fn,
-          method: endpoint.method,
-          path: endpoint.path,
-        },
-      ]
-    : [],
-);
+const { operations, analysis } = await analyzeCliSources();
 if (!operations.some(({ method }) => method === "DELETE")) {
   throw new Error(
     "API operation catalog contains no DELETE operations; regenerate the API schema before checking command safety.",
   );
 }
-const analysis = analyzeSourceApiUsage(sources, operations);
 const deleting = analysis.commands.filter(
   ({ file, name }) =>
     file.startsWith("src/commands/") &&

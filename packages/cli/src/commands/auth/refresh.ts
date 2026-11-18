@@ -88,6 +88,7 @@ function formatRefreshResult(data: RefreshOutput): string {
 }
 
 export const refreshCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   docs: {
     brief: "Refresh your OAuth access token",

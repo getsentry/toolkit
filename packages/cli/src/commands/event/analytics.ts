@@ -39,6 +39,7 @@ type AnalyticsFlags = {
 };
 
 export const analyticsCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Analytics for events Sentry accepted and dropped",
     fullDescription:

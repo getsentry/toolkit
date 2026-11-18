@@ -20,6 +20,7 @@ import {
   ISSUE_TARGET,
   ORG_PROJECT_TARGET,
   ORG_TARGET,
+  parseDirectoryPath,
   parseFilePath,
   TEXT_TARGET,
   textParser,
@@ -216,6 +217,21 @@ describe("extractFlags", () => {
     ]);
   });
 
+  test("marks flags that take a local path", () => {
+    const flags: Record<string, FlagDef> = {
+      input: { kind: "parsed", parse: parseFilePath, optional: true },
+      dir: { kind: "parsed", parse: parseDirectoryPath, optional: true },
+      name: { kind: "parsed", parse: textParser(String), optional: true },
+    };
+    expect(
+      extractFlags(flags).map(({ name, localPath }) => [name, localPath]),
+    ).toEqual([
+      ["input", true],
+      ["dir", true],
+      ["name", undefined],
+    ]);
+  });
+
   test("extracts parsed flag", () => {
     const flags: Record<string, FlagDef> = {
       limit: {
@@ -332,6 +348,43 @@ describe("buildCommandInfo", () => {
       optional: false,
       variadic: true,
       syntax: "<name>:<kind>...",
+    });
+  });
+
+  test("reports exposure and the permission class from API requests, declaration, and destructive flag", () => {
+    const access = {
+      "sentry thing list": "read",
+      "sentry thing edit": "write",
+      "sentry thing sync": "unknown",
+    } as const;
+    const info = (cmd: Command, path: string) =>
+      buildCommandInfo(cmd, path, access);
+    expect(
+      info(makeCommand({ __exposure: "exposed" }), "sentry thing list"),
+    ).toMatchObject({ permission: "read", exposure: "exposed" });
+    expect(
+      info(makeCommand({ __exposure: "exposed" }), "sentry thing edit"),
+    ).toMatchObject({ permission: "write" });
+    // A request the analysis can't classify counts as a write
+    expect(info(makeCommand(), "sentry thing sync")).toMatchObject({
+      permission: "write",
+    });
+    expect(
+      info(
+        makeCommand({ __exposure: "stdio-only", __permission: "write" }),
+        "sentry thing send",
+      ),
+    ).toMatchObject({ permission: "write", exposure: "stdio-only" });
+    expect(
+      info(makeCommand({ __permission: "method" }), "sentry api"),
+    ).toMatchObject({ permission: "method" });
+    expect(
+      info(makeCommand({ __destructive: true }), "sentry thing edit"),
+    ).toMatchObject({ permission: "destructive" });
+    // A command without API requests reads; one without an exposure is never offered
+    expect(info(makeCommand(), "sentry thing help")).toMatchObject({
+      permission: "read",
+      exposure: "hidden",
     });
   });
 });

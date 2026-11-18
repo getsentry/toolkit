@@ -24,6 +24,9 @@ type ShowFlags = {
 };
 
 export const showCommand = buildCommand({
+  // `--url` takes any host and the request runs where the CLI runs, so a
+  // hosted MCP would fetch internal addresses for the caller.
+  exposure: "stdio-only",
   // Checking the public status page requires no Sentry credentials.
   auth: false,
   docs: {

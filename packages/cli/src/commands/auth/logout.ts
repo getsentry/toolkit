@@ -84,6 +84,7 @@ function assertNotEnvOnly(): void {
 }
 
 export const logoutCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   skipRcUrlCheck: true,
   docs: {

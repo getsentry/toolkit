@@ -105,6 +105,7 @@ export function parseConversationArguments(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View an agent conversation transcript",
     customUsage: [USAGE],

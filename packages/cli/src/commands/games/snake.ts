@@ -11,6 +11,7 @@ import { ValidationError } from "../../lib/errors.js";
 import { isPlainOutput } from "../../lib/formatters/plain-detect.js";
 
 export const snakeCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Play Snake in your terminal",
     fullDescription:
