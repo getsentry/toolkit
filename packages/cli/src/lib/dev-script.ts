@@ -202,14 +202,14 @@ const ASSIGNMENT_RE = /^(\w+)\s*(?::[^=]+)?=(?!=)\s*(.*)$/;
 const FRAMEWORK_CALL_RE =
   /(?<![\w.])(?:(?:fastapi\.)?(FastAPI)|(?:flask\.)?(Flask))\(/;
 
-/** Names of app factory functions, as in `def create_app():` or `app = create_app()`. */
-const FACTORY_NAME = "(?:create|make)_app";
+/** Captures the function a value calls, as `myapp.get_application` in `myapp.get_application()`. */
+const CALL_RE = /^([A-Za-z_][\w.]*)\s*\(/;
 
-/** Matches a call to an app factory, as `create_app(` or `myapp.create_app(`. */
-const FACTORY_CALL_RE = new RegExp(`^(?:[\\w.]+\\.)?${FACTORY_NAME}\\(`);
-
-/** Captures the name of a top-level app factory, as `create_app` in `def create_app():`. */
-const FACTORY_DEF_RE = new RegExp(`^def\\s+(${FACTORY_NAME})\\s*\\(`);
+/**
+ * Captures a top-level `def create_app` or `def make_app`: whether it is
+ * `async`, its name, and the `(` or `[` that follows the name.
+ */
+const FACTORY_DEF_RE = /^(async\s+)?def\s+((?:create|make)_app)\s*([([])/;
 
 /** Captures the framework a top-level import names, as `fastapi` in `from fastapi import FastAPI`. */
 const FRAMEWORK_IMPORT_RE = /^(?:from|import)\s+(fastapi|flask)\b/;
@@ -234,6 +234,7 @@ function pythonLines(source: string): PythonLine[] {
   const lines: PythonLine[] = [];
   let quote: string | null = null;
   for (const text of source.split(/\r?\n/)) {
+    // Known gap: a column-0 line inside an open bracket also counts as top level.
     const topLevel = quote === null && /^[^\s#]/.test(text);
     let code = "";
     let i = 0;
@@ -307,7 +308,8 @@ async function tryPythonApp(
   if (topLevel.some((line) => MAIN_GUARD_RE.test(line.text))) {
     return script;
   }
-  const app = await findPythonApp(cwd, lines);
+  const factory = localFactory(lines);
+  const app = await findPythonApp(cwd, lines, factory);
   const module = filename.slice(0, -".py".length);
   if (!app) {
     if (!runAsScript) {
@@ -316,7 +318,9 @@ async function tryPythonApp(
     const imported = topLevel
       .map((line) => FRAMEWORK_IMPORT_RE.exec(line.code)?.[1])
       .find(Boolean);
-    if (imported) {
+    if (factory && !factory.servable) {
+      script.hint = `${filename} defines ${factory.name}, but local run can only serve a factory that is a plain \`def\` it can call with no arguments, so ${filename} runs as a script and may exit right away. To serve it, pass the command after --.`;
+    } else if (imported) {
       const serve =
         imported === "fastapi"
           ? `${script.args[0]} -m uvicorn ${module}:app --reload`
@@ -357,17 +361,19 @@ function matchedFramework(match: RegExpExecArray): PythonFramework {
 /**
  * Find the FastAPI or Flask app that `lines` define at top level, in order:
  * 1. a top-level assignment whose value is a `FastAPI(` or `Flask(` call;
- * 2. a top-level `app` or `application` built by `create_app()` or
- *    `make_app()`, with the framework that the factory's body builds when it
- *    is defined in the file, or else the one the project declares;
- * 3. a top-level `def create_app():` or `def make_app():`, with the
- *    framework its body builds, or else the one the project declares.
+ * 2. a top-level `app` or `application` built by a call, such as
+ *    `create_app()` or `myapp.get_application()`, with the framework that
+ *    `factory` builds when the call is to it, or else the one the project
+ *    declares;
+ * 3. `factory`, when uvicorn or Flask can call it, with the framework its
+ *    body builds, or else the one the project declares.
  */
 async function findPythonApp(
   cwd: string,
   lines: PythonLine[],
+  factory: PythonFactory | null,
 ): Promise<PythonApp | null> {
-  let factoryCall: { name: string; value: string } | undefined;
+  let factoryCall: { name: string; callee: string } | undefined;
   for (const line of lines) {
     const assignment = line.topLevel ? ASSIGNMENT_RE.exec(line.code) : null;
     if (!assignment) {
@@ -378,45 +384,48 @@ async function findPythonApp(
     if (call?.index === 0) {
       return { framework: matchedFramework(call), name, factory: false };
     }
-    if (
-      (name === "app" || name === "application") &&
-      FACTORY_CALL_RE.test(value)
-    ) {
-      factoryCall ??= { name, value };
+    const callee = CALL_RE.exec(value)?.[1];
+    if ((name === "app" || name === "application") && callee) {
+      factoryCall ??= { name, callee };
     }
   }
-  const factory = localFactory(lines);
   if (factoryCall) {
-    const built = factoryCall.value.startsWith(`${factory?.name}(`)
-      ? factory?.framework
-      : null;
+    const built =
+      factoryCall.callee === factory?.name ? factory.framework : null;
     const framework = built ?? (await declaredFramework(cwd));
     return framework
       ? { framework, name: factoryCall.name, factory: false }
       : null;
   }
-  if (!factory) {
+  if (!factory?.servable) {
     return null;
   }
   const framework = factory.framework ?? (await declaredFramework(cwd));
   return framework ? { framework, name: factory.name, factory: true } : null;
 }
 
-/**
- * The first top-level `def create_app():` or `def make_app():` in `lines`,
- * with the framework its body builds, or null for `framework` when the body
- * builds none.
- */
-function localFactory(
-  lines: PythonLine[],
-): { name: string; framework: PythonFramework | null } | null {
+/** A top-level `create_app` or `make_app` function, found by `localFactory`. */
+type PythonFactory = {
+  name: string;
+  /** Framework its body builds, or null when it builds neither. */
+  framework: PythonFramework | null;
+  /**
+   * Whether uvicorn `--factory` and `flask --app` can call it: a plain,
+   * non-generic `def` whose parameters are all optional.
+   */
+  servable: boolean;
+};
+
+/** The first top-level `def create_app` or `def make_app` in `lines`. */
+function localFactory(lines: PythonLine[]): PythonFactory | null {
   const start = lines.findIndex(
     (line) => line.topLevel && FACTORY_DEF_RE.test(line.code),
   );
   if (start === -1) {
     return null;
   }
-  const name = FACTORY_DEF_RE.exec(lines[start]?.code ?? "")?.[1] ?? "";
+  const [, isAsync, name = "", bracket] =
+    FACTORY_DEF_RE.exec(lines[start]?.code ?? "") ?? [];
   // The body runs to the next top-level statement. A `)` at column 0 still
   // belongs to a signature that spans lines.
   const end = lines.findIndex(
@@ -426,7 +435,48 @@ function localFactory(
   const call = body
     .map((line) => FRAMEWORK_CALL_RE.exec(line.code))
     .find(Boolean);
-  return { name, framework: call ? matchedFramework(call) : null };
+  const code = body.map((line) => line.code).join("\n");
+  const params = code.slice(code.indexOf("(", code.indexOf(name)) + 1);
+  return {
+    name,
+    framework: call ? matchedFramework(call) : null,
+    servable: !isAsync && bracket === "(" && allParamsOptional(params),
+  };
+}
+
+/**
+ * Whether every parameter in `params`, the text after a signature's `(`,
+ * has a default or is `*args`, `**kwargs`, or a bare `*` or `/`. Strings
+ * are already blanked, so only brackets can hide a comma.
+ */
+function allParamsOptional(params: string): boolean {
+  let depth = 0;
+  let param = "";
+  for (const char of params) {
+    if (depth === 0 && (char === "," || char === ")")) {
+      const trimmed = param.trim();
+      if (
+        trimmed &&
+        !trimmed.startsWith("*") &&
+        trimmed !== "/" &&
+        !trimmed.includes("=")
+      ) {
+        return false;
+      }
+      if (char === ")") {
+        return true;
+      }
+      param = "";
+      continue;
+    }
+    if ("([{".includes(char)) {
+      depth += 1;
+    } else if (")]}".includes(char)) {
+      depth -= 1;
+    }
+    param += char;
+  }
+  return false;
 }
 
 /**
