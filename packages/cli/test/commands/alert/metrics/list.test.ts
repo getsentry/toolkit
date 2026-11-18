@@ -7,7 +7,7 @@ import { setAuthToken } from "../../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../../src/lib/db/regions.js";
 import type { ApiError } from "../../../../src/lib/errors.js";
 import { logger } from "../../../../src/lib/logger.js";
-import { mockFetch, useTestConfigDir } from "../../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../../helpers.js";
 
 const getConfigDir = useTestConfigDir("test-alert-metrics-list-", {
   isolateProjectRoot: true,
@@ -201,6 +201,34 @@ describe("alert metrics list pagination", () => {
     const parsed = JSON.parse(stdout.output);
     expect(parsed.data).toEqual([]);
     expect(parsed.hasMore).toBe(true);
+  });
+
+  test("query filter skips rules with a null name", async () => {
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      if (req.url.includes("/organizations/test-org/detectors/")) {
+        return new Response(
+          JSON.stringify([
+            { ...detector({ id: "1", name: "" }), name: null },
+            detector({ id: "2", name: "Metric Rule Alpha" }),
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ detail: "Not found" }), {
+        status: 404,
+      });
+    });
+
+    const { context, stdout } = createContext();
+    await func.call(
+      context,
+      { web: false, fresh: false, limit: 10, json: true, query: "alpha" },
+      "test-org/",
+    );
+
+    const parsed = JSON.parse(stdout.output);
+    expect(parsed.data.map((rule: { id: string }) => rule.id)).toEqual(["2"]);
   });
 
   test("--web with explicit org opens browser without fetching rules", async () => {
@@ -424,7 +452,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        return Response.json([rule(alertMatch[1])]);
+        return Response.json([rule(at(alertMatch, 1))]);
       }
       if (url.pathname === "/api/0/organizations/") {
         return Response.json([
@@ -594,7 +622,7 @@ describe("alert metrics list pagination", () => {
         /\/api\/0\/organizations\/([^/]+)\/detectors\//,
       );
       if (alertMatch) {
-        const org = alertMatch[1];
+        const org = at(alertMatch, 1);
         const perPage = Number(url.searchParams.get("per_page"));
         perPageByOrg.set(org, perPage);
         return new Response(

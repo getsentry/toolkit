@@ -8,9 +8,9 @@ import { Markdown } from "./markdown";
 
 interface InteractiveMarkdownProps {
   children: string;
-  className?: string;
+  className?: string | undefined;
   hasSlashCommands?: boolean;
-  onSlashCommand?: (command: string) => void;
+  onSlashCommand?: ((command: string) => void) | undefined;
 }
 
 export function InteractiveMarkdown({

@@ -39,7 +39,7 @@ const BREAKPAD_WITH_SOURCE = [
   "1000 10 42 0",
 ].join("\n");
 
-function toBytes(s: string): Uint8Array {
+function toBytes(s: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(s);
 }
 

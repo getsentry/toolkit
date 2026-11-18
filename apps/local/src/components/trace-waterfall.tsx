@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the span tree is an ARIA table laid out with CSS grid */
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
@@ -10,10 +11,10 @@ import { pluralize } from "@/lib/presentation.ts";
 type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
-  selectedSpanId?: string;
+  selectedSpanId?: string | undefined;
   /** A span whose sampled rows start shown, such as the last one inspected. */
-  revealSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  revealSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 };
 
 /** Tree cell geometry, in rem: `px-3` padding, `size-3` expand control. */
@@ -26,7 +27,7 @@ type PositionedSpan = {
   depth: number;
   isLastChild: boolean;
   /** For a sampled profile row, the captured span whose samples it shows. */
-  owner?: string;
+  owner?: string | undefined;
 };
 
 function formatDuration(durationMs: number | undefined): string {
@@ -133,8 +134,8 @@ function SpanRow({
   positionedSpan: PositionedSpan;
   trace: TraceGroup;
   index: number;
-  selectedSpanId?: string;
-  onSelectSpan?: (spanId: string) => void;
+  selectedSpanId?: string | undefined;
+  onSelectSpan?: ((spanId: string) => void) | undefined;
 }) {
   const { span, depth, isLastChild } = positionedSpan;
   const position = getSpanPosition(span, trace);
@@ -374,13 +375,10 @@ export function TraceWaterfall({
   return (
     <section aria-label="Trace waterfall" className="min-h-0 overflow-auto">
       {trace.profileSpansTruncated ? (
-        <p
-          role="status"
-          className="border-b border-border px-3 py-2 text-xs text-muted-foreground"
-        >
+        <output className="block border-b border-border px-3 py-2 text-xs text-muted-foreground">
           Showing up to 5,000 sampled function spans. Inspect the associated
           profile for all samples.
-        </p>
+        </output>
       ) : null}
       {compact ? (
         <p
@@ -451,9 +449,9 @@ export function TraceWaterfall({
             />
           </label>
           {query.trim() ? (
-            <span role="status">
+            <output>
               {matching.size} matches · branches expanded while searching
-            </span>
+            </output>
           ) : null}
         </div>
       ) : null}

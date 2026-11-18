@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { bundleJvmCommand } from "../../../src/commands/debug-files/bundle-jvm.js";
 import { ValidationError } from "../../../src/lib/errors.js";
+import type { Writer } from "../../../src/types/index.js";
+import { at } from "../../helpers.js";
 
 const VALID_DEBUG_ID = "12345678-1234-1234-1234-123456789abc";
 
@@ -30,8 +32,8 @@ type CmdFunc = (
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
@@ -73,7 +75,7 @@ describe("sentry debug-files bundle-jvm", () => {
     expect(existsSync(join(outputDir, `${VALID_DEBUG_ID}.zip`))).toBe(true);
 
     // Verify stdout received output containing the debug ID
-    const writeCall = ctx.stdout.write.mock.calls[0];
+    const writeCall = at(ctx.stdout.write.mock.calls, 0);
     expect(writeCall).toBeDefined();
     const output =
       typeof writeCall[0] === "string"
@@ -136,7 +138,7 @@ describe("sentry debug-files bundle-jvm", () => {
       tempDir,
     );
 
-    const writeCall = ctx.stdout.write.mock.calls[0];
+    const writeCall = at(ctx.stdout.write.mock.calls, 0);
     expect(writeCall).toBeDefined();
     const output =
       typeof writeCall[0] === "string"
@@ -169,7 +171,7 @@ describe("sentry debug-files bundle-jvm", () => {
       tempDir,
     );
 
-    const writeCall = ctx.stdout.write.mock.calls[0];
+    const writeCall = at(ctx.stdout.write.mock.calls, 0);
     expect(writeCall).toBeDefined();
     const output =
       typeof writeCall[0] === "string"

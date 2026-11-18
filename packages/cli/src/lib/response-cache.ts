@@ -177,7 +177,7 @@ export function isCacheDisabled(): boolean {
  * freshly-fetched response replaces any stale cache entry.
  */
 function isCacheWriteDisabled(): boolean {
-  return getEnv().SENTRY_NO_CACHE === "1" || isPersistenceDisabled();
+  return getEnv()["SENTRY_NO_CACHE"] === "1" || isPersistenceDisabled();
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { startNewTrace, startSpan } from "@sentry/core";
 import { OAuthClient } from "./auth/oauth.js";
 import { DEFAULT_MCP_URL } from "./constants.js";
 import { logError, logSuccess } from "./logger.js";
-import type { MCPConnection, RemoteMCPConfig } from "./types.js";
+import type { MCPConnection, MCPTool, RemoteMCPConfig } from "./types.js";
 import { randomUUID } from "node:crypto";
 import { LIB_VERSION } from "./version.js";
 import {
@@ -78,7 +78,7 @@ export async function connectToRemoteMCPServer(
 
           // Discover available tools
           const toolsMap = await client.tools();
-          const tools = new Map<string, any>();
+          const tools = new Map<string, MCPTool>();
 
           for (const [name, tool] of Object.entries(toolsMap)) {
             tools.set(name, tool);

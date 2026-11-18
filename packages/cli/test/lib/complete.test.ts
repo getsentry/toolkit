@@ -33,7 +33,7 @@ import {
   type OrgRegionEntry,
   setOrgRegions,
 } from "../../src/lib/db/regions.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, at } from "../helpers.js";
 
 useTestConfigDir("test-complete-");
 
@@ -82,14 +82,14 @@ describe("getCompletions: context detection", () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
     const result = await getCompletions(["issue", "list"], "");
     expect(result.length).toBeGreaterThan(0);
-    expect(result[0].value).toBe("my-org/");
+    expect(at(result, 0).value).toBe("my-org/");
   });
 
   test("returns org-only completions for org view", async () => {
     await seedOrgs([{ slug: "my-org", name: "My Organization" }]);
     const result = await getCompletions(["org", "view"], "");
     expect(result.length).toBeGreaterThan(0);
-    expect(result[0].value).toBe("my-org"); // no trailing slash
+    expect(at(result, 0).value).toBe("my-org"); // no trailing slash
   });
 
   test("still provides completions after boolean flags", async () => {
@@ -301,8 +301,8 @@ describe("completeOrgSlugs", () => {
     ]);
     const result = completeOrgSlugs("sen");
     expect(result).toHaveLength(1);
-    expect(result[0].value).toBe("sentry");
-    expect(result[0].description).toBe("Sentry");
+    expect(at(result, 0).value).toBe("sentry");
+    expect(at(result, 0).description).toBe("Sentry");
   });
 
   test("fuzzy matches", async () => {
@@ -372,7 +372,7 @@ describe("completeOrgSlashProject", () => {
     // "senry/" has a typo in the org — should fuzzy-resolve to "sentry"
     const result = completeOrgSlashProject("senry/");
     expect(result).toHaveLength(1);
-    expect(result[0].value).toBe("sentry/cli");
+    expect(at(result, 0).value).toBe("sentry/cli");
   });
 
   test("with unresolvable org slug before slash returns empty", async () => {
@@ -417,7 +417,7 @@ describe("completeOrgSlashProject", () => {
 
     const result = completeOrgSlashProject("my-org/fro");
     expect(result).toHaveLength(1);
-    expect(result[0].value).toBe("my-org/frontend");
+    expect(at(result, 0).value).toBe("my-org/frontend");
   });
 });
 
@@ -447,8 +447,8 @@ describe("completeProjectSlugs", () => {
 
     const result = completeProjectSlugs("we", "my-org");
     expect(result).toHaveLength(1);
-    expect(result[0].value).toBe("my-org/web");
-    expect(result[0].description).toBe("Web App");
+    expect(at(result, 0).value).toBe("my-org/web");
+    expect(at(result, 0).description).toBe("Web App");
   });
 
   test("tolerates a typo in an unfinished project name", async () => {

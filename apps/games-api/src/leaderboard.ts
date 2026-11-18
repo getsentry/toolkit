@@ -48,8 +48,11 @@ const UpstreamSchema = z.object({
 // Carries only the status: a raw fetch error may hold the upstream URL,
 // headers or body.
 class UpstreamError extends Error {
-  constructor(readonly status?: number) {
+  readonly status: number | undefined;
+
+  constructor(status?: number) {
     super(`Snake leaderboard upstream failed (${status ?? "no response"})`);
+    this.status = status;
     this.name = "UpstreamError";
   }
 }

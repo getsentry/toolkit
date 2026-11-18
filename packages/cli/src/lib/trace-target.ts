@@ -95,7 +95,7 @@ export type ParsedTraceTarget =
  */
 export type TraceTargetInput = {
   readonly parsed: ParsedTraceTarget;
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   readonly warnings: readonly string[];
 };
 
@@ -231,7 +231,7 @@ function orgProjectToTraceTarget(
  */
 export type TraceArgumentsInput = TraceTargetInput & {
   /** The target argument as typed, for the recovery lookup */
-  readonly targetArg?: string;
+  readonly targetArg?: string | undefined;
 };
 
 /**
@@ -316,7 +316,7 @@ async function recoverTraceId(
  */
 async function recoveryContextFromTargetArg(
   targetArg: string | undefined,
-): Promise<{ org: string; project?: string }> {
+): Promise<{ org: string; project?: string | undefined }> {
   if (!targetArg) {
     return { org: "", project: undefined };
   }

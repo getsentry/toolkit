@@ -10,6 +10,7 @@
 import { spawn } from "node:child_process";
 import { getCliCommand } from "../../fixture.js";
 import type { PlannedCommand } from "./types.js";
+import { at } from "../../helpers.js";
 
 function noop(): void {
   // Intentionally empty — absorbs async spawn errors
@@ -36,7 +37,7 @@ function extractRoute(command: string): string[] {
 
   const route: string[] = [];
   for (let i = start; i < tokens.length; i++) {
-    const token = tokens[i];
+    const token = at(tokens, i);
     if (
       token.startsWith("-") ||
       token.includes("/") ||

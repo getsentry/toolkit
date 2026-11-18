@@ -61,7 +61,7 @@ export async function readReceiverBody(
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read();
       if (done) return Buffer.concat(chunks, size);
       size += value.byteLength;
@@ -145,10 +145,10 @@ export function ingestReceiverEnvelope(
   input: {
     body: Buffer;
     contentType?: string;
-    encoding?: string;
+    encoding?: string | undefined;
     /** URL the delivery was posted to, which identifies the receiver's own routes. */
     receiverUrl?: string;
-    userAgent?: string;
+    userAgent?: string | undefined;
     /**
      * Capture had stopped by the time the body finished arriving. The size
      * limits still apply first, so a late oversized delivery reports 413.

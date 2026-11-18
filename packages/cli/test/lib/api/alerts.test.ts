@@ -350,7 +350,7 @@ describe("createIssueAlertRule", () => {
       name: "New",
       detectorIds: [7],
     });
-    expect(created.id).toBe("5");
+    expect(created["id"]).toBe("5");
   });
 });
 
@@ -477,7 +477,7 @@ describe("createMetricAlertRule", () => {
       triggers: [{ alertThreshold: 500 }],
       projects: ["backend"],
     });
-    expect(created.id).toBe("77");
+    expect(created["id"]).toBe("77");
   });
 
   test("maps error-like datasets to queryType 0 and error eventTypes", async () => {
@@ -500,11 +500,11 @@ describe("createMetricAlertRule", () => {
       projects: ["backend"],
     });
 
-    const source = (sentBody.dataSources as Record<string, unknown>[])[0];
-    expect(source?.dataset).toBe("events");
-    expect(source?.queryType).toBe(0);
-    expect(source?.eventTypes).toEqual(["error", "default"]);
-    expect(source?.timeWindow).toBe(900);
+    const source = (sentBody["dataSources"] as Record<string, unknown>[])[0];
+    expect(source?.["dataset"]).toBe("events");
+    expect(source?.["queryType"]).toBe(0);
+    expect(source?.["eventTypes"]).toEqual(["error", "default"]);
+    expect(source?.["timeWindow"]).toBe(900);
   });
 
   test("maps logs to the EAP dataset with trace_item_log and connects workflows", async () => {
@@ -528,7 +528,7 @@ describe("createMetricAlertRule", () => {
       workflowIds: [42],
     });
 
-    expect(sentBody.dataSources).toEqual([
+    expect(sentBody["dataSources"]).toEqual([
       {
         aggregate: "count()",
         dataset: "events_analytics_platform",
@@ -538,14 +538,14 @@ describe("createMetricAlertRule", () => {
         timeWindow: 300,
       },
     ]);
-    expect(sentBody.conditionGroup).toEqual({
+    expect(sentBody["conditionGroup"]).toEqual({
       logicType: "any",
       conditions: [
         { type: "gt", comparison: 0, conditionResult: 75 },
         { type: "lte", comparison: 0, conditionResult: 0 },
       ],
     });
-    expect(sentBody.workflowIds).toEqual([42]);
+    expect(sentBody["workflowIds"]).toEqual([42]);
   });
 
   test("maps sessions to the crash-rate metrics dataset", async () => {
@@ -569,10 +569,10 @@ describe("createMetricAlertRule", () => {
       projects: ["backend"],
     });
 
-    const source = (sentBody.dataSources as Record<string, unknown>[])[0];
-    expect(source?.dataset).toBe("metrics");
-    expect(source?.queryType).toBe(2);
-    expect(source?.eventTypes).toEqual([]);
+    const source = (sentBody["dataSources"] as Record<string, unknown>[])[0];
+    expect(source?.["dataset"]).toBe("metrics");
+    expect(source?.["queryType"]).toBe(2);
+    expect(source?.["eventTypes"]).toEqual([]);
   });
 
   test("translates warning and below-threshold triggers", async () => {
@@ -599,7 +599,7 @@ describe("createMetricAlertRule", () => {
     });
 
     expect(
-      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+      (sentBody["conditionGroup"] as Record<string, unknown>)["conditions"],
     ).toEqual([
       { type: "lt", comparison: 10, conditionResult: 75 },
       { type: "lt", comparison: 50, conditionResult: 50 },
@@ -631,7 +631,7 @@ describe("createMetricAlertRule", () => {
     });
 
     expect(
-      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+      (sentBody["conditionGroup"] as Record<string, unknown>)["conditions"],
     ).toEqual([
       { type: "gt", comparison: 11, conditionResult: 75 },
       { type: "gt", comparison: 5, conditionResult: 50 },
@@ -664,7 +664,7 @@ describe("createMetricAlertRule", () => {
     });
 
     expect(
-      (sentBody.conditionGroup as Record<string, unknown>).conditions,
+      (sentBody["conditionGroup"] as Record<string, unknown>)["conditions"],
     ).toEqual(conditions);
   });
 
@@ -721,7 +721,7 @@ describe("metric alert edit round-trip", () => {
       const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
-        putSource = (body.dataSources as Record<string, unknown>[])[0];
+        putSource = (body["dataSources"] as Record<string, unknown>[])[0];
       }
       return Response.json(metricDetector({ dataSources: [storedSource] }));
     });
@@ -762,13 +762,13 @@ describe("metric alert edit round-trip without event types", () => {
         const req = new Request(input, init);
         if (req.method === "PUT") {
           const body = (await req.json()) as Record<string, unknown>;
-          putSource = (body.dataSources as Record<string, unknown>[])[0];
+          putSource = (body["dataSources"] as Record<string, unknown>[])[0];
         }
         return Response.json(metricDetector({ dataSources: [storedSource] }));
       });
 
       const doc = await getMetricAlertRuleDocument("test-org", "9");
-      expect(doc.dataset).toBe("events_analytics_platform");
+      expect(doc["dataset"]).toBe("events_analytics_platform");
       await putMetricAlertRule("test-org", "9", { ...doc, name: "Renamed" });
 
       expect(putSource).toMatchObject({
@@ -788,7 +788,7 @@ describe("metric alert edit round-trip of detector config", () => {
       const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
-        putConfig = body.config;
+        putConfig = body["config"];
       }
       return Response.json(metricDetector({ config: storedConfig }));
     });
@@ -810,7 +810,7 @@ describe("metric alert edit round-trip of detector config", () => {
         const req = new Request(input, init);
         if (req.method === "PUT") {
           const body = (await req.json()) as Record<string, unknown>;
-          putConfig = body.config;
+          putConfig = body["config"];
         }
         return Response.json(metricDetector({ config: storedConfig }));
       });
@@ -832,7 +832,7 @@ describe("metric alert edit round-trip of detector config", () => {
       const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
-        putConfig = body.config;
+        putConfig = body["config"];
       }
       return Response.json(metricDetector({ config: storedConfig }));
     });
@@ -855,7 +855,7 @@ describe("metric alert edit round-trip of detector config", () => {
       const req = new Request(input, init);
       if (req.method === "PUT") {
         const body = (await req.json()) as Record<string, unknown>;
-        putConfig = body.config;
+        putConfig = body["config"];
       }
       return Response.json(metricDetector({}));
     });
@@ -875,10 +875,10 @@ describe("putMetricAlertRule", () => {
         "/api/0/organizations/test-org/detectors/9/",
       );
       const body = (await req.json()) as Record<string, unknown>;
-      expect(body.name).toBe("Renamed");
-      expect(body.type).toBe("metric_issue");
+      expect(body["name"]).toBe("Renamed");
+      expect(body["type"]).toBe("metric_issue");
       // status 1 (disabled) maps onto the detector's enabled=false flag.
-      expect(body.enabled).toBe(false);
+      expect(body["enabled"]).toBe(false);
       return Response.json(metricDetector({ id: "9", name: "Renamed" }));
     });
 

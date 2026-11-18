@@ -173,7 +173,7 @@ type EventTailOptions = {
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
-  maxEnvelopes?: number;
+  maxEnvelopes?: number | undefined;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */
@@ -379,7 +379,7 @@ export function augmentPathForNode(
 ): Record<string, string | undefined> {
   const binDir = resolve(cwd, "node_modules", ".bin");
   if (platform !== "win32") {
-    return { ...env, PATH: env.PATH ? `${binDir}:${env.PATH}` : binDir };
+    return { ...env, PATH: env["PATH"] ? `${binDir}:${env["PATH"]}` : binDir };
   }
   const key = windowsEnvKey(env, "PATH") ?? "PATH";
   const current = env[key];
@@ -426,8 +426,8 @@ function buildChildEnv(
     ...process.env,
     ...clientSpotlightVars,
     SENTRY_SPOTLIGHT: spotlightUrl,
-    SENTRY_TRACES_SAMPLE_RATE: process.env.SENTRY_TRACES_SAMPLE_RATE ?? "1",
-    SENTRY_RELEASE: process.env.SENTRY_RELEASE ?? "sentry-cli-local",
+    SENTRY_TRACES_SAMPLE_RATE: process.env["SENTRY_TRACES_SAMPLE_RATE"] ?? "1",
+    SENTRY_RELEASE: process.env["SENTRY_RELEASE"] ?? "sentry-cli-local",
   };
   if (isPackageJsonSource(commandSource)) {
     env = augmentPathForNode(env, cwd);
@@ -699,14 +699,14 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    let interrupted = false;
+    const interruptState = { interrupted: false };
     const interrupts = interruptForwarder(child);
     const onSigint = () => {
-      interrupted = true;
+      interruptState.interrupted = true;
       interrupts.forward();
     };
     const onSigterm = () => {
-      interrupted = true;
+      interruptState.interrupted = true;
       child.kill("SIGTERM");
     };
     // `on`, not `once`: a second signal must reach the app too, not kill the
@@ -716,9 +716,9 @@ export const runCommand = buildCommand({
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
-      timeoutId = setTimeout(async () => {
+      timeoutId = setTimeout(() => {
         logger.warn(`Timeout: killing child after ${flags.timeout}s`);
-        await gracefulKill(child);
+        void gracefulKill(child);
       }, flags.timeout * 1000);
     }
 
@@ -761,7 +761,7 @@ export const runCommand = buildCommand({
     }
     // The user stopped the app: however it ended is what they asked for, so
     // exit with its code and print no error.
-    if (interrupted) {
+    if (interruptState.interrupted) {
       this.process.exitCode = exitCode;
       return;
     }
@@ -856,6 +856,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }),
   ]);
   clearTimeout(graceTimer);
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
   if (!exited && child.exitCode === null) {
     try {
       child.kill("SIGKILL");
@@ -865,6 +866,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }
     // Only await close if the child hasn't exited yet — avoids hanging
     // if close fired between SIGKILL and listener attachment.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
     if (child.exitCode === null) {
       await new Promise<void>((r) => child.on("close", () => r()));
     }
@@ -968,14 +970,14 @@ async function* runWithVerify(
     throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
-  let signalReceived: NodeJS.Signals | null = null;
+  const signalState: { current: NodeJS.Signals | null } = { current: null };
   const interrupts = interruptForwarder(child);
   const onSigint = () => {
-    signalReceived = "SIGINT";
+    signalState.current = "SIGINT";
     interrupts.forward();
   };
   const onSigterm = () => {
-    signalReceived = "SIGTERM";
+    signalState.current = "SIGTERM";
     child.kill("SIGTERM");
   };
   process.on("SIGINT", onSigint);
@@ -1046,8 +1048,8 @@ async function* runWithVerify(
 
   // Re-emit the signal after cleanup so the default handler terminates the
   // process instead of continuing with the outcome switch below.
-  if (signalReceived) {
-    process.kill(process.pid, signalReceived);
+  if (signalState.current) {
+    process.kill(process.pid, signalState.current);
     return;
   }
 

@@ -37,13 +37,15 @@ describe("/.mcp discovery routes", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("application/json");
 
-    const json = (await res.json()) as Array<{
-      name: string;
-      inputSchema: unknown;
-      skills: string[];
-      surface: "direct" | "catalog";
-      deprecated?: { replacedBy: string[] };
-    }>;
+    const json = await res.json<
+      Array<{
+        name: string;
+        inputSchema: unknown;
+        skills: string[];
+        surface: "direct" | "catalog";
+        deprecated?: { replacedBy: string[] };
+      }>
+    >();
     expect(Array.isArray(json)).toBe(true);
     expect(json.length).toBeGreaterThan(0);
 

@@ -25,6 +25,7 @@ import {
 } from "../../../src/lib/formatters/local.js";
 import { parseEventTimestamp } from "../../../src/commands/local/timestamp.js";
 import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
+import { at } from "../../helpers.js";
 
 describe("formatTime", () => {
   test("formats epoch seconds", () => {
@@ -468,14 +469,14 @@ describe("formatItem", () => {
     const event = { timestamp: 1_700_000_000, message: "boom" };
     const lines = formatItem("error", event, header, "fallback");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("[ERROR]");
+    expect(stripAnsi(at(lines, 0))).toContain("[ERROR]");
   });
 
   test("dispatches event type to error formatter", () => {
     const event = { timestamp: 1_700_000_000, message: "boom" };
     const lines = formatItem("event", event, header, "fallback");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("[ERROR]");
+    expect(stripAnsi(at(lines, 0))).toContain("[ERROR]");
   });
 
   test("prints nothing for replay recording segments", () => {
@@ -493,7 +494,7 @@ describe("formatItem", () => {
     };
     const lines = formatItem("transaction", event, header, "fallback");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("[TRACE]");
+    expect(stripAnsi(at(lines, 0))).toContain("[TRACE]");
   });
 
   test("dispatches log type to log formatter", () => {
@@ -502,19 +503,19 @@ describe("formatItem", () => {
     };
     const lines = formatItem("log", event, header, "fallback");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("[INFO]");
+    expect(stripAnsi(at(lines, 0))).toContain("[INFO]");
   });
 
   test("falls back for unknown types", () => {
     const lines = formatItem("attachment", {}, header, "attachment");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("attachment");
+    expect(stripAnsi(at(lines, 0))).toContain("attachment");
   });
 
   test("falls back for undefined type", () => {
     const lines = formatItem(undefined, {}, header, "unknown");
     expect(lines).toHaveLength(1);
-    expect(stripAnsi(lines[0])).toContain("unknown");
+    expect(stripAnsi(at(lines, 0))).toContain("unknown");
   });
 });
 
@@ -769,7 +770,7 @@ describe("formatItemJson", () => {
     };
     const lines = formatItemJson("error", event, serverHeader);
     expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.type).toBe("error");
     expect(parsed.error_type).toBe("TypeError");
     expect(parsed.message).toBe("x is not a function");
@@ -787,7 +788,7 @@ describe("formatItemJson", () => {
       serverHeader,
     );
 
-    expect(JSON.parse(lines[0]).schema_version).toBe(1);
+    expect(JSON.parse(at(lines, 0)).schema_version).toBe(1);
   });
 
   test("preserves event and envelope identities for agent correlation", () => {
@@ -805,7 +806,7 @@ describe("formatItemJson", () => {
       },
     );
 
-    expect(JSON.parse(lines[0])).toMatchObject({
+    expect(JSON.parse(at(lines, 0))).toMatchObject({
       event_id: "event-123",
       envelope_id: "envelope-123",
     });
@@ -817,7 +818,7 @@ describe("formatItemJson", () => {
       message: "Something went wrong",
     };
     const lines = formatItemJson("error", event, serverHeader);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.type).toBe("message");
     expect(parsed.level).toBe("error");
     expect(parsed.error_type).toBeUndefined();
@@ -831,7 +832,7 @@ describe("formatItemJson", () => {
       exception: { values: [{ type: "TypeError", value: "boom" }] },
     };
     const lines = formatItemJson("event", event, serverHeader);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.type).toBe("error");
   });
 
@@ -846,7 +847,7 @@ describe("formatItemJson", () => {
       },
       serverHeader,
     );
-    expect(JSON.parse(errorLines[0]).trace_id).toBe(traceId);
+    expect(JSON.parse(at(errorLines, 0)).trace_id).toBe(traceId);
 
     const txnLines = formatItemJson(
       "transaction",
@@ -858,7 +859,7 @@ describe("formatItemJson", () => {
       },
       serverHeader,
     );
-    expect(JSON.parse(txnLines[0]).trace_id).toBe(traceId);
+    expect(JSON.parse(at(txnLines, 0)).trace_id).toBe(traceId);
   });
 
   test("includes trace_id for logs from sentry.trace.trace_id attribute", () => {
@@ -878,7 +879,7 @@ describe("formatItemJson", () => {
       },
       serverHeader,
     );
-    expect(JSON.parse(lines[0]).trace_id).toBe(traceId);
+    expect(JSON.parse(at(lines, 0)).trace_id).toBe(traceId);
   });
 
   test("formats transaction with semantic attributes", () => {
@@ -899,7 +900,7 @@ describe("formatItemJson", () => {
     };
     const lines = formatItemJson("transaction", event, serverHeader);
     expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.type).toBe("transaction");
     expect(parsed.op).toBe("gen_ai");
     expect(parsed.label).toBe("chat gpt-4o");
@@ -916,7 +917,7 @@ describe("formatItemJson", () => {
       contexts: { trace: { op: "http.server" } },
     };
     const lines = formatItemJson("transaction", event, serverHeader);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.label).toBe("GET /api/users");
     expect(parsed.op).toBe("http.server");
   });
@@ -939,14 +940,14 @@ describe("formatItemJson", () => {
     const lines = formatItemJson("log", event, serverHeader);
     expect(lines).toHaveLength(2);
 
-    const first = JSON.parse(lines[0]);
+    const first = JSON.parse(at(lines, 0));
     expect(first.type).toBe("log");
     expect(first.level).toBe("info");
     expect(first.message).toBe("User logged in");
     expect(first.attributes).toEqual({ user_id: 42 });
     expect(first.attributes["sentry.sdk.name"]).toBeUndefined();
 
-    const second = JSON.parse(lines[1]);
+    const second = JSON.parse(at(lines, 1));
     expect(second.level).toBe("debug");
     expect(second.message).toBe("Cache hit");
   });
@@ -960,7 +961,7 @@ describe("formatItemJson", () => {
     const event = { timestamp: 1_700_000_000 };
     const lines = formatItemJson("attachment", event, serverHeader);
     expect(lines).toHaveLength(1);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.type).toBe("attachment");
   });
 
@@ -970,7 +971,7 @@ describe("formatItemJson", () => {
       { timestamp: "2026-09-08\u009b", event_id: "event\u202e-123" },
       serverHeader,
     );
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
 
     expect(parsed).toMatchObject({
       type: "attachment",
@@ -993,7 +994,7 @@ describe("formatItemJson", () => {
       },
       serverHeader,
     );
-    expect(JSON.parse(logLines[0]).attributes).toEqual({
+    expect(JSON.parse(at(logLines, 0)).attributes).toEqual({
       nested: { child: "unsafevalue" },
     });
   });
@@ -1001,7 +1002,7 @@ describe("formatItemJson", () => {
   test("detects browser source in JSON", () => {
     const event = { timestamp: 1_700_000_000, message: "error" };
     const lines = formatItemJson("error", event, browserHeader);
-    const parsed = JSON.parse(lines[0]);
+    const parsed = JSON.parse(at(lines, 0));
     expect(parsed.source).toBe("browser");
   });
 
@@ -1011,11 +1012,11 @@ describe("formatItemJson", () => {
       contexts: { trace: { op: "http.server", data: { "order.id": "42" } } },
     };
     const without = JSON.parse(
-      formatItemJson("transaction", event, serverHeader)[0],
+      at(formatItemJson("transaction", event, serverHeader), 0),
     );
     expect(without.attributes).toBeUndefined();
     const withAttrs = JSON.parse(
-      formatItemJson("transaction", event, serverHeader, true)[0],
+      at(formatItemJson("transaction", event, serverHeader, true), 0),
     );
     expect(withAttrs.attributes.user).toEqual({ "order.id": "42" });
   });
@@ -1173,8 +1174,8 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan, mcpSpan] };
       const lines = formatSpanItem(payload, cfHeader);
       expect(lines).toHaveLength(2);
-      expect(stripAnsi(lines[0])).toContain("gen_ai");
-      expect(stripAnsi(lines[1])).toContain("mcp");
+      expect(stripAnsi(at(lines, 0))).toContain("gen_ai");
+      expect(stripAnsi(at(lines, 1))).toContain("mcp");
     });
 
     test("returns empty for missing items", () => {
@@ -1188,7 +1189,7 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan] };
       const lines = formatItem("span", payload, cfHeader, "span");
       expect(lines.length).toBeGreaterThanOrEqual(1);
-      expect(stripAnsi(lines[0])).toContain("gen_ai");
+      expect(stripAnsi(at(lines, 0))).toContain("gen_ai");
     });
   });
 
@@ -1197,7 +1198,7 @@ describe("standalone span support", () => {
       const payload = { items: [aiSpan] };
       const lines = formatItemJson("span", payload, cfHeader);
       expect(lines).toHaveLength(1);
-      const parsed = JSON.parse(lines[0]);
+      const parsed = JSON.parse(at(lines, 0));
       expect(parsed.type).toBe("span");
       expect(parsed.trace_id).toBe("a".repeat(32));
       expect(parsed.span_id).toBe("b".repeat(16));
@@ -1329,8 +1330,8 @@ describe("sentry-python ISO 8601 timestamps", () => {
   });
 
   test("reads ISO strings without a timezone as UTC, like Relay", () => {
-    const previous = process.env.TZ;
-    process.env.TZ = "Asia/Kolkata";
+    const previous = process.env["TZ"];
+    process.env["TZ"] = "Asia/Kolkata";
     try {
       const utc = Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134;
       expect(parseEventTimestamp("2026-11-17T20:25:06.425134")).toBeCloseTo(
@@ -1345,8 +1346,8 @@ describe("sentry-python ISO 8601 timestamps", () => {
         parseEventTimestamp("2026-11-17T20:25:06.425134+05:30"),
       ).toBeCloseTo(utc - 5.5 * 3600, 6);
     } finally {
-      if (previous === undefined) delete process.env.TZ;
-      else process.env.TZ = previous;
+      if (previous === undefined) delete process.env["TZ"];
+      else process.env["TZ"] = previous;
     }
   });
 

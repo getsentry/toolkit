@@ -126,7 +126,14 @@ export async function verifyConstraintsAccess(
       ok: true;
       constraints: Constraints;
     }
-  | { ok: false; status?: number; message: string; eventId?: string }
+  | {
+      ok: false;
+      // Forwarded from ApiError.status and logIssue(), which may be
+      // undefined; callers treat that as absent.
+      status?: number | undefined;
+      message: string;
+      eventId?: string | undefined;
+    }
 > {
   if (!organizationSlug) {
     // No constraints specified, nothing to verify
@@ -181,7 +188,7 @@ export async function verifyConstraintsAccess(
 
   const { organization, regionUrl, project } = await lookupConstraints(
     api,
-    { organizationSlug, projectSlug },
+    { organizationSlug, projectSlug: projectSlug ?? null },
     {
       // The region URL's host as given; an invalid URL fails as a 502.
       projectHost: (regionUrl) =>
