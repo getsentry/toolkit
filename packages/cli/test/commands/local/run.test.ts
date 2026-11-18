@@ -8,7 +8,7 @@ import { createLocalRetentionBuffer } from "../../../src/commands/local/retentio
 
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -28,7 +28,10 @@ import {
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as childSignals from "../../../src/lib/child-signals.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
+import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 
 /**
@@ -39,6 +42,7 @@ import { TEST_TMP_DIR } from "../../constants.js";
  */
 const spawnCapture: {
   args?: readonly string[];
+  child?: ChildProcess;
   env?: NodeJS.ProcessEnv;
   stdio?: Parameters<typeof import("node:child_process").spawn>[2]["stdio"];
 } = {};
@@ -55,7 +59,8 @@ vi.mock("node:child_process", async (importOriginal) => {
       spawnCapture.args = args;
       spawnCapture.env = options?.env;
       spawnCapture.stdio = options?.stdio;
-      return actual.spawn(cmd, args as string[], options);
+      spawnCapture.child = actual.spawn(cmd, args as string[], options);
+      return spawnCapture.child;
     },
   };
 });
@@ -107,6 +112,7 @@ describe("sentry local run", () => {
     spawnCapture.args = undefined;
     spawnCapture.env = undefined;
     spawnCapture.stdio = undefined;
+    spawnCapture.child = undefined;
   });
 
   test.each(["human", "json"] as const)(
@@ -301,13 +307,23 @@ describe("sentry local run", () => {
     await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
     await chmod(fakeWrangler, 0o755);
 
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    await func.call(
-      makeContext(),
-      { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
-      fakeWrangler,
-      "dev",
-    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        fakeWrangler,
+        "dev",
+      );
+      // The binding alone captures nothing with @sentry/cloudflare, so the
+      // notice must name the Worker setup that does.
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("tunnel: env.SENTRY_SPOTLIGHT"),
+      );
+    } finally {
+      info.mockRestore();
+    }
 
     expect(spawnCapture.args).toEqual([
       "dev",
@@ -316,6 +332,32 @@ describe("sentry local run", () => {
         /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/,
       ),
     ]);
+  });
+
+  test("prints the Worker setup hint in --verify mode too", async () => {
+    await writeFile(join(tmpDir, "wrangler.jsonc"), "{}");
+    const fakeWrangler = join(tmpDir, "wrangler");
+    await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
+    await chmod(fakeWrangler, 0o755);
+
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      // The fake Worker exits without sending, so verification fails.
+      await expect(
+        func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 0 },
+          fakeWrangler,
+          "dev",
+        ),
+      ).rejects.toBeInstanceOf(VerifyFailedError);
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        wranglerInjectedMessage(),
+      );
+    } finally {
+      info.mockRestore();
+    }
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
@@ -357,6 +399,190 @@ describe("sentry local run", () => {
       expect(err).toBeInstanceOf(CliError);
       expect((err as CliError).message).toContain("exited with code");
     }
+  });
+
+  test("reports a child killed by a signal with its name and 128+N", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+    const error = await func
+      .call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        "sh",
+        "-c",
+        "kill -KILL $$",
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).message).toBe(
+      "Process exited with code 137 (killed by SIGKILL)",
+    );
+    expect((error as CliError).exitCode).toBe(137);
+  });
+
+  describe("on SIGINT or SIGTERM", () => {
+    /**
+     * A child that counts the SIGINTs it gets in `count`, and exits 0 half a
+     * second after the first one so a duplicate still has time to arrive.
+     */
+    async function countingChild(): Promise<{ script: string; count: string }> {
+      const count = join(tmpDir, "sigint-count");
+      const script = join(tmpDir, "count-sigint.cjs");
+      await writeFile(
+        script,
+        `const fs = require("node:fs");
+let n = 0;
+fs.writeFileSync(${JSON.stringify(count)}, "0");
+process.on("SIGINT", () => {
+  fs.writeFileSync(${JSON.stringify(count)}, String(++n));
+  if (n === 1) setTimeout(() => process.exit(0), 500);
+});
+setInterval(() => {}, 1000);
+`,
+      );
+      return { script, count };
+    }
+
+    /**
+     * Catch the SIGINT/SIGTERM handlers `run` installs, so a test can call
+     * them. Emitting the real event would also run the test preload's own
+     * handler, which exits the worker.
+     */
+    function captureSignalHandlers() {
+      const handlers = new Map<string | symbol, () => void>();
+      const on = process.on.bind(process);
+      const spy = vi
+        .spyOn(process, "on")
+        .mockImplementation((event, listener) => {
+          if (event === "SIGINT" || event === "SIGTERM") {
+            handlers.set(event, listener as () => void);
+            return process;
+          }
+          return on(event, listener);
+        });
+      return {
+        send(signal: "SIGINT" | "SIGTERM") {
+          const handler = handlers.get(signal);
+          if (!handler) {
+            throw new Error(`run installed no ${signal} handler`);
+          }
+          handler();
+        },
+        restore: () => spy.mockRestore(),
+      };
+    }
+
+    let signals: ReturnType<typeof captureSignalHandlers>;
+    beforeEach(() => {
+      signals = captureSignalHandlers();
+    });
+    afterEach(() => {
+      signals.restore();
+    });
+
+    /** Wait until the spawned child is running, then return its pid. */
+    async function childPid(count: string): Promise<number> {
+      await vi.waitFor(async () => {
+        await readFile(count, "utf8");
+      });
+      const pid = spawnCapture.child?.pid;
+      if (pid === undefined) {
+        throw new Error("child not spawned");
+      }
+      return pid;
+    }
+
+    test("forwards a SIGINT sent only to the CLI, once, and exits quietly", async () => {
+      const { script, count } = await countingChild();
+      const ctx = { ...makeContext(), process: { exitCode: undefined } };
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const run = func.call(
+        ctx,
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        process.execPath,
+        script,
+      );
+      await childPid(count);
+      signals.send("SIGINT");
+      await expect(run).resolves.toBeUndefined();
+      expect(await readFile(count, "utf8")).toBe("1");
+      expect(ctx.process.exitCode).toBeUndefined();
+    });
+
+    test("does not resend a Ctrl-C the terminal already sent to the child", async () => {
+      const { script, count } = await countingChild();
+      const foreground = vi
+        .spyOn(childSignals, "terminalSignalsProcess")
+        .mockReturnValue(true);
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          { ...makeContext(), process: { exitCode: undefined } },
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          script,
+        );
+        const pid = await childPid(count);
+        // What the terminal does on Ctrl-C: signal the whole foreground
+        // group, which holds both the CLI and the child.
+        process.kill(pid, "SIGINT");
+        signals.send("SIGINT");
+        await expect(run).resolves.toBeUndefined();
+        expect(await readFile(count, "utf8")).toBe("1");
+      } finally {
+        foreground.mockRestore();
+      }
+    });
+
+    test("passes on a second SIGINT even when the terminal sent the first", async () => {
+      const { script, count } = await countingChild();
+      const foreground = vi
+        .spyOn(childSignals, "terminalSignalsProcess")
+        .mockReturnValue(true);
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          { ...makeContext(), process: { exitCode: undefined } },
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          script,
+        );
+        await childPid(count);
+        // Neither SIGINT came through the terminal, so only the second one
+        // reaches the child.
+        signals.send("SIGINT");
+        signals.send("SIGINT");
+        await expect(run).resolves.toBeUndefined();
+        expect(await readFile(count, "utf8")).toBe("1");
+        expect(foreground).toHaveBeenCalledTimes(1);
+      } finally {
+        foreground.mockRestore();
+      }
+    });
+
+    test.each([
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ] as const)(
+      "exits %s's code without an error when the child dies from it",
+      async (signal, code) => {
+        const ctx = { ...makeContext(), process: { exitCode: undefined } };
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const ready = join(tmpDir, "ready");
+        const run = func.call(
+          ctx,
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");setInterval(() => {}, 1000);`,
+        );
+        await vi.waitFor(async () => {
+          await readFile(ready, "utf8");
+        });
+        signals.send(signal);
+        await expect(run).resolves.toBeUndefined();
+        expect(ctx.process.exitCode).toBe(code);
+      },
+    );
   });
 
   test("--timeout kills the child after N seconds", async () => {

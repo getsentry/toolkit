@@ -32,6 +32,7 @@ import {
 } from "./control-plane.js";
 import {
   DEFAULT_PORT,
+  isConnectionRefused,
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
   probeLocalHealth,
@@ -171,12 +172,7 @@ async function probeLocalDaemon(
     return Array.isArray(data.sessions) ? "ok" : "failed";
   } catch (error) {
     logger.debug("Local daemon identity check failed", error);
-    const cause = error instanceof Error ? error.cause : undefined;
-    return cause instanceof Error &&
-      "code" in cause &&
-      cause.code === "ECONNREFUSED"
-      ? "refused"
-      : "failed";
+    return isConnectionRefused(error) ? "refused" : "failed";
   }
 }
 

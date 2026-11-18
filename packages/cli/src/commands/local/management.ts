@@ -35,7 +35,7 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
-import { AMBIGUOUS_SESSION_CODE } from "./session-store.js";
+import { AMBIGUOUS_SESSION_CODE, type LocalSession } from "./session-store.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -214,6 +214,55 @@ function singleReference(parts: string[]): string {
   return reference;
 }
 
+/** A session that still accepts telemetry, named in `daemon stop` output. */
+type CapturingSession = Pick<LocalSession, "id" | "label">;
+
+/**
+ * Sessions that still accept telemetry. Stopping the daemon ends them, and
+ * their apps keep sending to an address nobody answers. Listing them is best
+ * effort, so it never blocks a stop.
+ */
+async function listCapturingSessions(
+  state: LocalDaemonState,
+): Promise<CapturingSession[]> {
+  try {
+    const response = await requestLocalDaemon(state, "/sessions", {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      logger.debug(`Could not list Local sessions (HTTP ${response.status})`);
+      return [];
+    }
+    const { sessions = [] } = (await response.json()) as {
+      sessions?: LocalSession[];
+    };
+    return sessions
+      .filter((session) => session.state === "open")
+      .map(({ id, label }) => ({ id, label }));
+  } catch (error) {
+    logger.debug("Could not list Local sessions before stopping", error);
+    return [];
+  }
+}
+
+/** Warn that stopping the daemon ended sessions whose apps still send to it. */
+function warnCapturingSessions(
+  action: "Stopped" | "Restarted",
+  sessions: CapturingSession[],
+): void {
+  if (sessions.length === 0) {
+    return;
+  }
+  const count =
+    sessions.length === 1
+      ? "1 session was"
+      : `${sessions.length} sessions were`;
+  const names = sessions.map(({ id, label }) => `${label} (${id})`).join(", ");
+  logger.warn(
+    `${action} the Local daemon while ${count} still capturing: ${names}. Their apps' telemetry is no longer captured; restart their commands to capture again.`,
+  );
+}
+
 /** Request shutdown and confirm discovery and ownership have been released. */
 async function stopLocalDaemon(state: LocalDaemonState): Promise<void> {
   const response = await requestLocalDaemon(state, "/daemon/stop", {
@@ -281,11 +330,17 @@ const daemonStopCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (!state) {
-      yield new CommandOutput({ stopped: false, reason: "not running" });
+      yield new CommandOutput({
+        stopped: false,
+        reason: "not running",
+        capturingSessions: [],
+      });
       return;
     }
+    const capturingSessions = await listCapturingSessions(state);
     await stopLocalDaemon(state);
-    yield new CommandOutput({ stopped: true });
+    warnCapturingSessions("Stopped", capturingSessions);
+    yield new CommandOutput({ stopped: true, capturingSessions });
   },
 });
 
@@ -296,7 +351,9 @@ const daemonRestartCommand = buildCommand({
   async *func() {
     const state = await getRunningLocalDaemon();
     if (state) {
+      const capturingSessions = await listCapturingSessions(state);
       await stopLocalDaemon(state);
+      warnCapturingSessions("Restarted", capturingSessions);
     }
     yield new CommandOutput(
       publicDaemonState(
