@@ -96,8 +96,11 @@ Incomplete owner files receive a five-second grace period. Once safely reclaimed
 ownership is claimed under the same guard, including on the final retry.
 
 When a managed daemon owns the requested port, plain `local run` and `local serve`
-require `--session <name>` or a different `--port`; they cannot use its protected
-receiver as a legacy `/stream` endpoint.
+cannot use its protected receiver as a legacy `/stream` endpoint. A plain
+`local run` without `--port` then captures on a free port and says so, because the
+daemon keeps the default port while it retains sessions. With an explicit
+`--port`, and for `local serve`, they require `--session <name>` or a different
+`--port`.
 
 ## Envelope retention
 

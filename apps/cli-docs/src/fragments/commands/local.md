@@ -12,6 +12,8 @@ Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js an
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
+The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
+
 With no command, `local run` picks one from the project, in this order:
 
 1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
@@ -36,6 +38,12 @@ Env vars injected into the child process:
 The `<PREFIX>` variants put the URL where your bundler can inline it into browser code: `PUBLIC_` (SvelteKit, Astro, Qwik), `NEXT_PUBLIC_` (Next.js), `VITE_` (Vite), `NUXT_PUBLIC_` (Nuxt), `REACT_APP_` (Create React App), `VUE_APP_` (Vue CLI), and `GATSBY_` (Gatsby). The browser SDK does not read them on its own yet.
 
 When `local run` sees `wrangler dev` and a `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml`, it also adds `--var SENTRY_SPOTLIGHT:<url>`, because Wrangler does not pass process env vars to Worker code. An explicit `--var SENTRY_SPOTLIGHT:...` is kept. No project file is changed.
+
+### Check your setup with `--verify`
+
+`sentry local run --verify -- <command>` starts your app, waits for its first event, then stops it. It exits 0 once an event arrives. It fails if the app exits, crashes, or sends nothing within the timeout (30 seconds, or `--timeout <seconds>`). When port 8969 is busy, it verifies on a free port.
+
+A Cloudflare Worker sends nothing until it handles a request, so send one to it while `--verify` waits.
 
 ## SDK setup
 
