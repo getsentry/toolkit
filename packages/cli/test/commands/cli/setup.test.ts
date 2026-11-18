@@ -1056,6 +1056,8 @@ describe("sentry cli setup", () => {
         email: "new@example.com",
       },
     };
+    const handoffSummary =
+      "Authenticated as new@example.com for New Organization (slug: new-org) on https://sentry.io.";
 
     function stubHandoffFetch({
       flowInstructions = "Continue the requested setup.",
@@ -1101,6 +1103,7 @@ describe("sentry cli setup", () => {
             refresh_token: "refresh-token",
             expires_in: 3600,
             token_type: "bearer",
+            user: { id: "setup-user", name: null, email: "setup@example.com" },
           }),
         );
         vi.stubGlobal("fetch", fetch);
@@ -1115,7 +1118,7 @@ describe("sentry cli setup", () => {
             completions ? 1 : 0,
           );
           expect(fixture.getOutput()).toContain(
-            "Authenticated with Sentry using the setup code",
+            "Authenticated as setup@example.com on https://sentry.io.",
           );
           expect(fixture.getOutput()).not.toContain(code);
           expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
@@ -1156,7 +1159,9 @@ describe("sentry cli setup", () => {
           expect(warmCachesAfterLogin).toHaveBeenCalledTimes(
             completions ? 1 : 0,
           );
-          expect(fixture.getOutput()).toContain(instructions);
+          expect(fixture.getOutput()).toContain(
+            `${handoffSummary}\n${instructions}`,
+          );
           expect(fixture.getOutput()).not.toContain(handoffCode);
           expect(fixture.getOutput()).not.toContain(handoffSetupCode);
           expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
@@ -1179,9 +1184,7 @@ describe("sentry cli setup", () => {
         await fixture.run();
 
         const { messages } = JSON.parse(fixture.getOutput());
-        expect(messages).toContain(
-          "Authenticated with Sentry using the agent handoff.",
-        );
+        expect(messages).toContain(handoffSummary);
         expect(messages).not.toContain("");
       } finally {
         vi.unstubAllGlobals();
@@ -1250,6 +1253,7 @@ describe("sentry cli setup", () => {
 
         expect(fixture.context.process.exitCode).toBeGreaterThan(0);
         expect(fixture.getOutput()).not.toContain(instructions);
+        expect(fixture.getOutput()).not.toContain(handoffSummary);
         expect(getAuthConfig()).toBeUndefined();
       } finally {
         vi.unstubAllGlobals();
