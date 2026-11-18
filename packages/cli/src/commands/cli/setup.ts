@@ -11,6 +11,7 @@ import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
+import { completeAgentHandoff } from "../../lib/agent-handoff.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { sentry } from "../../lib/app-identity.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
@@ -34,7 +35,11 @@ import {
   warmCachesAfterLogin,
 } from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
-import { getAuthConfig, hasStoredAuthCredentials } from "../../lib/db/auth.js";
+import {
+  getAuthConfig,
+  getStoredAuthHost,
+  hasStoredAuthCredentials,
+} from "../../lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -51,10 +56,12 @@ import {
   detectAgentFromProcessTree,
 } from "../../lib/detect-agent.js";
 import { getEnv } from "../../lib/env.js";
+import { formatUserIdentity } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
 import { logger } from "../../lib/logger.js";
+import { normalizeHttpOrigin } from "../../lib/sentry-urls.js";
 import { bootstrapAuthentication } from "../../lib/setup-code.js";
 import {
   addToFpath,
@@ -792,12 +799,21 @@ export const setupCommand = buildCommand({
       warn,
     });
 
-    if (getEnv().SENTRY_SETUP_CODE && !hasStoredAuthCredentials()) {
-      await bootstrapAuthentication();
-      emit("Authenticated with Sentry using the setup code.");
-      if (!flags["no-completions"]) {
-        await warmCachesAfterLogin();
-      }
+    const { SENTRY_HANDOFF, SENTRY_SETUP_CODE } = getEnv();
+    const handoffCode = SENTRY_HANDOFF?.trim();
+    const setupCode = SENTRY_SETUP_CODE?.trim();
+    const shouldUseSetupCode =
+      !handoffCode && Boolean(setupCode) && !hasStoredAuthCredentials();
+    const handoff = handoffCode
+      ? await completeAgentHandoff(handoffCode)
+      : undefined;
+
+    const bootstrap = shouldUseSetupCode
+      ? await bootstrapAuthentication()
+      : undefined;
+
+    if ((handoff || bootstrap) && !flags["no-completions"]) {
+      await warmCachesAfterLogin();
     }
 
     if (flags["ensure-auth-scopes"]) {
@@ -816,6 +832,27 @@ export const setupCommand = buildCommand({
     // since the upgrade command itself prints a success message.
     if (!flags.quiet && freshInstall) {
       printWelcomeMessage(emit, CLI_VERSION, binaryPath);
+    }
+
+    if (handoff || bootstrap) {
+      const user = bootstrap?.user;
+      const identity =
+        handoff?.userEmail ||
+        (user && (user.email || formatUserIdentity(user)));
+      const account = identity ? `as ${identity}` : "with Sentry";
+      const organization = handoff
+        ? ` for ${handoff.organizationName} (slug: ${handoff.organizationSlug})`
+        : "";
+      const host = handoff
+        ? normalizeHttpOrigin(handoff.sentryUrl)
+        : getStoredAuthHost();
+      emit(
+        `Authenticated ${account}${organization}${host ? ` on ${host}` : ""}.`,
+      );
+    }
+
+    if (handoff?.flowInstructions) {
+      emit(handoff.flowInstructions);
     }
 
     yield new CommandOutput({
@@ -840,7 +877,7 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      Boolean(getEnv().SENTRY_SETUP_CODE) ||
+      Boolean(handoffCode || setupCode) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;

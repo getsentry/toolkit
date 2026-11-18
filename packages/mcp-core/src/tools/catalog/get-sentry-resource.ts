@@ -495,80 +495,32 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
 
-  description: ({ experimentalMode, availableToolNames, directToolNames }) => {
-    const monitorResourcesAvailable = isToolAvailable(
-      "get_monitor_details",
-      availableToolNames,
-    );
-    // Monitors and dashboards both delegate to inspect-only catalog tools.
-    // Only advertise them when their backing tools are available in this session.
-    // The URL parser still recognises /crons/ and /dashboard/{id}/ unconditionally;
-    // non-inspect sessions get a clear "requires the inspect skill" error at runtime.
-    const dashboardResourcesAvailable = isToolAvailable(
-      "get_dashboard_details",
-      availableToolNames,
-    );
-    const fullResolutionInstruction = formatToolCallInstruction({
-      toolName: "get_snapshot_image",
-      arguments: {
-        organizationSlug: "<organizationSlug>",
-        snapshotId: "<snapshotId>",
-        imageIdentifier: "<imageFileName>",
-        imageResolution: "full",
-      },
-      experimentalMode,
-      availableToolNames,
-      directToolNames,
-      fallbackInstruction:
-        "Full-resolution snapshot image bytes are not available in this session",
-      purpose: "for full-resolution image bytes",
-    });
-    const extraResources = [
-      ...(monitorResourcesAvailable ? ["monitors"] : []),
-      ...(dashboardResourcesAvailable ? ["dashboards"] : []),
-    ];
-    const supportedResources =
-      extraResources.length > 0
-        ? `issues, events, traces, spans, agent conversations, replays, ${extraResources.join(", ")}, preprod snapshots, and snapshot images.`
-        : "issues, events, traces, spans, agent conversations, replays, preprod snapshots, and snapshot images.";
-    const resourceIds = [
-      ...(monitorResourcesAvailable ? ["- monitor: <monitorSlug>"] : []),
-      ...(dashboardResourcesAvailable
-        ? ["- dashboard: <dashboardId or title>"]
+  description: ({ availableToolNames }) => {
+    // Monitors and dashboards delegate to inspect-only catalog tools, so only
+    // advertise them when those tools are available in this session. The URL
+    // parser still recognises them; other sessions get a runtime error.
+    const resources = [
+      "issues",
+      "events",
+      "traces",
+      "spans",
+      "agent conversations",
+      "replays",
+      ...(isToolAvailable("get_monitor_details", availableToolNames)
+        ? ["monitors"]
         : []),
-      "- snapshot: <snapshotId>",
-    ];
-
-    return [
-      "Fetch a Sentry resource by URL, or by resourceType plus resourceId.",
-      "Use it when the user shares a Sentry link. Pass the URL directly when possible; the resource type is auto-detected.",
-      "",
-      `Supports ${supportedResources}`,
-      "Trace lookups return a condensed overview by default.",
-      "For installed package versions recorded with an exact event, pass packageNames with an event URL or resourceType='event'.",
-      "",
-      "Agent Conversations: A conversation is a set of spans sharing the same gen_ai.conversation.id. Use resourceType='ai_conversation' with a conversation ID, or pass a Sentry conversation URL, to fetch the transcript/details. To discover or list conversations, use search_agent_conversations. Conversations are NOT issues — do not use search_issues for conversation queries.",
-      "",
-      "For preprod snapshot URLs (matching 'sentry.io/preprod/snapshots/'):",
-      "- Without ?selectedSnapshot=: returns the snapshot diff summary (changed, added, removed images)",
-      `- With ?selectedSnapshot=<imageFileName>: returns the image preview and metadata. ${fullResolutionInstruction}.`,
-      "",
-      "Resource IDs:",
-      ...resourceIds,
-      "",
-      "<examples>",
-      "get_sentry_resource(url='https://sentry.io/issues/PROJECT-123/')",
-      "get_sentry_resource(resourceType='issue', organizationSlug='my-org', resourceId='PROJECT-123')",
-      "get_sentry_resource(resourceType='ai_conversation', organizationSlug='my-org', resourceId='conversation-123')",
-      ...(dashboardResourcesAvailable
-        ? [
-            "get_sentry_resource(url='https://sentry.sentry.io/dashboard/542438/')",
-          ]
+      ...(isToolAvailable("get_dashboard_details", availableToolNames)
+        ? ["dashboards"]
         : []),
-      "get_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/')",
-      "get_sentry_resource(url='https://sentry.sentry.io/preprod/snapshots/123/?selectedSnapshot=login_screen.png')",
-      "</examples>",
-    ].join("\n");
+      "preprod snapshots",
+    ];
+    const conversationLine = isToolAvailable(
+      "search_agent_conversations",
+      availableToolNames,
+    )
+      ? " To list agent conversations, use search_agent_conversations."
+      : "";
+    return `Fetch a Sentry resource by URL or ID: ${resources.join(", ")}, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL.${conversationLine}`;
   },
 
   inputSchema: {
@@ -576,9 +528,7 @@ export default defineTool({
       .string()
       .url()
       .optional()
-      .describe(
-        "Sentry URL. The resource type is auto-detected from the URL pattern.",
-      ),
+      .describe("A Sentry URL. The resource type is detected from it."),
 
     resourceType: z
       .enum([
@@ -593,7 +543,7 @@ export default defineTool({
       ])
       .optional()
       .describe(
-        "Resource type. With a URL, can override a span-focused trace URL with `trace`. Use `monitor` with a monitor slug only when inspect monitor tools are available, `snapshot` with a snapshot artifact ID, or `dashboard` with a dashboard ID or exact title when inspect dashboard tools are available.",
+        "Required without a URL. With a URL, `trace` widens a span URL to its whole trace. `ai_conversation` is a gen_ai.conversation.id; `snapshot` is a preprod snapshot.",
       ),
 
     resourceId: z
@@ -601,11 +551,13 @@ export default defineTool({
       .trim()
       .optional()
       .describe(
-        "Resource identifier: issue shortId (e.g., 'PROJECT-123'), event ID, trace ID, agent conversation ID, replay ID, monitor slug when inspect monitor tools are available, dashboard ID or title when inspect dashboard tools are available, or snapshot artifact ID. Required when not using a URL.",
+        "The ID for the resource type: issue short ID (e.g. `PROJECT-123`), event, trace, replay, or conversation ID, monitor slug, dashboard ID or exact title, or snapshot artifact ID. Required without a URL.",
       ),
 
     organizationSlug: ParamOrganizationSlug.optional(),
-    packageNames: ParamPackageNames.optional(),
+    packageNames: ParamPackageNames.optional().describe(
+      "Exact, case-sensitive package names recorded on the event. Returns their versions. Only for an event URL or the `event` type.",
+    ),
 
     // Undocumented aliases for keys models often send instead of
     // url/resourceId. Kept without descriptions to keep the schema small.

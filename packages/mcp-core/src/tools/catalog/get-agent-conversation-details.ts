@@ -664,11 +664,8 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read", "project:read"],
 
-  description: [
-    "Fetch the chronological transcript and debugging details for one agent conversation, formerly called an AI conversation.",
-    "",
-    "Returns a timeline of user messages, assistant messages, and tool calls, with trace/span IDs for deeper debugging. To discover or list conversations, use search_agent_conversations.",
-  ].join("\n"),
+  description:
+    "Get the transcript of one Sentry agent conversation (formerly AI conversation): user and assistant messages and tool calls in order, with trace and span IDs for debugging. To find conversations, use search_agent_conversations.",
 
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -681,18 +678,18 @@ export default defineTool({
       .trim()
       .optional()
       .describe(
-        "Numeric project ID to scope the query. Falls back to context constraint or all projects.",
+        "Numeric project ID to scope the lookup; omit to search all projects.",
       ),
     start: z
       .string()
       .trim()
       .optional()
-      .describe("Explicit start time for the conversation lookup window."),
+      .describe("Start of the lookup window; requires end."),
     end: z
       .string()
       .trim()
       .optional()
-      .describe("Explicit end time for the conversation lookup window."),
+      .describe("End of the lookup window; requires start."),
     regionUrl: ParamRegionUrl.optional(),
   },
 

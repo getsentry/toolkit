@@ -52,8 +52,9 @@ export type CliResult = {
 /**
  * Get the CLI command to execute.
  * Uses SENTRY_CLI_BINARY env var if set (for CI with pre-built binary),
- * otherwise falls back to running source via tsx (not bun, which hits TDZ
- * errors from circular imports in the db/ layer — see issue #1070).
+ * otherwise falls back to running source with Node's type stripping (not
+ * bun, which hits TDZ errors from circular imports in the db/ layer — see
+ * issue #1070).
  */
 export function getCliCommand(): string[] {
   const binaryPath = process.env.SENTRY_CLI_BINARY;
@@ -65,8 +66,7 @@ export function getCliCommand(): string[] {
   }
   return [
     "node",
-    "--import",
-    "tsx",
+    "--experimental-strip-types",
     "--import",
     "./script/require-shim.mjs",
     "src/bin.ts",

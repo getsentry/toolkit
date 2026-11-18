@@ -140,6 +140,11 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     devGuide: "Sentry OAuth app client ID",
   },
   {
+    name: "SENTRY_HANDOFF",
+    description:
+      "Private, short-lived agent handoff code. The install and setup flow exchanges it for the intended Sentry account, authenticates that account, and prints its setup instructions.",
+  },
+  {
     name: "SENTRY_SETUP_CODE",
     description:
       "Private, short-lived code for headless OAuth authentication with sentry auth bootstrap or the installer. Each code can be redeemed once.",

@@ -10,7 +10,8 @@
  */
 
 import { createRequire } from "node:module";
-import type { Metric } from "@sentry/core";
+import { API_BASE_PATH } from "@sentry/api";
+import type { Metric, TransactionEvent } from "@sentry/core";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 
@@ -37,6 +38,7 @@ import { getEnv } from "./env.js";
 import {
   classifySilenced,
   enrichEventWithGroupingTags,
+  normalizeEndpoint,
   reportCliError,
 } from "./error-reporting.js";
 import { ApiError, isUserError } from "./errors.js";
@@ -456,6 +458,41 @@ export function recordApiErrorOnSpan(span: Span, error: ApiError): void {
   }
 }
 
+/** `http.client` span attributes that hold the request URL or path. */
+const HTTP_SPAN_URL_KEYS = ["url", "url.full", "http.url", "url.path"];
+
+/**
+ * Template `url` when it targets the Sentry API. `url.path` holds a bare
+ * pathname, which `normalizeEndpoint` would read as relative to
+ * `API_BASE_PATH`, so a pathname outside the API, such as a GitHub one, is
+ * left as it is.
+ */
+function normalizeSpanUrl(url: string, method?: string): string {
+  return URL.canParse(url) || url.includes(`${API_BASE_PATH}/`)
+    ? normalizeEndpoint(url, method)
+    : url;
+}
+
+/** Template org and project slugs out of `http.client` span URLs. */
+function normalizeHttpSpans(event: TransactionEvent): void {
+  for (const span of event.spans ?? []) {
+    if (span.op !== "http.client") {
+      continue;
+    }
+    // Descriptions are `${method} ${url}`.
+    const method = span.description?.split(" ", 1)[0];
+    span.description = span.description?.replace(/\S+$/, (url) =>
+      normalizeSpanUrl(url, method),
+    );
+    for (const key of HTTP_SPAN_URL_KEYS) {
+      const value = span.data[key];
+      if (typeof value === "string") {
+        span.data[key] = normalizeSpanUrl(value, method);
+      }
+    }
+  }
+}
+
 /**
  * Integrations to exclude for CLI.
  * These add overhead without benefit for short-lived CLI processes.
@@ -762,6 +799,7 @@ export function initSentry(
     beforeSendTransaction: (event) => {
       // Remove server_name which may contain hostname (PII)
       event.server_name = undefined;
+      normalizeHttpSpans(event);
       return event;
     },
 

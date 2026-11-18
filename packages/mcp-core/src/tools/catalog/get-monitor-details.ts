@@ -167,19 +167,9 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [
-    "Get details and recent check-ins for a Sentry cron monitor (scheduled job).",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect a monitor's schedule, status, owner, project, and environments",
-    "- Review recent check-ins for missed, failed, timeout, or OK runs",
-    "- Check monitor stats over a recent time range",
-    "",
-    "To find issues from a monitor, call `search_issues` with query `monitor.slug:<slug>`.",
-    "",
-    "<examples>",
-    "get_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import')",
-    "get_monitor_details(organizationSlug='my-organization', monitorSlug='nightly-import', projectSlugOrId='backend', environment='production', period='7d')",
-    "</examples>",
+    "Get a Sentry cron monitor (scheduled job): schedule, status, owner, environments, recent check-ins (missed, failed, timeout, OK), and check-in stats.",
+    "Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.",
+    "Issues for a monitor: search_issues with monitor.slug:<slug>.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -191,36 +181,30 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Optional project slug or numeric ID. Use this to disambiguate monitors with the same slug or to scope a monitor URL that includes a project segment.",
+        "Project slug or numeric ID, to pick between monitors that share a slug.",
       ),
     monitorSlug: z.string().trim().min(1).describe("Monitor slug or GUID."),
     environment: z
       .string()
       .trim()
-      .describe(
-        "Optional environment name to filter monitor environments, recent check-ins, and stats.",
-      )
+      .describe("Environment to filter environments, check-ins, and stats by.")
       .nullable()
       .default(null),
     period: ParamPeriod.describe(
-      "Relative time range. Defaults to `24h` when `start` and `end` are omitted.",
+      "Relative time range, such as 24h or 7d. Defaults to 24h without start and end.",
     )
       .nullable()
       .default(null),
     start: z
       .string()
       .datetime()
-      .describe(
-        "Absolute start time. Must be provided with `end`; do not combine with `period`.",
-      )
+      .describe("Absolute start time. Requires end; not with period.")
       .nullable()
       .default(null),
     end: z
       .string()
       .datetime()
-      .describe(
-        "Absolute end time. Must be provided with `start`; do not combine with `period`.",
-      )
+      .describe("Absolute end time. Requires start; not with period.")
       .nullable()
       .default(null),
     checkInLimit: z
@@ -228,7 +212,7 @@ export default defineTool({
       .int()
       .positive()
       .max(50)
-      .describe("Maximum number of recent check-ins to include.")
+      .describe("Maximum recent check-ins to include.")
       .default(10),
     includeStats: z
       .boolean()
@@ -238,9 +222,7 @@ export default defineTool({
       .number()
       .int()
       .positive()
-      .describe(
-        "Optional stats bucket size in seconds. Omit this to let Sentry choose an appropriate rollup.",
-      )
+      .describe("Stats bucket size in seconds. Omit to let Sentry choose.")
       .nullable()
       .default(null),
   },

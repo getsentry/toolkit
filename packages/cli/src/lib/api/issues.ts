@@ -17,6 +17,7 @@ import {
   updateOrganizationIssue,
   updateOrganizationIssues,
 } from "@sentry/api";
+import { API_BASE_PATH } from "@sentry/api/client";
 import pLimit from "p-limit";
 
 import type { SentryIssue } from "../../types/index.js";
@@ -736,7 +737,7 @@ export async function getSharedIssue(
 ): Promise<{ id: string }> {
   const path = `organizations/${encodeURIComponent(orgSlug)}/shared/issues/${encodeURIComponent(shareId)}/`;
   const normalizedBase = baseUrl.replace(TRAILING_SLASH_RE, "");
-  const url = `${normalizedBase}/api/0/${path}`;
+  const url = `${normalizedBase}${API_BASE_PATH}/${path}`;
   const headers = new Headers({ "Content-Type": "application/json" });
   // URL-scoped: headers only attach when `url`'s origin matches the trusted
   // host, so IAP tokens etc. can't leak to an attacker-controlled share URL.

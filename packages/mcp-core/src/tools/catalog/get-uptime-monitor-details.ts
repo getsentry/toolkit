@@ -68,22 +68,9 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["project:read"],
   description: [
-    "Get details for a Sentry uptime monitor, including recent checks.",
-    "",
-    "Use this tool when you need to:",
-    "- Inspect an uptime monitor's URL, interval, thresholds, and status",
-    "- Review recent HTTP check results (success/failure, status code, duration)",
-    "- Debug why an uptime monitor is failing",
-    "",
-    "This is separate from cron monitors (`get_monitor_details`).",
-    "",
-    "Request bodies are never returned. Sensitive header values are redacted.",
-    "To find related issues, call `search_issues` with query `uptime_rule:<id>`.",
-    "",
-    "<examples>",
-    "get_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')",
-    "get_uptime_monitor_details(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345', period='7d', checkLimit=20)",
-    "</examples>",
+    "Get a Sentry uptime monitor: its URL, interval, thresholds, status, and recent HTTP check results (status code, duration, failures). Request bodies are never returned; sensitive headers are redacted.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
+    "Related issues: search_issues with uptime_rule:<id>.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -93,30 +80,26 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe("Uptime monitor ID (detector id)."),
+      .describe("Uptime monitor ID from find_uptime_monitors."),
     period: ParamPeriod.describe(
-      "Relative time range for recent checks. Defaults to `24h` when `start` and `end` are omitted.",
+      "Relative time range for recent checks, such as 24h or 7d. Defaults to 24h without start and end.",
     ).optional(),
     start: z
       .string()
       .datetime()
-      .describe(
-        "Absolute start time. Must be provided with `end`; do not combine with `period`.",
-      )
+      .describe("Absolute start time. Requires end; not with period.")
       .optional(),
     end: z
       .string()
       .datetime()
-      .describe(
-        "Absolute end time. Must be provided with `start`; do not combine with `period`.",
-      )
+      .describe("Absolute end time. Requires start; not with period.")
       .optional(),
     checkLimit: z
       .number()
       .int()
       .positive()
       .max(50)
-      .describe("Maximum number of recent checks to include.")
+      .describe("Maximum recent checks to include.")
       .default(10),
   },
   outputSchema: getUptimeMonitorDetailsOutputSchema,

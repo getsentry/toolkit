@@ -1,6 +1,11 @@
 /** Tail formatters for the local dev server. */
 
 import {
+  classifyEvent,
+  readMessageText,
+} from "../../commands/local/event-kind.js";
+import { parseEventTimestamp } from "../../commands/local/timestamp.js";
+import {
   formatLocalServerUrl,
   getLocalUiConnectionUrl,
 } from "../../commands/local/ui.js";
@@ -72,19 +77,27 @@ export const FILTER_VALUES = ["error", "transaction", "log", "ai"] as const;
 export type FilterValue = (typeof FILTER_VALUES)[number];
 
 /** Format a local timestamp as HH:MM:SS from a Sentry timestamp. */
-export function formatTime(timestamp?: number | string): string {
+export function formatTime(timestamp?: unknown): string {
   let date: Date;
-  if (!timestamp) {
-    date = new Date();
-  } else if (typeof timestamp === "string") {
-    date = new Date(timestamp);
+  if (timestamp) {
+    const seconds = parseEventTimestamp(timestamp);
+    if (seconds === undefined) {
+      return "??:??:??";
+    }
+    date = new Date(seconds * 1000);
   } else {
-    date = new Date(timestamp * 1000);
-  }
-  if (Number.isNaN(date.getTime())) {
-    return "??:??:??";
+    date = new Date();
   }
   return date.toLocaleTimeString("en-US", { hour12: false });
+}
+
+/** Whole-millisecond duration between two Sentry timestamps, if both parse. */
+function durationMs(start: unknown, end: unknown): number | undefined {
+  const startSeconds = parseEventTimestamp(start);
+  const endSeconds = parseEventTimestamp(end);
+  return startSeconds === undefined || endSeconds === undefined
+    ? undefined
+    : Math.round((endSeconds - startSeconds) * 1000);
 }
 
 /** 32-char lowercase-hex trace ID, as emitted by Sentry SDKs. */
@@ -145,9 +158,13 @@ const TYPE_WIDTH = 9;
 /** Longest bracketed source label: `[BROWSER]` = 9 chars. */
 const SOURCE_WIDTH = 9;
 
-/** Format a type/level label as `[TYPE]` padded to fixed width. */
+/**
+ * Format a type/level label as `[TYPE]` padded to fixed width. Logs send
+ * `warn` and events send `warning`; both show as `[WARNING]`.
+ */
 export function formatType(level: string): string {
-  const tag = `[${sanitize(level).toUpperCase()}]`;
+  const label = level.toLowerCase() === "warn" ? "warning" : level;
+  const tag = `[${sanitize(label).toUpperCase()}]`;
   const colorFn = LEVEL_COLORS[level.toLowerCase()];
   const colored = colorFn ? colorFn(tag) : tag;
   return colored + " ".repeat(Math.max(0, TYPE_WIDTH - tag.length));
@@ -156,7 +173,14 @@ export function formatType(level: string): string {
 /** Mobile SDK name substrings. */
 const MOBILE_MARKERS = ["cocoa", "android", "react-native", "flutter"];
 
-/** Server-side JS SDK name substrings — exclude from browser detection. */
+/**
+ * JavaScript SDK name substrings treated as server-side when the item itself
+ * doesn't say where it ran (logs, spans, sessions). Meta-framework SDKs send
+ * the same name from the browser and the server, so their events are told
+ * apart by platform and runtime instead (see {@link inferSourceName}).
+ * Envelope headers carry only the SDK name and version, not `sdk.packages`,
+ * so server-only SDKs have to be listed here by name.
+ */
 const SERVER_JS_MARKERS = [
   "node",
   "bun",
@@ -166,7 +190,17 @@ const SERVER_JS_MARKERS = [
   "astro",
   "nuxt",
   "sveltekit",
+  "solidstart",
+  "react-router",
+  "tanstackstart",
   "cloudflare",
+  "hono",
+  "vercel-edge",
+  "aws-serverless",
+  "google-cloud-serverless",
+  "nestjs",
+  "elysia",
+  "nitro",
 ];
 
 /** Source → color map for tail output. */
@@ -176,22 +210,82 @@ const SOURCE_COLORS: Record<string, (s: string) => string> = {
   server: cyan,
 };
 
+/** Where an item was captured, as shown in the source tag. */
+type SourceName = "browser" | "mobile" | "server";
+
+/** Span ops that only the browser SDK creates. */
+const BROWSER_OP_RE = /^(?:pageload|navigation|(?:ui|resource|browser)\..+)$/;
+
 /**
- * Infer the source platform from the envelope header's `sdk.name` field.
- * Returns a colored, bracketed, padded label like `[SERVER] `.
+ * Whether span or log attributes show the browser SDK made them: a browser
+ * op, a `browser.*` attribute (web vitals), a browser instrumentation origin
+ * such as `auto.http.browser`, or a session replay ID, which only the browser
+ * records. The browser SDK also sets `user_agent.original` on every span, but
+ * server SDKs set it on HTTP spans too, so it only counts on other spans.
  */
-export function inferSource(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
-  const name = sdk?.name ?? "";
-  let source = "server";
+function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
+  const op = typeof attrs["sentry.op"] === "string" ? attrs["sentry.op"] : "";
+  const origin = attrs["sentry.origin"];
+  return (
+    BROWSER_OP_RE.test(op) ||
+    (typeof origin === "string" && origin.split(".").includes("browser")) ||
+    attrs["sentry.replay_id"] !== undefined ||
+    (attrs["user_agent.original"] !== undefined && !op.startsWith("http.")) ||
+    Object.keys(attrs).some((key) => key.startsWith("browser."))
+  );
+}
+
+/**
+ * Infer where an item was captured.
+ *
+ * Event payloads say it directly: server SDKs set a `runtime` context (Node,
+ * Cloudflare Workers, Vercel Edge, Bun, Deno) or a non-JavaScript platform,
+ * and browser events have `platform: "javascript"` with no runtime. Spans and
+ * logs have neither, so their `attributes` are checked for browser-only
+ * signs (see {@link hasBrowserAttributes}). This is the only way to split
+ * meta-framework SDKs such as Next.js, which use one SDK name on both sides.
+ * Items without those fall back to the SDK name in the envelope header.
+ */
+function inferSourceName(
+  header: Record<string, unknown>,
+  payload?: Record<string, unknown>,
+  attributes: Record<string, unknown>[] = [],
+): SourceName {
+  const sdk = header.sdk as { name?: unknown } | undefined;
+  const name = typeof sdk?.name === "string" ? sdk.name : "";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
-    source = "mobile";
-  } else if (
+    return "mobile";
+  }
+  if (attributes.some(hasBrowserAttributes)) {
+    return "browser";
+  }
+  const contexts = payload?.contexts as Record<string, unknown> | undefined;
+  if (contexts?.runtime) {
+    return "server";
+  }
+  if (typeof payload?.platform === "string") {
+    return payload.platform === "javascript" ? "browser" : "server";
+  }
+  if (
     name.startsWith("sentry.javascript.") &&
     !SERVER_JS_MARKERS.some((m) => name.includes(m))
   ) {
-    source = "browser";
+    return "browser";
   }
+  return "server";
+}
+
+/**
+ * Build the source tag for an item, e.g. `[SERVER] `: colored, bracketed, and
+ * padded. Pass the event payload, or the attributes of spans and logs, so the
+ * item can be placed by what it carries; see {@link inferSourceName}.
+ */
+export function inferSource(
+  header: Record<string, unknown>,
+  payload?: Record<string, unknown>,
+  attributes?: Record<string, unknown>[],
+): string {
+  const source = inferSourceName(header, payload, attributes);
   const tag = `[${source.toUpperCase()}]`;
   const colorFn = SOURCE_COLORS[source] ?? cyan;
   return colorFn(tag) + " ".repeat(Math.max(0, SOURCE_WIDTH - tag.length));
@@ -206,9 +300,33 @@ export type StackFrame = {
   in_app?: boolean;
 };
 
+/**
+ * Pick the frame to show for a stack. Frames are ordered oldest to newest, so
+ * the last in-app frame is the app code closest to the throw (e.g. `onClick`,
+ * not React's `dispatchDiscreteEvent`). The browser SDK marks every frame in
+ * app, including native ones such as `JSON.parse (<anonymous>)` that have no
+ * line, so frames with a file and line come first. Falls back to the newest
+ * in-app frame, then the newest frame.
+ */
+function pickFrame(frames: StackFrame[] | undefined): StackFrame | undefined {
+  return (
+    frames?.findLast((f) => f.in_app && f.filename && f.lineno) ??
+    frames?.findLast((f) => f.in_app) ??
+    frames?.at(-1)
+  );
+}
+
+/**
+ * A frame's function name, or undefined for `?`, which SDKs use when the
+ * function is anonymous.
+ */
+function frameFunction(frame: StackFrame | undefined): string | undefined {
+  return frame?.function && frame.function !== "?" ? frame.function : undefined;
+}
+
 /** Build the `[file:line:col] [func]` suffix for the best stack frame. */
 export function formatFrameHint(frames: StackFrame[]): string {
-  const frame = frames.find((f) => f.in_app) ?? frames.at(-1);
+  const frame = pickFrame(frames);
   if (!frame) {
     return "";
   }
@@ -221,48 +339,105 @@ export function formatFrameHint(frames: StackFrame[]): string {
     );
     hint += ` ${muted(`[${loc}]`)}`;
   }
-  if (frame.function) {
-    hint += ` ${muted(`[${sanitize(frame.function)}]`)}`;
+  const fn = frameFunction(frame);
+  if (fn) {
+    hint += ` ${muted(`[${sanitize(fn)}]`)}`;
   }
   return hint;
 }
 
+/** Shape of one exception value in an event's `exception.values`. */
+type ExceptionValue = {
+  type?: unknown;
+  value?: unknown;
+  stacktrace?: { frames?: StackFrame[] };
+};
+
 /**
- * Format an error event item into a colored one-liner.
+ * What an `event` item reports, read the same way for tail and JSON output.
  *
- * Output: `HH:MM:SS [ERROR]   [SERVER]  TypeError: x is not a function [file.ts:42:5] [handleRequest]`
+ * `kind` is `message` for events with no typed exception: `captureMessage`,
+ * Python `logging` records, and JavaScript messages that carry only a
+ * synthetic stack. It is `error` otherwise, with the exception type in
+ * `errorType` (`Error` when the event names none).
+ */
+type EventSummary = (
+  | { kind: "message" }
+  | { kind: "error"; errorType: string }
+) & {
+  /** Event level (`fatal`, `error`, `warning`, `info`, `debug`); `error` when unset. */
+  level: string;
+  /** Exception value or message text. */
+  text: string;
+  /** Stack of the newest exception, including a message's synthetic stack. */
+  frames?: StackFrame[];
+  /** Logger name, e.g. a Python logger such as `shop.payments`. */
+  logger?: string;
+};
+
+/** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
+export function summarizeEvent(event: Record<string, unknown>): EventSummary {
+  const exception = event.exception as
+    | { values?: ExceptionValue[] }
+    | undefined;
+  // values is ordered oldest→newest; the last one is what was thrown.
+  const last = exception?.values?.at(-1);
+  const errorType =
+    typeof last?.type === "string" && last.type ? last.type : undefined;
+  const exceptionText =
+    last?.value === undefined || last.value === ""
+      ? undefined
+      : stringifyUnknown(last.value);
+  const messageText =
+    readMessageText(event.logentry) ?? readMessageText(event.message);
+  const level =
+    typeof event.level === "string" && event.level ? event.level : "error";
+  const logger =
+    typeof event.logger === "string" && event.logger ? event.logger : undefined;
+  const frames = last?.stacktrace?.frames;
+
+  const text = errorType ? exceptionText : (messageText ?? exceptionText);
+  if (classifyEvent(event) === "message" && text) {
+    return { kind: "message", level, text, frames, logger };
+  }
+  return {
+    kind: "error",
+    level,
+    errorType: errorType ?? "Error",
+    text: text ?? messageText ?? "Unknown error",
+    frames,
+    logger,
+  };
+}
+
+/**
+ * Format an `event` item into a colored one-liner, labeled with its level.
+ *
+ * Output:
+ * - `HH:MM:SS [ERROR]   [SERVER]  TypeError: x is not a function [file.ts:42:5] [handleRequest]`
+ * - `HH:MM:SS [WARNING] [BROWSER] Hello from captureMessage [page.js:24:19] [onClick]`
  */
 export function formatErrorItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = event.exception as
-    | {
-        values?: {
-          type?: string;
-          value?: string;
-          stacktrace?: { frames?: StackFrame[] };
-        }[];
-      }
-    | undefined;
-  // values is ordered oldest→newest; show the outermost (last) exception
-  const first = exception?.values?.at(-1);
-  const errorType = sanitize(String(first?.type ?? "Error"));
-  const errorValue = sanitize(
-    stringifyUnknown(first?.value ?? event.message ?? "Unknown error"),
-  );
+  const summary = summarizeEvent(event);
+  const text = sanitize(summary.text);
+  let msg =
+    summary.kind === "error" ? `${sanitize(summary.errorType)}: ${text}` : text;
 
-  let msg = `${errorType}: ${errorValue}`;
+  if (summary.frames?.length) {
+    msg += formatFrameHint(summary.frames);
+  }
 
-  const frames = first?.stacktrace?.frames;
-  if (frames?.length) {
-    msg += formatFrameHint(frames);
+  if (summary.logger) {
+    msg += ` ${muted(`[logger:${sanitize(summary.logger)}]`)}`;
   }
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
-  return `${muted(ts)} ${formatType("error")} ${inferSource(header)} ${msg}`;
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType(summary.level)} ${inferSource(header, event)} ${msg}`;
 }
 
 /**
@@ -307,11 +482,9 @@ export function formatTransactionItem(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  const start = event.start_timestamp as number | undefined;
-  const end = event.timestamp as number | undefined;
-  if (start !== undefined && end !== undefined) {
-    const durationMs = Math.round((end - start) * 1000);
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(event.start_timestamp, event.timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   const status = trace?.status;
@@ -320,14 +493,12 @@ export function formatTransactionItem(
   }
 
   const spans = event.spans as unknown[] | undefined;
-  if (spans?.length) {
-    msg += ` ${muted(`[${spans.length} span${spans.length === 1 ? "" : "s"}]`)}`;
-  }
+  msg += formatSpanCount(spans?.length ?? 0);
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header, event)} ${msg}`;
 }
 
 /**
@@ -364,7 +535,16 @@ const SDK_ATTRIBUTE_PREFIXES = [
   "exception.",
   "error.",
   "user_agent.",
+  "logger.",
+  "user.",
 ];
+
+/**
+ * Exact keys that SDK logging integrations add, such as the Python `logging`
+ * record's `asctime` and the `request` and `server_time` extras that Django's
+ * dev server sets on every access log.
+ */
+const SDK_ATTRIBUTE_KEYS = new Set(["asctime", "request", "server_time"]);
 
 /** Two-space indent prefix for nested attribute-table lines. */
 const ATTR_INDENT = "  ";
@@ -376,7 +556,10 @@ const ATTR_INDENT = "  ";
  */
 function isSdkAttribute(key: string): boolean {
   const lower = key.toLowerCase();
-  return SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+  return (
+    SDK_ATTRIBUTE_KEYS.has(lower) ||
+    SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+  );
 }
 
 /**
@@ -469,17 +652,29 @@ export function formatAttributeTable(event: Record<string, unknown>): string[] {
 export type LogEntry = {
   level?: string;
   body?: string;
-  timestamp?: number;
+  timestamp?: number | string;
   attributes?: Record<string, { value?: unknown }>;
 };
 
 /**
  * Whether a log attribute key is an SDK-default (`sentry.*`) attribute rather
- * than a user-supplied one. SDK-default attributes are hidden from the tail
- * line to reduce noise; their content (e.g. trace ID) is surfaced separately.
+ * than a user-supplied one. JSON log records leave out `sentry.*` attributes;
+ * their content (e.g. trace ID) is surfaced separately.
  */
 function isUserLogAttribute(key: string): boolean {
   return !key.startsWith("sentry.");
+}
+
+/** Log attributes as a plain `key → value` record. */
+function logAttributes(logEntry: LogEntry): Record<string, unknown> {
+  return Object.fromEntries(logAttributeEntries(logEntry));
+}
+
+/** Log attributes that have a value, as `[key, value]` pairs. */
+function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
+  return Object.entries(logEntry.attributes ?? {})
+    .filter(([, v]) => v?.value !== null && v?.value !== undefined)
+    .map(([k, v]) => [k, v.value]);
 }
 
 /**
@@ -501,29 +696,22 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  * Format one log entry into a colored tail line.
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
- * lines align column-for-column and are easy to scan. SDK-default `sentry.*`
- * attributes are omitted from the inline list; the trace ID is surfaced as a
- * compact `[trace:…]` token instead.
+ * lines align column-for-column and are easy to scan. SDK-default attributes
+ * (`sentry.*`, `code.*`, `logger.*`, `user.*`, … see
+ * {@link SDK_ATTRIBUTE_PREFIXES} and {@link SDK_ATTRIBUTE_KEYS}) are omitted
+ * from the inline list; the trace ID is surfaced as a compact `[trace:…]`
+ * token instead.
  */
 export function formatSingleLog(logEntry: LogEntry, source: string): string {
   const level = logEntry.level ?? "log";
   let msg = sanitize(logEntry.body ?? "");
 
-  if (logEntry.attributes) {
-    const attrs = Object.entries(logEntry.attributes)
-      .filter(
-        ([k, v]) =>
-          isUserLogAttribute(k) &&
-          v !== null &&
-          v !== undefined &&
-          v.value !== null &&
-          v.value !== undefined,
-      )
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v.value))}]`));
-    if (attrs.length > 0) {
-      msg += ` ${attrs.join(" ")}`;
-    }
+  const attrs = logAttributeEntries(logEntry)
+    .filter(([k]) => !isSdkAttribute(k))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v))}]`));
+  if (attrs.length > 0) {
+    msg += ` ${attrs.join(" ")}`;
   }
 
   const traceId = extractLogTraceId(logEntry);
@@ -539,28 +727,45 @@ export function formatSingleLog(logEntry: LogEntry, source: string): string {
  * Format a log event item. A log envelope item contains an `items` array
  * of individual log entries; each gets its own line.
  *
+ * When `showAttributes` is true, each line is followed by a table of the
+ * SDK-default attributes that the line leaves out.
+ *
  * Output: `HH:MM:SS [INFO]    [SERVER]  User logged in [user_id=1234]`
  */
 export function formatLogItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
+  showAttributes = false,
 ): string[] {
   const items = event.items as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
 
-  const source = inferSource(header);
-  return items.map((logEntry) => formatSingleLog(logEntry, source));
+  // One log batch comes from one SDK client, so any browser log places all.
+  const source = inferSource(header, undefined, items.map(logAttributes));
+  return items.flatMap((logEntry) => {
+    const line = formatSingleLog(logEntry, source);
+    if (!showAttributes) {
+      return [line];
+    }
+    const sdk = logAttributeEntries(logEntry).filter(([k]) =>
+      isSdkAttribute(k),
+    );
+    return [line, ...formatAttrGroup("sdk attributes", sdk)];
+  });
 }
 
 /** Shape of a single span in a standalone span envelope item (v2 span streaming). */
 export type StreamedSpan = {
   trace_id?: string;
   span_id?: string;
+  parent_span_id?: string;
+  /** True for the root span of a segment (a request, pageload, or navigation). */
+  is_segment?: boolean;
   name?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
+  start_timestamp?: number | string;
+  end_timestamp?: number | string;
   status?: string;
   attributes?: Record<string, { type?: string; value?: unknown }>;
 };
@@ -584,13 +789,30 @@ function flattenSpanAttributes(
   return flat;
 }
 
+/** ` [trace:abcd1234]`, muted, for a span with a valid trace ID. */
+function formatSpanTraceHint(span: StreamedSpan): string {
+  return span.trace_id && TRACE_ID_RE.test(span.trace_id)
+    ? ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`
+    : "";
+}
+
+/** `[N spans]`, muted, or an empty string for zero. */
+function formatSpanCount(count: number, prefix = ""): string {
+  return count > 0
+    ? ` ${muted(`[${prefix}${count} span${count === 1 ? "" : "s"}]`)}`
+    : "";
+}
+
 /**
  * Format a single standalone span into a colored one-liner, using the same
- * semantic rendering as transactions.
+ * semantic rendering as transactions. `spanCount` is a
+ * {@link formatSpanCount} marker, such as `[N spans]` for a segment shown
+ * with the rest of its batch.
  */
 export function formatSingleSpan(
   span: StreamedSpan,
   header: Record<string, unknown>,
+  spanCount = "",
 ): string {
   const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
@@ -609,28 +831,148 @@ export function formatSingleSpan(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  if (span.start_timestamp !== undefined && span.end_timestamp !== undefined) {
-    const durationMs = Math.round(
-      (span.end_timestamp - span.start_timestamp) * 1000,
-    );
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(span.start_timestamp, span.end_timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   if (span.status && span.status !== "ok") {
     msg += ` ${muted(`[${sanitize(span.status)}]`)}`;
   }
 
-  if (span.trace_id && TRACE_ID_RE.test(span.trace_id)) {
-    msg += ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`;
-  }
+  msg += spanCount + formatSpanTraceHint(span);
 
   const ts = formatTime(span.end_timestamp);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header, undefined, [flat])} ${msg}`;
+}
+
+/** Spans of one segment that arrived in the same batch. */
+type SpanGroup = {
+  /** The segment span, or the top span of the group when it is missing. */
+  head: StreamedSpan;
+  /** Whether {@link head} is the segment span itself, not just its top span. */
+  isSegment: boolean;
+  spans: StreamedSpan[];
+};
+
+/**
+ * The segment a streamed span belongs to: its `sentry.segment.id`, its own ID
+ * when it is a segment, else the top ancestor found in the same batch.
+ */
+function segmentKey(
+  span: StreamedSpan,
+  byId: ReadonlyMap<string, StreamedSpan>,
+): string | undefined {
+  const segmentId = span.attributes?.["sentry.segment.id"]?.value;
+  if (typeof segmentId === "string" && segmentId) {
+    return segmentId;
+  }
+  let top = span;
+  const seen = new Set<StreamedSpan>();
+  while (!top.is_segment && top.parent_span_id && !seen.has(top)) {
+    seen.add(top);
+    const parent = byId.get(top.parent_span_id);
+    if (!parent) {
+      break;
+    }
+    top = parent;
+  }
+  return top.span_id;
 }
 
 /**
- * Format a standalone span envelope item. A span item contains an `items`
- * array of individual spans (v2 span streaming format); each gets its own line.
+ * Whether a streamed span is a segment: flagged `is_segment`, its own
+ * `sentry.segment.id`, or a root span with no parent.
+ */
+function isSegmentSpan(span: StreamedSpan): boolean {
+  return (
+    span.is_segment === true ||
+    !span.parent_span_id ||
+    (span.span_id !== undefined &&
+      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
+  );
+}
+
+/**
+ * Group a span batch by segment, in the order each segment first appears.
+ * Spans with no span or segment ID each form their own group.
+ */
+function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
+  const byId = new Map<string, StreamedSpan>();
+  for (const span of items) {
+    if (span.span_id) {
+      byId.set(span.span_id, span);
+    }
+  }
+  const groups = new Map<string | StreamedSpan, StreamedSpan[]>();
+  for (const span of items) {
+    const key = segmentKey(span, byId) ?? span;
+    const spans = groups.get(key);
+    if (spans) {
+      spans.push(span);
+    } else {
+      groups.set(key, [span]);
+    }
+  }
+  return [...groups.values()].map((spans) => {
+    const segment = spans.find(isSegmentSpan);
+    // Without its segment, the group's top span is the one whose parent is
+    // not in the batch and that started first.
+    const top = spans
+      .filter((span) => !(span.parent_span_id && byId.has(span.parent_span_id)))
+      .sort(
+        (a, b) =>
+          (parseEventTimestamp(a.start_timestamp) ?? 0) -
+          (parseEventTimestamp(b.start_timestamp) ?? 0),
+      )[0];
+    return {
+      head: segment ?? top ?? (spans[0] as StreamedSpan),
+      isSegment: segment !== undefined,
+      spans,
+    };
+  });
+}
+
+/** One tail line for spans whose segment wasn't in the same batch. */
+function formatLateSpansLine(
+  group: SpanGroup,
+  header: Record<string, unknown>,
+): string {
+  const segmentName = group.head.attributes?.["sentry.segment.name"]?.value;
+  const name =
+    typeof segmentName === "string" && segmentName
+      ? segmentName
+      : (group.head.name ?? "unnamed span");
+  const msg =
+    sanitize(name) +
+    formatSpanCount(group.spans.length, "+") +
+    formatSpanTraceHint(group.head);
+  const ts = formatTime(group.head.end_timestamp);
+  const source = inferSource(
+    header,
+    undefined,
+    group.spans.map((span) => flattenSpanAttributes(span.attributes)),
+  );
+  return `${muted(ts)} ${formatType("trace")} ${source} ${msg}`;
+}
+
+/** A span's attributes as an indented table, for `--attributes`. */
+function formatSpanAttributes(span: StreamedSpan): string[] {
+  return formatAttributeTable({
+    contexts: { trace: { data: flattenSpanAttributes(span.attributes) } },
+  });
+}
+
+/**
+ * Format a standalone span envelope item, an `items` array of streamed spans
+ * (span v2). SDKs send every span of a trace on its own, so the tail prints one
+ * line per segment, like a transaction: the segment span with `[N spans]` for
+ * the rest of its batch. Spans whose segment wasn't in the same batch (such as
+ * web vitals sent after a pageload, or children sent before their segment)
+ * print one line named after the segment with `[+N spans]`, or a single such
+ * span prints in full with `[+1 span]`, so the counts add up. With
+ * `showAttributes`, every span gets its own line and attribute table, segment
+ * first.
  */
 export function formatSpanItem(
   event: Record<string, unknown>,
@@ -641,18 +983,35 @@ export function formatSpanItem(
   if (!items?.length) {
     return [];
   }
-  const lines: string[] = [];
-  for (const span of items) {
-    lines.push(formatSingleSpan(span, header));
-    if (showAttributes) {
-      const flat = flattenSpanAttributes(span.attributes);
-      const table = formatAttributeTable({
-        contexts: { trace: { data: flat } },
-      });
-      lines.push(...table);
+  return groupSpansBySegment(items).flatMap((group) => {
+    const shown = group.isSegment || group.spans.length === 1;
+    const lines = [
+      shown
+        ? formatSingleSpan(
+            group.head,
+            header,
+            group.isSegment
+              ? formatSpanCount(group.spans.length - 1)
+              : formatSpanCount(1, "+"),
+          )
+        : formatLateSpansLine(group, header),
+    ];
+    if (!showAttributes) {
+      return lines;
     }
-  }
-  return lines;
+    if (shown) {
+      lines.push(...formatSpanAttributes(group.head));
+    }
+    for (const span of group.spans) {
+      if (!(shown && span === group.head)) {
+        lines.push(
+          formatSingleSpan(span, header),
+          ...formatSpanAttributes(span),
+        );
+      }
+    }
+    return lines;
+  });
 }
 
 /**
@@ -693,6 +1052,26 @@ export function itemTypeToFilterCategory(
   if (itemType === "transaction" || itemType === "span" || itemType === "log") {
     return itemType === "span" ? "transaction" : itemType;
   }
+}
+
+/**
+ * Format the first `replay_event` of a session replay: its short ID and the
+ * page it started on.
+ *
+ * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
+ */
+function formatReplayItem(
+  event: Record<string, unknown>,
+  header: Record<string, unknown>,
+): string {
+  const id = typeof event.replay_id === "string" ? event.replay_id : "";
+  const url = Array.isArray(event.urls) ? event.urls[0] : undefined;
+  let msg = `replay ${sanitize(id.slice(0, TRACE_ID_SHORT_LEN))}`;
+  if (typeof url === "string" && url) {
+    msg += ` ${sanitize(url)}`;
+  }
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType("replay")} ${inferSource(header, event)} ${msg}`;
 }
 
 /** Produce a fallback one-liner for unparseable or unsupported items. */
@@ -740,16 +1119,23 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 }
 
+/** Strip ANSI escapes, C1 controls, and BiDi overrides from a JSON string. */
+function jsonText(value: string): string {
+  return stripBidi(stripAnsi(value));
+}
+
 /**
  * Remove terminal-affecting characters from every string in an observation.
  *
  * Envelope payloads are untrusted, and `JSON.stringify()` does not escape C1
- * controls or BiDi overrides. Normalizing the final record in one place keeps
- * new JSON fields from accidentally bypassing the terminal-safety contract.
+ * controls or BiDi overrides. Colored log formatters (werkzeug, uvicorn) also
+ * put ANSI escapes in log text and attributes, which mean nothing to a JSON
+ * reader. Normalizing the final record in one place keeps new JSON fields
+ * from accidentally bypassing the terminal-safety contract.
  */
 function sanitizeJsonValue(value: unknown): unknown {
   if (typeof value === "string") {
-    return stripBidi(value);
+    return jsonText(value);
   }
   if (Array.isArray(value)) {
     return value.map(sanitizeJsonValue);
@@ -757,7 +1143,7 @@ function sanitizeJsonValue(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, nestedValue]) => [
-        stripBidi(key),
+        jsonText(key),
         sanitizeJsonValue(nestedValue),
       ]),
     );
@@ -781,37 +1167,31 @@ function formatJsonObservation(
   );
 }
 
-/** Format an error item as a JSON object, including the best stack frame. */
+/**
+ * Format an `event` item as a JSON object, including the best stack frame.
+ * Exceptions get `type: "error"` and an `error_type`; messages get
+ * `type: "message"` and no `error_type`.
+ */
 function formatErrorJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const exception = payload.exception as
-    | {
-        values?: {
-          type?: string;
-          value?: string;
-          stacktrace?: { frames?: StackFrame[] };
-        }[];
-      }
-    | undefined;
-  const first = exception?.values?.at(-1);
-  const frame =
-    first?.stacktrace?.frames?.find((f) => f.in_app) ??
-    first?.stacktrace?.frames?.at(-1);
+  const summary = summarizeEvent(payload);
+  const frame = pickFrame(summary.frames);
   return formatJsonObservation(
     {
-      type: "error",
-      timestamp: payload.timestamp,
+      type: summary.kind,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
-      error_type: jsonSafe(first?.type) ?? "Error",
-      message:
-        jsonSafe(first?.value) ?? jsonSafe(payload.message) ?? "Unknown error",
+      level: summary.level,
+      error_type: summary.kind === "error" ? summary.errorType : undefined,
+      message: summary.text,
+      logger: summary.logger,
       filename: jsonSafe(frame?.filename),
       lineno: frame?.lineno,
       colno: frame?.colno,
-      function: jsonSafe(frame?.function),
-      source: inferSourceName(header),
+      function: jsonSafe(frameFunction(frame)),
+      source: inferSourceName(header, payload),
     },
     payload,
     header,
@@ -862,16 +1242,10 @@ function formatTransactionJson(
       payload.transaction ?? trace?.description ?? "Transaction",
     ),
   );
-  const start = payload.start_timestamp as number | undefined;
-  const end = payload.timestamp as number | undefined;
-  const durationMs =
-    start !== undefined && end !== undefined
-      ? Math.round((end - start) * 1000)
-      : undefined;
   return formatJsonObservation(
     {
       type: "transaction",
-      timestamp: payload.timestamp,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
       op: inferSemanticOp(attrs) ?? trace?.op,
       label: stripBidi(semantic.label),
@@ -879,32 +1253,39 @@ function formatTransactionJson(
         semantic.metadata.length > 0
           ? semantic.metadata.map(stripBidi)
           : undefined,
-      duration_ms: durationMs,
+      duration_ms: durationMs(payload.start_timestamp, payload.timestamp),
       status: trace?.status,
       span_count: (payload.spans as unknown[] | undefined)?.length,
       attributes: includeAttributes ? buildJsonAttributes(payload) : undefined,
-      source: inferSourceName(header),
+      source: inferSourceName(header, payload),
     },
     payload,
     header,
   );
 }
 
-/** Format a log item as JSON objects (one per entry). */
+/**
+ * Format a log item as JSON objects (one per entry).
+ *
+ * `attributes` holds the custom attributes, like the tail line. When
+ * `includeAttributes` is true it also holds the SDK-default ones, except
+ * `sentry.*`, whose content (e.g. trace ID) is surfaced separately.
+ */
 function formatLogJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
+  includeAttributes = false,
 ): string[] {
   const items = payload.items as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
-  const source = inferSourceName(header);
+  const source = inferSourceName(header, undefined, items.map(logAttributes));
   return items.map((entry) =>
     formatJsonObservation(
       {
         type: "log",
-        timestamp: entry.timestamp,
+        timestamp: parseEventTimestamp(entry.timestamp),
         trace_id: extractLogTraceId(entry),
         level: entry.level ?? "log",
         message: stripBidi(entry.body ?? ""),
@@ -914,6 +1295,7 @@ function formatLogJson(
                 .filter(
                   ([k, v]) =>
                     isUserLogAttribute(k) &&
+                    (includeAttributes || !isSdkAttribute(k)) &&
                     v?.value !== null &&
                     v?.value !== undefined,
                 )
@@ -941,21 +1323,16 @@ function formatSpanJson(
   if (!items?.length) {
     return [];
   }
-  const source = inferSourceName(header);
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
     const semantic = formatSemanticSpanDisplay(
       flat,
       span.name ?? "unnamed span",
     );
-    const durationMs =
-      span.start_timestamp !== undefined && span.end_timestamp !== undefined
-        ? Math.round((span.end_timestamp - span.start_timestamp) * 1000)
-        : undefined;
     return formatJsonObservation(
       {
         type: "span",
-        timestamp: span.end_timestamp,
+        timestamp: parseEventTimestamp(span.end_timestamp),
         trace_id: span.trace_id,
         span_id: span.span_id,
         op: inferSemanticOp(flat) ?? flat["sentry.op"],
@@ -964,12 +1341,12 @@ function formatSpanJson(
           semantic.metadata.length > 0
             ? semantic.metadata.map(stripBidi)
             : undefined,
-        duration_ms: durationMs,
+        duration_ms: durationMs(span.start_timestamp, span.end_timestamp),
         status: span.status,
         attributes: includeAttributes
           ? buildJsonAttributes({ contexts: { trace: { data: flat } } })
           : undefined,
-        source,
+        source: inferSourceName(header, undefined, [flat]),
       },
       payload,
       header,
@@ -984,12 +1361,12 @@ function formatSpanJson(
  * and item-specific fields. Designed for machine consumption by AI
  * coding agents and automation tools.
  *
- * Unlike the human formatters, JSON output uses `stripBidi()` instead of
- * the full `sanitize()`. `JSON.stringify()` escapes C0 control characters
+ * Unlike the human formatters, JSON output does not use the full
+ * `sanitize()`. `JSON.stringify()` escapes C0 control characters
  * (U+0000–U+001F) but leaves C1 controls (U+0080–U+009F) and BiDi overrides
- * intact. `stripBidi()` strips both, preventing terminal injection when
- * JSON output is viewed in a terminal, while preserving the original data
- * structure for downstream consumers.
+ * intact. Every string loses those and its ANSI escapes, preventing terminal
+ * injection when JSON output is viewed in a terminal, while preserving the
+ * original data structure for downstream consumers.
  */
 export function formatItemJson(
   itemType: string | undefined,
@@ -1007,34 +1384,18 @@ export function formatItemJson(
     return formatSpanJson(payload, header, showAttributes);
   }
   if (itemType === "log") {
-    return formatLogJson(payload, header);
+    return formatLogJson(payload, header, showAttributes);
   }
   return [
     formatJsonObservation(
       {
         type: itemType ?? "unknown",
-        timestamp: payload.timestamp,
+        timestamp: parseEventTimestamp(payload.timestamp),
       },
       payload,
       header,
     ),
   ];
-}
-
-/** Infer the source platform name from the SDK header (for JSON output). */
-function inferSourceName(header: Record<string, unknown>): string {
-  const sdk = header.sdk as { name?: string } | undefined;
-  const name = sdk?.name ?? "";
-  if (MOBILE_MARKERS.some((m) => name.includes(m))) {
-    return "mobile";
-  }
-  if (
-    name.startsWith("sentry.javascript.") &&
-    !SERVER_JS_MARKERS.some((m) => name.includes(m))
-  ) {
-    return "browser";
-  }
-  return "server";
 }
 
 /**
@@ -1064,7 +1425,15 @@ export function formatItem(
     return formatSpanItem(payload, header, showAttributes);
   }
   if (itemType === "log") {
-    return formatLogItem(payload, header);
+    return formatLogItem(payload, header, showAttributes);
+  }
+  // Active replays send a replay_event and a recording every few seconds;
+  // only the first segment gets a line.
+  if (itemType === "replay_event") {
+    return payload.segment_id === 0 ? [formatReplayItem(payload, header)] : [];
+  }
+  if (itemType === "replay_recording") {
+    return [];
   }
   return [formatFallbackLine(fallbackLabel)];
 }
@@ -1204,11 +1573,10 @@ export function formatEnvelopeLines(
     );
   }
 
-  if (lines.length > 0) {
+  // Items can print nothing on purpose (later replay segments), so the
+  // fallback line is only for an envelope with no items at all.
+  if (lines.length > 0 || items.length > 0 || activeFilters.size > 0) {
     return lines;
-  }
-  if (activeFilters.size > 0) {
-    return [];
   }
   return [formatFallbackLine(resolveUnparseableLabel(container))];
 }

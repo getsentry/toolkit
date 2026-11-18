@@ -111,6 +111,49 @@ Runs the label publisher's regression tests when its workflow or tests change.
 Covers label replacement, stale revisions, failed classifications, and concurrent
 label creation.
 
+### bump-sentry-api.yml
+
+Keeps one PR that pins the catalog's `@sentry/api` to its newest npm release, on
+the `bot/bump-sentry-api` branch, and updates the package's
+`minimumReleaseAgeExclude` entry so the fresh release installs. `test.yml` runs
+on that PR, so the CLI, MCP and shared packages are checked against each release
+that getsentry/sentry publishes.
+
+getsentry/sentry dispatches it once npm serves each `api@` release, and it also
+runs daily as a fallback. It calls getsentry/sentry's reusable
+[`bump-sentry-api-consumer.yml`](https://github.com/getsentry/sentry/blob/master/.github/workflows/bump-sentry-api-consumer.yml)
+in `rolling-pr` mode, whose script documents the behavior. The release bot's
+token opens the PR, because a PR opened with `github.token` does not start other
+workflows.
+
+- With no open bump PR, it opens one.
+- When a newer release ships while the PR is open, it rebuilds the branch from
+  main with that version, force-pushes it, and retitles the PR. It never opens a
+  second one.
+- The branch belongs to the bump. If someone pushes their own commit to it, the
+  bump stops updating the PR and logs a warning, so the commit is not lost.
+  Merging main into the branch, such as with "Update branch", doesn't count.
+  Rebase it onto the new release by hand, or close it and let the next run open
+  a fresh PR.
+- The PR is never merged automatically.
+
+### regenerate-platform-setup.yml
+
+Keeps one PR with the regenerated `create_project` platform setup data, on the
+`bot/regenerate-platform-setup` branch. It runs daily and on manual dispatch
+from `main`, runs `pnpm --filter @sentry/mcp-core run generate-platform-setup`,
+and hands the result to `scripts/platform-setup-pr.mjs`. The release bot's
+token pushes the branch and opens the PR, so `test.yml` runs on it.
+
+- When the generated data matches `main`, or matches the open PR, it does
+  nothing.
+- With no open PR, it commits the data on a branch from `main`, force-pushes
+  it, and opens a PR. A leftover branch from a closed PR is overwritten.
+- When the open PR has older data, it rebuilds the branch from `main` and
+  force-pushes it. It never opens a second PR, and commits pushed to the
+  branch by hand are lost.
+- The PR is never merged automatically.
+
 ## Package CI checks
 
 Add a check for one workspace package to that package's `package.json`, not to

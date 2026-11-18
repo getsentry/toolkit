@@ -141,19 +141,9 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [
-    "List or search Sentry cron monitors, which track scheduled jobs through check-ins.",
-    "For HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.",
-    "",
-    "Use this tool when you need to:",
-    "- List cron monitors in an organization",
-    "- Find a monitor by name or slug before getting details",
-    "- Check monitor status, owner, project, schedule, or recent environment state",
-    "- When `hasMore` is true, narrow the results with project, environment, owner, or query filters",
-    "",
-    "<examples>",
-    "find_monitors(organizationSlug='my-organization')",
-    "find_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')",
-    "</examples>",
+    "Find Sentry cron monitors, which track scheduled jobs through check-ins. Returns each monitor's status, schedule, owner, project, and recent environment state.",
+    "Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.",
+    "When more results exist, narrow by project, environment, owner, or name.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -162,21 +152,21 @@ export default defineTool({
     environment: z
       .string()
       .trim()
-      .describe("Optional environment name to limit monitor state.")
+      .describe("Environment to report monitor state for.")
       .nullable()
       .default(null),
     owner: z
       .string()
       .trim()
       .describe(
-        "Optional owner filter, such as `user:123`, `team:456`, `myteams`, or `unassigned`.",
+        "Owner filter: `user:123`, `team:456`, `myteams`, or `unassigned`.",
       )
       .nullable()
       .default(null),
     query: z
       .string()
       .trim()
-      .describe("Optional search query for monitor name or slug.")
+      .describe("Text to match in the monitor name or slug.")
       .nullable()
       .default(null),
     limit: z
@@ -184,7 +174,7 @@ export default defineTool({
       .int()
       .positive()
       .max(99)
-      .describe("Maximum number of monitors to return.")
+      .describe("Maximum monitors to return.")
       .default(10),
   },
   annotations: {

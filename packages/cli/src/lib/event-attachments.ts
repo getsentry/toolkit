@@ -7,6 +7,7 @@
 
 import { inlineCode, text } from "@sentry/toolkit-core/markdown";
 import type { EventAttachmentDetailsResponse } from "@sentry/api";
+import { API_BASE_PATH } from "@sentry/api/client";
 import type { EventViewAttachment, SentryEvent } from "../types/index.js";
 import { listEventAttachments } from "./api-client.js";
 import { sentry } from "./app-identity.js";
@@ -78,7 +79,7 @@ function attachmentDownloadUrl(
   ]
     .map(encodeURIComponent)
     .join("/");
-  return `${origin}/api/0/${path}/?download=1`;
+  return `${origin}${API_BASE_PATH}/${path}/?download=1`;
 }
 
 async function resolveAttachmentApiBase(org: string): Promise<string> {

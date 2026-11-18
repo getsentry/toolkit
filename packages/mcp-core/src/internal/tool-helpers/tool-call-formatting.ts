@@ -52,6 +52,33 @@ function isDirectTool(
     : isTopLevelToolName(toolName, experimentalMode);
 }
 
+/** The tools the current session exposes, for checking a follow-up call. */
+export interface ToolSession {
+  experimentalMode: boolean;
+  availableToolNames?: ReadonlySet<string>;
+  directToolNames?: ReadonlySet<string>;
+}
+
+/**
+ * How the session can call a tool: directly, through `execute_sentry_tool`,
+ * or not at all.
+ */
+export function getToolCallRoute(
+  toolName: string,
+  { experimentalMode, availableToolNames, directToolNames }: ToolSession,
+): "direct" | "execute_sentry_tool" | null {
+  if (!isToolAvailableInSession(toolName, availableToolNames)) {
+    return null;
+  }
+  if (isDirectTool(toolName, experimentalMode, directToolNames)) {
+    return "direct";
+  }
+  return isToolAvailableInSession("execute_sentry_tool", availableToolNames) &&
+    isDirectTool("execute_sentry_tool", experimentalMode, directToolNames)
+    ? "execute_sentry_tool"
+    : null;
+}
+
 export function formatToolCall({
   toolName,
   arguments: args = {},
@@ -88,29 +115,26 @@ export function formatToolCallInstruction({
   directToolNames?: ReadonlySet<string>;
   fallbackInstruction?: string;
 }): string {
-  const targetAvailable = isToolAvailableInSession(
-    toolName,
+  const route = getToolCallRoute(toolName, {
+    experimentalMode,
     availableToolNames,
-  );
+    directToolNames,
+  });
 
   const toolReference = showArguments
     ? formatToolCall({ toolName, arguments: args })
     : toolName;
 
-  if (
-    targetAvailable &&
-    isDirectTool(toolName, experimentalMode, directToolNames)
-  ) {
+  if (route === "direct") {
     return `Use the Sentry tool ${inlineCode(toolReference)}${formatPurpose(purpose)}`;
   }
 
-  const catalogGatewayAvailable =
+  // the catalog gateway also needs search to find the tool
+  if (
+    route === "execute_sentry_tool" &&
     isToolAvailableInSession("search_sentry_tools", availableToolNames) &&
-    isToolAvailableInSession("execute_sentry_tool", availableToolNames) &&
-    isDirectTool("search_sentry_tools", experimentalMode, directToolNames) &&
-    isDirectTool("execute_sentry_tool", experimentalMode, directToolNames);
-
-  if (targetAvailable && catalogGatewayAvailable) {
+    isDirectTool("search_sentry_tools", experimentalMode, directToolNames)
+  ) {
     return `Use the Sentry tool ${inlineCode(toolReference)}${formatPurpose(purpose)}`;
   }
 

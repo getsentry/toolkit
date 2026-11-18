@@ -10,7 +10,7 @@
  */
 
 import { createIdempotentOperationMatcher } from "@sentry/api/client";
-import generated from "../generated/idempotent-operations.json";
+import generated from "../generated/idempotent-operations.json" with { type: "json" };
 
 /**
  * Whether Sentry marks this request's operation idempotent.

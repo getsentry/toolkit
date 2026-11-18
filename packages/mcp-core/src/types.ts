@@ -138,4 +138,9 @@ export type ServerContext = {
    * `credentialRouter` is set, since routed calls run with other tokens.
    */
   responseCache?: ResponseCache;
+  /**
+   * Aborts when the MCP client cancels the tool call. Set only on a per-call
+   * copy of the context (see `withCallSignal`), never on the session context.
+   */
+  signal?: AbortSignal;
 };

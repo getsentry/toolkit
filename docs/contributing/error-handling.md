@@ -22,6 +22,19 @@ ApiError (base class)
 - `ApiClientError.toUserMessage()` - Returns `"API error (status): message"`
   - For 404s with generic messages, adds: "Please verify that the organization, project, or resource ID is correct and that you have access to it."
   - For 404s with specific messages, adds: "Please verify the parameters are correct."
+- `ApiPermissionError.acceptedScopes` - The scopes a 403's
+  `WWW-Authenticate: Bearer error="insufficient_scope"` challenge names. Sentry
+  sends it when the token lacks every scope the endpoint accepts; its body only
+  has DRF's generic "You do not have permission" detail. When it is set,
+  `formatErrorForUser` and embedded agent tools return a **Missing Permission**
+  message that names the scopes and says retrying with the same token will not
+  help, even when a tool rewrapped the error as its `cause`.
+- Object-level checks, such as who may edit an Alert or Metric Monitor, raise
+  a bare 403 with no challenge for ordinary tokens. A tool whose write has
+  known permission rules wraps that call and appends them to the error
+  message, keeping the `ApiPermissionError`. See
+  `withAlertWritePermissionHint` in
+  `packages/mcp-core/src/tools/support/alert-write-permission.ts`.
 
 ### Application Error Classes (from errors.ts)
 

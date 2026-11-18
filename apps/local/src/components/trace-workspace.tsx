@@ -1,10 +1,11 @@
 import { profileMatchesTrace } from "@/lib/profiles.ts";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LocalFeedItem } from "../lib/spotlight";
 import { ResizableWorkspace } from "./resizable-workspace";
 import { SpanDetail } from "./span-detail";
-import type { TraceGroup } from "../lib/trace-model";
+import { isLogOnlyTrace, type TraceGroup } from "../lib/trace-model";
 import { TraceWaterfall } from "./trace-waterfall";
+import { pluralize } from "../lib/presentation";
 
 type TraceWorkspaceProps = {
   emptyState?: { title: string; description: string };
@@ -54,12 +55,22 @@ export function TraceWorkspace({
     selectedTrace?.id === selectedTraceId
       ? selectedTrace?.spans.find((span) => span.id === selectedSpanId)
       : undefined;
+  // Continuous profiles arrive as many chunks; the profile view joins them,
+  // so one link per trace is enough.
+  const profile = selectedTrace
+    ? profiles.find((entry) => profileMatchesTrace(entry, selectedTrace))
+    : undefined;
   const inspector = useRef<HTMLDivElement>(null);
   const previousSpan = useRef<{ traceId: string; spanId: string } | undefined>(
     undefined,
   );
   const activeSpanId = selectedSpan?.id;
   const activeTraceId = selectedTrace?.id;
+  // Back to trace remounts the waterfall with no selected span. Remember the
+  // inspected span so a sampled row stays unfolded and can take focus again.
+  const [inspectedSpanId, setInspectedSpanId] = useState<string>();
+  if (activeSpanId && activeSpanId !== inspectedSpanId)
+    setInspectedSpanId(activeSpanId);
   useEffect(() => {
     if (activeSpanId && activeTraceId) {
       previousSpan.current = { traceId: activeTraceId, spanId: activeSpanId };
@@ -112,7 +123,7 @@ export function TraceWorkspace({
               Traces
             </h2>
             <span className="font-mono text-xs text-muted-foreground">
-              {traces.length} trace{traces.length === 1 ? "" : "s"}
+              {pluralize(traces.length, "trace")}
             </span>
           </header>
 
@@ -141,14 +152,18 @@ export function TraceWorkspace({
                         {trace.title}
                       </span>
                       <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>{trace.spans.length} spans</span>
+                        <span>
+                          {isLogOnlyTrace(trace)
+                            ? "Logs only"
+                            : pluralize(trace.spanCount, "span")}
+                        </span>
                         {trace.errorCount > 0 ? (
                           <span className="text-red-500 dark:text-red-400">
-                            {trace.errorCount} errors
+                            {pluralize(trace.errorCount, "error")}
                           </span>
                         ) : null}
                         {trace.logCount > 0 ? (
-                          <span>{trace.logCount} logs</span>
+                          <span>{pluralize(trace.logCount, "log")}</span>
                         ) : null}
                       </div>
                     </div>
@@ -164,24 +179,15 @@ export function TraceWorkspace({
       }
     >
       <div ref={inspector} className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {onSelectProfile
-          ? profiles
-              .filter((profile) => profileMatchesTrace(profile, selectedTrace))
-              .map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-muted"
-                  onClick={() => onSelectProfile(profile.id)}
-                >
-                  Inspect{" "}
-                  {profile.type === "profile_chunk"
-                    ? "continuous profile chunk"
-                    : "profile"}{" "}
-                  for this trace
-                </button>
-              ))
-          : null}
+        {onSelectProfile && profile ? (
+          <button
+            type="button"
+            className="shrink-0 border-b border-border px-3 py-2 text-left text-xs text-primary hover:bg-muted"
+            onClick={() => onSelectProfile(profile.id)}
+          >
+            Inspect profile for this trace
+          </button>
+        ) : null}
         {selectedSpan ? (
           <SpanDetail
             span={selectedSpan}
@@ -196,6 +202,7 @@ export function TraceWorkspace({
             selectedSpanId={
               selectedTrace.id === selectedTraceId ? selectedSpanId : undefined
             }
+            revealSpanId={inspectedSpanId}
             onSelectSpan={
               onSelectSpan
                 ? (spanId) => onSelectSpan(selectedTrace.id, spanId)

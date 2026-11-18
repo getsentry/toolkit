@@ -43,11 +43,16 @@ import {
   record,
   string,
 } from "valibot";
-import { ApiError, projectsNotFoundError } from "../errors.js";
+import { ApiError, isNetworkError, projectsNotFoundError } from "../errors.js";
+import {
+  createHttp1Dispatcher,
+  destroyHttp1Dispatcher,
+} from "../http1-dispatcher.js";
 import { logger } from "../logger.js";
 import { getSdkConfig } from "../sentry-client.js";
 import {
   getOrgSdkConfig,
+  throwApiError,
   throwRawApiError,
   unwrapValidatedResult,
 } from "./infrastructure.js";
@@ -284,7 +289,7 @@ export async function uploadChunk(params: {
   chunk: ChunkInfo;
   tmpZipPath: string;
   encoding: UploadEncoding | undefined;
-  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  fetch: ChunkUploadFetch;
   url: string;
 }): Promise<void> {
   const { chunk, tmpZipPath, encoding, fetch: authFetch, url } = params;
@@ -315,10 +320,7 @@ export async function uploadChunk(params: {
     init.headers = { "Content-Encoding": "zstd" };
   }
 
-  const response = await authFetch(url, init);
-  if (!response.ok) {
-    await throwRawApiError(response, url, "Chunk upload failed");
-  }
+  await postChunks(authFetch, url, init);
 }
 
 /**
@@ -384,20 +386,57 @@ export function hashBuffer(
   return { chunks, overallChecksum: overallHasher.digest("hex") };
 }
 
+type ChunkUploadFetch = (url: string, init: RequestInit) => Promise<Response>;
+
 /**
- * Authenticated fetch for chunk-upload POSTs to the server-provided URL.
+ * Run `upload` with an authenticated fetch for chunk-upload POSTs to the
+ * server-provided URL.
  *
  * Chunks are stored by SHA-1, so a replayed upload is a no-op. Opt in
  * explicitly: the server-provided URL need not match the catalog path, which
- * is also why the timeout is set here rather than by URL.
+ * is also why the timeout is set here rather than by URL. Requests go over
+ * HTTP/1.1 (see http1-dispatcher.ts); the dispatcher lives only for this
+ * upload.
  */
-function getChunkUploadFetch(
+async function withChunkUploadFetch(
   regionUrl: string,
-): (url: string, init: RequestInit) => Promise<Response> {
-  return getSdkConfig(regionUrl, {
-    idempotent: true,
-    timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
-  }).fetch;
+  upload: (fetch: ChunkUploadFetch) => Promise<unknown>,
+): Promise<void> {
+  const dispatcher = createHttp1Dispatcher();
+  try {
+    await upload(
+      getSdkConfig(regionUrl, {
+        idempotent: true,
+        timeoutMs: CHUNK_UPLOAD_TIMEOUT_MS,
+        dispatcher,
+      }).fetch,
+    );
+  } finally {
+    await destroyHttp1Dispatcher(dispatcher);
+  }
+}
+
+/**
+ * POST one chunk-upload request. A request that got no response throws an
+ * ApiError that names the network cause, not a bare `TypeError`.
+ */
+async function postChunks(
+  authFetch: ChunkUploadFetch,
+  url: string,
+  init: RequestInit,
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await authFetch(url, init);
+  } catch (error) {
+    if (isNetworkError(error)) {
+      throwApiError(error, undefined, "Chunk upload failed");
+    }
+    throw error;
+  }
+  if (!response.ok) {
+    await throwRawApiError(response, url, "Chunk upload failed");
+  }
 }
 
 /**
@@ -437,18 +476,19 @@ export async function uploadMissingChunks(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const authFetch = getChunkUploadFetch(regionUrl);
 
-  await Promise.all(
-    missingChunks.map((chunk) =>
-      limit(() =>
-        uploadChunk({
-          chunk,
-          tmpZipPath,
-          encoding,
-          fetch: authFetch,
-          url: serverOptions.url,
-        }),
+  await withChunkUploadFetch(regionUrl, (authFetch) =>
+    Promise.all(
+      missingChunks.map((chunk) =>
+        limit(() =>
+          uploadChunk({
+            chunk,
+            tmpZipPath,
+            encoding,
+            fetch: authFetch,
+            url: serverOptions.url,
+          }),
+        ),
       ),
     ),
   );
@@ -506,7 +546,7 @@ export function batchChunkPayloads(
 async function uploadChunkBatch(params: {
   batch: readonly ChunkPayload[];
   encoding: UploadEncoding | undefined;
-  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  fetch: ChunkUploadFetch;
   url: string;
 }): Promise<void> {
   const { batch, encoding, fetch: authFetch, url } = params;
@@ -527,10 +567,7 @@ async function uploadChunkBatch(params: {
     init.headers = { "Content-Encoding": "zstd" };
   }
 
-  const response = await authFetch(url, init);
-  if (!response.ok) {
-    await throwRawApiError(response, url, "Chunk upload failed");
-  }
+  await postChunks(authFetch, url, init);
 }
 
 /**
@@ -549,17 +586,18 @@ export async function uploadChunkPayloads(params: {
   }
 
   const limit = pLimit(serverOptions.concurrency);
-  const authFetch = getChunkUploadFetch(regionUrl);
 
-  await Promise.all(
-    batchChunkPayloads(chunks, serverOptions).map((batch) =>
-      limit(() =>
-        uploadChunkBatch({
-          batch,
-          encoding,
-          fetch: authFetch,
-          url: serverOptions.url,
-        }),
+  await withChunkUploadFetch(regionUrl, (authFetch) =>
+    Promise.all(
+      batchChunkPayloads(chunks, serverOptions).map((batch) =>
+        limit(() =>
+          uploadChunkBatch({
+            batch,
+            encoding,
+            fetch: authFetch,
+            url: serverOptions.url,
+          }),
+        ),
       ),
     ),
   );

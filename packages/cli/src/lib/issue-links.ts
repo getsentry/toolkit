@@ -3,6 +3,7 @@
  * and Sentry Apps. These operations leave the Sentry issue's status unchanged.
  */
 
+import { API_BASE_PATH } from "@sentry/api/client";
 import {
   type AppIssueLink,
   findAppIssueLink,
@@ -228,7 +229,7 @@ async function invalidateIssueLinks(
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(options.orgSlug);
   const base = getApiBaseUrl();
-  const issuePath = `/api/0/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(options.issueId)}/`;
+  const issuePath = `${API_BASE_PATH}/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(options.issueId)}/`;
   await Promise.all([
     invalidateCachedResponsesMatching(new URL(issuePath, regionUrl).href),
     invalidateCachedResponsesMatching(new URL(issuePath, base).href),

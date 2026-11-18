@@ -58,7 +58,7 @@ async function lastUsed(key: string, secondsAgo: number): Promise<void> {
 }
 
 async function keys(): Promise<string[]> {
-  return (await readdir(dir)).map((file) => file.split(".")[0]).sort();
+  return (await readdir(dir)).map((file) => file.split(".")[0] ?? file).sort();
 }
 
 describe("createFileStore", () => {

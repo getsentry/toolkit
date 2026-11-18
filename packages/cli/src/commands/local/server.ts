@@ -5,7 +5,11 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
-import { isHostedUiOrigin, LOCAL_SESSION_EVENT } from "./viewer-protocol.js";
+import {
+  isHostedUiOrigin,
+  LOCAL_OVERSIZED_EVENT,
+  LOCAL_SESSION_EVENT,
+} from "./viewer-protocol.js";
 export { isHostedUiOrigin } from "./viewer-protocol.js";
 import { isLoopbackHost } from "./loopback.js";
 /**
@@ -26,15 +30,25 @@ import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
-  createSpotlightBuffer,
-  pushToSpotlightBuffer,
-} from "@spotlightjs/spotlight/sdk";
-import { Hono } from "hono";
+  ingestReceiverEnvelope,
+  MAX_DECODED_BYTES,
+  onOversizedEnvelope,
+  readReceiverBody,
+  receiverEnvelopeId,
+  reportIngestStatus,
+  type ReceiverEnvelope,
+  type ReceiverBuffer,
+} from "./receiver-ingest.js";
+import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import type { SentryContext } from "../../context.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
-import { ValidationError } from "../../lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../lib/errors.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
 import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
@@ -73,7 +87,7 @@ export const DEFAULT_PORT = 8969;
  *
  * Spotlight clients (the desktop app, the browser overlay) probe `/health` and
  * treat a sidecar as present only when this exact header value comes back —
- * see `isSidecarRunning()` in `@spotlightjs/spotlight`. Without it they assume
+ * without it they assume
  * no sidecar is running, try to start their own on the same port, fail with
  * EADDRINUSE, and report "not connected" even though this server is happily
  * receiving envelopes.
@@ -85,6 +99,70 @@ const CR_RE = /\r$/;
 
 /** Maximum ingest body size (10 MB). Rejects oversized payloads early. */
 export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+
+/** Shortest gap between two oversized-envelope warnings in one terminal. */
+const OVERSIZED_WARNING_INTERVAL_MS = 5000;
+
+/**
+ * Flush for each foreground receiver's oversized-envelope warning. The count it
+ * holds back would be lost if the CLI exits within the interval, so the
+ * receiver's HTTP server runs it on close.
+ */
+const receiverShutdownFlushes = new WeakMap<Hono, () => void>();
+
+/** Warns about envelopes rejected as too large (HTTP 413). */
+type OversizedEnvelopeWarning = {
+  /** Report one rejected envelope. */
+  warn: () => void;
+  /** Print the count of envelopes held back since the last line, if any. */
+  flush: () => void;
+};
+
+/**
+ * Warn about envelopes rejected as too large (HTTP 413). SDKs drop them
+ * without retrying, so this is the only sign they were lost. The first one
+ * prints right away; more within {@link OVERSIZED_WARNING_INTERVAL_MS} are
+ * counted and printed as one line when the interval ends.
+ */
+function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
+  const limit = `${MAX_BODY_BYTES / 1024 / 1024} MiB ingest limit (${MAX_DECODED_BYTES / 1024 / 1024} MiB decompressed)`;
+  let quietUntil = Number.NEGATIVE_INFINITY;
+  let held = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (held === 0) return;
+    const count = held;
+    held = 0;
+    quietUntil = Date.now() + OVERSIZED_WARNING_INTERVAL_MS;
+    logger.warn(
+      `Dropped ${count} more ${count === 1 ? "envelope" : "envelopes"} over the ${limit}.`,
+    );
+  };
+
+  const warn = () => {
+    const now = Date.now();
+    if (now < quietUntil) {
+      held += 1;
+      if (timer === undefined) {
+        timer = setTimeout(flush, quietUntil - now);
+        // A pending count must never keep the CLI alive.
+        timer.unref?.();
+      }
+      return;
+    }
+    quietUntil = now + OVERSIZED_WARNING_INTERVAL_MS;
+    logger.warn(
+      `Dropped an envelope over the ${limit}. SDKs do not retry it, so its events are lost.`,
+    );
+  };
+
+  return { warn, flush };
+}
 
 /**
  * Parse and validate a `--format` value.
@@ -216,23 +294,26 @@ export function buildSSEHandler(
   useBase64 = false,
 ) {
   const base64Indicator = useBase64 ? ";base64" : "";
-  return (container: {
-    getParsedEnvelope: () => {
-      envelope: [Record<string, unknown>, unknown[]];
-    } | null;
-    getContentType: () => string;
-  }) => {
+  return (container: ReceiverEnvelope) => {
     try {
+      const envelopeId = receiverEnvelopeId(container);
       const parsed = container.getParsedEnvelope();
-      if (!parsed) {
-        return;
+      let data: string;
+      try {
+        data = parsed
+          ? JSON.stringify(parsed.envelope)
+          : container.getData().toString("utf8");
+      } catch {
+        logger.debug(
+          "Local receiver is streaming raw data because decoded JSON could not serialize.",
+        );
+        data = container.getData().toString("utf8");
       }
-      const envelopeId = spotlightEnvelopeId(parsed.envelope[0]);
       stream
         .writeSSE({
           id: envelopeId || undefined,
           event: `${container.getContentType()}${base64Indicator}`,
-          data: JSON.stringify(parsed.envelope),
+          data,
         })
         .catch((err: unknown) => {
           logger.debug(
@@ -250,7 +331,7 @@ export function buildSSEHandler(
 }
 
 export function buildApp(
-  spotlightBuffer: ReturnType<typeof createSpotlightBuffer>,
+  buffer: ReceiverBuffer,
   { uiActions = false, retention }: LocalReceiverOptions = {},
 ): Hono {
   const app = new Hono();
@@ -368,7 +449,7 @@ export function buildApp(
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      retention.resize(value);
+      await retention.resize(value);
       return c.json(retention.getSettings());
     } catch (error) {
       if (error instanceof RetentionLimitError)
@@ -381,7 +462,7 @@ export function buildApp(
     if (!uiActions) {
       return c.body(null, 403);
     }
-    spotlightBuffer.clear();
+    buffer.clear();
     return c.body(null, 204);
   });
 
@@ -390,7 +471,7 @@ export function buildApp(
       return c.body(null, 403);
     }
     try {
-      const container = spotlightBuffer.read({
+      const container = buffer.read({
         envelopeId: c.req.param("id"),
       })[0];
       if (!container) {
@@ -407,23 +488,16 @@ export function buildApp(
     }
   });
 
-  const ingest = async (c: {
-    req: {
-      arrayBuffer: () => Promise<ArrayBuffer>;
-      header: (name: string) => string | undefined;
-      query: (name: string) => string | undefined;
-    };
-    body: (data: null, status: number) => Response;
-  }) => {
-    const contentLength = Number(c.req.header("content-length") ?? 0);
-    if (contentLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
+  // This receiver runs in the foreground command, so it warns in its terminal.
+  const oversized = createOversizedEnvelopeWarning();
+  onOversizedEnvelope(buffer, oversized.warn);
+  receiverShutdownFlushes.set(app, oversized.flush);
+  const ingest = async (c: Context) => {
+    const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+    if (typeof body === "number") {
+      reportIngestStatus(buffer, body);
+      return c.body(null, body);
     }
-    const arrayBuf = await c.req.arrayBuffer();
-    if (arrayBuf.byteLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const body = Buffer.from(arrayBuf);
     // Browser SDKs using sendBeacon() set Content-Type to text/plain to
     // avoid CORS preflight. Detect this via the sentry_client query param
     // and override to the canonical Sentry envelope content type.
@@ -434,24 +508,20 @@ export function buildApp(
     ) {
       contentType = SENTRY_CONTENT_TYPE;
     }
-    const rawEncoding = c.req.header("content-encoding");
-    const contentEncoding =
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined;
+    const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    pushToSpotlightBuffer({
-      spotlightBuffer,
+    const status = await ingestReceiverEnvelope(buffer, {
       body,
       encoding: contentEncoding,
       contentType,
+      receiverUrl: c.req.url,
       userAgent,
     });
 
-    return c.body(null, 204);
+    reportIngestStatus(buffer, status);
+    if (status === 503) c.header("Retry-After", "1");
+    return c.body(null, status);
   };
 
   app.post("/stream", ingest);
@@ -492,12 +562,18 @@ export function buildApp(
           : () => {};
       if (retention && c.req.query("retention") === "1")
         sendSettings(retention.getSettings());
-      const readerId = spotlightBuffer.subscribe(onEnvelope, lastEventId);
+      const readerId = buffer.subscribe(onEnvelope, lastEventId);
+      const unsubscribeOversized = onOversizedEnvelope(buffer, () => {
+        void stream
+          .writeSSE({ event: LOCAL_OVERSIZED_EVENT, data: "{}" })
+          .catch((error) => logger.debug("Local stream closed", error));
+      });
 
       await new Promise<void>((resolve) => {
         stream.onAbort(() => {
-          spotlightBuffer.unsubscribe(readerId);
+          buffer.unsubscribe(readerId);
           unsubscribeSettings();
+          unsubscribeOversized();
           resolve();
         });
       });
@@ -539,6 +615,20 @@ function waitForShutdown(server: Server): Promise<void> {
   });
 }
 
+/**
+ * Error for a listener port that another process holds. It is the user's
+ * setup, not a CLI bug, so error reporting silences its field.
+ */
+export function portInUseError(
+  port: number,
+  holder = "another process",
+): ValidationError {
+  return new ValidationError(
+    `Port ${port} is already in use by ${holder}. Stop it, or pass --port to use a different port.`,
+    PORT_IN_USE_FIELD,
+  );
+}
+
 /** Maximum retries on EADDRINUSE before giving up. */
 const MAX_PORT_RETRIES = 3;
 
@@ -551,13 +641,15 @@ export const PORT_RETRY_TIMEOUT_MS = MAX_PORT_RETRIES * PORT_RETRY_DELAY_MS;
 /**
  * Try to start the HTTP server, retrying with backoff on EADDRINUSE.
  *
- * Retries up to {@link MAX_PORT_RETRIES} times with a {@link PORT_RETRY_DELAY_MS}
- * delay between attempts.
+ * Retries up to `retries` times ({@link MAX_PORT_RETRIES} by default) with a
+ * {@link PORT_RETRY_DELAY_MS} delay between attempts. Pass `retries: 0` to
+ * fail on the first EADDRINUSE.
  */
 export function tryListen(
   app: Hono,
   port: number,
   hostname: string,
+  { retries = MAX_PORT_RETRIES }: { retries?: number } = {},
 ): Promise<{ server: Server; port: number }> {
   let attempts = 0;
 
@@ -570,6 +662,9 @@ export function tryListen(
       }) as unknown as Server;
 
       server.once("listening", () => {
+        // Print held-back drop counts before the process can exit.
+        const flush = receiverShutdownFlushes.get(app);
+        if (flush) server.once("close", flush);
         const addr = server.address();
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });
@@ -578,17 +673,12 @@ export function tryListen(
         server.close();
         if (err.code === "EADDRINUSE") {
           attempts += 1;
-          if (attempts > MAX_PORT_RETRIES) {
-            reject(
-              new ValidationError(
-                `Port ${port} is in use after ${MAX_PORT_RETRIES} retries`,
-                "port",
-              ),
-            );
+          if (attempts > retries) {
+            reject(portInUseError(port));
             return;
           }
           logger.warn(
-            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${MAX_PORT_RETRIES})...`,
+            `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${retries})...`,
           );
           await sleep(PORT_RETRY_DELAY_MS);
           resolve(attempt());
@@ -602,13 +692,44 @@ export function tryListen(
 }
 
 /**
+ * Ask `${url}/health` who holds the port: `none` for a transport failure
+ * (connection refused, timeout), `daemon` for a Sentry Local daemon, and
+ * `other` for any other HTTP reply, including an error status.
+ */
+export async function probeLocalHealth(
+  url: string,
+  timeoutMs: number,
+): Promise<"none" | "daemon" | "other"> {
+  let res: Response;
+  try {
+    res = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    logger.debug(
+      `No existing server at ${url}`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return "none";
+  }
+  await res.body?.cancel();
+  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
+  if (!res.ok) {
+    logger.debug(
+      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
+    );
+  }
+  return "other";
+}
+
+/**
  * Check whether something is already serving on the given URL.
  *
  * Any HTTP reply — including an error status — means the port is taken, so
  * this deliberately does not require a 2xx. Spotlight's own sidecar can
  * answer `/health` with a 5xx while still holding the port and ingesting
  * envelopes; treating that as "nothing there" made the CLI try to bind the
- * port anyway and abort with `Port 8969 is in use after 3 retries`, killing
+ * port anyway and abort with `Port 8969 is already in use`, killing
  * the user's dev command instead of attaching to the sidecar.
  *
  * Only a transport-level failure (connection refused, timeout) counts as
@@ -616,28 +737,14 @@ export function tryListen(
  * protocol, {@link consumeSSE} reports that when the stream fails to open.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
-  let res: Response;
-  try {
-    res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
-  } catch (err) {
-    logger.debug(
-      `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
-  }
-  if (res.headers.get("X-Sentry-Local-Mode") === "daemon") {
+  const holder = await probeLocalHealth(url, 2000);
+  if (holder === "daemon") {
     throw new ValidationError(
       "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
-      "session",
+      PORT_HELD_BY_DAEMON_FIELD,
     );
   }
-  if (!res.ok) {
-    logger.debug(
-      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
-    );
-  }
-  return true;
+  return holder === "other";
 }
 
 /** Apply only an explicitly requested limit when attaching to an existing receiver. */
@@ -744,6 +851,14 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+/** Whether a failed `fetch` found nothing listening at the address. */
+export function isConnectionRefused(err: unknown): boolean {
+  const cause = err instanceof Error ? err.cause : undefined;
+  return (
+    cause instanceof Error && "code" in cause && cause.code === "ECONNREFUSED"
+  );
+}
+
 /** Sleep with abort support, suppressing abort errors. */
 async function sleepUnlessAborted(
   ms: number,
@@ -765,6 +880,19 @@ async function sleepUnlessAborted(
  * using `Last-Event-ID` to resume from where the stream left off.
  */
 export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
+  const oversized = createOversizedEnvelopeWarning();
+  try {
+    await consumeSSEWithWarning(opts, oversized.warn);
+  } finally {
+    // The tail is ending, so print any count still waiting for its interval.
+    oversized.flush();
+  }
+}
+
+async function consumeSSEWithWarning(
+  opts: ConsumeSSEOptions,
+  warnOversized: () => void,
+): Promise<void> {
   const {
     url,
     streamUrl,
@@ -792,9 +920,19 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
       onId: (id) => {
         lastEventId = id;
       },
+      onOversized: warnOversized,
     });
 
     if (signal.aborted || result === "retained") {
+      return;
+    }
+    // A daemon keeps sessions in memory, so once it stops, this session can
+    // never come back: retrying would only print reconnect lines forever
+    // while the app sends telemetry nowhere.
+    if (hasConnectedBefore && result === "session-gone") {
+      logger.warn(
+        "The Local daemon stopped or restarted, so this session is no longer capturing telemetry. Restart this command to capture into a new session.",
+      );
       return;
     }
     // On the first attempt, both "no-connection" (HTTP error/no body) and
@@ -838,10 +976,14 @@ export async function consumeSSE(opts: ConsumeSSEOptions): Promise<void> {
  * - `"connected-then-lost"` if a connection was established (got HTTP 200)
  *   but the stream ended or errored — eligible for reconnection
  * - `"retained"` after a session's final lifecycle message — never reconnect
+ * - `"session-gone"` for a daemon session stream whose daemon refuses
+ *   connections or no longer knows the session (HTTP 404)
  */
 async function attemptSSEConnection(
   opts: ConsumeSSEOnceOptions,
-): Promise<"no-connection" | "connected-then-lost" | "retained"> {
+): Promise<
+  "no-connection" | "connected-then-lost" | "retained" | "session-gone"
+> {
   let wasConnected = false;
   const augmented = {
     ...opts,
@@ -851,7 +993,8 @@ async function attemptSSEConnection(
   };
   try {
     const completed = await consumeSSEOnce(augmented);
-    if (completed === "retained") return "retained";
+    if (completed === "retained" || completed === "session-gone")
+      return completed;
     return completed ? "connected-then-lost" : "no-connection";
   } catch (err: unknown) {
     if (isAbortError(err) || opts.signal.aborted) {
@@ -860,6 +1003,9 @@ async function attemptSSEConnection(
     logger.debug(
       `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
+    if (opts.streamUrl && !wasConnected && isConnectionRefused(err)) {
+      return "session-gone";
+    }
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
     return wasConnected ? "connected-then-lost" : "no-connection";
@@ -877,19 +1023,22 @@ type ConsumeSSEOnceOptions = {
   showAttributes: boolean;
   lastEventId: string | undefined;
   onId: (id: string) => void;
+  /** Called when the receiver rejects an envelope as too large. */
+  onOversized: () => void;
   /** Called when the HTTP response is received (200 OK with body). */
   onConnected?: () => void;
 };
 
 /**
  * Single SSE connection attempt. Returns `true` if a connection was
- * established (received a 200 response), `false` if it never connected, and
- * `"retained"` when the session closes after replay. Quiet tails still parse
+ * established (received a 200 response), `false` if it never connected,
+ * `"retained"` when the session closes after replay, and `"session-gone"`
+ * when a daemon session stream answers 404. Quiet tails still parse
  * lifecycle metadata so closing capture terminates them without reconnecting.
  */
 async function consumeSSEOnce(
   opts: ConsumeSSEOnceOptions,
-): Promise<boolean | "retained"> {
+): Promise<boolean | "retained" | "session-gone"> {
   const {
     url,
     activeFilters,
@@ -899,6 +1048,7 @@ async function consumeSSEOnce(
     showAttributes,
     lastEventId,
     onId,
+    onOversized,
     onConnected,
   } = opts;
   const headers: Record<string, string> = { Accept: "text/event-stream" };
@@ -910,6 +1060,10 @@ async function consumeSSEOnce(
     signal,
   });
   if (!res.ok) {
+    if (opts.streamUrl && res.status === 404) {
+      logger.debug("The Local session stream returned HTTP 404");
+      return "session-gone";
+    }
     logger.warn(`SSE stream returned HTTP ${res.status}`);
     return false;
   }
@@ -942,6 +1096,8 @@ async function consumeSSEOnce(
       } catch {
         logger.debug("Ignoring invalid Local session lifecycle event.");
       }
+    } else if (type === LOCAL_OVERSIZED_EVENT) {
+      onOversized();
     } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
       processSSEEvent(data, activeFilters, useJson, showAttributes);
     }
@@ -1090,7 +1246,7 @@ export const serverCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Show a grouped attribute table (user vs SDK) under each transaction",
+          "Also show SDK attributes, under each transaction and log or in JSON",
         default: false,
       },
       open: {

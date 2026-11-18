@@ -2,10 +2,14 @@ import {
   record,
   display,
   text,
+  contextLabel,
+  hasEventSection,
   feedbackData,
   EVENT_CONTEXT_SECTIONS,
 } from "@/lib/inspection.ts";
+import { formatTimestamp } from "@/lib/presentation.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
+import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
 import { DetailFields } from "./span-detail.tsx";
 import { attributeFields } from "./inspector-data.ts";
 
@@ -31,14 +35,17 @@ export function EventContext({ payload }: { payload: unknown }) {
                     </span>
                     <span>{text(crumb.level)}</span>
                     <time>
-                      {crumb.timestamp === undefined
-                        ? ""
-                        : display(crumb.timestamp)}
+                      {typeof crumb.timestamp === "number" ||
+                      typeof crumb.timestamp === "string"
+                        ? formatTimestamp(crumb.timestamp)
+                        : ""}
                     </time>
                   </div>
                   {crumb.message !== undefined ? (
                     <p className="whitespace-pre-wrap break-words text-sm">
-                      {display(crumb.message)}
+                      {typeof crumb.message === "string"
+                        ? stripAnsi(crumb.message)
+                        : display(crumb.message)}
                     </p>
                   ) : null}
                   {Object.keys(record(crumb.data)).length ? (
@@ -54,24 +61,26 @@ export function EventContext({ payload }: { payload: unknown }) {
         </section>
       ) : null}
       {EVENT_CONTEXT_SECTIONS.map((key) =>
-        Object.keys(record(p[key])).length ? (
+        hasEventSection(p, key) ? (
           <details key={key} open className="border-t border-border pt-2">
             <summary className="cursor-pointer text-sm font-semibold capitalize">
               {key === "extra" ? "Additional data" : key}
             </summary>
             {key === "contexts" ? (
-              Object.entries(record(p.contexts)).map(([name, context]) => (
-                <section
-                  key={name}
-                  className="mt-2 border-l border-border pl-3"
-                >
-                  <h4 className="text-xs font-medium capitalize">{name}</h4>
-                  <DetailFields
-                    label={`${name} context`}
-                    fields={attributeFields(context)}
-                  />
-                </section>
-              ))
+              Object.entries(record(p.contexts)).map(([name, context]) => {
+                const fields = attributeFields(context);
+                return fields.length ? (
+                  <section
+                    key={name}
+                    className="mt-2 border-l border-border pl-3"
+                  >
+                    <h4 className="text-xs font-medium">
+                      {contextLabel(name)}
+                    </h4>
+                    <DetailFields label={`${name} context`} fields={fields} />
+                  </section>
+                ) : null;
+              })
             ) : (
               <DetailFields
                 label={`Event ${key}`}

@@ -1,3 +1,6 @@
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import type { WorkspaceView } from "./workspace.ts";
+
 export type ConnectionState =
   | "connecting"
   | "connected"
@@ -29,7 +32,6 @@ export function getConnectionPresentation(
       return { label: "Receiver unavailable", tone: "warning" };
   }
 }
-import type { WorkspaceView } from "./workspace.ts";
 
 export function getWorkspaceEmptyState({
   view,
@@ -92,4 +94,33 @@ export function getWorkspaceEmptyState({
       "Enable SDK profiling and run an operation in your app to send profiling data to this receiver.",
   };
   return { title: `No ${items} captured`, description: triggers[view] };
+}
+
+/** A count with its noun, such as "1 span" or "3 spans". */
+export function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function toDate(timestamp: number | string): Date | undefined {
+  const value = parseEventTimestamp(timestamp);
+  if (value === undefined) return;
+  // Epoch seconds from SDKs; larger numbers are already milliseconds.
+  return new Date(value < 1_000_000_000_000 ? value * 1_000 : value);
+}
+
+/** Show an SDK timestamp (epoch seconds or milliseconds, or ISO) in local time. */
+export function formatTimestamp(
+  timestamp: number | string | undefined,
+): string {
+  if (timestamp === undefined) return "unknown time";
+  return toDate(timestamp)?.toLocaleTimeString() ?? String(timestamp);
+}
+
+/** Like formatTimestamp, with the local date added when it is not today. */
+export function formatDateTime(timestamp: number | string): string {
+  const date = toDate(timestamp);
+  if (!date) return String(timestamp);
+  return date.toDateString() === new Date().toDateString()
+    ? date.toLocaleTimeString()
+    : `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }

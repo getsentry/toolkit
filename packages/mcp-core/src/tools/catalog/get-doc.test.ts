@@ -1,6 +1,90 @@
 import { describe, it, expect, vi } from "vitest";
 import { UserInputError } from "../../errors";
-import getDoc from "./get-doc.js";
+import getDoc, { resolveDocUrl } from "./get-doc.js";
+
+const context = {
+  constraints: {
+    organizationSlug: null,
+  },
+  accessToken: "access-token",
+  userId: "1",
+};
+
+describe("resolveDocUrl", () => {
+  it.each([
+    [
+      "/product/rate-limiting.md",
+      "https://docs.sentry.io/product/rate-limiting.md",
+    ],
+    [
+      "product/rate-limiting.md",
+      "https://docs.sentry.io/product/rate-limiting.md",
+    ],
+    [
+      "/product/rate-limiting/",
+      "https://docs.sentry.io/product/rate-limiting.md",
+    ],
+    [
+      "/product/rate-limiting",
+      "https://docs.sentry.io/product/rate-limiting.md",
+    ],
+    [
+      "https://docs.sentry.io/platforms/javascript/sourcemaps/",
+      "https://docs.sentry.io/platforms/javascript/sourcemaps.md",
+    ],
+    [
+      "https://docs.sentry.io/platforms/javascript/sourcemaps.md",
+      "https://docs.sentry.io/platforms/javascript/sourcemaps.md",
+    ],
+    [
+      "https://docs.sentry.io/platforms/javascript/sourcemaps/?original_referrer=x#uploading",
+      "https://docs.sentry.io/platforms/javascript/sourcemaps.md",
+    ],
+    [
+      "/platforms/javascript/configuration/apis.md#setUser",
+      "https://docs.sentry.io/platforms/javascript/configuration/apis.md",
+    ],
+    [
+      "https://DOCS.SENTRY.IO:443/product/",
+      "https://docs.sentry.io/product.md",
+    ],
+    [
+      "https://develop.sentry.io/sdk/overview/",
+      "https://develop.sentry.io/sdk/overview.md",
+    ],
+    [
+      "https://develop.sentry.io/sdk/overview.md#top",
+      "https://develop.sentry.io/sdk/overview.md",
+    ],
+    // Section index pages are served at the section path plus .md.
+    [
+      "/platforms/javascript/",
+      "https://docs.sentry.io/platforms/javascript.md",
+    ],
+    ["https://docs.sentry.io/", "https://docs.sentry.io/index.md"],
+  ])("resolves %s", (input, expected) => {
+    expect(resolveDocUrl(input)?.toString()).toBe(expected);
+  });
+
+  it.each([
+    ["another host", "https://malicious.com/test.md"],
+    ["a lookalike subdomain", "https://docs.sentry.io.evil.com/test.md"],
+    ["a protocol-relative URL", "//evil.com/test.md"],
+    ["a backslash protocol-relative URL", "/\\evil.com/test.md"],
+    ["userinfo before another host", "https://docs.sentry.io@evil.com/test.md"],
+    ["an encoded @ in the host", "https://docs.sentry.io%40evil.com/test.md"],
+    ["an encoded host", "https://evil%2Ecom/test.md"],
+    ["userinfo on an allowed host", "https://user:pass@docs.sentry.io/test.md"],
+    ["a non-default port", "https://docs.sentry.io:8443/test.md"],
+    ["http", "http://docs.sentry.io/test.md"],
+    ["a javascript: URL", "javascript:alert(1)"],
+    ["a file: URL", "file:///etc/passwd"],
+    ["a data: URL", "data:text/plain,hi"],
+    ["an unparseable URL", "https://"],
+  ])("rejects %s", (_label, input) => {
+    expect(resolveDocUrl(input)).toBeNull();
+  });
+});
 
 describe("get_doc", () => {
   it("returns document content", async () => {
@@ -20,7 +104,7 @@ describe("get_doc", () => {
     expect(result).toMatchInlineSnapshot(`
       "# Documentation Content
 
-      **Path**: /product/rate-limiting.md
+      **URL**: https://docs.sentry.io/product/rate-limiting.md
 
       ---
 
@@ -186,23 +270,39 @@ describe("get_doc", () => {
     `);
   });
 
-  it("handles invalid path format", async () => {
-    await expect(
-      getDoc.handler(
-        {
-          path: "/product/rate-limiting", // Missing .md extension
-        },
-        {
-          constraints: {
-            organizationSlug: null,
-          },
-          accessToken: "access-token",
-          userId: "1",
-        },
-      ),
-    ).rejects.toThrow(
-      "Invalid documentation path. Path must end with .md extension.",
+  it("accepts a docs page URL with a fragment and query", async () => {
+    const result = await getDoc.handler(
+      {
+        path: "https://docs.sentry.io/product/rate-limiting/?ref=tip#quotas",
+      },
+      context,
     );
+    expect(result).toContain(
+      "**URL**: https://docs.sentry.io/product/rate-limiting.md",
+    );
+    expect(result).toContain("# Project Rate Limits and Quotas");
+  });
+
+  it("follows a redirect within the docs site", async () => {
+    const result = await getDoc.handler(
+      { path: "/product/rate-limits/" },
+      context,
+    );
+    expect(result).toContain(
+      "**URL**: https://docs.sentry.io/product/rate-limiting.md",
+    );
+    expect(result).toContain("# Project Rate Limits and Quotas");
+  });
+
+  it("does not follow a redirect off the allowlist", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch");
+    await expect(
+      getDoc.handler({ path: "/product/offsite.md" }, context),
+    ).rejects.toThrow(UserInputError);
+    expect(fetchSpy.mock.calls.map(([input]) => (input as URL).href)).toEqual([
+      "https://docs.sentry.io/product/offsite.md",
+    ]);
+    fetchSpy.mockRestore();
   });
 
   it("rejects a missing page", async () => {
@@ -244,11 +344,9 @@ describe("get_doc", () => {
   });
 
   it("handles API errors", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-    } as Response);
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(null, { status: 500, statusText: "Internal Server Error" }),
+    );
 
     await expect(
       getDoc.handler(
@@ -263,7 +361,7 @@ describe("get_doc", () => {
           userId: "1",
         },
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow("Failed to fetch documentation: Internal Server Error");
   });
 
   it("validates domain whitelist", async () => {
@@ -282,7 +380,9 @@ describe("get_doc", () => {
         },
       ),
     ).rejects.toThrow(
-      "Invalid domain. Documentation can only be fetched from allowed domains: docs.sentry.io, develop.sentry.io",
+      new UserInputError(
+        "Invalid documentation path. Use a docs path or an https URL on: docs.sentry.io, develop.sentry.io",
+      ),
     );
   });
 

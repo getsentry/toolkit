@@ -1,3 +1,4 @@
+import { classifyEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
@@ -107,7 +108,18 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
   const pick = (...keys: string[]) =>
     keys
       .map((key) => data[key])
-      .find((value) => value !== undefined && value !== null);
+      .find(
+        (value) =>
+          value !== undefined &&
+          value !== null &&
+          (typeof value !== "string" || value.trim().length > 0),
+      );
+  const meaningful = (value: unknown): boolean => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return typeof value !== "object" || Object.keys(value).length > 0;
+  };
   const definitions: [string, string[]][] = [
     [
       "Model",
@@ -141,13 +153,23 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
     ["Max retries", ["vercel.ai.settings.maxRetries"]],
     ["Max steps", ["vercel.ai.settings.maxSteps"]],
   ];
-  const calls = parsed(
-    pick(
-      "gen_ai.response.tool_calls",
-      "vercel.ai.response.toolCalls",
-      "ai.response.toolCalls",
-    ),
-  );
+  const callKeys = [
+    "gen_ai.response.tool_calls",
+    "vercel.ai.response.toolCalls",
+    "ai.response.toolCalls",
+  ];
+  const calls =
+    callKeys
+      .map((key) => parsed(data[key]))
+      .find(
+        (value) =>
+          Array.isArray(value) &&
+          value.length > 0 &&
+          value.every(
+            (call) =>
+              call !== null && typeof call === "object" && !Array.isArray(call),
+          ),
+      ) ?? parsed(pick(...callKeys));
   const tools = Array.isArray(calls)
     ? [...calls]
     : calls === undefined
@@ -161,6 +183,37 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
       arguments: parsed(pick("gen_ai.tool.input", "ai.toolCall.args")),
       result: parsed(pick("gen_ai.tool.output", "ai.toolCall.result")),
     });
+  const messageKeys = [
+    "gen_ai.request.messages",
+    "gen_ai.input.messages",
+    "vercel.ai.prompt.messages",
+    "vercel.ai.prompt",
+    "gen_ai.prompt",
+    "ai.prompt.messages",
+    "ai.prompt",
+  ];
+  const prompts = messageKeys.map((key) => parsed(data[key]));
+  const hasMessages = (value: unknown) =>
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((message) => typeof record(message).role === "string");
+  // Pick usable content before raw fallback without stripping multimodal blocks
+  // or unknown captured fields from the conversation.
+  const messages =
+    prompts.find(
+      (value) => hasMessages(value) || hasMessages(record(value).messages),
+    ) ??
+    prompts.find(meaningful) ??
+    parsed(pick(...messageKeys));
+  const wrappedSystem = prompts
+    .map((value) => record(value).system)
+    .find(meaningful);
+  const responseKeys = [
+    "gen_ai.response.text",
+    "gen_ai.output.messages",
+    "vercel.ai.response.text",
+    "ai.response.text",
+  ];
   return {
     fields: definitions.flatMap(([label, keys]) => {
       const value = pick(...keys);
@@ -171,27 +224,12 @@ export function inspectAi(payload: unknown): AiInspection | undefined {
         "gen_ai.system_instructions",
         "gen_ai.prompt.system",
         "ai.prompt.system",
-      ),
+      ) ?? wrappedSystem,
     ),
-    messages: parsed(
-      pick(
-        "gen_ai.request.messages",
-        "gen_ai.input.messages",
-        "vercel.ai.prompt.messages",
-        "vercel.ai.prompt",
-        "gen_ai.prompt",
-        "ai.prompt.messages",
-        "ai.prompt",
-      ),
-    ),
-    response: parsed(
-      pick(
-        "gen_ai.response.text",
-        "gen_ai.output.messages",
-        "vercel.ai.response.text",
-        "ai.response.text",
-      ),
-    ),
+    messages,
+    response:
+      responseKeys.map((key) => parsed(data[key])).find(meaningful) ??
+      parsed(pick(...responseKeys)),
     tools,
   };
 }
@@ -247,7 +285,52 @@ export function errorMarkdown(item: LocalFeedItem): string {
     .join("\n\n");
 }
 
+/** Name an event by what it carries; severity alone does not make it an exception. */
+export function eventKind(payload: unknown): "Exception" | "Message" | "Event" {
+  const kind = classifyEvent(record(payload));
+  return kind === "exception"
+    ? "Exception"
+    : kind === "message"
+      ? "Message"
+      : "Event";
+}
+
+/** Top-level event fields that otherwise only appear in the raw JSON. */
+export function eventSummaryFields(
+  payload: unknown,
+): { label: string; value: string }[] {
+  const p = record(payload);
+  // A message's synthetic exception only carries its stack.
+  const exceptions =
+    classifyEvent(p) === "exception" ? record(p.exception).values : [];
+  const handled = (Array.isArray(exceptions) ? exceptions : [])
+    .map((exception) => record(record(exception).mechanism).handled)
+    .filter((value): value is boolean => typeof value === "boolean");
+  return Object.entries({
+    Level: text(p.level),
+    Handled: handled.length
+      ? handled.every(Boolean)
+        ? "Yes"
+        : "No"
+      : undefined,
+    Environment: text(p.environment),
+    Release: text(p.release),
+    Server: text(p.server_name),
+  }).flatMap(([label, value]) => (value ? [{ label, value }] : []));
+}
+
+const CONTEXT_LABELS: Record<string, string> = {
+  os: "OS",
+  client_os: "Client OS",
+  gpu: "GPU",
+};
+export function contextLabel(name: string): string {
+  const label = CONTEXT_LABELS[name] ?? name.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export const EVENT_CONTEXT_SECTIONS = [
+  "user",
   "request",
   "contexts",
   "tags",
@@ -261,8 +344,18 @@ export function hasEventContext(payload: unknown): boolean {
     : record(value.breadcrumbs).values;
   return (
     (Array.isArray(breadcrumbs) && breadcrumbs.length > 0) ||
-    EVENT_CONTEXT_SECTIONS.some(
-      (key) => Object.keys(record(value[key])).length > 0,
-    )
+    EVENT_CONTEXT_SECTIONS.some((key) => hasEventSection(value, key))
   );
+}
+/** Whether a context section has fields to show; empty named contexts do not count. */
+export function hasEventSection(
+  payload: unknown,
+  key: (typeof EVENT_CONTEXT_SECTIONS)[number],
+): boolean {
+  const section = record(record(payload)[key]);
+  return key === "contexts"
+    ? Object.values(section).some(
+        (context) => Object.keys(record(context)).length > 0,
+      )
+    : Object.keys(section).length > 0;
 }

@@ -23,15 +23,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [
-    "Delete a Sentry HTTP uptime monitor.",
-    "",
-    "Use this tool when you need to permanently remove an uptime monitor.",
-    "",
-    "Be careful when using this tool! Deletion cannot be undone.",
-    "",
-    "<examples>",
-    "delete_uptime_monitor(organizationSlug='my-organization', projectSlug='backend', uptimeMonitorId='12345')",
-    "</examples>",
+    "Permanently delete a Sentry uptime (HTTP URL check) monitor. To pause it, use update_uptime_monitor.",
+    "Scheduled jobs (cron): find_monitors. Metric thresholds: find_metric_monitors.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -41,7 +34,7 @@ export default defineTool({
       .string()
       .trim()
       .min(1)
-      .describe("Uptime monitor ID (detector id)."),
+      .describe("Uptime monitor ID from find_uptime_monitors."),
   },
   annotations: {
     readOnlyHint: false,

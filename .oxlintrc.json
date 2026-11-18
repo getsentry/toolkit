@@ -92,10 +92,19 @@
       }
     },
     {
-      "files": [
-        "packages/cli/src/**/*.{ts,tsx}",
-        "packages/cli/test/**/*.{ts,tsx}"
-      ],
+      "files": ["packages/mcp-core/src/**/*.ts"],
+      "rules": {
+        "sentry-cli/no-manual-pagination": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/test/**/*.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.ts", "packages/cli/test/**/*.ts"],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
         "sentry-cli/no-raw-capture-exception": "error",
@@ -114,12 +123,14 @@
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
         "sentry-cli/no-manual-pagination": "error",
+        "sentry-cli/no-manual-api-request": "error",
         "sentry-cli/no-namespace-import": "error",
         "sentry-cli/no-examples-in-full-description": "error",
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
         "sentry-cli/no-runtime-output-schema-imports": "error",
         "sentry-cli/no-hardcoded-sentry-command": "error",
+        "sentry-cli/no-inline-date-format": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -149,11 +160,12 @@
     {
       "files": ["packages/cli/script/**/*.ts"],
       "rules": {
-        "sentry-cli/no-regex-markdown-parsing": "error"
+        "sentry-cli/no-regex-markdown-parsing": "error",
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {
-      "files": ["packages/cli/src/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/**/*.ts"],
       "rules": {
         "typescript/no-explicit-any": "error",
         "typescript/no-non-null-assertion": "error"
@@ -170,7 +182,7 @@
       }
     },
     {
-      "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/commands/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",

@@ -2,7 +2,13 @@ import { envelopeAttachments, eventAttachments } from "@/lib/attachments.ts";
 import { EventContext, FeedbackInspector } from "./event-context.tsx";
 import { AiInspector } from "./ai-inspector.tsx";
 import { AttachmentDetail, AttachmentList } from "./attachment-detail.tsx";
-import { errorMarkdown, inspectAi, hasEventContext } from "@/lib/inspection.ts";
+import {
+  errorMarkdown,
+  eventKind,
+  eventSummaryFields,
+  inspectAi,
+  hasEventContext,
+} from "@/lib/inspection.ts";
 import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { useId, useState, useMemo } from "react";
@@ -13,6 +19,7 @@ import {
 } from "./inspector-data.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import { getEventMetadata } from "@/lib/spotlight.ts";
+import { formatTimestamp } from "@/lib/presentation.ts";
 import { getEventExceptions } from "@/lib/exceptions.ts";
 import type { TraceGroup } from "@/lib/trace-model.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -31,18 +38,6 @@ type EventDetailProps = {
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 };
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]) {
-  if (timestamp === undefined) return "unknown time";
-  const date = new Date(
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp,
-  );
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
-}
 
 function CompactSummary({
   label,
@@ -122,6 +117,7 @@ export function EventDetail({
   const payload = detailRecord(item.payload);
   const exceptions =
     item.type === "event" ? getEventExceptions(item.payload) : [];
+  const kind = item.type === "event" ? eventKind(item.payload) : undefined;
   const hasOverview =
     [
       "event",
@@ -146,6 +142,7 @@ export function EventDetail({
     ...(item.type === "log" && metadata.level
       ? [{ label: "Level", value: metadata.level }]
       : []),
+    ...(item.type === "event" ? eventSummaryFields(item.payload) : []),
     ...(metadata.statusCode === undefined
       ? []
       : [{ label: "Status", value: String(metadata.statusCode) }]),
@@ -199,7 +196,9 @@ export function EventDetail({
           <Badge>
             {item.type === "envelope"
               ? "Envelope"
-              : (metadata.operation ?? item.type)}
+              : item.type === "event"
+                ? kind
+                : (metadata.operation ?? item.type)}
           </Badge>
           <h2 className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium">
             {item.type === "envelope" ? "Raw envelope" : metadata.title}
@@ -253,7 +252,10 @@ export function EventDetail({
               />
             ) : null}
             {exceptions.length ? (
-              <ExceptionOverview exceptions={exceptions} />
+              <ExceptionOverview
+                exceptions={exceptions}
+                label={kind === "Message" ? "Message" : "Exception"}
+              />
             ) : null}
             {isRequestOrSpan ? (
               <CompactSummary

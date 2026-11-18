@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Concurrency sweep for `src/lib/scan/` hot paths.
  *

@@ -5,13 +5,23 @@
  * output is built as markdown and rendered via renderMarkdown().
  */
 
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
 import { text } from "@sentry/toolkit-core/markdown";
 import type {
   AutofixState,
   RootCause,
   SolutionArtifact,
 } from "../../types/seer.js";
-import { ApiError, SeerError } from "../errors.js";
+import {
+  type ApiDenialReason,
+  ApiError,
+  lookupKnownKey,
+  SeerError,
+  type SeerErrorReason,
+} from "../errors.js";
 import { cyan } from "./colors.js";
 import { filterFields } from "./json.js";
 import { renderMarkdown } from "./markdown.js";
@@ -266,11 +276,31 @@ export function jsonTransformIssueExplain(
 // Error Messages
 
 /**
- * `code` Sentry sends with a 402 when the organization is out of Seer credits.
- * Any other 402 means no budget, including one with no code from a Sentry
- * version that predates the codes.
+ * The SeerError reason for each 402 `code` in the API schema. A 402 with no
+ * code, from a Sentry version that predates the codes, means no budget.
+ * Keyed by the generated type, so a code added to the schema fails
+ * type-checking until it is mapped here.
  */
-const OUT_OF_CREDITS_CODE = "seer_out_of_credits";
+const PAYMENT_REQUIRED_REASONS: Record<
+  AutofixPaymentRequiredResponse["code"],
+  SeerErrorReason
+> = {
+  seer_out_of_credits: "out_of_credits",
+  seer_out_of_quota: "no_budget",
+};
+
+/**
+ * The SeerError reason for each 409 `code` in the API schema, or null to keep
+ * the API error (e.g. a run already in flight). Exhaustive for the same reason.
+ */
+const CONFLICT_REASONS: Record<
+  NonNullable<AutofixConflictResponse["code"]>,
+  SeerErrorReason | null
+> = {
+  scm_integration_required: "scm_integration_required",
+  repos_not_linked: "repos_not_linked",
+  run_in_flight: null,
+};
 
 /**
  * Create a SeerError from an API error status code and detail.
@@ -279,6 +309,7 @@ const OUT_OF_CREDITS_CODE = "seer_out_of_credits";
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
  * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError if the status code indicates a Seer-specific error, null otherwise
  */
 export function createSeerError(
@@ -286,10 +317,15 @@ export function createSeerError(
   detail?: string,
   orgSlug?: string,
   code?: string,
+  denialReason?: ApiDenialReason,
 ): SeerError | null {
   if (status === 402) {
+    const reason =
+      lookupKnownKey(PAYMENT_REQUIRED_REASONS, code) ?? "no_budget";
     return new SeerError(
-      code === OUT_OF_CREDITS_CODE ? "out_of_credits" : "no_budget",
+      reason === "out_of_credits" && denialReason === "daily_cap_exceeded"
+        ? denialReason
+        : reason,
       orgSlug,
     );
   }
@@ -304,21 +340,27 @@ export function createSeerError(
     // (could be permission denied, rate limiting, etc.)
     return null;
   }
+  if (status === 409) {
+    const reason = lookupKnownKey(CONFLICT_REASONS, code);
+    // Any other 409 (e.g. a run already in flight) keeps its API detail.
+    return reason ? new SeerError(reason, orgSlug) : null;
+  }
   return null;
 }
 
 /**
  * Convert an API error to a Seer-specific error or an ApiError.
  *
- * Returns a SeerError for known Seer issues (402/403 with specific detail),
- * or preserves the error as an ApiError for other failures. Previously
- * returned a plain Error which lost the status code and endpoint — causing
+ * Returns a SeerError for known Seer issues (402/403 with specific detail, or
+ * a 409 setup code), or preserves the error as an ApiError for other failures.
+ * Previously returned a plain Error which lost the status code and endpoint — causing
  * CLI-N (84 users) where unrecognized 403s became untyped errors.
  *
  * @param status - HTTP status code
  * @param detail - Error detail from API
  * @param orgSlug - Organization slug for constructing settings URLs
  * @param code - Machine-readable `code` from the error body
+ * @param denialReason - Why Sentry refused the request, from the error body
  * @returns SeerError for Seer-specific errors, or ApiError for other API errors
  */
 export function handleSeerApiError(
@@ -326,8 +368,15 @@ export function handleSeerApiError(
   detail?: string,
   orgSlug?: string,
   code?: string,
+  denialReason?: ApiDenialReason,
 ): Error {
-  const seerError = createSeerError(status, detail, orgSlug, code);
+  const seerError = createSeerError(
+    status,
+    detail,
+    orgSlug,
+    code,
+    denialReason,
+  );
   if (seerError) {
     return seerError;
   }

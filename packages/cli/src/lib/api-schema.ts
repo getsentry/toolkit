@@ -6,8 +6,9 @@
  * `script/generate-api-schema.ts` from Sentry's OpenAPI specification.
  */
 
+import { API_BASE_PATH } from "@sentry/api/client";
 import type { ApiOperation } from "@sentry/api/operations";
-import endpoints from "../generated/api-schema.json";
+import endpoints from "../generated/api-schema.json" with { type: "json" };
 import { fuzzyMatch } from "./fuzzy.js";
 
 /** Searchable query parameter metadata from the pinned OpenAPI specification. */
@@ -453,15 +454,15 @@ export function getAllEndpoints(): readonly ApiEndpoint[] {
 }
 
 /** The prefix `api` adds to an endpoint, left out of completed paths. */
-const API_PATH_PREFIX = /^\/api\/0\//;
+const API_PATH_PREFIX = `${API_BASE_PATH}/`;
 
 /**
- * Every schema path without its `/api/0/` prefix, each once: the endpoints
+ * Every schema path without the API base path, each once: the endpoints
  * `sentry api <endpoint>` completes (see `CompletionValues.apiPaths`).
  */
 export function getApiCompletionPaths(): string[] {
   return [
-    ...new Set(schema.map(({ path }) => path.replace(API_PATH_PREFIX, ""))),
+    ...new Set(schema.map(({ path }) => path.slice(API_PATH_PREFIX.length))),
   ];
 }
 
