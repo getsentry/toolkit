@@ -291,6 +291,13 @@ describe("linkAppIssue", () => {
     expect(searches).toBe(1);
   });
 
+  it("says the App must be installed when the organization has no installation", async () => {
+    mockDiscovery({ slug: "other" });
+    await expect(linkAppIssue(api, params)).rejects.toThrow(
+      "The 'linear' Sentry App is not installed in organization 'example'",
+    );
+  });
+
   it("requires a valid installed callback even for an existing association", async () => {
     mockDiscovery({
       links: [association],
