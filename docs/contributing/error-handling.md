@@ -74,6 +74,7 @@ ApiError (base class)
 - `ConfigurationError` (except HTTP transport, which notifies operators once via `logIssue` with a generic user message)
 - `LLMProviderError`
 - `APICallError` from the upstream AI provider (converted to `LLMProviderError` / logged as warnings)
+- MCP transport rejections of malformed client requests, such as a missing `Accept` media type (406), a wrong `Content-Type` (415), or an unparseable body (400). `server.onerror` logs them as warnings and `sentryBeforeSend` drops the copy that Sentry's MCP server integration captures. The `app.server.response` metric still counts these responses by status and client family.
 
 **System Errors (Should be captured by Sentry):**
 

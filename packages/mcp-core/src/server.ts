@@ -46,7 +46,8 @@ import {
   recordToolFailure,
 } from "./internal/error-handling";
 import type { Skill } from "./skills";
-import { type LogIssueOptions, logIssue } from "./telem/logging";
+import { type LogIssueOptions, logIssue, logWarn } from "./telem/logging";
+import { isTransportClientRejection } from "./telem/sentry";
 import {
   executeToolHandler,
   getAvailableTools,
@@ -332,6 +333,12 @@ export function buildServer({
         },
       },
     };
+
+    // The transport already answered a malformed client request with a 4xx.
+    if (isTransportClientRejection(error)) {
+      logWarn(error, transportLogOptions);
+      return;
+    }
 
     logIssue(error, transportLogOptions);
   };
