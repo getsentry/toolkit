@@ -508,7 +508,9 @@ export function createLocalControlPlane({
               encoding: c.req.header("content-encoding"),
               receiverUrl: c.req.url,
               userAgent: c.req.header("user-agent"),
-              isClosed,
+              // Bodies that arrived before close are kept, even if close
+              // lands while they wait in the queue or decode.
+              closed: isClosed(),
             });
       reportIngestStatus(buffer, result);
       return result;

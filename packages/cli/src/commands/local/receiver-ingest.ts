@@ -149,8 +149,11 @@ export function ingestReceiverEnvelope(
     /** URL the delivery was posted to, which identifies the receiver's own routes. */
     receiverUrl?: string;
     userAgent?: string;
-    /** Whether capture stopped; checked after the size limits, before retaining. */
-    isClosed?: () => boolean;
+    /**
+     * Capture had stopped by the time the body finished arriving. The size
+     * limits still apply first, so a late oversized delivery reports 413.
+     */
+    closed?: boolean;
   },
 ): Promise<204 | 400 | 410 | 413 | 415 | 503> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
@@ -193,7 +196,7 @@ export function ingestReceiverEnvelope(
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
-      if (input.isClosed?.()) return 410;
+      if (input.closed) return 410;
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)
         : body;

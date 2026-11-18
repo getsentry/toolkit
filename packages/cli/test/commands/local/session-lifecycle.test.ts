@@ -152,6 +152,23 @@ describe("Local session lifecycle", () => {
     );
   });
 
+  test("keeps a delivery whose body arrived before close, even while it decodes", async () => {
+    const f = await fixture();
+    const pending = f.app.request(f.session.ingestUrl, {
+      method: "POST",
+      headers: { "Content-Encoding": "gzip" },
+      body: gzipSync(envelope("x".repeat(8 * 1024 * 1024))),
+    });
+    // The in-memory body is read within microtasks, so close lands while the
+    // delivery is decoding.
+    await new Promise((resolve) => setImmediate(resolve));
+    await f.action("close");
+    expect((await pending).status).toBe(204);
+    expect(
+      f.store.getRetention(f.session.id).getSettings().retainedEnvelopes,
+    ).toBe(1);
+  });
+
   test("notifies every reader about reset and close, then replays a finite archive", async () => {
     const f = await fixture();
     await f.ingest("before-reset");
