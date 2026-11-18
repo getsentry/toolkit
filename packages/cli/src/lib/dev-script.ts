@@ -3,6 +3,7 @@
 import { existsSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sentry } from "./app-identity.js";
 import { logger } from "./logger.js";
 import { whichSync } from "./which.js";
 
@@ -11,6 +12,8 @@ export type DetectedCommand = {
   args: string[];
   /** Human label for what was detected (e.g., "package.json scripts.dev"). */
   source: string;
+  /** Advice to show when the command may not be what the user wants. */
+  hint?: string;
 };
 
 /** Ordered list of npm script names to look for in package.json. */
@@ -190,20 +193,85 @@ function tryFlaskAppEnv(
 }
 
 /** Matches `if __name__ == "__main__":`, a file that starts its own server. */
-const MAIN_GUARD_RE = /^if\s+__name__\s*==\s*["']__main__["']\s*:/m;
+const MAIN_GUARD_RE = /^if\s+__name__\s*==\s*["']__main__["']\s*:/;
 
-/** Captures the top-level variable a FastAPI app is assigned to, as in `api = FastAPI()`. */
-const FASTAPI_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:fastapi\.)?FastAPI\(/m;
+/** Captures a top-level assignment's variable and value, as `api` and `FastAPI()`. */
+const ASSIGNMENT_RE = /^(\w+)\s*(?::[^=]+)?=(?!=)\s*(.*)$/;
 
-/** Captures the top-level variable a Flask app is assigned to, as in `app = Flask(__name__)`. */
-const FLASK_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:flask\.)?Flask\(/m;
+/** Captures a `FastAPI(` or `Flask(` call, but not `MyFlask(` or `x.Flask(`. */
+const FRAMEWORK_CALL_RE =
+  /(?<![\w.])(?:(?:fastapi\.)?(FastAPI)|(?:flask\.)?(Flask))\(/;
+
+/** Names of app factory functions, as in `def create_app():` or `app = create_app()`. */
+const FACTORY_NAME = "(?:create|make)_app";
+
+/** Matches a call to an app factory, as `create_app(` or `myapp.create_app(`. */
+const FACTORY_CALL_RE = new RegExp(`^(?:[\\w.]+\\.)?${FACTORY_NAME}\\(`);
+
+/** Captures the name of a top-level app factory, as `create_app` in `def create_app():`. */
+const FACTORY_DEF_RE = new RegExp(`^def\\s+(${FACTORY_NAME})\\s*\\(`);
+
+/** Captures the framework a top-level import names, as `fastapi` in `from fastapi import FastAPI`. */
+const FRAMEWORK_IMPORT_RE = /^(?:from|import)\s+(fastapi|flask)\b/;
+
+/** One line of Python source, as `pythonLines` scans it. */
+type PythonLine = {
+  /** The line with comments removed and string contents blanked to `""`. */
+  code: string;
+  /** The line as written. */
+  text: string;
+  /** Whether the line starts at column 0 outside a multi-line string. */
+  topLevel: boolean;
+};
 
 /**
- * Captures a top-level `app` or `application` assignment, such as
- * `app = create_app()`, for an app whose framework only the declared
- * dependencies name.
+ * Split Python source into lines, blanking strings and comments, so a
+ * docstring or comment that mentions `app = FastAPI()` is not read as code.
+ * Tracks triple-quoted strings across lines. Not a parser: bracket and
+ * backslash continuations are not joined.
  */
-const APP_VARIABLE_RE = /^(app|application)\s*(?::[^=\n]+)?=/m;
+function pythonLines(source: string): PythonLine[] {
+  const lines: PythonLine[] = [];
+  let quote: string | null = null;
+  for (const text of source.split(/\r?\n/)) {
+    const topLevel = quote === null && /^[^\s#]/.test(text);
+    let code = "";
+    let i = 0;
+    while (i < text.length) {
+      if (quote !== null) {
+        if (text[i] === "\\") {
+          i += 2;
+        } else if (text.startsWith(quote, i)) {
+          code += '""';
+          i += quote.length;
+          quote = null;
+        } else {
+          i += 1;
+        }
+        continue;
+      }
+      const char = text[i] as string;
+      if (char === "#") {
+        break;
+      }
+      if (char === '"' || char === "'") {
+        const triple = char.repeat(3);
+        quote = text.startsWith(triple, i) ? triple : char;
+        i += quote.length;
+        continue;
+      }
+      code += char;
+      i += 1;
+    }
+    if (quote !== null && quote.length === 1) {
+      // A single-quoted string cannot span lines.
+      code += '""';
+      quote = null;
+    }
+    lines.push({ code, text, topLevel });
+  }
+  return lines;
+}
 
 /**
  * Detect a Python web app in `filename`.
@@ -214,12 +282,11 @@ const APP_VARIABLE_RE = /^(app|application)\s*(?::[^=\n]+)?=/m;
  * uvicorn for FastAPI, `flask run` for Flask. Uvicorn rather than
  * `fastapi dev`, because plain `fastapi` installs a `fastapi` script that
  * fails without `fastapi[standard]`, and any venv that has fastapi-cli has
- * uvicorn too.
+ * uvicorn too. An app factory runs with `uvicorn --factory`, or with
+ * `flask --app`, which calls it.
  *
- * A top-level `FastAPI(` or `Flask(` assignment names the framework and the
- * app variable. Failing that, a top-level `app` or `application` assignment
- * uses the framework the project declares. A file with neither runs as a
- * script only when `runAsScript` is set.
+ * A file with no app runs as a script only when `runAsScript` is set, with a
+ * hint when it imports FastAPI or Flask.
  */
 async function tryPythonApp(
   cwd: string,
@@ -231,51 +298,135 @@ async function tryPythonApp(
   if (source === null) {
     return null;
   }
-  const script = { args: [python(), filename], source: filename };
-  if (MAIN_GUARD_RE.test(source)) {
+  const lines = pythonLines(source);
+  const topLevel = lines.filter((line) => line.topLevel);
+  const script: DetectedCommand = {
+    args: [python(), filename],
+    source: filename,
+  };
+  if (topLevel.some((line) => MAIN_GUARD_RE.test(line.text))) {
     return script;
   }
-  const app = await findPythonApp(cwd, source);
+  const app = await findPythonApp(cwd, lines);
+  const module = filename.slice(0, -".py".length);
   if (!app) {
-    return runAsScript ? script : null;
+    if (!runAsScript) {
+      return null;
+    }
+    const imported = topLevel
+      .map((line) => FRAMEWORK_IMPORT_RE.exec(line.code)?.[1])
+      .find(Boolean);
+    if (imported) {
+      const serve =
+        imported === "fastapi"
+          ? `${script.args[0]} -m uvicorn ${module}:app --reload`
+          : `${script.args[0]} -m flask --app ${module}:app run`;
+      script.hint = `${filename} imports ${imported} but no app was found, so it runs as a script and may exit right away. To serve it, pass the command, such as: ${sentry`local run -- ${serve}`}`;
+    }
+    return script;
   }
-  const ref = `${filename.slice(0, -".py".length)}:${app.variable}`;
-  return {
-    args:
-      app.framework === "FastAPI"
-        ? [python(), "-m", "uvicorn", ref, "--reload"]
-        : [python(), "-m", "flask", "--app", ref, "run"],
-    source: `${filename} (${app.framework})`,
-  };
+  const ref = `${module}:${app.name}`;
+  let args: string[];
+  if (app.framework === "Flask") {
+    args = [python(), "-m", "flask", "--app", ref, "run"];
+  } else {
+    const factory = app.factory ? ["--factory"] : [];
+    args = [python(), "-m", "uvicorn", ref, ...factory, "--reload"];
+  }
+  return { args, source: `${filename} (${app.framework})` };
 }
 
 /** A web framework `local run` knows how to serve. */
 type PythonFramework = "FastAPI" | "Flask";
 
-/** The app object in a Python file, found by `findPythonApp`. */
+/** The app in a Python file, found by `findPythonApp`. */
 type PythonApp = {
   /** Framework that serves it. */
   framework: PythonFramework;
-  /** Top-level variable that holds it. */
-  variable: string;
+  /** Top-level variable that holds the app, or the factory that builds it. */
+  name: string;
+  /** Whether `name` is a factory function rather than the app. */
+  factory: boolean;
 };
 
-/** Find the FastAPI or Flask app that `source` defines at top level. */
+/** The framework that `match` from `FRAMEWORK_CALL_RE` names. */
+function matchedFramework(match: RegExpExecArray): PythonFramework {
+  return match[1] ? "FastAPI" : "Flask";
+}
+
+/**
+ * Find the FastAPI or Flask app that `lines` define at top level, in order:
+ * 1. a top-level assignment whose value is a `FastAPI(` or `Flask(` call;
+ * 2. a top-level `app` or `application` built by `create_app()` or
+ *    `make_app()`, with the framework that the factory's body builds when it
+ *    is defined in the file, or else the one the project declares;
+ * 3. a top-level `def create_app():` or `def make_app():`, with the
+ *    framework its body builds, or else the one the project declares.
+ */
 async function findPythonApp(
   cwd: string,
-  source: string,
+  lines: PythonLine[],
 ): Promise<PythonApp | null> {
-  const fastapi = FASTAPI_APP_RE.exec(source)?.[1];
-  if (fastapi) {
-    return { framework: "FastAPI", variable: fastapi };
+  let factoryCall: { name: string; value: string } | undefined;
+  for (const line of lines) {
+    const assignment = line.topLevel ? ASSIGNMENT_RE.exec(line.code) : null;
+    if (!assignment) {
+      continue;
+    }
+    const [, name = "", value = ""] = assignment;
+    const call = FRAMEWORK_CALL_RE.exec(value);
+    if (call?.index === 0) {
+      return { framework: matchedFramework(call), name, factory: false };
+    }
+    if (
+      (name === "app" || name === "application") &&
+      FACTORY_CALL_RE.test(value)
+    ) {
+      factoryCall ??= { name, value };
+    }
   }
-  const flask = FLASK_APP_RE.exec(source)?.[1];
-  if (flask) {
-    return { framework: "Flask", variable: flask };
+  const factory = localFactory(lines);
+  if (factoryCall) {
+    const built = factoryCall.value.startsWith(`${factory?.name}(`)
+      ? factory?.framework
+      : null;
+    const framework = built ?? (await declaredFramework(cwd));
+    return framework
+      ? { framework, name: factoryCall.name, factory: false }
+      : null;
   }
-  const variable = APP_VARIABLE_RE.exec(source)?.[1];
-  const framework = variable ? await declaredFramework(cwd) : null;
-  return variable && framework ? { framework, variable } : null;
+  if (!factory) {
+    return null;
+  }
+  const framework = factory.framework ?? (await declaredFramework(cwd));
+  return framework ? { framework, name: factory.name, factory: true } : null;
+}
+
+/**
+ * The first top-level `def create_app():` or `def make_app():` in `lines`,
+ * with the framework its body builds, or null for `framework` when the body
+ * builds none.
+ */
+function localFactory(
+  lines: PythonLine[],
+): { name: string; framework: PythonFramework | null } | null {
+  const start = lines.findIndex(
+    (line) => line.topLevel && FACTORY_DEF_RE.test(line.code),
+  );
+  if (start === -1) {
+    return null;
+  }
+  const name = FACTORY_DEF_RE.exec(lines[start]?.code ?? "")?.[1] ?? "";
+  // The body runs to the next top-level statement. A `)` at column 0 still
+  // belongs to a signature that spans lines.
+  const end = lines.findIndex(
+    (line, i) => i > start && line.topLevel && !/^\)|^\s*$/.test(line.code),
+  );
+  const body = lines.slice(start, end === -1 ? undefined : end);
+  const call = body
+    .map((line) => FRAMEWORK_CALL_RE.exec(line.code))
+    .find(Boolean);
+  return { name, framework: call ? matchedFramework(call) : null };
 }
 
 /**

@@ -73,8 +73,10 @@ export function SpanAnalysis({
       <div className="border-b border-border p-3">
         <h1 className="text-sm font-semibold">{label}</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Grouped by captured operation and exact description. Durations and
-          sizes use only executions that include those values.
+          {kind === "resources"
+            ? "Grouped by operation and resource origin and path."
+            : "Grouped by captured operation and exact description."}{" "}
+          Durations and sizes use only executions that include those values.
         </p>
       </div>
       <ResizableWorkspace

@@ -781,3 +781,29 @@ test("long event titles are shortened in row labels", async () => {
   expect(label.endsWith("…")).toBe(true);
   expect(row.textContent).toContain(message.trim());
 });
+
+test("replay recordings show when they were received instead of unknown time", async () => {
+  // @sentry/browser replay: a replay_event with a timestamp, then a recording without one.
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/live" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { event_id: "4d1c5b0e9a3f4c7e8b2a6f1d0c9e8b7a" },
+          [
+            [
+              { type: "replay_recording" },
+              { data: "H4sIAAAAAAAAA4uOBQApu0wNAgAAAA==" },
+            ],
+          ],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /replay recording/i });
+  expect(row.textContent).not.toContain("unknown time");
+  expect(row.textContent).toContain(new Date(receivedAt).toLocaleTimeString());
+});

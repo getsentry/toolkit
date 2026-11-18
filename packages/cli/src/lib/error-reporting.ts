@@ -25,6 +25,12 @@
  * project's fingerprint rules for the active grouping policy.
  */
 
+import { API_BASE_PATH } from "@sentry/api";
+import {
+  createOperationMatcher,
+  matchOperation,
+  operations,
+} from "@sentry/api/operations";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- Sentry SDK recommends namespace import
 import * as Sentry from "@sentry/node";
 import {
@@ -311,54 +317,101 @@ function recordSilencedError(error: unknown, reason: SilenceReason): void {
 // Grouping tags
 // ---------------------------------------------------------------------------
 
-/** Endpoint normalization patterns — compiled once at module scope. */
-const ENDPOINT_PATTERNS: [RegExp, string][] = [
-  [/\/organizations\/[^/]+/, "/organizations/{org}"],
-  [/\/projects\/[^/]+\/[^/]+/, "/projects/{org}/{project}"],
-  [/\/issues\/[^/]+/, "/issues/{id}"],
-  [/\/events\/[^/]+/, "/events/{id}"],
-  [/\/groups\/[^/]+/, "/groups/{id}"],
-  [/\/releases\/[^/]+/, "/releases/{version}"],
-  [/\/teams\/[^/]+\/[^/]+/, "/teams/{org}/{team}"],
-  [/\/dashboards\/[^/]+/, "/dashboards/{id}"],
-  [/\/customers\/[^/]+/, "/customers/{org}"],
-  [/\/shortids\/[^/]+/, "/shortids/{id}"],
-  [/\/monitors\/[^/]+/, "/monitors/{monitor}"],
-];
-
 /**
- * Strip remaining bare numeric segments (e.g. /12345/) but preserve
- * the API version in /api/0/, which may follow an install prefix.
+ * Matches a path whatever its method, for callers that don't know it: one
+ * entry per catalog path template, all under `GET`.
  */
-const BARE_NUMERIC_SEGMENT_RE = /(?<!\/api)\/\d+(?=\/|$)/g;
+const matchAnyMethod = createOperationMatcher(
+  [...new Set(operations.map((operation) => operation.path))].map((path) => ({
+    method: "GET" as const,
+    path,
+  })),
+);
+
+/** Path segments that some catalog template spells out, such as `issues`. */
+const LITERAL_SEGMENTS = new Set(
+  operations.flatMap((operation) =>
+    pathSegments(operation.path).filter((segment) => !segment.startsWith("{")),
+  ),
+);
 
 /** Scheme and host of an absolute URL. */
 const URL_ORIGIN_RE = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i;
 
+function pathSegments(path: string): string[] {
+  return path.split("/").filter(Boolean);
+}
+
+/** The catalog template for `segments`, or undefined when no operation matches. */
+function matchTemplate(
+  segments: string[],
+  method?: string,
+): string | undefined {
+  const path = `/${segments.join("/")}/`;
+  const match =
+    (method === undefined ? undefined : matchOperation(method, path)) ??
+    matchAnyMethod("GET", path);
+  return match?.operation.path;
+}
+
 /**
- * Normalize an API endpoint path by parameterizing variable segments.
+ * Template a path relative to `API_BASE_PATH` with the API catalog. The
+ * longest leading run of segments that an operation matches takes its
+ * template, and every later segment that no template spells out becomes
+ * `{id}`, so a path outside the catalog leaks no slugs or ids.
+ */
+function templateApiPath(path: string, method?: string): string {
+  const segments = pathSegments(path);
+  for (let length = segments.length; length > 0; length -= 1) {
+    const template = matchTemplate(segments.slice(0, length), method);
+    if (template === undefined) {
+      continue;
+    }
+    if (length === segments.length) {
+      return template;
+    }
+    return `${template}${templateUnknownSegments(segments.slice(length), path)}`;
+  }
+  return segments.length === 0
+    ? "/"
+    : `/${templateUnknownSegments(segments, path)}`;
+}
+
+/** `segments` joined, with `{id}` for each one no template spells out. */
+function templateUnknownSegments(segments: string[], path: string): string {
+  const joined = segments
+    .map((segment) => (LITERAL_SEGMENTS.has(segment) ? segment : "{id}"))
+    .join("/");
+  return path.endsWith("/") ? `${joined}/` : joined;
+}
+
+/**
+ * Normalize an API endpoint by templating its variable segments with the
+ * API catalog's path templates, such as `{organization_id_or_slug}`, so
+ * that server-side fingerprint rules can sub-group `ApiError` by endpoint
+ * shape rather than exact path.
  *
- * Replaces org slugs, project slugs, issue IDs, event IDs, and other
- * entity identifiers with placeholders so that server-side fingerprint
- * rules can sub-group `ApiError` by endpoint shape rather than exact path.
- *
- * Accepts a path with or without a leading slash, or a full URL, whose
- * origin is kept. Drops the query string and fragment.
+ * Accepts a path relative to `API_BASE_PATH`, with or without a leading
+ * slash, or a full URL, whose origin and self-hosted install prefix are
+ * kept. A URL outside the API keeps its path. Drops the query string and
+ * fragment. Pass the request method when it is known, so the template
+ * comes from that method's operation.
  *
  * `"/api/0/projects/my-org/my-project/events/abc123/"` →
- * `"/api/0/projects/{org}/{project}/events/{id}/"`
+ * `"/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/events/{event_id}/"`
  */
-export function normalizeEndpoint(endpoint: string): string {
+export function normalizeEndpoint(endpoint: string, method?: string): string {
   const origin = URL_ORIGIN_RE.exec(endpoint)?.[0] ?? "";
-  const path = endpoint.slice(origin.length).split(/[?#]/, 1)[0] ?? "";
-  // The patterns match on a leading slash, which relative paths lack.
-  const hasLeadingSlash = origin !== "" || path.startsWith("/");
-  let result = path.startsWith("/") ? path : `/${path}`;
-  for (const [pattern, replacement] of ENDPOINT_PATTERNS) {
-    result = result.replace(pattern, replacement);
+  const rawPath = endpoint.slice(origin.length).split(/[?#]/, 1)[0] ?? "";
+  const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+  const apiIndex = `${path}/`.indexOf(`${API_BASE_PATH}/`);
+  if (apiIndex === -1 && origin !== "") {
+    return origin + rawPath;
   }
-  result = result.replace(BARE_NUMERIC_SEGMENT_RE, "/{id}");
-  return origin + (hasLeadingSlash ? result : result.slice(1));
+  // A relative path is relative to API_BASE_PATH, so it gains that prefix.
+  const apiEnd = apiIndex === -1 ? 0 : apiIndex + API_BASE_PATH.length;
+  const base = apiIndex === -1 ? API_BASE_PATH : path.slice(0, apiEnd);
+  return `${origin}${base}${templateApiPath(path.slice(apiEnd), method)}`;
 }
 
 /**
