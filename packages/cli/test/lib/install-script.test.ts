@@ -238,9 +238,12 @@ esac
       : [];
   }
 
+  /** Installer files left behind in the temp or install directory. */
   function installerTempFiles(): string[] {
-    return readdirSync(testDir).filter((name) =>
-      name.startsWith("sentry-install-"),
+    const installed = existsSync(installDir) ? readdirSync(installDir) : [];
+    return [...readdirSync(testDir), ...installed].filter(
+      (name) =>
+        name.startsWith("sentry-install-") || name.endsWith(".download"),
     );
   }
 
@@ -456,7 +459,7 @@ process.exitCode = result.status ?? 1;
     { response: "direct HTTP 200 response", redirect: false },
     { response: "HTTP redirect", redirect: true },
   ])(
-    "stages nightly from a $response in the install directory without a temp directory",
+    "downloads nightly from a $response into the install directory",
     ({ redirect }) => {
       configureNightlyDownload(redirect);
       env.TMPDIR = join(testDir, "deleted");
@@ -733,45 +736,26 @@ exec ${realCurl} "\${args[@]}"
     expect(existsSync(join(installDir, "sentry"))).toBe(true);
   });
 
-  // CLI-BJ: a full temporary directory made gunzip hit the generic ERR trap.
-  test("unpacks into the install directory when the temp directory is full", () => {
-    // The first unpack fails like a full disk; later ones work.
-    writeFileSync(
-      join(binDir, "gunzip"),
-      `#!/usr/bin/env bash
-if [[ "$1" == "-c" && ! -e "$SENTRY_TEST_DIR/unpacked-once" ]]; then
-  touch "$SENTRY_TEST_DIR/unpacked-once"
-  echo 'gzip: stdout: No space left on device' >&2
-  exit 1
-fi
-exec /usr/bin/gunzip "$@"
-`,
-      { mode: 0o755 },
-    );
+  test("downloads into the install directory as setup's own temp file", () => {
     const result = install();
 
     expect(result.status, result.output).toBe(0);
-    expect(result.output).not.toContain("Unexpected failure");
-    // Staged under setup's own temp name, which setup renames into place.
-    expect(recorded("setup-binary")).toEqual([
-      join(installDir, "sentry.download"),
-    ]);
-    expect(existsSync(join(installDir, "sentry"))).toBe(true);
-    expect(installerTempFiles()).toEqual([]);
-  });
-
-  test("downloads into the install directory when the temp directory is missing", () => {
-    env.TMPDIR = join(testDir, "deleted");
-    const result = install();
-
-    expect(result.status, result.output).toBe(0);
+    // Setup renames sentry.download into place instead of copying it.
     expect(recorded("setup-binary")).toEqual([
       join(installDir, "sentry.download"),
     ]);
     expect(readdirSync(installDir)).toEqual(["sentry"]);
   });
 
-  test("stages in a home bin directory listed in PATH with a trailing slash", () => {
+  test("does not need the temp directory", () => {
+    env.TMPDIR = join(testDir, "deleted");
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(readdirSync(installDir)).toEqual(["sentry"]);
+  });
+
+  test("downloads into a home bin directory listed in PATH with a trailing slash", () => {
     const homeBin = join(testDir, "home", "bin");
     mkdirSync(homeBin);
     delete env.SENTRY_INSTALL_DIR;
@@ -781,13 +765,13 @@ exec /usr/bin/gunzip "$@"
 
     expect(result.status, result.output).toBe(0);
     // Setup's determineInstallDir picks the same directory, so it can rename
-    // the staged binary instead of copying it.
+    // the download instead of copying it.
     expect(recorded("setup-binary")).toEqual([
       join(homeBin, "sentry.download"),
     ]);
   });
 
-  test("names the full disk only when no directory has room", () => {
+  test("names a full install directory", () => {
     writeFileSync(
       join(binDir, "gunzip"),
       `#!/usr/bin/env bash
@@ -802,7 +786,9 @@ exec /usr/bin/gunzip "$@"
     const result = install();
 
     expect(result.status).not.toBe(0);
-    expect(result.output).toContain("There is not enough room to stage sentry");
+    expect(result.output).toContain(
+      "There is not enough room to download sentry",
+    );
     expect(result.output).not.toContain("Unexpected failure");
     expect(recorded("setup-args")).toEqual([]);
     expect(installerTempFiles()).toEqual([]);
@@ -860,7 +846,7 @@ exec /usr/bin/gunzip "$@"
     delete env.SENTRY_CLI_NO_TELEMETRY;
     const result = install();
 
-    const failure = '(exit 1): chmod +x "$tmp_binary"';
+    const failure = '(exit 1): chmod +x "$binary"';
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(
       /Unexpected failure at line \d+ in main\(\) \(exit 1\)/,
@@ -956,9 +942,9 @@ exec /usr/bin/gunzip "$@"
     expect(recorded("setup-args")).toContain("setup");
     expect(recorded("post-args")).toEqual(["init"]);
     const [initBinary] = recorded("post-binary");
-    expect(initBinary?.startsWith(join(testDir, "sentry-install-init-"))).toBe(
-      true,
-    );
+    expect(
+      initBinary?.startsWith(join(installDir, "sentry-install-init-")),
+    ).toBe(true);
     expect(installerTempFiles()).toEqual([]);
   });
 
