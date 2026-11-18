@@ -10,6 +10,19 @@ export type LocalSessionEvent = {
   expiresAt?: number;
 };
 
+const UUID_V7_RE =
+  /^([\da-f]{8})-([\da-f]{4})-7[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
+
+/**
+ * Read when the receiver accepted an envelope from its SSE event ID.
+ * Receiver IDs are UUIDv7s minted at ingest, so their first 48 bits are the
+ * receive time in epoch milliseconds. Other IDs return undefined.
+ */
+export function envelopeReceivedAt(id: string): number | undefined {
+  const match = UUID_V7_RE.exec(id);
+  return match ? Number.parseInt(`${match[1]}${match[2]}`, 16) : undefined;
+}
+
 const LOCAL_UI_ORIGIN = "https://local.sentry.dev";
 const LOCAL_UI_PREVIEW_HOST_RE = /^sentry-local-git-[a-z0-9-]+\.sentry\.dev$/;
 
