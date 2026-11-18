@@ -1,3 +1,4 @@
+import { getActiveSpan } from "@sentry/core";
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import type { RelatedIssueType, RelatedIssues } from "../api-client/types";
 import {
@@ -32,6 +33,14 @@ export const UPDATE_ISSUE_SIDE_QUEST_IDS = {
   relatedIssuesOpen: "related_issues_open",
 } as const;
 
+/**
+ * Span attribute with the comma-separated short IDs that the
+ * `related_issues_open` quest lists, so analytics can tell whether the agent
+ * opened or closed one of them next.
+ */
+export const RELATED_ISSUES_OPEN_IDS_ATTRIBUTE =
+  "app.side_quest.related_issues_open.issue_ids";
+
 /** Related issues to request per relation type. */
 export const RELATED_ISSUES_LIMIT = 5;
 
@@ -61,16 +70,11 @@ function isPartial({ data }: RelatedIssues): boolean {
  * ones rather than updating them, so the agent checks each issue before
  * resolving or ignoring it.
  */
-function detectRelatedIssuesOpen({
-  organizationSlug,
-  relatedIssues,
-  projectSlug,
-}: UpdateIssueSideQuestInput): SideQuestCandidate | null {
-  const open = relatedIssues.data.filter(
-    ({ issue }) =>
-      issue.status === "unresolved" &&
-      (!projectSlug || issue.project.slug === projectSlug),
-  );
+function detectRelatedIssuesOpen(
+  input: UpdateIssueSideQuestInput,
+): SideQuestCandidate | null {
+  const { organizationSlug, relatedIssues } = input;
+  const open = getOpenRelatedIssues(input);
   if (open.length === 0) {
     return null;
   }
@@ -102,10 +106,35 @@ const DETECTORS: readonly SideQuestDetector<UpdateIssueSideQuestInput>[] = [
   detectRelatedIssuesOpen,
 ];
 
+/** The related issues still unresolved, in the session's project if it has one. */
+function getOpenRelatedIssues({
+  relatedIssues,
+  projectSlug,
+}: UpdateIssueSideQuestInput): RelatedIssues["data"] {
+  return relatedIssues.data.filter(
+    ({ issue }) =>
+      issue.status === "unresolved" &&
+      (!projectSlug || issue.project.slug === projectSlug),
+  );
+}
+
 /** The side quests after an issue was resolved or ignored, most useful first. */
 export function buildUpdateIssueSideQuests(
   input: UpdateIssueSideQuestInput,
   session: ToolSession,
 ): SideQuest[] | undefined {
-  return buildSideQuests(input, DETECTORS, session);
+  const quests = buildSideQuests(input, DETECTORS, session);
+  if (
+    quests?.some(
+      ({ id }) => id === UPDATE_ISSUE_SIDE_QUEST_IDS.relatedIssuesOpen,
+    )
+  ) {
+    getActiveSpan()?.setAttributes({
+      [RELATED_ISSUES_OPEN_IDS_ATTRIBUTE]: getOpenRelatedIssues(input)
+        .slice(0, MAX_DETAILS)
+        .map(({ issue }) => issue.shortId)
+        .join(","),
+    });
+  }
+  return quests;
 }
