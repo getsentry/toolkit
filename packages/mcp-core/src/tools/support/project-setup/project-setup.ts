@@ -1,8 +1,6 @@
 import { z } from "zod";
 import platforms from "./platforms.json" with { type: "json" };
 
-const DOCS_ORIGIN = "https://docs.sentry.io";
-
 export const projectSetupSchema = z
   .object({
     platform: z.string().describe("Platform display name, such as `Next.js`."),
@@ -32,7 +30,7 @@ type PlatformSignalKey = "traces" | "logs" | "metrics" | "sessionReplay";
 
 interface PlatformSetupEntry {
   name: string;
-  docsPath: string;
+  docsUrl: string;
   signals: Partial<Record<PlatformSignalKey, string>>;
 }
 
@@ -54,7 +52,8 @@ const SIGNALS: ReadonlyArray<[PlatformSignalKey | "errors", SignalDefinition]> =
       "errors",
       {
         name: "Errors",
-        usefulFor: "Exceptions and crashes, with stack traces",
+        usefulFor:
+          "Unhandled exceptions and crashes, grouped into issues with stack traces and the state that led to them",
         recommended: true,
       },
     ],
@@ -62,7 +61,8 @@ const SIGNALS: ReadonlyArray<[PlatformSignalKey | "errors", SignalDefinition]> =
       "traces",
       {
         name: "Traces",
-        usefulFor: "Following requests, services, and agent runs end to end",
+        usefulFor:
+          "Debugging how requests, background jobs, and AI agent runs flow across services, and where they fail or slow down",
         recommended: true,
       },
     ],
@@ -70,7 +70,8 @@ const SIGNALS: ReadonlyArray<[PlatformSignalKey | "errors", SignalDefinition]> =
       "logs",
       {
         name: "Logs",
-        usefulFor: "App context around failures, linked to traces",
+        usefulFor:
+          "Structured app logs linked to the trace and error they came from, for context a stack trace lacks",
         recommended: false,
         feature: "ourlogs-enabled",
       },
@@ -79,7 +80,8 @@ const SIGNALS: ReadonlyArray<[PlatformSignalKey | "errors", SignalDefinition]> =
       "metrics",
       {
         name: "Metrics",
-        usefulFor: "Tracking and alerting on app and business health",
+        usefulFor:
+          "Counters, gauges, and distributions to chart and alert on, such as signups, queue depth, or token usage",
         recommended: false,
         feature: "tracemetrics-enabled",
       },
@@ -88,16 +90,13 @@ const SIGNALS: ReadonlyArray<[PlatformSignalKey | "errors", SignalDefinition]> =
       "sessionReplay",
       {
         name: "Session Replay",
-        usefulFor: "Seeing what a user did before a bug",
+        usefulFor:
+          "Understanding how users behave in a web or mobile UI: clicks, navigation, network calls, and errors in a replay, to reproduce bugs and find friction",
         recommended: false,
         feature: "session-replay",
       },
     ],
   ];
-
-function docsUrl(path: string): string {
-  return new URL(path, DOCS_ORIGIN).toString();
-}
 
 /**
  * Builds setup knowledge for a Sentry platform ID: its setup guide and the
@@ -118,8 +117,8 @@ export function buildProjectSetup(
 
   const signals: NonNullable<ProjectSetup>["signals"] = [];
   for (const [key, definition] of SIGNALS) {
-    const path = key === "errors" ? entry.docsPath : entry.signals[key];
-    if (!path) {
+    const signalDocsUrl = key === "errors" ? entry.docsUrl : entry.signals[key];
+    if (!signalDocsUrl) {
       continue;
     }
     if (
@@ -133,13 +132,13 @@ export function buildProjectSetup(
       name: definition.name,
       usefulFor: definition.usefulFor,
       ...(definition.recommended ? { recommended: true as const } : {}),
-      docsUrl: docsUrl(path),
+      docsUrl: signalDocsUrl,
     });
   }
 
   return {
     platform: entry.name,
-    docsUrl: docsUrl(entry.docsPath),
+    docsUrl: entry.docsUrl,
     signals,
   };
 }

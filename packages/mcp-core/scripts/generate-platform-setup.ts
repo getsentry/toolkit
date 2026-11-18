@@ -84,7 +84,7 @@ interface PlatformEntry {
 
 interface PlatformSetupEntry {
   name: string;
-  docsPath: string;
+  docsUrl: string;
   signals: Partial<Record<SignalKey, string>>;
 }
 
@@ -221,12 +221,12 @@ async function main() {
       string,
     ][]) {
       if (source && childSlugs.has(slug)) {
-        signals[key] = `/${normalizePath(source.path)}/${slug}/`;
+        signals[key] = `${DOCS_ORIGIN}/${normalizePath(source.path)}/${slug}/`;
       }
     }
     output[platform.id] = {
       name: platform.name,
-      docsPath: `/${path}/`,
+      docsUrl: `${DOCS_ORIGIN}/${path}/`,
       signals,
     };
   }
