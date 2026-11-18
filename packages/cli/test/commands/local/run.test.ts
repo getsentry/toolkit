@@ -32,6 +32,7 @@ import {
   CliError,
   COMMAND_NOT_FOUND_FIELD,
   EXIT,
+  PORT_HELD_BY_DAEMON_FIELD,
   PORT_IN_USE_FIELD,
   ValidationError,
   VerifyFailedError,
@@ -45,7 +46,10 @@ import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import * as daemon from "../../../src/commands/local/daemon.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as serverModule from "../../../src/commands/local/server.js";
-import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
+import {
+  wranglerInjectedMessage,
+  wranglerSetupHint,
+} from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -1164,6 +1168,136 @@ describe("sentry local run --verify receiver", () => {
       expect(spawnCapture.env).toBeUndefined();
     } finally {
       await closeServer(holder);
+    }
+  }, 30_000);
+});
+
+describe("sentry local run messages", () => {
+  useTestConfigDir("local-run-messages-");
+
+  /** Answer like `isServerRunning` does when the daemon holds `port`. */
+  function makeDaemonHoldPort(port: number) {
+    const realIsServerRunning = serverModule.isServerRunning;
+    return vi
+      .spyOn(serverModule, "isServerRunning")
+      .mockImplementation((url) =>
+        new URL(url).port === String(port)
+          ? Promise.reject(
+              new ValidationError(
+                "A Sentry Local daemon is using this port. Add --session <name> or choose another --port.",
+                PORT_HELD_BY_DAEMON_FIELD,
+              ),
+            )
+          : realIsServerRunning(url),
+      );
+  }
+
+  test("plain run captures on a free port while the daemon holds the default port", async () => {
+    const daemonPort = makeDaemonHoldPort(DEFAULT_PORT);
+    const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--",
+          process.execPath,
+          "-e",
+          "",
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(Number(receiver.port)).toBeGreaterThan(0);
+      expect(info).toHaveBeenCalledWith(
+        `The Local daemon is using port ${DEFAULT_PORT}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
+      );
+    } finally {
+      info.mockRestore();
+      busy.mockRestore();
+      daemonPort.mockRestore();
+    }
+  }, 30_000);
+
+  test("plain run still fails when the daemon holds an explicit --port", async () => {
+    const daemonPort = makeDaemonHoldPort(45_678);
+    spawnCapture.env = undefined;
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 45_678, host: "127.0.0.1", verify: false, timeout: 0 },
+          "true",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toMatchObject({ field: PORT_HELD_BY_DAEMON_FIELD });
+      expect(spawnCapture.env).toBeUndefined();
+    } finally {
+      daemonPort.mockRestore();
+    }
+  });
+
+  test("--verify reports a crashed app once", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 20 },
+          process.execPath,
+          "-e",
+          "process.exit(1)",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      expect((error as Error).message).toBe("Process crashed with code 1");
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("Process crashed"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("--verify tells a Wrangler Worker to get a request when it times out", async () => {
+    const dir = await mkdtemp(join(TEST_TMP_DIR, "local-run-wrangler-"));
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await writeFile(join(dir, "wrangler.jsonc"), "{}");
+      const fakeWrangler = join(dir, "wrangler");
+      // A Worker that waits for a request and never gets one.
+      await writeFile(fakeWrangler, "#!/bin/sh\nexec sleep 30\n");
+      await chmod(fakeWrangler, 0o755);
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(dir),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 1 },
+          fakeWrangler,
+          "dev",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      expect((error as Error).message).toBe(
+        "Verification timed out after 1s — no events received from the SDK",
+      );
+      const warnings = warn.mock.calls.map((c) => String(c[0]));
+      expect(warnings).toContainEqual(
+        `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
+      );
+      expect(warnings.join("\n")).not.toContain("Verification timed out");
+    } finally {
+      warn.mockRestore();
+      await rm(dir, { recursive: true, force: true });
     }
   }, 30_000);
 });

@@ -57,3 +57,5 @@ out of the map.
 - `mcp-access.md` covers who can start `sentry mcp` and what a session
   reaches: login, skills, and org scope.
 - `cli.md` covers CLI behavior with no login and with a token.
+- `sentry-local.md` covers `sentry local`: verifying an app's SDK, querying a
+  retained session, hiding session credentials, and stopping the daemon.

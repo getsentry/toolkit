@@ -1246,7 +1246,7 @@ export const serverCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Show a grouped attribute table (user vs SDK) under each transaction",
+          "Also show SDK attributes, under each transaction and log or in JSON",
         default: false,
       },
       open: {

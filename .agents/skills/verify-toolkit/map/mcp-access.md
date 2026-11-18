@@ -11,6 +11,7 @@ and an org scope removes the org choice from every tool. The goals are in
 - `skills-narrow` `--skills inspect` lists a strict subset of the default session's tools. Proof: `drive`.
 - `inspect-read-only` An `inspect` session lists no tool that changes data, except feedback and onboarding status. Proof: `drive`.
 - `scope-hides-org` An `<org>/` scope lists no `find_organizations`, and no tool takes `organizationSlug`. Proof: `drive`.
+- `token-host-scoped` `sentry mcp` refuses to start when an org auth token was issued for a different host than the one it would send it to. Proof: `drive`.
 - `remote-scoped-url` A remote token minted for one org's URL gets 403 on another org's URL. Proof: `test` with `pnpm --filter @sentry/mcp-cloudflare exec vitest run src/server/lib/mcp-handler.test.ts -t "returns 403 when the token is org-scoped but the MCP URL uses a different organization"`.
 
 ## How to get to it
@@ -28,6 +29,7 @@ Preconditions:
 
 - **`no-login-exits`: start with nothing.** Run `node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --server cli --no-token --out "$VERIFY_RUN/access-no-login"`. It exits 1 with `mcp-call failed: MCP error -32000: Connection closed`, and `server-stderr.txt` contains `Not authenticated. Run 'sentry auth login' first.`
 - **`skills-narrow`, `inspect-read-only`: compare skills.** Run `node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --server cli --out "$VERIFY_RUN/access-default"` and `node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --server cli --server-arg --skills --server-arg inspect --out "$VERIFY_RUN/access-inspect"`. Run `node .agents/skills/verify-toolkit/scripts/check-results.mjs subset "$VERIFY_RUN/access-default" "$VERIFY_RUN/access-inspect"` and `node .agents/skills/verify-toolkit/scripts/check-results.mjs read-only "$VERIFY_RUN/access-inspect"`. Both print `PASS`, and the subset line names removed tools such as `update_issue`.
+- **`token-host-scoped`: start with an org token for another host.** The token below is a fake org auth token whose payload names `https://sentry.example.com` and org `acme`. Run `node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --server cli --token sntrys_eyJpYXQiOjEsInVybCI6Imh0dHBzOi8vc2VudHJ5LmV4YW1wbGUuY29tIiwib3JnIjoiYWNtZSJ9_verify --out "$VERIFY_RUN/access-token-host"`. It exits 1 with `mcp-call failed: MCP error -32000: Connection closed`, and `server-stderr.txt` names `http://127.0.0.1:9` and says it doesn't match the host your Sentry credentials are for (`https://sentry.example.com`).
 - **`scope-hides-org`: scope to an org.** Run `node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --server cli --server-arg acme/ --out "$VERIFY_RUN/access-scoped"` and `node .agents/skills/verify-toolkit/scripts/check-results.mjs scoped "$VERIFY_RUN/access-scoped"`. It prints `PASS`.
 
 ## Gotchas
@@ -38,4 +40,3 @@ Preconditions:
 ## Gaps
 
 - `scope-not-found-exits` A scope that Sentry answers 404 for stops `sentry mcp` with exit code 23 and names the missing part. The offline drive has no Sentry host that answers.
-- `token-host-scoped` An org auth token is sent only to the host it was issued for. The offline drive has no second host to send it to.

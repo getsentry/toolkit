@@ -12,6 +12,7 @@ import { werkzeugLogEnvelope } from "@/test-fixtures/sentry-python.ts";
 import { EventDetail } from "./event-detail.tsx";
 import { pythonBreadcrumbEvent } from "@/test-fixtures/python-breadcrumbs.ts";
 import {
+  jsCaptureMessage,
   pythonHandledException,
   pythonLoggingEvent,
   sdkErrorMessage,
@@ -423,6 +424,21 @@ test("events whose contexts are all empty show no Contexts section", () => {
   );
   expect(screen.queryByText(/^contexts$/i)).toBeNull();
   expect(screen.getByRole("table", { name: "Event tags" })).toBeDefined();
+});
+
+test("JS SDK 11 captureMessage events are messages, not handled exceptions", () => {
+  render(<EventDetail item={item("event", jsCaptureMessage)} />);
+  const header = screen.getByTestId("event-detail").querySelector("header");
+  expect(header?.textContent).toContain("Message");
+  expect(header?.textContent).not.toContain("Exception");
+  const details = screen.getByRole("table", { name: "Event details" });
+  expect(
+    within(details).queryByRole("rowheader", { name: "Handled" }),
+  ).toBeNull();
+  // The synthetic stack still shows where the message was captured.
+  expect(screen.queryByRole("region", { name: "Exception" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Message" })).toBeDefined();
+  expect(screen.getByText("capture.mjs:11", { exact: false })).toBeDefined();
 });
 
 test("log attribute values hide terminal colour codes while JSON keeps them", () => {

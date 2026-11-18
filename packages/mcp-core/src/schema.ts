@@ -259,7 +259,7 @@ export const ParamInRelease = z
   .trim()
   .min(1)
   .describe(
-    "Release version that fixes the issue. Requires status `resolved`. Events from newer releases reopen it as a regression.",
+    "Full version of the release that fixes the issue, exactly as find_releases returns it (e.g. `my-app@1.2.3+45`). Requires status `resolved`. Events from newer releases reopen it as a regression.",
   );
 
 export const ParamInCommit = z

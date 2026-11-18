@@ -63,9 +63,14 @@ const PACKAGE_MANAGER_NON_SCRIPT_COMMANDS = new Set([
   "x",
 ]);
 
+/** The setup a Worker needs before `@sentry/cloudflare` sends to Sentry Local. */
+export function wranglerSetupHint(): string {
+  return `@sentry/cloudflare sends here only with \`tunnel: env.SENTRY_SPOTLIGHT\` and a DSN set (details: ${sentry`help local run`})`;
+}
+
 /** Notice for an injected binding, with the setup the Worker still needs. */
 export function wranglerInjectedMessage(): string {
-  return `Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding. @sentry/cloudflare sends here only with \`tunnel: env.SENTRY_SPOTLIGHT\` and a DSN set (details: ${sentry`help local run`})`;
+  return `Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding. ${wranglerSetupHint()}`;
 }
 
 /** Result of attempting to augment a command for Wrangler. */
