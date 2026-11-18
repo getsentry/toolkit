@@ -230,3 +230,31 @@ test("a profiled trace lists real spans and links its profile once", () => {
   fireEvent.click(links[0]!);
   expect(selectProfile).toHaveBeenCalledOnce();
 });
+
+test("returning from a sampled function keeps its row shown and focused", () => {
+  const traces = buildTraceGroups(profiledRequest());
+  function Workspace() {
+    const [selectedSpanId, setSelectedSpanId] = useState<string>();
+    return (
+      <TraceWorkspace
+        traces={traces}
+        onSelect={() => undefined}
+        selectedTraceId="t"
+        selectedSpanId={selectedSpanId}
+        onSelectSpan={(_traceId, spanId) => setSelectedSpanId(spanId)}
+        onClearSpan={() => setSelectedSpanId(undefined)}
+      />
+    );
+  }
+  render(<Workspace />);
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Show \d+ sampled function/ }),
+  );
+  const sampled = screen.getAllByRole("button", { name: "Inspect span work" });
+  const id = sampled[0]!.dataset.spanId;
+  fireEvent.click(sampled[0]!);
+  fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
+  expect((document.activeElement as HTMLElement | null)?.dataset.spanId).toBe(
+    id,
+  );
+});

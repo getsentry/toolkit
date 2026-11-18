@@ -1,5 +1,5 @@
 import { profileMatchesTrace } from "@/lib/profiles.ts";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LocalFeedItem } from "../lib/spotlight";
 import { ResizableWorkspace } from "./resizable-workspace";
 import { SpanDetail } from "./span-detail";
@@ -65,6 +65,11 @@ export function TraceWorkspace({
   );
   const activeSpanId = selectedSpan?.id;
   const activeTraceId = selectedTrace?.id;
+  // Back to trace remounts the waterfall with no selected span. Remember the
+  // inspected span so a sampled row stays unfolded and can take focus again.
+  const [inspectedSpanId, setInspectedSpanId] = useState<string>();
+  if (activeSpanId && activeSpanId !== inspectedSpanId)
+    setInspectedSpanId(activeSpanId);
   useEffect(() => {
     if (activeSpanId && activeTraceId) {
       previousSpan.current = { traceId: activeTraceId, spanId: activeSpanId };
@@ -196,6 +201,7 @@ export function TraceWorkspace({
             selectedSpanId={
               selectedTrace.id === selectedTraceId ? selectedSpanId : undefined
             }
+            revealSpanId={inspectedSpanId}
             onSelectSpan={
               onSelectSpan
                 ? (spanId) => onSelectSpan(selectedTrace.id, spanId)

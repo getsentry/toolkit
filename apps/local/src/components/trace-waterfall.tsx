@@ -10,6 +10,8 @@ type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
   selectedSpanId?: string;
+  /** A span whose sampled rows start unfolded, such as the last one inspected. */
+  revealSpanId?: string;
   onSelectSpan?: (spanId: string) => void;
 };
 
@@ -272,6 +274,7 @@ export function TraceWaterfall({
   compact = false,
   trace,
   selectedSpanId,
+  revealSpanId,
   onSelectSpan,
 }: TraceWaterfallProps) {
   const [query, setQuery] = useState("");
@@ -346,12 +349,12 @@ export function TraceWaterfall({
     );
   }
 
-  // Search and a selected sampled row (after Back to trace) show samples too.
-  const selectedOwner = allSpans.find(
-    ({ span }) => span.id === selectedSpanId,
+  // Search and a selected or revealed sampled row show samples too.
+  const revealedOwner = allSpans.find(
+    ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
   )?.owner;
   const samplesVisible = (owner: string) =>
-    Boolean(query.trim()) || owner === selectedOwner || shownSamples.has(owner);
+    Boolean(query.trim()) || owner === revealedOwner || shownSamples.has(owner);
   const spans: PositionedSpan[] = [];
   let hiddenBelow: number | undefined;
   for (const entry of allSpans) {
