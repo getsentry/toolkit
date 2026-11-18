@@ -52,6 +52,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { useNavigate } from "react-router";
 import { ConnectionLanding } from "@/components/connection-landing.tsx";
 import {
   EventCommandDialog,
@@ -87,6 +88,7 @@ import {
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
+  getStreamUrlFromHash,
   parseStreamEndpoint,
   isLoopbackHost,
   REMOTE_STREAM_STORAGE_KEY,
@@ -700,6 +702,36 @@ export default function App() {
     setIsEditingReceiver(false);
   };
 
+  // A new CLI link pasted into an open tab switches to its session and
+  // directory. The startup link is read on first render instead.
+  const navigate = useNavigate();
+  const connectToEndpointRef = useRef(connectToEndpoint);
+  useEffect(() => {
+    connectToEndpointRef.current = connectToEndpoint;
+  });
+  useEffect(() => {
+    const onHashChange = () => {
+      const linkedStreamUrl = getStreamUrlFromHash(window.location.hash);
+      if (!linkedStreamUrl) return;
+      const directory = parseSessionDirectoryUrl(
+        new URLSearchParams(window.location.hash.slice(1)).get("directory"),
+        linkedStreamUrl,
+      );
+      connectToEndpointRef.current(linkedStreamUrl);
+      if (directory) {
+        saveSessionDirectory(directory);
+        setDirectoryUrl(directory);
+      }
+      // The link carries capabilities; keep them out of the address bar.
+      void navigate(
+        { pathname: window.location.pathname, search: window.location.search },
+        { replace: true },
+      );
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [navigate]);
+
   const connectReceiver = (url: string) => {
     const endpoint = parseStreamEndpoint(url);
     if (!endpoint || (connection !== "connected" && !hasRetainedItems)) {
@@ -903,6 +935,12 @@ export default function App() {
       const receivedAt =
         envelopeReceivedAt(eventId) ??
         (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
+      // Items with no SDK time, such as replay recordings, show when they arrived.
+      items = items?.map((item) =>
+        item.timestamp === undefined
+          ? { ...item, timestamp: receivedAt / 1000 }
+          : item,
+      );
       const itemTypes = [...new Set(items?.map((item) => item.type))];
       setLatestEventTime((latest) =>
         latest === undefined ? receivedAt : Math.max(latest, receivedAt),
