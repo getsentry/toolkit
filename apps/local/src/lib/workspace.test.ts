@@ -102,6 +102,17 @@ describe("event list labels", () => {
     });
   });
 
+  test("browser pageloads and navigations show their op and page name", () => {
+    expect(eventListLabel(transaction("pageload", "/orders/:id"))).toEqual({
+      badge: "pageload",
+      title: "/orders/:id",
+    });
+    expect(eventListLabel(transaction("navigation", "/settings"))).toEqual({
+      badge: "navigation",
+      title: "/settings",
+    });
+  });
+
   test("request transactions show their method and route", () => {
     expect(eventListLabel(transaction("http.server", "tx"))).toEqual({
       badge: "GET",
