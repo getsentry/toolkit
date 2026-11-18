@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import {
   type Span,
   captureException,
+  getActiveSpan,
   getClient,
   setUser,
   startSpan,
@@ -22,6 +23,7 @@ import { z } from "zod";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
 import { UserInputError } from "./errors";
+import { fingerprintToolCall } from "./internal/side-quests";
 import { apiServiceFromContext } from "./internal/tool-helpers/api";
 import { structuredResult } from "./internal/tool-helpers/results";
 import { buildServer } from "./server";
@@ -3277,6 +3279,40 @@ describe("buildServer", () => {
       expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
       expect(span.recordException).not.toHaveBeenCalled();
+    });
+
+    it("records each call's fingerprint on the span of the tool that ran", async () => {
+      const registry: Record<string, ToolConfig> = {};
+      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+        inputSchema: { value: z.string() },
+      });
+      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      const activeSpan = { ...createMockSpan(), setAttributes: vi.fn() };
+      vi.mocked(getActiveSpan).mockReturnValue(activeSpan as unknown as Span);
+      const server = buildServer({ context: baseContext, tools: registry });
+      const fingerprint = fingerprintToolCall("fake_catalog_tool", {
+        value: "a",
+      });
+
+      await callRegisteredTool(server, "execute_sentry_tool", {
+        name: "fake_catalog_tool",
+        arguments: { value: "a" },
+      });
+      expect(startedSpans[0].setAttribute).toHaveBeenCalledWith(
+        "app.tool_call.fingerprint",
+        fingerprint,
+      );
+      expect(activeSpan.setAttribute).not.toHaveBeenCalledWith(
+        "app.tool_call.fingerprint",
+        expect.anything(),
+      );
+
+      await callRegisteredTool(server, "fake_catalog_tool", { value: "a" });
+      expect(activeSpan.setAttribute).toHaveBeenCalledWith(
+        "app.tool_call.fingerprint",
+        fingerprint,
+      );
+      vi.mocked(getActiveSpan).mockReturnValue(undefined);
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {

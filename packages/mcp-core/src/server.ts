@@ -45,6 +45,10 @@ import {
   isExpectedToolError,
   recordToolFailure,
 } from "./internal/error-handling";
+import {
+  TOOL_CALL_FINGERPRINT_ATTRIBUTE,
+  fingerprintToolCall,
+} from "./internal/side-quests";
 import type { Skill } from "./skills";
 import { type LogIssueOptions, logIssue } from "./telem/logging";
 import {
@@ -457,6 +461,14 @@ function configureServer({
         );
 
         if (activeSpan) {
+          // execute_sentry_tool records the fingerprint of the tool it runs
+          // on its own child span.
+          if (tool.name !== "execute_sentry_tool") {
+            activeSpan.setAttribute(
+              TOOL_CALL_FINGERPRINT_ATTRIBUTE,
+              fingerprintToolCall(tool.name, paramsWithConstraints),
+            );
+          }
           // Intentional GenAI semconv extension: per-key attrs like http.request.header.<key>.
           for (const [key, value] of Object.entries(paramsWithConstraints)) {
             const attributeValue =

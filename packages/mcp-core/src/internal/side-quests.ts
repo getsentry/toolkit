@@ -7,6 +7,7 @@ import {
   getToolCallRoute,
 } from "./tool-helpers/tool-call-formatting";
 import type { SuggestedActionValue } from "./tool-helpers/suggested-actions";
+import { CONSTRAINT_PARAMETER_KEYS } from "../types";
 
 /**
  * Side quests are optional detours a tool response points out, such as a
@@ -107,7 +108,64 @@ export function buildSideQuests<Input>(
         ...(lines.length > 0 && { details: lines }),
       };
     });
+  recordOfferedCalls(quests);
   return quests.length > 0 ? quests : undefined;
+}
+
+/** The span attribute every tool call records its fingerprint in. */
+export const TOOL_CALL_FINGERPRINT_ATTRIBUTE = "app.tool_call.fingerprint";
+
+/**
+ * A short, stable id for a tool call: the tool name and its arguments in key
+ * order, hashed. A shown quest records the fingerprints of its `next` calls,
+ * and every tool call records its own, so analytics can tell when a later
+ * call from the same user is one a quest offered.
+ *
+ * Scope keys (organization, project, region) are left out: the server fills
+ * them from constraints or the default organization, so an agent may or may
+ * not pass them. Empty values are left out for the same reason.
+ */
+export function fingerprintToolCall(
+  tool: string,
+  args: Record<string, unknown>,
+): string {
+  const entries = Object.entries(args)
+    .filter(
+      ([key, value]) =>
+        !CONSTRAINT_PARAMETER_KEYS.has(key) && value != null && value !== "",
+    )
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return fnv1a(JSON.stringify([tool, entries]));
+}
+
+/** 32-bit FNV-1a as 8 hex characters. Not for security; only stability matters. */
+function fnv1a(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Records the `next` calls each shown quest offered as
+ * `app.side_quest.<id>.next`, a comma-separated list of fingerprints. A later
+ * span from the same user whose {@link TOOL_CALL_FINGERPRINT_ATTRIBUTE} is in
+ * that list is a call the quest offered.
+ */
+function recordOfferedCalls(quests: SideQuest[]) {
+  const attributes: Record<string, string> = {};
+  for (const { id, next } of quests) {
+    if (next?.length) {
+      attributes[`app.side_quest.${id}.next`] = next
+        .map(({ tool, args }) => fingerprintToolCall(tool, args))
+        .join(",");
+    }
+  }
+  if (Object.keys(attributes).length > 0) {
+    getActiveSpan()?.setAttributes(attributes);
+  }
 }
 
 /**

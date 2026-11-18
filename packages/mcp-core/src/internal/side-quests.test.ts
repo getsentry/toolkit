@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type SideQuestCandidate,
   buildSideQuests,
+  fingerprintToolCall,
   formatSideQuests,
 } from "./side-quests";
 
@@ -186,6 +187,35 @@ describe("side quest telemetry", () => {
     ]);
   });
 
+  it("records the fingerprints of the calls each shown quest offered", () => {
+    buildSideQuests(
+      null,
+      [
+        detector({
+          rank: 0,
+          id: "calls",
+          tip: "Tip.",
+          next: [
+            { tool: "update_project", args: { slug: "web" } },
+            { tool: "get_issue_details", args: { issueId: "WEB-1" } },
+            { tool: "search_events", args: { query: "a" } },
+          ],
+        }),
+        detector({ rank: 1, id: "tip_only", tip: "Tip." }),
+      ],
+      session,
+    );
+
+    // update_project is not in the session, so only the calls the quest
+    // shows are recorded.
+    expect(setAttributes).toHaveBeenLastCalledWith({
+      "app.side_quest.calls.next": [
+        fingerprintToolCall("get_issue_details", { issueId: "WEB-1" }),
+        fingerprintToolCall("search_events", { query: "a" }),
+      ].join(","),
+    });
+  });
+
   it("records zero counts when no detector finds anything", () => {
     buildSideQuests(null, [detector(null)], session);
 
@@ -194,6 +224,43 @@ describe("side quest telemetry", () => {
       "app.side_quests.shown": 0,
     });
     expect(metrics.count).not.toHaveBeenCalled();
+  });
+});
+
+describe("fingerprintToolCall", () => {
+  const call = {
+    organizationSlug: "acme",
+    resourceType: "issue",
+    resourceId: "WEB-1",
+  };
+
+  it("is a short hex id", () => {
+    expect(fingerprintToolCall("get_sentry_resource", call)).toMatch(
+      /^[0-9a-f]{8}$/,
+    );
+  });
+
+  it("ignores key order, scope keys, and empty values", () => {
+    expect(
+      fingerprintToolCall("get_sentry_resource", {
+        resourceId: "WEB-1",
+        regionUrl: "https://us.sentry.io",
+        resourceType: "issue",
+        url: "",
+        packageNames: undefined,
+      }),
+    ).toBe(fingerprintToolCall("get_sentry_resource", call));
+  });
+
+  it("differs by tool and by argument value", () => {
+    const fingerprint = fingerprintToolCall("get_sentry_resource", call);
+    expect(fingerprintToolCall("update_issue", call)).not.toBe(fingerprint);
+    expect(
+      fingerprintToolCall("get_sentry_resource", {
+        ...call,
+        resourceId: "WEB-2",
+      }),
+    ).not.toBe(fingerprint);
   });
 });
 

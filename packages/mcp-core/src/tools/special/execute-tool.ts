@@ -6,6 +6,10 @@ import {
   recordToolFailure,
 } from "../../internal/error-handling";
 import { UserInputError } from "../../errors";
+import {
+  TOOL_CALL_FINGERPRINT_ATTRIBUTE,
+  fingerprintToolCall,
+} from "../../internal/side-quests";
 import { withRoutedCredential } from "../../internal/tool-helpers/credential-routing";
 import { ALL_SKILLS } from "../../skills";
 import type { ServerContext } from "../../types";
@@ -66,6 +70,10 @@ async function executeCatalogToolWithSpan({
           context,
         });
         setToolArgumentAttributes(span, paramsWithConstraints);
+        span.setAttribute(
+          TOOL_CALL_FINGERPRINT_ATTRIBUTE,
+          fingerprintToolCall(tool.name, paramsWithConstraints),
+        );
         const output = await withRoutedCredential(
           context,
           paramsWithConstraints,
