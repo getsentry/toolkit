@@ -302,3 +302,30 @@ test("log messages hide terminal colour codes while JSON keeps them", () => {
   fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
   expect(screen.getByRole("tabpanel").textContent).toContain("[31m");
 });
+
+test("breadcrumb messages hide terminal colour codes", () => {
+  // sentry-python records werkzeug's coloured access log as a breadcrumb.
+  render(
+    <EventDetail
+      item={item("event", {
+        level: "error",
+        message: "Checkout failed",
+        breadcrumbs: {
+          values: [
+            {
+              type: "log",
+              category: "werkzeug",
+              level: "info",
+              message:
+                '127.0.0.1 - - [17/Nov/2026 20:59:55] "\u001b[33mGET /missing HTTP/1.1\u001b[0m" 404 -',
+              timestamp: "2026-11-17T20:59:55.120Z",
+            },
+          ],
+        },
+      })}
+    />,
+  );
+  const breadcrumbs = screen.getByRole("region", { name: "Breadcrumbs" });
+  expect(breadcrumbs.textContent).toContain('"GET /missing HTTP/1.1" 404');
+  expect(breadcrumbs.textContent).not.toContain("[33m");
+});
