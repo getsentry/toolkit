@@ -213,24 +213,51 @@ const SOURCE_COLORS: Record<string, (s: string) => string> = {
 /** Where an item was captured, as shown in the source tag. */
 type SourceName = "browser" | "mobile" | "server";
 
+/** Span ops that only the browser SDK creates. */
+const BROWSER_OP_RE = /^(?:pageload|navigation|(?:ui|resource|browser)\..+)$/;
+
+/**
+ * Whether span or log attributes show the browser SDK made them: a browser
+ * op, a `browser.*` attribute (web vitals), a browser instrumentation origin
+ * such as `auto.http.browser`, or a session replay ID, which only the browser
+ * records. The browser SDK also sets `user_agent.original` on every span, but
+ * server SDKs set it on HTTP spans too, so it only counts on other spans.
+ */
+function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
+  const op = typeof attrs["sentry.op"] === "string" ? attrs["sentry.op"] : "";
+  const origin = attrs["sentry.origin"];
+  return (
+    BROWSER_OP_RE.test(op) ||
+    (typeof origin === "string" && origin.split(".").includes("browser")) ||
+    attrs["sentry.replay_id"] !== undefined ||
+    (attrs["user_agent.original"] !== undefined && !op.startsWith("http.")) ||
+    Object.keys(attrs).some((key) => key.startsWith("browser."))
+  );
+}
+
 /**
  * Infer where an item was captured.
  *
  * Event payloads say it directly: server SDKs set a `runtime` context (Node,
  * Cloudflare Workers, Vercel Edge, Bun, Deno) or a non-JavaScript platform,
- * and browser events have `platform: "javascript"` with no runtime. This is
- * the only way to split meta-framework SDKs such as Next.js, which use one
- * SDK name on both sides. Items without those fields fall back to the SDK
- * name in the envelope header.
+ * and browser events have `platform: "javascript"` with no runtime. Spans and
+ * logs have neither, so their `attributes` are checked for browser-only
+ * signs (see {@link hasBrowserAttributes}). This is the only way to split
+ * meta-framework SDKs such as Next.js, which use one SDK name on both sides.
+ * Items without those fall back to the SDK name in the envelope header.
  */
 function inferSourceName(
   header: Record<string, unknown>,
   payload?: Record<string, unknown>,
+  attributes: Record<string, unknown>[] = [],
 ): SourceName {
   const sdk = header.sdk as { name?: unknown } | undefined;
   const name = typeof sdk?.name === "string" ? sdk.name : "";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
     return "mobile";
+  }
+  if (attributes.some(hasBrowserAttributes)) {
+    return "browser";
   }
   const contexts = payload?.contexts as Record<string, unknown> | undefined;
   if (contexts?.runtime) {
@@ -250,14 +277,15 @@ function inferSourceName(
 
 /**
  * Build the source tag for an item, e.g. `[SERVER] `: colored, bracketed, and
- * padded. Pass the item payload so events can be placed by their platform and
- * runtime; see {@link inferSourceName}.
+ * padded. Pass the event payload, or the attributes of spans and logs, so the
+ * item can be placed by what it carries; see {@link inferSourceName}.
  */
 export function inferSource(
   header: Record<string, unknown>,
   payload?: Record<string, unknown>,
+  attributes?: Record<string, unknown>[],
 ): string {
-  const source = inferSourceName(header, payload);
+  const source = inferSourceName(header, payload, attributes);
   const tag = `[${source.toUpperCase()}]`;
   const colorFn = SOURCE_COLORS[source] ?? cyan;
   return colorFn(tag) + " ".repeat(Math.max(0, SOURCE_WIDTH - tag.length));
@@ -275,10 +303,25 @@ export type StackFrame = {
 /**
  * Pick the frame to show for a stack. Frames are ordered oldest to newest, so
  * the last in-app frame is the app code closest to the throw (e.g. `onClick`,
- * not React's `dispatchDiscreteEvent`). Falls back to the newest frame.
+ * not React's `dispatchDiscreteEvent`). The browser SDK marks every frame in
+ * app, including native ones such as `JSON.parse (<anonymous>)` that have no
+ * line, so frames with a file and line come first. Falls back to the newest
+ * in-app frame, then the newest frame.
  */
 function pickFrame(frames: StackFrame[] | undefined): StackFrame | undefined {
-  return frames?.findLast((f) => f.in_app) ?? frames?.at(-1);
+  return (
+    frames?.findLast((f) => f.in_app && f.filename && f.lineno) ??
+    frames?.findLast((f) => f.in_app) ??
+    frames?.at(-1)
+  );
+}
+
+/**
+ * A frame's function name, or undefined for `?`, which SDKs use when the
+ * function is anonymous.
+ */
+function frameFunction(frame: StackFrame | undefined): string | undefined {
+  return frame?.function && frame.function !== "?" ? frame.function : undefined;
 }
 
 /** Build the `[file:line:col] [func]` suffix for the best stack frame. */
@@ -296,8 +339,9 @@ export function formatFrameHint(frames: StackFrame[]): string {
     );
     hint += ` ${muted(`[${loc}]`)}`;
   }
-  if (frame.function) {
-    hint += ` ${muted(`[${sanitize(frame.function)}]`)}`;
+  const fn = frameFunction(frame);
+  if (fn) {
+    hint += ` ${muted(`[${sanitize(fn)}]`)}`;
   }
   return hint;
 }
@@ -621,6 +665,11 @@ function isUserLogAttribute(key: string): boolean {
   return !key.startsWith("sentry.");
 }
 
+/** Log attributes as a plain `key → value` record. */
+function logAttributes(logEntry: LogEntry): Record<string, unknown> {
+  return Object.fromEntries(logAttributeEntries(logEntry));
+}
+
 /** Log attributes that have a value, as `[key, value]` pairs. */
 function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
   return Object.entries(logEntry.attributes ?? {})
@@ -693,7 +742,8 @@ export function formatLogItem(
     return [];
   }
 
-  const source = inferSource(header);
+  // One log batch comes from one SDK client, so any browser log places all.
+  const source = inferSource(header, undefined, items.map(logAttributes));
   return items.flatMap((logEntry) => {
     const line = formatSingleLog(logEntry, source);
     if (!showAttributes) {
@@ -793,7 +843,7 @@ export function formatSingleSpan(
   msg += spanCount + formatSpanTraceHint(span);
 
   const ts = formatTime(span.end_timestamp);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header, undefined, [flat])} ${msg}`;
 }
 
 /** Spans of one segment that arrived in the same batch. */
@@ -898,7 +948,12 @@ function formatLateSpansLine(
     formatSpanCount(group.spans.length, "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  const source = inferSource(
+    header,
+    undefined,
+    group.spans.map((span) => flattenSpanAttributes(span.attributes)),
+  );
+  return `${muted(ts)} ${formatType("trace")} ${source} ${msg}`;
 }
 
 /** A span's attributes as an indented table, for `--attributes`. */
@@ -997,6 +1052,26 @@ export function itemTypeToFilterCategory(
   if (itemType === "transaction" || itemType === "span" || itemType === "log") {
     return itemType === "span" ? "transaction" : itemType;
   }
+}
+
+/**
+ * Format the first `replay_event` of a session replay: its short ID and the
+ * page it started on.
+ *
+ * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
+ */
+function formatReplayItem(
+  event: Record<string, unknown>,
+  header: Record<string, unknown>,
+): string {
+  const id = typeof event.replay_id === "string" ? event.replay_id : "";
+  const url = Array.isArray(event.urls) ? event.urls[0] : undefined;
+  let msg = `replay ${sanitize(id.slice(0, TRACE_ID_SHORT_LEN))}`;
+  if (typeof url === "string" && url) {
+    msg += ` ${sanitize(url)}`;
+  }
+  const ts = formatTime(event.timestamp);
+  return `${muted(ts)} ${formatType("replay")} ${inferSource(header, event)} ${msg}`;
 }
 
 /** Produce a fallback one-liner for unparseable or unsupported items. */
@@ -1115,7 +1190,7 @@ function formatErrorJson(
       filename: jsonSafe(frame?.filename),
       lineno: frame?.lineno,
       colno: frame?.colno,
-      function: jsonSafe(frame?.function),
+      function: jsonSafe(frameFunction(frame)),
       source: inferSourceName(header, payload),
     },
     payload,
@@ -1205,7 +1280,7 @@ function formatLogJson(
   if (!items?.length) {
     return [];
   }
-  const source = inferSourceName(header);
+  const source = inferSourceName(header, undefined, items.map(logAttributes));
   return items.map((entry) =>
     formatJsonObservation(
       {
@@ -1248,7 +1323,6 @@ function formatSpanJson(
   if (!items?.length) {
     return [];
   }
-  const source = inferSourceName(header);
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
     const semantic = formatSemanticSpanDisplay(
@@ -1272,7 +1346,7 @@ function formatSpanJson(
         attributes: includeAttributes
           ? buildJsonAttributes({ contexts: { trace: { data: flat } } })
           : undefined,
-        source,
+        source: inferSourceName(header, undefined, [flat]),
       },
       payload,
       header,
@@ -1353,8 +1427,11 @@ export function formatItem(
   if (itemType === "log") {
     return formatLogItem(payload, header, showAttributes);
   }
-  // Active replays send a recording segment every few seconds; its
-  // replay_event already gets a line.
+  // Active replays send a replay_event and a recording every few seconds;
+  // only the first segment gets a line.
+  if (itemType === "replay_event") {
+    return payload.segment_id === 0 ? [formatReplayItem(payload, header)] : [];
+  }
   if (itemType === "replay_recording") {
     return [];
   }
@@ -1496,11 +1573,10 @@ export function formatEnvelopeLines(
     );
   }
 
-  if (lines.length > 0) {
+  // Items can print nothing on purpose (later replay segments), so the
+  // fallback line is only for an envelope with no items at all.
+  if (lines.length > 0 || items.length > 0 || activeFilters.size > 0) {
     return lines;
-  }
-  if (activeFilters.size > 0) {
-    return [];
   }
   return [formatFallbackLine(resolveUnparseableLabel(container))];
 }
