@@ -14,8 +14,9 @@
  * Usage (from packages/mcp-core):
  *   pnpm run generate-platform-setup
  *
- * The output is committed. Rerun this when Sentry adds a platform or the docs
- * change which signals a platform supports.
+ * The output is committed. The regenerate-platform-setup.yml workflow reruns
+ * this daily and opens a PR when Sentry adds a platform or the docs change
+ * which signals a platform supports.
  */
 import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
