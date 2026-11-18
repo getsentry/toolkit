@@ -31,9 +31,9 @@ Preconditions:
 
 ## Gotchas
 
-- The offline host is self-hosted from the CLI's view, so the default session leaves out `seer` tools such as `analyze_issue_with_seer`. Pass `--server-arg --all-skills` to list them.
+- The offline host is self-hosted from the CLI's view, so the default session leaves out `analyze_issue_with_seer`, the only tool that needs the `seer` skill alone. Pass `--server-arg --all-skills` to list it, one more tool.
 - The mock server's list is not the user's list: it grants every skill in experimental mode. Drive `--server cli` for this file.
 
 ## Gaps
 
-- `gateway-cap` The fallback gateway surface lists at most 25 tools. It is a code constant that is off, so no entry point can turn it on.
+- `gateway-cap` The fallback gateway surface lists at most 25 tools. Every entry point lists all tools directly, and no flag or setting turns the gateway on, so none reaches it.
