@@ -20,7 +20,7 @@ import type {
   SentryApiService,
   ThreadEntrySchema,
 } from "../api-client";
-import { ThreadsEntrySchema } from "../api-client";
+import { StacktraceSchema, ThreadsEntrySchema } from "../api-client";
 import type {
   AutofixRunState,
   CommitterList,
@@ -267,6 +267,7 @@ export function formatEventOutput(
   const threadsData = threadsEntry
     ? parseThreadsEntryData(threadsEntry.data)
     : undefined;
+  const eventStacktrace = findEventStacktrace(eventToRender);
   const requestEntry = eventToRender.entries.find((e) => e.type === "request");
   const spansEntry = eventToRender.entries.find((e) => e.type === "spans");
   const cspEntry = eventToRender.entries.find((e) => e.type === "csp");
@@ -287,6 +288,10 @@ export function formatEventOutput(
     );
   } else if (threadsData) {
     output += formatThreadsInterfaceOutput(eventToRender, threadsData);
+  }
+
+  if (!exceptionEntry && eventStacktrace) {
+    output += formatEventStacktraceOutput(eventToRender, eventStacktrace);
   }
 
   if (threadsData?.values && threadsData.values.length > 1) {
@@ -606,9 +611,35 @@ function formatThreadsInterfaceOutput(
     parts.push("");
   }
 
-  const frames = crashedThread.stacktrace.frames;
+  parts.push(...formatStackFrames(event, crashedThread.stacktrace.frames));
+  parts.push("");
 
-  // Find and format the most relevant in-app frame with enhanced view
+  return parts.join("\n");
+}
+
+/**
+ * Renders the event-level `stacktrace` entry. Sentry keeps it outside
+ * exceptions and threads, for example on a message captured with
+ * `attach_stacktrace`.
+ */
+function formatEventStacktraceOutput(
+  event: Event,
+  stacktrace: z.infer<typeof StacktraceSchema>,
+) {
+  return [
+    "### Stacktrace",
+    "",
+    ...formatStackFrames(event, stacktrace.frames),
+    "",
+  ].join("\n");
+}
+
+/** The most relevant in-app frame in full, then every frame. */
+function formatStackFrames(
+  event: Event,
+  frames: z.infer<typeof FrameInterface>[],
+): string[] {
+  const parts: string[] = [];
   const relevantFrame = findMostRelevantInAppFrame(frames);
   if (relevantFrame && (relevantFrame.context?.length || relevantFrame.vars)) {
     parts.push(renderEnhancedFrame(relevantFrame, event));
@@ -630,9 +661,7 @@ function formatThreadsInterfaceOutput(
         .join("\n"),
     ),
   );
-  parts.push("");
-
-  return parts.join("\n");
+  return parts;
 }
 
 function getThreadDisplayValue(
@@ -686,6 +715,17 @@ export function parseThreadsEntryData(
 ): z.infer<typeof ThreadsEntrySchema> | undefined {
   const result = ThreadsEntrySchema.safeParse(data);
   return result.success ? result.data : undefined;
+}
+
+/** The event-level `stacktrace` entry, when it has frames. */
+export function findEventStacktrace(
+  event: Event,
+): z.infer<typeof StacktraceSchema> | undefined {
+  const entry = event.entries.find((e) => e.type === "stacktrace");
+  const result = StacktraceSchema.safeParse(entry?.data);
+  return result.success && result.data.frames.length > 0
+    ? result.data
+    : undefined;
 }
 
 /**

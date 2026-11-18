@@ -526,6 +526,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
             "method": "POST",
             "url": "https://shop.example.com/api/orders/",
           },
+          "stacktrace": null,
           "tags": [
             {
               "key": "browser",
@@ -919,5 +920,46 @@ describe("get_issue_details structuredContent for a realistic error", () => {
       payload.event.crashedThread?.stacktrace?.frames.map((f) => f.function),
     ).toEqual(["main", "draw_frame"]);
     expect(JSON.stringify(payload)).not.toContain("0x0000000100f3c2a8");
+  });
+
+  it("maps the event-level stacktrace of a captured message", async () => {
+    // a native captureMessage with attach_stacktrace: no exception, no threads
+    mockDjangoIssue({
+      ...djangoErrorEvent,
+      type: "default",
+      platform: "native",
+      entries: [
+        { type: "message", data: { formatted: "Texture cache miss" } },
+        {
+          type: "stacktrace",
+          data: {
+            frames: [
+              frame({ filename: "main.c", function: "main", lineNo: 12 }),
+              frame({
+                filename: "texture.c",
+                function: "load_texture",
+                lineNo: 88,
+                inApp: true,
+              }),
+            ],
+            framesOmitted: null,
+            registers: null,
+            hasSystemFrames: false,
+          },
+        },
+      ],
+    });
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+
+    expect(payload.event.exceptions).toBeNull();
+    expect(payload.event.threads).toBeNull();
+    expect(payload.event.stacktrace?.frames.map((f) => f.function)).toEqual([
+      "main",
+      "load_texture",
+    ]);
   });
 });

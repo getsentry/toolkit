@@ -12,6 +12,7 @@ import {
   type N1EvidenceData,
   OCCURRENCE_TYPE_TO_ISSUE_TYPE,
   type PerformanceSpan,
+  findEventStacktrace,
   formatMetricAlertCondition,
   formatMetricAlertValue,
   getMetricAlertContext,
@@ -85,6 +86,11 @@ export const issueEventSchema = z.object({
   crashedThread: structuredThreadSchema
     .nullable()
     .describe("The crashed thread's stacktrace, when there is no exception."),
+  stacktrace: structuredStacktraceSchema
+    .nullable()
+    .describe(
+      "The event-level stacktrace, which Sentry keeps outside exceptions and threads, as on a captured message.",
+    ),
   request: z
     .object({ method: z.string().nullable(), url: z.string().nullable() })
     .nullable(),
@@ -498,6 +504,7 @@ export function buildIssueEventPayload({
     threads,
     threadCount,
     crashedThread,
+    stacktrace: mapStructuredStacktrace(findEventStacktrace(stripped)),
     request: mapRequest(stripped),
     csp: mapCsp(stripped),
     performance: mapPerformance(stripped, occurrence, performanceTrace),

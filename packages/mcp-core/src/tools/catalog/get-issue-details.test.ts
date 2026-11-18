@@ -304,6 +304,7 @@ describe("get_issue_details", () => {
             "method": "GET",
             "url": "https://mcp.sentry.dev/sse",
           },
+          "stacktrace": null,
           "tags": [
             {
               "key": "environment",
@@ -2989,6 +2990,7 @@ describe("selected event package versions", () => {
           "performance": null,
           "platform": "python",
           "request": null,
+          "stacktrace": null,
           "tags": [
             {
               "key": "level",
