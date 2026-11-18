@@ -39,7 +39,9 @@ export function stubOpenRouter(
       return Promise.resolve(
         Response.json(
           { error: { code: reply.status, message: reply.message } },
-          { headers: reply.headers, status: reply.status },
+          reply.headers === undefined
+            ? { status: reply.status }
+            : { headers: reply.headers, status: reply.status },
         ),
       );
     }

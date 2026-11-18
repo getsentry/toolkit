@@ -52,8 +52,8 @@ beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "df-upload-test-"));
   vi.mocked(homedir).mockReturnValue(tempDir);
   savedEnv = {
-    SENTRY_ORG: process.env.SENTRY_ORG,
-    SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+    SENTRY_ORG: process.env["SENTRY_ORG"],
+    SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
   };
   // The real-upload path fetches chunk-upload options before scanning to gate
   // on the server's max file size. Stub it so tests need no network.
@@ -128,9 +128,11 @@ async function writeIl2cppFixture(): Promise<void> {
 }
 
 /** Run `debug-files upload` and capture stdout + exit code. */
-async function runUpload(
-  args: string[],
-): Promise<{ output: string; error: string; exitCode: number | undefined }> {
+async function runUpload(args: string[]): Promise<{
+  output: string;
+  error: string;
+  exitCode: NodeJS.Process["exitCode"];
+}> {
   let output = "";
   let error = "";
   const mockContext: SentryContext = {
@@ -234,8 +236,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--no-upload needs no credentials", async () => {
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
     await writeBreakpad();
     const { exitCode } = await runUpload([tempDir, "--no-upload"]);
     expect(exitCode).toBe(0);
@@ -336,8 +338,8 @@ describe("sentry debug-files upload", () => {
   // ── Upload orchestration ─────────────────────────────────────────
 
   test("uploads scanned files via uploadDebugFiles", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -365,8 +367,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("server maxFileSize gating all files exits non-zero with a clear error", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
     // Advertise a 10-byte cap; the fixture is well over that, so it is skipped
     // during the scan and never reaches uploadDebugFiles. Because a real DIF
@@ -390,8 +392,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("a partial size-drop still uploads the rest but exits non-zero", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     // One in-cap file and one valid-header file well over the cap.
     await writeBreakpad("small.sym");
     const bigBody = `${[
@@ -436,8 +438,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("wait mode surfaces processing errors with a non-zero exit", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -455,8 +457,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("a not_found result exits non-zero (chunk delivery incomplete)", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -474,8 +476,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("filesUploaded excludes failed/dropped results", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -503,8 +505,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--require-all note is preserved alongside an upload failure", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -533,8 +535,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--require-all on a real upload fails when an --id is missing", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -561,8 +563,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--require-all is honored when the queue is empty (real upload)", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles");
 
@@ -581,8 +583,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--id without --require-all does not fail on a real upload", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeBreakpad();
 
     vi.spyOn(debugFilesApi, "uploadDebugFiles").mockResolvedValue([
@@ -604,8 +606,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("reports nothing to upload when no debug files are found", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeFile(join(tempDir, "notes.txt"), "not a debug file");
 
     const spy = vi.spyOn(debugFilesApi, "uploadDebugFiles");
@@ -704,8 +706,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("passes the extracted PPDB through to uploadDebugFiles", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeDifFixture("embedded-ppdb.dll", "App.dll");
     const spy = vi
       .spyOn(debugFilesApi, "uploadDebugFiles")
@@ -723,8 +725,8 @@ describe("sentry debug-files upload", () => {
   // ── Fat Mach-O ───────────────────────────────────────────────────
 
   test("uploads each slice of a fat Mach-O dSYM as its own DIF", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
     const spy = vi
       .spyOn(debugFilesApi, "uploadDebugFiles")
@@ -745,8 +747,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--id uploads only the matching slice of a fat Mach-O", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeFile(join(tempDir, "FooWatch"), watchFatMachO());
     const spy = vi
       .spyOn(debugFilesApi, "uploadDebugFiles")
@@ -783,8 +785,8 @@ describe("sentry debug-files upload", () => {
   });
 
   test("--il2cpp-mapping threads the mapping DIF through to uploadDebugFiles", async () => {
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     await writeIl2cppFixture();
     const spy = vi
       .spyOn(debugFilesApi, "uploadDebugFiles")

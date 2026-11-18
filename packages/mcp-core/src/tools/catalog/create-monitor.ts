@@ -96,13 +96,16 @@ function toMonitorSummary(
     projectSlug: monitor.project?.slug ?? null,
     status: monitor.status ?? null,
     scheduleType:
-      typeof config.schedule_type === "string" ? config.schedule_type : null,
-    schedule: formatSchedule(config.schedule),
-    timezone: typeof config.timezone === "string" ? config.timezone : null,
-    checkInMargin: numberOrNull(config.checkin_margin),
-    maxRuntime: numberOrNull(config.max_runtime),
-    failureIssueThreshold: numberOrNull(config.failure_issue_threshold),
-    recoveryThreshold: numberOrNull(config.recovery_threshold),
+      typeof config["schedule_type"] === "string"
+        ? config["schedule_type"]
+        : null,
+    schedule: formatSchedule(config["schedule"]),
+    timezone:
+      typeof config["timezone"] === "string" ? config["timezone"] : null,
+    checkInMargin: numberOrNull(config["checkin_margin"]),
+    maxRuntime: numberOrNull(config["max_runtime"]),
+    failureIssueThreshold: numberOrNull(config["failure_issue_threshold"]),
+    recoveryThreshold: numberOrNull(config["recovery_threshold"]),
     workflowIds,
     webUrl,
   };

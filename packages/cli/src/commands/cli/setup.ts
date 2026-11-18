@@ -292,7 +292,7 @@ async function handlePathModification(
     return;
   }
 
-  const alreadyInPath = isInPath(binaryDir, env.PATH);
+  const alreadyInPath = isInPath(binaryDir, env["PATH"]);
 
   if (alreadyInPath) {
     emit(`PATH: ${binaryDir} is already in PATH`);
@@ -543,7 +543,7 @@ type ConfigStepOptions = {
  */
 async function runConfigurationSteps(opts: ConfigStepOptions) {
   const { flags, binaryPath, binaryDir, homeDir, env, emit, warn } = opts;
-  const shell = detectShell(env.SHELL, homeDir, env.XDG_CONFIG_HOME);
+  const shell = detectShell(env["SHELL"], homeDir, env["XDG_CONFIG_HOME"]);
 
   // 1. Record installation info
   const method = flags.method;
@@ -596,8 +596,8 @@ async function runConfigurationSteps(opts: ConfigStepOptions) {
         const completionLines = await handleCompletions(
           shell,
           homeDir,
-          env.XDG_DATA_HOME,
-          env.PATH,
+          env["XDG_DATA_HOME"],
+          env["PATH"],
         );
         for (const line of completionLines) {
           emit(line);

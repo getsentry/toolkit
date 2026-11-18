@@ -44,11 +44,13 @@ export async function fetchWithTimeout(
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the platform rejects with the signal's own abort reason, often a DOMException or a caller-chosen value, and callers check it verbatim
       reject(signal.reason);
       return;
     }
     const onAbort = () => {
       clearTimeout(timeoutId);
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the platform rejects with the signal's own abort reason, often a DOMException or a caller-chosen value, and callers check it verbatim
       reject(signal?.reason);
     };
     const timeoutId = setTimeout(() => {
@@ -81,7 +83,7 @@ export async function retryWithBackoff<T>(
     maxRetries?: number;
     initialDelay?: number;
     shouldRetry?: (error: unknown) => boolean;
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
   } = {},
 ): Promise<T> {
   let lastError: unknown;

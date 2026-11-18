@@ -141,7 +141,7 @@ function resolve(): void {
   const sources: { path: string; source: CaSource; label: string }[] = [
     { path: storedPath, source: "default", label: "stored default" },
     {
-      path: env.NODE_EXTRA_CA_CERTS?.trim() ?? "",
+      path: env["NODE_EXTRA_CA_CERTS"]?.trim() ?? "",
       source: "env",
       label: "NODE_EXTRA_CA_CERTS",
     },

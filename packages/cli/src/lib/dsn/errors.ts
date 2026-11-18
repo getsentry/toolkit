@@ -136,7 +136,7 @@ export function formatResolutionError(error: Error, dsnRaw: string): string {
 type ProjectInfo = {
   orgDisplay: string;
   projectDisplay: string;
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /**

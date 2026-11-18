@@ -19,6 +19,21 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 // barrel dsn/index.js), then pass it through the mock below so the mocked
 // barrel still returns the real implementation for this export.
 import { formatMultipleProjectsFooter } from "../../src/lib/dsn/errors.js";
+import type {
+  findProjectByDsn,
+  findProjectsByPattern,
+  listOrganizationsUncached,
+} from "../../src/lib/api-client.js";
+import type {
+  getDefaultOrganization,
+  getDefaultProject,
+} from "../../src/lib/db/defaults.js";
+import type { getCachedDsn } from "../../src/lib/db/dsn-cache.js";
+import type {
+  getCachedProject,
+  getCachedProjectByDsnKey,
+} from "../../src/lib/db/project-cache.js";
+import type { detectAllDsns, detectDsn } from "../../src/lib/dsn/index.js";
 
 // ============================================================================
 // Mock Setup - All dependency modules mocked before importing resolve-target
@@ -44,10 +59,10 @@ const {
   mockListOrganizationsUncached,
   mockGetOrgByNumericId,
 } = vi.hoisted(() => ({
-  mockGetDefaultOrganization: vi.fn(() => null),
-  mockGetDefaultProject: vi.fn(() => null),
-  mockDetectDsn: vi.fn(() => Promise.resolve(null)),
-  mockDetectAllDsns: vi.fn(() =>
+  mockGetDefaultOrganization: vi.fn<typeof getDefaultOrganization>(() => null),
+  mockGetDefaultProject: vi.fn<typeof getDefaultProject>(() => null),
+  mockDetectDsn: vi.fn<typeof detectDsn>(() => Promise.resolve(null)),
+  mockDetectAllDsns: vi.fn<typeof detectAllDsns>(() =>
     Promise.resolve({
       primary: null,
       all: [],
@@ -62,22 +77,30 @@ const {
     }),
   ),
   mockGetDsnSourceDescription: vi.fn(() => "SENTRY_DSN environment variable"),
-  mockGetCachedProject: vi.fn(() => null),
+  mockGetCachedProject: vi.fn<typeof getCachedProject>(() => undefined),
   mockSetCachedProject: vi.fn(() => {
     /* no-op */
   }),
-  mockGetCachedProjectByDsnKey: vi.fn(() => null),
+  mockGetCachedProjectByDsnKey: vi.fn<typeof getCachedProjectByDsnKey>(
+    () => undefined,
+  ),
   mockSetCachedProjectByDsnKey: vi.fn(() => {
     /* no-op */
   }),
-  mockGetCachedDsn: vi.fn(() => null),
+  mockGetCachedDsn: vi.fn<typeof getCachedDsn>(() => undefined),
   mockSetCachedDsn: vi.fn(() => {
     /* no-op */
   }),
   mockGetProject: vi.fn(() => Promise.resolve({ slug: "test", name: "Test" })),
-  mockFindProjectByDsn: vi.fn(() => Promise.resolve(null)),
-  mockFindProjectsByPattern: vi.fn(() => Promise.resolve([])),
-  mockListOrganizationsUncached: vi.fn(() => Promise.resolve([])),
+  mockFindProjectByDsn: vi.fn<typeof findProjectByDsn>(() =>
+    Promise.resolve(null),
+  ),
+  mockFindProjectsByPattern: vi.fn<typeof findProjectsByPattern>(() =>
+    Promise.resolve([]),
+  ),
+  mockListOrganizationsUncached: vi.fn<typeof listOrganizationsUncached>(() =>
+    Promise.resolve([]),
+  ),
   mockGetOrgByNumericId: vi.fn(
     () => undefined as { slug: string; regionUrl: string } | undefined,
   ),
@@ -161,6 +184,7 @@ import {
   resolveOrgAndProject,
   resolveOrgsForListing,
 } from "../../src/lib/resolve-target.js";
+import { at } from "../helpers.js";
 
 /** Reset all mocks between tests */
 function resetAllMocks() {
@@ -199,9 +223,9 @@ function resetAllMocks() {
   mockGetDsnSourceDescription.mockReturnValue(
     "SENTRY_DSN environment variable",
   );
-  mockGetCachedProject.mockReturnValue(null);
-  mockGetCachedProjectByDsnKey.mockReturnValue(null);
-  mockGetCachedDsn.mockReturnValue(null);
+  mockGetCachedProject.mockReturnValue(undefined);
+  mockGetCachedProjectByDsnKey.mockReturnValue(undefined);
+  mockGetCachedDsn.mockReturnValue(undefined);
   mockFindProjectsByPattern.mockResolvedValue([]);
   mockListOrganizationsUncached.mockResolvedValue([]);
   mockGetOrgByNumericId.mockReturnValue(undefined);
@@ -253,6 +277,7 @@ describe("resolveOrg", () => {
       orgName: "Cached Organization",
       projectSlug: "project",
       projectName: "Project",
+      cachedAt: Date.now(),
     });
 
     const result = await resolveOrg({ cwd: "/test" });
@@ -275,7 +300,7 @@ describe("resolveOrg", () => {
       orgId: "123",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
     mockListOrganizationsUncached.mockResolvedValue([]);
 
     const result = await resolveOrg({ cwd: "/test" });
@@ -298,7 +323,7 @@ describe("resolveOrg", () => {
       orgId: "1169445",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
     mockGetOrgByNumericId.mockReturnValue(undefined);
     mockListOrganizationsUncached.mockResolvedValue([
       { id: "1169445", slug: "my-org", name: "My Org" },
@@ -320,7 +345,7 @@ describe("resolveOrg", () => {
       orgId: "123",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
     mockListOrganizationsUncached.mockRejectedValue(new Error("offline"));
 
     const result = await resolveOrg({ cwd: "/test" });
@@ -340,7 +365,7 @@ describe("resolveOrg", () => {
       orgId: "1169445",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
     mockGetOrgByNumericId.mockReturnValue({
       slug: "my-org",
       regionUrl: "https://us.sentry.io",
@@ -364,7 +389,7 @@ describe("resolveOrg", () => {
       orgId: "1169445",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
 
     // First call returns undefined (cache miss), second call returns slug
     // (after listOrganizationsUncached populates the cache)
@@ -401,6 +426,7 @@ describe("resolveOrg", () => {
       orgName: "Cached Organization",
       projectSlug: "project",
       projectName: "Project",
+      cachedAt: Date.now(),
     });
 
     const result = await resolveOrg({ cwd: "/test" });
@@ -485,6 +511,7 @@ describe("resolveFromDsn", () => {
       protocol: "https",
       publicKey: "abc",
       host: "o123.ingest.sentry.io",
+      projectId: "",
       orgId: "123",
       source: "env",
     });
@@ -510,6 +537,7 @@ describe("resolveFromDsn", () => {
       orgName: "Cached Organization",
       projectSlug: "cached-project",
       projectName: "Cached Project",
+      cachedAt: Date.now(),
     });
 
     const result = await resolveFromDsn("/test");
@@ -561,7 +589,7 @@ describe("resolveFromDsn", () => {
       source: "env",
       sourcePath: "/test/.env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
 
     const result = await resolveFromDsn("/test");
 
@@ -583,7 +611,7 @@ describe("resolveFromDsn", () => {
       orgId: "1169445",
       source: "env",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
     mockGetOrgByNumericId.mockReturnValue({
       slug: "my-org",
       regionUrl: "https://us.sentry.io",
@@ -667,6 +695,7 @@ describe("resolveOrgAndProject", () => {
       orgName: "DSN Org",
       projectSlug: "dsn-project",
       projectName: "DSN Project",
+      cachedAt: Date.now(),
     });
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
@@ -735,8 +764,8 @@ describe("resolveAllTargets", () => {
     });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("my-org");
-    expect(result.targets[0].project).toBe("my-project");
+    expect(at(result.targets, 0).org).toBe("my-org");
+    expect(at(result.targets, 0).project).toBe("my-project");
   });
 
   test("throws ContextError when only org provided", async () => {
@@ -752,8 +781,8 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/test" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("default-org");
-    expect(result.targets[0].project).toBe("default-project");
+    expect(at(result.targets, 0).org).toBe("default-org");
+    expect(at(result.targets, 0).project).toBe("default-project");
   });
 
   test("resolves multiple DSNs in monorepo", async () => {
@@ -767,7 +796,7 @@ describe("resolveAllTargets", () => {
         host: "o123.ingest.sentry.io",
         projectId: "456",
         orgId: "123",
-        source: "env-file",
+        source: "env_file",
         sourcePath: "/test/monorepo/packages/frontend/.env",
       },
       all: [
@@ -778,7 +807,7 @@ describe("resolveAllTargets", () => {
           host: "o123.ingest.sentry.io",
           projectId: "456",
           orgId: "123",
-          source: "env-file",
+          source: "env_file",
           sourcePath: "/test/monorepo/packages/frontend/.env",
         },
         {
@@ -788,7 +817,7 @@ describe("resolveAllTargets", () => {
           host: "o123.ingest.sentry.io",
           projectId: "789",
           orgId: "123",
-          source: "env-file",
+          source: "env_file",
           sourcePath: "/test/monorepo/packages/backend/.env",
         },
       ],
@@ -801,12 +830,14 @@ describe("resolveAllTargets", () => {
         orgName: "My Org",
         projectSlug: "frontend",
         projectName: "Frontend",
+        cachedAt: Date.now(),
       })
       .mockReturnValueOnce({
         orgSlug: "my-org",
         orgName: "My Org",
         projectSlug: "backend",
         projectName: "Backend",
+        cachedAt: Date.now(),
       });
     mockGetDsnSourceDescription
       .mockReturnValueOnce("packages/frontend/.env")
@@ -815,10 +846,10 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/test/monorepo" });
 
     expect(result.targets).toHaveLength(2);
-    expect(result.targets[0].org).toBe("my-org");
-    expect(result.targets[0].project).toBe("frontend");
-    expect(result.targets[1].org).toBe("my-org");
-    expect(result.targets[1].project).toBe("backend");
+    expect(at(result.targets, 0).org).toBe("my-org");
+    expect(at(result.targets, 0).project).toBe("frontend");
+    expect(at(result.targets, 1).org).toBe("my-org");
+    expect(at(result.targets, 1).project).toBe("backend");
   });
 
   test("deduplicates targets with same org+project", async () => {
@@ -832,7 +863,7 @@ describe("resolveAllTargets", () => {
         host: "o123.ingest.sentry.io",
         projectId: "456",
         orgId: "123",
-        source: "env-file",
+        source: "env_file",
         sourcePath: "/test/.env",
       },
       all: [
@@ -843,7 +874,7 @@ describe("resolveAllTargets", () => {
           host: "o123.ingest.sentry.io",
           projectId: "456",
           orgId: "123",
-          source: "env-file",
+          source: "env_file",
           sourcePath: "/test/.env",
         },
         {
@@ -865,6 +896,7 @@ describe("resolveAllTargets", () => {
       orgName: "My Org",
       projectSlug: "my-project",
       projectName: "My Project",
+      cachedAt: Date.now(),
     });
 
     const result = await resolveAllTargets({ cwd: "/test" });
@@ -899,8 +931,8 @@ describe("resolveAllTargets", () => {
     const result = await resolveAllTargets({ cwd: "/home/user/my-app" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("inferred-org");
-    expect(result.targets[0].project).toBe("my-app");
+    expect(at(result.targets, 0).org).toBe("inferred-org");
+    expect(at(result.targets, 0).project).toBe("my-app");
   });
 
   test("returns empty targets when a public-key DSN cannot be resolved", async () => {
@@ -930,7 +962,7 @@ describe("resolveAllTargets", () => {
       hasMultiple: false,
       fingerprint: "",
     });
-    mockGetCachedProjectByDsnKey.mockReturnValue(null);
+    mockGetCachedProjectByDsnKey.mockReturnValue(undefined);
     // findProjectByDsn returns null (project not found)
     mockFindProjectByDsn.mockResolvedValue(null);
     mockFindProjectRoot.mockResolvedValue({
@@ -970,13 +1002,13 @@ describe("resolveAllTargets", () => {
       hasMultiple: false,
       fingerprint: "",
     });
-    mockGetCachedProject.mockReturnValue(null);
+    mockGetCachedProject.mockReturnValue(undefined);
 
     const result = await resolveAllTargets({ cwd: "/test" });
 
     expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].org).toBe("123");
-    expect(result.targets[0].project).toBe("456");
+    expect(at(result.targets, 0).org).toBe("123");
+    expect(at(result.targets, 0).project).toBe("456");
     // The DSN already identifies the target — no discovery API call.
     expect(mockGetProject).not.toHaveBeenCalled();
   });
@@ -992,14 +1024,14 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   afterEach(() => {
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
   });
 
   // --- resolveOrg ---
 
   test("resolveOrg: returns org from SENTRY_ORG when no CLI flag", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1010,7 +1042,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: CLI flag takes priority over env var", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrg({ org: "flag-org", cwd: "/test" });
 
@@ -1018,7 +1050,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: SENTRY_PROJECT=org/project combo provides org", async () => {
-    process.env.SENTRY_PROJECT = "combo-org/combo-project";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-project";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1026,8 +1058,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrg: combo SENTRY_PROJECT overrides SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "combo-org/combo-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-project";
 
     const result = await resolveOrg({ cwd: "/test" });
 
@@ -1038,8 +1070,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveOrgAndProject ---
 
   test("resolveOrgAndProject: uses SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1053,7 +1085,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: SENTRY_PROJECT=org/project combo works", async () => {
-    process.env.SENTRY_PROJECT = "my-org/my-project";
+    process.env["SENTRY_PROJECT"] = "my-org/my-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1064,8 +1096,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: CLI flags take priority over env vars", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveOrgAndProject({
       org: "flag-org",
@@ -1078,7 +1110,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: SENTRY_ORG alone (no project) falls through", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
     // No SENTRY_PROJECT — resolveFromEnvVars returns org-only, but
     // resolveOrgAndProject requires project, so it falls through
 
@@ -1089,8 +1121,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveOrgAndProject: env vars beat config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     mockGetDefaultOrganization.mockReturnValue("default-org");
     mockGetDefaultProject.mockReturnValue("default-project");
 
@@ -1105,8 +1137,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveAllTargets ---
 
   test("resolveAllTargets: uses SENTRY_ORG + SENTRY_PROJECT", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
 
     const result = await resolveAllTargets({ cwd: "/test" });
 
@@ -1117,7 +1149,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveAllTargets: SENTRY_PROJECT=org/project combo", async () => {
-    process.env.SENTRY_PROJECT = "combo-org/combo-proj";
+    process.env["SENTRY_PROJECT"] = "combo-org/combo-proj";
 
     const result = await resolveAllTargets({ cwd: "/test" });
 
@@ -1127,8 +1159,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("resolveAllTargets: env vars beat config defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
-    process.env.SENTRY_PROJECT = "env-project";
+    process.env["SENTRY_ORG"] = "env-org";
+    process.env["SENTRY_PROJECT"] = "env-project";
     mockGetDefaultOrganization.mockReturnValue("default-org");
     mockGetDefaultProject.mockReturnValue("default-project");
 
@@ -1141,7 +1173,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- resolveOrgsForListing ---
 
   test("resolveOrgsForListing: returns org from SENTRY_ORG when no flag or defaults", async () => {
-    process.env.SENTRY_ORG = "env-org";
+    process.env["SENTRY_ORG"] = "env-org";
 
     const result = await resolveOrgsForListing(undefined, "/test");
 
@@ -1151,8 +1183,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   // --- Edge cases ---
 
   test("whitespace-only env vars are ignored", async () => {
-    process.env.SENTRY_ORG = "  ";
-    process.env.SENTRY_PROJECT = "  ";
+    process.env["SENTRY_ORG"] = "  ";
+    process.env["SENTRY_PROJECT"] = "  ";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1161,7 +1193,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("SENTRY_PROJECT with trailing slash is treated as invalid combo", async () => {
-    process.env.SENTRY_PROJECT = "my-org/";
+    process.env["SENTRY_PROJECT"] = "my-org/";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1170,7 +1202,7 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("SENTRY_PROJECT with leading slash is treated as invalid combo", async () => {
-    process.env.SENTRY_PROJECT = "/my-project";
+    process.env["SENTRY_PROJECT"] = "/my-project";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1182,8 +1214,11 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
     // Regression: SENTRY_PROJECT="org/" + SENTRY_ORG="my-org" must NOT
     // produce project="org/" — the malformed combo should be discarded
     // and only the org from SENTRY_ORG should be returned.
-    process.env.SENTRY_ORG = "my-org";
-    process.env.SENTRY_PROJECT = "other-org/";
+    // Regression: SENTRY_PROJECT="org/" + SENTRY_ORG="my-org" must NOT
+    // produce project="org/" — the malformed combo should be discarded
+    // and only the org from SENTRY_ORG should be returned.
+    process.env["SENTRY_ORG"] = "my-org";
+    process.env["SENTRY_PROJECT"] = "other-org/";
 
     const result = await resolveOrgAndProject({ cwd: "/test" });
 
@@ -1194,8 +1229,8 @@ describe("env var resolution: SENTRY_ORG + SENTRY_PROJECT", () => {
   });
 
   test("malformed SENTRY_PROJECT with slash still provides org via SENTRY_ORG", async () => {
-    process.env.SENTRY_ORG = "my-org";
-    process.env.SENTRY_PROJECT = "other-org/";
+    process.env["SENTRY_ORG"] = "my-org";
+    process.env["SENTRY_PROJECT"] = "other-org/";
 
     const result = await resolveOrg({ cwd: "/test" });
 

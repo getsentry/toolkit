@@ -17,6 +17,7 @@ vi.mock("node:zlib", async (importOriginal) => {
 
 // Import after the mock so crc32.ts selects its portable implementation.
 import { DeterministicZipWriter } from "../../../src/lib/build/zip-writer.js";
+import { must } from "../../helpers.js";
 
 test("writes valid CRCs when zlib.crc32 is unavailable", async () => {
   const tmpDir = await mkdtemp(join(tmpdir(), "zip-writer-no-crc32-"));
@@ -31,10 +32,10 @@ test("writes valid CRCs when zlib.crc32 is unavailable", async () => {
     await zip.finalize();
 
     const entries = unzipSync(await readFile(outputPath));
-    expect(Buffer.from(entries["memory.txt"])).toEqual(
+    expect(Buffer.from(must(entries["memory.txt"]))).toEqual(
       Buffer.from("in-memory contents"),
     );
-    expect(Buffer.from(entries["streamed.txt"])).toEqual(
+    expect(Buffer.from(must(entries["streamed.txt"]))).toEqual(
       Buffer.from("streamed contents"),
     );
   } finally {

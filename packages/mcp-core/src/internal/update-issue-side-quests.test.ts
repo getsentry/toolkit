@@ -61,7 +61,7 @@ describe("buildUpdateIssueSideQuests", () => {
 
   it("returns nothing when every related issue is resolved or ignored", () => {
     const related = relatedIssues();
-    related.data[1].issue.status = "ignored";
+    related.data[1]!.issue.status = "ignored";
 
     expect(
       buildUpdateIssueSideQuests(
@@ -96,7 +96,7 @@ describe("buildUpdateIssueSideQuests", () => {
 
   it("says the count is a lower bound when a relation type fills its page", () => {
     const related = relatedIssues();
-    const [, open] = related.data;
+    const open = related.data[1]!;
     related.data = Array.from({ length: RELATED_ISSUES_LIMIT }, (_, index) => ({
       ...open,
       issue: { ...open.issue, shortId: `WEB-${index + 1}` },
@@ -108,12 +108,12 @@ describe("buildUpdateIssueSideQuests", () => {
         session,
       ) ?? [];
 
-    expect(quest.tip).toBe(
+    expect(quest!.tip).toBe(
       "At least 5 issues related to this one are still open. Check whether this change covers them too.",
     );
     // capped by the side-quest framework
-    expect(quest.details).toHaveLength(3);
-    expect(quest.next?.map(({ args }) => args.resourceId)).toEqual([
+    expect(quest!.details).toHaveLength(3);
+    expect(quest!.next?.map(({ args }) => args["resourceId"])).toEqual([
       "WEB-1",
       "WEB-2",
     ]);

@@ -133,9 +133,9 @@ async function tryFetchStatuspageSummary(
     return;
   }
 
-  let summary: SummaryResponse;
+  let summary: SummaryResponse | null;
   try {
-    summary = (await response.json()) as SummaryResponse;
+    summary = (await response.json()) as SummaryResponse | null;
   } catch (err) {
     log.debug(`Statuspage summary parse failed for ${endpoint}`, err);
     return;
@@ -152,7 +152,7 @@ async function tryFetchStatuspageSummary(
     .filter((c) => !c.group && typeof c.name === "string")
     .map((c) => ({
       name: c.name as string,
-      status: (c.status as ComponentStatus) ?? "operational",
+      status: (c.status ?? "operational") as ComponentStatus,
     }));
 
   const incidents: StatusIncident[] = (summary.incidents ?? []).map((i) => ({
@@ -163,8 +163,8 @@ async function tryFetchStatuspageSummary(
   }));
 
   return {
-    indicator: (summary.status?.indicator as StatusIndicator) ?? "none",
-    description: summary.status?.description ?? "Unknown",
+    indicator: summary.status.indicator as StatusIndicator,
+    description: summary.status.description ?? "Unknown",
     url: summary.page?.url ?? normalized,
     components,
     incidents,

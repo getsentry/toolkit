@@ -7,7 +7,7 @@ import { redactCredentialText } from "../credential-redaction.js";
 function redactJson<T>(value: T): T {
   let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(value);
+    serialized = JSON.stringify(value) as string | undefined;
   } catch {
     // This is the SDK's envelope serialization fallback for cycles and BigInt.
     serialized = JSON.stringify(normalize(value));
