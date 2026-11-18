@@ -358,7 +358,8 @@ function matchedFramework(match: RegExpExecArray): PythonFramework {
  * Find the FastAPI or Flask app that `lines` define at top level, in order:
  * 1. a top-level assignment whose value is a `FastAPI(` or `Flask(` call;
  * 2. a top-level `app` or `application` built by `create_app()` or
- *    `make_app()`, with the framework the project declares;
+ *    `make_app()`, with the framework that the factory's body builds when it
+ *    is defined in the file, or else the one the project declares;
  * 3. a top-level `def create_app():` or `def make_app():`, with the
  *    framework its body builds, or else the one the project declares.
  */
@@ -366,7 +367,7 @@ async function findPythonApp(
   cwd: string,
   lines: PythonLine[],
 ): Promise<PythonApp | null> {
-  let factoryCall: string | undefined;
+  let factoryCall: { name: string; value: string } | undefined;
   for (const line of lines) {
     const assignment = line.topLevel ? ASSIGNMENT_RE.exec(line.code) : null;
     if (!assignment) {
@@ -381,13 +382,34 @@ async function findPythonApp(
       (name === "app" || name === "application") &&
       FACTORY_CALL_RE.test(value)
     ) {
-      factoryCall ??= name;
+      factoryCall ??= { name, value };
     }
   }
+  const factory = localFactory(lines);
   if (factoryCall) {
-    const framework = await declaredFramework(cwd);
-    return framework ? { framework, name: factoryCall, factory: false } : null;
+    const built = factoryCall.value.startsWith(`${factory?.name}(`)
+      ? factory?.framework
+      : null;
+    const framework = built ?? (await declaredFramework(cwd));
+    return framework
+      ? { framework, name: factoryCall.name, factory: false }
+      : null;
   }
+  if (!factory) {
+    return null;
+  }
+  const framework = factory.framework ?? (await declaredFramework(cwd));
+  return framework ? { framework, name: factory.name, factory: true } : null;
+}
+
+/**
+ * The first top-level `def create_app():` or `def make_app():` in `lines`,
+ * with the framework its body builds, or null for `framework` when the body
+ * builds none.
+ */
+function localFactory(
+  lines: PythonLine[],
+): { name: string; framework: PythonFramework | null } | null {
   const start = lines.findIndex(
     (line) => line.topLevel && FACTORY_DEF_RE.test(line.code),
   );
@@ -404,10 +426,7 @@ async function findPythonApp(
   const call = body
     .map((line) => FRAMEWORK_CALL_RE.exec(line.code))
     .find(Boolean);
-  const framework = call
-    ? matchedFramework(call)
-    : await declaredFramework(cwd);
-  return framework ? { framework, name, factory: true } : null;
+  return { name, framework: call ? matchedFramework(call) : null };
 }
 
 /**

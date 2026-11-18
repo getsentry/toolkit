@@ -619,6 +619,28 @@ describe("detectDevCommand: Python app scanning", () => {
     ]);
   });
 
+  test("infers the framework of a local factory assigned to app", async () => {
+    await rm(join(tmpDir, "pyproject.toml"));
+    await writeFile(
+      join(tmpDir, "app.py"),
+      "from flask import Flask\n\ndef create_app():\n    return Flask(__name__)\n\napp = create_app()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: ["python", "-m", "flask", "--app", "app:app", "run"],
+      source: "app.py (Flask)",
+    });
+  });
+
+  test("uses the declared framework for an imported factory", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from flask import Flask\nfrom myapp import create_app\n\ndef make_app():\n    return Flask(__name__)\n\napp = create_app()\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py (FastAPI)");
+  });
+
   test("serves a make_app factory from the declared dependency", async () => {
     await writeFile(
       join(tmpDir, "main.py"),
