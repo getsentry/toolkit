@@ -446,12 +446,14 @@ function localFactory(lines: PythonLine[]): PythonFactory | null {
 
 /**
  * Whether every parameter in `params`, the text after a signature's `(`,
- * has a default or is `*args`, `**kwargs`, or a bare `*` or `/`. Strings
- * are already blanked, so only brackets can hide a comma.
+ * has a default or is `*args`, `**kwargs`, or a bare `*` or `/`. Only a
+ * comma or `=` outside brackets counts, so `Annotated[int, Field(gt=0)]` is
+ * still a required parameter. Strings are already blanked.
  */
 function allParamsOptional(params: string): boolean {
   let depth = 0;
   let param = "";
+  let hasDefault = false;
   for (const char of params) {
     if (depth === 0 && (char === "," || char === ")")) {
       const trimmed = param.trim();
@@ -459,7 +461,7 @@ function allParamsOptional(params: string): boolean {
         trimmed &&
         !trimmed.startsWith("*") &&
         trimmed !== "/" &&
-        !trimmed.includes("=")
+        !hasDefault
       ) {
         return false;
       }
@@ -467,7 +469,11 @@ function allParamsOptional(params: string): boolean {
         return true;
       }
       param = "";
+      hasDefault = false;
       continue;
+    }
+    if (depth === 0 && char === "=") {
+      hasDefault = true;
     }
     if ("([{".includes(char)) {
       depth += 1;

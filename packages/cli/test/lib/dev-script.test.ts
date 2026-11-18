@@ -757,6 +757,10 @@ describe("detectDevCommand: Python factory calls and signatures", () => {
     ],
     ["an async factory", "async def create_app():\n    return FastAPI()\n"],
     ["a generic factory", "def create_app[T]():\n    return FastAPI()\n"],
+    [
+      "a required parameter with an = in its annotation",
+      "def create_app(port: Annotated[int, Field(gt=0)]):\n    return FastAPI()\n",
+    ],
   ])("runs a factory with %s as a script, with a hint", async (_name, body) => {
     await writeFile(
       join(tmpDir, "main.py"),
