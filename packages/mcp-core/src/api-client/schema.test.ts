@@ -17,6 +17,7 @@ import {
   IssueSchema,
   IssueActivitySchema,
   IssueTagValuesSchema,
+  OrganizationListSchema,
   ProfileChunkResponseSchema,
   ProfileChunkSampleSchema,
   ProfileChunkSchema,
@@ -28,6 +29,21 @@ import {
   TransactionProfileSampleSchema,
   TransactionProfileSchema,
 } from "./schema";
+
+describe("OrganizationListSchema", () => {
+  it.each([
+    ["an absolute", { organizationUrl: "https://sentry.example.com" }],
+    ["an empty", { organizationUrl: "", regionUrl: "" }],
+    ["a scheme-less", { organizationUrl: "sentry.example.com" }],
+    ["a missing", { regionUrl: "" }],
+  ])("accepts %s organization URL", (_label, links) => {
+    expect(
+      OrganizationListSchema.safeParse([
+        { id: "1", slug: "org", name: "Org", links },
+      ]).success,
+    ).toBe(true);
+  });
+});
 
 describe("IssueActivitySchema", () => {
   it("types source metadata and the separate comment reference", () => {

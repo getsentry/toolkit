@@ -158,6 +158,37 @@ describe("find_organizations", () => {
     assertStructuredOnlyResult(result);
   });
 
+  it.each([
+    ["an empty", ""],
+    ["a scheme-less", "sentry.example.com"],
+  ])(
+    "lists self-hosted organizations with %s organization URL",
+    async (_label, organizationUrl) => {
+      mockOrganizations([
+        {
+          id: "1",
+          slug: "self-hosted-org",
+          name: "Self-Hosted Org",
+          links: { organizationUrl, regionUrl: "" },
+        },
+      ]);
+
+      const result = await findOrganizations.handler(
+        { query: null, cursor: null },
+        getServerContext(),
+      );
+
+      expect(getStructuredContent(result)).toEqual({
+        organizations: [
+          { slug: "self-hosted-org", webUrl: null, regionUrl: null },
+        ],
+        hasMore: false,
+        nextCursor: null,
+      });
+      assertStructuredOnlyResult(result);
+    },
+  );
+
   it("preserves search and cursor while returning a page of 25 organizations", async () => {
     mockOrganizations(
       Array.from({ length: 25 }, (_, index) => ({
