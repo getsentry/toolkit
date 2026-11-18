@@ -3,6 +3,7 @@ import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { profiledRequest } from "@/test-fixtures/profiled-request.ts";
 import { TraceWorkspace } from "./trace-workspace.tsx";
 
 afterEach(cleanup);
@@ -205,4 +206,27 @@ test("log-only trace groups are labelled and listed after traces with spans", ()
   expect(
     screen.getByRole("table", { name: "Trace spans" }).textContent,
   ).toContain("nested");
+});
+
+test("a profiled trace lists real spans and links its profile once", () => {
+  const items = profiledRequest();
+  const traces = buildTraceGroups(items);
+  const selectProfile = vi.fn();
+  render(
+    <TraceWorkspace
+      traces={traces}
+      onSelect={vi.fn()}
+      profiles={items.filter((item) => item.type === "profile_chunk")}
+      onSelectProfile={selectProfile}
+    />,
+  );
+  const entry = screen.getByRole("button", { name: "View trace GET /slow" });
+  expect(entry.textContent).toContain("1 span");
+  expect(entry.textContent).not.toContain("1 spans");
+  const links = screen.getAllByRole("button", {
+    name: /^Inspect .*profile.* for this trace$/,
+  });
+  expect(links).toHaveLength(1);
+  fireEvent.click(links[0]!);
+  expect(selectProfile).toHaveBeenCalledOnce();
 });
