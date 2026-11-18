@@ -59,6 +59,13 @@ export function isAiEvent(item: LocalFeedItem) {
   );
 }
 
+/** Session updates, server `sessions` aggregates and client reports. */
+export const SDK_REPORT_TYPES = new Set([
+  "session",
+  "sessions",
+  "client_report",
+]);
+
 export function workspaceForItem(item: LocalFeedItem): WorkspaceView {
   if (item.type === "envelope") {
     return "envelopes";
@@ -82,7 +89,7 @@ export function workspaceForItem(item: LocalFeedItem): WorkspaceView {
   if (item.type === "profile" || item.type === "profile_chunk") {
     return "profiles";
   }
-  if (item.type === "client_report" || item.type === "session") {
+  if (SDK_REPORT_TYPES.has(item.type)) {
     return "sdks";
   }
   return "live";

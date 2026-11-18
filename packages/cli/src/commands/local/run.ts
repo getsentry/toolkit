@@ -17,6 +17,7 @@
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
+import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
 import { terminalSignalsProcess } from "../../lib/child-signals.js";
@@ -82,7 +83,8 @@ import {
 } from "./retention-buffer.js";
 
 type RunFlags = {
-  readonly port: number;
+  /** Omitted unless the user passed `--port`; plain runs then use {@link DEFAULT_PORT}. */
+  readonly port?: number;
   readonly host: string;
   readonly verify: boolean;
   readonly timeout: number;
@@ -491,8 +493,8 @@ export const runCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: textParser(parsePort),
-        brief: "Port for the local server",
-        default: String(DEFAULT_PORT),
+        brief: `Port for the local server (default: ${DEFAULT_PORT})`,
+        optional: true,
       },
       host: {
         kind: "parsed",
@@ -574,7 +576,8 @@ export const runCommand = buildCommand({
       return;
     }
 
-    let url = formatLocalServerUrl(flags.host, flags.port);
+    const port = flags.port ?? DEFAULT_PORT;
+    let url = formatLocalServerUrl(flags.host, port);
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
@@ -589,7 +592,7 @@ export const runCommand = buildCommand({
             cwd: this.cwd,
             host: flags.host,
             label: flags.session || basename(this.cwd),
-            port: flags.port,
+            port,
           });
           daemonSessionId = session.id;
           daemonIngestUrl = session.ingestUrl;
@@ -605,7 +608,7 @@ export const runCommand = buildCommand({
         })()
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
-          port: flags.port,
+          port,
           host: flags.host,
           activeFilters,
           useJson,
@@ -832,6 +835,41 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
 }
 
 /**
+ * Bind the verify receiver without waiting out another listener.
+ *
+ * The receiver only lives until the first envelope and every URL the app gets
+ * is built from the bound port, so any free port works. The default port is
+ * tried first for SDKs that hard-code it, and a busy default (most often the
+ * daemon) falls back to an OS-assigned port. A busy `--port` the user chose
+ * fails right away.
+ */
+async function listenForVerify(
+  app: Hono,
+  port: number | undefined,
+  host: string,
+): Promise<{ server: Server; port: number; fellBack: boolean }> {
+  try {
+    const bound = await tryListen(app, port ?? DEFAULT_PORT, host, {
+      retries: 0,
+    });
+    return { ...bound, fellBack: false };
+  } catch (err) {
+    if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
+      throw err;
+    }
+    if (port !== undefined) {
+      throw new ValidationError(
+        `Port ${port} is already in use. Stop whatever holds it, pass a different --port, or omit --port to verify on a free port.`,
+        PORT_IN_USE_FIELD,
+      );
+    }
+    logger.info(`Port ${DEFAULT_PORT} is in use; verifying on a free port`);
+    const bound = await tryListen(app, 0, host, { retries: 0 });
+    return { ...bound, fellBack: true };
+  }
+}
+
+/**
  * Run in --verify mode: start a background server, subscribe to the buffer
  * for the first envelope, and race between envelope arrival, timeout,
  * and child exit.
@@ -849,14 +887,14 @@ async function* runWithVerify(
     uiActions: isLoopbackHost(flags.host),
     retention,
   });
-  const { server, port: boundPort } = await tryListen(
-    app,
-    flags.port,
-    flags.host,
-  );
+  const {
+    server,
+    port: boundPort,
+    fellBack,
+  } = await listenForVerify(app, flags.port, flags.host);
   const url = formatLocalServerUrl(flags.host, boundPort);
+  // No viewer link: this receiver shuts down after the first envelope.
   logger.info(`Verify server listening on ${bold(url)}`);
-  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 
@@ -978,13 +1016,22 @@ async function* runWithVerify(
 
   switch (outcome.kind) {
     case "envelope": {
-      logger.info("Setup verified — your app is sending events to Sentry");
+      logger.info(
+        "Setup verified — your app is sending events to Sentry Local",
+      );
       return;
     }
     case "timeout": {
       logger.warn(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
+      if (fellBack) {
+        // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
+        // port, so it reaches whatever holds that port instead of this receiver.
+        logger.warn(
+          `Verify used port ${boundPort} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
+        );
+      }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s`,
       );

@@ -29,7 +29,7 @@ const WORKER_STREAM =
   "http://127.0.0.1:8969/_local/v1/sessions/worker/stream?cap=worker-read";
 const DIRECTORY =
   "http://127.0.0.1:8969/_local/v1/ui/sessions?cap=directory-read";
-const EXPIRES_AT = 1_795_000_000_000;
+const EXPIRES_AT = Date.now() + 3 * 60 * 60 * 1000;
 const REMOTE_STREAM = "https://receiver.example/stream?token=remote-read";
 
 class ControllableEventSource extends EventTarget {

@@ -8,8 +8,10 @@ import { createLocalRetentionBuffer } from "../../../src/commands/local/retentio
 
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { createServer, type Server } from "node:http";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { run } from "@stricli/core";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -17,12 +19,20 @@ import {
   runCommand,
   shutdownServer,
 } from "../../../src/commands/local/run.js";
-import { buildApp, tryListen } from "../../../src/commands/local/server.js";
+import {
+  buildApp,
+  DEFAULT_PORT,
+  tryListen,
+} from "../../../src/commands/local/server.js";
+import { app } from "../../../src/app.js";
+import type { SentryContext } from "../../../src/context.js";
 import { openBrowser } from "../../../src/lib/browser.js";
 import { logger } from "../../../src/lib/logger.js";
 import {
   CliError,
   COMMAND_NOT_FOUND_FIELD,
+  EXIT,
+  PORT_IN_USE_FIELD,
   ValidationError,
   VerifyFailedError,
 } from "../../../src/lib/errors.js";
@@ -33,8 +43,11 @@ import * as childSignals from "../../../src/lib/child-signals.js";
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as daemon from "../../../src/commands/local/daemon.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as serverModule from "../../../src/commands/local/server.js";
 import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
+import { useTestConfigDir } from "../../helpers.js";
 
 /**
  * Records the env passed to the most recent `spawn` call so tests can assert
@@ -74,7 +87,7 @@ vi.mock("../../../src/lib/browser.js", () => ({
 type RunFunc = (
   this: unknown,
   flags: {
-    port: number;
+    port?: number;
     host: string;
     verify: boolean;
     timeout: number;
@@ -962,4 +975,195 @@ setInterval(() => {}, 1000);
       expect(capturedEnv?.[`${prefix}SENTRY_SPOTLIGHT`]).toBe(expectedUrl);
     }
   });
+});
+
+/** A wrapped app that sends one error envelope to the injected receiver. */
+const SEND_ONE_EVENT = [
+  "-e",
+  [
+    'const id = "a".repeat(32);',
+    "const body = [JSON.stringify({ event_id: id }), JSON.stringify({ type: 'event' }), JSON.stringify({ event_id: id, message: 'verify me' })].join(String.fromCharCode(10));",
+    "fetch(process.env.SENTRY_SPOTLIGHT, { method: 'POST', headers: { 'content-type': 'application/x-sentry-envelope' }, body }).then(() => setTimeout(() => {}, 30000));",
+  ].join(" "),
+];
+
+/** Hold `port` on `host`; resolves undefined when something already holds it. */
+async function holdPort(
+  port: number,
+  host: string,
+): Promise<Server | undefined> {
+  const server = createServer((_req, res) => res.end("OK"));
+  return await new Promise((resolve, reject) => {
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") resolve(undefined);
+      else reject(err);
+    });
+    server.listen(port, host, () => resolve(server));
+  });
+}
+
+function closeServer(server: Server | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (!server) resolve();
+    else server.close(() => resolve());
+  });
+}
+
+/**
+ * Make the default port look busy without binding it, so the test neither
+ * depends on nor disturbs whatever else uses that port.
+ */
+function makeDefaultPortBusy() {
+  const realTryListen = serverModule.tryListen;
+  return vi
+    .spyOn(serverModule, "tryListen")
+    .mockImplementation((listenApp, port, hostname, options) =>
+      port === DEFAULT_PORT
+        ? Promise.reject(serverModule.portInUseError(port))
+        : realTryListen(listenApp, port, hostname, options),
+    );
+}
+
+/** A context for running `local run` through Stricli flag parsing. */
+function makeParsedRunContext() {
+  return {
+    ...makeContext(),
+    process: { ...process, exitCode: undefined },
+    env: process.env,
+    homeDir: tmpDir,
+    configDir: tmpDir,
+    stdin: process.stdin,
+  } as unknown as SentryContext & { process: { exitCode?: number } };
+}
+
+describe("sentry local run --verify receiver", () => {
+  useTestConfigDir("local-run-verify-");
+
+  test("reports events as reaching Sentry Local, without a viewer link", async () => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: true, timeout: 20 },
+        process.execPath,
+        ...SEND_ONE_EVENT,
+      );
+      const lines = info.mock.calls.map((c) => String(c[0]));
+      expect(lines).toContain(
+        "Setup verified — your app is sending events to Sentry Local",
+      );
+      expect(lines.some((line) => line.startsWith("View events at "))).toBe(
+        false,
+      );
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test("verifies on a free port when the default port is busy", async () => {
+    const busy = makeDefaultPortBusy();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      const started = Date.now();
+      // Goes through flag parsing, so --port is omitted the way a user omits it.
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--verify",
+          "--host",
+          "127.0.0.1",
+          "--timeout",
+          "20",
+          "--",
+          process.execPath,
+          ...SEND_ONE_EVENT,
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      expect(receiver.pathname).toBe("/stream");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(Number(receiver.port)).toBeGreaterThan(0);
+      // Client-side variants get the fallback port too, not the default.
+      expect(spawnCapture.env?.NEXT_PUBLIC_SENTRY_SPOTLIGHT).toBe(
+        receiver.href,
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("retrying"),
+      );
+      expect(Date.now() - started).toBeLessThan(5000);
+    } finally {
+      warn.mockRestore();
+      busy.mockRestore();
+    }
+  }, 30_000);
+
+  test("says which port it used when verify on a fallback port times out", async () => {
+    const busy = makeDefaultPortBusy();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--verify",
+          "--host",
+          "127.0.0.1",
+          "--timeout",
+          "1",
+          "--",
+          process.execPath,
+          "-e",
+          "setTimeout(() => {}, 30000)",
+        ],
+        context,
+      );
+      expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
+      const port = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "").port;
+      expect(warn).toHaveBeenCalledWith(
+        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
+      );
+    } finally {
+      warn.mockRestore();
+      busy.mockRestore();
+    }
+  }, 30_000);
+
+  test("fails fast when an explicit --port is busy", async () => {
+    const holder = await holdPort(0, "127.0.0.1");
+    const address = holder?.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    spawnCapture.env = undefined;
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const started = Date.now();
+      const error = await func
+        .call(
+          makeContext(),
+          { port: address.port, host: "127.0.0.1", verify: true, timeout: 20 },
+          "true",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${address.port} is already in use`,
+        ),
+      });
+      expect((error as Error).message).toContain("omit --port");
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(spawnCapture.env).toBeUndefined();
+    } finally {
+      await closeServer(holder);
+    }
+  }, 30_000);
 });

@@ -576,9 +576,11 @@ export async function ensureLocalDaemon({
         (await probeLocalHealth(formatLocalServerUrl(host, port), 500)) ===
         "other"
       ) {
+        // A plain receiver answers /health like Spotlight's sidecar does, so
+        // the probe cannot tell `local serve` from `local run`; name both.
         throw portInUseError(
           port,
-          `another server, such as a foreground '${sentry`local serve`}'`,
+          `another server, such as '${sentry`local serve`}' or '${sentry`local run`}' without --session`,
         );
       }
       child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
