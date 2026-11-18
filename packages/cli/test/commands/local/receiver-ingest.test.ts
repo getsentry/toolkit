@@ -210,7 +210,6 @@ test.each([
   "not-json",
   '1\n{"type":"event"}\n{}',
   '[]\n{"type":"event"}\n{}',
-  '{}\n{"type":"event"}\nnot-json',
   '{}\n{"type":"event"}\nfalse',
 ])(
   "retains malformed raw delivery %j with a downloadable stable ID",

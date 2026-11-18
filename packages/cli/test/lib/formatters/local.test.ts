@@ -23,6 +23,7 @@ import {
   isItemIncluded,
   itemTypeToFilterCategory,
 } from "../../../src/lib/formatters/local.js";
+import { parseEventTimestamp } from "../../../src/commands/local/timestamp.js";
 import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 
 describe("formatTime", () => {
@@ -474,6 +475,12 @@ describe("formatItem", () => {
     const lines = formatItem("event", event, header, "fallback");
     expect(lines).toHaveLength(1);
     expect(stripAnsi(lines[0])).toContain("[ERROR]");
+  });
+
+  test("prints nothing for replay recording segments", () => {
+    expect(
+      formatItem("replay_recording", { data: "H4sI" }, header, "fallback"),
+    ).toEqual([]);
   });
 
   test("dispatches transaction type to transaction formatter", () => {
@@ -961,9 +968,10 @@ describe("formatItemJson", () => {
 
     expect(parsed).toMatchObject({
       type: "attachment",
-      timestamp: "2026-09-08",
       event_id: "event-123",
     });
+    // Timestamps are emitted as epoch seconds, so an unparseable one is dropped.
+    expect(parsed).not.toHaveProperty("timestamp");
 
     const logLines = formatItemJson(
       "log",
@@ -1250,5 +1258,122 @@ describe("warn level coloring", () => {
     };
     const result = formatSingleLog(log, "[SERVER]  ");
     expect(stripAnsi(result)).toContain("[WARN]");
+  });
+});
+
+describe("sentry-python ISO 8601 timestamps", () => {
+  // sentry-python sends transaction and span timestamps as ISO 8601 strings,
+  // while JavaScript SDKs send epoch seconds.
+  const pythonHeader = {
+    event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d",
+    sdk: { name: "sentry.python.flask", version: "2.75.0" },
+  };
+  const pythonTransaction = {
+    event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d",
+    type: "transaction",
+    platform: "python",
+    transaction: "/sync-error",
+    transaction_info: { source: "url" },
+    start_timestamp: "2026-11-17T20:25:06.425134Z",
+    timestamp: "2026-11-17T20:25:06.497301Z",
+    contexts: {
+      trace: {
+        trace_id: "8b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e",
+        span_id: "a1b2c3d4e5f60718",
+        op: "http.server",
+        status: "internal_error",
+        origin: "auto.http.flask",
+      },
+    },
+    spans: [
+      {
+        trace_id: "8b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e",
+        span_id: "b2c3d4e5f6071829",
+        parent_span_id: "a1b2c3d4e5f60718",
+        same_process_as_parent: true,
+        op: "db",
+        description: "SELECT 1",
+        origin: "auto.db.sqlalchemy",
+        start_timestamp: "2026-11-17T20:25:06.430001Z",
+        timestamp: "2026-11-17T20:25:06.430412Z",
+      },
+    ],
+    sdk: { name: "sentry.python.flask", version: "2.75.0" },
+  };
+
+  test("parses epoch seconds, numeric strings, and ISO strings", () => {
+    expect(parseEventTimestamp(1_700_000_000.5)).toBe(1_700_000_000.5);
+    expect(parseEventTimestamp("1700000000.5")).toBe(1_700_000_000.5);
+    expect(parseEventTimestamp("2026-11-17T20:25:06.425134Z")).toBeCloseTo(
+      Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134,
+      6,
+    );
+    for (const invalid of [
+      undefined,
+      null,
+      "",
+      "soon",
+      "0x10",
+      " 12 ",
+      Number.NaN,
+      {},
+    ]) {
+      expect(parseEventTimestamp(invalid)).toBeUndefined();
+    }
+  });
+
+  test("reads ISO strings without a timezone as UTC, like Relay", () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "Asia/Kolkata";
+    try {
+      const utc = Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134;
+      expect(parseEventTimestamp("2026-11-17T20:25:06.425134")).toBeCloseTo(
+        utc,
+        6,
+      );
+      expect(parseEventTimestamp("2026-11-17 20:25:06.425134")).toBeCloseTo(
+        utc,
+        6,
+      );
+      expect(
+        parseEventTimestamp("2026-11-17T20:25:06.425134+05:30"),
+      ).toBeCloseTo(utc - 5.5 * 3600, 6);
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+
+  test("shows the transaction duration in the tail line", () => {
+    const line = stripAnsi(
+      formatTransactionItem(pythonTransaction, pythonHeader),
+    );
+    expect(line).toContain("[http.server] /sync-error [72ms] [internal_error]");
+    expect(line).not.toContain("NaN");
+  });
+
+  test("reports duration and epoch timestamps in JSON output", () => {
+    const parsed = JSON.parse(
+      formatItemJson("transaction", pythonTransaction, pythonHeader)[0]!,
+    );
+    expect(parsed.duration_ms).toBe(72);
+    expect(parsed.timestamp).toBeCloseTo(
+      Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.497_301,
+      6,
+    );
+  });
+
+  test("reports error timestamps in JSON output as epoch seconds", () => {
+    const parsed = JSON.parse(
+      formatItemJson(
+        "event",
+        { timestamp: "2026-11-17T20:25:06.497301Z", message: "boom" },
+        pythonHeader,
+      )[0]!,
+    );
+    expect(parsed.timestamp).toBeCloseTo(
+      Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.497_301,
+      6,
+    );
   });
 });

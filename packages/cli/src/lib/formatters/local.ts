@@ -1,5 +1,6 @@
 /** Tail formatters for the local dev server. */
 
+import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
   getLocalUiConnectionUrl,
@@ -72,19 +73,27 @@ export const FILTER_VALUES = ["error", "transaction", "log", "ai"] as const;
 export type FilterValue = (typeof FILTER_VALUES)[number];
 
 /** Format a local timestamp as HH:MM:SS from a Sentry timestamp. */
-export function formatTime(timestamp?: number | string): string {
+export function formatTime(timestamp?: unknown): string {
   let date: Date;
-  if (!timestamp) {
-    date = new Date();
-  } else if (typeof timestamp === "string") {
-    date = new Date(timestamp);
+  if (timestamp) {
+    const seconds = parseEventTimestamp(timestamp);
+    if (seconds === undefined) {
+      return "??:??:??";
+    }
+    date = new Date(seconds * 1000);
   } else {
-    date = new Date(timestamp * 1000);
-  }
-  if (Number.isNaN(date.getTime())) {
-    return "??:??:??";
+    date = new Date();
   }
   return date.toLocaleTimeString("en-US", { hour12: false });
+}
+
+/** Whole-millisecond duration between two Sentry timestamps, if both parse. */
+function durationMs(start: unknown, end: unknown): number | undefined {
+  const startSeconds = parseEventTimestamp(start);
+  const endSeconds = parseEventTimestamp(end);
+  return startSeconds === undefined || endSeconds === undefined
+    ? undefined
+    : Math.round((endSeconds - startSeconds) * 1000);
 }
 
 /** 32-char lowercase-hex trace ID, as emitted by Sentry SDKs. */
@@ -261,7 +270,7 @@ export function formatErrorItem(
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
+  const ts = formatTime(event.timestamp);
   return `${muted(ts)} ${formatType("error")} ${inferSource(header)} ${msg}`;
 }
 
@@ -307,11 +316,9 @@ export function formatTransactionItem(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  const start = event.start_timestamp as number | undefined;
-  const end = event.timestamp as number | undefined;
-  if (start !== undefined && end !== undefined) {
-    const durationMs = Math.round((end - start) * 1000);
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(event.start_timestamp, event.timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   const status = trace?.status;
@@ -326,7 +333,7 @@ export function formatTransactionItem(
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp as number | undefined);
+  const ts = formatTime(event.timestamp);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
 }
 
@@ -469,7 +476,7 @@ export function formatAttributeTable(event: Record<string, unknown>): string[] {
 export type LogEntry = {
   level?: string;
   body?: string;
-  timestamp?: number;
+  timestamp?: number | string;
   attributes?: Record<string, { value?: unknown }>;
 };
 
@@ -559,8 +566,8 @@ export type StreamedSpan = {
   trace_id?: string;
   span_id?: string;
   name?: string;
-  start_timestamp?: number;
-  end_timestamp?: number;
+  start_timestamp?: number | string;
+  end_timestamp?: number | string;
   status?: string;
   attributes?: Record<string, { type?: string; value?: unknown }>;
 };
@@ -609,11 +616,9 @@ export function formatSingleSpan(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  if (span.start_timestamp !== undefined && span.end_timestamp !== undefined) {
-    const durationMs = Math.round(
-      (span.end_timestamp - span.start_timestamp) * 1000,
-    );
-    msg += ` ${muted(`[${durationMs}ms]`)}`;
+  const duration = durationMs(span.start_timestamp, span.end_timestamp);
+  if (duration !== undefined) {
+    msg += ` ${muted(`[${duration}ms]`)}`;
   }
 
   if (span.status && span.status !== "ok") {
@@ -802,7 +807,7 @@ function formatErrorJson(
   return formatJsonObservation(
     {
       type: "error",
-      timestamp: payload.timestamp,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
       error_type: jsonSafe(first?.type) ?? "Error",
       message:
@@ -862,16 +867,10 @@ function formatTransactionJson(
       payload.transaction ?? trace?.description ?? "Transaction",
     ),
   );
-  const start = payload.start_timestamp as number | undefined;
-  const end = payload.timestamp as number | undefined;
-  const durationMs =
-    start !== undefined && end !== undefined
-      ? Math.round((end - start) * 1000)
-      : undefined;
   return formatJsonObservation(
     {
       type: "transaction",
-      timestamp: payload.timestamp,
+      timestamp: parseEventTimestamp(payload.timestamp),
       trace_id: extractTraceId(payload),
       op: inferSemanticOp(attrs) ?? trace?.op,
       label: stripBidi(semantic.label),
@@ -879,7 +878,7 @@ function formatTransactionJson(
         semantic.metadata.length > 0
           ? semantic.metadata.map(stripBidi)
           : undefined,
-      duration_ms: durationMs,
+      duration_ms: durationMs(payload.start_timestamp, payload.timestamp),
       status: trace?.status,
       span_count: (payload.spans as unknown[] | undefined)?.length,
       attributes: includeAttributes ? buildJsonAttributes(payload) : undefined,
@@ -904,7 +903,7 @@ function formatLogJson(
     formatJsonObservation(
       {
         type: "log",
-        timestamp: entry.timestamp,
+        timestamp: parseEventTimestamp(entry.timestamp),
         trace_id: extractLogTraceId(entry),
         level: entry.level ?? "log",
         message: stripBidi(entry.body ?? ""),
@@ -948,14 +947,10 @@ function formatSpanJson(
       flat,
       span.name ?? "unnamed span",
     );
-    const durationMs =
-      span.start_timestamp !== undefined && span.end_timestamp !== undefined
-        ? Math.round((span.end_timestamp - span.start_timestamp) * 1000)
-        : undefined;
     return formatJsonObservation(
       {
         type: "span",
-        timestamp: span.end_timestamp,
+        timestamp: parseEventTimestamp(span.end_timestamp),
         trace_id: span.trace_id,
         span_id: span.span_id,
         op: inferSemanticOp(flat) ?? flat["sentry.op"],
@@ -964,7 +959,7 @@ function formatSpanJson(
           semantic.metadata.length > 0
             ? semantic.metadata.map(stripBidi)
             : undefined,
-        duration_ms: durationMs,
+        duration_ms: durationMs(span.start_timestamp, span.end_timestamp),
         status: span.status,
         attributes: includeAttributes
           ? buildJsonAttributes({ contexts: { trace: { data: flat } } })
@@ -1013,7 +1008,7 @@ export function formatItemJson(
     formatJsonObservation(
       {
         type: itemType ?? "unknown",
-        timestamp: payload.timestamp,
+        timestamp: parseEventTimestamp(payload.timestamp),
       },
       payload,
       header,
@@ -1065,6 +1060,11 @@ export function formatItem(
   }
   if (itemType === "log") {
     return formatLogItem(payload, header);
+  }
+  // Active replays send a recording segment every few seconds; its
+  // replay_event already gets a line.
+  if (itemType === "replay_recording") {
+    return [];
   }
   return [formatFallbackLine(fallbackLabel)];
 }

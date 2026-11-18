@@ -1,5 +1,6 @@
 import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -81,6 +82,13 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+/** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
+function getLogEntry(value: unknown): string | undefined {
+  return isRecord(value)
+    ? (getString(value.formatted) ?? getString(value.message))
+    : undefined;
+}
+
 function contextFeedback(
   event: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -100,6 +108,8 @@ export function getEventMetadata(
   const description = getString(event.description);
   const message =
     getString(event.message) ??
+    getLogEntry(event.message) ??
+    getLogEntry(event.logentry) ??
     getString(event.body) ??
     getString(event.name) ??
     getString(
@@ -128,9 +138,10 @@ export function getEventMetadata(
     getString(data["http.url"]) ??
     getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
-  const startTimestamp = getNumber(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event.start_timestamp);
   const timestamp =
-    getNumber(event.timestamp) ?? getNumber(event.end_timestamp);
+    parseEventTimestamp(event.timestamp) ??
+    parseEventTimestamp(event.end_timestamp);
   const durationMs =
     startTimestamp !== undefined && timestamp !== undefined
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100

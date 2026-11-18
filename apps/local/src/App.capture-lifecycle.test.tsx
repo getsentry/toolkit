@@ -18,6 +18,10 @@ import {
   REMOTE_STREAM_STORAGE_KEY,
   STREAM_STORAGE_KEY,
 } from "./lib/spotlight.ts";
+import {
+  pythonLoggingEvent,
+  sdkErrorMessage,
+} from "./test-fixtures/sdk-message.ts";
 
 const STREAM =
   "http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=web-read";
@@ -109,6 +113,21 @@ async function sendEvent(
     source.dispatchEvent(
       new MessageEvent("application/x-sentry-envelope", {
         data: JSON.stringify([{}, [[{ type: "event" }, { message }]]]),
+        lastEventId: id,
+      }),
+    ),
+  );
+}
+
+async function sendItems(
+  source: ControllableEventSource,
+  id: string,
+  items: [Record<string, unknown>, unknown][],
+) {
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([{}, items]),
         lastEventId: id,
       }),
     ),
@@ -491,7 +510,7 @@ test("session command search leaves the active view filter unchanged until Filte
   });
   await waitFor(() =>
     expect(
-      screen.getAllByRole("button", { name: "View event event" }),
+      screen.getAllByRole("button", { name: /^View event:/ }),
     ).toHaveLength(1),
   );
   expect(screen.getByTestId("event-list").textContent).toContain(
@@ -533,7 +552,7 @@ test("session command search leaves the active view filter unchanged until Filte
   );
   await waitFor(() =>
     expect(
-      screen.getAllByRole("button", { name: "View event event" }),
+      screen.getAllByRole("button", { name: /^View event:/ }),
     ).toHaveLength(2),
   );
 });
@@ -702,4 +721,63 @@ test("Last received never moves back when a later envelope only has sent_at", as
   expect(
     screen.getByText(/Last received/).querySelector("time")?.dateTime,
   ).toBe(new Date(receivedAt).toISOString());
+});
+
+test("event rows name their kind and title instead of an exception badge", async () => {
+  renderCapture({ path: "/errors" });
+  const source = await openSource();
+  await sendItems(source, "logging", [[{ type: "event" }, pythonLoggingEvent]]);
+  await sendItems(source, "message", [[{ type: "event" }, sdkErrorMessage]]);
+  const logging = await screen.findByRole("button", {
+    name: "View event: Database query failed for orders",
+  });
+  expect(logging.textContent).toContain("Message");
+  expect(logging.textContent).not.toContain("Exception");
+  const message = screen.getByRole("button", {
+    name: "View event: Payment retry limit reached",
+  });
+  expect(message.textContent).toContain("Message");
+  expect(message.textContent).not.toContain("Exception");
+});
+
+test("feedback rows show the feedback message, not the page path", async () => {
+  renderCapture({ path: "/feedback" });
+  const source = await openSource();
+  await sendItems(source, "feedback", [
+    [
+      { type: "feedback" },
+      {
+        timestamp: 1730000002.1,
+        request: { url: "http://localhost:3000/" },
+        contexts: {
+          feedback: {
+            message: "The checkout button did not complete my order.",
+            url: "http://localhost:3000/",
+          },
+        },
+      },
+    ],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: "View feedback: The checkout button did not complete my order.",
+  });
+  expect(row.textContent).toContain(
+    "The checkout button did not complete my order.",
+  );
+});
+
+test("long event titles are shortened in row labels", async () => {
+  renderCapture({ path: "/errors" });
+  const source = await openSource();
+  const message = `Query failed: ${"SELECT * FROM orders ".repeat(20)}`;
+  await sendItems(source, "long", [
+    [{ type: "event" }, { level: "error", message }],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: /^View event: Query failed/,
+  });
+  const label = row.getAttribute("aria-label") ?? "";
+  expect(label.length).toBeLessThanOrEqual(140);
+  expect(label.endsWith("…")).toBe(true);
+  expect(row.textContent).toContain(message.trim());
 });

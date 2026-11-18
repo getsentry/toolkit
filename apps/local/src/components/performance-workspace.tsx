@@ -209,7 +209,7 @@ export function WebVitalsWorkspace({
       <Empty>
         {query
           ? "No pages match this filter."
-          : "No Web Vitals captured. Send browser pageload transactions with performance measurements."}
+          : "No Web Vitals captured. Send browser pageloads with Web Vitals."}
       </Empty>
     );
   const available = (Object.keys(VITALS) as VitalName[]).filter((name) =>

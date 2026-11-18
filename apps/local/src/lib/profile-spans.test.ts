@@ -154,6 +154,35 @@ test("legacy relative profile samples attach using the matching transaction star
   });
 });
 
+test("legacy profile samples align to an ISO 8601 transaction start", () => {
+  // sentry-python sends the transaction start as an ISO 8601 string.
+  const event = transaction();
+  const payload = event.payload as Record<string, unknown>;
+  payload.start_timestamp = "1970-01-01T00:00:01.000000Z";
+  payload.timestamp = "1970-01-01T00:00:01.100000Z";
+  const legacy = decode("legacy", "profile", {
+    transaction: { id: "e", trace_id: "t", active_thread_id: "main" },
+    profile: {
+      frames: [{ function: "legacy work" }],
+      stacks: [[0]],
+      samples: ["10000000", "30000000"].map((elapsed_since_start_ns) => ({
+        thread_id: "main",
+        stack_id: 0,
+        elapsed_since_start_ns,
+      })),
+    },
+  });
+  const sampled = buildTraceGroups([event, legacy])[0]!.spans.filter(
+    (span) => span.item.type === "profile",
+  );
+  expect(sampled).toHaveLength(1);
+  expect(sampled[0]).toMatchObject({
+    startTimestamp: 1.01,
+    endTimestamp: 1.03,
+    parentId: "root",
+  });
+});
+
 test("missing chunks cannot project sampled work into an entirely unobserved trace", () => {
   const event = decode("event", "transaction", {
     transaction: "gap",
