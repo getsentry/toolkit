@@ -16228,7 +16228,7 @@
         "inRelease": {
           "type": "string",
           "minLength": 1,
-          "description": "Release version that fixes the issue. Requires status `resolved`. Events from newer releases reopen it as a regression."
+          "description": "Full version of the release that fixes the issue, exactly as find_releases returns it (e.g. `my-app@1.2.3+45`). Requires status `resolved`. Events from newer releases reopen it as a regression."
         },
         "inCommit": {
           "type": "string",
