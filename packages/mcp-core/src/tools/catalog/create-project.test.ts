@@ -438,6 +438,70 @@ describe("create_project", () => {
     expect(organizationRequested).toBe(false);
   });
 
+  it("uses the created project's platform when none is passed", async () => {
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () =>
+          HttpResponse.json({ ...projectFixture, platform: "python-django" }),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: null,
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    const setup = getOutput(result).setup;
+    expect(setup).toMatchObject({
+      platform: "Django",
+      docsUrl: "https://docs.sentry.io/platforms/python/integrations/django/",
+    });
+    // Integration pages take their signals from the Python SDK page.
+    expect(setup?.signals.map((signal) => signal.docsUrl)).toEqual([
+      "https://docs.sentry.io/platforms/python/integrations/django/",
+      "https://docs.sentry.io/platforms/python/tracing/",
+      "https://docs.sentry.io/platforms/python/logs/",
+      "https://docs.sentry.io/platforms/python/metrics/",
+    ]);
+  });
+
+  it("returns no setup knowledge for a platform without a setup guide", async () => {
+    mswServer.use(
+      http.post(
+        "https://sentry.io/api/0/teams/sentry-mcp-evals/the-goats/projects/",
+        () => HttpResponse.json({ ...projectFixture, platform: "other" }),
+      ),
+    );
+
+    const result = await createProject.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        teamSlug: "the-goats",
+        name: "cloudflare-mcp",
+        slug: null,
+        platform: "other",
+        regionUrl: null,
+        repository: null,
+      },
+      context,
+    );
+
+    expect(getOutput(result)).toMatchObject({
+      dsn: expect.any(String),
+      setup: null,
+      suggestedActions: [],
+    });
+  });
+
   it("passes an optional slug through project creation", async () => {
     let createBody: unknown;
     mswServer.use(
