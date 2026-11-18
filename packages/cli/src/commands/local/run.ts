@@ -364,9 +364,14 @@ function autoDetectErrorMessage(): string {
     "Supported auto-detection:",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
-    "  - app.py / main.py (Python)",
+    "  - a FastAPI app in app.py / main.py (uvicorn)",
+    "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
+    "  - app.py / main.py (Python script)",
+    "  - FLASK_APP in a Python project (flask run)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
+    "",
+    "Python commands use the project's .venv or venv interpreter when present.",
   ].join("\n");
 }
 
