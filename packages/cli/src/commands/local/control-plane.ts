@@ -134,10 +134,13 @@ function describeEvent(
   container: ReceiverEnvelope,
   parsed: ParsedReceiverEnvelope,
 ) {
+  const receivedAt = receiverEnvelopeReceivedAt(container);
   return {
     ...eventSummary(parsed),
     ...summarizeEnvelope(parsed),
-    receivedAt: new Date(receiverEnvelopeReceivedAt(container)).toISOString(),
+    ...(receivedAt === undefined
+      ? {}
+      : { receivedAt: new Date(receivedAt).toISOString() }),
   };
 }
 

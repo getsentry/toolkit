@@ -123,12 +123,15 @@ export function receiverEnvelopeId(container: ReceiverEnvelope): string {
   return prepareReceiverEnvelope(container);
 }
 
-/** Return when the receiver accepted a delivery, in epoch milliseconds. */
+/**
+ * Return when the receiver accepted a delivery, in epoch milliseconds, or
+ * `undefined` when that was not recorded.
+ */
 export function receiverEnvelopeReceivedAt(
   container: ReceiverEnvelope,
-): number {
+): number | undefined {
   prepareReceiverEnvelope(container);
-  return receivedTimes.get(container) ?? Date.now();
+  return receivedTimes.get(container);
 }
 
 /**

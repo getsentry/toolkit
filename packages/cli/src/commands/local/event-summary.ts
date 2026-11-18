@@ -36,6 +36,9 @@ const CONTAINER_ITEM_TYPES = new Set(["log", "span"]);
 
 const TRACE_ID_RE = /^[0-9a-f]{32}$/i;
 
+/** Longest title kept in a summary; longer ones end in `…`. */
+const MAX_TITLE_LENGTH = 200;
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -124,6 +127,14 @@ function summarizeContainer(
   };
 }
 
+/** Cut a long title (a big log body or exception message) to one line's worth. */
+function shortTitle(details: LocalEventDetails): LocalEventDetails {
+  const { title } = details;
+  return title && title.length > MAX_TITLE_LENGTH
+    ? { ...details, title: `${title.slice(0, MAX_TITLE_LENGTH - 1)}…` }
+    : details;
+}
+
 /** Pick the item that best describes the envelope. */
 function mainItem(items: Item[]): Item | undefined {
   return (
@@ -136,7 +147,8 @@ function mainItem(items: Item[]): Item | undefined {
 /**
  * Summarize a decoded envelope from its main item: the first event or
  * transaction, else the first log or span container, else the first item.
- * Falls back to the envelope header's trace context for the trace ID.
+ * Falls back to the envelope header's trace context for the trace ID, and
+ * cuts titles to {@link MAX_TITLE_LENGTH} characters.
  */
 export function summarizeEnvelope(
   parsed: ParsedReceiverEnvelope,
@@ -152,11 +164,14 @@ export function summarizeEnvelope(
 
   if (CONTAINER_ITEM_TYPES.has(itemType)) {
     const details = summarizeContainer(itemType, payload);
-    return { ...details, traceId: details.traceId ?? headerTraceId };
+    return shortTitle({
+      ...details,
+      traceId: details.traceId ?? headerTraceId,
+    });
   }
 
   const isEvent = EVENT_ITEM_TYPES.has(itemType);
-  return {
+  return shortTitle({
     type: itemType,
     level: text(payload.level),
     title: text(payload.transaction) ?? text(payload.status),
@@ -166,5 +181,5 @@ export function summarizeEnvelope(
       (isEvent
         ? traceId(record(record(payload.contexts).trace).trace_id)
         : undefined) ?? headerTraceId,
-  };
+  });
 }

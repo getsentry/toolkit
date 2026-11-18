@@ -41,10 +41,10 @@ a summary of the envelope's main item (the first event or transaction, else the
 first log or span batch, else the first item), so an agent can pick what to open
 without viewing every event. `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
-(`transaction`, `log`, `span`, `session`, …). `level`, `title`, `timestamp`
-(ISO 8601), and `traceId` appear when the item has them, `count` gives the
-number of logs or spans in a batch, and `receivedAt` is when the receiver
-accepted the envelope. `event view` returns the same fields with the envelope.
+(`transaction`, `log`, `span`, `session`, …). `level`, `title` (cut to 200
+characters), `timestamp` (ISO 8601), and `traceId` appear when the item has
+them, `count` gives the number of logs or spans in a batch, and `receivedAt` is
+when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
 
 A session, event, or envelope that does not exist, or that retention has
 evicted, fails with a not-found error (exit code 23) that names what is missing
