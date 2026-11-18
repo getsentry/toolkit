@@ -54,6 +54,15 @@ export type ReceiverBuffer = {
 };
 
 const identities = new WeakMap<ReceiverEnvelope, string>();
+/** Epoch milliseconds when each delivery received its identity. */
+const receivedTimes = new WeakMap<ReceiverEnvelope, number>();
+
+/** Record a delivery's identity and the time it was received. */
+function trackDelivery(container: ReceiverEnvelope, id: string): void {
+  identities.set(container, id);
+  receivedTimes.set(container, Date.now());
+}
+
 // Item payloads that are not one JSON document even without a content type:
 // replay recordings are a JSON line plus (usually gzip) rrweb bytes.
 const RAW_TYPES = new Set([
@@ -88,7 +97,7 @@ export function prepareReceiverEnvelope(container: ReceiverEnvelope): string {
   const existing = identities.get(container);
   if (existing) return existing;
   const id = uuidv7();
-  identities.set(container, id);
+  trackDelivery(container, id);
   const parse = container.getParsedEnvelope.bind(container);
   let attempted = false;
   let parsed: ParsedReceiverEnvelope | null = null;
@@ -133,6 +142,17 @@ function parseJson(bytes: Buffer): unknown {
     logger.debug("Local receiver kept a non-JSON envelope item raw.");
     return undefined;
   }
+}
+
+/**
+ * Return when the receiver accepted a delivery, in epoch milliseconds, or
+ * `undefined` when that was not recorded.
+ */
+export function receiverEnvelopeReceivedAt(
+  container: ReceiverEnvelope,
+): number | undefined {
+  prepareReceiverEnvelope(container);
+  return receivedTimes.get(container);
 }
 
 /**
@@ -424,6 +444,6 @@ export function createReceiverEnvelope(input: {
           header.type ? [header.type] : [],
         ) ?? null,
   };
-  identities.set(container, id);
+  trackDelivery(container, id);
   return container;
 }
