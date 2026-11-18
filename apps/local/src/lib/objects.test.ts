@@ -18,4 +18,15 @@ describe("withoutUndefined", () => {
     });
     expect("parentId" in value).toBe(false);
   });
+
+  test("accepts only plain records, whose own keys are all it copies", () => {
+    class Span {
+      id = "span";
+      get label(): string {
+        return "inherited";
+      }
+    }
+    // @ts-expect-error A class instance's prototype members would be dropped.
+    expect(withoutUndefined(new Span())).toStrictEqual({ id: "span" });
+  });
 });
