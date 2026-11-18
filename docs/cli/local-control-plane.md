@@ -293,6 +293,9 @@ Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
 encoding 415, and temporary admission overload 503. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
+Receivers drop `http.client` spans and breadcrumbs for requests to their own
+loopback `/_local/` and `/stream` routes on the same port, which SDKs record for
+their own deliveries, and do not retain an envelope that has nothing else left.
 Clearing a capture invalidates pending admissions, and closing a session drains
 accepted work before its final stream event.
 

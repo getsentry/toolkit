@@ -206,6 +206,225 @@ describe.each([false, true])("bounded receiver (scoped: %s)", (scoped) => {
   });
 });
 
+// The browser SDK records an http.client span for its own POST to Local and
+// sends it in the next envelope, which records another span, and so on.
+describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
+  const receiverOrigin = "http://localhost:8969";
+  const traceId = "c0ffee00c0ffee00c0ffee00c0ffee00";
+  const attr = (value: string | number) => ({
+    type: typeof value === "number" ? "integer" : "string",
+    value,
+  });
+  // Shape of @sentry/core 11.14 fetch spans with span streaming: the name
+  // carries only the domain, and the URL is in `url.full`.
+  const fetchSpan = (spanId: string, url: string) => {
+    const { hostname, port } = new URL(url);
+    return {
+      trace_id: traceId,
+      span_id: spanId,
+      parent_span_id: "1111111111111111",
+      name: `POST ${hostname}`,
+      start_timestamp: 1_767_225_600.1,
+      end_timestamp: 1_767_225_600.15,
+      status: "ok",
+      is_segment: false,
+      attributes: {
+        "sentry.op": attr("http.client"),
+        "sentry.origin": attr("auto.http.browser"),
+        "url.full": attr(url),
+        type: attr("fetch"),
+        "http.request.method": attr("POST"),
+        "server.address": attr(hostname),
+        "server.port": attr(Number(port)),
+        "url.domain": attr(hostname),
+        "http.response.status_code": attr(204),
+      },
+    };
+  };
+  const spanEnvelope = (spans: unknown[]) =>
+    [
+      JSON.stringify({
+        sent_at: "2026-01-01T00:00:00.200Z",
+        sdk: { name: "sentry.javascript.react", version: "11.14.0" },
+        trace: { trace_id: traceId, public_key: "public", sampled: "true" },
+      }),
+      JSON.stringify({
+        type: "span",
+        item_count: spans.length,
+        content_type: "application/vnd.sentry.items.span.v2+json",
+      }),
+      JSON.stringify({ version: 2, items: spans }),
+    ].join("\n");
+  const post = (
+    fixture: ReturnType<typeof receiver>,
+    body: string,
+  ): Promise<Response> =>
+    fixture.app.request(
+      new Request(`${receiverOrigin}${fixture.path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body,
+      }),
+    );
+
+  test("does not retain an envelope holding only its own ingest span", async () => {
+    const fixture = receiver(scoped);
+    const self = `${receiverOrigin}${fixture.path}`;
+    const response = await post(
+      fixture,
+      spanEnvelope([fetchSpan("2222222222222222", self)]),
+    );
+    expect(response.status).toBe(204);
+    // Legacy standalone spans name the full URL and keep it in `data`.
+    const legacy = JSON.stringify({
+      op: "http.client",
+      description: `POST ${self}`,
+      span_id: "5555555555555555",
+      trace_id: traceId,
+      data: { "http.method": "POST", url: self },
+    });
+    expect((await post(fixture, `{}\n{"type":"span"}\n${legacy}`)).status).toBe(
+      204,
+    );
+    expect(fixture.buffer.read({ all: true })).toHaveLength(0);
+  });
+
+  test("keeps the app's spans, including the same path on another port", async () => {
+    const fixture = receiver(scoped);
+    const self = `${receiverOrigin}${fixture.path}`;
+    const appUrl = `http://localhost:5173${fixture.path}`;
+    const response = await post(
+      fixture,
+      spanEnvelope([
+        fetchSpan("2222222222222222", self),
+        fetchSpan("3333333333333333", appUrl),
+        {
+          ...fetchSpan("4444444444444444", self),
+          attributes: { "sentry.op": attr("resource.fetch") },
+        },
+      ]),
+    );
+    expect(response.status).toBe(204);
+    const [container] = fixture.buffer.read({ all: true });
+    const [, items] = container.getParsedEnvelope()!.envelope;
+    expect(items).toHaveLength(1);
+    expect(items[0][0]).toMatchObject({ type: "span", item_count: 2 });
+    expect(
+      (items[0][1].items as { span_id: string }[]).map((span) => span.span_id),
+    ).toEqual(["3333333333333333", "4444444444444444"]);
+  });
+
+  test("keeps a malformed envelope that mentions its routes byte-exact", async () => {
+    const fixture = receiver(scoped);
+    const body = `{}\n{"type":"span"}\n{"name":"POST ${receiverOrigin}${fixture.path}"`;
+    expect((await post(fixture, body)).status).toBe(204);
+    const [container] = fixture.buffer.read({ all: true });
+    expect(container.getData().toString()).toBe(body);
+  });
+
+  test("removes its own fetch breadcrumbs from browser errors", async () => {
+    const fixture = receiver(scoped);
+    const self = `${receiverOrigin}${fixture.path}`;
+    const event = JSON.stringify({
+      event_id: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      platform: "javascript",
+      exception: { values: [{ type: "Error", value: "Checkout failed" }] },
+      breadcrumbs: [
+        {
+          type: "http",
+          category: "fetch",
+          data: { method: "POST", url: self, status_code: 204 },
+        },
+        {
+          type: "http",
+          category: "fetch",
+          data: { method: "POST", url: "http://localhost:5173/api/orders" },
+        },
+      ],
+    });
+    const body = [
+      '{"event_id":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}',
+      '{"type":"event"}',
+      event,
+    ].join("\n");
+    expect((await post(fixture, body)).status).toBe(204);
+    const [container] = fixture.buffer.read({ all: true });
+    expect(container.getData().toString()).not.toContain(self);
+    expect(container.getParsedEnvelope()!.envelope[1][0][1]).toMatchObject({
+      exception: { values: [{ value: "Checkout failed" }] },
+      breadcrumbs: [{ data: { url: "http://localhost:5173/api/orders" } }],
+    });
+  });
+
+  test("removes its own request from transactions and breadcrumbs", async () => {
+    // sentry-python records its Spotlight POST inside the active transaction.
+    const fixture = receiver(scoped);
+    const self = `${receiverOrigin}${fixture.path}`;
+    const transaction = JSON.stringify({
+      type: "transaction",
+      event_id: "dddddddddddddddddddddddddddddddd",
+      transaction: "/checkout",
+      platform: "python",
+      start_timestamp: 1_767_225_600,
+      timestamp: 1_767_225_601,
+      contexts: {
+        trace: {
+          trace_id: traceId,
+          span_id: "1111111111111111",
+          op: "http.server",
+        },
+      },
+      spans: [
+        {
+          op: "http.client",
+          description: `POST ${self}`,
+          origin: "auto.http.stdlib.httplib",
+          span_id: "2222222222222222",
+          parent_span_id: "1111111111111111",
+          trace_id: traceId,
+          data: { "http.method": "POST", url: self },
+        },
+        {
+          op: "db",
+          description: "SELECT * FROM orders",
+          span_id: "3333333333333333",
+          parent_span_id: "1111111111111111",
+          trace_id: traceId,
+        },
+      ],
+      breadcrumbs: {
+        values: [
+          {
+            type: "http",
+            category: "httplib",
+            data: { method: "POST", url: self },
+          },
+          {
+            type: "default",
+            category: "query",
+            message: "SELECT * FROM orders",
+          },
+        ],
+      },
+    });
+    const body = [
+      '{"event_id":"dddddddddddddddddddddddddddddddd"}',
+      `{"type":"transaction","length":${Buffer.byteLength(transaction)}}`,
+      transaction,
+    ].join("\n");
+    expect((await post(fixture, body)).status).toBe(204);
+    const [container] = fixture.buffer.read({ all: true });
+    expect(container.getData().toString()).not.toContain(self);
+    const payload = container.getParsedEnvelope()!.envelope[1][0][1];
+    expect(payload.spans).toEqual([
+      expect.objectContaining({ span_id: "3333333333333333" }),
+    ]);
+    expect(payload.breadcrumbs).toEqual({
+      values: [expect.objectContaining({ category: "query" })],
+    });
+  });
+});
+
 test.each([
   "not-json",
   '1\n{"type":"event"}\n{}',

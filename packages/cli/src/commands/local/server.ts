@@ -437,6 +437,7 @@ export function buildApp(
       body,
       encoding: contentEncoding,
       contentType,
+      receiverUrl: c.req.url,
       userAgent,
     });
 
