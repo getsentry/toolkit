@@ -5,6 +5,8 @@ import {
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiValidationError } from "@sentry/api/client";
+import { UserInputError } from "../../errors";
 import { logIssue } from "../../telem/logging";
 import { prepareToolParams } from "../catalog-runtime/availability.js";
 import {
@@ -15,6 +17,7 @@ import updateIssue, { updateIssueOutputSchema } from "./update-issue.js";
 
 vi.mock("../../telem/logging", () => ({
   logIssue: vi.fn(),
+  logWarn: vi.fn(),
 }));
 
 type MockIssue = typeof issueFixture;
@@ -936,10 +939,91 @@ describe("update_issue", () => {
     expect(structured(result).updated).toBe(false);
   });
 
+  it("explains that inRelease needs the full release version", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(createIssue({ status: "unresolved" })),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            {
+              statusDetails: {
+                inRelease: ["Unable to find a release with the given version."],
+              },
+            },
+            { status: 400 },
+          ),
+      ),
+    );
+
+    const error = await updateIssue
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          status: "resolved",
+          inRelease: "1.4.2",
+          assignedTo: undefined,
+          issueUrl: undefined,
+          regionUrl: null,
+        },
+        serverContext,
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UserInputError);
+    expect((error as Error).message).toMatchInlineSnapshot(
+      `"Sentry rejected \`inRelease\` \`1.4.2\`: Unable to find a release with the given version. \`inRelease\` must match a release of this issue's project exactly as Sentry stores it, often with a package prefix and build suffix (e.g. \`my-app@1.2.3+45\`). Copy the version from find_releases. The issue was not changed."`,
+    );
+  });
+
+  it("keeps other validation errors from the resolve request", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () => HttpResponse.json(createIssue({ status: "unresolved" })),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            { assignedTo: ["Unknown actor input"] },
+            { status: 400 },
+          ),
+      ),
+    );
+
+    const error = await updateIssue
+      .handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+          status: "resolved",
+          inRelease: "backend@1.4.2",
+          assignedTo: undefined,
+          issueUrl: undefined,
+          regionUrl: null,
+        },
+        serverContext,
+      )
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiValidationError);
+  });
+
   it.each([
     {
-      name: "inRelease without resolved status",
+      name: "inRelease with resolvedInNextRelease",
       params: { status: "resolvedInNextRelease" as const, inRelease: "1.0.0" },
+      error:
+        "`resolvedInNextRelease` picks the release itself, so it takes no `inRelease` or `inCommit`",
+    },
+    {
+      name: "inRelease without resolved status",
+      params: { status: "unresolved" as const, inRelease: "1.0.0" },
       error:
         "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
     },

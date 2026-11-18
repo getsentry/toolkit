@@ -240,6 +240,12 @@ function buildResolution(
     return undefined;
   }
 
+  if (params.status === "resolvedInNextRelease") {
+    throw new UserInputError(
+      "`resolvedInNextRelease` picks the release itself, so it takes no `inRelease` or `inCommit`. Drop them, or use status `resolved` with `inRelease` to name an existing release.",
+    );
+  }
+
   if (params.status !== "resolved") {
     throw new UserInputError(
       "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
@@ -264,6 +270,25 @@ function buildResolution(
       repository: params.inCommitRepository,
     },
   };
+}
+
+const inReleaseErrorSchema = z.object({
+  statusDetails: z.object({ inRelease: z.array(z.string()).min(1) }),
+});
+
+// Sentry matches `inRelease` against the stored version exactly, so a short
+// name such as `1.2.3` for `my-app@1.2.3+45` fails. The API client only keeps
+// a field error's body as raw text in `detail`.
+function getInReleaseErrorReason(error: unknown): string | undefined {
+  if (!(error instanceof ApiValidationError) || !error.detail) {
+    return undefined;
+  }
+  try {
+    const parsed = inReleaseErrorSchema.safeParse(JSON.parse(error.detail));
+    return parsed.success ? parsed.data.statusDetails.inRelease[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isResolutionAlreadySet(
@@ -1100,20 +1125,32 @@ export default defineTool({
     }
 
     // Update the issue
-    const updatedIssue = await apiService.updateIssue({
-      organizationSlug: orgSlug,
-      issueId: parsedIssueId,
-      status: updateStatus,
-      statusDetails: updateStatus === undefined ? undefined : resolution,
-      assignedTo: updateAssignedTo,
-      priority: updatePriority,
-      substatus: updateIgnore?.substatus,
-      ignoreDuration: updateIgnore?.ignoreDuration,
-      ignoreCount: updateIgnore?.ignoreCount,
-      ignoreWindow: updateIgnore?.ignoreWindow,
-      ignoreUserCount: updateIgnore?.ignoreUserCount,
-      ignoreUserWindow: updateIgnore?.ignoreUserWindow,
-    });
+    const updatedIssue = await apiService
+      .updateIssue({
+        organizationSlug: orgSlug,
+        issueId: parsedIssueId,
+        status: updateStatus,
+        statusDetails: updateStatus === undefined ? undefined : resolution,
+        assignedTo: updateAssignedTo,
+        priority: updatePriority,
+        substatus: updateIgnore?.substatus,
+        ignoreDuration: updateIgnore?.ignoreDuration,
+        ignoreCount: updateIgnore?.ignoreCount,
+        ignoreWindow: updateIgnore?.ignoreWindow,
+        ignoreUserCount: updateIgnore?.ignoreUserCount,
+        ignoreUserWindow: updateIgnore?.ignoreUserWindow,
+      })
+      .catch((error: unknown) => {
+        const reason =
+          params.inRelease !== undefined && getInReleaseErrorReason(error);
+        if (reason) {
+          throw new UserInputError(
+            `Sentry rejected \`inRelease\` \`${params.inRelease}\`: ${reason} \`inRelease\` must match a release of this issue's project exactly as Sentry stores it, often with a package prefix and build suffix (e.g. \`my-app@1.2.3+45\`). Copy the version from find_releases. The issue was not changed.`,
+            { cause: error },
+          );
+        }
+        throw error;
+      });
 
     // Only closing the issue raises what else the change covers. Each lookup
     // also calls Seer, and the endpoint's per-user rate limit is tight for
