@@ -1458,7 +1458,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint, method));
     span.setAttribute("api_error.method", method);
   }
 }
