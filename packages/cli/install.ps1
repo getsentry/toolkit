@@ -83,8 +83,8 @@ function Install-SentryCli {
   # Step 2: find the release to install
   #
   # Sentry's release registry is the source of truth for versions, download
-  # URLs, and checksums. GitHub releases are only a fallback for registry
-  # outages, and they have no checksums.
+  # URLs, and checksums. When it is down, a pinned version still downloads
+  # from its GitHub release, without checksums; "latest" needs the registry.
   # -------------------------------------------------------------------------
 
   # Returns @{ Version; Gz; Raw }, where Gz and Raw are the compressed and
@@ -120,9 +120,10 @@ function Install-SentryCli {
       return $release
     }
 
+    if (-not $version) {
+      Stop-Install "Failed to fetch latest stable version from Sentry's release registry. Retry or set SENTRY_VERSION to install a specific version."
+    }
     Write-Host "Could not resolve $registryPath from Sentry's release registry. Trying GitHub..." -ForegroundColor DarkGray
-    if (-not $version) { $version = Find-LatestToolkitVersion }
-    $state.Version = $version
     Write-Warning 'GitHub fallback downloads are not checksum-verified.'
     $base = "https://github.com/getsentry/toolkit/releases/download/cli@$version/$asset"
     return @{
@@ -159,31 +160,6 @@ function Install-SentryCli {
     $entry = $Metadata.files.PSObject.Properties[$Name]
     if ($null -eq $entry -or "$($entry.Value.url)" -notmatch '^https://') { return $null }
     return @{ Url = "$($entry.Value.url)"; Sha256 = "$($entry.Value.checksums.'sha256-hex')" }
-  }
-
-  # Registry outage fallback: the newest stable `cli@x.y.z` release. The repo
-  # also publishes MCP releases, so this may page through several pages of
-  # those first.
-  function Find-LatestToolkitVersion {
-    for ($page = 1; $page -le 20; $page++) {
-      try {
-        # Windows PowerShell 5.1 emits a JSON array as one object; piping
-        # through ForEach-Object flattens it so an empty page has no items.
-        $releases = @(Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
-          -Uri "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=$page" |
-          ForEach-Object { $_ })
-      } catch {
-        Stop-Install 'Failed to list Toolkit releases'
-      }
-      if ($releases.Count -eq 0) { break }
-
-      foreach ($release in $releases) {
-        if (-not $release.prerelease -and "$($release.tag_name)" -match '^cli@\d+\.\d+\.\d+$') {
-          return "$($release.tag_name)".Substring(4)
-        }
-      }
-    }
-    Stop-Install "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or set SENTRY_VERSION to install a specific version."
   }
 
   # -------------------------------------------------------------------------

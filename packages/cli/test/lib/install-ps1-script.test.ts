@@ -70,13 +70,6 @@ function Invoke-RestMethod {
     $body = (Get-Content -Raw -LiteralPath $env:SENTRY_TEST_REGISTRY_BODY).Replace('__VERSION__', $version)
     return ($body | ConvertFrom-Json)
   }
-  if ($Uri -like 'https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=*') {
-    $page = $Uri.Split('=')[-1]
-    $file = [Environment]::GetEnvironmentVariable("SENTRY_TEST_RELEASES_PAGE_$page")
-    # Like Windows PowerShell 5.1, emit each JSON array as a single object.
-    if ($file) { return ,(Get-Content -Raw -LiteralPath $file | ConvertFrom-Json -NoEnumerate) }
-    return ,@()
-  }
   throw "Unexpected Invoke-RestMethod $Uri"
 }
 function Invoke-WebRequest {

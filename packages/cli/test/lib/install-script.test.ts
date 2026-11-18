@@ -140,17 +140,6 @@ case "$url" in
   https://o1.ingest.us.sentry.io/api/*/envelope/)
     printf '%s\\n' "$data" > "$SENTRY_TEST_DIR/error-report"
     ;;
-  *"/repos/getsentry/toolkit/releases?per_page=100&page="*)
-    if [[ " $* " == *" -H @- "* ]]; then cat >> "$SENTRY_TEST_DIR/github-headers"; fi
-    if (( $(nth github) <= \${SENTRY_TEST_GITHUB_RATE_LIMITED:-0} )); then
-      printf '{"message":"API rate limit exceeded"}'
-      printf "\${write_out//'%{http_code}'/403}"
-      exit 0
-    fi
-    page_file="SENTRY_TEST_RELEASES_PAGE_\${url##*=}"
-    if [[ -n "\${!page_file:-}" ]]; then cat "\${!page_file}"; else printf '[]'; fi
-    printf "\${write_out//'%{http_code}'/200}"
-    ;;
   https://github.com/*/releases/download/*.gz)
     if [[ "\${SENTRY_TEST_GZ_MISSING:-}" == "1" ]]; then exit 22; fi
     if (( $(nth gz) <= \${SENTRY_TEST_GZ_CORRUPT:-0} )); then
@@ -515,124 +504,6 @@ process.exitCode = result.status ?? 1;
     },
   );
 
-  test("checks further release pages before selecting a stable Toolkit CLI", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    const secondPage = join(testDir, "releases-2.json");
-    writeFileSync(
-      firstPage,
-      '[\n  {\n    "tag_name": "mcp@1.0.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    writeFileSync(
-      secondPage,
-      '[\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_RELEASES_PAGE_2 = secondPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls").slice(0, 3)).toEqual([
-      "https://release-registry.services.sentry.io/apps/sentry/latest",
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=1",
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=2",
-    ]);
-    expect(recorded("curl-urls")[3]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-  });
-
-  test("skips SemVer prereleases even when GitHub marks them stable", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    writeFileSync(
-      firstPage,
-      '[\n  {\n    "tag_name": "cli@0.47.0-dev.1",\n    "prerelease": false\n  },\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")[2]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-    expect(recorded("setup-args")).toContain("stable");
-  });
-
-  test("selects the first stable CLI release from compact GitHub JSON", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    writeFileSync(
-      firstPage,
-      JSON.stringify([
-        {
-          tag_name: "mcp@0.42.0",
-          prerelease: false,
-          body: 'A quoted "tag_name" in the release notes',
-        },
-        {
-          prerelease: false,
-          tag_name: "cli@0.47.0-dev.1",
-        },
-        {
-          prerelease: false,
-          assets: [{ tag_name: "cli@99.0.0", prerelease: false }],
-          tag_name: "cli@0.46.0",
-        },
-      ]),
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")[2]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-  });
-
-  test("reads a large releases page without SIGPIPE and selects its first stable CLI", () => {
-    const firstPage = join(testDir, "releases-large.json");
-    writeFileSync(
-      firstPage,
-      `[
-  {
-    "tag_name": "cli@0.46.0",
-    "prerelease": false
-  },
-  {
-    "tag_name": "cli@0.45.0",
-    "prerelease": false,
-    "body": "${"x".repeat(256 * 1024)}"
-  }
-]`,
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")).toContain(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-    expect(existsSync(join(installDir, "sentry"))).toBe(true);
-  });
-
   test("directs musl users to the npm package before downloading a glibc binary", () => {
     writeFileSync(
       join(binDir, "uname"),
@@ -793,46 +664,6 @@ exec /usr/bin/gunzip "$@"
     expect(recorded("setup-args")).toEqual([]);
     expect(installerTempFiles()).toEqual([]);
     expect(readdirSync(installDir)).toEqual([]);
-  });
-
-  describe("when the registry is down", () => {
-    beforeEach(() => {
-      env.SENTRY_TEST_REGISTRY_STATUS = "503";
-      const page = join(testDir, "releases-1.json");
-      writeFileSync(
-        page,
-        JSON.stringify([{ tag_name: "cli@0.46.0", prerelease: false }]),
-      );
-      env.SENTRY_TEST_RELEASES_PAGE_1 = page;
-    });
-
-    test("authenticates to GitHub without exposing the token", () => {
-      env.GITHUB_TOKEN = "test-token-value";
-      delete env.SENTRY_CLI_NO_TELEMETRY;
-      const result = install();
-
-      expect(result.status, result.output).toBe(0);
-      expect(recorded("github-headers")).toEqual([
-        "Authorization: Bearer test-token-value",
-      ]);
-      expect(recorded("curl-args").join("\n")).not.toContain(
-        "test-token-value",
-      );
-      expect(result.output).not.toContain("test-token-value");
-    });
-
-    test("waits out a GitHub rate limit", () => {
-      env.SENTRY_TEST_GITHUB_RATE_LIMITED = "1";
-      const result = install();
-
-      expect(result.status, result.output).toBe(0);
-      const firstPage =
-        "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=1";
-      expect(
-        recorded("curl-urls").filter((url) => url === firstPage),
-      ).toHaveLength(2);
-      expect(existsSync(join(installDir, "sentry"))).toBe(true);
-    });
   });
 
   // CLI-BJ: the trap reported only a line number, which bash 3.2 sets to the

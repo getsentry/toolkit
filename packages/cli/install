@@ -443,8 +443,8 @@ unpack_binary() {
 # Steps 3 and 4, stable: find the release and download it
 #
 # Sentry's release registry is the source of truth for versions, download
-# URLs, and checksums. GitHub releases are only a fallback for registry
-# outages, and they have no checksums.
+# URLs, and checksums. When it is down, a pinned version still downloads from
+# its GitHub release, without checksums; "latest" needs the registry.
 # ---------------------------------------------------------------------------
 
 resolve_stable_release() {
@@ -464,10 +464,10 @@ resolve_stable_release() {
     die "Unknown Sentry CLI version: ${version}" "resolve-version"
   fi
 
+  [[ -n "$version" ]] \
+    || die "Failed to fetch latest stable version from Sentry's release registry. Retry or install a specific version with --version <version>." "resolve-version"
+
   muted "Could not resolve ${registry_path} from Sentry's release registry. Trying GitHub..." >&2
-  if [[ -z "$version" ]]; then
-    find_latest_github_version
-  fi
   gz_url="https://github.com/${GITHUB_REPO}/releases/download/cli@${version}/${asset}.gz"
   raw_url="${gz_url%.gz}"
   muted "Warning: GitHub fallback downloads are not checksum-verified." >&2
@@ -532,111 +532,6 @@ registry_file() {
       print url
       print sha
     }' <<< "$1"
-}
-
-# Registry outage fallback: sets version to the newest stable `cli@x.y.z`
-# release. The repo also publishes MCP releases, so this may page through
-# several pages of those first.
-find_latest_github_version() {
-  local page releases release_tag=""
-  for page in {1..20}; do
-    releases=$(github_api "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100&page=${page}") \
-      || die "Failed to list Toolkit releases" "gh-version"
-    release_tag=$(newest_stable_cli_tag <<< "$releases")
-    if [[ -n "$release_tag" || "$releases" == "[]" ]]; then
-      break
-    fi
-  done
-  [[ -n "$release_tag" ]] \
-    || die "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or install a specific version with --version <version>." "resolve-version"
-  version="${release_tag#cli@}"
-}
-
-# Reads a page of GitHub releases (a JSON array) and prints the tag_name of
-# the first non-prerelease `cli@x.y.z` release, or nothing.
-#
-# There is no jq, so this is a tiny JSON scanner. It tracks string quoting and
-# brace depth so that only top-level fields of each release count, whatever
-# the whitespace, field order, or nested assets. It reads the whole page:
-# exiting early could SIGPIPE the writer under pipefail.
-newest_stable_cli_tag() {
-  awk '
-    function consider() {
-      if (selected == "" && !prerelease && tag ~ /^cli@[0-9]+\.[0-9]+\.[0-9]+$/) selected=tag
-    }
-    {
-      for (i=1; i<=length($0); i++) {
-        c=substr($0,i,1)
-
-        # Inside a string: collect keys, and the value of tag_name.
-        if (quoted) {
-          if (escaped) { escaped=0; continue }
-          if (c == "\\") { escaped=1; invalid=1; continue }
-          if (c == "\"") {
-            quoted=0
-            if (depth == 1 && !invalid) {
-              if (key == "") key=token
-              else if (key == "tag_name") tag=token
-            }
-            continue
-          }
-          if (depth == 1 && (key == "" || key == "tag_name")) {
-            if (length(token) < 128) token=token c
-            else invalid=1
-          }
-          continue
-        }
-
-        # Outside strings: track objects, field boundaries, and prerelease.
-        if (c == "\"") { quoted=1; token=""; invalid=0; continue }
-        if (c == "{") {
-          depth++
-          if (depth == 1) { key=""; tag=""; prerelease=1 }
-        } else if (c == "}") {
-          if (depth == 1) consider()
-          depth--
-        } else if (depth == 1) {
-          if (c == ",") key=""
-          else if (key == "prerelease" && c == "f" && substr($0,i,5) == "false") prerelease=0
-        }
-      }
-    }
-    END { print selected }
-  '
-}
-
-# Usage: github_api <url>. Prints the response body. Runners that share an
-# IP exhaust GitHub's anonymous rate limit, so send GITHUB_TOKEN or GH_TOKEN
-# when one is set. The header goes through stdin, so the token stays out of
-# the process list and of $BASH_COMMAND in error reports. Rate-limited
-# responses (403, 429) are retried with a growing delay.
-github_api() {
-  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}" response status attempt
-  for attempt in 1 2 3; do
-    if [[ -n "$token" ]]; then
-      response=$(curl -sSL "${curl_retry[@]}" -w '\n%{http_code}' -H @- "$1" \
-        <<< "Authorization: Bearer ${token}") || return
-    else
-      response=$(curl -sSL "${curl_retry[@]}" -w '\n%{http_code}' "$1") || return
-    fi
-    status="${response##*$'\n'}"
-    case "$status" in
-      200)
-        printf '%s\n' "${response%$'\n'*}"
-        return 0
-        ;;
-      403|429) ;;
-      *) return 22 ;;
-    esac
-    if [[ "$attempt" != 3 ]]; then
-      muted "GitHub rate-limited the request; retrying in $((attempt * 2))s..." >&2
-      sleep $((attempt * 2))
-    fi
-  done
-  if [[ -z "$token" ]]; then
-    muted "GitHub rate-limited this machine. Setting GITHUB_TOKEN raises the limit." >&2
-  fi
-  return 22
 }
 
 # Prefers the gzip asset (~37 MB instead of ~99 MB) and falls back to the raw
