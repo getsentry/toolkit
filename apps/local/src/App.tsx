@@ -84,6 +84,7 @@ import {
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
+  pluralize,
 } from "@/lib/presentation.ts";
 import {
   DEFAULT_STREAM_URL,
@@ -1504,9 +1505,10 @@ export default function App() {
                               {activeWorkspace.label}
                             </h1>
                             <span className="text-xs tabular-nums text-muted-foreground">
-                              {searchedItems.length}{" "}
-                              {activeWorkspace.singularLabel}
-                              {searchedItems.length === 1 ? "" : "s"}
+                              {pluralize(
+                                searchedItems.length,
+                                activeWorkspace.singularLabel,
+                              )}
                             </span>
                           </div>
                           {newItemCount > 0 ? (
@@ -1520,9 +1522,11 @@ export default function App() {
                                 }
                               }}
                             >
-                              View {newItemCount} new{" "}
-                              {activeWorkspace.singularLabel}
-                              {newItemCount === 1 ? "" : "s"}
+                              View{" "}
+                              {pluralize(
+                                newItemCount,
+                                `new ${activeWorkspace.singularLabel}`,
+                              )}
                             </button>
                           ) : null}
                         </div>

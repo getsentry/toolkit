@@ -140,6 +140,9 @@ function SpanRow({
   const position = getSpanPosition(span, trace);
   const visualDepth = Math.min(depth, 4);
   const failed = isFailingSpan(span);
+  const samplesLabel = samplesShown
+    ? "Hide sampled functions"
+    : `Show ${pluralize(sampleCount, "sampled function")}`;
   // Guides start under the parent's expand control and end at this row's.
   const guideLeft =
     CELL_PADDING_REM + (visualDepth - 1) * INDENT_REM + TOGGLE_REM / 2;
@@ -227,12 +230,11 @@ function SpanRow({
             <button
               type="button"
               aria-expanded={samplesShown}
+              aria-label={`${samplesLabel} under ${span.description}`}
               className="text-xs text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring outline-none"
               onClick={onToggleSamples}
             >
-              {samplesShown
-                ? "Hide sampled functions"
-                : `Show ${sampleCount} sampled function${sampleCount === 1 ? "" : "s"}`}
+              {samplesLabel}
             </button>
           ) : null}
         </div>
@@ -283,13 +285,19 @@ export function TraceWaterfall({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const allSpans = useMemo(() => flattenSpans(trace.roots), [trace]);
   // Sampled profile rows stay folded under their captured span until shown.
-  // A selected or revealed sampled row starts with its siblings shown.
-  const [shownSamples, setShownSamples] = useState<Set<string>>(() => {
-    const owner = allSpans.find(
-      ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
-    )?.owner;
-    return new Set(owner ? [owner] : []);
-  });
+  // A selected or revealed sampled row shows its siblings whenever that
+  // selection changes, starting with the first render so focus can return
+  // to it. This runs during render: an effect would run after the
+  // workspace's focus restore and trips react(set-state-in-effect).
+  const revealedId = revealSpanId ?? selectedSpanId;
+  const [shownSamples, setShownSamples] = useState<Set<string>>(new Set());
+  const [seededFor, setSeededFor] = useState<string>();
+  if (revealedId !== seededFor) {
+    setSeededFor(revealedId);
+    const owner = allSpans.find(({ span }) => span.id === revealedId)?.owner;
+    if (owner && !shownSamples.has(owner))
+      setShownSamples(new Set(shownSamples).add(owner));
+  }
   const [treeWidth, setTreeWidth] = useState(40);
   const sampleCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -356,15 +364,22 @@ export function TraceWaterfall({
     );
   }
 
-  // Search shows every sampled row so matches are not hidden.
+  // Search also unfolds the owners of matching sampled rows.
+  const searchedOwners = new Set(
+    query.trim()
+      ? allSpans.flatMap(({ owner, span }) =>
+          owner && matching.has(span.id) ? [owner] : [],
+        )
+      : [],
+  );
   const samplesVisible = (owner: string) =>
-    Boolean(query.trim()) || shownSamples.has(owner);
+    shownSamples.has(owner) || searchedOwners.has(owner);
   const spans: PositionedSpan[] = [];
   let hiddenBelow: number | undefined;
   for (const entry of allSpans) {
+    if (entry.owner && !samplesVisible(entry.owner)) continue;
     if (!query.trim()) {
       if (hiddenBelow !== undefined && entry.depth > hiddenBelow) continue;
-      if (entry.owner && !samplesVisible(entry.owner)) continue;
       hiddenBelow = collapsed.has(entry.span.id) ? entry.depth : undefined;
     }
     if (!query.trim() || !onlyMatches || matching.has(entry.span.id))

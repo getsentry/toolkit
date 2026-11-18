@@ -325,8 +325,11 @@ transactions, show their op and transaction name.
 
 A trace's error count is its error events: exceptions and error-level messages.
 Failing spans and error-level logs are not counted again. A span or segment
-named only by its HTTP method, such as a Next.js edge `GET`, is labeled with its
-`http.route`, or else its `url.path` or URL path.
+named only by its HTTP method (in any case), such as a Next.js edge `GET`, gets
+a target after the method. The viewer and the tail read the same attributes, in
+order: `http.route`, `url.template`, `url.full`, then `url.path`. A server span
+(`http.server`) shows the route or path; any other span keeps the host it called,
+such as `GET api.stripe.com/v1/charges`.
 
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open

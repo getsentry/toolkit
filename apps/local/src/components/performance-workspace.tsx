@@ -8,6 +8,7 @@ import {
   type VitalName,
 } from "@/lib/performance.ts";
 import { ResizableWorkspace } from "./resizable-workspace.tsx";
+import { pluralize } from "@/lib/presentation.ts";
 function ms(value?: number) {
   return value === undefined ? "—" : `${value.toFixed(1)} ms`;
 }
@@ -249,8 +250,7 @@ export function WebVitalsWorkspace({
                 >
                   <span className="block break-words">{page.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {page.visits.length} captured visit
-                    {page.visits.length === 1 ? "" : "s"}
+                    {pluralize(page.visits.length, "captured visit")}
                   </span>
                 </button>
               </li>

@@ -7,6 +7,7 @@ import {
 } from "@/lib/event-filters.ts";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx";
 import { Button } from "./ui/button.tsx";
+import { pluralize } from "@/lib/presentation.ts";
 function toggle(values: string[], value: string) {
   return values.includes(value)
     ? values.filter((entry) => entry !== value)
@@ -154,7 +155,7 @@ export function EventFilterControls({
             })
           }
         >
-          Clear {count} filter{count === 1 ? "" : "s"}
+          Clear {pluralize(count, "filter")}
         </Button>
       ) : null}
       {count ? (
