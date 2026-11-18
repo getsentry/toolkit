@@ -110,13 +110,15 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own, and the tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans that end after their segment was sent, like web vitals after a pageload, arrive later and print as one line named after the segment, such as `Pageload [+3 spans]`. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
 covers every event item, so it includes messages too.
+
+SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own. The tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans that end after their segment was sent, like web vitals after a pageload, arrive later and print as one line named after the segment, such as `Pageload [+3 spans]`. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
