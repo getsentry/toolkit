@@ -8219,7 +8219,7 @@
           }
         },
         "sideQuests": {
-          "description": "Optional setup fixes, most useful first. Not needed for the current task.",
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
           "type": "array",
           "items": {
             "type": "object",
@@ -16330,6 +16330,52 @@
             }
           ],
           "description": "Null when no reason was given."
+        },
+        "sideQuests": {
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tip": {
+                "type": "string"
+              },
+              "next": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": ["tool", "args"],
+                  "additionalProperties": false
+                }
+              },
+              "docs": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id", "tip"],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

@@ -67,7 +67,7 @@ export const sideQuestsSchema = z
   )
   .optional()
   .describe(
-    "Optional setup fixes, most useful first. Not needed for the current task.",
+    "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
   );
 
 /**
