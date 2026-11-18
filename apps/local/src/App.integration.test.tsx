@@ -293,7 +293,7 @@ describe("local receiver to viewer integration", () => {
     fireEvent.click(captureAction("Clear view"));
     expect(request).not.toHaveBeenCalled();
     expect(source.closed).toBe(false);
-    expect(screen.queryByLabelText("View event event")).toBeNull();
+    expect(screen.queryByLabelText(/^View event:/)).toBeNull();
     await act(async () =>
       source.dispatchEvent(
         new MessageEvent(SENTRY_CONTENT_TYPE, {
@@ -316,7 +316,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(receiver.port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(receiver.port, "GET /keep-live");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       const trigger = screen.getByRole("button", {
         name: "Switch receiver",
         exact: true,
@@ -520,7 +520,7 @@ describe("local receiver to viewer integration", () => {
       });
       expect(response.status).toBe(204);
       const row = await screen.findByRole("button", {
-        name: "View event event",
+        name: /^View event:/,
       });
       expect(row.textContent).toContain(
         "TypeError: Cannot read properties of undefined (reading 'total')",
@@ -577,7 +577,7 @@ describe("local receiver to viewer integration", () => {
         ].join("\n"),
       });
       const row = await screen.findByRole("button", {
-        name: "View event event",
+        name: /^View event:/,
       });
       expect(row.textContent).toContain("Checkout rejected");
       const detail = screen.getByTestId("event-detail");
@@ -656,13 +656,11 @@ describe("local receiver to viewer integration", () => {
       expect(screen.queryByLabelText("Capture context")).not.toBeNull();
 
       await sendEnvelope(port, "GET /live");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       await sendEnvelope(port, "GET /live-2");
 
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
       });
       const eventList = screen.getByTestId("event-list");
       expect(eventList.className).toContain("flex-1");
@@ -675,7 +673,7 @@ describe("local receiver to viewer integration", () => {
       expect(detail.textContent).not.toContain("GET /live-2");
       expect(detail.textContent).not.toContain("GETGET /live");
 
-      const events = screen.getAllByLabelText("View transaction event");
+      const events = screen.getAllByLabelText(/^View transaction:/);
       fireEvent.click(events[1]!);
 
       await waitFor(() => {
@@ -713,7 +711,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /dock");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       const sidebar = screen.getByLabelText("Workspace navigation");
       expect(sidebar.querySelector('[role="status"]')).toBeNull();
       expect(screen.getByLabelText("Capture context").textContent).toContain(
@@ -834,7 +832,7 @@ describe("local receiver to viewer integration", () => {
         await screen.findByRole("heading", { name: "notes.txt", level: 3 }),
       ).toBeDefined();
       fireEvent.click(
-        screen.getAllByRole("button", { name: "View attachment event" })[3]!,
+        screen.getAllByRole("button", { name: /^View attachment:/ })[3]!,
       );
       const image = await screen.findByRole("img", { name: "pixel.png" });
       expect(image.getAttribute("src")).toMatch(/^blob:/);
@@ -906,14 +904,14 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /ai", { operation: "ai.generate" });
 
       const explorerViews = [
-        ["Open events view", "View transaction event"],
-        ["Open errors view", "View event event"],
-        ["Open logs view", "View log event"],
-        ["Open feedback view", "View user_report event"],
-        ["Open envelopes view", "View envelope event"],
-        ["Open profiles view", "View profile event"],
-        ["Open sdks view", "View client_report event"],
-        ["Open ai view", "View transaction event"],
+        ["Open events view", /^View transaction:/],
+        ["Open errors view", /^View event:/],
+        ["Open logs view", /^View log:/],
+        ["Open feedback view", /^View user report:/],
+        ["Open envelopes view", /^View envelope:/],
+        ["Open profiles view", /^View profile:/],
+        ["Open sdks view", /^View client report:/],
+        ["Open ai view", /^View transaction:/],
       ] as const;
 
       for (const [view, event] of explorerViews) {
@@ -960,7 +958,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(first.port, "GET /past-first");
       await sendEnvelope(second.port, "GET /past-second");
       renderViewer(first.port);
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       fireEvent.click(
         screen.getByRole("button", { name: "Switch receiver", exact: true }),
       );
@@ -977,7 +975,7 @@ describe("local receiver to viewer integration", () => {
       );
       cleanup();
       renderBareViewer();
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       fireEvent.click(
         screen.getByRole("button", { name: "Switch receiver", exact: true }),
       );
@@ -1245,7 +1243,7 @@ describe("local receiver to viewer integration", () => {
           }),
         ),
       );
-      await screen.findByRole("button", { name: "View event event" });
+      await screen.findByRole("button", { name: /^View event:/ });
       expect(screen.getByTestId("event-list").textContent).toContain(
         "after reconnect",
       );
@@ -1525,9 +1523,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
 
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
       });
       expect(
         screen.queryByRole("button", { name: /View .* new event/ }),
@@ -1550,20 +1546,20 @@ describe("local receiver to viewer integration", () => {
         level: "error",
       });
 
-      await screen.findByLabelText("View transaction event");
-      await screen.findByLabelText("View event event");
+      await screen.findByLabelText(/^View transaction:/);
+      await screen.findByLabelText(/^View event:/);
 
       expect(screen.queryByLabelText("Filter events")).toBeNull();
-      expect(
-        screen.getByLabelText("View transaction event").textContent,
-      ).toContain("/healthy");
-      expect(screen.getByLabelText("View event event").textContent).toContain(
+      expect(screen.getByLabelText(/^View transaction:/).textContent).toContain(
+        "/healthy",
+      );
+      expect(screen.getByLabelText(/^View event:/).textContent).toContain(
         "/broken",
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Open errors view" }));
-      expect(screen.queryByLabelText("View transaction event")).toBeNull();
-      expect(screen.getByLabelText("View event event").textContent).toContain(
+      expect(screen.queryByLabelText(/^View transaction:/)).toBeNull();
+      expect(screen.getByLabelText(/^View event:/).textContent).toContain(
         "/broken",
       );
 
@@ -1594,7 +1590,7 @@ describe("local receiver to viewer integration", () => {
         level: "error",
       });
 
-      await screen.findByLabelText("View event event");
+      await screen.findByLabelText(/^View event:/);
       expect(
         screen.getByRole("button", { name: "Open events view" }),
       ).not.toBeNull();
@@ -1608,7 +1604,7 @@ describe("local receiver to viewer integration", () => {
           .getByRole("button", { name: "Open errors view" })
           .getAttribute("aria-current"),
       ).toBe("page");
-      expect(screen.getAllByLabelText(/View .* event/)).toHaveLength(1);
+      expect(screen.getAllByLabelText(/^View [a-z ]+:/)).toHaveLength(1);
 
       fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
       expect(
@@ -1651,12 +1647,12 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /raw-envelope");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
 
       fireEvent.click(viewButton("Open envelopes view"));
 
       expect(viewButton("Open envelopes view").textContent).toContain("1");
-      fireEvent.click(screen.getByLabelText("View envelope event"));
+      fireEvent.click(screen.getByLabelText(/^View envelope:/));
       expect(
         screen.getByRole("heading", { name: "Raw envelope" }),
       ).not.toBeNull();
@@ -1676,10 +1672,10 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /first-envelope");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
 
       fireEvent.click(viewButton("Open envelopes view"));
-      fireEvent.click(await screen.findByLabelText("View envelope event"));
+      fireEvent.click(await screen.findByLabelText(/^View envelope:/));
       await sendEnvelope(port, "GET /second-envelope");
 
       expect(
@@ -1711,7 +1707,7 @@ describe("local receiver to viewer integration", () => {
     });
 
     fireEvent.click(viewButton("Open envelopes view"));
-    expect(await screen.findByLabelText("View envelope event")).not.toBeNull();
+    expect(await screen.findByLabelText(/^View envelope:/)).not.toBeNull();
     fireEvent.click(captureAction("Clear view"));
     expect(captureAction("Clear view").disabled).toBe(true);
   });
@@ -1736,7 +1732,7 @@ describe("local receiver to viewer integration", () => {
     });
     await screen.findByText("Received an event that could not be decoded.");
     fireEvent.click(viewButton("Open envelopes view"));
-    await screen.findByLabelText("View envelope event");
+    await screen.findByLabelText(/^View envelope:/);
     fireEvent.click(captureAction("Clear view"));
     await waitFor(() =>
       expect(
@@ -1907,7 +1903,7 @@ describe("local receiver to viewer integration", () => {
     expect(document.activeElement).toBe(clearButton);
     fireEvent.blur(clearButton);
     expect(
-      screen.getAllByRole("button", { name: "View event event" }),
+      screen.getAllByRole("button", { name: /^View event:/ }),
     ).toHaveLength(2);
     expect(source?.closed).toBe(false);
     expect(ControllableEventSource.instances).toHaveLength(1);
@@ -1946,9 +1942,7 @@ describe("local receiver to viewer integration", () => {
       screen.queryByRole("button", { name: "Apply envelope limit" }),
     ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
-    expect(
-      screen.getByRole("button", { name: "View event event" }),
-    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: /^View event:/ })).not.toBeNull();
   });
 
   test("keeps closed retention read-only while its archive replay connects and opens", async () => {
@@ -2078,7 +2072,7 @@ describe("local receiver to viewer integration", () => {
           );
       });
       expect(
-        screen.getAllByRole("button", { name: "View event event" }),
+        screen.getAllByRole("button", { name: /^View event:/ }),
       ).toHaveLength(2);
     },
   );
@@ -2156,7 +2150,7 @@ describe("local receiver to viewer integration", () => {
         ),
       );
       expect(
-        await screen.findByRole("button", { name: "View event event" }),
+        await screen.findByRole("button", { name: /^View event:/ }),
       ).not.toBeNull();
       expect(
         screen.queryByRole("heading", { name: "Capture a local session" }),
@@ -2325,7 +2319,7 @@ describe("local receiver to viewer integration", () => {
       );
     });
     fireEvent.click(viewButton("Open envelopes view"));
-    fireEvent.click(await screen.findByLabelText("View envelope event"));
+    fireEvent.click(await screen.findByLabelText(/^View envelope:/));
 
     await act(async () => source?.onerror?.(new Event("error")));
 
@@ -2386,9 +2380,7 @@ describe("local receiver to viewer integration", () => {
         }
       });
       await waitFor(() =>
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        ),
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2),
       );
       fireEvent.change(
         screen.getByRole("searchbox", { name: "Filter Events" }),
@@ -2405,9 +2397,7 @@ describe("local receiver to viewer integration", () => {
         fireEvent.click(captureAction("Stop capture"));
         await waitFor(() => expect(source?.closed).toBe(true));
         await screen.findByText("Saved capture", { exact: true });
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          1,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
         expect(
           screen.queryByRole("button", { name: "Stop capture" }),
         ).toBeNull();
@@ -2422,9 +2412,7 @@ describe("local receiver to viewer integration", () => {
         expect(screen.getByRole("alert").textContent).toContain(
           "Could not connect to this receiver",
         );
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          1,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
       } else {
         await act(async () => source?.onerror?.(new Event("error")));
       }
@@ -2435,9 +2423,7 @@ describe("local receiver to viewer integration", () => {
         },
       );
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
         expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
       });
     },
@@ -2472,16 +2458,17 @@ describe("local receiver to viewer integration", () => {
         type: "event",
         level: "error",
       });
-      await screen.findByLabelText("View event event");
+      await screen.findByLabelText(/^View event:/);
 
       fireEvent.click(screen.getByRole("button", { name: "Open errors view" }));
-      expect(screen.getByLabelText("View event event").textContent).toContain(
-        "Exception",
-      );
+      expect(
+        screen.getByLabelText(/^View event:/).querySelector(".text-destructive")
+          ?.textContent,
+      ).toBe("Event");
 
       fireEvent.click(viewButton("Open envelopes view"));
       expect(
-        screen.getByLabelText("View envelope event").textContent,
+        screen.getByLabelText(/^View envelope:/).textContent,
       ).not.toContain("envelope");
     } finally {
       cleanup();
@@ -2501,8 +2488,10 @@ describe("local receiver to viewer integration", () => {
       });
 
       expect(
-        (await screen.findByLabelText("View event event")).textContent,
-      ).toContain("Exception");
+        (await screen.findByLabelText(/^View event:/)).querySelector(
+          ".text-destructive",
+        )?.textContent,
+      ).toBe("Event");
     } finally {
       cleanup();
       await stopReceiver(server);
@@ -2521,7 +2510,7 @@ describe("local receiver to viewer integration", () => {
         level: "error",
       });
 
-      await screen.findByLabelText("View event event");
+      await screen.findByLabelText(/^View event:/);
       fireEvent.click(screen.getByRole("button", { name: "Open errors view" }));
 
       expect(screen.getByTestId("event-detail").textContent).toContain(
@@ -2544,9 +2533,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /customers/42");
       await sendEnvelope(port, "POST /orders");
       await waitFor(() =>
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        ),
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2),
       );
       fireEvent.click(
         screen.getAllByRole("button", { name: "Search this session" })[0]!,
@@ -2560,18 +2547,14 @@ describe("local receiver to viewer integration", () => {
         screen.getByRole("option", { name: /Filter Events for “customers”/ }),
       );
       await waitFor(() =>
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          1,
-        ),
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1),
       );
       expect(new URLSearchParams(window.location.search).get("q")).toBe(
         "customers",
       );
       fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
       await waitFor(() =>
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        ),
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2),
       );
     } finally {
       cleanup();
@@ -2586,7 +2569,7 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /matching-second");
       renderViewer(port, "/?q=matching-second");
       await screen.findByText("Connected to local receiver");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       await waitFor(() => {
         expect(screen.getByTestId("event-detail").textContent).toContain(
           "/matching-second",
@@ -2607,14 +2590,14 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /old-search");
       renderViewer(port, "/?q=old-search");
       await screen.findByText("Connected to local receiver");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       fireEvent.click(captureAction("Clear view"));
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 500));
       });
       expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
       await sendEnvelope(port, "GET /new-event");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       expect(screen.getByTestId("event-detail").textContent).toContain(
         "/new-event",
       );
@@ -2704,16 +2687,14 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(second.port, "GET /session-b");
       renderViewer(first.port);
       await screen.findByText("Connected to local receiver");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
       fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
       await screen.findByText("Connected to local receiver");
       expect(screen.getByTestId("event-list").textContent).toContain(
         "/session-a",
       );
-      expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-        1,
-      );
+      expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
       fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
       fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
         target: { value: `http://127.0.0.1:${second.port}/stream` },
@@ -2727,9 +2708,7 @@ describe("local receiver to viewer integration", () => {
           "/session-a",
         );
       });
-      expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-        1,
-      );
+      expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
       expect(screen.getByTestId("event-detail").textContent).toContain(
         "/session-b",
       );
@@ -2756,9 +2735,9 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port, "/errors");
       await screen.findByText("Connected to local receiver");
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View event event")).toHaveLength(2);
+        expect(screen.getAllByLabelText(/^View event:/)).toHaveLength(2);
       });
-      fireEvent.click(screen.getAllByLabelText("View event event")[1]!);
+      fireEvent.click(screen.getAllByLabelText(/^View event:/)[1]!);
       const sharedEventId = await waitFor(() => {
         const eventId = new URLSearchParams(window.location.search).get(
           "event",
@@ -2771,7 +2750,7 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port, `/errors?event=${encodeURIComponent(sharedEventId)}`);
       await screen.findByText("Connected to local receiver");
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View event event")).toHaveLength(2);
+        expect(screen.getAllByLabelText(/^View event:/)).toHaveLength(2);
       });
       expect(
         screen
@@ -2803,11 +2782,9 @@ describe("local receiver to viewer integration", () => {
       await sendEnvelope(port, "GET /second");
 
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
       });
-      const events = screen.getAllByLabelText("View transaction event");
+      const events = screen.getAllByLabelText(/^View transaction:/);
       fireEvent.click(events[1]!);
       const selectedEventId = await waitFor(() => {
         const eventId = new URLSearchParams(window.location.search).get(
@@ -2848,7 +2825,7 @@ describe("local receiver to viewer integration", () => {
         type: "event",
         level: "error",
       });
-      await screen.findByLabelText("View event event");
+      await screen.findByLabelText(/^View event:/);
 
       fireEvent.click(
         screen.getAllByRole("button", { name: "Search this session" })[0]!,
@@ -2894,7 +2871,7 @@ describe("local receiver to viewer integration", () => {
         renderViewer(port, "/logs");
         await screen.findByText("Connected to local receiver");
         await waitFor(() =>
-          expect(screen.getAllByLabelText("View log event")).toHaveLength(2),
+          expect(screen.getAllByLabelText(/^View log:/)).toHaveLength(2),
         );
         fireEvent.click(screen.getByRole("button", { name: "Filters" }));
         fireEvent.click(
@@ -2903,7 +2880,7 @@ describe("local receiver to viewer integration", () => {
           }),
         );
         fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
-        expect(screen.getAllByLabelText("View log event")).toHaveLength(1);
+        expect(screen.getAllByLabelText(/^View log:/)).toHaveLength(1);
         fireEvent.click(
           screen.getAllByRole("button", { name: "Search this session" })[0]!,
         );
@@ -2938,7 +2915,7 @@ describe("local receiver to viewer integration", () => {
       await sendLog(port, "Selected log", "logger-a");
       renderViewer(port, "/logs");
       await screen.findByText("Connected to local receiver");
-      fireEvent.click(await screen.findByLabelText("View log event"));
+      fireEvent.click(await screen.findByLabelText(/^View log:/));
       fireEvent.click(screen.getByRole("button", { name: "Filters" }));
       fireEvent.click(screen.getByRole("checkbox", { name: "logger-a" }));
       fireEvent.click(screen.getByRole("checkbox", { name: "info" }));
@@ -2973,11 +2950,11 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /clear-me");
-      await screen.findByLabelText("View transaction event");
+      await screen.findByLabelText(/^View transaction:/);
 
       fireEvent.click(captureAction("Clear view"));
 
-      expect(screen.queryByLabelText("View transaction event")).toBeNull();
+      expect(screen.queryByLabelText(/^View transaction:/)).toBeNull();
       expect(screen.getByText("No events displayed")).not.toBeNull();
     } finally {
       cleanup();
@@ -2997,9 +2974,7 @@ describe("local receiver to viewer integration", () => {
       });
 
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
       });
 
       const traceRelationship =
@@ -3018,13 +2993,11 @@ describe("local receiver to viewer integration", () => {
       renderViewer(port);
       await screen.findByText("Connected to local receiver");
       await sendEnvelope(port, "GET /selected");
-      fireEvent.click(await screen.findByLabelText("View transaction event"));
+      fireEvent.click(await screen.findByLabelText(/^View transaction:/));
       await sendEnvelope(port, "GET /new");
 
       await waitFor(() => {
-        expect(screen.getAllByLabelText("View transaction event")).toHaveLength(
-          2,
-        );
+        expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(2);
       });
 
       expect(screen.getByTestId("event-detail").textContent).toContain(

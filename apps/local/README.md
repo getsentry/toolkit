@@ -54,7 +54,8 @@ receiver's envelope retention limit when replaying a large corpus.
 ## Investigation views
 
 - Errors include exception causes, captured source lines and local variables,
-  breadcrumbs, request/context data, tags, modules, VS Code links for absolute
+  level, handled state, environment, release, server name, user, breadcrumbs,
+  request/context data, tags, modules, VS Code links for absolute
   local paths, a copyable Markdown summary for AI assistants, and the
   attachments the SDK sent for the event (collapsed until previewed).
 - AI inspection reads standard `gen_ai.*` and Vercel AI fields from both embedded

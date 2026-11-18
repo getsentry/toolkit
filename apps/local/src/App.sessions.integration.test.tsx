@@ -722,7 +722,7 @@ test("hosted standalone receiver edits retention without losing saved events", a
       body: '{}\n{"type":"event"}\n{"message":"saved standalone event"}\n',
     });
     renderSession({ streamUrl });
-    await screen.findByRole("button", { name: "View event event" });
+    await screen.findByRole("button", { name: /^View event:/ });
     fireEvent.click(
       screen.getByRole("button", { name: "Settings", exact: true }),
     );
