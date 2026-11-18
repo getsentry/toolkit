@@ -433,6 +433,7 @@ export function createLocalControlPlane({
           ? SENTRY_CONTENT_TYPE
           : (c.req.header("content-type") ?? ""),
         encoding,
+        receiverUrl: c.req.url,
         userAgent: c.req.header("user-agent"),
       },
     );

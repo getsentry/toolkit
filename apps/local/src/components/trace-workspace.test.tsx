@@ -138,3 +138,71 @@ test("drilling into a span and returning restores keyboard focus", () => {
     screen.getByRole("button", { name: "Inspect span GET /orders" }),
   );
 });
+
+test("log-only trace groups are labelled and listed after traces with spans", () => {
+  // sentry-python: werkzeug startup and access logs share the process
+  // propagation trace ID, and keep arriving after each request finishes.
+  const traces = buildTraceGroups([
+    ...decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "nested",
+              start_timestamp: 1794949195.2293,
+              timestamp: 1794949195.256,
+              contexts: {
+                trace: {
+                  trace_id: "400af9c14606486da31dd2736ad3e526",
+                  span_id: "8f3f855ff016f0dd",
+                  op: "http.server",
+                },
+              },
+            },
+          ],
+        ],
+      ]),
+      "request",
+    ),
+    ...decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "log", item_count: 2 },
+            {
+              items: [
+                {
+                  timestamp: 1794949191.5353,
+                  level: "info",
+                  body: " * Running on http://127.0.0.1:5050",
+                  trace_id: "c22c7d1b8e124f7c99a0dc36a80ccbae",
+                },
+                {
+                  timestamp: 1794949195.2575,
+                  level: "info",
+                  body: '127.0.0.1 - - [17/Nov/2026 20:59:55] "GET /nested HTTP/1.1" 200 -',
+                  trace_id: "c22c7d1b8e124f7c99a0dc36a80ccbae",
+                },
+              ],
+            },
+          ],
+        ],
+      ]),
+      "logs",
+    ),
+  ]);
+  render(<TraceWorkspace traces={traces} onSelect={vi.fn()} />);
+  const entries = screen
+    .getAllByRole("button", { name: /^View trace / })
+    .map((entry) => entry.textContent);
+  expect(entries).toHaveLength(2);
+  expect(entries[0]).toContain("nested");
+  expect(entries[1]).toContain("Logs only");
+  expect(entries[1]).not.toContain("0 spans");
+  expect(
+    screen.getByRole("table", { name: "Trace spans" }).textContent,
+  ).toContain("nested");
+});

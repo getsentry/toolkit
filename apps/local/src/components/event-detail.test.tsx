@@ -9,6 +9,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
 import { EventDetail } from "./event-detail.tsx";
+import { pythonBreadcrumbEvent } from "@/test-fixtures/python-breadcrumbs.ts";
 import {
   pythonHandledException,
   pythonLoggingEvent,
@@ -299,6 +300,19 @@ test("errors without captured attachments show no attachment section", () => {
     screen.queryByRole("region", { name: "Event attachments" }),
   ).toBeNull();
   expect(screen.queryByRole("heading", { name: "Attachments" })).toBeNull();
+});
+
+test("breadcrumb times use local time for epoch and ISO timestamps", () => {
+  render(<EventDetail item={item("event", pythonBreadcrumbEvent)} />);
+  const times = [
+    ...screen
+      .getByRole("region", { name: "Breadcrumbs" })
+      .querySelectorAll("time"),
+  ].map((time) => time.textContent);
+  expect(times).toEqual([
+    new Date(1794947420913).toLocaleTimeString(),
+    new Date("2026-11-17T20:30:21.050Z").toLocaleTimeString(),
+  ]);
 });
 
 test("logging events show their message and key event fields in Overview", () => {

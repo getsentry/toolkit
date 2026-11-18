@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { decodeEnvelope } from "./spotlight.ts";
 import {
+  eventListLabel,
   isAiEvent,
   workspaceForItem,
   workspaceFromPath,
@@ -65,4 +67,81 @@ describe("AI classification", () => {
       }),
     ).toBe(true),
   );
+});
+
+describe("event list labels", () => {
+  const transaction = (operation: string, title: string) =>
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: title,
+              transaction_info: { source: "custom" },
+              request: {
+                url: "http://localhost:5050/transaction",
+                method: "GET",
+              },
+              contexts: {
+                trace: { trace_id: "t", span_id: "s", op: operation },
+              },
+            },
+          ],
+        ],
+      ]),
+      operation,
+    )[0]!;
+
+  test("custom transactions keep their name inside a request", () => {
+    // sentry-python: start_transaction(name="custom-batch-job", op="task") in a Flask view.
+    expect(eventListLabel(transaction("task", "custom-batch-job"))).toEqual({
+      badge: "task",
+      title: "custom-batch-job",
+    });
+  });
+
+  test("browser pageloads and navigations show their op and page name", () => {
+    expect(eventListLabel(transaction("pageload", "/orders/:id"))).toEqual({
+      badge: "pageload",
+      title: "/orders/:id",
+    });
+    expect(eventListLabel(transaction("navigation", "/settings"))).toEqual({
+      badge: "navigation",
+      title: "/settings",
+    });
+  });
+
+  test("events are badged by what they carry and feedback by its message", () => {
+    const decode = (type: string, payload: unknown) =>
+      decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), type)[0]!;
+    expect(
+      eventListLabel(
+        decode("event", { message: "Payment failed", level: "error" }),
+      ),
+    ).toEqual({ badge: "Message", title: "Payment failed" });
+    expect(
+      eventListLabel(
+        decode("event", {
+          exception: { values: [{ type: "ValueError", value: "bad" }] },
+        }),
+      ).badge,
+    ).toBe("Exception");
+    expect(
+      eventListLabel(
+        decode("feedback", {
+          contexts: { feedback: { message: "Checkout button failed" } },
+          request: { url: "http://localhost/" },
+        }),
+      ).title,
+    ).toBe("Checkout button failed");
+  });
+
+  test("request transactions show their method and route", () => {
+    expect(eventListLabel(transaction("http.server", "tx"))).toEqual({
+      badge: "GET",
+      title: "/transaction",
+    });
+  });
 });

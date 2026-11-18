@@ -12,6 +12,18 @@ Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js an
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
+With no command, `local run` picks one from the project, in this order:
+
+1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
+2. `manage.py`: `python manage.py runserver` (Django)
+3. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built another way, such as `app = create_app()`, uses the framework that `pyproject.toml` or `requirements.txt` declares. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
+4. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
+5. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
+6. `go.mod`: `go run .`
+7. `docker-compose.yml` or `compose.yml`: `docker compose up`
+
+Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. The `flask --app` option needs Flask 2.2 or later; with an older Flask, pass the command after `--`. Pass a command after `--` to skip detection.
+
 Env vars injected into the child process:
 
 | Variable | Value |
@@ -95,12 +107,16 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:01 [ERROR]   [SERVER]  TypeError: x is not a function [app.ts:42:5] [handleRequest]
 14:32:02 [TRACE]   [BROWSER] [http.client] GET /api/users [245ms] [3 spans]
 14:32:03 [INFO]    [SERVER]  User logged in [user_id=1234] [region=us]
+14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show the exception type, message, and top stack frame. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
+
+The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
-repeatable, so `-f error -f log` shows only errors and logs.
+repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
+covers every event item, so it includes messages too.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
@@ -131,11 +147,17 @@ without SDK housekeeping envelopes, filter to `error`, `transaction`, `log`, and
 
 ```json
 {"type":"transaction","timestamp":1700000001,"op":"gen_ai","label":"chat anthropic/claude-4-sonnet","duration_ms":1200,"span_count":5,"source":"server"}
-{"type":"error","timestamp":1700000002,"error_type":"RateLimitError","message":"API quota exceeded","source":"server"}
+{"type":"error","timestamp":1700000002,"level":"error","error_type":"RateLimitError","message":"API quota exceeded","source":"server"}
 {"type":"log","timestamp":1700000003,"level":"info","message":"User logged in","attributes":{"user_id":1234},"source":"server"}
+{"type":"message","timestamp":1700000004,"level":"warning","message":"Cart is empty","logger":"shop.cart","source":"server"}
 ```
 
 This is useful for AI coding agents and automation tools that need to consume Sentry events programmatically.
+
+Events with an exception type are `"type":"error"` records. Events without one,
+such as `captureMessage` calls and Python `logging` records, are
+`"type":"message"`. `-f error` returns both, so a script that keeps errors with
+`jq 'select(.type=="error")'` should also keep `"message"` if it wants them.
 
 In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe
@@ -186,7 +208,9 @@ after your foreground command exits. Sessions keep up to 500 envelopes by defaul
 (`--max-envelopes` accepts 1 to 50,000) for three hours after closing and
 subsequent ingestion. Session commands start the daemon when it isn't running;
 `sentry local daemon start` starts it ahead of time. Stopping or restarting the
-daemon (`sentry local daemon restart`) clears all sessions.
+daemon (`sentry local daemon restart`) clears all sessions. A running
+`sentry local run --session` then warns that its session stopped capturing. Your
+app keeps running, so restart the command to capture again.
 
 The `sentry local run` examples above walk through a full session lifecycle:
 capture, inspect sessions, events, and envelopes, then reset, close, and stop

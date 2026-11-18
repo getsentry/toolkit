@@ -27,6 +27,7 @@ import type {
   AutofixConflictResponse,
   AutofixPaymentRequiredResponse,
 } from "@sentry/api";
+import { constants as osConstants } from "node:os";
 import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
@@ -105,6 +106,16 @@ export const EXIT = {
   /** `sentry local run --verify` received no events from the SDK */
   VERIFY_FAILED: 64,
 } as const;
+
+/**
+ * The exit code a shell reports for a process killed by `signal`: 128 plus
+ * the signal number, so 130 for SIGINT and 143 for SIGTERM. A command that
+ * wraps a child (`sentry local run`) exits with it when the child dies from
+ * a signal. A signal Node has no number for counts as 0.
+ */
+export function signalExitCode(signal: NodeJS.Signals): number {
+  return 128 + (osConstants.signals[signal] ?? 0);
+}
 
 /**
  * Base class for all CLI errors.
