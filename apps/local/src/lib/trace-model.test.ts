@@ -1106,6 +1106,27 @@ test("error logs are counted as logs, not as errors", () => {
 });
 
 test.each([
+  ["warning", 0],
+  ["info", 0],
+  ["error", 1],
+  ["fatal", 1],
+])("a %s captureMessage counts as %i trace errors", (level, errorCount) => {
+  const [trace] = buildTraceGroups(
+    envelope("message", [
+      [
+        "event",
+        {
+          level,
+          message: "Checkout retry limit reached",
+          contexts: { trace: { trace_id: "message", span_id: "root" } },
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount });
+});
+
+test.each([
   [{ "url.full": "http://localhost:3000/api/edge" }, "GET /api/edge"],
   [{ "url.path": "/api/edge" }, "GET /api/edge"],
   [{ "http.route": "/api/[id]", "url.path": "/api/7" }, "GET /api/[id]"],

@@ -4,10 +4,8 @@ import {
   type EventMetadata,
   type LocalFeedItem,
 } from "./spotlight.js";
-import { getEventExceptions } from "./exceptions.ts";
-import { isErrorEvent } from "./workspace.js";
 import { addProfileSpans, profileSources } from "./profile-spans.ts";
-import { spanData } from "./inspection.ts";
+import { eventKind, spanData } from "./inspection.ts";
 
 export type TraceSpan = {
   sampled?: boolean;
@@ -104,15 +102,16 @@ function getPayloadSpan(
 }
 
 /**
- * A trace's errors are its error events: exceptions and error-level messages.
- * Failing spans and error logs are not counted again; the waterfall marks
- * failing spans and logs have their own count.
+ * A trace's errors are its error events: exceptions, as the shared event
+ * classifier names them, and other events at error or fatal level. Failing
+ * spans and error logs are not counted again; the waterfall marks failing
+ * spans and logs have their own count.
  */
 function isTraceError(item: LocalFeedItem): boolean {
-  return (
-    item.type === "event" &&
-    (getEventExceptions(item.payload).length > 0 || isErrorEvent(item))
-  );
+  if (item.type !== "event") return false;
+  if (eventKind(item.payload) === "Exception") return true;
+  const { level } = item.metadata ?? getEventMetadata(item.payload, item.type);
+  return level === "error" || level === "fatal";
 }
 
 const HTTP_METHODS = new Set([
