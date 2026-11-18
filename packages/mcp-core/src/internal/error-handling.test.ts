@@ -281,12 +281,36 @@ describe("formatErrorForUser", () => {
 
       expect(await formatErrorForUser(error)).toBe(expected);
     });
+  });
 
-    it("keeps the input error template for a 403 without a challenge", async () => {
-      const result = await formatErrorForUser(createApiError("Forbidden", 403));
+  describe("ApiPermissionError without a scope challenge", () => {
+    const detail = "You do not have permission to perform this action.";
+    const expected = [
+      "**Permission Denied**",
+      "API error (403): You do not have permission to perform this action.",
+      "Sentry accepted the token but denied this request for this account. This usually means the account's organization role, or its team membership for the project, doesn't allow it. Retrying the same call will not help: use a project or organization the account can access, or ask an organization Owner or Manager for access.",
+    ].join("\n\n");
 
-      expect(result).toContain("**Input Error**");
-      expect(result).toContain("API error (403): Forbidden");
+    // Sentry answers a request for a project the caller can't access with a
+    // bare PermissionDenied (OrganizationEndpoint.get_projects), not a scope
+    // challenge. The input error template told agents to retry it.
+    it("says the account lacks access and retrying won't help", async () => {
+      const error = createApiError(detail, 403, detail, { detail });
+
+      expect(await formatErrorForUser(error, { transport: "http" })).toBe(
+        expected,
+      );
+      expect(isExpectedToolError(error)).toBe(true);
+      expect(logIssue).not.toHaveBeenCalled();
+    });
+
+    it("finds the 403 when a tool rewraps it as an input error", async () => {
+      const cause = new ApiPermissionError(detail, detail, { detail });
+      const error = new UserInputError(`API error (403): ${detail}`, {
+        cause,
+      });
+
+      expect(await formatErrorForUser(error)).toBe(expected);
     });
   });
 

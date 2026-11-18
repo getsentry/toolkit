@@ -73,24 +73,32 @@ export function isApiServerError(error: unknown): error is ApiServerError {
 }
 
 /**
- * The 403 from a token that lacks every scope the endpoint accepts, found on
- * `error` or within the first few levels of its `cause`, since tools may
- * rewrap API errors.
+ * A 403 found on `error` or within the first few levels of its `cause`, since
+ * tools may rewrap API errors.
  */
-export function findInsufficientScopeError(
+function findApiPermissionError(
   error: unknown,
 ): ApiPermissionError | undefined {
   let current = error;
   for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
-    if (
-      current instanceof ApiPermissionError &&
-      current.isInsufficientScopeError()
-    ) {
+    if (current instanceof ApiPermissionError) {
       return current;
     }
     current = current.cause;
   }
   return undefined;
+}
+
+/**
+ * The 403 from a token that lacks every scope the endpoint accepts.
+ */
+export function findInsufficientScopeError(
+  error: unknown,
+): ApiPermissionError | undefined {
+  const permissionError = findApiPermissionError(error);
+  return permissionError?.isInsufficientScopeError()
+    ? permissionError
+    : undefined;
 }
 
 /**
@@ -233,6 +241,18 @@ export async function formatErrorForUser(
       "**Missing Permission**",
       insufficientScopeError.toUserMessage(),
       "Reconnect Sentry with a token or authorization that includes one of these scopes, then try again.",
+    ].join("\n\n");
+  }
+
+  // A 403 without a scope challenge comes from the account's access, such as
+  // its organization role or its team membership for a project, so the
+  // "try again" advice of the input error templates cannot work either.
+  const permissionError = findApiPermissionError(error);
+  if (permissionError) {
+    return [
+      "**Permission Denied**",
+      permissionError.toUserMessage(),
+      "Sentry accepted the token but denied this request for this account. This usually means the account's organization role, or its team membership for the project, doesn't allow it. Retrying the same call will not help: use a project or organization the account can access, or ask an organization Owner or Manager for access.",
     ].join("\n\n");
   }
 

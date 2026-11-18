@@ -35,6 +35,10 @@ ApiError (base class)
   message, keeping the `ApiPermissionError`. See
   `withAlertWritePermissionHint` in
   `packages/mcp-core/src/tools/support/alert-write-permission.ts`.
+- Any other 403, such as a request for a project the account's teams can't
+  access, gets a **Permission Denied** message from `formatErrorForUser`. It
+  says the account lacks access and that retrying the same call will not help,
+  instead of the **Input Error** "try again" advice.
 
 ### Application Error Classes (from errors.ts)
 
