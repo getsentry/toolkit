@@ -265,6 +265,11 @@ when the event carries a request transaction name. Overview shows the current
 exception, its causes, and stack frames with function names, source locations, and
 captured source lines. Frames appear most recent first; the JSON tab preserves the
 complete original payload.
+Message and logging events use their message (`message` or `logentry`) as the
+title. The list and inspector badge says Exception, Message, or Event by what
+the event carries; its level only sets the color. Overview also shows the level,
+handled state, environment, release, server name, and user. Empty contexts are
+hidden.
 
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open

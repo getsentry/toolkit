@@ -41,6 +41,7 @@ import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
 import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as serverModule from "../../../src/commands/local/server.js";
+import { wranglerInjectedMessage } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 import { useTestConfigDir } from "../../helpers.js";
 
@@ -314,13 +315,23 @@ describe("sentry local run", () => {
     await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
     await chmod(fakeWrangler, 0o755);
 
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    await func.call(
-      makeContext(),
-      { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
-      fakeWrangler,
-      "dev",
-    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+        fakeWrangler,
+        "dev",
+      );
+      // The binding alone captures nothing with @sentry/cloudflare, so the
+      // notice must name the Worker setup that does.
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("tunnel: env.SENTRY_SPOTLIGHT"),
+      );
+    } finally {
+      info.mockRestore();
+    }
 
     expect(spawnCapture.args).toEqual([
       "dev",
@@ -329,6 +340,32 @@ describe("sentry local run", () => {
         /^SENTRY_SPOTLIGHT:http:\/\/127\.0\.0\.1:\d+\/stream$/,
       ),
     ]);
+  });
+
+  test("prints the Worker setup hint in --verify mode too", async () => {
+    await writeFile(join(tmpDir, "wrangler.jsonc"), "{}");
+    const fakeWrangler = join(tmpDir, "wrangler");
+    await writeFile(fakeWrangler, "#!/bin/sh\nexit 0\n");
+    await chmod(fakeWrangler, 0o755);
+
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      // The fake Worker exits without sending, so verification fails.
+      await expect(
+        func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 0 },
+          fakeWrangler,
+          "dev",
+        ),
+      ).rejects.toBeInstanceOf(VerifyFailedError);
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        wranglerInjectedMessage(),
+      );
+    } finally {
+      info.mockRestore();
+    }
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
