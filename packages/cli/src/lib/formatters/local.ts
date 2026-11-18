@@ -1,5 +1,9 @@
 /** Tail formatters for the local dev server. */
 
+import {
+  classifyEvent,
+  readMessageText,
+} from "../../commands/local/event-kind.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -323,30 +327,6 @@ type EventSummary = (
   logger?: string;
 };
 
-/**
- * Read text from an event `message` or `logentry`. Both may be a plain string
- * or an object whose `formatted` text (with parameters filled in) is
- * preferred over its `message` template.
- */
-function readMessageText(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value || undefined;
-  }
-  if (value === null || typeof value !== "object") {
-    return;
-  }
-  const { formatted, message } = value as {
-    formatted?: unknown;
-    message?: unknown;
-  };
-  if (typeof formatted === "string" && formatted) {
-    return formatted;
-  }
-  if (typeof message === "string" && message) {
-    return message;
-  }
-}
-
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const exception = event.exception as
@@ -369,7 +349,7 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const frames = last?.stacktrace?.frames;
 
   const text = errorType ? exceptionText : (messageText ?? exceptionText);
-  if (!errorType && text) {
+  if (classifyEvent(event) === "message" && text) {
     return { kind: "message", level, text, frames, logger };
   }
   return {
