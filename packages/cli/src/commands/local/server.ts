@@ -103,6 +103,13 @@ export const MAX_BODY_BYTES = 10 * 1024 * 1024;
 /** Shortest gap between two oversized-envelope warnings in one terminal. */
 const OVERSIZED_WARNING_INTERVAL_MS = 5000;
 
+/**
+ * Flush for each foreground receiver's oversized-envelope warning. The count it
+ * holds back would be lost if the CLI exits within the interval, so the
+ * receiver's HTTP server runs it on close.
+ */
+const receiverShutdownFlushes = new WeakMap<Hono, () => void>();
+
 /** Warns about envelopes rejected as too large (HTTP 413). */
 type OversizedEnvelopeWarning = {
   /** Report one rejected envelope. */
@@ -482,7 +489,9 @@ export function buildApp(
   });
 
   // This receiver runs in the foreground command, so it warns in its terminal.
-  onOversizedEnvelope(buffer, createOversizedEnvelopeWarning().warn);
+  const oversized = createOversizedEnvelopeWarning();
+  onOversizedEnvelope(buffer, oversized.warn);
+  receiverShutdownFlushes.set(app, oversized.flush);
   const ingest = async (c: Context) => {
     const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
     if (typeof body === "number") {
@@ -651,6 +660,9 @@ export function tryListen(
       }) as unknown as Server;
 
       server.once("listening", () => {
+        // Print held-back drop counts before the process can exit.
+        const flush = receiverShutdownFlushes.get(app);
+        if (flush) server.once("close", flush);
         const addr = server.address();
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });

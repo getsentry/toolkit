@@ -1135,6 +1135,40 @@ describe("oversized envelopes", () => {
     }
   });
 
+  test("a plain receiver prints held-back drops when it shuts down early", async () => {
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) {
+      throw new Error("Expected the test preload to retain the native fetch");
+    }
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const { server, port } = await tryListen(app, 0, "127.0.0.1");
+    try {
+      for (let i = 0; i < 3; i++) {
+        const response = await realFetch(`http://127.0.0.1:${port}/stream`, {
+          method: "POST",
+          headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+          body: OVERSIZED_BODY,
+        });
+        expect(response.status).toBe(413);
+      }
+      // `local run` and `local serve` close the server and exit well inside
+      // the five-second interval, so closing must print the count.
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 2 more envelopes over/),
+      ]);
+    } finally {
+      server.closeAllConnections();
+      warn.mockRestore();
+    }
+  });
+
   test("a plain receiver tells stream consumers about a rejected envelope", async () => {
     const app = buildApp(createLocalRetentionBuffer(10).buffer);
     const controller = new AbortController();
