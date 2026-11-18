@@ -43,8 +43,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 2.8.0
-      version: 2.8.0
+      specifier: 2.15.0
+      version: 2.15.0
     '@sentry/cloudflare':
       specifier: 11.12.0
       version: 11.12.0
@@ -507,7 +507,7 @@ importers:
         version: 2.1.7(hono@4.13.18)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.8.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.15.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -838,7 +838,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.8.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.15.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1015,7 +1015,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.8.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
+        version: 2.15.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -4128,8 +4128,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/api@2.8.0':
-    resolution: {integrity: sha512-O0lOJhjHCEFuzBHbycJlRILdymqRHiC3YCn/HAVDgPQ0H9Q1Tk4DErZHmVY8za4YXh88YEHAGwSiHFE2O6xO5A==}
+  '@sentry/api@2.15.0':
+    resolution: {integrity: sha512-y/i2vNAYCFELvHC0n+c8BmCG3nId2UKWEA0w0VDc6iXJZCFDRu2eZ6M5a0/shUVOEvMo6ktan1wXrnJLZTcS8A==}
     engines: {node: '>=22'}
     peerDependencies:
       typescript: '*'
@@ -10875,7 +10875,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
-  '@sentry/api@2.8.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
+  '@sentry/api@2.15.0(typescript@5.9.3)(valibot@1.4.2(typescript@5.9.3))(zod@4.6.7)':
     dependencies:
       http-cache-semantics: 4.3.0
       p-limit: 7.3.3
