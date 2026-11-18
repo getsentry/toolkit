@@ -105,7 +105,7 @@ By default, incoming envelopes are pretty-printed to the terminal:
 
 ```
 14:32:01 [ERROR]   [SERVER]  TypeError: x is not a function [app.ts:42:5] [handleRequest]
-14:32:02 [TRACE]   [BROWSER] [http.client] GET /api/users [245ms] [3 spans]
+14:32:02 [TRACE]   [SERVER]  [http.server] GET /spans [200] [52ms] [4 spans] [trace:4c79f60c]
 14:32:03 [INFO]    [SERVER]  User logged in [user_id=1234] [region=us]
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
@@ -119,6 +119,8 @@ A session replay prints one line when it starts, with its short ID and first pag
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
 covers every event item, so it includes messages too.
+
+SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own. The tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans whose segment wasn't in the same batch, like web vitals sent after a pageload or children sent before their segment, print as one line named after the segment, such as `Pageload [+3 spans]`. A single such span prints in full with `[+1 span]`, so the counts still add up. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 

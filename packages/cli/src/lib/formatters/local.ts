@@ -509,9 +509,7 @@ export function formatTransactionItem(
   }
 
   const spans = event.spans as unknown[] | undefined;
-  if (spans?.length) {
-    msg += ` ${muted(`[${spans.length} span${spans.length === 1 ? "" : "s"}]`)}`;
-  }
+  msg += formatSpanCount(spans?.length ?? 0);
 
   msg += formatTraceIdHint(event);
 
@@ -765,6 +763,9 @@ export function formatLogItem(
 export type StreamedSpan = {
   trace_id?: string;
   span_id?: string;
+  parent_span_id?: string;
+  /** True for the root span of a segment (a request, pageload, or navigation). */
+  is_segment?: boolean;
   name?: string;
   start_timestamp?: number | string;
   end_timestamp?: number | string;
@@ -791,13 +792,30 @@ function flattenSpanAttributes(
   return flat;
 }
 
+/** ` [trace:abcd1234]`, muted, for a span with a valid trace ID. */
+function formatSpanTraceHint(span: StreamedSpan): string {
+  return span.trace_id && TRACE_ID_RE.test(span.trace_id)
+    ? ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`
+    : "";
+}
+
+/** `[N spans]`, muted, or an empty string for zero. */
+function formatSpanCount(count: number, prefix = ""): string {
+  return count > 0
+    ? ` ${muted(`[${prefix}${count} span${count === 1 ? "" : "s"}]`)}`
+    : "";
+}
+
 /**
  * Format a single standalone span into a colored one-liner, using the same
- * semantic rendering as transactions.
+ * semantic rendering as transactions. `spanCount` is a
+ * {@link formatSpanCount} marker, such as `[N spans]` for a segment shown
+ * with the rest of its batch.
  */
 export function formatSingleSpan(
   span: StreamedSpan,
   header: Record<string, unknown>,
+  spanCount = "",
 ): string {
   const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
@@ -825,17 +843,134 @@ export function formatSingleSpan(
     msg += ` ${muted(`[${sanitize(span.status)}]`)}`;
   }
 
-  if (span.trace_id && TRACE_ID_RE.test(span.trace_id)) {
-    msg += ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`;
-  }
+  msg += spanCount + formatSpanTraceHint(span);
 
   const ts = formatTime(span.end_timestamp);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header, undefined, [flat])} ${msg}`;
 }
 
+/** Spans of one segment that arrived in the same batch. */
+type SpanGroup = {
+  /** The segment span, or the top span of the group when it is missing. */
+  head: StreamedSpan;
+  /** Whether {@link head} is the segment span itself, not just its top span. */
+  isSegment: boolean;
+  spans: StreamedSpan[];
+};
+
 /**
- * Format a standalone span envelope item. A span item contains an `items`
- * array of individual spans (v2 span streaming format); each gets its own line.
+ * The segment a streamed span belongs to: its `sentry.segment.id`, its own ID
+ * when it is a segment, else the top ancestor found in the same batch.
+ */
+function segmentKey(
+  span: StreamedSpan,
+  byId: ReadonlyMap<string, StreamedSpan>,
+): string | undefined {
+  const segmentId = span.attributes?.["sentry.segment.id"]?.value;
+  if (typeof segmentId === "string" && segmentId) {
+    return segmentId;
+  }
+  let top = span;
+  const seen = new Set<StreamedSpan>();
+  while (!top.is_segment && top.parent_span_id && !seen.has(top)) {
+    seen.add(top);
+    const parent = byId.get(top.parent_span_id);
+    if (!parent) {
+      break;
+    }
+    top = parent;
+  }
+  return top.span_id;
+}
+
+/**
+ * Whether a streamed span is a segment: flagged `is_segment`, its own
+ * `sentry.segment.id`, or a root span with no parent.
+ */
+function isSegmentSpan(span: StreamedSpan): boolean {
+  return (
+    span.is_segment === true ||
+    !span.parent_span_id ||
+    (span.span_id !== undefined &&
+      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
+  );
+}
+
+/**
+ * Group a span batch by segment, in the order each segment first appears.
+ * Spans with no span or segment ID each form their own group.
+ */
+function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
+  const byId = new Map<string, StreamedSpan>();
+  for (const span of items) {
+    if (span.span_id) {
+      byId.set(span.span_id, span);
+    }
+  }
+  const groups = new Map<string | StreamedSpan, StreamedSpan[]>();
+  for (const span of items) {
+    const key = segmentKey(span, byId) ?? span;
+    const spans = groups.get(key);
+    if (spans) {
+      spans.push(span);
+    } else {
+      groups.set(key, [span]);
+    }
+  }
+  return [...groups.values()].map((spans) => {
+    const segment = spans.find(isSegmentSpan);
+    // Without its segment, the group's top span is the one whose parent is
+    // not in the batch and that started first.
+    const top = spans
+      .filter((span) => !(span.parent_span_id && byId.has(span.parent_span_id)))
+      .sort(
+        (a, b) =>
+          (parseEventTimestamp(a.start_timestamp) ?? 0) -
+          (parseEventTimestamp(b.start_timestamp) ?? 0),
+      )[0];
+    return {
+      head: segment ?? top ?? (spans[0] as StreamedSpan),
+      isSegment: segment !== undefined,
+      spans,
+    };
+  });
+}
+
+/** One tail line for spans whose segment wasn't in the same batch. */
+function formatLateSpansLine(
+  group: SpanGroup,
+  header: Record<string, unknown>,
+): string {
+  const segmentName = group.head.attributes?.["sentry.segment.name"]?.value;
+  const name =
+    typeof segmentName === "string" && segmentName
+      ? segmentName
+      : (group.head.name ?? "unnamed span");
+  const msg =
+    sanitize(name) +
+    formatSpanCount(group.spans.length, "+") +
+    formatSpanTraceHint(group.head);
+  const ts = formatTime(group.head.end_timestamp);
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+}
+
+/** A span's attributes as an indented table, for `--attributes`. */
+function formatSpanAttributes(span: StreamedSpan): string[] {
+  return formatAttributeTable({
+    contexts: { trace: { data: flattenSpanAttributes(span.attributes) } },
+  });
+}
+
+/**
+ * Format a standalone span envelope item, an `items` array of streamed spans
+ * (span v2). SDKs send every span of a trace on its own, so the tail prints one
+ * line per segment, like a transaction: the segment span with `[N spans]` for
+ * the rest of its batch. Spans whose segment wasn't in the same batch (such as
+ * web vitals sent after a pageload, or children sent before their segment)
+ * print one line named after the segment with `[+N spans]`, or a single such
+ * span prints in full with `[+1 span]`, so the counts add up. With
+ * `showAttributes`, every span gets its own line and attribute table, segment
+ * first.
  */
 export function formatSpanItem(
   event: Record<string, unknown>,
@@ -846,18 +981,35 @@ export function formatSpanItem(
   if (!items?.length) {
     return [];
   }
-  const lines: string[] = [];
-  for (const span of items) {
-    lines.push(formatSingleSpan(span, header));
-    if (showAttributes) {
-      const flat = flattenSpanAttributes(span.attributes);
-      const table = formatAttributeTable({
-        contexts: { trace: { data: flat } },
-      });
-      lines.push(...table);
+  return groupSpansBySegment(items).flatMap((group) => {
+    const shown = group.isSegment || group.spans.length === 1;
+    const lines = [
+      shown
+        ? formatSingleSpan(
+            group.head,
+            header,
+            group.isSegment
+              ? formatSpanCount(group.spans.length - 1)
+              : formatSpanCount(1, "+"),
+          )
+        : formatLateSpansLine(group, header),
+    ];
+    if (!showAttributes) {
+      return lines;
     }
-  }
-  return lines;
+    if (shown) {
+      lines.push(...formatSpanAttributes(group.head));
+    }
+    for (const span of group.spans) {
+      if (!(shown && span === group.head)) {
+        lines.push(
+          formatSingleSpan(span, header),
+          ...formatSpanAttributes(span),
+        );
+      }
+    }
+    return lines;
+  });
 }
 
 /**
