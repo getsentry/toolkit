@@ -1,29 +1,38 @@
-import { describeEval } from "vitest-evals/legacy";
-import { FIXTURES, NoOpTaskRunner, ToolPredictionScorer } from "./utils";
+import { describeEval } from "vitest-evals";
+import {
+  createTaskHarness,
+  defineEvalCases,
+  FIXTURES,
+  NoOpTaskRunner,
+  ToolPredictionJudge,
+  type EvalCase,
+} from "./utils";
 
-describeEval("list-tags", {
-  data: async () => {
-    return [
+const cases: EvalCase[] = [
+  {
+    input: `What are common tags in ${FIXTURES.organizationSlug}`,
+    expectedTools: [
       {
-        input: `What are common tags in ${FIXTURES.organizationSlug}`,
-        expectedTools: [
-          {
-            name: "find_organizations",
-            arguments: {},
-          },
-          {
-            name: "find_tags",
-            arguments: {
-              organizationSlug: FIXTURES.organizationSlug,
-              regionUrl: "https://us.sentry.io",
-            },
-          },
-        ],
+        name: "find_organizations",
+        arguments: {},
       },
-    ];
+      {
+        name: "find_tags",
+        arguments: {
+          organizationSlug: FIXTURES.organizationSlug,
+          regionUrl: "https://us.sentry.io",
+        },
+      },
+    ],
   },
-  task: NoOpTaskRunner(),
-  scorers: [ToolPredictionScorer()],
-  threshold: 0.6,
-  timeout: 30000,
-});
+];
+
+describeEval(
+  "list-tags",
+  {
+    harness: createTaskHarness("list-tags", NoOpTaskRunner()),
+    judges: [ToolPredictionJudge()],
+    judgeThreshold: 0.6,
+  },
+  (it) => defineEvalCases(it, cases, { timeout: 30000 }),
+);

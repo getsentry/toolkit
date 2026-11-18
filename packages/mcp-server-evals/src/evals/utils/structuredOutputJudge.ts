@@ -1,10 +1,7 @@
-import type { Score, ScoreFn, BaseScorerOptions } from "vitest-evals/legacy";
+import { createJudge, type Judge, type JudgeContext } from "vitest-evals";
+import type { EvalCase } from "./harness";
 
-interface StructuredOutputScorerOptions extends BaseScorerOptions {
-  expected?: Record<string, any>;
-}
-
-interface StructuredOutputScorerConfig {
+interface StructuredOutputJudgeConfig {
   /**
    * How to match field values
    * - "strict": Exact equality required (default)
@@ -38,50 +35,39 @@ interface StructuredOutputScorerConfig {
 }
 
 /**
- * A configurable scorer for evaluating structured outputs (e.g., JSON) from LLM responses.
+ * A configurable judge for evaluating structured outputs (e.g., JSON) from LLM responses.
  *
- * Similar to ToolCallScorer but for validating structured data outputs like API queries.
+ * Reads the expected fields from the eval case (`input.expected`). This stays
+ * local instead of using the built-in vitest-evals `StructuredOutputJudge`,
+ * whose fuzzy matching (substring, case-insensitive) would change scores.
  *
- * @param config - Configuration options for the scorer
+ * @param config - Configuration options for the judge
  * @param config.match - How to match field values: "strict", "fuzzy", or custom function
  * @param config.requireAll - Require all expected fields (vs partial credit)
  * @param config.allowExtras - Allow additional fields in output
  * @param config.debug - Enable debug logging
  *
  * @example
- * // Default: strict matching
- * describeEval("query generation", {
- *   data: async () => [{
- *     input: "Show me errors from today",
- *     expected: {
- *       dataset: "errors",
- *       query: "",
- *       sort: "-timestamp",
- *       timeRange: { statsPeriod: "24h" }
- *     }
- *   }],
- *   task: myTask,
- *   scorers: [StructuredOutputScorer()]
- * });
- *
- * @example
- * // Fuzzy matching with regex patterns
- * describeEval("flexible query matching", {
- *   data: async () => [{
- *     input: "Find slow API calls",
- *     expected: {
- *       dataset: "spans",
- *       query: /span\.duration:>1000|span\.duration:>1s/,
- *       sort: "-span.duration"
- *     }
- *   }],
- *   task: myTask,
- *   scorers: [StructuredOutputScorer({ match: "fuzzy" })]
- * });
+ * describeEval(
+ *   "query generation",
+ *   { harness, judges: [StructuredOutputJudge({ match: "fuzzy" })] },
+ *   (it) => {
+ *     defineEvalCases(it, [
+ *       {
+ *         input: "Find slow API calls",
+ *         expected: {
+ *           dataset: "spans",
+ *           query: /span\.duration:>1000|span\.duration:>1s/,
+ *           sort: "-span.duration",
+ *         },
+ *       },
+ *     ]);
+ *   },
+ * );
  */
-export function StructuredOutputScorer(
-  config: StructuredOutputScorerConfig = {},
-): ScoreFn<StructuredOutputScorerOptions> {
+export function StructuredOutputJudge(
+  config: StructuredOutputJudgeConfig = {},
+): Judge<JudgeContext<EvalCase, string>> {
   const {
     match = "strict",
     requireAll = true,
@@ -89,104 +75,105 @@ export function StructuredOutputScorer(
     debug = false,
   } = config;
 
-  return async (opts: StructuredOutputScorerOptions): Promise<Score> => {
-    const { output, expected } = opts;
-
-    // If no expected output provided, just check if we got valid JSON
-    if (!expected) {
-      try {
-        JSON.parse(output);
-        return { score: 1, metadata: { rationale: "Valid JSON output" } };
-      } catch {
-        return { score: 0, metadata: { rationale: "Invalid JSON output" } };
+  return createJudge<JudgeContext<EvalCase, string>>(
+    "StructuredOutputJudge",
+    ({ input: { expected }, output }) => {
+      // If no expected output provided, just check if we got valid JSON
+      if (!expected) {
+        try {
+          JSON.parse(output);
+          return { score: 1, metadata: { rationale: "Valid JSON output" } };
+        } catch {
+          return { score: 0, metadata: { rationale: "Invalid JSON output" } };
+        }
       }
-    }
 
-    let parsed: Record<string, any>;
-    try {
-      parsed = JSON.parse(output);
-    } catch (error) {
+      let parsed: Record<string, any>;
+      try {
+        parsed = JSON.parse(output);
+      } catch (error) {
+        return {
+          score: 0,
+          metadata: {
+            rationale: `Failed to parse output as JSON: ${String(error)}`,
+          },
+        };
+      }
+
+      // Check for error field in output
+      if (parsed.error && parsed.error !== "" && parsed.error !== null) {
+        return {
+          score: 0,
+          metadata: { rationale: `Output contains error: ${parsed.error}` },
+        };
+      }
+
+      const matchFn = getMatchFunction(match);
+      const { matches, mismatches, extras } = compareObjects(
+        expected,
+        parsed,
+        matchFn,
+      );
+
+      if (debug) {
+        console.log("StructuredOutputJudge debug:");
+        console.log("Expected:", expected);
+        console.log("Actual:", parsed);
+        console.log("Matches:", matches);
+        console.log("Mismatches:", mismatches);
+        console.log("Extras:", extras);
+      }
+
+      // Calculate score
+      const totalExpected = Object.keys(expected).length;
+      const totalMatched = matches.length;
+      const hasExtras = extras.length > 0;
+
+      let score: number;
+      let rationale: string;
+
+      if (requireAll && mismatches.length > 0) {
+        score = 0;
+        rationale = `Missing required fields: ${mismatches.map((m) => m.key).join(", ")}`;
+      } else if (!allowExtras && hasExtras) {
+        score = 0;
+        rationale = `Unexpected extra fields: ${extras.join(", ")}`;
+      } else if (totalExpected === 0) {
+        score = 1;
+        rationale = "No expected fields to match";
+      } else {
+        score = totalMatched / totalExpected;
+        if (score === 1) {
+          rationale = "All expected fields match";
+        } else {
+          rationale = `Matched ${totalMatched}/${totalExpected} fields`;
+        }
+      }
+
+      // Add mismatch details to rationale
+      if (mismatches.length > 0 && score < 1) {
+        const details = mismatches
+          .map(
+            (m) =>
+              `${m.key}: expected ${formatValue(m.expected)}, got ${formatValue(m.actual)}`,
+          )
+          .join("; ");
+        rationale += ` - ${details}`;
+      }
+
       return {
-        score: 0,
+        score,
         metadata: {
-          rationale: `Failed to parse output as JSON: ${String(error)}`,
+          rationale,
+          output,
         },
       };
-    }
-
-    // Check for error field in output
-    if (parsed.error && parsed.error !== "" && parsed.error !== null) {
-      return {
-        score: 0,
-        metadata: { rationale: `Output contains error: ${parsed.error}` },
-      };
-    }
-
-    const matchFn = getMatchFunction(match);
-    const { matches, mismatches, extras } = compareObjects(
-      expected,
-      parsed,
-      matchFn,
-    );
-
-    if (debug) {
-      console.log("StructuredOutputScorer debug:");
-      console.log("Expected:", expected);
-      console.log("Actual:", parsed);
-      console.log("Matches:", matches);
-      console.log("Mismatches:", mismatches);
-      console.log("Extras:", extras);
-    }
-
-    // Calculate score
-    const totalExpected = Object.keys(expected).length;
-    const totalMatched = matches.length;
-    const hasExtras = extras.length > 0;
-
-    let score: number;
-    let rationale: string;
-
-    if (requireAll && mismatches.length > 0) {
-      score = 0;
-      rationale = `Missing required fields: ${mismatches.map((m) => m.key).join(", ")}`;
-    } else if (!allowExtras && hasExtras) {
-      score = 0;
-      rationale = `Unexpected extra fields: ${extras.join(", ")}`;
-    } else if (totalExpected === 0) {
-      score = 1;
-      rationale = "No expected fields to match";
-    } else {
-      score = totalMatched / totalExpected;
-      if (score === 1) {
-        rationale = "All expected fields match";
-      } else {
-        rationale = `Matched ${totalMatched}/${totalExpected} fields`;
-      }
-    }
-
-    // Add mismatch details to rationale
-    if (mismatches.length > 0 && score < 1) {
-      const details = mismatches
-        .map(
-          (m) =>
-            `${m.key}: expected ${formatValue(m.expected)}, got ${formatValue(m.actual)}`,
-        )
-        .join("; ");
-      rationale += ` - ${details}`;
-    }
-
-    return {
-      score,
-      metadata: {
-        rationale,
-        output,
-      },
-    };
-  };
+    },
+  );
 }
 
 function getMatchFunction(
-  match: StructuredOutputScorerConfig["match"],
+  match: StructuredOutputJudgeConfig["match"],
 ): (expected: any, actual: any, key: string) => boolean {
   if (typeof match === "function") {
     return match;

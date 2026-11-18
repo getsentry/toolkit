@@ -1,37 +1,46 @@
-import { describeEval, ToolCallScorer } from "vitest-evals/legacy";
-import { FIXTURES, McpToolCallTaskRunner } from "./utils";
+import { describeEval } from "vitest-evals";
+import {
+  createTaskHarness,
+  defineEvalCases,
+  FIXTURES,
+  McpToolCallTaskRunner,
+  ToolCallJudge,
+  type EvalCase,
+} from "./utils";
 
-describeEval("get-trace-details", {
-  data: async () => {
-    return [
+const cases: EvalCase[] = [
+  {
+    input: `Show me trace ${FIXTURES.traceId} from Sentry in ${FIXTURES.organizationSlug}.`,
+    expectedTools: [
       {
-        input: `Show me trace ${FIXTURES.traceId} from Sentry in ${FIXTURES.organizationSlug}.`,
-        expectedTools: [
-          {
-            name: "get_trace_details",
-            arguments: {
-              organizationSlug: FIXTURES.organizationSlug,
-              traceId: FIXTURES.traceId,
-            },
-          },
-        ],
+        name: "get_trace_details",
+        arguments: {
+          organizationSlug: FIXTURES.organizationSlug,
+          traceId: FIXTURES.traceId,
+        },
       },
-      {
-        input: `Explain trace ${FIXTURES.traceId} in ${FIXTURES.organizationSlug}.`,
-        expectedTools: [
-          {
-            name: "get_trace_details",
-            arguments: {
-              organizationSlug: FIXTURES.organizationSlug,
-              traceId: FIXTURES.traceId,
-            },
-          },
-        ],
-      },
-    ];
+    ],
   },
-  task: McpToolCallTaskRunner(),
-  scorers: [ToolCallScorer({ ordered: true, params: "fuzzy" })],
-  threshold: 0.6,
-  timeout: 90000,
-});
+  {
+    input: `Explain trace ${FIXTURES.traceId} in ${FIXTURES.organizationSlug}.`,
+    expectedTools: [
+      {
+        name: "get_trace_details",
+        arguments: {
+          organizationSlug: FIXTURES.organizationSlug,
+          traceId: FIXTURES.traceId,
+        },
+      },
+    ],
+  },
+];
+
+describeEval(
+  "get-trace-details",
+  {
+    harness: createTaskHarness("get-trace-details", McpToolCallTaskRunner()),
+    judges: [ToolCallJudge({ ordered: true, params: "fuzzy" })],
+    judgeThreshold: 0.6,
+  },
+  (it) => defineEvalCases(it, cases, { timeout: 90000 }),
+);
