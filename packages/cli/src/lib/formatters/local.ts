@@ -20,6 +20,7 @@ import {
   hasAiAttributes,
   inferSemanticOp,
   mergeTransactionAttributes,
+  UNNAMED_SPAN,
 } from "./semantic-display.js";
 
 const log = logger.withTag("local-formatter");
@@ -814,7 +815,7 @@ export function formatSingleSpan(
   header: Record<string, unknown>,
   spanCount = "",
 ): string {
-  const spanName = sanitize(span.name ?? "unnamed span");
+  const spanName = sanitize(span.name ?? UNNAMED_SPAN);
   const flat = flattenSpanAttributes(span.attributes);
   const semantic = formatSemanticSpanDisplay(flat, spanName);
 
@@ -1325,10 +1326,7 @@ function formatSpanJson(
   }
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
-    const semantic = formatSemanticSpanDisplay(
-      flat,
-      span.name ?? "unnamed span",
-    );
+    const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
     return formatJsonObservation(
       {
         type: "span",

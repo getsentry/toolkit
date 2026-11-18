@@ -250,12 +250,18 @@ function formatHttpSpanDisplay(
   const method = getAttr(attrs, ["http.request.method"])?.toUpperCase();
   const statusCode = getAttr(attrs, ["http.response.status_code"]);
   const op = getAttr(attrs, ["sentry.op"]);
+  const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
   const target = getHttpTarget(attrs, {
     includeServerTarget: Boolean(method || statusCode),
     // The browser SDK puts the page URL on every segment span, so a custom
-    // `ui.action` or `pageload` span is not a request to that URL.
+    // span (`checkout flow`, or a `ui.action` or `pageload`) is not a request
+    // to that URL. Without an op, only a span with no name of its own is.
     includeFullUrl: Boolean(
-      method || statusCode || !op || /^(?:http|resource)\./.test(op),
+      method ||
+      statusCode ||
+      (op
+        ? /^(?:http|resource)\./.test(op)
+        : !hasOwnName(fallbackLabel, fullUrl)),
     ),
   });
   const errorType = getErrorType(attrs);
@@ -270,6 +276,28 @@ function formatHttpSpanDisplay(
     label: label || fallbackLabel,
     metadata: compactStrings([statusCode, errorType]),
   };
+}
+
+/** Label for a span that has no name. */
+export const UNNAMED_SPAN = "unnamed span";
+
+const HTTP_METHOD_RE =
+  /^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)$/i;
+
+/**
+ * Whether a span name says more than its URL: not empty, not
+ * {@link UNNAMED_SPAN}, and not just an HTTP method, the URL, or both.
+ */
+function hasOwnName(name: string, url: string | undefined): boolean {
+  const words = name.trim().split(/\s+/);
+  if (words[0] && HTTP_METHOD_RE.test(words[0])) {
+    words.shift();
+  }
+  const rest = words.join(" ");
+  if (!rest || name === UNNAMED_SPAN) {
+    return false;
+  }
+  return !url || formatHttpTarget(rest) !== formatHttpTarget(url);
 }
 
 function formatDatabaseSpanDisplay(
