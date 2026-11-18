@@ -29,7 +29,7 @@ describe("getSentryConfig", () => {
         CF_VERSION_METADATA: {
           id: "worker-version-123",
           tag: "current",
-        } as Env["CF_VERSION_METADATA"],
+        } as WorkerVersionMetadata,
       }),
     );
 

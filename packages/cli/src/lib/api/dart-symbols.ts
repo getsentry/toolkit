@@ -38,7 +38,7 @@ export type DartSymbolMap = {
   /** The debug ID to associate with this map. */
   debugId: string;
   /** Pre-read content buffer. */
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
 };
 
 /** Options for {@link uploadDartSymbolMap}. */

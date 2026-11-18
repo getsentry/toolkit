@@ -8,12 +8,8 @@ import { listCommand } from "../../../src/commands/token/list.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -23,12 +19,8 @@ import { ApiError, ContextError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -42,6 +34,8 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const tokens = [
   {
@@ -65,11 +59,11 @@ const tokens = [
 ];
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
       commandPrefix: ["sentry", "token", "list"],
     },
@@ -102,7 +96,7 @@ describe("token list", () => {
 
   test("lists tokens without their values", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, "my-org/");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -120,7 +114,7 @@ describe("token list", () => {
 
   test("JSON output is the token array", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: true });
 
     expect(JSON.parse(output(stdoutWrite))).toEqual(tokens);
@@ -129,7 +123,7 @@ describe("token list", () => {
   test("says when there are no tokens", async () => {
     listSpy.mockResolvedValue([]);
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { json: false }, "my-org");
 
     expect(output(stdoutWrite)).toContain("No active org auth tokens");
@@ -139,7 +133,7 @@ describe("token list", () => {
     ensureScopesSpy.mockResolvedValue("unavailable");
     listSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     const error = await func
       .call(context, { json: true }, "my-org")
@@ -151,7 +145,7 @@ describe("token list", () => {
   test("throws ContextError when no org can be resolved", async () => {
     resolveOrgSpy.mockResolvedValue(null);
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       ContextError,

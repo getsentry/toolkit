@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { SourceMapReport } from "../../../src/lib/react-native/wrap-call.js";
 import { wrapCall } from "../../../src/lib/react-native/wrap-call.js";
+import { at } from "../../helpers.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -67,7 +68,7 @@ describe("wrapCall", () => {
     expect(report.packager_bundle_path).toBe("/build/app.jsbundle");
     expect(report.packager_sourcemap_path).toContain("app.jsbundle.map");
     // The real node was invoked with the injected --sourcemap-output.
-    const [exe, args] = spawnMock.mock.calls[0];
+    const [exe, args] = at(spawnMock.mock.calls, 0);
     expect(exe).toBe("node");
     expect(args).toContain("--sourcemap-output");
   });
@@ -79,7 +80,7 @@ describe("wrapCall", () => {
       SENTRY_RN_REAL_NODE_BINARY: "node",
       SENTRY_RN_REAL_HERMES_CLI_PATH: "/hermesc",
     });
-    expect(spawnMock.mock.calls[0][0]).toBe("/hermesc");
+    expect(at(spawnMock.mock.calls, 0)[0]).toBe("/hermesc");
     expect(readReport().hermes_bundle_path).toBe("/build/app.hbc");
   });
 

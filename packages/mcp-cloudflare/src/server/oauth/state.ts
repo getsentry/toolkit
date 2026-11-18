@@ -68,8 +68,13 @@ async function verifyHex(
 ): Promise<boolean> {
   try {
     const enc = new TextEncoder();
+    const hexPairs = signatureHex.match(/.{1,2}/g);
+    if (!hexPairs) {
+      // An empty signature can never match.
+      return false;
+    }
     const signatureBytes = new Uint8Array(
-      signatureHex.match(/.{1,2}/g)!.map((byte) => Number.parseInt(byte, 16)),
+      hexPairs.map((byte) => Number.parseInt(byte, 16)),
     );
     return await crypto.subtle.verify(
       "HMAC",

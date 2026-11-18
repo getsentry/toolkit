@@ -158,8 +158,8 @@ test("legacy profile samples align to an ISO 8601 transaction start", () => {
   // sentry-python sends the transaction start as an ISO 8601 string.
   const event = transaction();
   const payload = event.payload as Record<string, unknown>;
-  payload.start_timestamp = "1970-01-01T00:00:01.000000Z";
-  payload.timestamp = "1970-01-01T00:00:01.100000Z";
+  payload["start_timestamp"] = "1970-01-01T00:00:01.000000Z";
+  payload["timestamp"] = "1970-01-01T00:00:01.100000Z";
   const legacy = decode("legacy", "profile", {
     transaction: { id: "e", trace_id: "t", active_thread_id: "main" },
     profile: {

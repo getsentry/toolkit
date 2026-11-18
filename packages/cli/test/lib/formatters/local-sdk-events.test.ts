@@ -374,20 +374,20 @@ describe("frame hint", () => {
   test("points at the throwing function in a Hono route, not dispatch", () => {
     const line = tail(honoWorkerError, honoHeader);
     expect(line).toContain("[/index.js:1190:9] [deepFunction]");
-    expect(json(honoWorkerError, honoHeader).function).toBe("deepFunction");
+    expect(json(honoWorkerError, honoHeader)["function"]).toBe("deepFunction");
   });
 
   test("skips library frames newer than the app frame", () => {
     const line = tail(nextjsServerError, nextjsHeader);
     expect(line).toContain("[GET]");
-    expect(json(nextjsServerError, nextjsHeader).function).toBe("GET");
+    expect(json(nextjsServerError, nextjsHeader)["function"]).toBe("GET");
   });
 });
 
 describe("source tag", () => {
   test("a Hono app on Cloudflare Workers is a server", () => {
     expect(tail(honoWorkerError, honoHeader)).toContain("[SERVER]");
-    expect(json(honoWorkerError, honoHeader).source).toBe("server");
+    expect(json(honoWorkerError, honoHeader)["source"]).toBe("server");
   });
 
   test.each([
@@ -413,10 +413,10 @@ describe("source tag", () => {
 
   test("a Next.js browser event is a browser, a server event is a server", () => {
     expect(tail(nextjsBrowserError, nextjsHeader)).toContain("[BROWSER]");
-    expect(json(nextjsBrowserError, nextjsHeader).source).toBe("browser");
+    expect(json(nextjsBrowserError, nextjsHeader)["source"]).toBe("browser");
 
     expect(tail(nextjsServerError, nextjsHeader)).toContain("[SERVER]");
-    expect(json(nextjsServerError, nextjsHeader).source).toBe("server");
+    expect(json(nextjsServerError, nextjsHeader)["source"]).toBe("server");
   });
 
   test("a Next.js edge runtime event is a server", () => {
@@ -541,11 +541,11 @@ describe("log attributes", () => {
   }
 
   test("JSON log records keep only custom attributes without --attributes", () => {
-    expect(logJson(false).attributes).toEqual({ request_id: "req-7f3a" });
+    expect(logJson(false)["attributes"]).toEqual({ request_id: "req-7f3a" });
   });
 
   test("JSON log records add SDK attributes with --attributes", () => {
-    const attributes = logJson(true).attributes as Record<string, unknown>;
+    const attributes = logJson(true)["attributes"] as Record<string, unknown>;
     expect(attributes).toMatchObject({
       request_id: "req-7f3a",
       "logger.name": "werkzeug",
@@ -668,14 +668,14 @@ describe("SDK log attributes stay log-only", () => {
     const record = JSON.parse(line ?? "{}") as {
       attributes: Record<string, Record<string, string>>;
     };
-    expect(Object.keys(record.attributes.user ?? {}).sort()).toEqual([
+    expect(Object.keys(record.attributes["user"] ?? {}).sort()).toEqual([
       "asctime",
       "logger.name",
       "request",
       "server_time",
       "user.email",
     ]);
-    expect(record.attributes.sdk).toEqual({ "http.method": "GET" });
+    expect(record.attributes["sdk"]).toEqual({ "http.method": "GET" });
 
     const table = formatAttributeTable(event).map(stripAnsi).join("\n");
     const userGroup = table.slice(0, table.indexOf("sdk attributes"));
@@ -709,8 +709,8 @@ describe("colored log text", () => {
     const [line] = formatItemJson("log", uvicornLog, header);
     expect(line).not.toContain("\\u001b");
     const record = JSON.parse(line ?? "{}") as Record<string, unknown>;
-    expect(record.message).toBe("GET /boom HTTP/1.1 500");
-    expect(record.attributes).toEqual({
+    expect(record["message"]).toBe("GET /boom HTTP/1.1 500");
+    expect(record["attributes"]).toEqual({
       color_message: '%s - "%s %s HTTP/%s" %d',
     });
   });
@@ -720,6 +720,6 @@ describe("colored log text", () => {
       { message: "\u001b[33mdisk almost full\u001b[0m", level: "warning" },
       pythonHeader,
     );
-    expect(record.message).toBe("disk almost full");
+    expect(record["message"]).toBe("disk almost full");
   });
 });

@@ -120,8 +120,9 @@ const TRACE_ID_SHORT_LEN = 8;
 export function extractTraceId(
   event: Record<string, unknown>,
 ): string | undefined {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as { trace_id?: unknown } | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { trace_id?: unknown } | undefined;
   const traceId = trace?.trace_id;
   if (typeof traceId === "string" && TRACE_ID_RE.test(traceId)) {
     return traceId.toLowerCase();
@@ -251,7 +252,7 @@ function inferSourceName(
   payload?: Record<string, unknown>,
   attributes: Record<string, unknown>[] = [],
 ): SourceName {
-  const sdk = header.sdk as { name?: unknown } | undefined;
+  const sdk = header["sdk"] as { name?: unknown } | undefined;
   const name = typeof sdk?.name === "string" ? sdk.name : "";
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
     return "mobile";
@@ -259,12 +260,12 @@ function inferSourceName(
   if (attributes.some(hasBrowserAttributes)) {
     return "browser";
   }
-  const contexts = payload?.contexts as Record<string, unknown> | undefined;
-  if (contexts?.runtime) {
+  const contexts = payload?.["contexts"] as Record<string, unknown> | undefined;
+  if (contexts?.["runtime"]) {
     return "server";
   }
-  if (typeof payload?.platform === "string") {
-    return payload.platform === "javascript" ? "browser" : "server";
+  if (typeof payload?.["platform"] === "string") {
+    return payload["platform"] === "javascript" ? "browser" : "server";
   }
   if (
     name.startsWith("sentry.javascript.") &&
@@ -370,14 +371,14 @@ type EventSummary = (
   /** Exception value or message text. */
   text: string;
   /** Stack of the newest exception, including a message's synthetic stack. */
-  frames?: StackFrame[];
+  frames?: StackFrame[] | undefined;
   /** Logger name, e.g. a Python logger such as `shop.payments`. */
-  logger?: string;
+  logger?: string | undefined;
 };
 
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
-  const exception = event.exception as
+  const exception = event["exception"] as
     | { values?: ExceptionValue[] }
     | undefined;
   // values is ordered oldest→newest; the last one is what was thrown.
@@ -389,11 +390,15 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
       ? undefined
       : stringifyUnknown(last.value);
   const messageText =
-    readMessageText(event.logentry) ?? readMessageText(event.message);
+    readMessageText(event["logentry"]) ?? readMessageText(event["message"]);
   const level =
-    typeof event.level === "string" && event.level ? event.level : "error";
+    typeof event["level"] === "string" && event["level"]
+      ? event["level"]
+      : "error";
   const logger =
-    typeof event.logger === "string" && event.logger ? event.logger : undefined;
+    typeof event["logger"] === "string" && event["logger"]
+      ? event["logger"]
+      : undefined;
   const frames = last?.stacktrace?.frames;
 
   const text = errorType ? exceptionText : (messageText ?? exceptionText);
@@ -436,7 +441,7 @@ export function formatErrorItem(
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp);
+  const ts = formatTime(event["timestamp"]);
   return `${muted(ts)} ${formatType(summary.level)} ${inferSource(header, event)} ${msg}`;
 }
 
@@ -455,13 +460,12 @@ export function formatTransactionItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const trace = (event.contexts as Record<string, unknown> | undefined)
-    ?.trace as
-    | { op?: string; status?: string; description?: string }
-    | undefined;
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as { op?: string; status?: string; description?: string } | undefined;
   const txnName =
-    typeof event.transaction === "string"
-      ? event.transaction
+    typeof event["transaction"] === "string"
+      ? event["transaction"]
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
@@ -482,7 +486,7 @@ export function formatTransactionItem(
     msg = `[${sanitize(op)}] ${msg}`;
   }
 
-  const duration = durationMs(event.start_timestamp, event.timestamp);
+  const duration = durationMs(event["start_timestamp"], event["timestamp"]);
   if (duration !== undefined) {
     msg += ` ${muted(`[${duration}ms]`)}`;
   }
@@ -492,12 +496,12 @@ export function formatTransactionItem(
     msg += ` ${muted(`[${sanitize(status)}]`)}`;
   }
 
-  const spans = event.spans as unknown[] | undefined;
+  const spans = event["spans"] as unknown[] | undefined;
   msg += formatSpanCount(spans?.length ?? 0);
 
   msg += formatTraceIdHint(event);
 
-  const ts = formatTime(event.timestamp);
+  const ts = formatTime(event["timestamp"]);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header, event)} ${msg}`;
 }
 
@@ -725,7 +729,7 @@ function logAttributes(logEntry: LogEntry): Record<string, unknown> {
 /** Log attributes that have a value, as `[key, value]` pairs. */
 function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
   return Object.entries(logEntry.attributes ?? {})
-    .filter(([, v]) => v?.value !== null && v?.value !== undefined)
+    .filter(([, v]) => v.value !== null && v.value !== undefined)
     .map(([k, v]) => [k, v.value]);
 }
 
@@ -739,7 +743,7 @@ function splitLogAttributes(
   header: Record<string, unknown>,
 ): { custom: [string, unknown][]; sdk: [string, unknown][] } {
   const fromLog = logEntry.attributes?.["sentry.sdk.name"]?.value;
-  const fromHeader = (header.sdk as { name?: unknown } | undefined)?.name;
+  const fromHeader = (header["sdk"] as { name?: unknown } | undefined)?.name;
   const name = fromLog ?? fromHeader;
   const sdkName = typeof name === "string" ? name : "";
   const custom: [string, unknown][] = [];
@@ -812,7 +816,7 @@ export function formatLogItem(
   header: Record<string, unknown>,
   showAttributes = false,
 ): string[] {
-  const items = event.items as LogEntry[] | undefined;
+  const items = event["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -848,7 +852,7 @@ export type StreamedSpan = {
  * `Record<string, unknown>` compatible with the semantic display pipeline.
  */
 function flattenSpanAttributes(
-  attrs: Record<string, { type?: string; value?: unknown }> | undefined,
+  attrs: Record<string, { type?: string; value?: unknown } | null> | undefined,
 ): Record<string, unknown> {
   if (!attrs) {
     return {};
@@ -1052,7 +1056,7 @@ export function formatSpanItem(
   header: Record<string, unknown>,
   showAttributes = false,
 ): string[] {
-  const items = event.items as StreamedSpan[] | undefined;
+  const items = event["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1092,7 +1096,7 @@ export function formatSpanItem(
  * Checks all spans in the container for AI-prefixed attributes.
  */
 function spanItemHasAiActivity(payload: Record<string, unknown>): boolean {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return false;
   }
@@ -1125,6 +1129,7 @@ export function itemTypeToFilterCategory(
   if (itemType === "transaction" || itemType === "span" || itemType === "log") {
     return itemType === "span" ? "transaction" : itemType;
   }
+  return undefined;
 }
 
 /**
@@ -1137,13 +1142,13 @@ function formatReplayItem(
   event: Record<string, unknown>,
   header: Record<string, unknown>,
 ): string {
-  const id = typeof event.replay_id === "string" ? event.replay_id : "";
-  const url = Array.isArray(event.urls) ? event.urls[0] : undefined;
+  const id = typeof event["replay_id"] === "string" ? event["replay_id"] : "";
+  const url = Array.isArray(event["urls"]) ? event["urls"][0] : undefined;
   let msg = `replay ${sanitize(id.slice(0, TRACE_ID_SHORT_LEN))}`;
   if (typeof url === "string" && url) {
     msg += ` ${sanitize(url)}`;
   }
-  const ts = formatTime(event.timestamp);
+  const ts = formatTime(event["timestamp"]);
   return `${muted(ts)} ${formatType("replay")} ${inferSource(header, event)} ${msg}`;
 }
 
@@ -1190,6 +1195,7 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   } catch {
     log.debug("Could not serialize local envelope identity");
   }
+  return undefined;
 }
 
 /** Strip ANSI escapes, C1 controls, and BiDi overrides from a JSON string. */
@@ -1233,8 +1239,8 @@ function formatJsonObservation(
   return JSON.stringify(
     sanitizeJsonValue({
       schema_version: LOCAL_EVENT_SCHEMA_VERSION,
-      envelope_id: jsonSafeIdentifier(header.__spotlight_envelope_id),
-      event_id: jsonSafe(payload.event_id) ?? jsonSafe(header.event_id),
+      envelope_id: jsonSafeIdentifier(header["__spotlight_envelope_id"]),
+      event_id: jsonSafe(payload["event_id"]) ?? jsonSafe(header["event_id"]),
       ...observation,
     }),
   );
@@ -1254,7 +1260,7 @@ function formatErrorJson(
   return formatJsonObservation(
     {
       type: summary.kind,
-      timestamp: parseEventTimestamp(payload.timestamp),
+      timestamp: parseEventTimestamp(payload["timestamp"]),
       trace_id: extractTraceId(payload),
       level: summary.level,
       error_type: summary.kind === "error" ? summary.errorType : undefined,
@@ -1277,8 +1283,8 @@ function formatErrorJson(
  * envelope stays compact when `--attributes` isn't requested.
  */
 function buildJsonAttributes(payload: Record<string, unknown>): {
-  user?: Record<string, string>;
-  sdk?: Record<string, string>;
+  user?: Record<string, string> | undefined;
+  sdk?: Record<string, string> | undefined;
 } {
   const merged = collectAllAttributes(payload);
   const user: Record<string, string> = {};
@@ -1306,29 +1312,30 @@ function formatTransactionJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string {
-  const trace = (payload.contexts as Record<string, unknown> | undefined)
-    ?.trace as Record<string, unknown> | undefined;
+  const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
   const attrs = mergeTransactionAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(
-      payload.transaction ?? trace?.description ?? "Transaction",
+      payload["transaction"] ?? trace?.["description"] ?? "Transaction",
     ),
   );
   return formatJsonObservation(
     {
       type: "transaction",
-      timestamp: parseEventTimestamp(payload.timestamp),
+      timestamp: parseEventTimestamp(payload["timestamp"]),
       trace_id: extractTraceId(payload),
-      op: inferSemanticOp(attrs) ?? trace?.op,
+      op: inferSemanticOp(attrs) ?? trace?.["op"],
       label: stripBidi(semantic.label),
       metadata:
         semantic.metadata.length > 0
           ? semantic.metadata.map(stripBidi)
           : undefined,
-      duration_ms: durationMs(payload.start_timestamp, payload.timestamp),
-      status: trace?.status,
-      span_count: (payload.spans as unknown[] | undefined)?.length,
+      duration_ms: durationMs(payload["start_timestamp"], payload["timestamp"]),
+      status: trace?.["status"],
+      span_count: (payload["spans"] as unknown[] | undefined)?.length,
       attributes: includeAttributes ? buildJsonAttributes(payload) : undefined,
       source: inferSourceName(header, payload),
     },
@@ -1349,7 +1356,7 @@ function formatLogJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string[] {
-  const items = payload.items as LogEntry[] | undefined;
+  const items = payload["items"] as LogEntry[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1395,7 +1402,7 @@ function formatSpanJson(
   header: Record<string, unknown>,
   includeAttributes = false,
 ): string[] {
-  const items = payload.items as StreamedSpan[] | undefined;
+  const items = payload["items"] as StreamedSpan[] | undefined;
   if (!items?.length) {
     return [];
   }
@@ -1466,7 +1473,7 @@ export function formatItemJson(
     formatJsonObservation(
       {
         type: itemType ?? "unknown",
-        timestamp: parseEventTimestamp(payload.timestamp),
+        timestamp: parseEventTimestamp(payload["timestamp"]),
       },
       payload,
       header,
@@ -1506,7 +1513,9 @@ export function formatItem(
   // Active replays send a replay_event and a recording every few seconds;
   // only the first segment gets a line.
   if (itemType === "replay_event") {
-    return payload.segment_id === 0 ? [formatReplayItem(payload, header)] : [];
+    return payload["segment_id"] === 0
+      ? [formatReplayItem(payload, header)]
+      : [];
   }
   if (itemType === "replay_recording") {
     return [];
@@ -1662,16 +1671,16 @@ export function formatLocalControlResult(
   data: Record<string, unknown>,
 ): string {
   const daemon =
-    data.daemon &&
-    typeof data.daemon === "object" &&
-    !Array.isArray(data.daemon)
-      ? (data.daemon as Record<string, unknown>)
+    data["daemon"] &&
+    typeof data["daemon"] === "object" &&
+    !Array.isArray(data["daemon"])
+      ? (data["daemon"] as Record<string, unknown>)
       : data;
   const receiverUrl =
-    typeof data.streamUrl === "string"
-      ? data.streamUrl
-      : typeof daemon.host === "string" && typeof daemon.port === "number"
-        ? formatLocalServerUrl(daemon.host, daemon.port)
+    typeof data["streamUrl"] === "string"
+      ? data["streamUrl"]
+      : typeof daemon["host"] === "string" && typeof daemon["port"] === "number"
+        ? formatLocalServerUrl(daemon["host"], daemon["port"])
         : undefined;
   const hint = receiverUrl ? formatLocalViewerHint(receiverUrl) : undefined;
   return JSON.stringify(data, null, 2) + (hint ? `\n\n${hint}` : "");

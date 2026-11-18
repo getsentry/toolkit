@@ -115,9 +115,9 @@ export function getRealUsername(): string {
     // Fall through to the "$(whoami)" literal below.
   }
   return (
-    process.env.SUDO_USER ||
-    process.env.USER ||
-    process.env.USERNAME ||
+    process.env["SUDO_USER"] ||
+    process.env["USER"] ||
+    process.env["USERNAME"] ||
     osUsername ||
     "$(whoami)"
   );

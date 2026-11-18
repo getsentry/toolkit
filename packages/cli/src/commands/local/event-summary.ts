@@ -16,17 +16,17 @@ type LocalEventDetails = {
    * such as `captureMessage` or Python `logging`), or the item type:
    * `transaction`, `log`, `span`, `session`, `client_report`, ….
    */
-  type?: string;
+  type?: string | undefined;
   /** Event or log level, e.g. `error`, `warning`, `info`. */
-  level?: string;
+  level?: string | undefined;
   /** `TypeError: msg` for errors, the text for messages and logs, or the transaction or span name. */
-  title?: string;
+  title?: string | undefined;
   /** When the SDK recorded it, as an ISO 8601 string. */
-  timestamp?: string;
+  timestamp?: string | undefined;
   /** 32-character trace ID, when the item or envelope header has one. */
-  traceId?: string;
+  traceId?: string | undefined;
   /** Number of logs or spans in a log or span batch; unset for a standalone span. */
-  count?: number;
+  count?: number | undefined;
 };
 
 type Item = ParsedReceiverEnvelope["envelope"][1][number];
@@ -96,8 +96,8 @@ function summarizeEventItem(
 /** A log's trace ID, from the log or its `sentry.trace.trace_id` attribute. */
 function logTraceId(log: Record<string, unknown>): string | undefined {
   return (
-    traceId(log.trace_id) ??
-    traceId(record(record(log.attributes)["sentry.trace.trace_id"]).value)
+    traceId(log["trace_id"]) ??
+    traceId(record(record(log["attributes"])["sentry.trace.trace_id"])["value"])
   );
 }
 
@@ -119,7 +119,7 @@ function mostSevereLog(
 ): Record<string, unknown> {
   return logs.reduce(
     (worst, log) =>
-      levelRank(log.level) > levelRank(worst.level) ? log : worst,
+      levelRank(log["level"]) > levelRank(worst["level"]) ? log : worst,
     logs[0] ?? {},
   );
 }
@@ -132,13 +132,13 @@ function mostSevereLog(
 function segmentRoot(
   spans: Record<string, unknown>[],
 ): Record<string, unknown> {
-  const ids = new Set(spans.map((span) => span.span_id));
+  const ids = new Set(spans.map((span) => span["span_id"]));
   return (
-    spans.find((span) => span.is_segment === true) ??
+    spans.find((span) => span["is_segment"] === true) ??
     spans.find(
       (span) =>
-        typeof span.parent_span_id !== "string" ||
-        !ids.has(span.parent_span_id),
+        typeof span["parent_span_id"] !== "string" ||
+        !ids.has(span["parent_span_id"]),
     ) ??
     spans[0] ??
     {}
@@ -155,27 +155,31 @@ function summarizeContainer(
   itemType: string,
   payload: Record<string, unknown>,
 ): LocalEventDetails {
-  if (itemType === "span" && !Array.isArray(payload.items)) {
+  if (itemType === "span" && !Array.isArray(payload["items"])) {
     return {
       type: "span",
       title:
-        text(payload.description) ?? text(payload.name) ?? text(payload.op),
+        text(payload["description"]) ??
+        text(payload["name"]) ??
+        text(payload["op"]),
       timestamp: isoTimestamp(
-        payload.timestamp ?? payload.end_timestamp ?? payload.start_timestamp,
+        payload["timestamp"] ??
+          payload["end_timestamp"] ??
+          payload["start_timestamp"],
       ),
-      traceId: traceId(payload.trace_id),
+      traceId: traceId(payload["trace_id"]),
     };
   }
-  const entries = (Array.isArray(payload.items) ? payload.items : []).map(
+  const entries = (Array.isArray(payload["items"]) ? payload["items"] : []).map(
     record,
   );
   if (itemType === "log") {
     const log = mostSevereLog(entries);
     return {
       type: "log",
-      level: text(log.level),
-      title: text(log.body),
-      timestamp: isoTimestamp(log.timestamp),
+      level: text(log["level"]),
+      title: text(log["body"]),
+      timestamp: isoTimestamp(log["timestamp"]),
       traceId: logTraceId(log) ?? entries.map(logTraceId).find(Boolean),
       count: entries.length,
     };
@@ -183,9 +187,9 @@ function summarizeContainer(
   const root = segmentRoot(entries);
   return {
     type: "span",
-    title: text(root.name),
-    timestamp: isoTimestamp(root.end_timestamp ?? root.start_timestamp),
-    traceId: traceId(root.trace_id),
+    title: text(root["name"]),
+    timestamp: isoTimestamp(root["end_timestamp"] ?? root["start_timestamp"]),
+    traceId: traceId(root["trace_id"]),
     count: entries.length,
   };
 }
@@ -228,7 +232,7 @@ export function summarizeEnvelope(
   parsed: ParsedReceiverEnvelope,
 ): LocalEventDetails {
   const [header, items] = parsed.envelope;
-  const headerTraceId = traceId(record(header.trace).trace_id);
+  const headerTraceId = traceId(record(header["trace"])["trace_id"]);
   const item = mainItem(items);
   if (!item) {
     return { traceId: headerTraceId };
@@ -247,16 +251,16 @@ export function summarizeEnvelope(
   const isEvent = EVENT_ITEM_TYPES.has(itemType);
   return shortTitle({
     type: itemType,
-    level: text(payload.level),
+    level: text(payload["level"]),
     title:
-      text(payload.transaction) ??
-      text(payload.status) ??
+      text(payload["transaction"]) ??
+      text(payload["status"]) ??
       (itemType === "sessions" ? sessionCountsTitle(payload) : undefined),
     ...(itemType === "event" ? summarizeEventItem(payload) : {}),
-    timestamp: isoTimestamp(payload.timestamp),
+    timestamp: isoTimestamp(payload["timestamp"]),
     traceId:
       (isEvent
-        ? traceId(record(record(payload.contexts).trace).trace_id)
+        ? traceId(record(record(payload["contexts"])["trace"])["trace_id"])
         : undefined) ?? headerTraceId,
   });
 }

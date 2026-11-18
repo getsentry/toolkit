@@ -8,13 +8,22 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import { gradleCommand } from "../../../src/commands/react-native/gradle.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemaps from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand, at } from "../../helpers.js";
 
 let tmpDir: string;
 let bundle: string;
@@ -42,7 +51,7 @@ function createContext() {
 }
 
 describe("react-native gradle", () => {
-  let uploadSpy: ReturnType<typeof vi.spyOn>;
+  let uploadSpy: MockInstance<(typeof sourcemaps)["uploadSourcemaps"]>;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "rn-gradle-"));
@@ -60,6 +69,8 @@ describe("react-native gradle", () => {
       }),
     );
     vi.spyOn(resolveTarget, "resolveOrgAndProject").mockResolvedValue({
+      orgDisplay: "acme",
+      projectDisplay: "mobile",
       org: "acme",
       project: "mobile",
     });
@@ -74,11 +85,11 @@ describe("react-native gradle", () => {
   });
 
   test("injects a debug id and uploads once (debug-id only)", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await func.call(createContext().context, { bundle, sourcemap });
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
-    const opts = uploadSpy.mock.calls[0][0] as sourcemaps.UploadOptions;
+    const opts = at(uploadSpy.mock.calls, 0)[0];
     expect(opts.org).toBe("acme");
     expect(opts.project).toBe("mobile");
     expect(opts.release).toBeUndefined();
@@ -90,13 +101,13 @@ describe("react-native gradle", () => {
       type: "minified_source",
       sourcemapFilename: "index.android.bundle.map",
     });
-    expect(opts.files[0].debugId).toMatch(/[0-9a-f-]{36}/);
+    expect(at(opts.files, 0).debugId).toMatch(/[0-9a-f-]{36}/);
     // The bundle on disk now carries the injected debug id.
     expect(await readFile(bundle, "utf8")).toContain("debugId");
   });
 
   test("uploads once per distribution when a release is given", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await func.call(createContext().context, {
       bundle,
       sourcemap,
@@ -105,37 +116,35 @@ describe("react-native gradle", () => {
     });
 
     expect(uploadSpy).toHaveBeenCalledTimes(2);
-    const dists = uploadSpy.mock.calls.map(
-      (c) => (c[0] as sourcemaps.UploadOptions).dist,
-    );
+    const dists = uploadSpy.mock.calls.map((c) => c[0].dist);
     expect(dists).toEqual(["1000", "1001"]);
     for (const call of uploadSpy.mock.calls) {
-      expect((call[0] as sourcemaps.UploadOptions).release).toBe("1.0.0");
+      expect(call[0].release).toBe("1.0.0");
     }
   });
 
   test("threads --wait / --wait-for into the upload", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
 
     await func.call(createContext().context, { bundle, sourcemap });
-    expect(uploadSpy.mock.calls[0][0]).toMatchObject({ wait: false });
+    expect(at(uploadSpy.mock.calls, 0)[0]).toMatchObject({ wait: false });
 
     await func.call(createContext().context, { bundle, sourcemap, wait: true });
-    expect(uploadSpy.mock.calls[1][0]).toMatchObject({ wait: true });
+    expect(at(uploadSpy.mock.calls, 1)[0]).toMatchObject({ wait: true });
 
     await func.call(createContext().context, {
       bundle,
       sourcemap,
       "wait-for": 30,
     });
-    expect(uploadSpy.mock.calls[2][0]).toMatchObject({
+    expect(at(uploadSpy.mock.calls, 2)[0]).toMatchObject({
       wait: true,
       maxWaitMs: 30_000,
     });
   });
 
   test("rejects a missing bundle", async () => {
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await expect(
       func.call(createContext().context, {
         bundle: join(tmpDir, "nope.bundle"),
@@ -146,7 +155,7 @@ describe("react-native gradle", () => {
 
   test("rejects an indexed RAM bundle", async () => {
     await writeFile(bundle, Buffer.from([0xe5, 0xd1, 0x0b, 0xfb, 0x00, 0x00]));
-    const func = await gradleCommand.loader();
+    const func = await loadCommand(gradleCommand);
     await expect(
       func.call(createContext().context, { bundle, sourcemap }),
     ).rejects.toThrow(/RAM bundle/);

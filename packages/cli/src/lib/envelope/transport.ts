@@ -13,6 +13,7 @@
 
 import { getEnvelopeEndpointWithUrlEncodedAuth, makeDsn } from "@sentry/core";
 import { sentry } from "../app-identity.js";
+import { toArrayBufferBytes } from "../bytes.js";
 import { detectDsn } from "../dsn/index.js";
 import { ApiError, ConfigError, ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -60,7 +61,7 @@ export function resolveDsn(flags: DsnFlags): string | undefined {
   if (flags.dsn) {
     return flags.dsn.trim();
   }
-  const envDsn = process.env.SENTRY_DSN;
+  const envDsn = process.env["SENTRY_DSN"];
   if (envDsn) {
     return envDsn.trim();
   }
@@ -158,7 +159,7 @@ export async function sendEnvelopeRequest(
     new Request(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-sentry-envelope" },
-      body,
+      body: typeof body === "string" ? body : toArrayBufferBytes(body),
     }),
   );
 
@@ -166,8 +167,8 @@ export async function sendEnvelopeRequest(
     let detail = `HTTP ${response.status}`;
     try {
       const json = (await response.json()) as Record<string, unknown>;
-      if (typeof json.detail === "string") {
-        detail = json.detail;
+      if (typeof json["detail"] === "string") {
+        detail = json["detail"];
       }
     } catch (err) {
       log.debug("Non-JSON error body, using HTTP status message", err);

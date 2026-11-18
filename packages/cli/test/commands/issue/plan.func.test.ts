@@ -10,12 +10,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { isatty } from "node:tty";
@@ -27,6 +23,8 @@ import { ApiError, CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
 import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
 vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
@@ -59,14 +57,14 @@ function waitingState(causes: RootCause[]): AutofixState {
 
 function createMockContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
 
 async function runPlan(context: ReturnType<typeof createMockContext>) {
-  const func = await planCommand.loader();
+  const func = await loadCommand(planCommand);
   await func.call(context, PLAN_FLAGS, "IOS-1");
 }
 

@@ -424,9 +424,9 @@ describe("search route", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as {
+      const json = await res.json<{
         results: Array<{ id: string; url: string }>;
-      };
+      }>();
       expect(json.results[0]).toMatchInlineSnapshot(
         {
           id: "platforms/javascript/index.md",
@@ -493,11 +493,13 @@ describe("search route", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as {
+      const json = await res.json<{
         results: Array<{ id: string; url: string }>;
-      };
-      expect(json.results[0].id).toBe("index.md");
-      expect(json.results[0].url).toBe("https://docs.sentry.io/index");
+      }>();
+      expect(json.results[0]).toMatchObject({
+        id: "index.md",
+        url: "https://docs.sentry.io/index",
+      });
     });
   });
 
@@ -633,7 +635,7 @@ describe("search route", () => {
         },
       );
 
-      const firstKey = mockRateLimiter.limit.mock.calls[0][0].key;
+      const firstKey = mockRateLimiter.limit.mock.calls[0]?.[0].key;
 
       // Second request from IP 192.0.2.2
       await app.request(
@@ -652,7 +654,7 @@ describe("search route", () => {
         },
       );
 
-      const secondKey = mockRateLimiter.limit.mock.calls[1][0].key;
+      const secondKey = mockRateLimiter.limit.mock.calls[1]?.[0].key;
 
       expect(firstKey).not.toBe(secondKey);
       expect(firstKey).toMatch(/^search:ip:[a-f0-9]{16}$/);

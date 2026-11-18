@@ -103,7 +103,7 @@ describe("property: TraceLogSchema coercion", () => {
     const result = safeParse(TraceLogSchema, entry);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect((result.output as Record<string, unknown>).extra_field).toBe(
+      expect((result.output as Record<string, unknown>)["extra_field"]).toBe(
         "should be preserved",
       );
     }
