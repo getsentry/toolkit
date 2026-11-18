@@ -43,13 +43,13 @@ type ResolvedProfileDetailsParams =
     };
 
 function resolveProfileDetailsParams(params: {
-  profileUrl?: string | null;
-  organizationSlug?: string | null;
-  projectSlugOrId?: string | number | null;
-  profileId?: string | null;
-  profilerId?: string | null;
-  start?: string | null;
-  end?: string | null;
+  profileUrl?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  projectSlugOrId?: string | number | null | undefined;
+  profileId?: string | null | undefined;
+  profilerId?: string | null | undefined;
+  start?: string | null | undefined;
+  end?: string | null | undefined;
 }): ResolvedProfileDetailsParams {
   if (params.profileUrl) {
     if (!isProfileUrl(params.profileUrl)) {

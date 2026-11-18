@@ -7,7 +7,15 @@
 
 import { execFileSync } from "node:child_process";
 import { buildApplication, run } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { exploreCommand } from "../../src/commands/explore.js";
 import { buildContext } from "../../src/context.js";
 import { createSentrySDK } from "../../src/index.js";
@@ -15,12 +23,8 @@ import { createSentrySDK } from "../../src/index.js";
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -29,12 +33,8 @@ import * as apiClient from "../../src/lib/api-client.js";
 vi.mock("../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -51,23 +51,15 @@ import { DEFAULT_REPLAY_EXPLORE_FIELDS } from "../../src/lib/replay-search.js";
 vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../src/lib/resolve-target.js";
 import { parsePeriod } from "../../src/lib/time-range.js";
+import type { ReplayListItem } from "../../src/types/replay.js";
 import { useTestConfigDir } from "../helpers.js";
-
-// Keep namespace references alive so linting doesn't strip the imports
-const _apiRef = apiClient;
-const _paginationRef = paginationDb;
-const _resolveRef = resolveTarget;
 
 useTestConfigDir("explore-test-");
 
@@ -117,7 +109,9 @@ const MOCK_EVENTS_RESPONSE = {
 };
 
 // Shape from events-timeseries responses, with anonymized values and timestamps.
-const MOCK_TIME_SERIES_RESPONSE = {
+const MOCK_TIME_SERIES_RESPONSE: Awaited<
+  ReturnType<(typeof apiClient)["queryEventsTimeSeries"]>
+> = {
   meta: {
     dataset: "errors",
     start: 1_735_689_600_000,
@@ -152,7 +146,7 @@ const MOCK_TIME_SERIES_RESPONSE = {
   ],
 };
 
-const MOCK_REPLAYS_RESPONSE = [
+const MOCK_REPLAYS_RESPONSE: ReplayListItem[] = [
   {
     id: "346789a703f6454384f1de473b8b9fcc",
     count_dead_clicks: 1,
@@ -167,18 +161,27 @@ const MOCK_REPLAYS_RESPONSE = [
     urls: ["/checkout"],
     user: { email: "user@example.com" },
     warning_ids: [],
+    releases: [],
   },
 ];
 
-let queryEventsSpy: ReturnType<typeof spyOn>;
-let queryEventsTimeSeriesSpy: ReturnType<typeof spyOn>;
-let queryMetricsMetaSpy: ReturnType<typeof spyOn>;
-let listReplaysSpy: ReturnType<typeof spyOn>;
-let resolveTargetSpy: ReturnType<typeof spyOn>;
-let resolveProjectIdSpy: ReturnType<typeof spyOn>;
-let resolveCursorSpy: ReturnType<typeof spyOn>;
-let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+let queryEventsSpy: MockInstance<(typeof apiClient)["queryEvents"]>;
+let queryEventsTimeSeriesSpy: MockInstance<
+  (typeof apiClient)["queryEventsTimeSeries"]
+>;
+let queryMetricsMetaSpy: MockInstance<(typeof apiClient)["queryMetricsMeta"]>;
+let listReplaysSpy: MockInstance<(typeof apiClient)["listReplays"]>;
+let resolveTargetSpy: MockInstance<
+  (typeof resolveTarget)["resolveOrgOptionalTarget"]
+>;
+let resolveProjectIdSpy: MockInstance<
+  (typeof resolveTarget)["resolveLogProjectId"]
+>;
+let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+let advancePaginationStateSpy: MockInstance<
+  (typeof paginationDb)["advancePaginationState"]
+>;
+let hasPreviousPageSpy: MockInstance<(typeof paginationDb)["hasPreviousPage"]>;
 
 const MOCK_METRICS_META = [
   { name: "llm.token_usage", type: "distribution", unit: "none" },
@@ -191,7 +194,6 @@ beforeEach(async () => {
   queryEventsSpy = vi.spyOn(apiClient, "queryEvents");
   queryEventsSpy.mockResolvedValue({
     data: MOCK_EVENTS_RESPONSE,
-    nextCursor: undefined,
   });
   queryEventsTimeSeriesSpy = vi.spyOn(apiClient, "queryEventsTimeSeries");
   queryEventsTimeSeriesSpy.mockResolvedValue(MOCK_TIME_SERIES_RESPONSE);
@@ -200,7 +202,6 @@ beforeEach(async () => {
   listReplaysSpy = vi.spyOn(apiClient, "listReplays");
   listReplaysSpy.mockResolvedValue({
     data: MOCK_REPLAYS_RESPONSE,
-    nextCursor: undefined,
   });
 
   // Default: resolveOrgOptionalTarget returns org-only (auto-detect)
@@ -256,7 +257,11 @@ async function runExploreArgs(args: string[]) {
     ...context,
     process: {
       ...process,
-      stderr: { ...process.stderr, write: context.stderr.write },
+      // Keep the real stream's members but capture what Stricli writes.
+      stderr: new Proxy(process.stderr, {
+        get: (target, key) =>
+          key === "write" ? context.stderr.write : Reflect.get(target, key),
+      }),
       exitCode: undefined,
     },
   };
@@ -269,7 +274,7 @@ async function runExploreArgs(args: string[]) {
 }
 
 const parseExploreDataset = (
-  exploreCommand.parameters.flags!.dataset as {
+  exploreCommand.parameters.flags!["dataset"] as {
     parse: (value: string) => string;
   }
 ).parse;
@@ -1367,7 +1372,11 @@ describe("sentry explore", () => {
 
     const rejectedArgument = (fn: string, argument: string, hint?: string) => ({
       code: "invalid_function_argument",
-      functionArgument: { function: fn, argument, hint },
+      functionArgument: {
+        function: fn,
+        argument,
+        ...(hint === undefined ? {} : { hint }),
+      },
     });
     const rejectedArgumentError = (
       detail: string,
@@ -1585,7 +1594,13 @@ describe("sentry explore", () => {
       query: 'span.description:*"POST',
     };
     const parseError = (code?: string) =>
-      new ApiError("Bad request", 400, detail, undefined, { code });
+      new ApiError(
+        "Bad request",
+        400,
+        detail,
+        undefined,
+        code === undefined ? {} : { code },
+      );
 
     test("reports an unparseable --query as a query ValidationError", async () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
@@ -1836,7 +1851,6 @@ describe("sentry explore", () => {
             },
           },
         },
-        nextCursor: undefined,
       });
       const { context, getStdout } = createContext();
 
@@ -1907,7 +1921,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: { data: [], meta: { fields: {} } },
-        nextCursor: undefined,
       });
       const { context, getStdout } = createContext();
 
@@ -2069,7 +2082,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: MOCK_EVENTS_RESPONSE,
-        nextCursor: undefined,
       });
       const { context } = createContext();
 
@@ -2089,7 +2101,6 @@ describe("sentry explore", () => {
       resolveTargetSpy.mockResolvedValue({ org: "test-org" });
       queryEventsSpy.mockResolvedValue({
         data: MOCK_EVENTS_RESPONSE,
-        nextCursor: undefined,
       });
       const { context } = createContext();
 

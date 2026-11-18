@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import type { Flamegraph } from "../../../api-client/types";
 import {
   buildFlamegraphAnalysis,
@@ -137,7 +137,7 @@ describe("buildFlamegraphAnalysis", () => {
   it("maps placeholder file and line values to null", () => {
     const flamegraph = createMockFlamegraph();
     flamegraph.shared.frames[0] = {
-      ...flamegraph.shared.frames[0],
+      ...frameAt(flamegraph, 0),
       file: "",
       line: 0,
     };
@@ -162,6 +162,7 @@ describe("buildFlamegraphAnalysis", () => {
     });
 
     const [topPath] = analysis.hotPaths;
+    assert(topPath, "Expected a hot path");
     expect(topPath.stack.map((index) => analysis.frames[index]?.file)).toEqual([
       "main.py",
       "utils.py",
@@ -225,7 +226,7 @@ describe("buildFlamegraphComparison", () => {
   it("detects major regressions", () => {
     const current = createMockFlamegraph();
     // Comparison uses sumDuration, not weight.
-    current.shared.frame_infos[0].sumDuration = 240_000_000;
+    frameInfoAt(current, 0).sumDuration = 240_000_000;
 
     const comparison = buildFlamegraphComparison(
       createMockFlamegraph(),
@@ -250,7 +251,7 @@ describe("buildFlamegraphComparison", () => {
     const withPlaceholders = () => {
       const flamegraph = createMockFlamegraph();
       flamegraph.shared.frames[0] = {
-        ...flamegraph.shared.frames[0],
+        ...frameAt(flamegraph, 0),
         file: "",
         line: 0,
       };
@@ -271,7 +272,7 @@ describe("buildFlamegraphComparison", () => {
   it("keeps improvements in changes when many frames are unchanged", () => {
     const withFrames = (improvedDurationNs: number) => {
       const flamegraph = createMockFlamegraph();
-      const template = flamegraph.shared.frame_infos[0];
+      const template = frameInfoAt(flamegraph, 0);
       flamegraph.shared.frames = Array.from({ length: 13 }, (_, index) => ({
         file: `module_${index}.py`,
         name: `fn_${index}`,
@@ -305,9 +306,9 @@ describe("buildFlamegraphComparison", () => {
 
   it("detects improvements", () => {
     const current = createMockFlamegraph();
-    current.shared.frame_infos[0].sumDuration = 128_000_000;
-    current.shared.frame_infos[1].sumDuration = 128_000_000;
-    current.shared.frame_infos[2].sumDuration = 80_000_000;
+    frameInfoAt(current, 0).sumDuration = 128_000_000;
+    frameInfoAt(current, 1).sumDuration = 128_000_000;
+    frameInfoAt(current, 2).sumDuration = 80_000_000;
 
     expect(
       buildFlamegraphComparison(createMockFlamegraph(), current, {
@@ -316,3 +317,15 @@ describe("buildFlamegraphComparison", () => {
     ).toBe("improvement");
   });
 });
+
+function frameInfoAt(flamegraph: Flamegraph, index: number) {
+  const frameInfo = flamegraph.shared.frame_infos[index];
+  assert(frameInfo, `Mock flamegraph has no frame info at index ${index}`);
+  return frameInfo;
+}
+
+function frameAt(flamegraph: Flamegraph, index: number) {
+  const frame = flamegraph.shared.frames[index];
+  assert(frame, `Mock flamegraph has no frame at index ${index}`);
+  return frame;
+}

@@ -710,10 +710,11 @@ function unwrapParenGroups(nodes: SearchNode[]): {
   const result: SearchNode[] = [];
   let changed = false;
 
-  nodes.forEach((node, i) => {
+  // A loop rather than forEach, so the type checker sees `changed` update.
+  for (const [i, node] of nodes.entries()) {
     if (node.type !== "paren_group") {
       result.push(node);
-      return;
+      continue;
     }
 
     const inner = unwrapParenGroups(stripAndNodes(node.inner)).nodes;
@@ -726,12 +727,12 @@ function unwrapParenGroups(nodes: SearchNode[]): {
       (touchesOr && terms.length > 1)
     ) {
       result.push(node);
-      return;
+      continue;
     }
 
     result.push(...terms);
     changed = true;
-  });
+  }
 
   return { nodes: changed ? result : nodes, changed };
 }

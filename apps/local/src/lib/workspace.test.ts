@@ -7,18 +7,26 @@ import {
   workspaceForItem,
   workspaceFromPath,
   workspacePath,
+  workspaceViews,
 } from "./workspace.ts";
+import { workspaceNavigationFor } from "./workspace-navigation.ts";
 
 describe("workspace routes", () => {
   test("maps retained events to their canonical workspaces", () => {
-    expect(workspaceForItem({ id: "raw", type: "envelope", text: "[]" })).toBe(
-      "envelopes",
-    );
+    expect(
+      workspaceForItem({
+        id: "raw",
+        type: "envelope",
+        text: "[]",
+        payload: [],
+      }),
+    ).toBe("envelopes");
     expect(
       workspaceForItem({
         id: "error",
         type: "event",
         text: "{}",
+        payload: {},
         metadata: { title: "Broken", level: "error" },
       }),
     ).toBe("errors");
@@ -27,6 +35,7 @@ describe("workspace routes", () => {
         id: "ai",
         type: "span",
         text: "{}",
+        payload: {},
         metadata: { title: "Prompt", operation: "gen_ai.invoke_agent" },
       }),
     ).toBe("ai");
@@ -47,6 +56,7 @@ describe("AI classification", () => {
         id: "span",
         type: "span",
         text: "{}",
+        payload: {},
         metadata: { title: "work", operation: value, origin: value },
       };
       expect(isAiEvent(item)).toBe(false);
@@ -64,6 +74,7 @@ describe("AI classification", () => {
         id: "span",
         type: "span",
         text: "{}",
+        payload: {},
         metadata: { title: "Prompt", operation: value },
       }),
     ).toBe(true),
@@ -148,5 +159,13 @@ describe("event list labels", () => {
       badge: "GET",
       title: "/transaction",
     });
+  });
+});
+
+describe("workspace navigation", () => {
+  test("has an entry for every workspace view", () => {
+    for (const view of workspaceViews) {
+      expect(workspaceNavigationFor(view).id).toBe(view);
+    }
   });
 });

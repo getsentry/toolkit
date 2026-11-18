@@ -21,12 +21,14 @@ import {
   API_MAX_PER_PAGE,
   getOrgSdkConfig,
   MAX_PAGINATION_PAGES,
-  type PaginatedResponse,
   paginate,
+  type PaginatedResponse,
+  paginatedResponse,
   unwrapPaginatedResult,
   unwrapResult,
   validateResponse,
 } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /** Options for querying the Explore/Events endpoint. */
 export type ExploreQueryOptions = {
@@ -35,13 +37,13 @@ export type ExploreQueryOptions = {
   /** Dataset to query. Defaults to `errors`. */
   dataset?: EventsDataset;
   /** Sentry search query filter */
-  query?: string;
+  query?: string | undefined;
   /**
    * Numeric project ID, sent as the `project` param. `project:<slug>` in
    * `query` only matches projects the requester is a member of, so a valid
    * slug can 400 with "not actively selected" (#1317).
    */
-  projectId?: number;
+  projectId?: number | undefined;
   /**
    * Sort field. Prefix with `-` for descending.
    * Every Events dataset accepts it as long as the sort column is in
@@ -49,17 +51,17 @@ export type ExploreQueryOptions = {
    * `@sentry/toolkit-core/events-sort`. A stable sort is required for correct
    * offset-based cursor pagination on grouped aggregate queries (#1519).
    */
-  sort?: string;
+  sort?: string | undefined;
   /** Maximum number of rows to return */
   limit?: number;
   /** Pagination cursor */
-  cursor?: string;
+  cursor?: string | undefined;
   /** Relative time period (e.g., "24h", "7d"). Mutually exclusive with start/end. */
-  statsPeriod?: string;
+  statsPeriod?: string | undefined;
   /** Absolute start datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  start?: string;
+  start?: string | undefined;
   /** Absolute end datetime (ISO-8601). Mutually exclusive with statsPeriod. */
-  end?: string;
+  end?: string | undefined;
 };
 
 /** Options for an ungrouped time series, with environment filters in `query`. */
@@ -104,7 +106,7 @@ export async function queryEventsTimeSeries(
   const result = await listOrganizationEventsTimeseries({
     ...getOrgSdkConfig(),
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       dataset: options.dataset ?? "errors",
       yAxis: options.fields,
       query: options.query || undefined,
@@ -117,7 +119,7 @@ export async function queryEventsTimeSeries(
           : (options.statsPeriod ?? "24h"),
       start: options.start,
       end: options.end,
-    },
+    }),
   });
   return unwrapResult<EventsTimeSeriesResponse>(
     result,
@@ -146,7 +148,7 @@ async function fetchEventsPage(
   const result = await listOrganizationEvents({
     ...getSdkClientConfig(regionUrl),
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       dataset: options.dataset ?? "errors",
       field: options.fields,
       query: options.query || undefined,
@@ -161,7 +163,7 @@ async function fetchEventsPage(
       start: options.start,
       end: options.end,
       cursor: options.cursor,
-    },
+    }),
   });
   const page = unwrapPaginatedResult<unknown>(result, "Failed to query events");
   const data: EventsTableResponse = validateResponse(
@@ -170,7 +172,7 @@ async function fetchEventsPage(
     `/organizations/${orgSlug}/events/`,
     page.response?.status ?? 0,
   );
-  return { data, nextCursor: page.nextCursor };
+  return paginatedResponse(data, page.nextCursor);
 }
 
 /** Metric metadata returned by {@link queryMetricsMeta}. */
@@ -195,9 +197,9 @@ export async function queryMetricsMeta(
     statsPeriod?: string;
     start?: string;
     end?: string;
-    project?: string;
+    project?: string | undefined;
     /** Numeric ID for `project`; when set, replaces the `project:<slug>` filter. */
-    projectId?: number;
+    projectId?: number | undefined;
   },
 ): Promise<MetricMeta[]> {
   const regionUrl = await resolveOrgRegion(orgSlug);
@@ -276,9 +278,12 @@ export async function queryEvents(
       );
       // Meta is identical across pages; keep the first page's.
       meta ??= page.data.meta;
-      return { data: page.data.data, nextCursor: page.nextCursor };
+      return paginatedResponse(page.data.data, page.nextCursor);
     },
     25,
   );
-  return { data: { data, meta }, nextCursor };
+  return paginatedResponse(
+    { data, ...(meta !== undefined && { meta }) },
+    nextCursor,
+  );
 }

@@ -127,8 +127,7 @@ for (const filePath of FILES_TO_SCAN) {
   const scannable = isMarkdown ? blankCodeBlocks(content) : content;
 
   const lines = scannable.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const [i, line] of lines.entries()) {
     for (const { pattern, reason } of PATTERNS) {
       if (pattern.test(line)) {
         findings.push({

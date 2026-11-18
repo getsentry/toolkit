@@ -56,7 +56,7 @@ export type EventsResult = {
   /** Whether a previous page exists (for bidirectional hints) */
   hasPrev: boolean;
   /** Opaque cursor for fetching the next page */
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   /** The issue short ID (for display in header) */
   issueShortId: string;
   /** The numeric issue ID (for pagination context) */

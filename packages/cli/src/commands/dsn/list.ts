@@ -112,7 +112,7 @@ type DsnProjectPage = {
   /** Whether the project has another page. */
   hasMore: boolean;
   /** Server cursor, absent when the project is exhausted. */
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** Fetch a bounded project page, allowing callers to report partial failures. */

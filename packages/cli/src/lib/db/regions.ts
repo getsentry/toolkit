@@ -397,13 +397,13 @@ export function setOrgRegions(entries: OrgRegionEntry[]): void {
         updated_at: now,
       };
       if (entry.orgId) {
-        row.org_id = entry.orgId;
+        row["org_id"] = entry.orgId;
       }
       if (entry.orgName) {
-        row.org_name = entry.orgName;
+        row["org_name"] = entry.orgName;
       }
       if (entry.orgRole) {
-        row.org_role = entry.orgRole;
+        row["org_role"] = entry.orgRole;
       }
       runUpsert(db, TABLE, row, [
         "credential_identity",

@@ -300,9 +300,9 @@ const wrappedOAuthProvider = {
     if (request.method === "POST" && url.pathname === "/oauth/register") {
       let hasUserInfoRedirect = false;
       try {
-        const body = (await request.clone().json()) as {
+        const body = await request.clone().json<{
           redirect_uris?: unknown;
-        };
+        }>();
         const redirectUris = Array.isArray(body.redirect_uris)
           ? body.redirect_uris
           : [];
@@ -335,7 +335,6 @@ const wrappedOAuthProvider = {
     // We normalize any CORS headers it returns in the response handling below.
     const oAuthProvider = new OAuthProvider({
       apiRoute: "/mcp",
-      // @ts-expect-error - OAuthProvider types don't support specific Env types
       apiHandler: sentryMcpHandler,
       defaultHandler: app,
       // must match the routes registered in `app.ts`

@@ -144,11 +144,13 @@ function wrapStatement(stmt: any, kind: DriverKind): StatementWrapper {
             if (!target.isFinalized) {
               target.finalize();
             }
-            return (row as Record<string, SQLQueryBindings>) ?? null;
+            return (
+              (row as Record<string, SQLQueryBindings> | undefined) ?? null
+            );
           }
           const row = target.get(...toNodeParams(params));
           // Normalise no-row result to null (node:sqlite returns undefined).
-          return (row as Record<string, SQLQueryBindings>) ?? null;
+          return (row as Record<string, SQLQueryBindings> | undefined) ?? null;
         };
       }
       if (prop === "all") {

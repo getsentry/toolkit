@@ -39,14 +39,14 @@ function collectParamDescriptions(
     return;
   }
   const record = schema as Record<string, unknown>;
-  if (typeof record.description === "string" && pathParts.length > 0) {
+  if (typeof record["description"] === "string" && pathParts.length > 0) {
     const key = pathParts.join(".");
     const existing = out.get(key);
-    if (!existing || existing.length < record.description.length) {
-      out.set(key, record.description);
+    if (!existing || existing.length < record["description"].length) {
+      out.set(key, record["description"]);
     }
   }
-  const properties = record.properties;
+  const properties = record["properties"];
   if (properties && typeof properties === "object") {
     for (const [name, child] of Object.entries(properties)) {
       collectParamDescriptions(child, [...pathParts, name], out);
@@ -55,20 +55,20 @@ function collectParamDescriptions(
   for (const keyword of ["anyOf", "oneOf", "allOf"] as const) {
     collectParamDescriptions(record[keyword], pathParts, out);
   }
-  if (record.items) {
+  if (record["items"]) {
     const last = pathParts.at(-1) ?? "";
     collectParamDescriptions(
-      record.items,
+      record["items"],
       [...pathParts.slice(0, -1), `${last}[]`],
       out,
     );
   }
   if (
-    record.additionalProperties &&
-    typeof record.additionalProperties === "object"
+    record["additionalProperties"] &&
+    typeof record["additionalProperties"] === "object"
   ) {
     collectParamDescriptions(
-      record.additionalProperties,
+      record["additionalProperties"],
       [...pathParts, "*"],
       out,
     );

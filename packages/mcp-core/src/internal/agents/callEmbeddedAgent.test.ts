@@ -6,7 +6,7 @@ import {
   NoOutputGeneratedError,
   RetryError,
   type StepResult,
-  type Tool,
+  type ToolSet,
 } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -64,8 +64,8 @@ describe("callEmbeddedAgent", () => {
         "./provider-factory",
       );
     vi.mocked(getAgentProvider).mockImplementation(actual.getAgentProvider);
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
   });
 
   it("keeps the five-step limit when no finalization condition is supplied", async () => {
@@ -85,9 +85,7 @@ describe("callEmbeddedAgent", () => {
       throw new Error("Expected a stop condition");
     }
 
-    const step = { toolResults: [{ output: false }] } as StepResult<
-      Record<string, Tool>
-    >;
+    const step = { toolResults: [{ output: false }] } as StepResult<ToolSet>;
     const firstFour = Array.from({ length: 4 }, () => step);
     expect(stopWhen({ steps: firstFour })).toBe(false);
     expect(stopWhen({ steps: [...firstFour, step] })).toBe(true);

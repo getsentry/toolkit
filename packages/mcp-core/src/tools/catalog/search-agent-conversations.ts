@@ -80,8 +80,8 @@ async function resolveProjectIds({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  project?: string | string[];
-  constrainedProjectSlug?: string | null;
+  project?: string | string[] | undefined;
+  constrainedProjectSlug?: string | null | undefined;
 }): Promise<string[] | undefined> {
   if (constrainedProjectSlug) {
     const constrainedProject = await apiService.getProject({

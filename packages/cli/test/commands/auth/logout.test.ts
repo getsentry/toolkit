@@ -94,7 +94,7 @@ describe("logoutCommand.func", () => {
   });
 
   test("env token only (SENTRY_AUTH_TOKEN): throws AuthError with env var message", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "sntrys_env_123";
+    process.env["SENTRY_AUTH_TOKEN"] = "sntrys_env_123";
     const func = await loadFunc();
     const { context } = createContext();
 
@@ -108,7 +108,7 @@ describe("logoutCommand.func", () => {
   });
 
   test("env token only (SENTRY_TOKEN): shows correct env var name in error", async () => {
-    process.env.SENTRY_TOKEN = "sntrys_token_456";
+    process.env["SENTRY_TOKEN"] = "sntrys_token_456";
     const func = await loadFunc();
     const { context } = createContext();
 
@@ -119,7 +119,7 @@ describe("logoutCommand.func", () => {
   });
 
   test("stored OAuth with env var set: removes stored account (env var still present)", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "sntrys_env_123";
+    process.env["SENTRY_AUTH_TOKEN"] = "sntrys_env_123";
     addAccount("stored-token", "https://sentry.io", {
       userId: "1",
       email: "me@example.com",

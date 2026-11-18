@@ -28,24 +28,24 @@ export function formatActor(value: unknown): string {
     return "unknown";
   }
 
-  const name = value.name;
+  const name = value["name"];
   if (typeof name === "string" && name.trim()) {
     return name;
   }
 
-  const email = value.email;
+  const email = value["email"];
   if (typeof email === "string" && email.trim()) {
     return email;
   }
 
-  const username = value.username;
+  const username = value["username"];
   if (typeof username === "string" && username.trim()) {
     return username;
   }
 
   return formatId(
-    typeof value.id === "string" || typeof value.id === "number"
-      ? value.id
+    typeof value["id"] === "string" || typeof value["id"] === "number"
+      ? value["id"]
       : undefined,
   );
 }

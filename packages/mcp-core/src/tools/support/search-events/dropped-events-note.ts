@@ -49,7 +49,7 @@ export async function buildDroppedEventsNote({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
   dataset: PublicEventsDataset;
   interval: string | null;
   timeParams: { statsPeriod?: string; start?: string; end?: string };

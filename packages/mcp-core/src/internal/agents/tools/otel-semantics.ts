@@ -163,7 +163,7 @@ interface NamespaceData {
     {
       description: string;
       type: string;
-      examples?: Array<any>;
+      examples?: Array<string | number | boolean | object | null>;
       note?: string;
       stability?: string;
     }

@@ -113,7 +113,7 @@ type MutableEvent = {
   dateReceived?: string;
   // ErrorEvent specific fields
   culprit?: string | null;
-  dateCreated?: string;
+  dateCreated?: string | undefined;
   // TransactionEvent specific fields
   occurrence?: {
     id?: string;

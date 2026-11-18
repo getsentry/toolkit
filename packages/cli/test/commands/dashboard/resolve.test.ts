@@ -6,7 +6,15 @@
  * test/lib/dashboard-arguments.test.ts.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   applyGroupLimitAutoDefault,
   autoDefaultGroupLimit,
@@ -23,12 +31,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -44,12 +48,8 @@ import {
 vi.mock("../../../src/lib/region.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/region.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -58,12 +58,8 @@ import * as region from "../../../src/lib/region.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -74,7 +70,9 @@ import * as resolveTarget from "../../../src/lib/resolve-target.js";
 // ---------------------------------------------------------------------------
 
 describe("resolveDashboardId", () => {
-  let listDashboardsPaginatedSpy: ReturnType<typeof spyOn>;
+  let listDashboardsPaginatedSpy: MockInstance<
+    (typeof apiClient)["listDashboardsPaginated"]
+  >;
 
   beforeEach(() => {
     listDashboardsPaginatedSpy = vi.spyOn(apiClient, "listDashboardsPaginated");
@@ -96,7 +94,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Performance");
@@ -106,7 +103,6 @@ describe("resolveDashboardId", () => {
   test("title match is case-insensitive", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "10", title: "Errors Overview" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "errors overview");
@@ -119,7 +115,6 @@ describe("resolveDashboardId", () => {
         { id: "default-overview", title: "General" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "default-overview");
@@ -129,7 +124,6 @@ describe("resolveDashboardId", () => {
   test("ID match is case-insensitive", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "default-overview", title: "General" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Default-Overview");
@@ -142,7 +136,6 @@ describe("resolveDashboardId", () => {
         { id: "perf", title: "Performance Dashboard" },
         { id: "30", title: "perf" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "perf");
@@ -152,7 +145,6 @@ describe("resolveDashboardId", () => {
   test("title match still works when no ID matches", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [{ id: "default-overview", title: "General" }],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "General");
@@ -165,7 +157,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     try {
@@ -184,7 +175,6 @@ describe("resolveDashboardId", () => {
         { id: "10", title: "Errors Overview" },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     try {
@@ -202,7 +192,6 @@ describe("resolveDashboardId", () => {
   test("no dashboards at all shows empty org message", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     try {
@@ -219,10 +208,9 @@ describe("resolveDashboardId", () => {
   test("handles dashboards with undefined title without crashing", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
       data: [
-        { id: "10", title: undefined as unknown as string },
+        { id: "10", title: undefined },
         { id: "20", title: "Performance" },
       ],
-      nextCursor: undefined,
     });
 
     const id = await resolveDashboardId("test-org", "Performance");
@@ -231,8 +219,7 @@ describe("resolveDashboardId", () => {
 
   test("undefined title dashboards are collected as '(untitled)' in suggestions", async () => {
     listDashboardsPaginatedSpy.mockResolvedValue({
-      data: [{ id: "10", title: undefined as unknown as string }],
-      nextCursor: undefined,
+      data: [{ id: "10", title: undefined }],
     });
 
     try {
@@ -251,8 +238,12 @@ describe("resolveDashboardId", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgFromTarget", () => {
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
-  let resolveEffectiveOrgSpy: ReturnType<typeof spyOn>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
+  let resolveEffectiveOrgSpy: MockInstance<
+    (typeof region)["resolveEffectiveOrg"]
+  >;
 
   beforeEach(() => {
     resolveOrgOnlyTargetSpy = vi.spyOn(resolveTarget, "resolveOrgOnlyTarget");
@@ -372,7 +363,7 @@ describe("enrichDashboardError", () => {
             id: "100",
             title: "Error Overview",
             dateCreated: "",
-            createdBy: { id: 0, name: "", email: "" },
+            createdBy: { name: "", email: "" },
             widgets: [],
             projects: [],
           },
@@ -380,12 +371,11 @@ describe("enrichDashboardError", () => {
             id: "200",
             title: "Performance",
             dateCreated: "",
-            createdBy: { id: 0, name: "", email: "" },
+            createdBy: { name: "", email: "" },
             widgets: [],
             projects: [],
           },
         ],
-        nextCursor: undefined,
       });
     try {
       await enrichDashboardError(apiErr, {

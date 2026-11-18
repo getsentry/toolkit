@@ -129,7 +129,7 @@ function validateDartSymbolMap(content: Buffer, path: string): void {
  * @returns File content as a Buffer
  * @throws {ValidationError} On ENOENT, EISDIR, or other read failures
  */
-async function readMappingFile(path: string): Promise<Buffer> {
+async function readMappingFile(path: string): Promise<Buffer<ArrayBuffer>> {
   try {
     return await readFile(path);
   } catch (err) {
