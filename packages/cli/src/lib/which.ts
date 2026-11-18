@@ -26,7 +26,7 @@ const NEWLINE_RE = /\r?\n/;
  */
 export function whichSync(
   command: string,
-  opts?: { PATH?: string },
+  opts?: { PATH?: string | undefined },
 ): string | null {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {

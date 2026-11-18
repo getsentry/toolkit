@@ -153,7 +153,7 @@ export function isExpectedToolError(error: unknown): boolean {
 function formatServerConfigError(
   error: Error,
   detailedParts: string[],
-  options?: { transport?: TransportType },
+  options?: { transport?: TransportType | undefined },
 ): string {
   if (options?.transport === "http") {
     logIssue(error);
@@ -172,7 +172,7 @@ function formatServerConfigError(
 function formatAiProviderError(
   error: Error,
   detailedParts: string[],
-  options?: { transport?: TransportType },
+  options?: { transport?: TransportType | undefined },
 ): string {
   logWarn(error, {
     loggerScope: ["error-handling", "llm-provider"],
@@ -207,7 +207,7 @@ function formatAiProviderError(
 export async function formatErrorForUser(
   error: unknown,
   options?: {
-    transport?: TransportType;
+    transport?: TransportType | undefined;
     /** Tool surface of the session, used to suggest reporting likely bugs. */
     session?: Pick<ServerContext, "availableToolNames">;
   },
@@ -398,7 +398,7 @@ export async function formatErrorForUser(
   if (eventId) {
     parts.push(`**Event ID**: ${eventId}`);
   }
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env["NODE_ENV"] !== "production") {
     const errorMsg = error instanceof Error ? error.message : String(error);
     if (errorMsg) {
       parts.push(errorMsg);

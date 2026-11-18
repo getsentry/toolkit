@@ -45,7 +45,7 @@ const mswServer = setupServer(
 );
 
 describe("OpenAI Provider Integration", () => {
-  const hasOpenAIKey = Boolean(process.env.OPENAI_API_KEY);
+  const hasOpenAIKey = Boolean(process.env["OPENAI_API_KEY"]);
 
   beforeAll(() => {
     if (hasOpenAIKey) {

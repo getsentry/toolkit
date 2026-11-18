@@ -43,7 +43,9 @@ function integration({
   id = "10",
   name = `Example ${provider}`,
   externalIssues = [],
-}: IntegrationFixture = {}) {
+}: IntegrationFixture = {}): Parameters<
+  typeof selectNativeIntegration
+>[0][number] {
   return {
     id,
     name,
@@ -72,7 +74,7 @@ function integration({
 }
 
 function json(data: unknown, headers?: HeadersInit): Response {
-  return Response.json(data, { status: 200, headers });
+  return Response.json(data, { status: 200, ...(headers && { headers }) });
 }
 
 describe("selectNativeIntegration", () => {

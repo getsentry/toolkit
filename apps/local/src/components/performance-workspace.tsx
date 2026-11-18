@@ -13,9 +13,9 @@ function ms(value?: number) {
 }
 function Empty({ children }: { children: string }) {
   return (
-    <p role="status" className="p-6 text-sm text-muted-foreground">
+    <output className="block p-6 text-sm text-muted-foreground">
       {children}
-    </p>
+    </output>
   );
 }
 export function SpanAnalysis({
@@ -219,7 +219,7 @@ export function WebVitalsWorkspace({
   );
   const metric = available.includes(chosenMetric)
     ? chosenMetric
-    : available[0]!;
+    : (available[0] ?? chosenMetric);
   const config = VITALS[metric];
   const max = Math.max(
     config.poor,
@@ -308,6 +308,7 @@ export function WebVitalsWorkspace({
                       </span>
                     </div>
                     <div
+                      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the bar is drawn with child elements, so it can't be an <img>
                       role="img"
                       aria-label={`${config.label}: ${valueLabel(measurement.value)}, ${measurement.rating}`}
                       className="mt-1 h-3 bg-muted"

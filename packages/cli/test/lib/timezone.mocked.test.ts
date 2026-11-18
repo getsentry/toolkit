@@ -167,7 +167,7 @@ describe("detectOsTimezone on Windows", () => {
 });
 
 describe("initTimezone applies a detected IANA zone", () => {
-  const originalTz = process.env.TZ;
+  const originalTz = process.env["TZ"];
 
   beforeEach(() => {
     setPlatform("linux");
@@ -175,14 +175,14 @@ describe("initTimezone applies a detected IANA zone", () => {
 
   afterEach(() => {
     if (originalTz === undefined) {
-      delete process.env.TZ;
+      delete process.env["TZ"];
     } else {
-      process.env.TZ = originalTz;
+      process.env["TZ"] = originalTz;
     }
   });
 
   test("sets TZ to the OS-detected zone when the runtime fell back to UTC", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     // Runtime reports UTC ...
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "UTC" }),
@@ -193,22 +193,22 @@ describe("initTimezone applies a detected IANA zone", () => {
     mocks.etcTimezone = "America/Los_Angeles";
 
     expect(initTimezone()).toBe("America/Los_Angeles");
-    expect(process.env.TZ).toBe("America/Los_Angeles");
+    expect(process.env["TZ"]).toBe("America/Los_Angeles");
   });
 
   test("falls back to a fixed-offset zone when the OS zone is undetectable", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "UTC" }),
     } as unknown as Intl.DateTimeFormat);
     vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(480);
     // Neither /etc/timezone nor /etc/localtime resolves → fixed-offset path.
     expect(initTimezone()).toBe("Etc/GMT+8");
-    expect(process.env.TZ).toBe("Etc/GMT+8");
+    expect(process.env["TZ"]).toBe("Etc/GMT+8");
   });
 
   test("returns null when detection yields UTC and the offset is sub-hour", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "UTC" }),
     } as unknown as Intl.DateTimeFormat);
@@ -216,6 +216,6 @@ describe("initTimezone applies a detected IANA zone", () => {
     // returns null and fixedOffsetZone(30) is null → no repair applied.
     vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(30);
     expect(initTimezone()).toBeNull();
-    expect(process.env.TZ).toBeUndefined();
+    expect(process.env["TZ"]).toBeUndefined();
   });
 });

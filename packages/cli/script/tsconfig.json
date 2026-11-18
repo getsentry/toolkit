@@ -1,4 +1,9 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["**/*.ts"]
+  "include": [
+    "**/*.ts",
+    "../src/global.d.ts",
+    "../grammar/**/*.ts",
+    "../vitest.config.ts"
+  ]
 }

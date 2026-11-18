@@ -11,7 +11,7 @@
     ]
   },
   "type": "module",
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=22.15"
   },
@@ -41,7 +41,8 @@
   ],
   "scripts": {
     "bundle": "pnpm --filter @sentry/mcp-core run build && pnpm --filter sentry run generate && node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs script/bundle.ts",
-    "test:bundle": "node --test test/bundle.test.mjs test/server-json.test.mjs"
+    "test:bundle": "node --test test/bundle.test.mjs test/server-json.test.mjs",
+    "typecheck": "tsc"
   },
   "devDependencies": {
     "esbuild": "^0.28.1"

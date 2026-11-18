@@ -12,8 +12,9 @@ import {
   formatSpamFeedback,
 } from "../../../src/lib/formatters/feedback.js";
 import type { SentryFeedback } from "../../../src/types/index.js";
+import { without } from "../../helpers.js";
 
-const originalPlainOutput = process.env.SENTRY_PLAIN_OUTPUT;
+const originalPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
 
 function feedback(overrides: Partial<SentryFeedback> = {}): SentryFeedback {
   return {
@@ -25,21 +26,21 @@ function feedback(overrides: Partial<SentryFeedback> = {}): SentryFeedback {
     status: "unresolved",
     hasSeen: false,
     firstSeen: "2026-07-16T12:00:00Z",
-    project: { id: "1", slug: "web", name: "Web" },
+    project: { id: "1", slug: "web", name: "Web", platform: null },
     metadata: { message: "Button | failed\nwith **markdown**" },
     ...overrides,
   };
 }
 
 beforeAll(() => {
-  process.env.SENTRY_PLAIN_OUTPUT = "1";
+  process.env["SENTRY_PLAIN_OUTPUT"] = "1";
 });
 
 afterAll(() => {
   if (originalPlainOutput === undefined) {
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   } else {
-    process.env.SENTRY_PLAIN_OUTPUT = originalPlainOutput;
+    process.env["SENTRY_PLAIN_OUTPUT"] = originalPlainOutput;
   }
 });
 
@@ -100,7 +101,7 @@ describe("formatFeedbackList", () => {
 
   test("does not label an absent read state as unread", () => {
     const output = formatFeedbackList({
-      feedback: [feedback({ hasSeen: undefined })],
+      feedback: [without(feedback(), "hasSeen")],
       hasMore: false,
       hasPrev: false,
       org: "test-org",
@@ -157,10 +158,10 @@ describe("formatFeedbackView", () => {
   });
 
   test("truncates long list messages but preserves the complete detail message", () => {
-    const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
+    const savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
     const savedColumns = process.stdout.columns;
     const longMessage = `${"Checkout failed ".repeat(20)}\nTAIL **marker**`;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     process.stdout.columns = 60;
 
     try {
@@ -187,17 +188,17 @@ describe("formatFeedbackView", () => {
       expect(viewOutput).toContain("TAIL **marker**");
     } finally {
       if (savedPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
       }
       process.stdout.columns = savedColumns;
     }
   });
 
   test("removes terminal control sequences from untrusted fields", () => {
-    const savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    const savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const maliciousControlSequences = [
       "\u001b[2J",
       "\u001b]52;c;dGVzdA==\u0007",
@@ -262,9 +263,9 @@ describe("formatFeedbackView", () => {
       expect(viewOutput).toContain("screen.png");
     } finally {
       if (savedPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
       }
     }
   });

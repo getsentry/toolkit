@@ -75,7 +75,7 @@ export type PowerShellRunner = (
  * shadowed by another `powershell.exe`) does not break setup.
  */
 function getWindowsPowerShell(env: NodeJS.ProcessEnv): string {
-  const systemRoot = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir;
+  const systemRoot = env["SystemRoot"] ?? env["SYSTEMROOT"] ?? env["windir"];
   if (systemRoot) {
     const candidate = join(
       systemRoot,

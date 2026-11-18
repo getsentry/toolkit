@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type {
+  listOrganizations,
+  listProjects,
+} from "../../../src/lib/api-client.js";
 import {
   formatConflictError,
   formatMultipleProjectsFooter,
@@ -12,8 +16,10 @@ import type {
 
 // Mock api-client to prevent real API calls from getAccessibleProjects
 const { mockListOrganizations, mockListProjects } = vi.hoisted(() => ({
-  mockListOrganizations: vi.fn(() => Promise.resolve([])),
-  mockListProjects: vi.fn(() => Promise.resolve([])),
+  mockListOrganizations: vi.fn<typeof listOrganizations>(() =>
+    Promise.resolve([]),
+  ),
+  mockListProjects: vi.fn<typeof listProjects>(() => Promise.resolve([])),
 }));
 
 vi.mock("../../../src/lib/api-client.js", () => ({

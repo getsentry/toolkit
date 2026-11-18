@@ -45,7 +45,7 @@ async function executeCatalogToolWithSpan({
   params,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   params: Record<string, unknown>;
   context: ServerContext;
 }) {

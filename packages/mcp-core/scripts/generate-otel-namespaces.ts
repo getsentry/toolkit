@@ -223,7 +223,7 @@ function convertYamlToJson(
   namespace: string,
 ): JsonNamespace {
   // Parse YAML and validate with Zod
-  const parsedYaml = parseYaml(yamlContent);
+  const parsedYaml: unknown = parseYaml(yamlContent);
   const validationResult = OtelYamlFileSchema.safeParse(parsedYaml);
 
   if (!validationResult.success) {
@@ -234,11 +234,10 @@ function convertYamlToJson(
 
   const otelData = validationResult.data;
 
-  if (otelData.groups.length === 0) {
+  const group = otelData.groups.at(0); // Take the first group
+  if (!group) {
     throw new Error(`No groups found in ${namespace}/registry.yaml`);
   }
-
-  const group = otelData.groups[0]; // Take the first group
   const attributes: Record<string, JsonAttribute> = {};
 
   for (const attr of group.attributes) {
@@ -329,10 +328,15 @@ async function generateNamespaceFiles() {
     // Check if file exists and has custom content (not from OpenTelemetry)
     if (existsSync(outputPath)) {
       const existingContent = readFileSync(outputPath, "utf8");
-      const existingJson = JSON.parse(existingContent);
+      const existingJson: unknown = JSON.parse(existingContent);
 
       // Skip if this appears to be a custom namespace (not from OpenTelemetry)
-      if (existingJson.custom === true) {
+      if (
+        typeof existingJson === "object" &&
+        existingJson !== null &&
+        "custom" in existingJson &&
+        existingJson.custom === true
+      ) {
         console.log(`⏭️  Skipping custom namespace: ${namespace}`);
         skipped++;
         continue;
@@ -393,7 +397,7 @@ function generateNamespacesIndex(
         namespaces.push({
           namespace: data.namespace,
           description: data.description,
-          custom: data.custom,
+          ...(data.custom !== undefined && { custom: data.custom }),
         });
       } catch (error) {
         console.warn(`⚠️  Failed to read ${file} for index`);

@@ -34,7 +34,7 @@ export function Sidebars({ isChatOpen, toggleChat }: SidebarProps) {
                   key={`open-${i}`}
                   className="animate-openchat"
                   // per-index delay so animation cascades
-                  style={{ ["--delay" as any]: `${i * 80}ms` }}
+                  style={{ "--delay": `${i * 80}ms` }}
                 >
                   <span className="relative" aria-hidden>
                     <span className="original inline-block leading-[1]">
@@ -60,7 +60,7 @@ export function Sidebars({ isChatOpen, toggleChat }: SidebarProps) {
                     key={`chat-${i}`}
                     className="animate-openchat"
                     style={{
-                      ["--delay" as any]: `${(offsetChars + i) * 80}ms`,
+                      "--delay": `${(offsetChars + i) * 80}ms`,
                     }}
                   >
                     <span className="relative" aria-hidden>

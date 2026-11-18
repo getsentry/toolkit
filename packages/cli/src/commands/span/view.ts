@@ -287,7 +287,7 @@ function buildJsonResults(
     if (detail) {
       const data = attributesToDict(detail.attributes);
       if (Object.keys(data).length > 0) {
-        base.data = data;
+        base["data"] = data;
       }
     }
 

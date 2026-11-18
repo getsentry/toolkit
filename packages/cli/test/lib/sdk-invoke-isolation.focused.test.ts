@@ -61,7 +61,12 @@ import { useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("sdk-invoke-isolation-focused-");
 
-type InvocationResult = { header?: string; host?: string; token?: string };
+/** What the probe saw; each value is undefined when it was not set. */
+type InvocationResult = {
+  header: string | undefined;
+  host: string | undefined;
+  token: string | undefined;
+};
 
 describe("overlapping SDK invocation isolation", () => {
   beforeEach(() => {
@@ -79,15 +84,15 @@ describe("overlapping SDK invocation isolation", () => {
       release.set(id, Promise.withResolvers<void>());
     }
     invocationState.handler = async (context, flags) => {
-      const id = String(flags.id);
+      const id = String(flags["id"]);
       started.get(id)?.resolve();
       await release.get(id)?.promise;
       context.stdout.captureObject?.({
         header: getCustomHeaders().find(
           ([name]) => name === "X-Invocation",
         )?.[1],
-        host: getEnv().SENTRY_HOST,
-        token: getEnv().SENTRY_AUTH_TOKEN,
+        host: getEnv()["SENTRY_HOST"],
+        token: getEnv()["SENTRY_AUTH_TOKEN"],
       } satisfies InvocationResult);
     };
 
@@ -122,7 +127,7 @@ describe("overlapping SDK invocation isolation", () => {
     const firstSet = Promise.withResolvers<void>();
     const secondRead = Promise.withResolvers<void>();
     invocationState.handler = async (context, flags) => {
-      if (flags.id === "first") {
+      if (flags["id"] === "first") {
         registerLoginTrustAnchor(anchor);
         disableResponseCache();
         setLastCacheHitAgeForTesting(1000);

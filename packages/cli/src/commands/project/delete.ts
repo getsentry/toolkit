@@ -74,7 +74,9 @@ async function buildPermissionError(
     // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
     try {
       const org = await getOrganization(orgSlug);
-      orgRole = (org as Record<string, unknown>).orgRole as string | undefined;
+      orgRole = (org as Record<string, unknown>)["orgRole"] as
+        | string
+        | undefined;
     } catch {
       // Fall through to generic message
     }

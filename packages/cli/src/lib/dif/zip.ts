@@ -66,7 +66,7 @@ export type ZipDifEntry = {
    */
   path: string;
   /** Decompressed entry bytes. */
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
 };
 
 /** Result of {@link readZipDifEntries}. */

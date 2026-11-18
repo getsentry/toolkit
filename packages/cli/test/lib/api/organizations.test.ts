@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { listOrganizationsPage } from "../../../src/lib/api/organizations.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("org-api-test-");
 
@@ -43,7 +43,7 @@ describe("listOrganizationsPage", () => {
       "https://sentry.example.com",
     );
     expect(orgs).toHaveLength(1);
-    expect(orgs[0].slug).toBe("test-org");
+    expect(at(orgs, 0).slug).toBe("test-org");
   });
 
   test("throws ApiError when API returns an empty object instead of array", async () => {

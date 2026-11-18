@@ -45,7 +45,7 @@ export type TextTableOptions = {
   /** Horizontal cell padding (each side). @default 1 */
   cellPadding?: number;
   /** Maximum table width in columns. @default process.stdout.columns or 80 */
-  maxWidth?: number;
+  maxWidth?: number | undefined;
   /** Per-column alignment (indexed by column). Defaults to "left". */
   alignments?: Array<Alignment | null>;
   /** Whether to include a separator row after the header. @default true */
@@ -55,7 +55,7 @@ export type TextTableOptions = {
   /** Per-column shrinkable flags. Non-shrinkable columns keep intrinsic width. */
   shrinkable?: boolean[];
   /** Truncate cells to one line with "\u2026" instead of wrapping. @default false */
-  truncate?: boolean;
+  truncate?: boolean | undefined;
   /**
    * Hide the header row entirely (omit from rendered output).
    *
@@ -77,7 +77,7 @@ export type TextTableOptions = {
    *   borders (horizontal lines, vertical bars, corners) are colored with
    *   the given prefix, making the frame visually subdued relative to content.
    */
-  rowSeparator?: boolean | string;
+  rowSeparator?: boolean | string | undefined;
 };
 
 /**

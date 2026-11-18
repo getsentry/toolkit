@@ -31,12 +31,12 @@ export const metricQueryDetailsSchema = metricQuerySchema
 /** Project the metric query without subscription or backend identifiers. */
 export function getMetricQuery(source: Record<string, unknown>) {
   if (
-    source.type !== "snuba_query_subscription" ||
-    !isPlainObject(source.queryObj)
+    source["type"] !== "snuba_query_subscription" ||
+    !isPlainObject(source["queryObj"])
   ) {
     return null;
   }
-  const parsed = metricQuerySchema.safeParse(source.queryObj.snubaQuery);
+  const parsed = metricQuerySchema.safeParse(source["queryObj"]["snubaQuery"]);
   if (!parsed.success) return null;
   const { timeWindow, ...query } = parsed.data;
   return { ...query, timeWindowSeconds: timeWindow };
