@@ -3057,7 +3057,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Filter by name or slug."
+              "description": "Filter by name or slug, or pass a numeric project ID."
             },
             {
               "type": "null"
