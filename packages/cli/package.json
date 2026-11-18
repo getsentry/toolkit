@@ -78,6 +78,7 @@
     "generate:docs-sections": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts docs-sections",
     "generate:schema": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts schema",
     "generate:command-api": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts command-api",
+    "generate:command-catalog": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts command-api command-catalog",
     "generate:command-docs": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts command-docs",
     "eval:skill": "pnpm ts script/eval-skill.ts",
     "bench": "pnpm ts script/bench.ts",
@@ -95,7 +96,8 @@
     "check:installer-docs": "pnpm ts script/check-installer-docs.ts",
     "check:destructive": "pnpm ts script/check-destructive-commands.ts",
     "check:command-access": "pnpm ts script/check-command-access.ts",
-    "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs && pnpm run check:doc-examples && pnpm run check:installer-docs && pnpm run check:destructive && pnpm run check:command-access"
+    "check:command-catalog": "node --experimental-strip-types --import ./script/require-shim.mjs script/generate.ts command-api command-catalog --check",
+    "ci:policy": "pnpm run check:patches && pnpm run check:deps && pnpm run check:errors && pnpm run check:fragments && pnpm run check:docs-sections && pnpm run check:env-coverage && pnpm run check:stale-refs && pnpm run check:doc-examples && pnpm run check:installer-docs && pnpm run check:destructive && pnpm run check:command-access && pnpm run check:command-catalog"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
