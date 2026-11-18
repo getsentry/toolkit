@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
 import { zipSync } from "fflate";
@@ -28,6 +28,11 @@ import {
 } from "../../fixtures/dif/macho.js";
 import { useTestConfigDir } from "../../helpers.js";
 
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, homedir: vi.fn(actual.tmpdir) };
+});
+
 useTestConfigDir("debug-files-upload-");
 
 const BREAKPAD_FIXTURE = [
@@ -45,6 +50,7 @@ let savedEnv: Record<string, string | undefined>;
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "df-upload-test-"));
+  vi.mocked(homedir).mockReturnValue(tempDir);
   savedEnv = {
     SENTRY_ORG: process.env.SENTRY_ORG,
     SENTRY_PROJECT: process.env.SENTRY_PROJECT,
