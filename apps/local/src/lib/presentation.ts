@@ -1,3 +1,6 @@
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import type { WorkspaceView } from "./workspace.ts";
+
 export type ConnectionState =
   | "connecting"
   | "connected"
@@ -29,7 +32,6 @@ export function getConnectionPresentation(
       return { label: "Receiver unavailable", tone: "warning" };
   }
 }
-import type { WorkspaceView } from "./workspace.ts";
 
 export function getWorkspaceEmptyState({
   view,
@@ -94,12 +96,11 @@ export function getWorkspaceEmptyState({
   return { title: `No ${items} captured`, description: triggers[view] };
 }
 
-function toDate(timestamp: number | string): Date {
-  return new Date(
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp,
-  );
+function toDate(timestamp: number | string): Date | undefined {
+  const value = parseEventTimestamp(timestamp);
+  if (value === undefined) return;
+  // Epoch seconds from SDKs; larger numbers are already milliseconds.
+  return new Date(value < 1_000_000_000_000 ? value * 1_000 : value);
 }
 
 /** Show an SDK timestamp (epoch seconds or milliseconds, or ISO) in local time. */
@@ -107,16 +108,13 @@ export function formatTimestamp(
   timestamp: number | string | undefined,
 ): string {
   if (timestamp === undefined) return "unknown time";
-  const date = toDate(timestamp);
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
+  return toDate(timestamp)?.toLocaleTimeString() ?? String(timestamp);
 }
 
 /** Like formatTimestamp, with the local date added when it is not today. */
 export function formatDateTime(timestamp: number | string): string {
   const date = toDate(timestamp);
-  if (Number.isNaN(date.getTime())) return String(timestamp);
+  if (!date) return String(timestamp);
   return date.toDateString() === new Date().toDateString()
     ? date.toLocaleTimeString()
     : `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
