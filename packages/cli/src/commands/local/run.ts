@@ -2,7 +2,8 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read by the Node.js and Python SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js, Python, and Ruby SDKs, and by
+ * PHP through its `spotlight` option) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
  * browser bundles. Browser SDKs do not read those variants yet; the app
@@ -397,15 +398,16 @@ function autoDetectErrorMessage(): string {
     `Usage: ${sentry`local run -- <command>`}`,
     "",
     "Supported auto-detection:",
-    "  - artisan (Laravel)",
+    "  - artisan (Laravel: composer run dev, or php artisan serve)",
+    "  - Gemfile with bin/rails (Rails: bin/dev, or bin/rails server)",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
     "  - a FastAPI app in app.py / main.py (uvicorn)",
     "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
     "  - app.py / main.py (Python script)",
     "  - FLASK_APP in a Python project (flask run)",
-    "  - Gemfile with bin/rails (Rails) or config.ru (Rack)",
-    "  - Cargo.toml (Rust)",
+    "  - Gemfile with config.ru (Rack)",
+    "  - Cargo.toml with a binary target (Rust)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
     "",
@@ -469,7 +471,10 @@ export const runCommand = buildCommand({
       "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
       "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
       "What your SDK needs:\n" +
-      "  - Node.js and Python servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
+      "  - Go and Rust have no Spotlight support. Set\n" +
+      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +

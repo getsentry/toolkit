@@ -695,10 +695,40 @@ describe("detectDevCommand: Python app scanning", () => {
 });
 
 describe("detectDevCommand: Rust, Ruby, and PHP", () => {
-  test("runs a Cargo.toml project with cargo run", async () => {
-    await writeFile(join(tmpDir, "Cargo.toml"), '[package]\nname = "app"\n');
+  const CARGO = '[package]\nname = "app"\n';
+
+  test("runs a Cargo.toml binary crate with cargo run", async () => {
+    await writeFile(join(tmpDir, "Cargo.toml"), CARGO);
+    await touch("src", "main.rs");
     const result = await detectDevCommand(tmpDir);
     expect(result).toEqual({ args: ["cargo", "run"], source: "Cargo.toml" });
+  });
+
+  test.each([
+    ["src/bin/", CARGO, ["src", "bin", "server.rs"]],
+    ["default-run", `${CARGO}default-run = "server"\n`, ["src", "lib.rs"]],
+  ])("runs cargo run for a crate with %s", async (_name, toml, file) => {
+    await writeFile(join(tmpDir, "Cargo.toml"), toml);
+    await touch(...file);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual(["cargo", "run"]);
+  });
+
+  test("does not guess for a virtual Cargo workspace", async () => {
+    await writeFile(
+      join(tmpDir, "Cargo.toml"),
+      '[workspace]\nmembers = ["server"]\n',
+    );
+    await touch("src", "main.rs");
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toBeNull();
+  });
+
+  test("does not guess for a library crate", async () => {
+    await writeFile(join(tmpDir, "Cargo.toml"), CARGO);
+    await touch("src", "lib.rs");
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toBeNull();
   });
 
   test("runs a Rack app with bundle exec rackup", async () => {
@@ -711,22 +741,56 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
     });
   });
 
-  test("runs a Rails app with bin/rails server", async () => {
+  test.each(["linux", "win32"] as const)(
+    "runs a Rails app with ruby bin/rails server (%s)",
+    async (platform) => {
+      await writeFile(join(tmpDir, "Gemfile"), 'gem "rails"\n');
+      await writeFile(join(tmpDir, "config.ru"), "run Rails.application\n");
+      await touch("bin", "rails");
+      const result = await detectDevCommand(tmpDir, { platform });
+      expect(result).toEqual({
+        args: ["ruby", "bin/rails", "server"],
+        source: "bin/rails (Rails)",
+      });
+    },
+  );
+
+  test("runs Rails ahead of a package.json dev script", async () => {
     await writeFile(join(tmpDir, "Gemfile"), 'gem "rails"\n');
-    await writeFile(join(tmpDir, "config.ru"), "run Rails.application\n");
     await touch("bin", "rails");
+    await writeFile(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ scripts: { dev: "vite" } }),
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("bin/rails (Rails)");
+  });
+
+  test("prefers a Ruby bin/dev in a Rails app", async () => {
+    await writeFile(join(tmpDir, "Gemfile"), 'gem "rails"\n');
+    await touch("bin", "rails");
+    await writeFile(
+      join(tmpDir, "bin", "dev"),
+      '#!/usr/bin/env ruby\nexec "./bin/rails", "server", *ARGV\n',
+    );
     const result = await detectDevCommand(tmpDir);
     expect(result).toEqual({
-      args: ["bin/rails", "server"],
-      source: "bin/rails (Rails)",
+      args: ["ruby", "bin/dev"],
+      source: "bin/dev (Rails)",
     });
   });
 
-  test("runs bin/rails through ruby on Windows", async () => {
+  test("runs a shell bin/dev with sh, but not on Windows", async () => {
     await writeFile(join(tmpDir, "Gemfile"), 'gem "rails"\n');
     await touch("bin", "rails");
-    const result = await detectDevCommand(tmpDir, { platform: "win32" });
-    expect(result!.args).toEqual(["ruby", "bin/rails", "server"]);
+    await writeFile(
+      join(tmpDir, "bin", "dev"),
+      "#!/usr/bin/env sh\nexec foreman start -f Procfile.dev\n",
+    );
+    const linux = await detectDevCommand(tmpDir);
+    expect(linux!.args).toEqual(["sh", "bin/dev"]);
+    const win32 = await detectDevCommand(tmpDir, { platform: "win32" });
+    expect(win32!.args).toEqual(["ruby", "bin/rails", "server"]);
   });
 
   test("does not guess for a Gemfile alone", async () => {
@@ -749,6 +813,26 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
     });
   });
 
+  test("runs Laravel's composer dev script when it has one", async () => {
+    await writeFile(join(tmpDir, "artisan"), "#!/usr/bin/env php\n");
+    await writeFile(
+      join(tmpDir, "composer.json"),
+      JSON.stringify({ scripts: { dev: ["npx concurrently ..."] } }),
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({
+      args: ["composer", "run", "dev"],
+      source: "composer.json dev (Laravel)",
+    });
+  });
+
+  test("ignores an artisan directory", async () => {
+    await mkdir(join(tmpDir, "artisan"));
+    await writeFile(join(tmpDir, "composer.json"), "{}");
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toBeNull();
+  });
+
   test("does not guess for composer.json without artisan", async () => {
     await writeFile(join(tmpDir, "composer.json"), "{}");
     const result = await detectDevCommand(tmpDir);
@@ -756,14 +840,16 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
   });
 
   test("a Python app wins over Cargo.toml", async () => {
-    await writeFile(join(tmpDir, "Cargo.toml"), '[package]\nname = "ext"\n');
+    await writeFile(join(tmpDir, "Cargo.toml"), CARGO);
+    await touch("src", "main.rs");
     await writeFile(join(tmpDir, "main.py"), "print('hi')\n");
     const result = await detectDevCommand(tmpDir);
     expect(result!.source).toBe("main.py");
   });
 
   test("Cargo.toml wins over go.mod and compose", async () => {
-    await writeFile(join(tmpDir, "Cargo.toml"), '[package]\nname = "app"\n');
+    await writeFile(join(tmpDir, "Cargo.toml"), CARGO);
+    await touch("src", "main.rs");
     await writeFile(join(tmpDir, "go.mod"), "module example.com/myapp");
     await writeFile(join(tmpDir, "compose.yml"), "services: {}\n");
     const result = await detectDevCommand(tmpDir);
