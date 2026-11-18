@@ -33,6 +33,7 @@ import { detectDevCommand } from "../../lib/dev-script.js";
 import {
   CliError,
   EXIT,
+  PORT_HELD_BY_DAEMON_FIELD,
   PORT_IN_USE_FIELD,
   signalExitCode,
   ValidationError,
@@ -54,6 +55,7 @@ import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
 import {
   injectWranglerSpotlightBinding,
   wranglerInjectedMessage,
+  wranglerSetupHint,
 } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
@@ -162,6 +164,11 @@ type EventTail = {
 
 type EventTailOptions = {
   port: number;
+  /**
+   * Capture on a free port when the daemon holds `port`. Only for the default
+   * port: a `--port` the user chose stays an error.
+   */
+  freePortIfDaemon?: boolean;
   host: string;
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
@@ -286,6 +293,7 @@ async function startBackgroundServer({
  */
 async function openEventTail({
   port,
+  freePortIfDaemon = false,
   host,
   activeFilters,
   useJson,
@@ -294,7 +302,29 @@ async function openEventTail({
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
-  if (await isServerRunning(url)) {
+  let running = false;
+  let listenPort = port;
+  try {
+    running = await isServerRunning(url);
+  } catch (err) {
+    if (
+      !(
+        freePortIfDaemon &&
+        err instanceof ValidationError &&
+        err.field === PORT_HELD_BY_DAEMON_FIELD
+      )
+    ) {
+      throw err;
+    }
+    // The daemon's receiver only takes session traffic, and it stays up while
+    // it retains sessions, so a plain run gets its own receiver instead.
+    logger.info(
+      `The Local daemon is using port ${port}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
+    );
+    listenPort = 0;
+  }
+
+  if (running) {
     await configureExistingRetention(url, maxEnvelopes);
     logger.info(`Connected to existing server at ${bold(url)}`);
     return attachToExistingServer({
@@ -305,11 +335,13 @@ async function openEventTail({
     });
   }
 
-  logger.info("No server detected, starting one in the background...");
+  if (listenPort === port) {
+    logger.info("No server detected, starting one in the background...");
+  }
   try {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port,
+      port: listenPort,
       host,
       activeFilters,
       useJson,
@@ -609,6 +641,7 @@ export const runCommand = buildCommand({
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
           port,
+          freePortIfDaemon: flags.port === undefined,
           host: flags.host,
           activeFilters,
           useJson,
@@ -1022,9 +1055,11 @@ async function* runWithVerify(
       return;
     }
     case "timeout": {
-      logger.warn(
-        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
-      );
+      if (wrangler.injected) {
+        logger.warn(
+          `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
+        );
+      }
       if (fellBack) {
         // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
         // port, so it reaches whatever holds that port instead of this receiver.
@@ -1033,7 +1068,7 @@ async function* runWithVerify(
         );
       }
       throw new VerifyFailedError(
-        `Verification timed out after ${verifyTimeout}s`,
+        `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
       );
     }
     case "exited": {
@@ -1041,10 +1076,8 @@ async function* runWithVerify(
         throw spawnFailureError(wrangler.args[0] ?? "", spawnError, cwd);
       }
       if (outcome.code === 0) {
-        logger.warn("Process exited before sending any events");
         throw new VerifyFailedError("Process exited before sending any events");
       }
-      logger.warn(`Process crashed with code ${outcome.code}`);
       throw new VerifyFailedError(
         `Process crashed with code ${outcome.code}`,
         outcome.code,
