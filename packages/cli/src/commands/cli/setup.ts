@@ -35,7 +35,11 @@ import {
   warmCachesAfterLogin,
 } from "../../lib/completion-warmup.js";
 import { CLI_VERSION } from "../../lib/constants.js";
-import { getAuthConfig, hasStoredAuthCredentials } from "../../lib/db/auth.js";
+import {
+  getAuthConfig,
+  getStoredAuthHost,
+  hasStoredAuthCredentials,
+} from "../../lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -52,10 +56,12 @@ import {
   detectAgentFromProcessTree,
 } from "../../lib/detect-agent.js";
 import { getEnv } from "../../lib/env.js";
+import { formatUserIdentity } from "../../lib/formatters/human.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { runInteractiveLogin } from "../../lib/interactive-login.js";
 import { interactivePromptsAllowed } from "../../lib/interactive-prompts.js";
 import { logger } from "../../lib/logger.js";
+import { normalizeHttpOrigin } from "../../lib/sentry-urls.js";
 import { bootstrapAuthentication } from "../../lib/setup-code.js";
 import {
   addToFpath,
@@ -798,18 +804,15 @@ export const setupCommand = buildCommand({
     const setupCode = SENTRY_SETUP_CODE?.trim();
     const shouldUseSetupCode =
       !handoffCode && Boolean(setupCode) && !hasStoredAuthCredentials();
-    let afterSetupInstructions: string | undefined;
+    const handoff = handoffCode
+      ? await completeAgentHandoff(handoffCode)
+      : undefined;
 
-    if (handoffCode) {
-      const handoff = await completeAgentHandoff(handoffCode);
-      afterSetupInstructions = handoff.flowInstructions;
-      emit("Authenticated with Sentry using the agent handoff.");
-    } else if (shouldUseSetupCode) {
-      await bootstrapAuthentication();
-      emit("Authenticated with Sentry using the setup code.");
-    }
+    const bootstrap = shouldUseSetupCode
+      ? await bootstrapAuthentication()
+      : undefined;
 
-    if ((handoffCode || shouldUseSetupCode) && !flags["no-completions"]) {
+    if ((handoff || bootstrap) && !flags["no-completions"]) {
       await warmCachesAfterLogin();
     }
 
@@ -831,8 +834,25 @@ export const setupCommand = buildCommand({
       printWelcomeMessage(emit, CLI_VERSION, binaryPath);
     }
 
-    if (afterSetupInstructions) {
-      emit(afterSetupInstructions);
+    if (handoff || bootstrap) {
+      const user = bootstrap?.user;
+      const identity =
+        handoff?.userEmail ||
+        (user && (user.email || formatUserIdentity(user)));
+      const account = identity ? `as ${identity}` : "with Sentry";
+      const organization = handoff
+        ? ` for ${handoff.organizationName} (slug: ${handoff.organizationSlug})`
+        : "";
+      const host = handoff
+        ? normalizeHttpOrigin(handoff.sentryUrl)
+        : getStoredAuthHost();
+      emit(
+        `Authenticated ${account}${organization}${host ? ` on ${host}` : ""}.`,
+      );
+    }
+
+    if (handoff?.flowInstructions) {
+      emit(handoff.flowInstructions);
     }
 
     yield new CommandOutput({
