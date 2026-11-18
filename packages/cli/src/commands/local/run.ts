@@ -2,10 +2,11 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read automatically by server-side SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js and Python SDKs) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
- * browser bundles regardless of bundler.
+ * browser bundles. Browser SDKs do not read those variants yet; the app
+ * passes the URL to `spotlightBrowserIntegration` itself.
  *
  * If no server is already running on the target port, one is started
  * automatically in the background and shut down when the child exits.
@@ -46,7 +47,10 @@ import {
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { spawnFailureError } from "../../lib/spawn-failure.js";
 import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
-import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import {
+  injectWranglerSpotlightBinding,
+  wranglerInjectedMessage,
+} from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
   retainLocalDaemonSession,
@@ -409,17 +413,25 @@ export const runCommand = buildCommand({
   docs: {
     brief: "Run a command with the local dev server enabled",
     fullDescription:
-      "Run a command with the SENTRY_SPOTLIGHT environment variable\n" +
-      "injected so the Sentry SDK automatically sends envelopes to the\n" +
-      "local server.\n\n" +
+      "Run a command with the SENTRY_SPOTLIGHT environment variable set\n" +
+      "to the local server's URL.\n\n" +
       "If no server is already listening on the port, one is started\n" +
       "automatically and shut down when the child process exits.\n\n" +
       "The child process inherits all current env vars plus\n" +
-      "SENTRY_SPOTLIGHT (server-side SDKs read this automatically), the\n" +
-      "framework-prefixed client variants (NEXT_PUBLIC_, VITE_, etc.), and\n" +
-      "SENTRY_TRACES_SAMPLE_RATE=1. Use --format json to stream versioned\n" +
-      "NDJSON observations to stdout for agents. Use --open to launch the\n" +
-      "Sentry Local UI.",
+      "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
+      "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
+      "What your SDK needs:\n" +
+      "  - Node.js and Python servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - Browser SDKs ignore the prefixed variables. Add\n" +
+      "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
+      "  - Cloudflare Workers (wrangler dev) need\n" +
+      "    tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).\n" +
+      "  - Without a DSN, browser replays are dropped and browser-to-server\n" +
+      "    traces do not link. Python also drops logs buffered at exit.\n" +
+      "  - The Next.js edge runtime sends no messages or logs here; its\n" +
+      "    errors still arrive through the Node.js server.\n\n" +
+      "Use --format json to stream versioned NDJSON observations to stdout\n" +
+      "for agents. Use --open to launch the Sentry Local UI.",
     examples: [
       {
         description: "Run a Node.js dev server with the local server enabled",
@@ -607,7 +619,7 @@ export const runCommand = buildCommand({
       this.cwd,
     );
     if (wrangler.injected) {
-      logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+      logger.info(wranglerInjectedMessage());
     }
     logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
     logger.info(
@@ -770,7 +782,7 @@ async function* runWithVerify(
     cwd,
   );
   if (wrangler.injected) {
-    logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+    logger.info(wranglerInjectedMessage());
   }
 
   let child: ChildProcess;
