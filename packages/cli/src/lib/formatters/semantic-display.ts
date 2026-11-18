@@ -117,8 +117,11 @@ export function formatSemanticSpanDisplay(
   attrs: AttributeSource,
   fallbackLabel: string,
 ): SemanticSpanDisplay {
+  const source = isCustomSpan(attrs, fallbackLabel)
+    ? withoutTargets(attrs)
+    : attrs;
   for (const formatter of SEMANTIC_SPAN_FORMATTERS) {
-    const result = formatter(attrs, fallbackLabel);
+    const result = formatter(source, fallbackLabel);
     if (result) {
       return {
         label: truncate(result.label, SPAN_LABEL_MAX_LENGTH) || "unnamed",
@@ -250,18 +253,13 @@ function formatHttpSpanDisplay(
   const method = getAttr(attrs, ["http.request.method"])?.toUpperCase();
   const statusCode = getAttr(attrs, ["http.response.status_code"]);
   const op = getAttr(attrs, ["sentry.op"]);
-  const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
   const target = getHttpTarget(attrs, {
     includeServerTarget: Boolean(method || statusCode),
     // The browser SDK puts the page URL on every segment span, so a custom
-    // span (`checkout flow`, or a `ui.action` or `pageload`) is not a request
-    // to that URL. Without an op, only a span with no name of its own is.
+    // `ui.action` or `pageload` span is not a request to that URL. Op-less
+    // custom spans lose their targets earlier (see isCustomSpan).
     includeFullUrl: Boolean(
-      method ||
-      statusCode ||
-      (op
-        ? /^(?:http|resource)\./.test(op)
-        : !hasOwnName(fallbackLabel, fullUrl)),
+      method || statusCode || !op || /^(?:http|resource)\./.test(op),
     ),
   });
   const errorType = getErrorType(attrs);
@@ -298,6 +296,41 @@ function hasOwnName(name: string, url: string | undefined): boolean {
     return false;
   }
   return !url || formatHttpTarget(rest) !== formatHttpTarget(url);
+}
+
+/** Attributes that point at a request target: a route, path, URL, or server. */
+const TARGET_KEYS = [
+  "http.route",
+  "url.template",
+  "url.full",
+  "url.path",
+  "server.address",
+  "server.port",
+];
+
+/**
+ * Whether a span is a custom one: no op, no HTTP method or status, no other
+ * semantic domain, and a name of its own. The browser SDK puts the page's
+ * URL and path on every segment span, so for these spans those attributes
+ * say where the span ran, not what it did, and its name is the better label.
+ */
+function isCustomSpan(attrs: AttributeSource, name: string): boolean {
+  return (
+    !getAttr(attrs, [
+      "sentry.op",
+      "http.request.method",
+      "http.response.status_code",
+    ]) &&
+    inferSemanticOp(attrs) === undefined &&
+    hasOwnName(name, getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH))
+  );
+}
+
+/** A copy of `attrs` without {@link TARGET_KEYS}. */
+function withoutTargets(attrs: AttributeSource): AttributeSource {
+  return Object.fromEntries(
+    Object.entries(attrs).filter(([key]) => !TARGET_KEYS.includes(key)),
+  );
 }
 
 function formatDatabaseSpanDisplay(

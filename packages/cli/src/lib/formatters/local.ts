@@ -815,9 +815,8 @@ export function formatSingleSpan(
   header: Record<string, unknown>,
   spanCount = "",
 ): string {
-  const spanName = sanitize(span.name ?? UNNAMED_SPAN);
   const flat = flattenSpanAttributes(span.attributes);
-  const semantic = formatSemanticSpanDisplay(flat, spanName);
+  const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
 
   let msg = sanitize(semantic.label);
   if (semantic.metadata.length > 0) {

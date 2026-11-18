@@ -192,6 +192,24 @@ describe("page URL on browser spans", () => {
       "checkout-submit",
     ],
     [
+      "an op-less custom span with a URL path keeps its name",
+      "checkout-submit",
+      { "url.path": "/cart" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a route keeps its name",
+      "checkout-submit",
+      { "http.route": "/cart/:id" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a server address keeps its name",
+      "checkout-submit",
+      { "server.address": "localhost", "server.port": 3000 },
+      "checkout-submit",
+    ],
+    [
       "a custom span with a named op keeps its name",
       "checkout flow",
       { "sentry.op": "ui.action" },
