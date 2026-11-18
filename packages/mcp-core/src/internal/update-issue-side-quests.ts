@@ -41,6 +41,13 @@ export const UPDATE_ISSUE_SIDE_QUEST_IDS = {
 export const RELATED_ISSUES_OPEN_IDS_ATTRIBUTE =
   "app.side_quest.related_issues_open.issue_ids";
 
+/**
+ * Span attribute with how many related issues are still open, the count the
+ * quest's tip states. A lower bound when a relation type filled its page.
+ */
+export const RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE =
+  "app.side_quest.related_issues_open.count";
+
 /** Related issues to request per relation type. */
 export const RELATED_ISSUES_LIMIT = 5;
 
@@ -129,11 +136,13 @@ export function buildUpdateIssueSideQuests(
       ({ id }) => id === UPDATE_ISSUE_SIDE_QUEST_IDS.relatedIssuesOpen,
     )
   ) {
+    const open = getOpenRelatedIssues(input);
     getActiveSpan()?.setAttributes({
-      [RELATED_ISSUES_OPEN_IDS_ATTRIBUTE]: getOpenRelatedIssues(input)
+      [RELATED_ISSUES_OPEN_IDS_ATTRIBUTE]: open
         .slice(0, MAX_DETAILS)
         .map(({ issue }) => issue.shortId)
         .join(","),
+      [RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE]: open.length,
     });
   }
   return quests;

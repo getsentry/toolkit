@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { RelatedIssuesResponseSchema } from "../api-client/schema";
 import {
   RELATED_ISSUES_LIMIT,
+  RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE,
   RELATED_ISSUES_OPEN_IDS_ATTRIBUTE,
   UPDATE_ISSUE_SIDE_QUEST_IDS,
   buildUpdateIssueSideQuests,
@@ -76,7 +77,7 @@ describe("buildUpdateIssueSideQuests", () => {
     `);
   });
 
-  it("records the listed issues' short IDs on the span", () => {
+  it("records the listed issues' short IDs and the open count on the span", () => {
     const attributes = captureSpanAttributes();
     const related = relatedIssues();
     const [, open] = related.data;
@@ -94,6 +95,7 @@ describe("buildUpdateIssueSideQuests", () => {
     expect(attributes[RELATED_ISSUES_OPEN_IDS_ATTRIBUTE]).toBe(
       "WEB-1,WEB-2,WEB-3",
     );
+    expect(attributes[RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE]).toBe(4);
   });
 
   it("returns nothing when every related issue is resolved or ignored", () => {
@@ -108,6 +110,7 @@ describe("buildUpdateIssueSideQuests", () => {
       ),
     ).toBeUndefined();
     expect(attributes).not.toHaveProperty(RELATED_ISSUES_OPEN_IDS_ATTRIBUTE);
+    expect(attributes).not.toHaveProperty(RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE);
   });
 
   it("leaves out issues outside a project-scoped session's project", () => {
