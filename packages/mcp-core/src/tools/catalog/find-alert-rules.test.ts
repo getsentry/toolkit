@@ -236,11 +236,34 @@ describe("find_alert_rules", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0].searchParams.get("projectSlug")).toBeNull();
+    expect(requests[0].searchParams.get("project")).toBe("-1");
     expect(requests[0].searchParams.get("cursor")).toBe("workflow-page-1");
     expect(getStructuredContent(result)).toMatchObject({
       issueRules: [{ id: "123" }],
       pagination: { issue: { nextCursor: "workflow-page-2" }, metric: null },
     });
+  });
+
+  it("lists issue Alerts from every accessible project for projectSlug all", async () => {
+    let workflowParams: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/workflows/",
+        ({ request }) => {
+          workflowParams = new URL(request.url).searchParams;
+          return HttpResponse.json([issueAlertRule]);
+        },
+      ),
+    );
+
+    await findAlertRules.handler(
+      { ...params, kind: "issue", projectSlug: "all", limit: 100 },
+      context,
+    );
+
+    // Sentry scopes a workflow list with no project params to member projects.
+    expect(workflowParams?.getAll("project")).toEqual(["-1"]);
+    expect(workflowParams?.get("projectSlug")).toBeNull();
   });
 
   it("does not expose a workflow cursor when an overfull page is capped", async () => {

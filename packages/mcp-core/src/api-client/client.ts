@@ -1783,6 +1783,10 @@ export class SentryApiService {
     const searchQuery = new URLSearchParams({ sortBy: "-id" });
     if (projectSlug) {
       searchQuery.set("projectSlug", projectSlug);
+    } else {
+      // Without project params Sentry lists only the user's member projects
+      // and drops unconnected Alerts. `project=-1` lists every accessible one.
+      searchQuery.set("project", "-1");
     }
     if (query) {
       searchQuery.set("query", formatWorkflowNameQuery(query));
