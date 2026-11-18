@@ -73,3 +73,57 @@ export const sdkErrorMessage = {
   contexts: { trace: { op: "http.server" } },
   sdk: { name: "sentry.javascript.node", version: "10.20.0" },
 };
+
+/**
+ * `Sentry.captureMessage("Checkout retry limit reached", "warning")` from
+ * `@sentry/node` 11.14.0, scrubbed. SDK 11 adds a synthetic, untyped
+ * exception to carry the call-site stack.
+ */
+export const jsCaptureMessage = {
+  event_id: "373de59185604a7d99b7f720a1d49c29",
+  level: "warning",
+  exception: {
+    values: [
+      {
+        value: "Checkout retry limit reached",
+        stacktrace: {
+          frames: [
+            {
+              filename: "node:internal/modules/run_main",
+              module: "run_main",
+              function: "asyncRunEntryPointWithESMLoader",
+              lineno: 101,
+              colno: 5,
+              in_app: false,
+            },
+            {
+              filename: "/app/capture.mjs",
+              module: "capture",
+              function: "?",
+              lineno: 11,
+              colno: 8,
+              in_app: true,
+              context_line:
+                'Sentry.captureMessage("Checkout retry limit reached", "warning");',
+            },
+          ],
+        },
+        mechanism: { type: "generic", handled: true, synthetic: true },
+      },
+    ],
+  },
+  message: "Checkout retry limit reached",
+  platform: "node",
+  contexts: {
+    trace: {
+      trace_id: "b024e28d486c46508b296de9024a0ff4",
+      span_id: "9484151d309f1863",
+    },
+    runtime: { name: "node", version: "v24.22.1" },
+  },
+  server_name: "web-1",
+  timestamp: 1795017827.068,
+  environment: "development",
+  release: "shop@1.4.2",
+  sdk: { name: "sentry.javascript.node", version: "11.14.0" },
+};
