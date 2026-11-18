@@ -166,7 +166,11 @@ function withCapturedUrl(
   if (HTTP_METHODS.has(description.toUpperCase())) {
     if (operation !== "http.server" && parsed)
       return `${description} ${parsed.host}${parsed.pathname}`;
-    const target = httpTargetAttribute((key) => getString(data[key]));
+    // A `url.full` that isn't an absolute URL has no path to show, so
+    // skip it and fall through to `url.path`.
+    const target = httpTargetAttribute((key) =>
+      key === "url.full" && !parsed ? undefined : getString(data[key]),
+    );
     const path = target?.key === "url.full" ? parsed?.pathname : target?.value;
     return path ? `${description} ${path}` : description;
   }

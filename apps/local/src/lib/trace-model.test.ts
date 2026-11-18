@@ -1193,6 +1193,12 @@ test.each([
   ],
   ["http.server", "get", { "url.path": "/api/edge" }, "get /api/edge"],
   [
+    "http.server",
+    "GET",
+    { "url.full": "/api/edge?x=1", "url.path": "/api/edge" },
+    "GET /api/edge",
+  ],
+  [
     "resource.script",
     "get localhost",
     { "url.full": "http://localhost:5173/src/app.js?v=1" },
