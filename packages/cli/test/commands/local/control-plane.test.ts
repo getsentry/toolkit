@@ -692,6 +692,62 @@ describe("Local control plane", () => {
     expect(viewed.status).toBe(200);
   });
 
+  test("gives each replay segment its own event ID", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const replayId = "5c3b1e7a9d2f4e6a8b0c1d2e3f4a5b6c";
+    // @sentry/browser sends every replay segment with the replay ID as the
+    // envelope event_id.
+    for (const segmentId of [0, 1]) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: [
+            { event_id: replayId, sent_at: "2026-11-17T20:25:06.000Z" },
+            { type: "replay_event" },
+            {
+              type: "replay_event",
+              replay_id: replayId,
+              event_id: replayId,
+              segment_id: segmentId,
+              timestamp: 1_794_947_106 + segmentId,
+            },
+            { type: "replay_recording", length: 2 },
+            "[]",
+          ]
+            .map((line) =>
+              typeof line === "string" ? line : JSON.stringify(line),
+            )
+            .join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+    }
+
+    const listed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events`,
+      { headers: controlHeaders() },
+    );
+    const { events } = (await listed.json()) as {
+      events: { eventId: string; envelopeId: string }[];
+    };
+    expect(events).toHaveLength(2);
+    const ids = events.map((event) => event.eventId);
+    expect(new Set(ids).size).toBe(2);
+    for (const event of events) {
+      const viewed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events/${encodeURIComponent(event.eventId)}`,
+        { headers: controlHeaders() },
+      );
+      expect(viewed.status).toBe(200);
+      await expect(viewed.json()).resolves.toMatchObject({
+        envelopeId: event.envelopeId,
+      });
+    }
+  });
+
   test("summarizes each listed event so agents can skip per-event views", async () => {
     const traceId = "4c79f60c11214eb38604f4ae0781bfb2";
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
@@ -853,9 +909,9 @@ describe("Local control plane", () => {
         eventId: expect.any(String),
         itemTypes: ["log"],
         type: "log",
-        level: "info",
-        title: '"GET /boom HTTP/1.1" 500 -',
-        timestamp: "2026-11-07T10:00:05.000Z",
+        level: "error",
+        title: "boom",
+        timestamp: "2026-11-07T10:00:05.100Z",
         traceId,
         count: 2,
       },
