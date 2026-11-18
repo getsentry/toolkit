@@ -248,6 +248,9 @@ describe("detectDevCommand: Python virtualenv", () => {
   });
 });
 
+/** A top-level app whose framework only the declared dependencies name. */
+const APP_FACTORY = "from myapp import create_app\n\napp = create_app()\n";
+
 describe("detectDevCommand: FastAPI", () => {
   const FASTAPI_APP = "from fastapi import FastAPI\n\napp = FastAPI()\n";
 
@@ -313,9 +316,15 @@ describe("detectDevCommand: FastAPI", () => {
     ["requirements.txt", "fastapi==0.115.0\nuvicorn\n"],
   ])("detects FastAPI declared in %s", async (manifest, contents) => {
     await writeFile(join(tmpDir, manifest), contents);
-    await writeFile(join(tmpDir, "main.py"), "from .api import app\n");
+    await writeFile(join(tmpDir, "main.py"), APP_FACTORY);
     const result = await detectDevCommand(tmpDir);
-    expect(result!.source).toBe("main.py (FastAPI)");
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "uvicorn",
+      "main:app",
+      "--reload",
+    ]);
   });
 
   test("detects FastAPI declared as a Poetry dependency", async () => {
@@ -323,7 +332,7 @@ describe("detectDevCommand: FastAPI", () => {
       join(tmpDir, "pyproject.toml"),
       '[tool.poetry.dependencies]\nfastapi = "^0.115"\n',
     );
-    await writeFile(join(tmpDir, "main.py"), "from .api import app\n");
+    await writeFile(join(tmpDir, "main.py"), APP_FACTORY);
     const result = await detectDevCommand(tmpDir);
     expect(result!.source).toBe("main.py (FastAPI)");
   });
@@ -340,9 +349,49 @@ describe("detectDevCommand: FastAPI", () => {
 
   test("does not mistake fastapi-users for FastAPI", async () => {
     await writeFile(join(tmpDir, "requirements.txt"), "fastapi-users\n");
-    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+    await writeFile(join(tmpDir, "main.py"), APP_FACTORY);
     const result = await detectDevCommand(tmpDir);
     expect(result!.source).toBe("main.py");
+  });
+
+  test("reads multi-line PEP 621 and optional dependency arrays", async () => {
+    await writeFile(
+      join(tmpDir, "pyproject.toml"),
+      [
+        "[project]",
+        "dependencies = [",
+        '  "sentry-sdk[fastapi]>=2",',
+        "]",
+        "",
+        "[project.optional-dependencies]",
+        "web = [",
+        '  "fastapi[standard]>=0.110",',
+        "]",
+      ].join("\n"),
+    );
+    await writeFile(join(tmpDir, "main.py"), APP_FACTORY);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py (FastAPI)");
+  });
+
+  test("ignores a framework in pyproject keys that are not dependencies", async () => {
+    await writeFile(
+      join(tmpDir, "pyproject.toml"),
+      '[project]\nkeywords = ["flask", "fastapi"]\ndependencies = []\n',
+    );
+    await writeFile(join(tmpDir, "main.py"), APP_FACTORY);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("main.py");
+  });
+
+  test("runs a file that imports FastAPI only for typing as a script", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "fastapi\n");
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "from fastapi import FastAPI\n\ndef describe(api: FastAPI) -> str:\n    return api.title\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({ args: ["python", "main.py"], source: "main.py" });
   });
 });
 
@@ -353,7 +402,7 @@ describe("detectDevCommand: Flask", () => {
     await writeFile(join(tmpDir, "app.py"), FLASK_APP);
     const result = await detectDevCommand(tmpDir);
     expect(result).toEqual({
-      args: ["python", "-m", "flask", "--app", "app", "run"],
+      args: ["python", "-m", "flask", "--app", "app:app", "run"],
       source: "app.py (Flask)",
     });
   });
@@ -363,23 +412,59 @@ describe("detectDevCommand: Flask", () => {
     await writeFile(join(tmpDir, "wsgi.py"), FLASK_APP);
     const result = await detectDevCommand(tmpDir);
     expect(result).toEqual({
-      args: [python, "-m", "flask", "--app", "wsgi", "run"],
+      args: [python, "-m", "flask", "--app", "wsgi:app", "run"],
       source: "wsgi.py (Flask)",
     });
   });
 
   test("detects an app factory from the declared dependency", async () => {
     await writeFile(join(tmpDir, "requirements.txt"), "Flask>=3\n");
-    await writeFile(
-      join(tmpDir, "app.py"),
-      "from myapp import create_app\napp = create_app()\n",
-    );
+    await writeFile(join(tmpDir, "app.py"), APP_FACTORY);
     const result = await detectDevCommand(tmpDir);
-    expect(result!.source).toBe("app.py (Flask)");
+    expect(result).toEqual({
+      args: ["python", "-m", "flask", "--app", "app:app", "run"],
+      source: "app.py (Flask)",
+    });
   });
 
-  test("lets FLASK_APP pick the app", async () => {
-    await writeFile(join(tmpDir, "main.py"), "print('hello')");
+  test("runs a factory with no top-level app as a script", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "flask\n");
+    await writeFile(
+      join(tmpDir, "app.py"),
+      "from flask import Flask\n\ndef create_app():\n    app = Flask(__name__)\n    return app\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result).toEqual({ args: ["python", "app.py"], source: "app.py" });
+  });
+
+  test("passes the Flask app variable to --app", async () => {
+    await writeFile(
+      join(tmpDir, "app.py"),
+      "import flask\n\nserver = flask.Flask(__name__)\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "flask",
+      "--app",
+      "app:server",
+      "run",
+    ]);
+  });
+
+  test.each([
+    ["a comment", "# app = Flask(__name__)\nprint('hi')\n"],
+    ["a string", 'doc = "app = Flask(__name__)"\nprint(doc)\n'],
+    ["a subclass", "app = MyFlask(__name__)\n"],
+  ])("does not take Flask( in %s for a Flask app", async (_label, source) => {
+    await writeFile(join(tmpDir, "app.py"), source);
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.source).toBe("app.py");
+  });
+
+  test("lets FLASK_APP pick the app in a Python project", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "flask\n");
     const result = await detectDevCommand(tmpDir, {
       env: { FLASK_APP: "myapp:create_app()" },
     });
@@ -387,6 +472,25 @@ describe("detectDevCommand: Flask", () => {
       args: ["python", "-m", "flask", "run"],
       source: "FLASK_APP (Flask)",
     });
+  });
+
+  test("ignores FLASK_APP outside a Python project", async () => {
+    await writeFile(join(tmpDir, "go.mod"), "module example.com/myapp");
+    const result = await detectDevCommand(tmpDir, {
+      env: { FLASK_APP: "app" },
+    });
+    expect(result).toEqual({ args: ["go", "run", "."], source: "go.mod" });
+  });
+
+  test("an app in app.py wins over FLASK_APP", async () => {
+    await writeFile(
+      join(tmpDir, "app.py"),
+      "from fastapi import FastAPI\n\napp = FastAPI()\n",
+    );
+    const result = await detectDevCommand(tmpDir, {
+      env: { FLASK_APP: "other" },
+    });
+    expect(result!.source).toBe("app.py (FastAPI)");
   });
 
   test("prefers the app in the file over declared dependencies", async () => {

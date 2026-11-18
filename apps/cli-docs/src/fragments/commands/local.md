@@ -16,13 +16,13 @@ With no command, `local run` picks one from the project, in this order:
 
 1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
 2. `manage.py`: `python manage.py runserver` (Django)
-3. `FLASK_APP` set: `python -m flask run`
-4. `app.py`, then `main.py`: the app in the file decides the framework, then the dependencies in `pyproject.toml` or `requirements.txt`. A FastAPI app runs with `python -m uvicorn <module>:app --reload`. A Flask app runs with `python -m flask --app <module> run`. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
-5. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
+3. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built another way, such as `app = create_app()`, uses the framework that `pyproject.toml` or `requirements.txt` declares. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`
+4. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
+5. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
 6. `go.mod`: `go run .`
 7. `docker-compose.yml` or `compose.yml`: `docker compose up`
 
-Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. Pass a command after `--` to skip detection.
+Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. The `flask --app` option needs Flask 2.2 or later; with an older Flask, pass the command after `--`. Pass a command after `--` to skip detection.
 
 Env vars injected into the child process:
 

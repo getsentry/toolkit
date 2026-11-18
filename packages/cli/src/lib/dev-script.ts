@@ -40,9 +40,9 @@ export type DetectOptions = {
  * Detection priority:
  * 1. package.json scripts (dev > develop > serve > start)
  * 2. manage.py (Django)
- * 3. FLASK_APP env var (Flask)
- * 4. app.py, then main.py (FastAPI, Flask, or a plain Python script)
- * 5. wsgi.py (Flask only)
+ * 3. app.py, then main.py (FastAPI, Flask, or a plain Python script)
+ * 4. wsgi.py (Flask, or a script with a `__main__` guard)
+ * 5. FLASK_APP env var, in a project with a Python marker (Flask)
  * 6. go.mod (Go)
  * 7. docker-compose.yml / compose.yml (Docker Compose)
  *
@@ -64,10 +64,10 @@ export async function detectDevCommand(
   const result =
     (await tryPackageJson(cwd, platform)) ??
     tryDjango(cwd, python) ??
-    tryFlaskAppEnv(env, python) ??
     (await tryPythonApp(cwd, "app.py", python, true)) ??
     (await tryPythonApp(cwd, "main.py", python, true)) ??
     (await tryPythonApp(cwd, "wsgi.py", python, false)) ??
+    tryFlaskAppEnv(cwd, env, python) ??
     (await tryGoMod(cwd)) ??
     (await tryDockerCompose(cwd));
   return result;
@@ -158,12 +158,29 @@ function tryDjango(cwd: string, python: PythonLookup): DetectedCommand | null {
   };
 }
 
-/** With `FLASK_APP` set, let `flask run` load the app it names. */
+/** Files that mark a directory as a Python project. */
+const PYTHON_MARKERS = [
+  "app.py",
+  "main.py",
+  "wsgi.py",
+  "pyproject.toml",
+  "requirements.txt",
+] as const;
+
+/**
+ * With `FLASK_APP` set, let `flask run` load the app it names. Only in a
+ * Python project, so a `FLASK_APP` exported from a shell profile does not
+ * take over a Go or Docker Compose project.
+ */
 function tryFlaskAppEnv(
+  cwd: string,
   env: Record<string, string | undefined>,
   python: PythonLookup,
 ): DetectedCommand | null {
-  if (!env.FLASK_APP) {
+  if (
+    !env.FLASK_APP ||
+    !PYTHON_MARKERS.some((file) => existsSync(join(cwd, file)))
+  ) {
     return null;
   }
   return {
@@ -175,8 +192,18 @@ function tryFlaskAppEnv(
 /** Matches `if __name__ == "__main__":`, a file that starts its own server. */
 const MAIN_GUARD_RE = /^if\s+__name__\s*==\s*["']__main__["']\s*:/m;
 
-/** Captures the variable a FastAPI app is assigned to, as in `api = FastAPI()`. */
-const FASTAPI_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:\w+\.)?FastAPI\(/m;
+/** Captures the top-level variable a FastAPI app is assigned to, as in `api = FastAPI()`. */
+const FASTAPI_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:fastapi\.)?FastAPI\(/m;
+
+/** Captures the top-level variable a Flask app is assigned to, as in `app = Flask(__name__)`. */
+const FLASK_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:flask\.)?Flask\(/m;
+
+/**
+ * Captures a top-level `app` or `application` assignment, such as
+ * `app = create_app()`, for an app whose framework only the declared
+ * dependencies name.
+ */
+const APP_VARIABLE_RE = /^(app|application)\s*(?::[^=\n]+)?=/m;
 
 /**
  * Detect a Python web app in `filename`.
@@ -187,9 +214,12 @@ const FASTAPI_APP_RE = /^(\w+)\s*(?::[^=\n]+)?=\s*(?:\w+\.)?FastAPI\(/m;
  * uvicorn for FastAPI, `flask run` for Flask. Uvicorn rather than
  * `fastapi dev`, because plain `fastapi` installs a `fastapi` script that
  * fails without `fastapi[standard]`, and any venv that has fastapi-cli has
- * uvicorn too. The app in the file decides the framework before the
- * declared dependencies do. A file with no app and no guard runs as a script
- * only when `runAsScript` is set.
+ * uvicorn too.
+ *
+ * A top-level `FastAPI(` or `Flask(` assignment names the framework and the
+ * app variable. Failing that, a top-level `app` or `application` assignment
+ * uses the framework the project declares. A file with neither runs as a
+ * script only when `runAsScript` is set.
  */
 async function tryPythonApp(
   cwd: string,
@@ -205,58 +235,169 @@ async function tryPythonApp(
   if (MAIN_GUARD_RE.test(source)) {
     return script;
   }
-  const module = filename.slice(0, -".py".length);
-  const fastapiApp = FASTAPI_APP_RE.exec(source)?.[1];
-  const framework = fastapiApp
-    ? "FastAPI"
-    : source.includes("Flask(")
-      ? "Flask"
-      : await declaredFramework(cwd);
-  if (framework === "FastAPI") {
-    return {
-      args: [
-        python(),
-        "-m",
-        "uvicorn",
-        `${module}:${fastapiApp ?? "app"}`,
-        "--reload",
-      ],
-      source: `${filename} (FastAPI)`,
-    };
+  const app = await findPythonApp(cwd, source);
+  if (!app) {
+    return runAsScript ? script : null;
   }
-  if (framework === "Flask") {
-    return {
-      args: [python(), "-m", "flask", "--app", module, "run"],
-      source: `${filename} (Flask)`,
-    };
-  }
-  return runAsScript ? script : null;
+  const ref = `${filename.slice(0, -".py".length)}:${app.variable}`;
+  return {
+    args:
+      app.framework === "FastAPI"
+        ? [python(), "-m", "uvicorn", ref, "--reload"]
+        : [python(), "-m", "flask", "--app", ref, "run"],
+    source: `${filename} (${app.framework})`,
+  };
 }
 
-/** Python dependency manifests checked for a framework. */
-const DEPENDENCY_FILES = ["pyproject.toml", "requirements.txt"] as const;
+/** A web framework `local run` knows how to serve. */
+type PythonFramework = "FastAPI" | "Flask";
+
+/** The app object in a Python file, found by `findPythonApp`. */
+type PythonApp = {
+  /** Framework that serves it. */
+  framework: PythonFramework;
+  /** Top-level variable that holds it. */
+  variable: string;
+};
+
+/** Find the FastAPI or Flask app that `source` defines at top level. */
+async function findPythonApp(
+  cwd: string,
+  source: string,
+): Promise<PythonApp | null> {
+  const fastapi = FASTAPI_APP_RE.exec(source)?.[1];
+  if (fastapi) {
+    return { framework: "FastAPI", variable: fastapi };
+  }
+  const flask = FLASK_APP_RE.exec(source)?.[1];
+  if (flask) {
+    return { framework: "Flask", variable: flask };
+  }
+  const variable = APP_VARIABLE_RE.exec(source)?.[1];
+  const framework = variable ? await declaredFramework(cwd) : null;
+  return variable && framework ? { framework, variable } : null;
+}
 
 /**
- * Matches a requirement for the package named by the group: at the start of
- * a line (requirements.txt, Poetry keys) or of a quoted string (PEP 621
- * lists), then a version, extra, marker, comment, or the end. So
- * `fastapi-users`, comments, and prose such as `"A flask demo"` do not count.
+ * The web framework that pyproject.toml or requirements.txt declares, or
+ * null when they declare neither or both.
  */
-const REQUIREMENT_RE = /(?:^\s*|["'])(fastapi|flask)\s*(?:[[<>=~!;@#"']|$)/im;
+async function declaredFramework(cwd: string): Promise<PythonFramework | null> {
+  const [pyproject, requirements] = await Promise.all(
+    ["pyproject.toml", "requirements.txt"].map((file) =>
+      readFile(join(cwd, file), "utf-8").catch(() => ""),
+    ),
+  );
+  const names = new Set([
+    ...pyprojectDependencies(pyproject ?? ""),
+    ...requirementsDependencies(requirements ?? ""),
+  ]);
+  const hasFastapi = names.has("fastapi");
+  const hasFlask = names.has("flask");
+  if (hasFastapi === hasFlask) {
+    return null;
+  }
+  return hasFastapi ? "FastAPI" : "Flask";
+}
 
-/** The web framework that pyproject.toml or requirements.txt declares. */
-async function declaredFramework(
-  cwd: string,
-): Promise<"FastAPI" | "Flask" | null> {
-  for (const file of DEPENDENCY_FILES) {
-    const contents = await readFile(join(cwd, file), "utf-8").catch(() => null);
-    const name =
-      contents === null ? undefined : REQUIREMENT_RE.exec(contents)?.[1];
-    if (name) {
-      return name.toLowerCase() === "fastapi" ? "FastAPI" : "Flask";
+/** Captures the package name at the start of a requirement, as `flask` in `Flask[async]>=3`. */
+const REQUIREMENT_NAME_RE = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/;
+
+/** Captures each quoted string on a TOML line. */
+const TOML_STRING_RE = /["']([^"']*)["']/g;
+
+/** Captures a TOML table header, as `tool.poetry.dependencies`. */
+const TOML_TABLE_RE = /^\[{1,2}\s*([^\]]+?)\s*\]{1,2}$/;
+
+/** Captures a TOML key that opens an array, and the rest of the line. */
+const TOML_ARRAY_KEY_RE = /^["']?([\w.-]+)["']?\s*=\s*\[(.*)$/;
+
+/** Captures a TOML key, as `flask` in `flask = "^3"`. */
+const TOML_KEY_RE = /^["']?([\w.-]+)["']?\s*=/;
+
+/** Poetry tables whose keys are package names. */
+const POETRY_DEPENDENCY_TABLE_RE =
+  /^tool\.poetry\.(?:group\.[^.]+\.)?(?:dev-)?dependencies$/;
+
+/** Lowercased package name of a requirement string (PEP 508), or null. */
+function requirementName(requirement: string): string | null {
+  const name = REQUIREMENT_NAME_RE.exec(requirement)?.[1];
+  return name ? name.toLowerCase().replace(/[-_.]+/g, "-") : null;
+}
+
+/** Package names that requirements.txt lists, skipping comments and options. */
+function requirementsDependencies(contents: string): string[] {
+  return contents
+    .split("\n")
+    .map((line) => line.replace(/#.*$/, "").trim())
+    .filter((line) => line && !line.startsWith("-"))
+    .map(requirementName)
+    .filter((name): name is string => name !== null);
+}
+
+/**
+ * Whether a TOML array under `table.key` lists dependencies: PEP 621
+ * `project.dependencies` and `project.optional-dependencies`, and PEP 735
+ * `dependency-groups`.
+ */
+function isDependencyArray(table: string, key: string): boolean {
+  return (
+    (table === "project" && key === "dependencies") ||
+    table === "project.optional-dependencies" ||
+    table === "dependency-groups"
+  );
+}
+
+/** Whether a TOML line closes an array, ignoring `]` in strings such as `"fastapi[standard]"`. */
+function closesArray(line: string): boolean {
+  return line.replace(TOML_STRING_RE, "").includes("]");
+}
+
+/**
+ * Package names that pyproject.toml declares as dependencies, from PEP 621
+ * and PEP 735 arrays and Poetry dependency tables. A line-based read, not a
+ * TOML parser: it skips other keys such as `keywords = ["flask"]`.
+ */
+function pyprojectDependencies(contents: string): string[] {
+  const names: string[] = [];
+  const addStrings = (text: string) => {
+    for (const [, value] of text.matchAll(TOML_STRING_RE)) {
+      const name = requirementName(value ?? "");
+      if (name) {
+        names.push(name);
+      }
+    }
+  };
+  let table = "";
+  let inArray = false;
+  for (const raw of contents.split("\n")) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (inArray) {
+      addStrings(line);
+      inArray = !closesArray(line);
+      continue;
+    }
+    const header = TOML_TABLE_RE.exec(line)?.[1];
+    if (header) {
+      table = header;
+      continue;
+    }
+    if (POETRY_DEPENDENCY_TABLE_RE.test(table)) {
+      const key = TOML_KEY_RE.exec(line)?.[1];
+      const name = key ? requirementName(key) : null;
+      if (name) {
+        names.push(name);
+      }
+      continue;
+    }
+    const array = TOML_ARRAY_KEY_RE.exec(line);
+    if (array?.[1] && isDependencyArray(table, array[1])) {
+      const rest = array[2] ?? "";
+      addStrings(rest);
+      inArray = !closesArray(rest);
     }
   }
-  return null;
+  return names;
 }
 
 /** Check for go.mod and return `go run .` */
