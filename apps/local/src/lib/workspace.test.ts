@@ -117,8 +117,10 @@ describe("event list labels", () => {
     const decode = (type: string, payload: unknown) =>
       decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), type)[0]!;
     expect(
-      eventListLabel(decode("event", { level: "error", message: "Disk full" })),
-    ).toEqual({ badge: "Message", title: "Disk full" });
+      eventListLabel(
+        decode("event", { message: "Payment failed", level: "error" }),
+      ),
+    ).toEqual({ badge: "Message", title: "Payment failed" });
     expect(
       eventListLabel(
         decode("event", {
@@ -129,10 +131,11 @@ describe("event list labels", () => {
     expect(
       eventListLabel(
         decode("feedback", {
-          contexts: { feedback: { message: "Button does nothing" } },
+          contexts: { feedback: { message: "Checkout button failed" } },
+          request: { url: "http://localhost/" },
         }),
       ).title,
-    ).toBe("Button does nothing");
+    ).toBe("Checkout button failed");
   });
 
   test("request transactions show their method and route", () => {
