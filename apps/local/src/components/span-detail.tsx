@@ -4,7 +4,7 @@ import { Check, Copy, ChevronLeft } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
-import { formatTimestamp } from "@/lib/presentation.ts";
+import { formatDateTime } from "@/lib/presentation.ts";
 import { isErrorEvent } from "@/lib/workspace.ts";
 import { JsonView } from "./json-view.tsx";
 
@@ -222,7 +222,7 @@ export function SpanDetail({
       : [
           {
             label: "Start timestamp",
-            value: formatTimestamp(span.startTimestamp),
+            value: formatDateTime(span.startTimestamp, { milliseconds: true }),
             code: true,
           },
         ]),
@@ -231,7 +231,7 @@ export function SpanDetail({
       : [
           {
             label: "End timestamp",
-            value: formatTimestamp(span.endTimestamp),
+            value: formatDateTime(span.endTimestamp, { milliseconds: true }),
             code: true,
           },
         ]),

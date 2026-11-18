@@ -18,7 +18,7 @@ import {
   type DetailField,
 } from "./inspector-data.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
-import { getEventMetadata } from "@/lib/spotlight.ts";
+import { getEventMetadata, itemTime } from "@/lib/spotlight.ts";
 import { formatTimestamp } from "@/lib/presentation.ts";
 import { getEventExceptions } from "@/lib/exceptions.ts";
 import type { TraceGroup } from "@/lib/trace-model.ts";
@@ -217,7 +217,7 @@ export function EventDetail({
           </Button>
         ) : null}
         <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(item.timestamp)}
+          {formatTimestamp(itemTime(item))}
         </time>
       </header>
       <InspectorTabs

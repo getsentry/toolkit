@@ -14,11 +14,12 @@ export function attributeFields(value: unknown): DetailField[] {
     return {
       label,
       // Display only: the JSON tab keeps SDK text exactly as captured.
-      value: stripAnsi(
+      value:
         typeof content === "string"
-          ? content
-          : (JSON.stringify(content) ?? String(content)),
-      ),
+          ? stripAnsi(content)
+          : (JSON.stringify(content, (_key, nested: unknown) =>
+              typeof nested === "string" ? stripAnsi(nested) : nested,
+            ) ?? String(content)),
       code: true,
     };
   });
