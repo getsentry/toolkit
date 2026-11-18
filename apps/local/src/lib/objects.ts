@@ -22,9 +22,11 @@ export type WithoutUndefined<T> = {
 /**
  * A copy of `value` without its `undefined` properties, so optional fields
  * parsed from a payload are omitted when unset instead of present and
- * `undefined`.
+ * `undefined`. `value` must be a plain record: the copy keeps only own
+ * enumerable string keys, so class instances and symbol keys are not
+ * accepted.
  */
-export function withoutUndefined<T extends object>(
+export function withoutUndefined<T extends Record<string, unknown>>(
   value: T,
 ): WithoutUndefined<T> {
   return Object.fromEntries(

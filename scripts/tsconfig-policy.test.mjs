@@ -9,6 +9,7 @@ import {
   policyOptions,
   ROOT,
   trackedTypeScriptFiles,
+  typecheckCommandConfigs,
   workspacePackages,
 } from "./tsconfig-policy.mjs";
 
@@ -61,6 +62,21 @@ test("every package with a tsconfig.json has a typecheck script", () => {
       readFileSync(join(packageDir, "package.json"), "utf8"),
     );
     assert.ok(scripts.typecheck, `${name} has no "typecheck" script`);
+  }
+});
+
+test("a type check command the policy cannot read fails instead of being skipped", () => {
+  const packageDir = join(ROOT, "packages/logger");
+  assert.deepEqual(typecheckCommandConfigs(packageDir, "pnpm run build"), []);
+  assert.deepEqual(typecheckCommandConfigs(packageDir, "astro check"), [
+    join(packageDir, "tsconfig.json"),
+  ]);
+  for (const command of ["tsgo --noEmit", "vue-tsc --noEmit", "astro build"]) {
+    assert.throws(
+      () => typecheckCommandConfigs(packageDir, command),
+      /tsconfig policy cannot read/,
+      command,
+    );
   }
 });
 
