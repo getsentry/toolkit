@@ -327,7 +327,13 @@ AI interaction summaries reconcile step usage and pair response content with
 its captured finish reason. Profile inspection can combine retained chunks from
 one profiler while keeping each original chunk available. Sampled function rows
 in traces use observed intervals and unambiguous captured parents; gaps between
-chunks and final sample tails do not create inferred work.
+chunks and final sample tails do not create inferred work. They are folded
+under their captured span until **Show sampled functions** is used, and a trace
+links its profile once even when the profile arrived in several chunks.
+
+A trace's "N spans" counts the captured spans below its transactions and
+segments, like the tail's `[N spans]`: the transaction or segment span itself and
+sampled function rows are not counted.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
