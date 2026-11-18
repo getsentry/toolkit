@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import type { LocalFeedItem } from "../lib/spotlight";
 import { ResizableWorkspace } from "./resizable-workspace";
 import { SpanDetail } from "./span-detail";
-import type { TraceGroup } from "../lib/trace-model";
+import { isLogOnlyTrace, type TraceGroup } from "../lib/trace-model";
 import { TraceWaterfall } from "./trace-waterfall";
 
 type TraceWorkspaceProps = {
@@ -141,7 +141,11 @@ export function TraceWorkspace({
                         {trace.title}
                       </span>
                       <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>{trace.spans.length} spans</span>
+                        <span>
+                          {isLogOnlyTrace(trace)
+                            ? "Logs only"
+                            : `${trace.spans.length} spans`}
+                        </span>
                         {trace.errorCount > 0 ? (
                           <span className="text-red-500 dark:text-red-400">
                             {trace.errorCount} errors

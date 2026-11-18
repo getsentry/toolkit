@@ -35,6 +35,7 @@ import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
   LOCAL_SESSION_EVENT,
+  envelopeReceivedAt,
 } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -78,6 +79,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.tsx";
 import {
+  formatTimestamp,
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
@@ -98,12 +100,12 @@ import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
 import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
 import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
 import {
+  eventListLabel,
   isErrorEvent,
   matchesSearch,
   type WorkspaceView,
   workspaceForItem,
 } from "@/lib/workspace.ts";
-import { eventKind, feedbackData, text } from "@/lib/inspection.ts";
 import { useLocalWorkspaceRoute } from "@/routes/local-workspace-context.ts";
 
 type EventEntryProps = {
@@ -120,20 +122,6 @@ const SCOPED_SESSION_STREAM_PATH_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 function isScopedSessionStream(pathname: string): boolean {
   return SCOPED_SESSION_STREAM_PATH_RE.test(pathname);
-}
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]): string {
-  if (timestamp === undefined) {
-    return "unknown time";
-  }
-  const milliseconds =
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp;
-  const date = new Date(milliseconds);
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
 }
 
 function formatDuration(durationMs: number | undefined): string | undefined {
@@ -206,11 +194,6 @@ function shortLabel(title: string): string {
     : title;
 }
 
-function feedbackMessage(payload: unknown): string | undefined {
-  const feedback = feedbackData(payload);
-  return text(feedback.message) ?? text(feedback.comments);
-}
-
 function EventEntry({
   item,
   isSelected,
@@ -221,27 +204,13 @@ function EventEntry({
   const metadata = getMetadata(item);
   const duration = formatDuration(metadata.durationMs);
   const isError = isErrorEvent(item);
-  const typeLabel =
-    item.type === "event"
-      ? eventKind(item.payload)
-      : (metadata.method ??
-        (item.type === "transaction"
-          ? "Request"
-          : item.type === "log"
-            ? "Log"
-            : (metadata.operation ?? item.type)));
-  const title =
-    item.type === "event"
-      ? metadata.title
-      : item.type === "feedback" || item.type === "user_report"
-        ? (feedbackMessage(item.payload) ?? metadata.title)
-        : (metadata.route ?? metadata.title);
+  const label = eventListLabel(item);
 
   return (
     <li>
       <button
         type="button"
-        aria-label={`View ${item.type.replaceAll("_", " ")}: ${shortLabel(title)}`}
+        aria-label={`View ${item.type.replaceAll("_", " ")}: ${shortLabel(label.title)}`}
         aria-current={isSelected ? "true" : undefined}
         className={`flex w-full cursor-pointer items-center justify-between gap-3 px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
           isSelected ? "bg-muted text-foreground" : "hover:bg-muted/60"
@@ -252,11 +221,11 @@ function EventEntry({
           <div className="flex min-w-0 items-center gap-2">
             {showTypeBadge && columns.includes("type") ? (
               <Badge variant={isError ? "destructive" : "default"}>
-                {typeLabel}
+                {label.badge}
               </Badge>
             ) : null}
             <span className="line-clamp-2 min-w-0 break-words text-sm [overflow-wrap:anywhere]">
-              {title}
+              {label.title}
             </span>
           </div>
           <div className="flex min-w-0 items-center gap-2 font-mono text-xs tabular-nums text-muted-foreground">
@@ -919,28 +888,41 @@ export default function App() {
         return;
       }
       setIsViewCleared(false);
-      setLatestEventTime(Date.now());
       const messageEvent = event as MessageEvent<string>;
       const eventId =
         messageEvent.lastEventId || `event-${fallbackEventId.current++}`;
-      const rawEnvelope: LocalFeedItem = {
-        id: eventId,
-        type: "envelope",
-        timestamp: Date.now(),
-        text: messageEvent.data,
-        payload: messageEvent.data,
-        metadata: { title: `Envelope ${eventId.slice(-8)}` },
-      };
+      let items: LocalFeedItem[] | undefined;
       try {
-        telemetryStore.recordEnvelope(
-          rawEnvelope,
-          decodeEnvelope(messageEvent.data, eventId),
-        );
-        setMessage(undefined);
+        items = decodeEnvelope(messageEvent.data, eventId);
       } catch {
-        telemetryStore.recordEnvelope(rawEnvelope, []);
-        setMessage("Received an event that could not be decoded.");
+        // Undecodable envelopes stay inspectable as raw text.
       }
+      // Replayed history must keep its receive time, not the time it loaded.
+      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
+      const receivedAt =
+        envelopeReceivedAt(eventId) ??
+        (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
+      const itemTypes = [...new Set(items?.map((item) => item.type))];
+      setLatestEventTime((latest) =>
+        latest === undefined ? receivedAt : Math.max(latest, receivedAt),
+      );
+      telemetryStore.recordEnvelope(
+        {
+          id: eventId,
+          type: "envelope",
+          timestamp: receivedAt,
+          text: messageEvent.data,
+          payload: messageEvent.data,
+          metadata: {
+            title: `Envelope ${eventId.slice(-8)}${itemTypes.length ? ` · ${itemTypes.join(", ")}` : ""}`,
+          },
+        },
+        items ?? [],
+      );
+      setMessage(
+        items ? undefined : "Received an event that could not be decoded.",
+      );
     };
 
     source.addEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);

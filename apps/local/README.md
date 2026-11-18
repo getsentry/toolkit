@@ -90,7 +90,9 @@ receiver's envelope retention limit when replaying a large corpus.
 
 Use severity/logger filters and sorting in event/log views. The Columns control
 chooses which metadata appears beside each message. In a trace, search spans,
-show only matches, collapse branches, or adjust the tree width.
+show only matches, collapse branches, or adjust the tree width. Logs that share
+a trace ID without any spans, such as server startup logs, are marked
+**Logs only** and listed after traces with spans.
 
 ## Tests
 
