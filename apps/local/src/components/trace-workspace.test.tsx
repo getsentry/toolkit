@@ -257,4 +257,10 @@ test("returning from a sampled function keeps its row shown and focused", () => 
   expect((document.activeElement as HTMLElement | null)?.dataset.spanId).toBe(
     id,
   );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide sampled functions" }),
+  );
+  expect(
+    screen.queryAllByRole("button", { name: "Inspect span work" }),
+  ).toHaveLength(0);
 });

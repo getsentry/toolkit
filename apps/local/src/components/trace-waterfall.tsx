@@ -10,7 +10,7 @@ type TraceWaterfallProps = {
   compact?: boolean;
   trace: TraceGroup;
   selectedSpanId?: string;
-  /** A span whose sampled rows start unfolded, such as the last one inspected. */
+  /** A span whose sampled rows start shown, such as the last one inspected. */
   revealSpanId?: string;
   onSelectSpan?: (spanId: string) => void;
 };
@@ -280,10 +280,16 @@ export function TraceWaterfall({
   const [query, setQuery] = useState("");
   const [onlyMatches, setOnlyMatches] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  // Sampled profile rows stay folded under their captured span until shown.
-  const [shownSamples, setShownSamples] = useState<Set<string>>(new Set());
-  const [treeWidth, setTreeWidth] = useState(40);
   const allSpans = useMemo(() => flattenSpans(trace.roots), [trace]);
+  // Sampled profile rows stay folded under their captured span until shown.
+  // A selected or revealed sampled row starts with its siblings shown.
+  const [shownSamples, setShownSamples] = useState<Set<string>>(() => {
+    const owner = allSpans.find(
+      ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
+    )?.owner;
+    return new Set(owner ? [owner] : []);
+  });
+  const [treeWidth, setTreeWidth] = useState(40);
   const sampleCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const { owner } of allSpans)
@@ -349,12 +355,9 @@ export function TraceWaterfall({
     );
   }
 
-  // Search and a selected or revealed sampled row show samples too.
-  const revealedOwner = allSpans.find(
-    ({ span }) => span.id === (revealSpanId ?? selectedSpanId),
-  )?.owner;
+  // Search shows every sampled row so matches are not hidden.
   const samplesVisible = (owner: string) =>
-    Boolean(query.trim()) || owner === revealedOwner || shownSamples.has(owner);
+    Boolean(query.trim()) || shownSamples.has(owner);
   const spans: PositionedSpan[] = [];
   let hiddenBelow: number | undefined;
   for (const entry of allSpans) {
