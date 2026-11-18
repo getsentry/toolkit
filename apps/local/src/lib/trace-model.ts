@@ -5,6 +5,7 @@ import {
 } from "./spotlight.js";
 import { isErrorEvent } from "./workspace.js";
 import { addProfileSpans, profileSources } from "./profile-spans.ts";
+import { spanData } from "./inspection.ts";
 
 export type TraceSpan = {
   sampled?: boolean;
@@ -86,12 +87,14 @@ function getPayloadSpan(
     getTimestamp(item.timestamp);
   const operation = getString(trace.op) ?? item.metadata?.operation;
   const title = item.metadata?.title?.trim();
-  const description =
+  const description = withCapturedUrl(
     getString(event.transaction) ??
-    (title && title !== item.type ? title : undefined) ??
-    item.metadata?.route ??
-    operation ??
-    item.type;
+      (title && title !== item.type ? title : undefined) ??
+      item.metadata?.route ??
+      operation ??
+      item.type,
+    payload,
+  );
 
   return {
     id,
@@ -107,6 +110,29 @@ function getPayloadSpan(
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
   };
+}
+
+/**
+ * Browser resource and fetch spans can be named by host only
+ * ("localhost", "GET localhost"), with the resource in `url.full`
+ * (span v2 attributes or transaction span data).
+ * Label them with the URL's origin and path so rows can be told apart,
+ * grouped and searched. The query (cache busters, tokens) and fragment
+ * stay in the span's attributes.
+ */
+function withCapturedUrl(description: string, payload: unknown): string {
+  const url = getString(spanData(payload)["url.full"]);
+  if (!url) return description;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return description;
+  }
+  const [, method = "", target] = description.match(/^([A-Z]+ )?(.*)$/)!;
+  return target === parsed.hostname || target === parsed.host
+    ? `${method}${parsed.origin}${parsed.pathname}`
+    : description;
 }
 
 function defined(value: Record<string, unknown>): Record<string, unknown> {
@@ -136,7 +162,9 @@ function mergeSpan(
       payload.description,
       payload.name,
     ].some(
-      (value) => typeof value === "string" && value.trim() === description,
+      (value) =>
+        typeof value === "string" &&
+        withCapturedUrl(value.trim(), span.payload) === description,
     );
     return named ? (captured ? 4 : 2) : 0;
   };
@@ -222,7 +250,10 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         id,
         parentId: getString(value.parent_span_id),
         operation,
-        description: getString(value.description) ?? operation ?? id,
+        description: withCapturedUrl(
+          getString(value.description) ?? operation ?? id,
+          value,
+        ),
         startTimestamp,
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),

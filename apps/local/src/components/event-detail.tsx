@@ -2,7 +2,13 @@ import { envelopeAttachments, eventAttachments } from "@/lib/attachments.ts";
 import { EventContext, FeedbackInspector } from "./event-context.tsx";
 import { AiInspector } from "./ai-inspector.tsx";
 import { AttachmentDetail, AttachmentList } from "./attachment-detail.tsx";
-import { errorMarkdown, inspectAi, hasEventContext } from "@/lib/inspection.ts";
+import {
+  errorMarkdown,
+  eventKind,
+  eventSummaryFields,
+  inspectAi,
+  hasEventContext,
+} from "@/lib/inspection.ts";
 import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { useId, useState, useMemo } from "react";
@@ -146,6 +152,7 @@ export function EventDetail({
     ...(item.type === "log" && metadata.level
       ? [{ label: "Level", value: metadata.level }]
       : []),
+    ...(item.type === "event" ? eventSummaryFields(item.payload) : []),
     ...(metadata.statusCode === undefined
       ? []
       : [{ label: "Status", value: String(metadata.statusCode) }]),
@@ -199,7 +206,9 @@ export function EventDetail({
           <Badge>
             {item.type === "envelope"
               ? "Envelope"
-              : (metadata.operation ?? item.type)}
+              : item.type === "event"
+                ? eventKind(item.payload)
+                : (metadata.operation ?? item.type)}
           </Badge>
           <h2 className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium">
             {item.type === "envelope" ? "Raw envelope" : metadata.title}

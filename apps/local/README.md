@@ -54,7 +54,8 @@ receiver's envelope retention limit when replaying a large corpus.
 ## Investigation views
 
 - Errors include exception causes, captured source lines and local variables,
-  breadcrumbs, request/context data, tags, modules, VS Code links for absolute
+  level, handled state, environment, release, server name, user, breadcrumbs,
+  request/context data, tags, modules, VS Code links for absolute
   local paths, a copyable Markdown summary for AI assistants, and the
   attachments the SDK sent for the event (collapsed until previewed).
 - AI inspection reads standard `gen_ai.*` and Vercel AI fields from both embedded
@@ -65,7 +66,9 @@ receiver's envelope retention limit when replaying a large corpus.
   with its finish reason. Empty or malformed aliases do not hide usable content.
 - Queries and resources group exact operation/description pairs. Sort by count,
   duration or captured resource size and open an execution in its trace.
-- Web Vitals groups visits by page and shows individual captured measurements.
+  Browser spans named only by host use the origin and path from `url.full`.
+- Web Vitals groups visits by page and shows individual captured measurements,
+  from pageload transaction measurements or span v2 pageload attributes.
   LCP, INP, CLS, FCP and TTFB use the [Web Vitals thresholds](https://web.dev/articles/vitals);
   FID is labelled as a legacy metric. Local samples are not field percentiles.
 - Profiles support Sentry sample/stack/frame payloads in legacy `profile` items

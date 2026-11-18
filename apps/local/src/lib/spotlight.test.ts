@@ -476,6 +476,32 @@ describe("decodeEnvelope", () => {
     expect(banner?.text).toContain("\\u001b[31m");
   });
 
+  test("strips terminal colour codes from logentry titles", () => {
+    // sentry-python's logging integration sends werkzeug's coloured line as `logentry`.
+    const access =
+      '127.0.0.1 - - [17/Nov/2026 20:59:55] "\u001b[33mGET /missing HTTP/1.1\u001b[0m" 404 -';
+    const [event] = decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "event" },
+            {
+              level: "warning",
+              logger: "werkzeug",
+              logentry: { message: "%s", params: [access], formatted: access },
+            },
+          ],
+        ],
+      ]),
+      "event",
+    );
+    expect(event?.metadata?.title).toBe(
+      '127.0.0.1 - - [17/Nov/2026 20:59:55] "GET /missing HTTP/1.1" 404 -',
+    );
+    expect(event?.metadata?.message).toBe(event?.metadata?.title);
+  });
+
   test("dates and names a sentry-python sessions aggregate", () => {
     const [sessions] = decodeEnvelope(sessionsAggregateEnvelope, "sessions");
     expect(sessions).toMatchObject({
