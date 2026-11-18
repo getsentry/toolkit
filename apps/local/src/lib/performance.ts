@@ -112,15 +112,19 @@ function streamedVitalVisits(
 ) {
   const visits = new Map<
     string,
-    { name?: string; item?: LocalFeedItem; metrics: VitalVisit["metrics"] }
+    {
+      name?: string | undefined;
+      item?: LocalFeedItem | undefined;
+      metrics: VitalVisit["metrics"];
+    }
   >();
   for (const item of items) {
     if (item.type !== "span") continue;
     const p = record(item.payload),
       data = spanData(p);
-    const segment = p.is_segment === true;
+    const segment = p["is_segment"] === true;
     const pageloadId = segment
-      ? text(p.span_id)
+      ? text(p["span_id"])
       : (text(data["sentry.pageload.span_id"]) ??
         text(data["sentry.segment.id"]));
     if (!pageloadId) continue;
@@ -141,7 +145,7 @@ function streamedVitalVisits(
           ? text(data["url.path"])
           : undefined) ??
         text(data["sentry.segment.name"]) ??
-        text(p.name);
+        text(p["name"]);
     }
     visits.set(pageloadId, visit);
   }
@@ -156,18 +160,18 @@ export function webVitalPages(items: readonly LocalFeedItem[]): VitalPage[] {
   const pages = new Map<string, VitalPage>();
   for (const item of items) {
     const p = record(item.payload),
-      measurements = record(p.measurements);
+      measurements = record(p["measurements"]);
     if (item.type !== "transaction" || !Object.keys(measurements).length)
       continue;
     const metrics: VitalVisit["metrics"] = {};
     for (const name of Object.keys(VITALS) as VitalName[]) {
       const metric = record(measurements[name]),
-        value = finite(metric.value);
+        value = finite(metric["value"]);
       if (value === undefined || value < 0) continue;
       // SDK measurements normally use milliseconds; honor seconds when explicitly supplied.
       metrics[name] = rateVital(
         name,
-        VITALS[name].unit === "ms" && metric.unit === "second"
+        VITALS[name].unit === "ms" && metric["unit"] === "second"
           ? value * 1000
           : value,
       );
@@ -175,7 +179,7 @@ export function webVitalPages(items: readonly LocalFeedItem[]): VitalPage[] {
     if (!Object.keys(metrics).length) continue;
     addVisit(
       pages,
-      text(p.transaction) ?? item.metadata?.route ?? "Unknown page",
+      text(p["transaction"]) ?? item.metadata?.route ?? "Unknown page",
       { item, metrics },
     );
   }

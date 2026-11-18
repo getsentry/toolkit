@@ -59,11 +59,8 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       stdio: ["pipe", "ignore", "ignore"],
     });
 
-    const { stdin } = proc;
-    if (stdin) {
-      stdin.write(text);
-      stdin.end();
-    }
+    proc.stdin.write(text);
+    proc.stdin.end();
 
     const exitCode = await new Promise<number>((resolve) => {
       proc.on("close", (code) => resolve(code ?? 1));
@@ -101,15 +98,18 @@ export function setupCopyKeyListener(
 
   let active = true;
 
-  const onData = async (data: Buffer) => {
+  const copyText = async () => {
+    const copied = await copyToClipboard(getText());
+    if (copied && active) {
+      log.success("Copied!");
+    }
+  };
+
+  const onData = (data: Buffer) => {
     const key = data.toString();
 
     if (key === "c" || key === "C") {
-      const text = getText();
-      const copied = await copyToClipboard(text);
-      if (copied && active) {
-        log.success("Copied!");
-      }
+      void copyText();
     }
 
     if (key === CTRL_C) {

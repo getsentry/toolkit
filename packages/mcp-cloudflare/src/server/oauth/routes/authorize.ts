@@ -42,7 +42,8 @@ interface AuthRequestWithSkills extends AuthRequest {
 async function redirectToUpstream(
   env: Env,
   request: Request,
-  oauthReqInfo: AuthRequest | AuthRequestWithSkills,
+  // Only serialized into the upstream state when no override is given.
+  oauthReqInfo: object,
   headers: HeadersInit = {},
   stateOverride?: string,
   forcePrompt = false,
@@ -180,7 +181,7 @@ export default new Hono<{ Bindings: Env }>()
       if (oauthReqInfo.redirectUri) {
         return createResourceValidationError(
           oauthReqInfo.redirectUri,
-          oauthReqInfo.state ?? undefined,
+          oauthReqInfo.state,
           c.req.url,
         );
       }
@@ -278,10 +279,6 @@ export default new Hono<{ Bindings: Env }>()
 
     const { state, headers, skills, decision } = result;
 
-    if (!state.oauthReqInfo) {
-      return c.text("Invalid request", 400);
-    }
-
     // Store the selected skills in the OAuth request info
     // This will be passed through to the callback via the state parameter
     const oauthReqWithSkills = {
@@ -336,7 +333,7 @@ export default new Hono<{ Bindings: Env }>()
         oauthReqWithSkills.redirectUri,
         "access_denied",
         "The user denied the authorization request",
-        oauthReqWithSkills.state ?? undefined,
+        oauthReqWithSkills.state,
         getAuthorizationServerIssuer(c.req.url),
       );
     }

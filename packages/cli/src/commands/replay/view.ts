@@ -100,7 +100,7 @@ export type ReplayArgumentsInput = {
   readonly replayId: string;
   readonly target: ParsedOrgProject;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   /** Warnings to log, such as for reversed arguments */
   readonly warnings: readonly string[];
 };
@@ -152,8 +152,8 @@ export function replayArguments(
 
 type ReplayProjectScope = {
   org: string;
-  project?: string;
-  expectedProjectId?: string;
+  project?: string | undefined;
+  expectedProjectId?: string | undefined;
   replayId: string;
   replay: ReplayDetails;
   /** Subcommand named in the error's usage hint. */

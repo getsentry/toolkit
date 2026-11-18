@@ -23,7 +23,7 @@ import {
   ENV_FILES,
   extractDsnFromEnvContent,
 } from "../../../src/lib/dsn/env-file.js";
-import { cleanupTestDir, createTestConfigDir } from "../../helpers.js";
+import { cleanupTestDir, createTestConfigDir, at } from "../../helpers.js";
 
 // ============================================================================
 // Arbitraries for Property-Based Testing
@@ -388,8 +388,8 @@ describe("integration: file-based detection", () => {
 
       const result = await detectFromMonorepoEnvFiles(testDir);
       expect(result.dsns).toHaveLength(1);
-      expect(result.dsns[0].raw).toBe("https://frontend@sentry.io/1");
-      expect(result.dsns[0].packagePath).toBe("packages/frontend");
+      expect(at(result.dsns, 0).raw).toBe("https://frontend@sentry.io/1");
+      expect(at(result.dsns, 0).packagePath).toBe("packages/frontend");
     });
 
     test("detects DSN in apps/ subdirectory", async () => {
@@ -399,8 +399,8 @@ describe("integration: file-based detection", () => {
 
       const result = await detectFromMonorepoEnvFiles(testDir);
       expect(result.dsns).toHaveLength(1);
-      expect(result.dsns[0].raw).toBe("https://web@sentry.io/2");
-      expect(result.dsns[0].packagePath).toBe("apps/web");
+      expect(at(result.dsns, 0).raw).toBe("https://web@sentry.io/2");
+      expect(at(result.dsns, 0).packagePath).toBe("apps/web");
     });
 
     test("detects DSNs from multiple monorepo packages", async () => {
@@ -436,7 +436,7 @@ describe("integration: file-based detection", () => {
 
       const result = await detectFromMonorepoEnvFiles(testDir);
       expect(result.dsns).toHaveLength(1);
-      expect(result.dsns[0].packagePath).toBe("packages/with-dsn");
+      expect(at(result.dsns, 0).packagePath).toBe("packages/with-dsn");
     });
 
     test("ignores files in monorepo root (only scans subdirs)", async () => {

@@ -78,8 +78,10 @@ function findArraysWithoutItemSchema(
   }
 
   const record = schema as Record<string, unknown>;
-  const types = Array.isArray(record.type) ? record.type : [record.type];
-  const items = record.items;
+  const types = Array.isArray(record["type"])
+    ? record["type"]
+    : [record["type"]];
+  const items = record["items"];
   const violations =
     types.includes("array") &&
     (!items || typeof items !== "object" || Array.isArray(items))

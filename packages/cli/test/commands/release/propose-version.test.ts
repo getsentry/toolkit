@@ -2,17 +2,26 @@
  * Release Propose-Version Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { proposeVersionCommand } from "../../../src/commands/release/propose-version.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as git from "../../../src/lib/git.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-propose-version-");
 
 function createMockContext(cwd = "/tmp", env: Record<string, string> = {}) {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -26,7 +35,7 @@ function createMockContext(cwd = "/tmp", env: Record<string, string> = {}) {
 }
 
 describe("release propose-version", () => {
-  let getHeadCommitSpy: ReturnType<typeof spyOn>;
+  let getHeadCommitSpy: MockInstance<(typeof git)["getHeadCommit"]>;
 
   beforeEach(() => {
     getHeadCommitSpy = vi.spyOn(git, "getHeadCommit");
@@ -42,7 +51,7 @@ describe("release propose-version", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -56,7 +65,7 @@ describe("release propose-version", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: false });
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -67,7 +76,7 @@ describe("release propose-version", () => {
     getHeadCommitSpy.mockReturnValue("deadbeef");
 
     const { context } = createMockContext("/my/project");
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     expect(getHeadCommitSpy).toHaveBeenCalledWith("/my/project");
@@ -79,7 +88,7 @@ describe("release propose-version", () => {
     });
 
     const { context } = createMockContext();
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Not a git repository",
@@ -90,7 +99,7 @@ describe("release propose-version", () => {
     const { context, stdoutWrite } = createMockContext("/tmp", {
       SENTRY_RELEASE: "my-release-1.0",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // Should NOT call getHeadCommit
@@ -105,7 +114,7 @@ describe("release propose-version", () => {
       CIRCLE_SHA1: "circle-sha",
       SOURCE_VERSION: "heroku-version",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // SOURCE_VERSION has higher priority than CIRCLE_SHA1
@@ -121,7 +130,7 @@ describe("release propose-version", () => {
       SENTRY_RELEASE: "",
       SOURCE_VERSION: "  ",
     });
-    const func = await proposeVersionCommand.loader();
+    const func = await loadCommand(proposeVersionCommand);
     await func.call(context, { json: true });
 
     // Empty/whitespace env vars are skipped, falls through to git

@@ -8,33 +8,33 @@ import {
 } from "./openrouter-provider.js";
 
 describe("openrouter-provider", () => {
-  const originalApiKey = process.env.OPENROUTER_API_KEY;
-  const originalModel = process.env.OPENROUTER_MODEL;
-  const originalReasoningEffort = process.env.OPENROUTER_REASONING_EFFORT;
+  const originalApiKey = process.env["OPENROUTER_API_KEY"];
+  const originalModel = process.env["OPENROUTER_MODEL"];
+  const originalReasoningEffort = process.env["OPENROUTER_REASONING_EFFORT"];
 
   beforeEach(() => {
-    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
-    delete process.env.OPENROUTER_MODEL;
-    delete process.env.OPENROUTER_REASONING_EFFORT;
+    process.env["OPENROUTER_API_KEY"] = "test-openrouter-key";
+    delete process.env["OPENROUTER_MODEL"];
+    delete process.env["OPENROUTER_REASONING_EFFORT"];
   });
 
   afterEach(() => {
     if (originalApiKey === undefined) {
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env["OPENROUTER_API_KEY"];
     } else {
-      process.env.OPENROUTER_API_KEY = originalApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalApiKey;
     }
 
     if (originalModel === undefined) {
-      delete process.env.OPENROUTER_MODEL;
+      delete process.env["OPENROUTER_MODEL"];
     } else {
-      process.env.OPENROUTER_MODEL = originalModel;
+      process.env["OPENROUTER_MODEL"] = originalModel;
     }
 
     if (originalReasoningEffort === undefined) {
-      delete process.env.OPENROUTER_REASONING_EFFORT;
+      delete process.env["OPENROUTER_REASONING_EFFORT"];
     } else {
-      process.env.OPENROUTER_REASONING_EFFORT = originalReasoningEffort;
+      process.env["OPENROUTER_REASONING_EFFORT"] = originalReasoningEffort;
     }
 
     vi.unstubAllGlobals();
@@ -89,7 +89,7 @@ describe("openrouter-provider", () => {
       "openai/gpt-5.6-luna",
     );
 
-    process.env.OPENROUTER_MODEL = "anthropic/claude-sonnet-4";
+    process.env["OPENROUTER_MODEL"] = "anthropic/claude-sonnet-4";
 
     expect((getOpenRouterModel() as LanguageModelV3).modelId).toBe(
       "anthropic/claude-sonnet-4",
@@ -108,7 +108,7 @@ describe("openrouter-provider", () => {
       },
     });
 
-    process.env.OPENROUTER_REASONING_EFFORT = "low";
+    process.env["OPENROUTER_REASONING_EFFORT"] = "low";
 
     expect(getOpenRouterProviderOptions()).toEqual({
       openai: {
@@ -118,7 +118,7 @@ describe("openrouter-provider", () => {
       },
     });
 
-    process.env.OPENROUTER_REASONING_EFFORT = "";
+    process.env["OPENROUTER_REASONING_EFFORT"] = "";
 
     expect(getOpenRouterProviderOptions()).toEqual({
       openai: {
@@ -129,7 +129,7 @@ describe("openrouter-provider", () => {
   });
 
   it("maps max to xhigh and rejects unknown reasoning effort", () => {
-    process.env.OPENROUTER_REASONING_EFFORT = "max";
+    process.env["OPENROUTER_REASONING_EFFORT"] = "max";
 
     expect(getOpenRouterProviderOptions()).toEqual({
       openai: {
@@ -139,7 +139,7 @@ describe("openrouter-provider", () => {
       },
     });
 
-    process.env.OPENROUTER_REASONING_EFFORT = "ludicrous";
+    process.env["OPENROUTER_REASONING_EFFORT"] = "ludicrous";
 
     expect(() => getOpenRouterProviderOptions()).toThrow(ConfigurationError);
     expect(() => getOpenRouterProviderOptions()).toThrow(
@@ -147,7 +147,8 @@ describe("openrouter-provider", () => {
     );
 
     // Prototype keys must not bypass validation via inherited Object props.
-    process.env.OPENROUTER_REASONING_EFFORT = "constructor";
+    // Prototype keys must not bypass validation via inherited Object props.
+    process.env["OPENROUTER_REASONING_EFFORT"] = "constructor";
 
     expect(() => getOpenRouterProviderOptions()).toThrow(ConfigurationError);
   });

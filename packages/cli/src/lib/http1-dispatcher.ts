@@ -19,6 +19,8 @@
  * off what is already off.
  */
 
+import type { Dispatcher } from "undici-types";
+
 import { logger } from "./logger.js";
 
 const log = logger.withTag("http");
@@ -26,8 +28,14 @@ const log = logger.withTag("http");
 /** undici's global dispatcher symbol, set by Node 24 (undici 7) and Node 26 (undici 8). */
 const GLOBAL_DISPATCHER_V2 = Symbol.for("undici.globalDispatcher.2");
 
-/** An undici dispatcher, as `fetch` accepts it. */
-export type Http1Dispatcher = NonNullable<RequestInit["dispatcher"]>;
+/** An undici dispatcher, as Node's `fetch` accepts it. */
+export type Http1Dispatcher = Dispatcher;
+
+/**
+ * Node's `fetch` options. lib DOM's `RequestInit`, which replaces Node's in
+ * programs that load both, lacks undici's `dispatcher`.
+ */
+export type NodeRequestInit = RequestInit & { dispatcher?: Dispatcher };
 
 type DispatcherClass = new (options: { allowH2: false }) => Http1Dispatcher;
 

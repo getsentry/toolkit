@@ -248,7 +248,7 @@ function hasBareApiPrefix(endpoint: string): boolean {
 
 function resolveApiTarget(endpoint: string): {
   normalizedEndpoint: string;
-  requestBaseUrl?: string;
+  requestBaseUrl?: string | undefined;
   strippedApiPrefix: boolean;
 } {
   const cleaned = endpoint.replace(LINE_BREAK_PATTERN, "").trim();
@@ -773,7 +773,7 @@ export function prepareRequestOptions(
   typedFields?: string[],
   rawFields?: string[],
 ): {
-  body?: Record<string, unknown>;
+  body?: Record<string, unknown> | undefined;
   params?: Record<string, string | string[]>;
 } {
   const hasTypedFields = typedFields && typedFields.length > 0;
@@ -880,7 +880,7 @@ function parseUrlEncodedParams(
  * @internal Exported for testing
  */
 export function dataToQueryParams(
-  data: Record<string, unknown> | unknown[] | string,
+  data: unknown,
 ): Record<string, string | string[]> {
   if (typeof data === "string") {
     return parseUrlEncodedParams(data);
@@ -951,8 +951,8 @@ function tryParseJsonField(
  * @internal Exported for testing
  */
 export function extractJsonBody(fields: string[] | undefined): {
-  body?: Record<string, unknown> | unknown[];
-  remaining?: string[];
+  body?: Record<string, unknown> | unknown[] | undefined;
+  remaining?: string[] | undefined;
 } {
   if (!fields || fields.length === 0) {
     return {};
@@ -1334,8 +1334,8 @@ export function buildFromFields(
   method: HttpMethod,
   flags: Pick<ApiFlags, "field" | "raw-field">,
 ): {
-  body?: Record<string, unknown> | unknown[];
-  params?: Record<string, string | string[]>;
+  body?: Record<string, unknown> | unknown[] | undefined;
+  params?: Record<string, string | string[]> | undefined;
 } {
   const field = normalizeFields(flags.field);
   let rawField = normalizeFields(flags["raw-field"]);
@@ -1399,8 +1399,8 @@ export async function resolveBody(
   flags: Pick<ApiFlags, "method" | "data" | "input" | "field" | "raw-field">,
   stdin: NodeJS.ReadStream & { fd: 0 },
 ): Promise<{
-  body?: Record<string, unknown> | unknown[] | string;
-  params?: Record<string, string | string[]>;
+  body?: Record<string, unknown> | unknown[] | string | undefined;
+  params?: Record<string, string | string[]> | undefined;
 }> {
   if (flags.data !== undefined && flags.input !== undefined) {
     throw new ValidationError(
@@ -1865,8 +1865,10 @@ export const apiCommand = buildCommand({
         );
         response.body = envelope ? { ...envelope, data: page.data } : page.data;
         pagination = {
-          nextCursor: page.nextCursor,
-          prevCursor: pagination.prevCursor,
+          ...(page.nextCursor !== undefined && { nextCursor: page.nextCursor }),
+          ...(pagination.prevCursor !== undefined && {
+            prevCursor: pagination.prevCursor,
+          }),
         };
       } else if (navigation.position.skip > 0) {
         throw new ValidationError(

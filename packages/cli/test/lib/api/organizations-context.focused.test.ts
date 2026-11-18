@@ -129,7 +129,7 @@ describe("organization discovery credential context", () => {
   });
 
   test("keeps organization pages pinned through rotating OAuth refresh tokens", async () => {
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
     setAuthToken("initial-access", 3600, "initial-refresh", {
       host: "https://sentry.io",
     });
@@ -360,7 +360,7 @@ describe("organization discovery credential context", () => {
   });
 
   test("keeps the installation path when organization metadata omits regionUrl", async () => {
-    process.env.SENTRY_URL = "https://sentry.example.com/sentry";
+    process.env["SENTRY_URL"] = "https://sentry.example.com/sentry";
     setAuthToken("pathless-region-token", undefined, undefined, {
       host: "https://sentry.example.com",
     });

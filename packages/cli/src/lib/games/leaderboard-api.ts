@@ -56,7 +56,7 @@ export type SnakeLeaderboard = {
  * server-controlled text never reaches the terminal.
  */
 export async function fetchSnakeLeaderboard(): Promise<SnakeLeaderboard> {
-  const baseUrl = getEnv().SENTRY_GAMES_API_URL || DEFAULT_GAMES_API_URL;
+  const baseUrl = getEnv()["SENTRY_GAMES_API_URL"] || DEFAULT_GAMES_API_URL;
   let response: Response;
   try {
     response = await customFetch(

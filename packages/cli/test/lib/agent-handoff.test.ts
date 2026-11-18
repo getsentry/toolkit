@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { exchangeAgentHandoff } from "../../src/lib/agent-handoff.js";
+import { at } from "../helpers.js";
 import { markPersistedDefaultUrl } from "../../src/lib/constants.js";
 import { formatError } from "../../src/lib/errors.js";
 import { setEnv } from "../../src/lib/env.js";
@@ -42,7 +43,8 @@ describe("agent handoff exchange", () => {
     await expect(exchangeAgentHandoff(handoffCode)).resolves.toMatchObject({
       organizationSlug: "example-org",
     });
-    const request = new Request(...fetch.mock.calls[0]);
+    const [input, init] = at(fetch.mock.calls, 0);
+    const request = new Request(input, init);
     expect(request.url).toBe("https://sentry.example.com/api/0/agent-handoff/");
     expect(request.method).toBe("POST");
     expect(request.headers.get("Content-Type")).toBe("application/json");
@@ -77,7 +79,8 @@ describe("agent handoff exchange", () => {
 
     await exchangeAgentHandoff(handoffCode);
 
-    const request = new Request(...fetch.mock.calls[0]);
+    const [input, init] = at(fetch.mock.calls, 0);
+    const request = new Request(input, init);
     expect(request.url).toBe("https://sentry.io/api/0/agent-handoff/");
     expect(request.headers.get("X-IAP-Token")).toBeNull();
   });

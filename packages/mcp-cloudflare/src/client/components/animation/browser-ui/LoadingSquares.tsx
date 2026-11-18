@@ -171,7 +171,8 @@ export default function LoadingSquares({
   }
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const start = () => {
       if (runningRef.current) return;
       setupGrid(canvas);

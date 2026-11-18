@@ -96,7 +96,7 @@ describe("worker entrypoint", () => {
   });
 
   it("returns restrictive preflight CORS for public metadata endpoints", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request(
         "https://mcp.sentry.dev/.well-known/oauth-protected-resource/mcp",
         { method: "OPTIONS" },
@@ -117,7 +117,7 @@ describe("worker entrypoint", () => {
   });
 
   it("does not expose root protected resource metadata", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request(
         "https://mcp.sentry.dev/.well-known/oauth-protected-resource",
       ),
@@ -131,7 +131,7 @@ describe("worker entrypoint", () => {
   });
 
   it("serves path-scoped protected resource metadata before the oauth provider", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request(
         "https://mcp.sentry.dev/.well-known/oauth-protected-resource/mcp/sentry/mcp-server?experimental=1",
       ),
@@ -169,7 +169,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/token"),
       env,
       ctx,
@@ -186,7 +186,7 @@ describe("worker entrypoint", () => {
   it("enables Client ID Metadata Documents on the oauth provider", async () => {
     mockOAuthProviderFetch.mockResolvedValueOnce(new Response("ok"));
 
-    await handler.fetch!(
+    await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/token"),
       env,
       ctx,
@@ -216,7 +216,7 @@ describe("worker entrypoint", () => {
       ),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request(
         "https://mcp.sentry.dev/.well-known/oauth-authorization-server",
       ),
@@ -243,7 +243,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/token"),
       env,
       ctx,
@@ -264,7 +264,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp"),
       env,
       ctx,
@@ -280,7 +280,7 @@ describe("worker entrypoint", () => {
   it("passes tracked app responses through the default handler", async () => {
     mockOAuthProviderFetch.mockResolvedValueOnce(new Response("ok"));
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/api/chat", { method: "POST" }),
       env,
       ctx,
@@ -300,7 +300,7 @@ describe("worker entrypoint", () => {
       },
     });
 
-    const response = await handler.fetch!(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("ok");
@@ -314,7 +314,7 @@ describe("worker entrypoint", () => {
   });
 
   it("rejects malformed Sentry-Bearer MCP authorization without OAuth", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp", {
         method: "POST",
         headers: {
@@ -333,7 +333,7 @@ describe("worker entrypoint", () => {
   });
 
   it("rejects Sentry-Bearer MCP authorization with extra credentials without OAuth", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp", {
         method: "POST",
         headers: {
@@ -358,7 +358,7 @@ describe("worker entrypoint", () => {
       errorMessage: "Rate limit exceeded. Please wait before trying again.",
     });
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/token", { method: "POST" }),
       env,
       ctx,
@@ -377,7 +377,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request(
         "https://mcp.sentry.dev/mcp/sentry/mcp-server?experimental=1",
       ),
@@ -403,7 +403,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp?utm_source=plugin"),
       env,
       ctx,
@@ -425,7 +425,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp/sentry"),
       env,
       ctx,
@@ -452,7 +452,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp"),
       env,
       ctx,
@@ -478,7 +478,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp"),
       env,
       ctx,
@@ -493,7 +493,7 @@ describe("worker entrypoint", () => {
   });
 
   it("rejects client registration with a userinfo-spoofed redirect URI", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -507,7 +507,9 @@ describe("worker entrypoint", () => {
     );
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("invalid_redirect_uri");
+    expect(await response.json()).toMatchObject({
+      error: "invalid_redirect_uri",
+    });
     expect(mockOAuthProviderFetch).not.toHaveBeenCalled();
   });
 
@@ -519,7 +521,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/oauth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -547,7 +549,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp"),
       env,
       ctx,
@@ -572,7 +574,7 @@ describe("worker entrypoint", () => {
       }),
     );
 
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       new Request("https://mcp.sentry.dev/mcp", {
         method: "POST",
         headers: {

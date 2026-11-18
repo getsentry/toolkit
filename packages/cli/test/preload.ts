@@ -8,7 +8,7 @@
 // Polyfill `self` for Node.js — web worker code (e.g., grep-worker.js) references
 // `self.onmessage` which exists in Bun and browsers but not in Node.
 if (typeof globalThis.self === "undefined") {
-  (globalThis as Record<string, unknown>).self = globalThis;
+  (globalThis as Record<string, unknown>)["self"] = globalThis;
 }
 
 import {
@@ -86,29 +86,37 @@ mkdirSync(testDir, { recursive: true });
 
 // Override config directory for all tests
 // Note: This must match CONFIG_DIR_ENV_VAR from src/lib/config.ts
-process.env.SENTRY_CONFIG_DIR = testDir;
+// Override config directory for all tests
+// Note: This must match CONFIG_DIR_ENV_VAR from src/lib/config.ts
+process.env["SENTRY_CONFIG_DIR"] = testDir;
 
 // Clear Sentry environment variables to ensure clean state
 // (but preserve SENTRY_TEST_* vars for E2E tests)
-delete process.env.SENTRY_DSN;
-delete process.env.SENTRY_AUTH_TOKEN;
-delete process.env.SENTRY_TOKEN;
-delete process.env.SENTRY_CLIENT_ID;
-delete process.env.SENTRY_URL;
-delete process.env.SENTRY_HOST;
-delete process.env.SENTRY_ORG;
-delete process.env.SENTRY_PROJECT;
+delete process.env["SENTRY_DSN"];
+delete process.env["SENTRY_AUTH_TOKEN"];
+delete process.env["SENTRY_TOKEN"];
+delete process.env["SENTRY_CLIENT_ID"];
+delete process.env["SENTRY_URL"];
+delete process.env["SENTRY_HOST"];
+delete process.env["SENTRY_ORG"];
+delete process.env["SENTRY_PROJECT"];
 
 // Set a fake auth token so buildCommand's auth guard passes in tests.
 // Real API calls are blocked by the global fetch mock below.
 // Tests that specifically verify unauthenticated behavior (e.g., auth status)
 // mock getAuthConfig to return undefined.
-process.env.SENTRY_AUTH_TOKEN = "sntrys_test-token-for-unit-tests_000000";
+// Set a fake auth token so buildCommand's auth guard passes in tests.
+// Real API calls are blocked by the global fetch mock below.
+// Tests that specifically verify unauthenticated behavior (e.g., auth status)
+// mock getAuthConfig to return undefined.
+process.env["SENTRY_AUTH_TOKEN"] = "sntrys_test-token-for-unit-tests_000000";
 
 // Disable telemetry and background update checks in tests
 // This prevents Sentry SDK from keeping the process alive and making external calls
-process.env.SENTRY_CLI_NO_TELEMETRY = "1";
-process.env.SENTRY_CLI_NO_UPDATE_CHECK = "1";
+// Disable telemetry and background update checks in tests
+// This prevents Sentry SDK from keeping the process alive and making external calls
+process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
+process.env["SENTRY_CLI_NO_UPDATE_CHECK"] = "1";
 
 // Mock global fetch to prevent any external network calls in unit tests
 // Tests that need real fetch should restore it in their setup

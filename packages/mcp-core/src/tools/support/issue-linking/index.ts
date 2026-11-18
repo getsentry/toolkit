@@ -6,13 +6,13 @@ import type { AppIssueLinkParams } from "./app";
 import { inferAppSlug, linkAppIssue, unlinkAppIssue } from "./app";
 
 export type IssueLinkParams = AppIssueLinkParams & {
-  integrationId?: string;
+  integrationId?: string | undefined;
 };
 
 export type IssueLinkResult = {
   url: string;
   displayName?: string;
-  provider?: string;
+  provider?: string | undefined;
   status: "linked" | "already_linked" | "not_linked";
 };
 
@@ -85,7 +85,7 @@ function nativeIdentity(
       const match = path.match(
         /^\/([^/]+\/[^/]+)\/(issues|pull)\/(\d+)(?:\/(files|changes|commits|checks))?$/,
       );
-      if (!match || (match[2] === "issues" && match[4])) return undefined;
+      if (!match?.[1] || (match[2] === "issues" && match[4])) return undefined;
       return `${url.origin}/${match[1].toLowerCase()}#${match[3]}`;
     }
     case "gitlab": {
@@ -252,7 +252,8 @@ export async function linkExternalIssue(
   const { params, url } = validatedParams(input);
   if (params.appSlug) return await linkAppIssue(apiService, params);
   const candidates = await nativeCandidates(apiService, params, url);
-  if (!candidates.length) {
+  const [integration] = candidates;
+  if (!integration) {
     throw new UserInputError(
       "No active issue integration matches this URL. Use a supported issue or pull request URL, or provide appSlug for a Sentry App.",
     );
@@ -262,7 +263,6 @@ export async function linkExternalIssue(
       `Multiple installed issue integrations match this URL. Provide integrationId to select one: ${describeIntegrations(candidates)}.`,
     );
   }
-  const integration = candidates[0];
   const { issue, changed } = await apiService.linkNativeExternalIssue({
     ...params,
     integrationId: String(integration.id),

@@ -9,6 +9,7 @@ import { offtin, parsePatchHeader } from "binpatch";
 import { assert as fcAssert, integer, property, uint8Array } from "fast-check";
 import { describe, expect, test } from "vitest";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 describe("property: offtin", () => {
   test("magnitude is always non-negative", () => {
@@ -33,12 +34,12 @@ describe("property: offtin", () => {
       property(uint8Array({ minLength: 8, maxLength: 8 }), (buf) => {
         // Clear sign bit and read
         const cleared = new Uint8Array(buf);
-        cleared[7] %= 128; // Clear bit 7
+        cleared[7] = at(cleared, 7) % 128; // Clear bit 7
         const positive = offtin(cleared, 0);
 
         // Set sign bit and read
         const negated = new Uint8Array(buf);
-        negated[7] = (negated[7] % 128) + 128; // Set bit 7 (can't use %= here)
+        negated[7] = (at(negated, 7) % 128) + 128; // Set bit 7 (can't use %= here)
         const negative = offtin(negated, 0);
 
         // Magnitude should be the same
@@ -67,7 +68,7 @@ describe("property: offtin", () => {
           expect(result).toBe(magnitude);
 
           // Now test negative
-          buf[7] += 128; // Set sign bit
+          buf[7] = at(buf, 7) + 128; // Set sign bit
           const negResult = offtin(buf, 0);
           if (magnitude === 0) {
             expect(negResult).toBe(0); // -0 === 0
@@ -112,9 +113,9 @@ describe("property: parsePatchHeader", () => {
         const patched = new Uint8Array(buf);
         patched.set(new TextEncoder().encode("TRDIFF10"), 0);
         // Clear sign bits in header fields
-        patched[15] %= 128; // controlLen sign
-        patched[23] %= 128; // diffLen sign
-        patched[31] %= 128; // newSize sign
+        patched[15] = at(patched, 15) % 128; // controlLen sign
+        patched[23] = at(patched, 23) % 128; // diffLen sign
+        patched[31] = at(patched, 31) % 128; // newSize sign
 
         try {
           const header = parsePatchHeader(patched);

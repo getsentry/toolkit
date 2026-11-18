@@ -5,7 +5,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   advancePaginationState,
   buildPaginationContextKey,
@@ -19,7 +26,7 @@ import {
 import type { OrgListConfig } from "../../src/lib/org-list.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as orgListModule from "../../src/lib/org-list.js";
-import { useTestConfigDir } from "../helpers.js";
+import { useTestConfigDir, loadCommand } from "../helpers.js";
 
 describe("query pagination hints", () => {
   useTestConfigDir("query-pagination-hints-");
@@ -88,9 +95,7 @@ function makeFakeConfig(
     entityPlural: "widgets",
     commandPrefix: () => "sentry widget list",
     listForOrg: vi.fn(() => Promise.resolve([])),
-    listPaginated: vi.fn(() =>
-      Promise.resolve({ data: [] as FakeEntity[], nextCursor: undefined }),
-    ),
+    listPaginated: vi.fn(() => Promise.resolve({ data: [] as FakeEntity[] })),
     withOrg: (entity, orgSlug) => ({ ...entity, orgSlug }),
     displayTable: vi.fn(() => ""),
     ...overrides,
@@ -110,7 +115,9 @@ function createContext() {
 }
 
 describe("buildOrgListCommand", () => {
-  let dispatchSpy: ReturnType<typeof spyOn>;
+  let dispatchSpy:
+    | MockInstance<(typeof orgListModule)["dispatchOrgScopedList"]>
+    | undefined;
 
   afterEach(() => {
     dispatchSpy?.mockRestore();
@@ -131,7 +138,7 @@ describe("buildOrgListCommand", () => {
     const config = makeFakeConfig();
     const docs: OrgListCommandDocs = { brief: "List widgets" };
     const cmd = buildOrgListCommand(config, docs, "widget");
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     // Stricli loader returns CommandModule | CommandFunction union;
@@ -163,7 +170,7 @@ describe("buildOrgListCommand", () => {
       { brief: "List widgets" },
       "widget",
     );
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     await (func as any).call(context, { limit: 30, json: false }, "my-org/");
@@ -183,7 +190,7 @@ describe("buildOrgListCommand", () => {
       { brief: "List widgets" },
       "widget",
     );
-    const func = await cmd.loader();
+    const func = await loadCommand(cmd);
     const { context } = createContext();
 
     await (func as any).call(context, { limit: 30, json: false });

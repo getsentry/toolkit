@@ -95,7 +95,7 @@ export default defineTool({
             "User-Agent": getUserAgent(),
           },
           redirect: "manual",
-          signal: context.signal,
+          ...(context.signal ? { signal: context.signal } : {}),
         },
         15000, // 15 second timeout
       );

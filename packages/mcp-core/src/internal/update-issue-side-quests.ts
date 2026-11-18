@@ -21,7 +21,7 @@ export interface UpdateIssueSideQuestInput {
   organizationSlug: string;
   relatedIssues: RelatedIssues;
   /** Set in a project-scoped session; issues outside it are left out. */
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
 }
 
 /**

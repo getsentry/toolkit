@@ -1,6 +1,7 @@
 import { eventFixture, sourceMapDebugFixture } from "@sentry/mcp-server-mocks";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { EventSchema, SourceMapDebugSchema } from "../api-client/schema";
+import type { SourceMapDebug } from "../api-client/types";
 import {
   ISSUE_SIDE_QUEST_IDS,
   buildIssueSideQuests,
@@ -16,11 +17,14 @@ const files = ["/a.js", "/b.js", "/c.js"];
 function eventWithFourFiles() {
   const fixture = structuredClone(eventFixture);
   for (const entry of fixture.entries) {
-    if (entry.type !== "exception") {
+    if (entry.type !== "exception" || !("values" in entry.data)) {
       continue;
     }
-    for (const value of entry.data.values) {
-      value.rawStacktrace?.frames.forEach(
+    for (const value of entry.data.values ?? []) {
+      if (!("rawStacktrace" in value)) {
+        continue;
+      }
+      value.rawStacktrace.frames.forEach(
         (frame: { absPath: string | null }, index: number) => {
           frame.absPath = files[index] ?? frame.absPath;
         },
@@ -51,8 +55,7 @@ describe("buildIssueSideQuests", () => {
     const event = eventWithFourFiles();
     const debug = SourceMapDebugSchema.parse(sourceMapDebugFixture);
     // `/b.js` has a debug ID, but nothing was uploaded for it
-    debug.exceptions[0].frames[1].debug_id_process.debug_id =
-      "41f4b626-efd6-5847-915c-69f5d33361fb";
+    setFrameDebugId(debug, 1, "41f4b626-efd6-5847-915c-69f5d33361fb");
 
     expect(buildIssueSideQuests({ event, sourceMapDebug: debug }, session))
       .toMatchInlineSnapshot(`
@@ -75,16 +78,14 @@ describe("buildIssueSideQuests", () => {
     const event = eventWithFourFiles();
     const debug = SourceMapDebugSchema.parse(sourceMapDebugFixture);
     // `/b.js` and `/c.js` each have their own debug ID, with nothing uploaded
-    debug.exceptions[0].frames[1].debug_id_process.debug_id =
-      "41f4b626-efd6-5847-915c-69f5d33361fb";
-    debug.exceptions[0].frames[2].debug_id_process.debug_id =
-      "6f88580e-719d-56bb-81e1-afad5d3d78ac";
+    setFrameDebugId(debug, 1, "41f4b626-efd6-5847-915c-69f5d33361fb");
+    setFrameDebugId(debug, 2, "6f88580e-719d-56bb-81e1-afad5d3d78ac");
 
     const [quest] =
       buildIssueSideQuests({ event, sourceMapDebug: debug }, session) ?? [];
 
     // the third cause joins the remainder, so `/d.js` is still explained
-    expect(quest.details).toMatchInlineSnapshot(`
+    expect(quest?.details).toMatchInlineSnapshot(`
       [
         "\`/a.js\` has no debug ID, and the project has no debug ID uploads. Inject debug IDs with the bundler plugin or \`sentry-cli sourcemaps inject\`, deploy, then upload those same files.",
         "\`/b.js\` has debug ID \`41f4b626-efd6-5847-915c-69f5d33361fb\`, but no source file or source map with it was uploaded. Upload the deployed build output after injecting debug IDs, with the bundler plugin or \`sentry-cli sourcemaps upload\`.",
@@ -93,3 +94,13 @@ describe("buildIssueSideQuests", () => {
     `);
   });
 });
+
+function setFrameDebugId(
+  debug: SourceMapDebug,
+  frameIndex: number,
+  debugId: string,
+): void {
+  const frame = debug.exceptions[0]?.frames[frameIndex];
+  assert(frame, `Fixture has no frame at index ${frameIndex}`);
+  frame.debug_id_process.debug_id = debugId;
+}

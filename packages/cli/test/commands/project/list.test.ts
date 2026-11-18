@@ -14,6 +14,7 @@ import {
   property,
   tuple,
 } from "fast-check";
+import type { SentryContext } from "../../../src/context.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   buildContextKey,
@@ -46,7 +47,12 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import type { SentryProject } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+  at,
+} from "../../helpers.js";
 import { DEFAULT_NUM_RUNS } from "../../model-based/helpers.js";
 
 const getConfigDir = useTestConfigDir("test-project-list-", {
@@ -304,7 +310,6 @@ function mockProjectFetch(
   options: { hasMore?: boolean; nextCursor?: string } = {},
 ): typeof globalThis.fetch {
   const { hasMore = false, nextCursor } = options;
-  // @ts-expect-error - partial mock
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
     const url = req.url;
@@ -568,11 +573,11 @@ describe("handleExplicit", () => {
 
 describe("project list: comma-separated project slugs", () => {
   const flags = { limit: 30, json: false, fresh: false };
-  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    func = await listCommand.loader();
+    func = await loadCommand(listCommand);
     setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });
@@ -935,7 +940,6 @@ describe("handleOrgAll", () => {
     );
     const perPageValues: number[] = [];
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const parsed = new URL(req.url);
@@ -1012,7 +1016,6 @@ describe("handleProjectSearch", () => {
 
   test("not found throws ResolutionError", async () => {
     // Mock returning orgs but 404 for project lookups
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1044,7 +1047,6 @@ describe("handleProjectSearch", () => {
   });
 
   test("not found with --json returns empty items", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1106,7 +1108,6 @@ describe("handleProjectSearch", () => {
     // listOrganizations returns two orgs; each has a 'frontend' project. The
     // bare-slug lookup fans out across both. With scopedOrg=org-a the result
     // must only contain org-a's project, never org-b's.
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1171,7 +1172,6 @@ describe("handleProjectSearch", () => {
     };
 
     // Mock that returns 2 orgs, each with the same project slug
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1225,7 +1225,6 @@ describe("handleProjectSearch", () => {
       status: "active",
     };
 
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1328,8 +1327,8 @@ describe("fetchOrgProjects", () => {
     for (const p of result) {
       expect(p.orgSlug).toBe("myorg");
     }
-    expect(result[0].slug).toBe("frontend");
-    expect(result[1].slug).toBe("backend");
+    expect(at(result, 0).slug).toBe("frontend");
+    expect(at(result, 1).slug).toBe("backend");
   });
 
   test("returns empty array when org has no projects", async () => {
@@ -1357,7 +1356,6 @@ describe("fetchOrgProjectsSafe", () => {
   });
 
   test("returns empty array on non-auth error", async () => {
-    // @ts-expect-error - partial mock
     globalThis.fetch = async () =>
       new Response(JSON.stringify({ detail: "Forbidden" }), {
         status: 403,
@@ -1370,14 +1368,14 @@ describe("fetchOrgProjectsSafe", () => {
     // Clear auth token so the API client throws AuthError before making any request
     await clearAuth();
 
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
 
     try {
       await expect(fetchOrgProjectsSafe("myorg")).rejects.toThrow(AuthError);
     } finally {
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     }
   });
@@ -1409,7 +1407,6 @@ describe("fetchAllOrgProjects", () => {
 
   test("skips orgs with access errors", async () => {
     let callCount = 0;
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -1525,7 +1522,7 @@ describe("handleAutoDetect", () => {
     expect(result.items).toHaveLength(2);
     expect(result.hasMore).toBe(true);
     expect(result.jsonExtra).toBeDefined();
-    expect(result.jsonExtra?.hint).toBeString();
+    expect(result.jsonExtra?.["hint"]).toBeString();
   });
 
   test("respects --platform flag", async () => {
@@ -1609,7 +1606,7 @@ describe("handleAutoDetect", () => {
     expect(result.hasMore).toBe(true);
     expect(result.items).toHaveLength(2);
     expect(result.jsonExtra).toBeDefined();
-    const jsonHint = result.jsonExtra?.hint;
+    const jsonHint = result.jsonExtra?.["hint"];
     expect(jsonHint).toContain("test-org/");
     expect(jsonHint).toContain("--json");
   });
@@ -1629,7 +1626,7 @@ describe("handleAutoDetect", () => {
     });
 
     expect(result.hasMore).toBe(true);
-    const jsonHint = result.jsonExtra?.hint;
+    const jsonHint = result.jsonExtra?.["hint"];
     expect(jsonHint).toBe("sentry project list 'test-org/web-*' --json");
   });
 
@@ -1656,7 +1653,6 @@ describe("handleAutoDetect", () => {
   test("fast path: non-auth API errors return empty results instead of throwing", async () => {
     setDefaultOrganization("test-org");
     // Mock returns 403 for projects endpoint (stale org, no access)
-    // @ts-expect-error - partial mock
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       if (req.url.includes("/projects/")) {
@@ -1682,8 +1678,8 @@ describe("handleAutoDetect", () => {
     // Clear auth so getAuthToken() throws AuthError before any fetch
     await clearAuth();
 
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
 
     try {
       await expect(
@@ -1695,7 +1691,7 @@ describe("handleAutoDetect", () => {
       ).rejects.toThrow(AuthError);
     } finally {
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     }
   });
@@ -1731,11 +1727,11 @@ describe("project list: name filter", () => {
       status: "active",
     },
   ];
-  let func: Awaited<ReturnType<typeof listCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
     originalFetch = globalThis.fetch;
-    func = await listCommand.loader();
+    func = await loadCommand(listCommand);
     setAuthToken("test-token");
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
   });

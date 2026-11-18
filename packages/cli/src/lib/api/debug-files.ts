@@ -51,7 +51,7 @@ export type DebugFileUpload = {
    * uploaded bytes and indexes every contained slice itself, so this is
    * `skip_serializing_if none` in the wire format — omitted when absent.
    */
-  debugId?: string;
+  debugId?: string | undefined;
   /**
    * Code id for file types the server cannot read it from (a DXIL shader's
    * Aftermath hash). Omitted from the wire format when absent.
@@ -60,7 +60,7 @@ export type DebugFileUpload = {
   /** Shader group of a DXIL shader, stored with the file. Omitted when absent. */
   shaderGroup?: string;
   /** Pre-read raw file content (chunked as-is). */
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
 };
 
 /** Options for {@link uploadDebugFiles}. */
@@ -84,7 +84,7 @@ export type DebugFilesUploadOptions = {
    * `getChunkUploadOptions` call is skipped (the caller already fetched them,
    * e.g. to size-gate the scan against the server's `maxFileSize`).
    */
-  serverOptions?: ChunkServerOptions;
+  serverOptions?: ChunkServerOptions | undefined;
 };
 
 /** Per-file result of a debug information file upload. */
@@ -92,7 +92,7 @@ export type DebugFileUploadResult = {
   /** Name stamped on the assembled DIF. */
   name: string;
   /** Advisory debug id, if one was provided. */
-  debugId?: string;
+  debugId?: string | undefined;
   /** Overall SHA-1 checksum of the uploaded file. */
   checksum: string;
   /**

@@ -8,6 +8,7 @@ import {
   type ExternalIssueLinkResult,
   linkExternalIssue,
 } from "../../../src/lib/issue-links.js";
+import { loadCommand } from "../../helpers.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => ({
   ...(await importOriginal<
@@ -65,7 +66,7 @@ describe("issue link", () => {
 
   test("forwards resolved organization, issue and project with the integration selector", async () => {
     const { context, output } = createMockContext();
-    const func = await linkCommand.loader();
+    const func = await loadCommand(linkCommand);
     await func.call(
       context,
       { ...defaultFlags, integration: "99" },
@@ -103,7 +104,7 @@ describe("issue link", () => {
 
   test("forwards an App selector and parses repeatable fields without losing values", async () => {
     const { context } = createMockContext();
-    const func = await linkCommand.loader();
+    const func = await loadCommand(linkCommand);
     await func.call(
       context,
       {
@@ -138,7 +139,7 @@ describe("issue link", () => {
     "rejects malformed or ambiguous --field input %j before resolving or writing",
     async (...fields) => {
       const { context, output } = createMockContext();
-      const func = await linkCommand.loader();
+      const func = await loadCommand(linkCommand);
 
       await expect(
         func.call(
@@ -163,7 +164,7 @@ describe("issue link", () => {
       dryRun: true,
     });
     const { context, output } = createMockContext();
-    const func = await linkCommand.loader();
+    const func = await loadCommand(linkCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
@@ -180,7 +181,7 @@ describe("issue link", () => {
 
   test("emits the link result unchanged in JSON", async () => {
     const { context, output } = createMockContext();
-    const func = await linkCommand.loader();
+    const func = await loadCommand(linkCommand);
     await func.call(
       context,
       { ...defaultFlags, json: true },

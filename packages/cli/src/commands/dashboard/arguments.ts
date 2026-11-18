@@ -40,7 +40,7 @@ export type DashboardInput = {
   readonly ref: string;
   readonly target: ParsedOrgProject;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   readonly warnings: readonly string[];
   /**
    * When the first argument is a bare word before a title (`My
@@ -170,9 +170,9 @@ export function dashboardArguments(options: {
 export type DashboardListInput = {
   readonly target: ParsedOrgProject;
   /** Title glob to filter by */
-  readonly titleFilter?: string;
+  readonly titleFilter?: string | undefined;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   readonly warnings: readonly string[];
 };
 
@@ -215,7 +215,7 @@ export function dashboardListArguments(usageHint: LazyCommand) {
 
 /** Apply a pasted URL's server and log the parse's warnings. */
 function applyInputContext(input: {
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   readonly warnings: readonly string[];
 }): void {
   if (input.baseUrl) {

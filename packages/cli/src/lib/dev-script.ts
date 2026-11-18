@@ -138,7 +138,11 @@ function findPython(
 ): string {
   const [binDir, exe] =
     platform === "win32" ? ["Scripts", ".exe"] : ["bin", ""];
-  for (const root of [env.VIRTUAL_ENV, join(cwd, ".venv"), join(cwd, "venv")]) {
+  for (const root of [
+    env["VIRTUAL_ENV"],
+    join(cwd, ".venv"),
+    join(cwd, "venv"),
+  ]) {
     if (!root) {
       continue;
     }
@@ -181,7 +185,7 @@ function tryFlaskAppEnv(
   python: PythonLookup,
 ): DetectedCommand | null {
   if (
-    !env.FLASK_APP ||
+    !env["FLASK_APP"] ||
     !PYTHON_MARKERS.some((file) => existsSync(join(cwd, file)))
   ) {
     return null;

@@ -151,7 +151,7 @@ function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
       if (timer === undefined) {
         timer = setTimeout(flush, quietUntil - now);
         // A pending count must never keep the CLI alive.
-        timer.unref?.();
+        timer.unref();
       }
       return;
     }
@@ -235,7 +235,7 @@ export { isLoopbackHost } from "./loopback.js";
  * own `toString()`.
  */
 export function spotlightEnvelopeId(header: Record<string, unknown>): string {
-  const id = header.__spotlight_envelope_id as
+  const id = header["__spotlight_envelope_id"] as
     | { toString(): string }
     | null
     | undefined;
@@ -311,7 +311,7 @@ export function buildSSEHandler(
       }
       stream
         .writeSSE({
-          id: envelopeId || undefined,
+          ...(envelopeId ? { id: envelopeId } : {}),
           event: `${container.getContentType()}${base64Indicator}`,
           data,
         })
@@ -669,7 +669,7 @@ export function tryListen(
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });
       });
-      server.once("error", async (err: NodeJS.ErrnoException) => {
+      server.once("error", (err: NodeJS.ErrnoException) => {
         server.close();
         if (err.code === "EADDRINUSE") {
           attempts += 1;
@@ -680,8 +680,7 @@ export function tryListen(
           logger.warn(
             `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${retries})...`,
           );
-          await sleep(PORT_RETRY_DELAY_MS);
-          resolve(attempt());
+          resolve(sleep(PORT_RETRY_DELAY_MS).then(attempt));
           return;
         }
         reject(err);
@@ -835,7 +834,7 @@ const SSE_MAX_RETRY_MS = 30_000;
 export type ConsumeSSEOptions = {
   url: string;
   /** A full scoped stream URL, when consuming a daemon-owned session. */
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet?: boolean;
@@ -923,6 +922,7 @@ async function consumeSSEWithWarning(
       onOversized: warnOversized,
     });
 
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort during the await; TS keeps the loop condition's narrowing
     if (signal.aborted || result === "retained") {
       return;
     }
@@ -984,11 +984,11 @@ async function attemptSSEConnection(
 ): Promise<
   "no-connection" | "connected-then-lost" | "retained" | "session-gone"
 > {
-  let wasConnected = false;
+  const conn = { wasConnected: false };
   const augmented = {
     ...opts,
     onConnected: () => {
-      wasConnected = true;
+      conn.wasConnected = true;
     },
   };
   try {
@@ -1003,19 +1003,19 @@ async function attemptSSEConnection(
     logger.debug(
       `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
-    if (opts.streamUrl && !wasConnected && isConnectionRefused(err)) {
+    if (opts.streamUrl && !conn.wasConnected && isConnectionRefused(err)) {
       return "session-gone";
     }
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
-    return wasConnected ? "connected-then-lost" : "no-connection";
+    return conn.wasConnected ? "connected-then-lost" : "no-connection";
   }
 }
 
 /** Options for a single SSE connection attempt. */
 type ConsumeSSEOnceOptions = {
   url: string;
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet: boolean;
@@ -1077,7 +1077,7 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);

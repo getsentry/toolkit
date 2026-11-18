@@ -36,7 +36,9 @@ export async function fetchEveryPage<T>(
   const result = await fetchAllPages<T>(
     async (cursor) => {
       const page = await fetchPage(cursor);
-      return { data: page.data, nextCursor: page.nextCursor ?? undefined };
+      return page.nextCursor == null
+        ? { data: page.data }
+        : { data: page.data, nextCursor: page.nextCursor };
     },
     // `fetchPage` already validated its rows.
     (data) => data as T[],

@@ -31,7 +31,7 @@ import { getUrlLoginCommand } from "./app-identity.js";
 export function resolveEffectiveLoginHost(): string {
   const env = getEnv();
   return (
-    normalizeUserInputToOrigin(env.SENTRY_HOST || env.SENTRY_URL) ??
+    normalizeUserInputToOrigin(env["SENTRY_HOST"] || env["SENTRY_URL"]) ??
     DEFAULT_SENTRY_URL
   );
 }
@@ -83,7 +83,7 @@ export function isAutoLoginHostTrusted(host: string): boolean {
  */
 export function buildHostRefusalMessage(
   host: string,
-  opts?: { tokenFlag?: boolean; rcSource?: string },
+  opts?: { tokenFlag?: boolean | undefined; rcSource?: string | undefined },
 ): string {
   const tokenFlag = opts?.tokenFlag ? " --token <your-token>" : "";
   const sourceClause = opts?.rcSource
