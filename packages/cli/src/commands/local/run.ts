@@ -448,6 +448,9 @@ async function resolveArgs(
     throw new ValidationError(autoDetectErrorMessage(), "command.missing");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
+  if (detected.hint) {
+    logger.warn(detected.hint);
+  }
   return { args: detected.args, commandSource: detected.source };
 }
 
