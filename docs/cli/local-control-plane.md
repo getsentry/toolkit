@@ -258,6 +258,11 @@ when the event carries a request transaction name. Overview shows the current
 exception, its causes, and stack frames with function names, source locations, and
 captured source lines. Frames appear most recent first; the JSON tab preserves the
 complete original payload.
+Message and logging events use their message (`message` or `logentry`) as the
+title. The list and inspector badge says Exception, Message, or Event by what
+the event carries; its level only sets the color. Overview also shows the level,
+handled state, environment, release, server name, and user. Empty contexts are
+hidden.
 
 In Events, request (`http.server`) transactions show their method and route.
 Other transactions, such as pageloads, navigations, and custom `task`

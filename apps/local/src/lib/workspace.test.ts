@@ -113,6 +113,28 @@ describe("event list labels", () => {
     });
   });
 
+  test("events are badged by what they carry and feedback by its message", () => {
+    const decode = (type: string, payload: unknown) =>
+      decodeEnvelope(JSON.stringify([{}, [[{ type }, payload]]]), type)[0]!;
+    expect(
+      eventListLabel(decode("event", { level: "error", message: "Disk full" })),
+    ).toEqual({ badge: "Message", title: "Disk full" });
+    expect(
+      eventListLabel(
+        decode("event", {
+          exception: { values: [{ type: "ValueError", value: "bad" }] },
+        }),
+      ).badge,
+    ).toBe("Exception");
+    expect(
+      eventListLabel(
+        decode("feedback", {
+          contexts: { feedback: { message: "Button does nothing" } },
+        }),
+      ).title,
+    ).toBe("Button does nothing");
+  });
+
   test("request transactions show their method and route", () => {
     expect(eventListLabel(transaction("http.server", "tx"))).toEqual({
       badge: "GET",

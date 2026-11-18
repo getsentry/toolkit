@@ -1,4 +1,4 @@
-import { isAiPayload } from "./inspection.ts";
+import { eventKind, feedbackData, isAiPayload, text } from "./inspection.ts";
 import type { EventMetadata, LocalFeedItem } from "./spotlight.ts";
 
 function getMetadata(item: LocalFeedItem): EventMetadata {
@@ -100,10 +100,7 @@ export function eventListLabel(item: LocalFeedItem): {
 } {
   const metadata = getMetadata(item);
   if (item.type === "event")
-    return {
-      badge: isErrorEvent(item) ? "Exception" : "Event",
-      title: metadata.title,
-    };
+    return { badge: eventKind(item.payload), title: metadata.title };
   const { operation } = metadata;
   if (
     item.type === "transaction" &&
@@ -119,8 +116,16 @@ export function eventListLabel(item: LocalFeedItem): {
         : item.type === "log"
           ? "Log"
           : (operation ?? item.type)),
-    title: metadata.route ?? metadata.title,
+    title:
+      item.type === "feedback" || item.type === "user_report"
+        ? (feedbackMessage(item.payload) ?? metadata.title)
+        : (metadata.route ?? metadata.title),
   };
+}
+
+function feedbackMessage(payload: unknown): string | undefined {
+  const feedback = feedbackData(payload);
+  return text(feedback.message) ?? text(feedback.comments);
 }
 
 export function matchesSearch(item: LocalFeedItem, query: string) {

@@ -1,8 +1,12 @@
 import { afterEach, expect, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import {
+  spanEnvelope,
+  streamedPageloadSpans,
+} from "@/test-fixtures/streamed-pageload.ts";
 import { TraceWaterfall } from "./trace-waterfall.tsx";
 
 afterEach(cleanup);
@@ -207,4 +211,27 @@ test("rows indent by depth whether or not they can expand", () => {
   expect(query).toBeGreaterThan(root);
   expect(cache).toBe(query);
   expect(compute).toBeGreaterThan(query);
+});
+
+test("streamed resource and fetch spans show and match their URL instead of the host", () => {
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(spanEnvelope(streamedPageloadSpans), "pageload"),
+  );
+  if (!trace) throw new Error("Expected trace");
+  render(<TraceWaterfall trace={trace} onSelectSpan={() => {}} />);
+  expect(
+    screen.getByRole("button", {
+      name: "Inspect span GET http://localhost:4000/api/data",
+    }),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("button", {
+      name: "Inspect span http://localhost:4000/app.js",
+    }),
+  ).toBeDefined();
+  expect(screen.queryByText("localhost")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Search in trace"), {
+    target: { value: "api" },
+  });
+  expect(screen.getByRole("status").textContent).toContain("1 matches");
 });
