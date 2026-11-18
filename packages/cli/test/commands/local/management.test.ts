@@ -317,6 +317,66 @@ describe("local event view with an event ID prefix", () => {
     expect(classifySilenced(error)).toBe("user_input_error");
   });
 
+  test("keeps replay segment keys whole next to prefix lookup", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-replay",
+      cwd: "/work/prefix",
+    });
+    const replayId = "cccccccc4444444444444444444444c4";
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    for (const segmentId of [0, 1]) {
+      const response = await plane.app.request(
+        `${CONTROL_PLANE_PREFIX}/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: [
+            { event_id: replayId },
+            { type: "replay_event" },
+            {
+              type: "replay_event",
+              replay_id: replayId,
+              event_id: replayId,
+              segment_id: segmentId,
+            },
+          ]
+            .map((line) => JSON.stringify(line))
+            .join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+    }
+
+    const listed = await runCommand(eventRoute, "list", false, "prefix-replay");
+    expect(listed.stdout).toContain(`${replayId}:0`);
+    expect(listed.stdout).toContain(`${replayId}:1`);
+
+    const viewed = await runCommand(
+      eventRoute,
+      "view",
+      true,
+      "prefix-replay",
+      `${replayId}:1`,
+    );
+    expect(viewed.error).toBeUndefined();
+    expect(JSON.parse(viewed.stdout)).toMatchObject({
+      eventId: `${replayId}:1`,
+    });
+
+    const error = await commandError(
+      eventRoute,
+      "view",
+      "prefix-replay",
+      "cccccccc",
+    );
+    expect(error).toBeInstanceOf(ResolutionError);
+    expect((error as ResolutionError).message).toContain(
+      `Use event ID ${replayId}:0`,
+    );
+    expect((error as ResolutionError).message).toContain(
+      `Use event ID ${replayId}:1`,
+    );
+  });
+
   test("says a prefix needs 8 characters when a shorter one matches nothing", async () => {
     const session = plane.sessionStore.create({
       label: "prefix-short",

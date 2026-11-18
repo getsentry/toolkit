@@ -155,6 +155,76 @@ describe("find_projects", () => {
     });
   });
 
+  describe("numeric project ID query", () => {
+    // Mirrors the Sentry endpoint: free text matches only name or slug, and
+    // `id:` matches the numeric ID (organization_projects.py).
+    const projects = [
+      { id: "4509062593708032", slug: "mcp-server", name: "mcp-server" },
+      { id: "7", slug: "web-2024", name: "Web 2024" },
+    ];
+    const sentQueries: string[] = [];
+
+    function useProjectsEndpoint() {
+      sentQueries.length = 0;
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/projects/",
+          ({ request }) => {
+            const query = new URL(request.url).searchParams.get("query") ?? "";
+            sentQueries.push(query);
+            const id = query.match(/^id:(\d+)$/)?.[1];
+            return HttpResponse.json(
+              projects.filter((project) =>
+                id
+                  ? project.id === id
+                  : project.name.includes(query) ||
+                    project.slug.includes(query),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    function findByQuery(query: string) {
+      return findProjects.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          query,
+          cursor: null,
+        },
+        getServerContext(),
+      );
+    }
+
+    it("finds the project with that ID", async () => {
+      useProjectsEndpoint();
+
+      const result = await findByQuery("4509062593708032");
+
+      expect(getStructuredContent(result)).toEqual({
+        projects: [{ slug: "mcp-server" }],
+        hasMore: false,
+        nextCursor: null,
+      });
+      expect(sentQueries).toEqual(["id:4509062593708032"]);
+    });
+
+    it("falls back to name and slug search when no project has that ID", async () => {
+      useProjectsEndpoint();
+
+      const result = await findByQuery("2024");
+
+      expect(getStructuredContent(result)).toEqual({
+        projects: [{ slug: "web-2024" }],
+        hasMore: false,
+        nextCursor: null,
+      });
+      expect(sentQueries).toEqual(["id:2024", "2024"]);
+    });
+  });
+
   it("preserves mixed-case organization slug in the API path", async () => {
     const context = getServerContext();
 

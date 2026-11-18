@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { profiledRequest } from "@/test-fixtures/profiled-request.ts";
 import {
   spanEnvelope,
   streamedPageloadSpans,
@@ -234,4 +235,46 @@ test("streamed resource and fetch spans show and match their URL instead of the 
     target: { value: "api" },
   });
   expect(screen.getByRole("status").textContent).toContain("1 matches");
+});
+
+test("sampled profile rows stay folded under their span until shown", () => {
+  const trace = buildTraceGroups(profiledRequest())[0]!;
+  render(<TraceWaterfall trace={trace} onSelectSpan={() => undefined} />);
+  const summary = screen.getByLabelText("Trace summary").textContent;
+  expect(summary).toContain("1 span");
+  expect(summary).not.toContain("1 spans");
+  expect(
+    screen.queryAllByRole("button", { name: "Inspect span work" }),
+  ).toEqual([]);
+  const toggle = screen.getByRole("button", {
+    name: /^Show \d+ sampled function/,
+  });
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(toggle);
+  expect(
+    screen.getAllByRole("button", { name: "Inspect span work" }).length,
+  ).toBeGreaterThan(0);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide sampled functions" }),
+  );
+  expect(
+    screen.queryAllByRole("button", { name: "Inspect span work" }),
+  ).toEqual([]);
+});
+
+test("a selected sampled row stays visible when returning to the trace", () => {
+  const trace = buildTraceGroups(profiledRequest())[0]!;
+  const sampled = trace.spans.find((span) => span.sampled)!;
+  render(
+    <TraceWaterfall
+      trace={trace}
+      selectedSpanId={sampled.id}
+      onSelectSpan={() => undefined}
+    />,
+  );
+  expect(
+    screen
+      .getAllByRole("button", { name: "Inspect span work" })
+      .some((button) => button.getAttribute("aria-pressed") === "true"),
+  ).toBe(true);
 });

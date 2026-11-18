@@ -38,6 +38,7 @@ set -euo pipefail
 if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$SENTRY_INSTALL_DIR" > "$SENTRY_TEST_DIR/setup-install-dir"
+  printf '%s\\n' "\${SENTRY_HANDOFF:-}" > "$SENTRY_TEST_DIR/setup-handoff"
   mkdir -p "$SENTRY_INSTALL_DIR"
   cp "$0" "$SENTRY_INSTALL_DIR/sentry.exe"
   exit "\${SENTRY_TEST_SETUP_EXIT:-0}"
@@ -184,7 +185,10 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     ).toEqual([]);
   });
 
-  test("hands off PATH handling to setup", () => {
+  test("passes setup environment and hands off PATH handling", () => {
+    const handoffCode = `sntryh_${"a".repeat(43)}`;
+    env.SENTRY_HANDOFF = handoffCode;
+
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -200,6 +204,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       "--channel",
       "stable",
     ]);
+    expect(recorded("setup-handoff")).toEqual([handoffCode]);
     // Setup decides the install directory and edits PATH itself.
     expect(recorded("setup-install-dir")).toEqual([installDir]);
     expect(recorded("github-path")).toEqual([]);

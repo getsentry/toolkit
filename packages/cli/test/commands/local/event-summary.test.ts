@@ -12,6 +12,18 @@ describe("summarizeEnvelope", () => {
     expect(body.startsWith(title?.slice(0, -1) ?? "")).toBe(true);
   });
 
+  test("drops ANSI colors from a log title", () => {
+    const body = "\u001b[35m\u001b[1mGET /boom HTTP/1.1\u001b[0m 500";
+    expect(
+      summarizeEnvelope({
+        envelope: [
+          {},
+          [[{ type: "log" }, { items: [{ level: "info", body }] }]],
+        ],
+      }).title,
+    ).toBe("GET /boom HTTP/1.1 500");
+  });
+
   test("keeps a title at the limit as is", () => {
     const message = "x".repeat(200);
     expect(
@@ -68,6 +80,98 @@ describe("summarizeEnvelope", () => {
         ],
       }),
     ).toMatchObject({ type: "span", title: "GET /api", count: 2 });
+  });
+
+  /** Summary of one envelope whose only item has this type and payload. */
+  const summarize = (type: string, payload: Record<string, unknown>) =>
+    summarizeEnvelope({ envelope: [{}, [[{ type }, payload]]] });
+
+  test("titles an Express span batch from its segment root, not a middleware span", () => {
+    // @sentry/node with span streaming: the middleware spans end, and are
+    // listed, before the http.server segment that holds them.
+    const traceId = "4c79f60c11214eb38604f4ae0781bfb2";
+    expect(
+      summarize("span", {
+        items: [
+          {
+            trace_id: traceId,
+            span_id: "b000000000000002",
+            parent_span_id: "a000000000000001",
+            name: "<anonymous>",
+            is_segment: false,
+            end_timestamp: 1_794_947_106.2,
+          },
+          {
+            trace_id: traceId,
+            span_id: "b000000000000003",
+            parent_span_id: "a000000000000001",
+            name: "jsonParser",
+            is_segment: false,
+            end_timestamp: 1_794_947_106.3,
+          },
+          {
+            trace_id: traceId,
+            span_id: "a000000000000001",
+            name: "GET /api/hello",
+            is_segment: true,
+            end_timestamp: 1_794_947_106.425,
+          },
+        ],
+      }),
+    ).toEqual({
+      type: "span",
+      title: "GET /api/hello",
+      timestamp: "2026-11-17T20:25:06.425Z",
+      traceId,
+      count: 3,
+    });
+  });
+
+  test("titles a span batch from the span with no parent in the batch", () => {
+    // Hono with span streaming and no is_segment flag on the spans.
+    expect(
+      summarize("span", {
+        items: [
+          { span_id: "c3", parent_span_id: "c2", name: "grandchild" },
+          { span_id: "c2", parent_span_id: "c1", name: "child" },
+          { span_id: "c1", parent_span_id: "f0", name: "GET /spans" },
+        ],
+      }).title,
+    ).toBe("GET /spans");
+  });
+
+  test("labels a log batch with its most severe log", () => {
+    expect(
+      summarize("log", {
+        items: [
+          { level: "info", body: "Loaded cart", timestamp: 1_794_947_106 },
+          {
+            level: "error",
+            body: "Payment declined",
+            timestamp: 1_794_947_107,
+          },
+          { level: "warn", body: "Retrying", timestamp: 1_794_947_108 },
+        ],
+      }),
+    ).toMatchObject({
+      type: "log",
+      level: "error",
+      title: "Payment declined",
+      timestamp: "2026-11-17T20:25:07.000Z",
+      count: 3,
+    });
+  });
+
+  test("titles session aggregates like the viewer", () => {
+    expect(
+      summarize("sessions", {
+        attrs: { release: "web@1.0.0" },
+        aggregates: [
+          { started: "2026-11-17T20:25:00Z", exited: 4 },
+          { started: "2026-11-17T20:26:00Z", exited: 1, errored: 2 },
+        ],
+      }).title,
+    ).toBe("Session counts: 5 exited, 2 errored");
   });
 
   test("reads timestamps the way the tail does", () => {

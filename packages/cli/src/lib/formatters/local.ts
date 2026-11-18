@@ -1,5 +1,9 @@
 /** Tail formatters for the local dev server. */
 
+import {
+  classifyEvent,
+  readMessageText,
+} from "../../commands/local/event-kind.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -154,9 +158,13 @@ const TYPE_WIDTH = 9;
 /** Longest bracketed source label: `[BROWSER]` = 9 chars. */
 const SOURCE_WIDTH = 9;
 
-/** Format a type/level label as `[TYPE]` padded to fixed width. */
+/**
+ * Format a type/level label as `[TYPE]` padded to fixed width. Logs send
+ * `warn` and events send `warning`; both show as `[WARNING]`.
+ */
 export function formatType(level: string): string {
-  const tag = `[${sanitize(level).toUpperCase()}]`;
+  const label = level.toLowerCase() === "warn" ? "warning" : level;
+  const tag = `[${sanitize(label).toUpperCase()}]`;
   const colorFn = LEVEL_COLORS[level.toLowerCase()];
   const colored = colorFn ? colorFn(tag) : tag;
   return colored + " ".repeat(Math.max(0, TYPE_WIDTH - tag.length));
@@ -323,30 +331,6 @@ type EventSummary = (
   logger?: string;
 };
 
-/**
- * Read text from an event `message` or `logentry`. Both may be a plain string
- * or an object whose `formatted` text (with parameters filled in) is
- * preferred over its `message` template.
- */
-function readMessageText(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value || undefined;
-  }
-  if (value === null || typeof value !== "object") {
-    return;
-  }
-  const { formatted, message } = value as {
-    formatted?: unknown;
-    message?: unknown;
-  };
-  if (typeof formatted === "string" && formatted) {
-    return formatted;
-  }
-  if (typeof message === "string" && message) {
-    return message;
-  }
-}
-
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const exception = event.exception as
@@ -369,7 +353,7 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const frames = last?.stacktrace?.frames;
 
   const text = errorType ? exceptionText : (messageText ?? exceptionText);
-  if (!errorType && text) {
+  if (classifyEvent(event) === "message" && text) {
     return { kind: "message", level, text, frames, logger };
   }
   return {
@@ -465,9 +449,7 @@ export function formatTransactionItem(
   }
 
   const spans = event.spans as unknown[] | undefined;
-  if (spans?.length) {
-    msg += ` ${muted(`[${spans.length} span${spans.length === 1 ? "" : "s"}]`)}`;
-  }
+  msg += formatSpanCount(spans?.length ?? 0);
 
   msg += formatTraceIdHint(event);
 
@@ -509,7 +491,16 @@ const SDK_ATTRIBUTE_PREFIXES = [
   "exception.",
   "error.",
   "user_agent.",
+  "logger.",
+  "user.",
 ];
+
+/**
+ * Exact keys that SDK logging integrations add, such as the Python `logging`
+ * record's `asctime` and the `request` and `server_time` extras that Django's
+ * dev server sets on every access log.
+ */
+const SDK_ATTRIBUTE_KEYS = new Set(["asctime", "request", "server_time"]);
 
 /** Two-space indent prefix for nested attribute-table lines. */
 const ATTR_INDENT = "  ";
@@ -521,7 +512,10 @@ const ATTR_INDENT = "  ";
  */
 function isSdkAttribute(key: string): boolean {
   const lower = key.toLowerCase();
-  return SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+  return (
+    SDK_ATTRIBUTE_KEYS.has(lower) ||
+    SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+  );
 }
 
 /**
@@ -654,9 +648,10 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
  * lines align column-for-column and are easy to scan. SDK-default attributes
- * (`sentry.*`, `code.*`, `thread.*`, `server.*`, … see
- * {@link SDK_ATTRIBUTE_PREFIXES}) are omitted from the inline list; the trace
- * ID is surfaced as a compact `[trace:…]` token instead.
+ * (`sentry.*`, `code.*`, `logger.*`, `user.*`, … see
+ * {@link SDK_ATTRIBUTE_PREFIXES} and {@link SDK_ATTRIBUTE_KEYS}) are omitted
+ * from the inline list; the trace ID is surfaced as a compact `[trace:…]`
+ * token instead.
  */
 export function formatSingleLog(logEntry: LogEntry, source: string): string {
   const level = logEntry.level ?? "log";
@@ -715,6 +710,9 @@ export function formatLogItem(
 export type StreamedSpan = {
   trace_id?: string;
   span_id?: string;
+  parent_span_id?: string;
+  /** True for the root span of a segment (a request, pageload, or navigation). */
+  is_segment?: boolean;
   name?: string;
   start_timestamp?: number | string;
   end_timestamp?: number | string;
@@ -741,13 +739,30 @@ function flattenSpanAttributes(
   return flat;
 }
 
+/** ` [trace:abcd1234]`, muted, for a span with a valid trace ID. */
+function formatSpanTraceHint(span: StreamedSpan): string {
+  return span.trace_id && TRACE_ID_RE.test(span.trace_id)
+    ? ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`
+    : "";
+}
+
+/** `[N spans]`, muted, or an empty string for zero. */
+function formatSpanCount(count: number, prefix = ""): string {
+  return count > 0
+    ? ` ${muted(`[${prefix}${count} span${count === 1 ? "" : "s"}]`)}`
+    : "";
+}
+
 /**
  * Format a single standalone span into a colored one-liner, using the same
- * semantic rendering as transactions.
+ * semantic rendering as transactions. `spanCount` is a
+ * {@link formatSpanCount} marker, such as `[N spans]` for a segment shown
+ * with the rest of its batch.
  */
 export function formatSingleSpan(
   span: StreamedSpan,
   header: Record<string, unknown>,
+  spanCount = "",
 ): string {
   const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
@@ -775,17 +790,134 @@ export function formatSingleSpan(
     msg += ` ${muted(`[${sanitize(span.status)}]`)}`;
   }
 
-  if (span.trace_id && TRACE_ID_RE.test(span.trace_id)) {
-    msg += ` ${muted(`[trace:${span.trace_id.toLowerCase().slice(0, TRACE_ID_SHORT_LEN)}]`)}`;
-  }
+  msg += spanCount + formatSpanTraceHint(span);
 
   const ts = formatTime(span.end_timestamp);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
 }
 
+/** Spans of one segment that arrived in the same batch. */
+type SpanGroup = {
+  /** The segment span, or the top span of the group when it is missing. */
+  head: StreamedSpan;
+  /** Whether {@link head} is the segment span itself, not just its top span. */
+  isSegment: boolean;
+  spans: StreamedSpan[];
+};
+
 /**
- * Format a standalone span envelope item. A span item contains an `items`
- * array of individual spans (v2 span streaming format); each gets its own line.
+ * The segment a streamed span belongs to: its `sentry.segment.id`, its own ID
+ * when it is a segment, else the top ancestor found in the same batch.
+ */
+function segmentKey(
+  span: StreamedSpan,
+  byId: ReadonlyMap<string, StreamedSpan>,
+): string | undefined {
+  const segmentId = span.attributes?.["sentry.segment.id"]?.value;
+  if (typeof segmentId === "string" && segmentId) {
+    return segmentId;
+  }
+  let top = span;
+  const seen = new Set<StreamedSpan>();
+  while (!top.is_segment && top.parent_span_id && !seen.has(top)) {
+    seen.add(top);
+    const parent = byId.get(top.parent_span_id);
+    if (!parent) {
+      break;
+    }
+    top = parent;
+  }
+  return top.span_id;
+}
+
+/**
+ * Whether a streamed span is a segment: flagged `is_segment`, its own
+ * `sentry.segment.id`, or a root span with no parent.
+ */
+function isSegmentSpan(span: StreamedSpan): boolean {
+  return (
+    span.is_segment === true ||
+    !span.parent_span_id ||
+    (span.span_id !== undefined &&
+      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
+  );
+}
+
+/**
+ * Group a span batch by segment, in the order each segment first appears.
+ * Spans with no span or segment ID each form their own group.
+ */
+function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
+  const byId = new Map<string, StreamedSpan>();
+  for (const span of items) {
+    if (span.span_id) {
+      byId.set(span.span_id, span);
+    }
+  }
+  const groups = new Map<string | StreamedSpan, StreamedSpan[]>();
+  for (const span of items) {
+    const key = segmentKey(span, byId) ?? span;
+    const spans = groups.get(key);
+    if (spans) {
+      spans.push(span);
+    } else {
+      groups.set(key, [span]);
+    }
+  }
+  return [...groups.values()].map((spans) => {
+    const segment = spans.find(isSegmentSpan);
+    // Without its segment, the group's top span is the one whose parent is
+    // not in the batch and that started first.
+    const top = spans
+      .filter((span) => !(span.parent_span_id && byId.has(span.parent_span_id)))
+      .sort(
+        (a, b) =>
+          (parseEventTimestamp(a.start_timestamp) ?? 0) -
+          (parseEventTimestamp(b.start_timestamp) ?? 0),
+      )[0];
+    return {
+      head: segment ?? top ?? (spans[0] as StreamedSpan),
+      isSegment: segment !== undefined,
+      spans,
+    };
+  });
+}
+
+/** One tail line for spans whose segment wasn't in the same batch. */
+function formatLateSpansLine(
+  group: SpanGroup,
+  header: Record<string, unknown>,
+): string {
+  const segmentName = group.head.attributes?.["sentry.segment.name"]?.value;
+  const name =
+    typeof segmentName === "string" && segmentName
+      ? segmentName
+      : (group.head.name ?? "unnamed span");
+  const msg =
+    sanitize(name) +
+    formatSpanCount(group.spans.length, "+") +
+    formatSpanTraceHint(group.head);
+  const ts = formatTime(group.head.end_timestamp);
+  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+}
+
+/** A span's attributes as an indented table, for `--attributes`. */
+function formatSpanAttributes(span: StreamedSpan): string[] {
+  return formatAttributeTable({
+    contexts: { trace: { data: flattenSpanAttributes(span.attributes) } },
+  });
+}
+
+/**
+ * Format a standalone span envelope item, an `items` array of streamed spans
+ * (span v2). SDKs send every span of a trace on its own, so the tail prints one
+ * line per segment, like a transaction: the segment span with `[N spans]` for
+ * the rest of its batch. Spans whose segment wasn't in the same batch (such as
+ * web vitals sent after a pageload, or children sent before their segment)
+ * print one line named after the segment with `[+N spans]`, or a single such
+ * span prints in full with `[+1 span]`, so the counts add up. With
+ * `showAttributes`, every span gets its own line and attribute table, segment
+ * first.
  */
 export function formatSpanItem(
   event: Record<string, unknown>,
@@ -796,18 +928,35 @@ export function formatSpanItem(
   if (!items?.length) {
     return [];
   }
-  const lines: string[] = [];
-  for (const span of items) {
-    lines.push(formatSingleSpan(span, header));
-    if (showAttributes) {
-      const flat = flattenSpanAttributes(span.attributes);
-      const table = formatAttributeTable({
-        contexts: { trace: { data: flat } },
-      });
-      lines.push(...table);
+  return groupSpansBySegment(items).flatMap((group) => {
+    const shown = group.isSegment || group.spans.length === 1;
+    const lines = [
+      shown
+        ? formatSingleSpan(
+            group.head,
+            header,
+            group.isSegment
+              ? formatSpanCount(group.spans.length - 1)
+              : formatSpanCount(1, "+"),
+          )
+        : formatLateSpansLine(group, header),
+    ];
+    if (!showAttributes) {
+      return lines;
     }
-  }
-  return lines;
+    if (shown) {
+      lines.push(...formatSpanAttributes(group.head));
+    }
+    for (const span of group.spans) {
+      if (!(shown && span === group.head)) {
+        lines.push(
+          formatSingleSpan(span, header),
+          ...formatSpanAttributes(span),
+        );
+      }
+    }
+    return lines;
+  });
 }
 
 /**
@@ -895,16 +1044,23 @@ function jsonSafeIdentifier(value: unknown): string | undefined {
   }
 }
 
+/** Strip ANSI escapes, C1 controls, and BiDi overrides from a JSON string. */
+function jsonText(value: string): string {
+  return stripBidi(stripAnsi(value));
+}
+
 /**
  * Remove terminal-affecting characters from every string in an observation.
  *
  * Envelope payloads are untrusted, and `JSON.stringify()` does not escape C1
- * controls or BiDi overrides. Normalizing the final record in one place keeps
- * new JSON fields from accidentally bypassing the terminal-safety contract.
+ * controls or BiDi overrides. Colored log formatters (werkzeug, uvicorn) also
+ * put ANSI escapes in log text and attributes, which mean nothing to a JSON
+ * reader. Normalizing the final record in one place keeps new JSON fields
+ * from accidentally bypassing the terminal-safety contract.
  */
 function sanitizeJsonValue(value: unknown): unknown {
   if (typeof value === "string") {
-    return stripBidi(value);
+    return jsonText(value);
   }
   if (Array.isArray(value)) {
     return value.map(sanitizeJsonValue);
@@ -912,7 +1068,7 @@ function sanitizeJsonValue(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, nestedValue]) => [
-        stripBidi(key),
+        jsonText(key),
         sanitizeJsonValue(nestedValue),
       ]),
     );
@@ -1033,10 +1189,17 @@ function formatTransactionJson(
   );
 }
 
-/** Format a log item as JSON objects (one per entry). */
+/**
+ * Format a log item as JSON objects (one per entry).
+ *
+ * `attributes` holds the custom attributes, like the tail line. When
+ * `includeAttributes` is true it also holds the SDK-default ones, except
+ * `sentry.*`, whose content (e.g. trace ID) is surfaced separately.
+ */
 function formatLogJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
+  includeAttributes = false,
 ): string[] {
   const items = payload.items as LogEntry[] | undefined;
   if (!items?.length) {
@@ -1057,6 +1220,7 @@ function formatLogJson(
                 .filter(
                   ([k, v]) =>
                     isUserLogAttribute(k) &&
+                    (includeAttributes || !isSdkAttribute(k)) &&
                     v?.value !== null &&
                     v?.value !== undefined,
                 )
@@ -1123,12 +1287,12 @@ function formatSpanJson(
  * and item-specific fields. Designed for machine consumption by AI
  * coding agents and automation tools.
  *
- * Unlike the human formatters, JSON output uses `stripBidi()` instead of
- * the full `sanitize()`. `JSON.stringify()` escapes C0 control characters
+ * Unlike the human formatters, JSON output does not use the full
+ * `sanitize()`. `JSON.stringify()` escapes C0 control characters
  * (U+0000–U+001F) but leaves C1 controls (U+0080–U+009F) and BiDi overrides
- * intact. `stripBidi()` strips both, preventing terminal injection when
- * JSON output is viewed in a terminal, while preserving the original data
- * structure for downstream consumers.
+ * intact. Every string loses those and its ANSI escapes, preventing terminal
+ * injection when JSON output is viewed in a terminal, while preserving the
+ * original data structure for downstream consumers.
  */
 export function formatItemJson(
   itemType: string | undefined,
@@ -1146,7 +1310,7 @@ export function formatItemJson(
     return formatSpanJson(payload, header, showAttributes);
   }
   if (itemType === "log") {
-    return formatLogJson(payload, header);
+    return formatLogJson(payload, header, showAttributes);
   }
   return [
     formatJsonObservation(

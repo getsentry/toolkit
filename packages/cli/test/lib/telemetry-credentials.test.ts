@@ -64,6 +64,20 @@ afterEach(async () => {
 });
 
 describe("telemetry credential boundaries", () => {
+  test("scrubs agent handoff codes from the outgoing envelope", async () => {
+    const capture = captureTelemetry();
+    const handoffCode = `sntryh_${"a".repeat(43)}`;
+    captureEvent({
+      message: `Rejected handoff_code=${handoffCode}`,
+      extra: { handoffCode },
+    });
+    await capture.client.flush(1000);
+
+    const serialized = capture.serializedEnvelope("event");
+    expect(serialized).not.toContain(handoffCode);
+    expect(serialized).toContain("[REDACTED]");
+  });
+
   test("sanitizes exceptions and related fields in the outgoing envelope", async () => {
     const capture = captureTelemetry();
     const event: ErrorEvent = {

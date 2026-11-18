@@ -100,6 +100,39 @@ function eventIdFrom(value: unknown): string | undefined {
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
+/**
+ * The segment number of a replay envelope. Replay SDKs send every segment of
+ * a replay with the replay ID as the envelope `event_id`, so the segment is
+ * what tells them apart.
+ */
+function replaySegmentId(items: unknown[]): number | undefined {
+  for (const item of items) {
+    if (!Array.isArray(item)) {
+      continue;
+    }
+    const [itemHeader, payload] = item as [unknown, unknown];
+    const segmentId =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>).segment_id
+        : undefined;
+    if (
+      typeof itemHeader === "object" &&
+      itemHeader !== null &&
+      (itemHeader as Record<string, unknown>).type === "replay_event" &&
+      typeof segmentId === "number" &&
+      Number.isInteger(segmentId)
+    ) {
+      return segmentId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Identity of a retained envelope. `eventId` is the Sentry event ID, or
+ * `<replay_id>:<segment_id>` for a replay segment, or the envelope ID when
+ * the envelope has no event ID.
+ */
 function eventSummary(parsed: {
   envelope: [Record<string, unknown>, unknown[]];
 }): { envelopeId: string; eventId: string; itemTypes: string[] } {
@@ -119,9 +152,17 @@ function eventSummary(parsed: {
     const id = eventIdFrom(item[0]) ?? eventIdFrom(item[1]);
     return id ? [id] : [];
   })[0];
+  const envelopeId = spotlightEnvelopeId(header);
+  const eventId = eventIdFrom(header) ?? itemEventId;
+  const segmentId = replaySegmentId(items);
   return {
-    envelopeId: spotlightEnvelopeId(header),
-    eventId: eventIdFrom(header) ?? itemEventId ?? spotlightEnvelopeId(header),
+    envelopeId,
+    eventId:
+      eventId === undefined
+        ? envelopeId
+        : segmentId === undefined
+          ? eventId
+          : `${eventId}:${segmentId}`,
     itemTypes: items.map((item) =>
       Array.isArray(item) && typeof item[0] === "object" && item[0]
         ? stringifyUnknown((item[0] as { type?: unknown }).type ?? "unknown")

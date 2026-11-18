@@ -2,6 +2,10 @@ import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
 import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import {
+  sessionAggregates,
+  sessionCountsTitle,
+} from "../../../../packages/cli/src/commands/local/session-counts.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -95,27 +99,6 @@ function contextFeedback(
 ): Record<string, unknown> {
   const contexts = isRecord(event.contexts) ? event.contexts : {};
   return isRecord(contexts.feedback) ? contexts.feedback : {};
-}
-
-/** Server SDKs send `sessions` aggregates: per-bucket counts by session status. */
-function sessionAggregates(event: Record<string, unknown>) {
-  return Array.isArray(event.aggregates)
-    ? event.aggregates.filter(isRecord)
-    : [];
-}
-
-function sessionCountsTitle(
-  event: Record<string, unknown>,
-): string | undefined {
-  const counts = new Map<string, number>();
-  for (const bucket of sessionAggregates(event))
-    for (const status of ["exited", "errored", "abnormal", "crashed"]) {
-      const count = getNumber(bucket[status]);
-      if (count) counts.set(status, (counts.get(status) ?? 0) + count);
-    }
-  return counts.size
-    ? `Session counts: ${[...counts].map(([status, count]) => `${count} ${status}`).join(", ")}`
-    : undefined;
 }
 
 /** Derive display metadata from this payload without inheriting its parent event. */

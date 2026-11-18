@@ -12,6 +12,8 @@ Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js an
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
+The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
+
 With no command, `local run` picks one from the project, in this order:
 
 1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
@@ -36,6 +38,12 @@ Env vars injected into the child process:
 The `<PREFIX>` variants put the URL where your bundler can inline it into browser code: `PUBLIC_` (SvelteKit, Astro, Qwik), `NEXT_PUBLIC_` (Next.js), `VITE_` (Vite), `NUXT_PUBLIC_` (Nuxt), `REACT_APP_` (Create React App), `VUE_APP_` (Vue CLI), and `GATSBY_` (Gatsby). The browser SDK does not read them on its own yet.
 
 When `local run` sees `wrangler dev` and a `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml`, it also adds `--var SENTRY_SPOTLIGHT:<url>`, because Wrangler does not pass process env vars to Worker code. An explicit `--var SENTRY_SPOTLIGHT:...` is kept. No project file is changed.
+
+### Check your setup with `--verify`
+
+`sentry local run --verify -- <command>` starts your app, waits for its first event, then stops it. It exits 0 once an event arrives. It fails if the app exits, crashes, or sends nothing within the timeout (30 seconds, or `--timeout <seconds>`). When port 8969 is busy, it verifies on a free port.
+
+A Cloudflare Worker sends nothing until it handles a request, so send one to it while `--verify` waits.
 
 ## SDK setup
 
@@ -116,18 +124,22 @@ By default, incoming envelopes are pretty-printed to the terminal:
 
 ```
 14:32:01 [ERROR]   [SERVER]  TypeError: x is not a function [app.ts:42:5] [handleRequest]
-14:32:02 [TRACE]   [BROWSER] [http.client] GET /api/users [245ms] [3 spans]
+14:32:02 [TRACE]   [SERVER]  [http.server] GET /spans [200] [52ms] [4 spans] [trace:4c79f60c]
 14:32:03 [INFO]    [SERVER]  User logged in [user_id=1234] [region=us]
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, `user.`, and similar prefixes, plus Python's `asctime` and Django's `request` and `server_time`) are hidden; add `--attributes` (`-a`) to list them under each log line.
+
+Events and logs use the same labels: a warning is `[WARNING]` whether the SDK sent `warning` or `warn`, and an event's logger shows as `[logger:name]`. A log's logger name is an SDK attribute, so it shows only with `-a`.
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
 covers every event item, so it includes messages too.
+
+SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own. The tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans whose segment wasn't in the same batch, like web vitals sent after a pageload or children sent before their segment, print as one line named after the segment, such as `Pageload [+3 spans]`. A single such span prints in full with `[+1 span]`, so the counts still add up. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 
@@ -175,9 +187,13 @@ connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
 `envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
-when the SDK sends ISO 8601 strings. In `local run --format json`, the wrapped
-app's standard output is also forwarded to standard error, leaving standard
-output exclusively for NDJSON observations.
+when the SDK sends ISO 8601 strings. Strings never contain ANSI color codes, so
+colored log output from tools like werkzeug or uvicorn comes through as plain
+text. Log records list only custom attributes, like the tail; add `-a` to also
+get the attributes the SDK adds (except `sentry.*`). `level` is the value the
+SDK sent, so logs use `warn` and events use `warning`. In `local run --format
+json`, the wrapped app's standard output is also forwarded to standard error,
+leaving standard output exclusively for NDJSON observations.
 
 ## Agent-debugging fixture
 

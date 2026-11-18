@@ -34,7 +34,11 @@ export default defineTool({
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
-    query: ParamSearchQuery.nullable().default(null),
+    query: ParamSearchQuery.describe(
+      "Filter by name or slug, or pass a numeric project ID.",
+    )
+      .nullable()
+      .default(null),
     cursor: ParamCursor.nullable().default(null),
   },
   annotations: {
@@ -57,14 +61,24 @@ export default defineTool({
 
     setTargetTagsAndAttributes({ organizationSlug });
 
-    const { projects, nextCursor } = await apiService.listProjects(
-      organizationSlug,
-      {
-        query: params.query ?? undefined,
+    const listProjects = (query: string | undefined) =>
+      apiService.listProjects(organizationSlug, {
+        query,
         limit: RESULT_LIMIT,
         cursor: params.cursor ?? undefined,
-      },
-    );
+      });
+
+    // Sentry matches free text against name and slug only, so a bare
+    // numeric ID finds nothing unless it is sent as `id:`.
+    const query = params.query ?? undefined;
+    let result: Awaited<ReturnType<typeof listProjects>> | undefined;
+    if (query && /^\d+$/.test(query) && !params.cursor) {
+      result = await listProjects(`id:${query}`);
+    }
+    if (!result?.projects.length) {
+      result = await listProjects(query);
+    }
+    const { projects, nextCursor } = result;
 
     return structuredResult({
       projects: projects.map((project) => ({ slug: project.slug })),
