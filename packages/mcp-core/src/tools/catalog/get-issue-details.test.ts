@@ -12,10 +12,12 @@ import {
   eventFixture,
   issueNullCulpritFixture,
   mswServer,
+  relatedIssuesFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type { RelatedIssues } from "../../api-client/types";
 import type { Skill } from "../../skills";
 import * as logging from "../../telem/logging";
 import { getStructuredContent } from "../../test-utils/structured-content";
@@ -2030,7 +2032,7 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns the same structured payload outside experimental mode", async () => {
+  it("returns the same structured payload outside experimental mode, apart from related issues", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
@@ -2041,7 +2043,222 @@ describe("structuredContent", () => {
       experimentalContext,
     );
 
-    expect(parsePayload(result)).toEqual(parsePayload(experimental));
+    // related issues are experimental only until the Seer load is checked
+    const { relatedIssues, ...rest } = parsePayload(experimental);
+    expect(relatedIssues).toBeDefined();
+    expect(parsePayload(result)).toEqual({
+      ...rest,
+      suggestedActions: rest.suggestedActions.filter(
+        (action) => action.toolName !== "find_related_issues",
+      ),
+    });
+  });
+
+  describe("related issues", () => {
+    const relatedUrl =
+      "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/related/";
+
+    function captureRelatedRequest(
+      response: () => Response = () => HttpResponse.json(relatedIssuesFixture),
+    ) {
+      const requests: URL[] = [];
+      mswServer.use(
+        http.get(relatedUrl, ({ request }) => {
+          requests.push(new URL(request.url));
+          return response();
+        }),
+      );
+      return requests;
+    }
+
+    it("lists the top related issues and suggests the full list", async () => {
+      mockLatestEvent();
+      const requests = captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+      expect(requests[0]?.searchParams.get("limit")).toBe("5");
+      // the latest event is the endpoint's default
+      expect(requests[0]?.searchParams.has("eventId")).toBe(false);
+      expect(payload.relatedIssues).toEqual({
+        issues: [
+          {
+            shortId: "CLOUDFLARE-MCP-42",
+            title: "Error: Tool list_projects is already registered",
+            status: "resolved",
+            project: "CLOUDFLARE-MCP",
+            relations: ["similar_stacktrace", "same_trace"],
+          },
+          {
+            shortId: "WEB-1A2",
+            title: "TypeError: Failed to fetch",
+            status: "unresolved",
+            project: "web",
+            relations: ["same_trace"],
+          },
+        ],
+        unavailableTypes: [],
+      });
+      expect(payload.suggestedActions[0]).toEqual({
+        type: "tool_call",
+        toolName: "find_related_issues",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+        },
+        reason:
+          "List every related issue with its similarity score before resolving or ignoring this one.",
+      });
+    });
+
+    it("doesn't look them up outside experimental mode", async () => {
+      mockLatestEvent();
+      const requests = captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, baseContext);
+      const payload = parsePayload(result);
+
+      expect(requests).toHaveLength(0);
+      expect(payload).not.toHaveProperty("relatedIssues");
+    });
+
+    it("keeps an empty list when nothing is related, without the suggestion", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [],
+          meta: relatedIssuesFixture.meta,
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(payload.relatedIssues).toEqual({
+        issues: [],
+        unavailableTypes: [],
+      });
+      expect(
+        payload.suggestedActions.map((action) => action.toolName),
+      ).not.toContain("find_related_issues");
+    });
+
+    it("names the relation types that failed", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [],
+          meta: {
+            types: [
+              {
+                type: "similar_stacktrace",
+                status: "unavailable",
+                detail: "Similar issues are temporarily unavailable.",
+              },
+              { type: "same_trace", status: "ok" },
+              { type: "contributing", status: "not_applicable" },
+            ],
+          },
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+
+      expect(parsePayload(result).relatedIssues?.unavailableTypes).toEqual([
+        "similar_stacktrace",
+      ]);
+    });
+
+    it("reports a status it doesn't know as null", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          ...relatedIssuesFixture,
+          data: relatedIssuesFixture.data.map(
+            (entry: RelatedIssues["data"][number]) => ({
+              ...entry,
+              issue: { ...entry.issue, status: "a_future_status" },
+            }),
+          ),
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(
+        payload.relatedIssues?.issues.map((issue) => issue.status),
+      ).toEqual([null, null]);
+      // the MCP server rejects output that doesn't match the schema's enum
+      expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    });
+
+    it("leaves them out when the lookup fails", async () => {
+      mockLatestEvent();
+      // a Sentry version without the endpoint answers 404
+      captureRelatedRequest(() =>
+        HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(payload).not.toHaveProperty("relatedIssues");
+      expect(
+        payload.suggestedActions.map((action) => action.toolName),
+      ).not.toContain("find_related_issues");
+    });
+
+    it("drops issues from other projects in a project-scoped session", async () => {
+      mockLatestEvent();
+      captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, {
+        ...experimentalContext,
+        constraints: {
+          ...experimentalContext.constraints,
+          projectSlug: "CLOUDFLARE-MCP",
+        },
+      });
+
+      expect(
+        parsePayload(result).relatedIssues?.issues.map(
+          (issue) => issue.shortId,
+        ),
+      ).toEqual(["CLOUDFLARE-MCP-42"]);
+    });
+
+    // same_trace follows the event's trace, so it must be the requested event's
+    it("finds them from an explicit event", async () => {
+      const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+      mswServer.use(
+        http.get(
+          `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+          () => HttpResponse.json(createDefaultEvent({ id: eventId })),
+        ),
+      );
+      const requests = captureRelatedRequest();
+
+      await getIssueDetails.handler(
+        { ...params, eventId },
+        experimentalContext,
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.searchParams.get("eventId")).toBe(eventId);
+      expect(requests[0]?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+    });
   });
 
   it("maps the event entries into fields rather than rendering markdown", async () => {

@@ -7275,6 +7275,76 @@
           ],
           "additionalProperties": false
         },
+        "relatedIssues": {
+          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.",
+          "type": "object",
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "shortId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "resolved",
+                          "ignored",
+                          "pending_deletion",
+                          "pending_merge",
+                          "reprocessing",
+                          "unresolved"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "project": {
+                    "type": ["string", "null"]
+                  },
+                  "relations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "similar_stacktrace",
+                        "same_trace",
+                        "contributing"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "shortId",
+                  "title",
+                  "status",
+                  "project",
+                  "relations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "unavailableTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+              },
+              "description": "Relation types that failed, so some may be missing."
+            }
+          },
+          "required": ["issues", "unavailableTypes"],
+          "additionalProperties": false
+        },
         "event": {
           "type": "object",
           "properties": {
