@@ -118,7 +118,7 @@ Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
 covers every event item, so it includes messages too.
 
-SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own. The tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans that end after their segment was sent, like web vitals after a pageload, arrive later and print as one line named after the segment, such as `Pageload [+3 spans]`. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span.
+SDKs that stream spans (JavaScript SDK 11 and later) send each span on its own. The tail groups them back into one line per segment, such as a request or a pageload, with the segment's duration and the number of other spans sent with it. Spans whose segment wasn't in the same batch, like web vitals sent after a pageload or children sent before their segment, print as one line named after the segment, such as `Pageload [+3 spans]`. A single such span prints in full with `[+1 span]`, so the counts still add up. Add `--attributes` (`-a`) to list every span with its attributes under the segment line; `--format json` always gives one record per span.
 
 Use `--quiet` to suppress tail output entirely if you only need the SSE stream.
 

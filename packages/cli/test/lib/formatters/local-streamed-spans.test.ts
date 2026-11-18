@@ -33,12 +33,12 @@ function honoSpan(
   name: string,
   time: [number, number],
   values: Record<string, Value>,
-  parent_span_id: string | undefined = SEGMENT_ID,
+  parent: string | null = SEGMENT_ID,
 ) {
   return {
     trace_id: TRACE_ID,
     span_id,
-    parent_span_id,
+    parent_span_id: parent ?? undefined,
     name,
     start_timestamp: REQUEST_START + time[0],
     end_timestamp: REQUEST_START + time[1],
@@ -80,7 +80,7 @@ const honoRequestSpans = [
       "url.path": "/spans",
       "http.response.status_code": 200,
     },
-    undefined,
+    null,
   ),
 ];
 
@@ -138,6 +138,23 @@ describe("streamed span batches", () => {
     expect(lines[0]).toContain("[4 spans]");
   });
 
+  test("don't treat a top parent whose own parent is missing as a segment", () => {
+    const bareChildren = honoRequestSpans
+      .filter((span) => !span.is_segment)
+      .map(({ attributes: attrs, ...span }) => ({
+        ...span,
+        attributes: Object.fromEntries(
+          Object.entries(attrs).filter(
+            ([key]) => !key.startsWith("sentry.seg"),
+          ),
+        ),
+      }));
+    const lines = tailLines(bareChildren);
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain("load-orders [+2 spans]");
+    expect(lines.join("\n")).not.toMatch(/\[\d+ spans?\]/);
+  });
+
   test("print spans that arrive after their segment as one line for the segment", () => {
     const late = honoRequestSpans.slice(0, 2);
     const lines = tailLines(late);
@@ -146,11 +163,11 @@ describe("streamed span batches", () => {
     expect(lines[0]).not.toContain("middleware");
   });
 
-  test("print a single late span on its own", () => {
+  test("print a single late span in full, marked [+1 span]", () => {
     const lines = tailLines(honoRequestSpans.slice(2, 3));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("load-orders");
-    expect(lines[0]).not.toContain("+1");
+    expect(lines[0]).toContain("[+1 span]");
   });
 
   test("with --attributes, list every span under its segment", () => {

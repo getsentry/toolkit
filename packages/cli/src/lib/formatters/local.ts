@@ -758,13 +758,14 @@ function formatSpanCount(count: number, prefix = ""): string {
 
 /**
  * Format a single standalone span into a colored one-liner, using the same
- * semantic rendering as transactions. `childCount` adds `[N spans]` for a
- * segment shown with the rest of its batch.
+ * semantic rendering as transactions. `spanCount` is a
+ * {@link formatSpanCount} marker, such as `[N spans]` for a segment shown
+ * with the rest of its batch.
  */
 export function formatSingleSpan(
   span: StreamedSpan,
   header: Record<string, unknown>,
-  childCount = 0,
+  spanCount = "",
 ): string {
   const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
@@ -792,7 +793,7 @@ export function formatSingleSpan(
     msg += ` ${muted(`[${sanitize(span.status)}]`)}`;
   }
 
-  msg += formatSpanCount(childCount) + formatSpanTraceHint(span);
+  msg += spanCount + formatSpanTraceHint(span);
 
   const ts = formatTime(span.end_timestamp);
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
@@ -802,8 +803,8 @@ export function formatSingleSpan(
 type SpanGroup = {
   /** The segment span, or the top span of the group when it is missing. */
   head: StreamedSpan;
-  /** Whether {@link head} is the segment span itself. */
-  hasSegment: boolean;
+  /** Whether {@link head} is the segment span itself, not just its top span. */
+  isSegment: boolean;
   spans: StreamedSpan[];
 };
 
@@ -833,6 +834,19 @@ function segmentKey(
 }
 
 /**
+ * Whether a streamed span is a segment: flagged `is_segment`, its own
+ * `sentry.segment.id`, or a root span with no parent.
+ */
+function isSegmentSpan(span: StreamedSpan): boolean {
+  return (
+    span.is_segment === true ||
+    !span.parent_span_id ||
+    (span.span_id !== undefined &&
+      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
+  );
+}
+
+/**
  * Group a span batch by segment, in the order each segment first appears.
  * Spans with no span or segment ID each form their own group.
  */
@@ -853,10 +867,8 @@ function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
       groups.set(key, [span]);
     }
   }
-  return [...groups].map(([key, spans]) => {
-    const segment = spans.find(
-      (span) => span.is_segment || span.span_id === key,
-    );
+  return [...groups.values()].map((spans) => {
+    const segment = spans.find(isSegmentSpan);
     // Without its segment, the group's top span is the one whose parent is
     // not in the batch and that started first.
     const top = spans
@@ -868,13 +880,13 @@ function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
       )[0];
     return {
       head: segment ?? top ?? (spans[0] as StreamedSpan),
-      hasSegment: segment !== undefined,
+      isSegment: segment !== undefined,
       spans,
     };
   });
 }
 
-/** One tail line for spans that arrived after their segment was sent. */
+/** One tail line for spans whose segment wasn't in the same batch. */
 function formatLateSpansLine(
   group: SpanGroup,
   header: Record<string, unknown>,
@@ -903,10 +915,12 @@ function formatSpanAttributes(span: StreamedSpan): string[] {
  * Format a standalone span envelope item, an `items` array of streamed spans
  * (span v2). SDKs send every span of a trace on its own, so the tail prints one
  * line per segment, like a transaction: the segment span with `[N spans]` for
- * the rest of its batch. Spans whose segment is not in the batch (they ended
- * after it was sent, such as web vitals after a pageload) print one line named
- * after the segment with `[+N spans]`. With `showAttributes`, every span gets
- * its own line and attribute table, segment first.
+ * the rest of its batch. Spans whose segment wasn't in the same batch (such as
+ * web vitals sent after a pageload, or children sent before their segment)
+ * print one line named after the segment with `[+N spans]`, or a single such
+ * span prints in full with `[+1 span]`, so the counts add up. With
+ * `showAttributes`, every span gets its own line and attribute table, segment
+ * first.
  */
 export function formatSpanItem(
   event: Record<string, unknown>,
@@ -918,10 +932,16 @@ export function formatSpanItem(
     return [];
   }
   return groupSpansBySegment(items).flatMap((group) => {
-    const shown = group.hasSegment || group.spans.length === 1;
+    const shown = group.isSegment || group.spans.length === 1;
     const lines = [
       shown
-        ? formatSingleSpan(group.head, header, group.spans.length - 1)
+        ? formatSingleSpan(
+            group.head,
+            header,
+            group.isSegment
+              ? formatSpanCount(group.spans.length - 1)
+              : formatSpanCount(1, "+"),
+          )
         : formatLateSpansLine(group, header),
     ];
     if (!showAttributes) {
