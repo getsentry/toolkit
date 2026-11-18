@@ -110,7 +110,9 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, and similar prefixes) are hidden; add `--attributes` (`-a`) to list them under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, `user.`, and similar prefixes, plus Python's `asctime` and Django's `request` and `server_time`) are hidden; add `--attributes` (`-a`) to list them under each log line.
+
+Events and logs use the same labels: a warning is `[WARNING]` whether the SDK sent `warning` or `warn`, and an event's logger shows as `[logger:name]`. A log's logger name is an SDK attribute, so it shows only with `-a`.
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name.
 
@@ -166,9 +168,13 @@ connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
 `envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
-when the SDK sends ISO 8601 strings. In `local run --format json`, the wrapped
-app's standard output is also forwarded to standard error, leaving standard
-output exclusively for NDJSON observations.
+when the SDK sends ISO 8601 strings. Strings never contain ANSI color codes, so
+colored log output from tools like werkzeug or uvicorn comes through as plain
+text. Log records list only custom attributes, like the tail; add `-a` to also
+get the attributes the SDK adds (except `sentry.*`). `level` is the value the
+SDK sent, so logs use `warn` and events use `warning`. In `local run --format
+json`, the wrapped app's standard output is also forwarded to standard error,
+leaving standard output exclusively for NDJSON observations.
 
 ## Agent-debugging fixture
 
