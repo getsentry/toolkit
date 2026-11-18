@@ -951,7 +951,12 @@ function formatLateSpansLine(
     formatSpanCount(group.spans.length, "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
-  return `${muted(ts)} ${formatType("trace")} ${inferSource(header)} ${msg}`;
+  const source = inferSource(
+    header,
+    undefined,
+    group.spans.map((span) => flattenSpanAttributes(span.attributes)),
+  );
+  return `${muted(ts)} ${formatType("trace")} ${source} ${msg}`;
 }
 
 /** A span's attributes as an indented table, for `--attributes`. */

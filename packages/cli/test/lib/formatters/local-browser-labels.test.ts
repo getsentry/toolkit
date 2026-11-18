@@ -104,6 +104,29 @@ describe("Next.js browser spans and logs", () => {
     expect(jsonSource("span", payload)).toBe("browser");
   });
 
+  test("late spans of a browser pageload are tagged [BROWSER]", () => {
+    const lateSpan = (span_id: string, file: string) => ({
+      ...browserSpan(file, {
+        "sentry.op": "resource.script",
+        "url.full": `http://localhost:3000/_next/static/chunks/${file}`,
+        "sentry.segment.id": "a39103452fcf4abc",
+        "sentry.segment.name": "/client",
+      }),
+      span_id,
+      parent_span_id: "a39103452fcf4abc",
+      is_segment: false,
+    });
+    const payload = {
+      items: [
+        lateSpan("c000000000000001", "main.js"),
+        lateSpan("c000000000000002", "app.js"),
+      ],
+    };
+    const lines = tail("span", payload);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[BROWSER] /client [+2 spans]");
+  });
+
   test("a server request span with a user agent stays [SERVER]", () => {
     const payload = { items: [serverRequestSpan] };
     expect(tail("span", payload)[0]).toContain("[SERVER]");
