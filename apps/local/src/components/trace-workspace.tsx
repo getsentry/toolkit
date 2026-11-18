@@ -5,6 +5,7 @@ import { ResizableWorkspace } from "./resizable-workspace";
 import { SpanDetail } from "./span-detail";
 import { isLogOnlyTrace, type TraceGroup } from "../lib/trace-model";
 import { TraceWaterfall } from "./trace-waterfall";
+import { pluralize } from "../lib/presentation";
 
 type TraceWorkspaceProps = {
   emptyState?: { title: string; description: string };
@@ -122,7 +123,7 @@ export function TraceWorkspace({
               Traces
             </h2>
             <span className="font-mono text-xs text-muted-foreground">
-              {traces.length} trace{traces.length === 1 ? "" : "s"}
+              {pluralize(traces.length, "trace")}
             </span>
           </header>
 
@@ -154,15 +155,15 @@ export function TraceWorkspace({
                         <span>
                           {isLogOnlyTrace(trace)
                             ? "Logs only"
-                            : `${trace.spanCount} span${trace.spanCount === 1 ? "" : "s"}`}
+                            : pluralize(trace.spanCount, "span")}
                         </span>
                         {trace.errorCount > 0 ? (
                           <span className="text-red-500 dark:text-red-400">
-                            {trace.errorCount} errors
+                            {pluralize(trace.errorCount, "error")}
                           </span>
                         ) : null}
                         {trace.logCount > 0 ? (
-                          <span>{trace.logCount} logs</span>
+                          <span>{pluralize(trace.logCount, "log")}</span>
                         ) : null}
                       </div>
                     </div>

@@ -208,6 +208,69 @@ test("log-only trace groups are labelled and listed after traces with spans", ()
   ).toContain("nested");
 });
 
+test("trace counts use singular nouns for one", () => {
+  const traces = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /logerror",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+              spans: [
+                {
+                  span_id: "child",
+                  parent_span_id: "root",
+                  op: "db",
+                  start_timestamp: 1.1,
+                  timestamp: 1.2,
+                },
+              ],
+            },
+          ],
+          [
+            { type: "event" },
+            {
+              level: "error",
+              logentry: { message: "Something went wrong" },
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+            },
+          ],
+          [
+            { type: "log" },
+            {
+              items: [
+                {
+                  timestamp: 1.5,
+                  level: "error",
+                  body: "Something went wrong",
+                  trace_id: "trace",
+                },
+              ],
+            },
+          ],
+        ],
+      ]),
+      "trace",
+    ),
+  );
+  render(<TraceWorkspace traces={traces} onSelect={vi.fn()} />);
+  expect(screen.getByText("1 trace")).toBeDefined();
+  const entry = screen.getByRole("button", {
+    name: "View trace GET /logerror",
+  }).textContent;
+  expect(entry).toContain("1 error");
+  expect(entry).toContain("1 log");
+  expect(entry).not.toMatch(/1 (span|error|log)s/);
+  expect(screen.getByLabelText("Trace summary").textContent).not.toMatch(
+    /\b1 (span|error|log)s/,
+  );
+});
+
 test("a profiled trace lists real spans and links its profile once", () => {
   const items = profiledRequest();
   const traces = buildTraceGroups(items);
