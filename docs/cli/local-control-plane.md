@@ -237,7 +237,9 @@ The daemon-wide `/stream` emits discovery metadata to loopback viewers and the
 trusted hosted Local origins. Other browser origins cannot read it. Discovery
 uses a separate `directoryUrl` capability, also returned by session create and
 session view. `--open` passes it alongside the initial stream in the URL fragment,
-which is removed after startup and is never sent to the hosting server. The directory
+which is removed after startup and is never sent to the hosting server. Opening a
+new session link in a tab that is already open switches to that session and clears
+the link from the URL the same way. The directory
 is kept only in tab session storage, so reloads can retain the picker. The capability
 allows discovery of all sessions and their stream capabilities on this daemon; treat
 it as a credential. It does not grant ingestion or the CLI control API, and expires
