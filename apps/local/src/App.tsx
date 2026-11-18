@@ -35,6 +35,7 @@ import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
   LOCAL_SESSION_EVENT,
+  envelopeReceivedAt,
 } from "../../../packages/cli/src/commands/local/viewer-protocol.ts";
 import {
   DEFAULT_MAX_ENVELOPES,
@@ -78,6 +79,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip.tsx";
 import {
+  formatTimestamp,
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
@@ -120,20 +122,6 @@ const SCOPED_SESSION_STREAM_PATH_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
 function isScopedSessionStream(pathname: string): boolean {
   return SCOPED_SESSION_STREAM_PATH_RE.test(pathname);
-}
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]): string {
-  if (timestamp === undefined) {
-    return "unknown time";
-  }
-  const milliseconds =
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp;
-  const date = new Date(milliseconds);
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
 }
 
 function formatDuration(durationMs: number | undefined): string | undefined {
@@ -919,28 +907,41 @@ export default function App() {
         return;
       }
       setIsViewCleared(false);
-      setLatestEventTime(Date.now());
       const messageEvent = event as MessageEvent<string>;
       const eventId =
         messageEvent.lastEventId || `event-${fallbackEventId.current++}`;
-      const rawEnvelope: LocalFeedItem = {
-        id: eventId,
-        type: "envelope",
-        timestamp: Date.now(),
-        text: messageEvent.data,
-        payload: messageEvent.data,
-        metadata: { title: `Envelope ${eventId.slice(-8)}` },
-      };
+      let items: LocalFeedItem[] | undefined;
       try {
-        telemetryStore.recordEnvelope(
-          rawEnvelope,
-          decodeEnvelope(messageEvent.data, eventId),
-        );
-        setMessage(undefined);
+        items = decodeEnvelope(messageEvent.data, eventId);
       } catch {
-        telemetryStore.recordEnvelope(rawEnvelope, []);
-        setMessage("Received an event that could not be decoded.");
+        // Undecodable envelopes stay inspectable as raw text.
       }
+      // Replayed history must keep its receive time, not the time it loaded.
+      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
+      const receivedAt =
+        envelopeReceivedAt(eventId) ??
+        (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
+      const itemTypes = [...new Set(items?.map((item) => item.type))];
+      setLatestEventTime((latest) =>
+        latest === undefined ? receivedAt : Math.max(latest, receivedAt),
+      );
+      telemetryStore.recordEnvelope(
+        {
+          id: eventId,
+          type: "envelope",
+          timestamp: receivedAt,
+          text: messageEvent.data,
+          payload: messageEvent.data,
+          metadata: {
+            title: `Envelope ${eventId.slice(-8)}${itemTypes.length ? ` · ${itemTypes.join(", ")}` : ""}`,
+          },
+        },
+        items ?? [],
+      );
+      setMessage(
+        items ? undefined : "Received an event that could not be decoded.",
+      );
     };
 
     source.addEventListener(SENTRY_ENVELOPE_EVENT, onEnvelope);

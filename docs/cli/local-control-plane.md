@@ -45,6 +45,11 @@ Restart preserves its configured host and port and clears all in-memory data.
 Both stop and restart wait for the previous daemon to release its state and ownership
 before reporting success; a rejected stop or shutdown timeout reports an error while
 preserving discovery.
+`daemon stop` and `daemon restart` warn about sessions that were still
+capturing, and `daemon stop` lists them in `capturingSessions`. A `local run --session` or `local serve --session` attached to
+one prints a single warning once the daemon is gone and stops reconnecting. A
+wrapped app keeps running, but nothing captures its telemetry until the command
+is restarted.
 A temporarily unreachable live daemon keeps its discovery state for retries.
 Discovery is stale when its recorded port refuses connections, or when a server
 that is not a Local daemon answers there, even if its PID is alive. That happens
@@ -269,6 +274,10 @@ metadata and related telemetry. Waterfall spans are keyboard-selectable and open
 their own timing, attributes, original payload, and trace-related errors/logs in
 the inspector; **Back to trace** returns to the waterfall and its selected span.
 Raw envelopes and other diagnostic types open directly in JSON.
+Envelope rows list their item types and show when the receiver accepted them,
+read from the receiver's UUIDv7 SSE event ID, so reloaded history keeps its
+original times. Envelopes without that ID use their `sent_at` header.
+Breadcrumb and SDK last-seen times use the same local time format as the lists.
 
 Switching or reconnecting a receiver isolates pending actions and stream callbacks
 from earlier connections, including when returning to the same receiver URL.
@@ -293,6 +302,9 @@ Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Invalid compression returns 400, oversized bodies 413, unsupported media or
 encoding 415, and temporary admission overload 503. Malformed envelopes remain
 available for raw inspection and byte-exact download through their receiver IDs.
+Receivers drop `http.client` spans and breadcrumbs for requests to their own
+loopback `/_local/` and `/stream` routes on the same port, which SDKs record for
+their own deliveries, and do not retain an envelope that has nothing else left.
 Clearing a capture invalidates pending admissions, and closing a session drains
 accepted work before its final stream event.
 

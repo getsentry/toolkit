@@ -10,6 +10,7 @@ import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
 import { werkzeugLogEnvelope } from "@/test-fixtures/sentry-python.ts";
 import { EventDetail } from "./event-detail.tsx";
+import { pythonBreadcrumbEvent } from "@/test-fixtures/python-breadcrumbs.ts";
 import {
   pythonHandledException,
   pythonLoggingEvent,
@@ -339,6 +340,19 @@ test("breadcrumb messages hide terminal colour codes", () => {
   const breadcrumbs = screen.getByRole("region", { name: "Breadcrumbs" });
   expect(breadcrumbs.textContent).toContain('"GET /missing HTTP/1.1" 404');
   expect(breadcrumbs.textContent).not.toContain("[33m");
+});
+
+test("breadcrumb times use local time for epoch and ISO timestamps", () => {
+  render(<EventDetail item={item("event", pythonBreadcrumbEvent)} />);
+  const times = [
+    ...screen
+      .getByRole("region", { name: "Breadcrumbs" })
+      .querySelectorAll("time"),
+  ].map((time) => time.textContent);
+  expect(times).toEqual([
+    new Date(1794947420913).toLocaleTimeString(),
+    new Date("2026-11-17T20:30:21.050Z").toLocaleTimeString(),
+  ]);
 });
 
 test("logging events show their message and key event fields in Overview", () => {

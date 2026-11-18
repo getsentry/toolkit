@@ -7,6 +7,7 @@ import {
   feedbackData,
   EVENT_CONTEXT_SECTIONS,
 } from "@/lib/inspection.ts";
+import { formatTimestamp } from "@/lib/presentation.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
 import { DetailFields } from "./span-detail.tsx";
@@ -34,9 +35,10 @@ export function EventContext({ payload }: { payload: unknown }) {
                     </span>
                     <span>{text(crumb.level)}</span>
                     <time>
-                      {crumb.timestamp === undefined
-                        ? ""
-                        : display(crumb.timestamp)}
+                      {typeof crumb.timestamp === "number" ||
+                      typeof crumb.timestamp === "string"
+                        ? formatTimestamp(crumb.timestamp)
+                        : ""}
                     </time>
                   </div>
                   {crumb.message !== undefined ? (
