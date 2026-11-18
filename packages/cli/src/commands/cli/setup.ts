@@ -11,6 +11,7 @@ import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isatty } from "node:tty";
 import type { SentryContext } from "../../context.js";
+import { completeAgentHandoff } from "../../lib/agent-handoff.js";
 import { installAgentSkills } from "../../lib/agent-skills.js";
 import { sentry } from "../../lib/app-identity.js";
 import { assertAutoLoginHostTrusted } from "../../lib/auto-auth.js";
@@ -792,12 +793,24 @@ export const setupCommand = buildCommand({
       warn,
     });
 
-    if (getEnv().SENTRY_SETUP_CODE && !hasStoredAuthCredentials()) {
+    const { SENTRY_HANDOFF, SENTRY_SETUP_CODE } = getEnv();
+    const handoffCode = SENTRY_HANDOFF?.trim();
+    const setupCode = SENTRY_SETUP_CODE?.trim();
+    const shouldUseSetupCode =
+      !handoffCode && Boolean(setupCode) && !hasStoredAuthCredentials();
+    let afterSetupInstructions: string | undefined;
+
+    if (handoffCode) {
+      const handoff = await completeAgentHandoff(handoffCode);
+      afterSetupInstructions = handoff.flowInstructions;
+      emit("Authenticated with Sentry using the agent handoff.");
+    } else if (shouldUseSetupCode) {
       await bootstrapAuthentication();
       emit("Authenticated with Sentry using the setup code.");
-      if (!flags["no-completions"]) {
-        await warmCachesAfterLogin();
-      }
+    }
+
+    if ((handoffCode || shouldUseSetupCode) && !flags["no-completions"]) {
+      await warmCachesAfterLogin();
     }
 
     if (flags["ensure-auth-scopes"]) {
@@ -816,6 +829,10 @@ export const setupCommand = buildCommand({
     // since the upgrade command itself prints a success message.
     if (!flags.quiet && freshInstall) {
       printWelcomeMessage(emit, CLI_VERSION, binaryPath);
+    }
+
+    if (afterSetupInstructions) {
+      emit(afterSetupInstructions);
     }
 
     yield new CommandOutput({
@@ -840,7 +857,7 @@ export const setupCommand = buildCommand({
       flags.method !== "curl" ||
       flags.quiet ||
       flags["ensure-auth-scopes"] ||
-      Boolean(getEnv().SENTRY_SETUP_CODE) ||
+      Boolean(handoffCode || setupCode) ||
       !(interactivePromptsAllowed() && isatty(0) && isatty(1) && isatty(2))
     ) {
       return;

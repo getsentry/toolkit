@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { decodeEnvelope } from "./spotlight.ts";
+import { jsCaptureMessage } from "@/test-fixtures/sdk-message.ts";
 import {
   eventListLabel,
   isAiEvent,
@@ -128,6 +129,10 @@ describe("event list labels", () => {
         }),
       ).badge,
     ).toBe("Exception");
+    expect(eventListLabel(decode("event", jsCaptureMessage))).toEqual({
+      badge: "Message",
+      title: "Checkout retry limit reached",
+    });
     expect(
       eventListLabel(
         decode("feedback", {

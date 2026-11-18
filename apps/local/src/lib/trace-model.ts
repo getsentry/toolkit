@@ -29,6 +29,12 @@ export type TraceGroup = {
   items: LocalFeedItem[];
   roots: TraceSpan[];
   spans: TraceSpan[];
+  /**
+   * Captured spans below the trace's transactions and segments. Like the
+   * tail's `[N spans]`, it leaves out the transaction or segment span itself
+   * and sampled profile rows.
+   */
+  spanCount: number;
   logCount: number;
   errorCount: number;
   itemCount: number;
@@ -37,7 +43,10 @@ export type TraceGroup = {
   durationMs?: number;
 };
 
-type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
+type MutableTraceGroup = Omit<
+  TraceGroup,
+  "roots" | "spans" | "spanCount" | "itemCount"
+> & {
   spanMap: Map<string, TraceSpan>;
   spanUpdates: Map<string, TraceSpan[]>;
   titleCandidates: Set<string>;
@@ -484,6 +493,8 @@ export function buildTraceGroups(
         items: trace.items,
         roots: sortByTimestamp(roots),
         spans,
+        spanCount: spans.filter((span) => !trace.titleCandidates.has(span.id))
+          .length,
         logCount: trace.logCount,
         errorCount: trace.errorCount,
         itemCount: trace.items.length,

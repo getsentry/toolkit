@@ -423,3 +423,11 @@ test.each([undefined, 1.9, "1970-01-01T00:00:01.900Z"])(
     });
   },
 );
+
+test("sampled profile rows do not count as trace spans", () => {
+  // sentry-python sends profiles by default: FastAPI /slow had 3 spans but
+  // the trace list counted every sampled function row.
+  const trace = buildTraceGroups([transaction(), profile()])[0]!;
+  expect(trace.spans.filter((span) => span.sampled).length).toBeGreaterThan(0);
+  expect(trace.spanCount).toBe(1);
+});

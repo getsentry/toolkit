@@ -59,13 +59,17 @@ export function getSetupCodeHost(code: string): string {
 /** Redeem a private setup code, replacing only the issuing server's selected login. */
 export async function bootstrapAuthentication(
   options: {
+    /** Private setup credential provided by Sentry. */
+    code?: string;
     /** Explicit consent to replace an existing stored login. */
     force?: boolean;
     /** Explicit issuing instance URL, required for HTTP without a boot-time URL. */
     url?: string;
+    /** OAuth application that issued the setup credential. */
+    clientId?: string;
   } = {},
 ): Promise<BootstrapResult> {
-  const code = getEnv().SENTRY_SETUP_CODE;
+  const code = (options.code ?? getEnv().SENTRY_SETUP_CODE)?.trim();
 
   if (!code) {
     throw new ValidationError(
@@ -112,7 +116,7 @@ export async function bootstrapAuthentication(
   inheritEnvTokenHost(env);
 
   return await withEnv(env, async () => {
-    const token = await exchangeSetupCode(code, host);
+    const token = await exchangeSetupCode(code, host, options.clientId);
     const accessToken = normalizeAuthToken(token.access_token);
     setAuthToken(accessToken, token.expires_in, token.refresh_token, {
       host,

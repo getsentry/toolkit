@@ -585,7 +585,7 @@
       },
       {
         "name": "create_project",
-        "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
+        "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, whether the repository linked, and the Sentry signals its platform supports, each with a docs link.",
         "requiredScopes": ["project:write", "team:read", "org:read"]
       },
       {

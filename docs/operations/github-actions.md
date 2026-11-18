@@ -137,6 +137,23 @@ workflows.
   a fresh PR.
 - The PR is never merged automatically.
 
+### regenerate-platform-setup.yml
+
+Keeps one PR with the regenerated `create_project` platform setup data, on the
+`bot/regenerate-platform-setup` branch. It runs daily and on manual dispatch
+from `main`, runs `pnpm --filter @sentry/mcp-core run generate-platform-setup`,
+and hands the result to `scripts/platform-setup-pr.mjs`. The release bot's
+token pushes the branch and opens the PR, so `test.yml` runs on it.
+
+- When the generated data matches `main`, or matches the open PR, it does
+  nothing.
+- With no open PR, it commits the data on a branch from `main`, force-pushes
+  it, and opens a PR. A leftover branch from a closed PR is overwritten.
+- When the open PR has older data, it rebuilds the branch from `main` and
+  force-pushes it. It never opens a second PR, and commits pushed to the
+  branch by hand are lost.
+- The PR is never merged automatically.
+
 ## Package CI checks
 
 Add a check for one workspace package to that package's `package.json`, not to

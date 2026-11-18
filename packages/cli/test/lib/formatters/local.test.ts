@@ -1008,7 +1008,7 @@ describe("formatItemJson", () => {
   test("includes grouped attributes only when requested", () => {
     const event = {
       timestamp: 1_700_000_000,
-      contexts: { trace: { op: "http.server", data: { "user.id": "42" } } },
+      contexts: { trace: { op: "http.server", data: { "order.id": "42" } } },
     };
     const without = JSON.parse(
       formatItemJson("transaction", event, serverHeader)[0],
@@ -1017,7 +1017,7 @@ describe("formatItemJson", () => {
     const withAttrs = JSON.parse(
       formatItemJson("transaction", event, serverHeader, true)[0],
     );
-    expect(withAttrs.attributes.user).toEqual({ "user.id": "42" });
+    expect(withAttrs.attributes.user).toEqual({ "order.id": "42" });
   });
 });
 
@@ -1256,14 +1256,14 @@ describe("inferSource cloudflare SDK", () => {
 });
 
 describe("warn level coloring", () => {
-  test("warn level gets formatted with brackets", () => {
+  test("warn level gets the same [WARNING] label as events", () => {
     const log = {
       level: "warn",
       body: "Rate limit approaching",
       timestamp: 1_700_000_000,
     };
     const result = formatSingleLog(log, "[SERVER]  ");
-    expect(stripAnsi(result)).toContain("[WARN]");
+    expect(stripAnsi(result)).toContain("[WARNING]");
   });
 });
 

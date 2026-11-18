@@ -3,6 +3,7 @@ import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { profiledRequest } from "@/test-fixtures/profiled-request.ts";
 import { TraceWorkspace } from "./trace-workspace.tsx";
 
 afterEach(cleanup);
@@ -268,4 +269,61 @@ test("trace counts use singular nouns for one", () => {
   expect(screen.getByLabelText("Trace summary").textContent).not.toMatch(
     /\b1 (span|error|log)s/,
   );
+});
+
+test("a profiled trace lists real spans and links its profile once", () => {
+  const items = profiledRequest();
+  const traces = buildTraceGroups(items);
+  const selectProfile = vi.fn();
+  render(
+    <TraceWorkspace
+      traces={traces}
+      onSelect={vi.fn()}
+      profiles={items.filter((item) => item.type === "profile_chunk")}
+      onSelectProfile={selectProfile}
+    />,
+  );
+  const entry = screen.getByRole("button", { name: "View trace GET /slow" });
+  expect(entry.textContent).toContain("1 span");
+  expect(entry.textContent).not.toContain("1 spans");
+  const links = screen.getAllByRole("button", {
+    name: /^Inspect .*profile.* for this trace$/,
+  });
+  expect(links).toHaveLength(1);
+  fireEvent.click(links[0]!);
+  expect(selectProfile).toHaveBeenCalledOnce();
+});
+
+test("returning from a sampled function keeps its row shown and focused", () => {
+  const traces = buildTraceGroups(profiledRequest());
+  function Workspace() {
+    const [selectedSpanId, setSelectedSpanId] = useState<string>();
+    return (
+      <TraceWorkspace
+        traces={traces}
+        onSelect={() => undefined}
+        selectedTraceId="t"
+        selectedSpanId={selectedSpanId}
+        onSelectSpan={(_traceId, spanId) => setSelectedSpanId(spanId)}
+        onClearSpan={() => setSelectedSpanId(undefined)}
+      />
+    );
+  }
+  render(<Workspace />);
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Show \d+ sampled function/ }),
+  );
+  const sampled = screen.getAllByRole("button", { name: "Inspect span work" });
+  const id = sampled[0]!.dataset.spanId;
+  fireEvent.click(sampled[0]!);
+  fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
+  expect((document.activeElement as HTMLElement | null)?.dataset.spanId).toBe(
+    id,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hide sampled functions" }),
+  );
+  expect(
+    screen.queryAllByRole("button", { name: "Inspect span work" }),
+  ).toHaveLength(0);
 });

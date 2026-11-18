@@ -160,7 +160,7 @@ describe("find_releases", () => {
     expect(getStructuredContent(result)).toEqual({
       releases: [
         {
-          version: "backend@1.2.3",
+          version: "backend@1.2.3+build.4",
           dateCreated: "2025-04-13T19:54:21.764Z",
           dateReleased: "2025-04-14T08:00:00.000Z",
           firstEvent: "2025-04-13T19:54:21.000Z",

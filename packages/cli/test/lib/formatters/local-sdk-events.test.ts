@@ -476,6 +476,15 @@ describe("log attributes", () => {
             type: "string",
           },
           "process.pid": { value: 41_822, type: "integer" },
+          "user.id": { value: "42", type: "string" },
+          "user.email": { value: "jane@example.com", type: "string" },
+          "user.name": { value: "jane", type: "string" },
+          asctime: { value: "2026-11-17 10:00:06,101", type: "string" },
+          request: {
+            value: "<socket.socket fd=7, family=2, type=1, proto=0>",
+            type: "string",
+          },
+          server_time: { value: "17/Nov/2026 10:00:06", type: "string" },
           request_id: { value: "req-7f3a", type: "string" },
         },
       },
@@ -486,11 +495,20 @@ describe("log attributes", () => {
   test("without --attributes, a log line shows only custom attributes", () => {
     const lines = formatItem("log", werkzeugLog, header, "log").map(stripAnsi);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("[request_id=req-7f3a]");
-    expect(lines[0]).toContain("[logger.name=werkzeug]");
-    expect(lines[0]).not.toContain("code.file.path");
-    expect(lines[0]).not.toContain("thread.name");
-    expect(lines[0]).not.toContain("server.address");
+    expect(lines[0]).toMatch(/\[request_id=req-7f3a\] \[trace:[0-9a-f]+\]$/);
+    for (const key of [
+      "logger.name",
+      "code.file.path",
+      "thread.name",
+      "server.address",
+      "user.email",
+      "user.id",
+      "asctime",
+      "request=",
+      "server_time",
+    ]) {
+      expect(lines[0]).not.toContain(key);
+    }
   });
 
   test("with --attributes, SDK attributes are listed under the line", () => {
@@ -502,5 +520,79 @@ describe("log attributes", () => {
     expect(table).toContain("sdk attributes");
     expect(table).toContain("code.file.path");
     expect(table).toContain("thread.name");
+    expect(table).toContain("logger.name");
+    expect(table).toContain("user.email");
+    expect(table).toContain("asctime");
+  });
+
+  test("a warn log uses the same [WARNING] label as a warning event", () => {
+    const warnLog = { items: [{ ...werkzeugLog.items[0], level: "warn" }] };
+    const [line] = formatItem("log", warnLog, header, "log").map(stripAnsi);
+    expect(line).toContain(" [WARNING] ");
+    expect(line).not.toContain("[WARN]");
+  });
+
+  /** JSON records for the werkzeug log, with or without `-a`. */
+  function logJson(showAttributes: boolean): Record<string, unknown> {
+    const lines = formatItemJson("log", werkzeugLog, header, showAttributes);
+    expect(lines).toHaveLength(1);
+    return JSON.parse(lines[0] ?? "{}") as Record<string, unknown>;
+  }
+
+  test("JSON log records keep only custom attributes without --attributes", () => {
+    expect(logJson(false).attributes).toEqual({ request_id: "req-7f3a" });
+  });
+
+  test("JSON log records add SDK attributes with --attributes", () => {
+    const attributes = logJson(true).attributes as Record<string, unknown>;
+    expect(attributes).toMatchObject({
+      request_id: "req-7f3a",
+      "logger.name": "werkzeug",
+      "code.line.number": 97,
+      "user.email": "jane@example.com",
+    });
+    expect(Object.keys(attributes).some((k) => k.startsWith("sentry."))).toBe(
+      false,
+    );
+  });
+});
+
+describe("colored log text", () => {
+  /** A uvicorn access log whose formatter colored the message. */
+  const uvicornLog = {
+    items: [
+      {
+        timestamp: 1_794_045_606.1,
+        level: "info",
+        body: "\u001b[35m\u001b[1mGET /boom HTTP/1.1\u001b[0m 500",
+        attributes: {
+          "logger.name": { value: "uvicorn.access", type: "string" },
+          color_message: {
+            value:
+              '%s - "\u001b[1m%s %s HTTP/%s\u001b[0m" \u001b[31m%d\u001b[0m',
+            type: "string",
+          },
+        },
+      },
+    ],
+  };
+  const header = { sdk: { name: "sentry.python.fastapi", version: "2.42.0" } };
+
+  test("JSON log records have no ANSI escapes", () => {
+    const [line] = formatItemJson("log", uvicornLog, header);
+    expect(line).not.toContain("\\u001b");
+    const record = JSON.parse(line ?? "{}") as Record<string, unknown>;
+    expect(record.message).toBe("GET /boom HTTP/1.1 500");
+    expect(record.attributes).toEqual({
+      color_message: '%s - "%s %s HTTP/%s" %d',
+    });
+  });
+
+  test("JSON event records have no ANSI escapes", () => {
+    const record = json(
+      { message: "\u001b[33mdisk almost full\u001b[0m", level: "warning" },
+      pythonHeader,
+    );
+    expect(record.message).toBe("disk almost full");
   });
 });

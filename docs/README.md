@@ -7,7 +7,7 @@ you are working on:
 - [Sentry CLI](cli/README.md) — commands, contributor guides, generated docs,
   and the published CLI documentation site.
 - [Sentry MCP](mcp/README.md) — tools, transports, Cloudflare, operations, and
-  MCP-specific tests and specs.
+  MCP-specific tests.
 - [Docs MCP](../apps/docs-mcp/README.md) — the independent private documentation
   Worker, local development, and deployment ownership.
 - [Games API](../apps/games-api/README.md) — the public Worker behind the hidden

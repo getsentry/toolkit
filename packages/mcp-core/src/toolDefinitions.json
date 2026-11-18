@@ -1218,7 +1218,7 @@
   {
     "name": "create_project",
     "title": "Create Project",
-    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
+    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, whether the repository linked, and the Sentry signals its platform supports, each with a docs link.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1321,11 +1321,83 @@
             }
           ]
         },
-        "guidance": {
-          "type": "string"
+        "setup": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "type": "string",
+                  "description": "Platform display name, such as `Next.js`."
+                },
+                "docsUrl": {
+                  "type": "string",
+                  "description": "Sentry setup guide for the platform."
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "usefulFor": {
+                        "type": "string"
+                      },
+                      "recommended": {
+                        "description": "Set on signals the SDK's default setup turns on.",
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "docsUrl": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "usefulFor", "docsUrl"],
+                    "additionalProperties": false
+                  },
+                  "description": "Core signals the platform supports and the organization has enabled."
+                }
+              },
+              "required": ["platform", "docsUrl", "signals"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Setup knowledge for the project's platform, or null without one."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
         }
       },
-      "required": ["project", "dsn", "repository", "guidance"],
+      "required": ["project", "dsn", "repository", "setup", "suggestedActions"],
       "additionalProperties": false
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
@@ -2985,7 +3057,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Filter by name or slug."
+              "description": "Filter by name or slug, or pass a numeric project ID."
             },
             {
               "type": "null"
@@ -16228,7 +16300,7 @@
         "inRelease": {
           "type": "string",
           "minLength": 1,
-          "description": "Release version that fixes the issue. Requires status `resolved`. Events from newer releases reopen it as a regression."
+          "description": "Full version of the release that fixes the issue, exactly as find_releases returns it (e.g. `my-app@1.2.3+45`). Requires status `resolved`. Events from newer releases reopen it as a regression."
         },
         "inCommit": {
           "type": "string",

@@ -117,6 +117,7 @@ export function EventDetail({
   const payload = detailRecord(item.payload);
   const exceptions =
     item.type === "event" ? getEventExceptions(item.payload) : [];
+  const kind = item.type === "event" ? eventKind(item.payload) : undefined;
   const hasOverview =
     [
       "event",
@@ -196,7 +197,7 @@ export function EventDetail({
             {item.type === "envelope"
               ? "Envelope"
               : item.type === "event"
-                ? eventKind(item.payload)
+                ? kind
                 : (metadata.operation ?? item.type)}
           </Badge>
           <h2 className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium">
@@ -251,7 +252,10 @@ export function EventDetail({
               />
             ) : null}
             {exceptions.length ? (
-              <ExceptionOverview exceptions={exceptions} />
+              <ExceptionOverview
+                exceptions={exceptions}
+                label={kind === "Message" ? "Message" : "Exception"}
+              />
             ) : null}
             {isRequestOrSpan ? (
               <CompactSummary

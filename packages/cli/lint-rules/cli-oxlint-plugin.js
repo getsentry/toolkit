@@ -499,6 +499,8 @@ const MANUAL_API_REQUEST_EXCEPTIONS = new Map([
   ],
   // Unauthenticated transport for the generated shared-issue call on another host.
   ["lib/api/issues.ts", ["getSharedIssue"]],
+  // Unauthenticated transport for the generated handoff claim before login exists.
+  ["lib/agent-handoff.ts", ["exchangeAgentHandoff"]],
   // Public status page, not the Sentry API.
   ["lib/api/status-page.ts", true],
   // CLI binary downloads from release hosts.

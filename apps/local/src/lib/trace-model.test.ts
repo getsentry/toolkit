@@ -1158,3 +1158,62 @@ test.each([
     expect(trace?.title).toBe(title);
   },
 );
+
+test("span counts leave out the transaction and segment like the tail's [N spans]", () => {
+  // Django /queries/: the tail printed [7 spans] while the viewer showed 8.
+  const children = Array.from({ length: 7 }, (_, index) => ({
+    span_id: `child-${index}`,
+    parent_span_id: "root",
+    op: "db",
+    description: `SELECT ${index}`,
+    start_timestamp: 1 + index / 100,
+    timestamp: 1.005 + index / 100,
+  }));
+  const [request] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "/queries/",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "django", span_id: "root" } },
+              spans: children,
+            },
+          ],
+        ],
+      ]),
+      "django",
+    ),
+  );
+  expect(request).toMatchObject({ spanCount: 7 });
+  expect(request!.spans).toHaveLength(8);
+
+  const [streamed] = buildTraceGroups(
+    decodeEnvelope(
+      spanEnvelope([
+        {
+          trace_id: "streamed",
+          span_id: "segment",
+          is_segment: true,
+          name: "GET /",
+          start_timestamp: 1,
+          end_timestamp: 2,
+        },
+        {
+          trace_id: "streamed",
+          span_id: "child",
+          parent_span_id: "segment",
+          name: "fetch",
+          start_timestamp: 1.1,
+          end_timestamp: 1.2,
+        },
+      ]),
+      "streamed",
+    ),
+  );
+  expect(streamed).toMatchObject({ spanCount: 1 });
+});
