@@ -59,7 +59,20 @@ const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
-const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
+const SESSION_INGEST_RE =
+  /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+(?:\/stream|\/api\/[^/]+\/envelope\/?)?$/;
+/**
+ * Paths that write to a session; each carries the ingest capability. SDKs
+ * post to the ingest URL itself (Node, Python), add `/stream` to it (PHP's
+ * Spotlight transport), or build `<path>/api/<project>/envelope/` from a DSN
+ * under it (Go, Rust, PHP, Ruby).
+ */
+const SESSION_INGEST_PATHS = [
+  "",
+  "/stream",
+  "/api/:projectId/envelope",
+  "/api/:projectId/envelope/",
+].map((suffix) => `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap${suffix}`);
 const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
@@ -271,15 +284,13 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "POST", "OPTIONS"],
     origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
   });
-  app.use(
-    `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`,
-    async (c, next) => {
+  for (const path of SESSION_INGEST_PATHS)
+    app.use(path, async (c, next) => {
       if (!isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
       return await loopbackCors(c, next);
-    },
-  );
+    });
   const hostedCors = cors({
     allowHeaders: ["Last-Event-ID"],
     allowMethods: ["GET", "OPTIONS"],
@@ -510,7 +521,7 @@ export function createLocalControlPlane({
     if (status === 204) sessionStore.recordActivity(reference);
     return c.body(null, status);
   };
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`, ingest);
+  for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, (c) => {

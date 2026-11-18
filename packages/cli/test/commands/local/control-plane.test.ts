@@ -556,6 +556,46 @@ describe("Local control plane", () => {
     expect(rejected.status).toBe(401);
   });
 
+  test("accepts Spotlight /stream and DSN envelope posts under the ingest capability", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "php", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const ingest = `/_local/v1/sessions/${session.id}/ingest`;
+    const envelope =
+      '{"sdk":{"name":"sentry.php"}}\n{"type":"event"}\n{"message":"hi"}';
+    const post = (path: string, headers: Record<string, string> = {}) =>
+      plane.app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-sentry-envelope",
+          ...headers,
+        },
+        body: envelope,
+      });
+
+    // PHP posts to `<SENTRY_SPOTLIGHT>/stream`; Go, Rust, PHP and Ruby build
+    // `<dsn path>/api/<project>/envelope/` from a DSN.
+    for (const suffix of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      expect((await post(`${ingest}/${caps.ingest}${suffix}`)).status).toBe(
+        204,
+      );
+      expect((await post(`${ingest}/wrong${suffix}`)).status).toBe(401);
+      expect((await post(`${ingest}/${caps.stream}${suffix}`)).status).toBe(
+        401,
+      );
+      expect(
+        (
+          await post(`${ingest}/${caps.ingest}${suffix}`, {
+            Origin: "https://example.com",
+          })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(3);
+  });
+
   test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const session = plane.sessionStore.create({
