@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { decodeEnvelope, type LocalFeedItem } from "./spotlight.js";
 import { buildTraceGroups, traceIdForItem } from "./trace-model.js";
 import { spanEnvelope } from "../test-fixtures/streamed-pageload.ts";
+import { jsCaptureMessage } from "../test-fixtures/sdk-message.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
   return {
@@ -1125,6 +1126,21 @@ test.each([
   );
   expect(trace).toMatchObject({ errorCount });
 });
+
+test.each([
+  ["warning", 0],
+  ["info", 0],
+  ["error", 1],
+])(
+  "a JS SDK 11 %s captureMessage with its synthetic stack counts as %i trace errors",
+  (level, errorCount) => {
+    // SDK 11 attaches an untyped exception to carry the call-site stack.
+    const [trace] = buildTraceGroups(
+      envelope("message", [["event", { ...jsCaptureMessage, level }]]),
+    );
+    expect(trace).toMatchObject({ errorCount });
+  },
+);
 
 test.each([
   [{ "url.full": "http://localhost:3000/api/edge" }, "GET /api/edge"],
