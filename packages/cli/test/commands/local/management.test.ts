@@ -34,26 +34,61 @@ type ViewFunc = (
   ...parts: string[]
 ) => Promise<void>;
 
+/** Run a `local` subcommand and return what it printed or threw. */
+async function runCommand(
+  route: typeof sessionRoute,
+  name: string,
+  json: boolean,
+  ...parts: string[]
+): Promise<{ stdout: string; error: unknown }> {
+  const command = route.getRoutingTargetForInput(name);
+  if (!command || !("loader" in command)) {
+    throw new Error(`expected the ${name} command`);
+  }
+  const func = (await command.loader()) as unknown as ViewFunc;
+  let stdout = "";
+  const context = {
+    stdout: {
+      write: vi.fn((chunk: string) => {
+        stdout += chunk;
+        return true;
+      }),
+    },
+    stderr: { write: vi.fn(() => true) },
+    cwd: "/tmp",
+  };
+  const error = await func.call(context, { json }, ...parts).then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+  return { stdout, error };
+}
+
 /** Run a `local` subcommand with `--json` and return what it throws. */
 async function commandError(
   route: typeof sessionRoute,
   name: string,
   ...parts: string[]
 ): Promise<unknown> {
-  const command = route.getRoutingTargetForInput(name);
-  if (!command || !("loader" in command)) {
-    throw new Error(`expected the ${name} command`);
-  }
-  const func = (await command.loader()) as unknown as ViewFunc;
-  const context = {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
-    cwd: "/tmp",
-  };
-  return await func.call(context, { json: true }, ...parts).then(
-    () => undefined,
-    (thrown: unknown) => thrown,
+  return (await runCommand(route, name, true, ...parts)).error;
+}
+
+/** Send an event envelope with this event ID into a session. */
+async function ingestEvent(
+  sessionId: string,
+  eventId: string,
+  message: string,
+): Promise<void> {
+  const { ingest } = plane.sessionStore.getCapabilities(sessionId);
+  const response = await plane.app.request(
+    `${CONTROL_PLANE_PREFIX}/sessions/${sessionId}/ingest/${ingest}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: `${JSON.stringify({ event_id: eventId })}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, level: "error", message })}`,
+    },
   );
+  expect(response.status).toBe(204);
 }
 
 /** Run `local session view` and return what it throws. */
@@ -153,5 +188,154 @@ describe("missing Local sessions and telemetry", () => {
       'Local session "ghost" not found.',
       "local session list",
     );
+  });
+});
+
+/** Matches a table row that starts with these cells, padded to column width. */
+function tableRow(...cells: string[]): RegExp {
+  const escaped = cells.map((cell) =>
+    cell.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+  );
+  return new RegExp(`│ ${escaped.join(" +│ ")} +│`);
+}
+
+describe("local list commands", () => {
+  test("print tables for people and leave --json output unchanged", async () => {
+    const session = plane.sessionStore.create({
+      label: "tables",
+      cwd: "/work/tables",
+    });
+    const eventId = "0123456789abcdef0123456789abcdef";
+    await ingestEvent(session.id, eventId, "table event");
+
+    const sessions = await runCommand(sessionRoute, "list", false);
+    expect(sessions.error).toBeUndefined();
+    expect(sessions.stdout).not.toContain("{");
+    expect(sessions.stdout).toMatch(tableRow("ID", "NAME", "STATE"));
+    expect(sessions.stdout).toMatch(tableRow(session.id, "tables", "open"));
+    expect(sessions.stdout).toContain("DIRECTORY");
+
+    const events = await runCommand(eventRoute, "list", false, "tables");
+    expect(events.error).toBeUndefined();
+    expect(events.stdout).not.toContain("{");
+    expect(events.stdout).toMatch(tableRow("ID", "TYPE", "LEVEL", "TITLE"));
+    expect(events.stdout).toMatch(tableRow("01234567", "message", "error"));
+    expect(events.stdout).toContain("table event");
+    expect(events.stdout).not.toContain(eventId);
+
+    const envelopes = await runCommand(envelopeRoute, "list", false, "tables");
+    expect(envelopes.error).toBeUndefined();
+    expect(envelopes.stdout).not.toContain("{");
+    expect(envelopes.stdout).toMatch(tableRow("ID", "ITEMS"));
+    expect(envelopes.stdout).toMatch(/│ event +│/);
+
+    for (const [route, parts, path] of [
+      [sessionRoute, [], "/sessions"],
+      [eventRoute, ["tables"], `/sessions/${session.id}/events`],
+      [envelopeRoute, ["tables"], `/sessions/${session.id}/envelopes`],
+    ] as const) {
+      const json = await runCommand(route, "list", true, ...parts);
+      const direct = await plane.app.request(`${CONTROL_PLANE_PREFIX}${path}`, {
+        headers: { Authorization: `Bearer ${CONTROL_TOKEN}` },
+      });
+      expect(JSON.parse(json.stdout)).toEqual(await direct.json());
+    }
+  });
+
+  test("say when a session has nothing to list", async () => {
+    plane.sessionStore.create({ label: "empty-list", cwd: "/work/empty" });
+
+    expect(
+      (await runCommand(eventRoute, "list", false, "empty-list")).stdout,
+    ).toBe("No events found.\n");
+    expect(
+      (await runCommand(envelopeRoute, "list", false, "empty-list")).stdout,
+    ).toBe("No envelopes found.\n");
+  });
+});
+
+describe("local event view with an event ID prefix", () => {
+  const first = "aaaaaaaa1111111111111111111111a1";
+  const second = "aaaaaaaa2222222222222222222222a2";
+  const third = "bbbbbbbb3333333333333333333333b3";
+
+  test("opens the one event an 8+ character prefix matches", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-one",
+      cwd: "/work/prefix",
+    });
+    await ingestEvent(session.id, first, "first event");
+    await ingestEvent(session.id, second, "second event");
+    await ingestEvent(session.id, third, "third event");
+
+    for (const [reference, eventId] of [
+      ["bbbbbbbb", third],
+      ["aaaaaaaa1", first],
+      [second, second],
+    ]) {
+      const viewed = await runCommand(
+        eventRoute,
+        "view",
+        true,
+        "prefix-one",
+        reference,
+      );
+      expect(viewed.error).toBeUndefined();
+      expect(JSON.parse(viewed.stdout)).toMatchObject({ eventId });
+    }
+
+    const listed = await runCommand(eventRoute, "list", false, "prefix-one");
+    expect(listed.stdout).toMatch(tableRow("aaaaaaaa1", "message"));
+    expect(listed.stdout).toMatch(tableRow("aaaaaaaa2", "message"));
+    expect(listed.stdout).toMatch(tableRow("bbbbbbbb", "message"));
+  });
+
+  test("names every match when a prefix fits more than one event", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-many",
+      cwd: "/work/prefix",
+    });
+    await ingestEvent(session.id, first, "first event");
+    await ingestEvent(session.id, second, "second event");
+
+    const error = await commandError(
+      eventRoute,
+      "view",
+      "prefix-many",
+      "aaaaaaaa",
+    );
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message.split("\n")[0]).toBe(
+      'Local event ID "aaaaaaaa" matches more than one event in session "prefix-many".',
+    );
+    expect(message).toContain("local event list prefix-many");
+    expect(message).toContain(`Use event ID ${first}`);
+    expect(message).toContain(`Use event ID ${second}`);
+    expect(message).not.toContain("HTTP 409");
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test("says a prefix needs 8 characters when a shorter one matches nothing", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-short",
+      cwd: "/work/prefix",
+    });
+    await ingestEvent(session.id, third, "third event");
+
+    const error = await commandError(
+      eventRoute,
+      "view",
+      "prefix-short",
+      "bbbb",
+    );
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message.split("\n")[0]).toBe(
+      'Local event "bbbb" not found in session "prefix-short".',
+    );
+    expect(message).toContain("at least 8 characters");
   });
 });

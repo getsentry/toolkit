@@ -4,7 +4,10 @@
 isolated session owned by a background, loopback-only daemon. The foreground
 command retains its session when it exits. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All
-telemetry disappears when the daemon stops.
+telemetry disappears when the daemon stops. The daemon exits on its own once it
+has had no sessions, open or closed, for 30 seconds (`LOCAL_DAEMON_IDLE_GRACE_MS`
+in `daemon.ts`). A `daemon start` with no session therefore stops shortly
+after, and the next session command starts it again.
 
 ```sh
 sentry local run --session web -- npm run dev
@@ -42,6 +45,16 @@ Session lookup commands accept names quoted or as separate words. For `event vie
 form the session name. Event lookup uses the Sentry event ID from the envelope
 header, event/transaction item header, or payload, in that order; envelopes
 without an event ID retain their generated envelope ID as the lookup key.
+`event view` also takes a prefix of 8 or more characters when exactly one
+event ID starts with it. An exact ID always wins. A prefix that matches several
+events gets HTTP 409 with code `ambiguous_event` and the matching `eventIds`,
+which the CLI reports as an error (exit code 23) that lists them. A shorter
+reference matches only exactly, so short lookup keys keep working.
+
+Without `--json`, `session list`, `event list`, and `envelope list` print
+tables. The event table shows each ID as its shortest unique prefix of at least
+8 characters, so it can be passed to `event view`. `--json` prints the control
+plane's response unchanged.
 
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
 a summary of the envelope's main item (the first event or transaction, else the

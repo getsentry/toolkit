@@ -82,6 +82,17 @@ Sentry.init({
 });
 ```
 
+If your backend runs on a different origin than the page, even just another port, also add it to `tracePropagationTargets`. By default the browser SDK adds trace headers only to same-origin requests, so without it browser and server traces still do not link. The backend's CORS settings must allow the `sentry-trace` and `baggage` headers:
+
+```ts
+Sentry.init({
+  dsn: spotlight ? "https://local@localhost/0" : "...",
+  tunnel: spotlight,
+  // Your API server, when it is not on the page's origin
+  tracePropagationTargets: ["http://localhost:8000"],
+});
+```
+
 **Not supported yet.** The Next.js edge runtime (`@sentry/vercel-edge`) has no Spotlight support. Edge errors still arrive through the Node.js server, but edge messages and logs do not.
 
 ## Browser UI
@@ -207,7 +218,10 @@ Use `--session <name>` to capture into the shared loopback daemon and retain dat
 after your foreground command exits. Sessions keep up to 500 envelopes by default
 (`--max-envelopes` accepts 1 to 50,000) for three hours after closing and
 subsequent ingestion. Session commands start the daemon when it isn't running;
-`sentry local daemon start` starts it ahead of time. Stopping or restarting the
+`sentry local daemon start` starts it ahead of time. The daemon exits on its own
+30 seconds after it has no sessions, open or closed, so one started with
+`sentry local daemon start` and given no session stops shortly after; the next
+session command starts it again. Stopping or restarting the
 daemon (`sentry local daemon restart`) clears all sessions. A running
 `sentry local run --session` then warns that its session stopped capturing. Your
 app keeps running, so restart the command to capture again.
@@ -221,3 +235,9 @@ same way without wrapping a command.
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent. Use the session ID when multiple sessions
 share a label.
+
+`sentry local session list`, `sentry local event list`, and
+`sentry local envelope list` print tables; add `--json` for the full records.
+The event table shows each event ID cut to the shortest unique prefix of at
+least 8 characters, and `sentry local event view` accepts that prefix. A prefix
+that matches more than one event fails and lists the matching IDs.

@@ -16,6 +16,11 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { formatLocalControlResult } from "../../lib/formatters/local.js";
+import {
+  formatLocalEnvelopeList,
+  formatLocalEventList,
+  formatLocalSessionList,
+} from "../../lib/formatters/local-lists.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import { buildRouteMap } from "../../lib/route-map.js";
 import {
@@ -26,6 +31,10 @@ import {
   runLocalDaemonForeground,
   waitForLocalDaemonShutdown,
 } from "./daemon.js";
+import {
+  AMBIGUOUS_EVENT_CODE,
+  EVENT_ID_PREFIX_MIN_LENGTH,
+} from "./event-lookup.js";
 import { parsePort } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
@@ -115,7 +124,7 @@ async function controlJson(
       logger.debug("Could not read Local control-plane error details", error);
       return undefined;
     });
-    const ambiguous = ambiguousSessionError(body);
+    const ambiguous = ambiguousSessionError(body) ?? ambiguousEventError(body);
     if (ambiguous) {
       throw ambiguous;
     }
@@ -164,6 +173,36 @@ function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   );
 }
 
+/**
+ * Turn the control plane's 409 for an event ID prefix that matches several
+ * events into a user-input error that lists them.
+ */
+function ambiguousEventError(body: unknown): ResolutionError | undefined {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("code" in body) ||
+    body.code !== AMBIGUOUS_EVENT_CODE ||
+    !("reference" in body) ||
+    typeof body.reference !== "string" ||
+    !("session" in body) ||
+    typeof body.session !== "string" ||
+    !("eventIds" in body) ||
+    !Array.isArray(body.eventIds)
+  ) {
+    return;
+  }
+  const session = redactCredentialText(body.session);
+  return new ResolutionError(
+    `Local event ID "${redactCredentialText(body.reference)}"`,
+    `matches more than one event in session "${session}"`,
+    sentry`local event list ${session}`,
+    body.eventIds
+      .filter((id): id is string => typeof id === "string")
+      .map((id) => `Use event ID ${id}`),
+  );
+}
+
 /** A session reference that matches no session, open or closed, on the daemon. */
 function sessionNotFoundError(reference: string): ResolutionError {
   return new ResolutionError(
@@ -191,6 +230,7 @@ async function telemetryNotFoundError(
     {},
     { notFound: () => sessionNotFoundError(session) },
   );
+  const tooShort = kind === "event" && id.length < EVENT_ID_PREFIX_MIN_LENGTH;
   return new ResolutionError(
     `Local ${kind} "${id}"`,
     `not found in session "${session}"`,
@@ -198,6 +238,11 @@ async function telemetryNotFoundError(
       ? sentry`local event list ${session}`
       : sentry`local envelope list ${session}`,
     [
+      ...(tooShort
+        ? [
+            `An event ID prefix needs at least ${EVENT_ID_PREFIX_MIN_LENGTH} characters`,
+          ]
+        : []),
       `It may have been evicted when the session reached its envelope limit; raise it with ${sentry`local session retention ${session} --max-envelopes <count>`}`,
     ],
   );
@@ -412,6 +457,7 @@ const sessionCreateCommand = buildCommand({
 const sessionListCommand = buildCommand({
   docs: { brief: "List Local telemetry sessions" },
   ...CONTROL_COMMAND_DEFAULTS,
+  output: { human: formatLocalSessionList },
   parameters: { flags: {} },
   async *func() {
     yield new CommandOutput(await controlJson("/sessions"));
@@ -423,9 +469,11 @@ function buildSessionCommand(
   brief: string,
   suffix = "",
   method: "GET" | "POST" = "GET",
+  human: (data: ControlResult) => string = formatLocalControlResult,
 ): ReturnType<typeof buildCommand> {
   return buildCommand({
     ...CONTROL_COMMAND_DEFAULTS,
+    output: { human },
     docs: { brief },
     parameters: { flags: {}, positional: SESSION_REFERENCE_POSITIONAL },
     async *func(_flags, ...parts: string[]) {
@@ -454,7 +502,10 @@ function buildTelemetryViewCommand(
       positional: {
         kind: "array",
         parameter: {
-          brief: `Session and ${kind} ID`,
+          brief:
+            kind === "event"
+              ? `Session and event ID, or its first ${EVENT_ID_PREFIX_MIN_LENGTH}+ characters`
+              : `Session and ${kind} ID`,
           parse: parseLocalSession,
           placeholder: `session ${kind}`,
         },
@@ -542,6 +593,8 @@ export const envelopeRoute = buildRouteMap({
     list: buildSessionCommand(
       "List retained envelopes for a Local session",
       "/envelopes",
+      "GET",
+      formatLocalEnvelopeList,
     ),
     view: buildTelemetryViewCommand("envelope", "View a raw Local envelope"),
   },
@@ -553,6 +606,8 @@ export const eventRoute = buildRouteMap({
     list: buildSessionCommand(
       "List decoded events for a Local session",
       "/events",
+      "GET",
+      formatLocalEventList,
     ),
     view: buildTelemetryViewCommand("event", "View a decoded Local event"),
   },

@@ -70,7 +70,7 @@ View a decoded Local event
 
 | Argument | Description |
 |----------|-------------|
-| `<session event...>` | Session and event ID |
+| `<session event...>` | Session and event ID, or its first 8+ characters |
 
 ### `sentry local serve`
 
