@@ -52,6 +52,8 @@ export const STOPPING_POINTS = [
 
 export type StoppingPoint = (typeof STOPPING_POINTS)[number];
 
+const SINGLE_RUN_FEATURE_ID = "autofix_single_run";
+
 // Progress Message
 
 export const ProgressMessageSchema = object({
@@ -189,6 +191,7 @@ export const AutofixStateSchema = looseObject({
   run_id: optional(number()),
   /** Null for legacy runs predating this field. */
   sentry_run_id: optional(nullable(string())),
+  feature_id: optional(string()),
   status: string(),
   /**
    * Why a failed run stopped, e.g. `out_of_credits`. Null when the run didn't
@@ -264,6 +267,10 @@ export function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.includes(status as AutofixStatus);
 }
 
+export function isSingleRun(state: AutofixState): boolean {
+  return state.feature_id === SINGLE_RUN_FEATURE_ID;
+}
+
 // At least one of sentry_run_id/run_id is always present on a non-null
 // autofix state, so a missing run ID means a malformed response.
 export function requireAutofixRunId(state: AutofixState): string | number {
@@ -309,6 +316,7 @@ type AgentRootCauseData = {
   five_whys?: string[];
   reproduction_steps?: string[];
   relevant_repo?: string | null;
+  relevant_repos?: string[];
 };
 
 /**
@@ -337,9 +345,9 @@ function searchBlocksForAgentRootCause(
           id: 0,
           description,
           cause: agentData.cause,
-          relevant_repos: agentData.relevant_repo
-            ? [agentData.relevant_repo]
-            : undefined,
+          relevant_repos:
+            agentData.relevant_repos ??
+            (agentData.relevant_repo ? [agentData.relevant_repo] : undefined),
         };
         return [cause];
       }

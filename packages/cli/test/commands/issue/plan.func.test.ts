@@ -181,6 +181,18 @@ describe("issue plan after solution planning", () => {
     expect(pollSpy).not.toHaveBeenCalled();
   });
 
+  test("points single runs at explain instead of requesting a plan", async () => {
+    analyzeSpy.mockResolvedValue({
+      ...completedState(),
+      feature_id: "autofix_single_run",
+    });
+
+    await expect(runPlan(createMockContext())).rejects.toThrow(
+      /sentry issue explain IOS-1/,
+    );
+    expect(triggerSolutionPlanning).not.toHaveBeenCalled();
+  });
+
   test("throws when planning ends in ERROR", async () => {
     pollSpy.mockResolvedValue({ status: "ERROR", run_id: 42, steps: [] });
 

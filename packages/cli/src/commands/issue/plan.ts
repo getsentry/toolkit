@@ -30,6 +30,7 @@ import {
   extractNoSolutionReason,
   extractRootCauses,
   extractSolution,
+  isSingleRun,
   requireAutofixRunId,
   type SolutionArtifact,
 } from "../../types/seer.js";
@@ -283,6 +284,13 @@ export const planCommand = buildCommand({
         issueId: numericId,
         json: flags.json,
       });
+
+      if (isSingleRun(state)) {
+        throw new CliError(
+          "Seer plans and fixes this issue in the same run as the root cause, so there is no separate plan.\n" +
+            `Run ${sentry`issue explain ${issueArg.text}`} for the root cause, or open the issue in Sentry to see the fix.`,
+        );
+      }
 
       // Root cause analysis can pause waiting for the user to confirm the
       // root cause before planning. When running interactively, confirm in the

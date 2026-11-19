@@ -1141,6 +1141,48 @@ describe("pollAutofixState", () => {
     expect(result.status).toBe("ERROR");
   });
 
+  test("stops once a single run has its root cause", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          autofix: {
+            run_id: 12_345,
+            status: "PROCESSING",
+            feature_id: "autofix_single_run",
+            blocks: [
+              {
+                artifacts: [
+                  {
+                    key: "root_cause",
+                    data: {
+                      headline: "Regex rejects ids",
+                      cause: "Too strict.",
+                    },
+                    reason: "",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+
+    const result = await pollAutofixState({
+      orgSlug: "test-org",
+      issueId: "123456789",
+      json: true,
+      stopOnWaitingForUser: true,
+      pollIntervalMs: 10,
+      timeoutMs: 100,
+    });
+
+    expect(result.status).toBe("PROCESSING");
+  });
+
   test("stops at WAITING_FOR_USER_RESPONSE when stopOnWaitingForUser is true", async () => {
     globalThis.fetch = async () =>
       new Response(
