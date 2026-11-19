@@ -4747,6 +4747,7 @@ export class SentryApiService {
       statsPeriod,
       start,
       end,
+      topEvents,
     }: {
       organizationSlug: string;
       query: string;
@@ -4757,6 +4758,11 @@ export class SentryApiService {
       statsPeriod?: string;
       start?: string;
       end?: string;
+      /**
+       * One series per value of `groupBy`, for the `limit` values with the
+       * highest `yAxis`, without an "Other" series.
+       */
+      topEvents?: { groupBy: string; limit: number } | undefined;
     },
     opts?: RequestOptions,
   ) {
@@ -4764,6 +4770,12 @@ export class SentryApiService {
     queryParams.set("dataset", normalizeEventsDataset(dataset));
     queryParams.set("query", query);
     queryParams.set("yAxis", yAxis);
+    if (topEvents) {
+      queryParams.set("topEvents", String(topEvents.limit));
+      queryParams.set("groupBy", topEvents.groupBy);
+      queryParams.set("sort", `-${yAxis}`);
+      queryParams.set("excludeOther", "1");
+    }
     // Omit interval to let Sentry pick a sensible bucket size for the range.
     if (interval) {
       queryParams.set("interval", interval);

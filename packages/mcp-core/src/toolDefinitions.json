@@ -12151,6 +12151,293 @@
     "surface": "direct"
   },
   {
+    "name": "render_sentry_chart",
+    "title": "Render Sentry Chart",
+    "description": "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split into the top 5 values of one attribute. Returns every bucket of each series, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "organizationSlug": {
+          "type": "string",
+          "description": "The organization slug, from `find_organizations`. In `org/project` notation, the part before the slash."
+        },
+        "regionUrl": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The organization's region URL from `find_organizations`, e.g. `https://us.sentry.io`. Omit for self-hosted Sentry."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "errors", "logs", "metrics", "profiles"],
+          "description": "Data to chart."
+        },
+        "query": {
+          "default": "",
+          "description": "Sentry search syntax filter, such as `level:error environment:production`. Empty matches everything.",
+          "type": "string"
+        },
+        "yAxis": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Aggregate to plot, such as `count()`, `p95(span.duration)`, or `count_unique(user)`."
+        },
+        "groupBy": {
+          "default": null,
+          "description": "Attribute to split by, such as `release` or `transaction`; plots its top 5 values. Not supported for profiles.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectSlug": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "The project slug. In `org/project` notation, the part after the slash."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "period": {
+          "default": null,
+          "description": "Relative time window, e.g. `1h`, `24h`, `7d`; defaults to 24h. Do not combine with start and end.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$",
+              "description": "Relative time window, e.g. `30m`, `24h`, `7d`, `90d`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start": {
+          "default": null,
+          "description": "Absolute start, ISO 8601; requires end.",
+          "type": ["string", "null"]
+        },
+        "end": {
+          "default": null,
+          "description": "Absolute end, ISO 8601; requires start.",
+          "type": ["string", "null"]
+        },
+        "interval": {
+          "default": null,
+          "description": "Bucket size such as 5m or 1h. Omit to let Sentry pick.",
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+[mhd]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "default": null,
+          "description": "Chart heading; defaults to the aggregate.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fresh": {
+          "description": "Bypass cached reads.",
+          "type": "boolean"
+        }
+      },
+      "required": ["organizationSlug", "dataset", "yAxis"]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "yAxis": {
+          "type": "string"
+        },
+        "groupBy": {
+          "type": ["string", "null"]
+        },
+        "valueType": {
+          "description": "Such as integer, number, duration, percentage, or size.",
+          "type": ["string", "null"]
+        },
+        "valueUnit": {
+          "description": "Such as millisecond or byte.",
+          "type": ["string", "null"]
+        },
+        "interval": {
+          "type": "string",
+          "description": "Bucket size, such as 5m or 1h."
+        },
+        "timeRange": {
+          "type": "object",
+          "properties": {
+            "statsPeriod": {
+              "type": ["string", "null"]
+            },
+            "start": {
+              "type": ["string", "null"]
+            },
+            "end": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["statsPeriod", "start", "end"],
+          "additionalProperties": false
+        },
+        "url": {
+          "type": "string"
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "The group's value, or the aggregate when ungrouped."
+              },
+              "total": {
+                "description": "Sum of all buckets; null for non-additive aggregates.",
+                "type": ["number", "null"]
+              },
+              "buckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "time": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "number"
+                    },
+                    "incomplete": {
+                      "type": "boolean",
+                      "description": "Data is still arriving, so the value may rise."
+                    },
+                    "outsideRetention": {
+                      "type": "boolean",
+                      "description": "Starts before the retention window, so older data is missing and the value will not change."
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "value",
+                    "incomplete",
+                    "outsideRetention"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Every bucket, oldest first."
+              }
+            },
+            "required": ["label", "total", "buckets"],
+            "additionalProperties": false
+          },
+          "description": "One series, or one per top group, largest first."
+        },
+        "peak": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "series": {
+                  "type": "string"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": ["series", "time", "value"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Highest bucket across series that is no longer receiving data."
+        },
+        "ingestion": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "delaySeconds": {
+                  "type": ["number", "null"]
+                },
+                "completeThrough": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["status", "delaySeconds", "completeThrough"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "dataset",
+        "query",
+        "yAxis",
+        "groupBy",
+        "valueType",
+        "valueUnit",
+        "interval",
+        "timeRange",
+        "url",
+        "series",
+        "peak",
+        "ingestion"
+      ],
+      "additionalProperties": false
+    },
+    "requiredScopes": ["event:read"],
+    "skills": ["inspect", "triage", "seer"],
+    "surface": "direct"
+  },
+  {
     "name": "search_agent_conversations",
     "title": "Search Agent Conversations",
     "description": "Search Sentry agent conversations (formerly AI conversations): one summary row per LLM agent conversation with title, cost, tokens, call counts, and previews. For one conversation's transcript, use get_agent_conversation_details.",

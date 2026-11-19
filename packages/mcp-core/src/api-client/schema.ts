@@ -2668,7 +2668,8 @@ export const EventsTimeSeriesValueSchema = z
 
 /**
  * Response from the events-timeseries endpoint. The MCP always requests a
- * single yAxis without topEvents, so `timeSeries` holds exactly one series.
+ * single yAxis, so `timeSeries` holds one series, or one per group with
+ * `topEvents`, each naming its group in `groupBy`.
  */
 export const EventsTimeSeriesResponseSchema = z
   .object({
@@ -2677,6 +2678,14 @@ export const EventsTimeSeriesResponseSchema = z
         .object({
           yAxis: z.string(),
           values: z.array(EventsTimeSeriesValueSchema),
+          groupBy: z
+            .array(
+              z.object({
+                key: z.string(),
+                value: z.union([z.string(), z.number()]).nullable(),
+              }),
+            )
+            .optional(),
           meta: z
             .object({
               // Bucket width in milliseconds

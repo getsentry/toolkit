@@ -5,7 +5,7 @@
     "description": "Read-only access to core Sentry data: issues, events, traces, replays, releases, cron monitors, uptime monitors, metric monitors, profiles, documentation, and project metadata",
     "defaultEnabled": true,
     "order": 1,
-    "toolCount": 49,
+    "toolCount": 50,
     "tools": [
       {
         "name": "find_alert_rules",
@@ -193,6 +193,11 @@
         "requiredScopes": ["project:read"]
       },
       {
+        "name": "render_sentry_chart",
+        "description": "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split into the top 5 values of one attribute. Returns every bucket of each series, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+        "requiredScopes": ["event:read"]
+      },
+      {
         "name": "search_agent_conversations",
         "description": "Search Sentry agent conversations (formerly AI conversations): one summary row per LLM agent conversation with title, cost, tokens, call counts, and previews. For one conversation's transcript, use get_agent_conversation_details.",
         "requiredScopes": ["event:read", "project:read"]
@@ -260,7 +265,7 @@
     "description": "Sentry's AI debugger that helps you analyze, root cause, and fix issues",
     "defaultEnabled": true,
     "order": 2,
-    "toolCount": 19,
+    "toolCount": 20,
     "tools": [
       {
         "name": "analyze_issue_with_seer",
@@ -306,6 +311,11 @@
         "name": "get_sentry_resource",
         "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
         "requiredScopes": ["event:read", "project:read"]
+      },
+      {
+        "name": "render_sentry_chart",
+        "description": "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split into the top 5 values of one attribute. Returns every bucket of each series, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "search_agent_conversations",
@@ -411,7 +421,7 @@
     "description": "Resolve, assign, and update issues",
     "defaultEnabled": false,
     "order": 4,
-    "toolCount": 27,
+    "toolCount": 28,
     "tools": [
       {
         "name": "add_issue_note",
@@ -482,6 +492,11 @@
         "name": "link_issue",
         "description": "Link an existing external ticket or GitHub pull request to a Sentry issue by URL: Jira, GitHub, GitLab, Bitbucket, Azure DevOps, or an installed Sentry App such as Linear. Adds a reference only; it does not create the ticket or change the issue status (use update_issue).",
         "requiredScopes": ["event:write", "org:read"]
+      },
+      {
+        "name": "render_sentry_chart",
+        "description": "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split into the top 5 values of one attribute. Returns every bucket of each series, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+        "requiredScopes": ["event:read"]
       },
       {
         "name": "search_agent_conversations",

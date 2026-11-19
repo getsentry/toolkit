@@ -1224,6 +1224,15 @@ async function executeSearchEvents(
         notes: droppedEventsNote
           ? [...notesFor(pointsWithData), droppedEventsNote]
           : notesFor(pointsWithData),
+        session: {
+          apiService,
+          organizationSlug,
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        },
+        projectSlug: params.projectSlug,
+        regionUrl: params.regionUrl,
       });
     }
     const timeSeriesOutput = formatTimeSeriesResults({

@@ -30,6 +30,7 @@ import {
   type SearchResultHints,
   summarizeTimeSeries,
 } from "./formatters";
+import { ingestionSchema, toStructuredIngestion } from "../ingestion";
 import { type FlexibleEventData, isAggregateQuery } from "./utils";
 
 export const timeRangeSchema = z.object({
@@ -64,13 +65,7 @@ const timeSeriesSchema = z.object({
     })
     .nullable()
     .describe("Highest bucket that is no longer receiving data."),
-  ingestion: z
-    .object({
-      status: z.string(),
-      delaySeconds: z.number().nullable(),
-      completeThrough: z.string().nullable(),
-    })
-    .nullable(),
+  ingestion: ingestionSchema,
   bucketCount: z.number(),
   buckets: z
     .array(
@@ -455,9 +450,33 @@ export function buildStructuredTimeSeriesResult(params: {
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   url: string;
   notes: string[];
+  session: StructuredSearchSession;
+  projectSlug: string | null;
+  regionUrl: string | null;
 }): StructuredToolOutput<SearchEventsStructuredContent> {
   const { bucketCount, shown, total, hasFilling, peak, ingestion } =
     summarizeTimeSeries(params.series, params.yAxis);
+  const { session, timeRange } = params;
+  const chartAction = buildSuggestedToolAction({
+    toolName: "render_sentry_chart",
+    arguments: {
+      organizationSlug: session.organizationSlug,
+      dataset: params.dataset,
+      query: params.query,
+      yAxis: params.yAxis,
+      ...(timeRange.start && timeRange.end
+        ? { start: timeRange.start, end: timeRange.end }
+        : timeRange.statsPeriod
+          ? { period: timeRange.statsPeriod }
+          : {}),
+      ...(params.projectSlug && { projectSlug: params.projectSlug }),
+      ...(params.regionUrl && { regionUrl: params.regionUrl }),
+    },
+    reason: "Chart every bucket of this series.",
+    experimentalMode: session.experimentalMode,
+    availableToolNames: session.availableToolNames,
+    directToolNames: session.directToolNames,
+  });
 
   return structuredResult({
     query: params.inputQuery,
@@ -484,16 +503,7 @@ export function buildStructuredTimeSeriesResult(params: {
       peak: peak
         ? { time: new Date(peak.timestamp).toISOString(), value: peak.rawValue }
         : null,
-      ingestion: ingestion
-        ? {
-            status: ingestion.status,
-            delaySeconds: ingestion.delaySeconds ?? null,
-            completeThrough:
-              ingestion.completeThrough === undefined
-                ? null
-                : new Date(ingestion.completeThrough).toISOString(),
-          }
-        : null,
+      ingestion: toStructuredIngestion(ingestion),
       bucketCount,
       buckets: shown.map((point) => ({
         time: new Date(point.timestamp).toISOString(),
@@ -502,6 +512,6 @@ export function buildStructuredTimeSeriesResult(params: {
         outsideRetention: point.outsideRetention,
       })),
     },
-    suggestedActions: [],
+    suggestedActions: chartAction ? [chartAction] : [],
   });
 }
