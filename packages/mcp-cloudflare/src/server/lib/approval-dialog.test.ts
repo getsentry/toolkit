@@ -1,11 +1,23 @@
 import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { signState } from "../oauth/state";
 import {
+  clientIdAlreadyApproved,
   getRememberedSkillsForClient,
   parseRedirectApproval,
   renderApprovalDialog,
   SKILL_PREFERENCES_COOKIE_NAME,
 } from "./approval-dialog";
+
+const { logError, logWarn } = vi.hoisted(() => ({
+  logError: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
+  logError,
+  logWarn,
+}));
 
 function skillInputAttributes(html: string, skillId: string): string {
   const match = html.match(
@@ -217,6 +229,24 @@ describe("approval-dialog", () => {
 
       expect(html).toContain(">javascript</strong> project");
       expect(html).toContain(">sentry</strong> organization");
+    });
+  });
+
+  describe("clientIdAlreadyApproved", () => {
+    it("treats an approval cookie with an empty signature as unsigned, without reporting an error", async () => {
+      const payload = btoa(JSON.stringify(["test-client"]));
+      const request = new Request("https://example.com/oauth/authorize", {
+        headers: { Cookie: `mcp-approved-clients=.${payload}` },
+      });
+
+      await expect(
+        clientIdAlreadyApproved(request, "test-client", TEST_SECRET),
+      ).resolves.toBe(false);
+      expect(logWarn).toHaveBeenCalledWith(
+        "Signed cookie signature verification failed",
+        expect.anything(),
+      );
+      expect(logError).not.toHaveBeenCalled();
     });
   });
 

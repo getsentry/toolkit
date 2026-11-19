@@ -113,6 +113,32 @@ export function workspacePackages() {
     .filter((path) => path !== ROOT);
 }
 
+/** Commands a type check script may run before its checkers, such as builds. */
+const SETUP_PROGRAMS = new Set(["pnpm", "node"]);
+
+/**
+ * The tsconfig files one `&&`-separated type check command checks: `tsc`
+ * programs, the package's tsconfig.json for `astro check`, and none for a
+ * setup command. Throws for any other command, because the policy could not
+ * read the options it checks with.
+ */
+export function typecheckCommandConfigs(packageDir, command) {
+  const words = command.trim().split(/\s+/);
+  const program = words[0];
+  if (program === "tsc") {
+    return configsForCommand(packageDir, command);
+  }
+  if (program === "astro" && words[1] === "check") {
+    return [join(packageDir, "tsconfig.json")];
+  }
+  if (program !== undefined && SETUP_PROGRAMS.has(program)) {
+    return [];
+  }
+  throw new Error(
+    `${toRepoPath(packageDir)} type check runs "${command.trim()}", which the tsconfig policy cannot read. Use tsc or astro check, or add the program to SETUP_PROGRAMS if it only prepares inputs.`,
+  );
+}
+
 /**
  * Every program that a package type check runs, keyed by repository path.
  * `astro check` checks the package's tsconfig.json.
@@ -129,14 +155,7 @@ export function checkedPrograms() {
       continue;
     }
     for (const command of scripts[name].split("&&")) {
-      const program = command.trim().split(/\s+/)[0];
-      const configs =
-        program === "tsc"
-          ? configsForCommand(packageDir, command)
-          : command.trim().startsWith("astro check")
-            ? [join(packageDir, "tsconfig.json")]
-            : [];
-      for (const config of configs) {
+      for (const config of typecheckCommandConfigs(packageDir, command)) {
         const parsed = parseConfig(config);
         programs.set(toRepoPath(config), {
           path: config,

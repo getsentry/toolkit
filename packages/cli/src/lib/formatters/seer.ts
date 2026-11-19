@@ -144,6 +144,7 @@ export type IssueExplainResult = {
   issueId: string;
   /** Root causes returned by Seer. */
   rootCauses: RootCause[];
+  singleRun?: boolean;
 };
 
 /** Aggregate root-cause output for single- and multi-issue invocations. */
