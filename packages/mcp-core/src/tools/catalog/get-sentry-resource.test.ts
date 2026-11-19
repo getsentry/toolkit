@@ -685,6 +685,71 @@ describe("get_sentry_resource", () => {
     });
   });
 
+  // ─── URL mode: metric alert URLs ───────────────────────────────────────────
+  describe("URL mode — metric alert URLs", () => {
+    const metricAlertUrl =
+      "https://sentry-mcp-evals.sentry.io/alerts/rules/details/456/?alert=10606471897&referrer=metric-alert-slack";
+
+    it("dispatches a metric alert notification URL to get_alert_rule", async () => {
+      const reads: string[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rule-detector/",
+          ({ request }) => {
+            reads.push(
+              `mapping:${new URL(request.url).searchParams.get("alert_rule_id")}`,
+            );
+            return HttpResponse.json({ detectorId: "789" });
+          },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/:id/",
+          ({ params }) => {
+            reads.push(`detector:${String(params["id"])}`);
+            return HttpResponse.json({
+              id: "789",
+              alertRuleId: 456,
+              name: "Error count",
+              type: "metric_issue",
+              workflowIds: [],
+              dateCreated: "2025-01-01T00:00:00.000Z",
+              dateUpdated: "2025-01-01T00:00:00.000Z",
+              projectId: "4509109104082945",
+              enabled: true,
+              config: { detectionType: "static" },
+              conditionGroup: {
+                logicType: "any",
+                conditions: [
+                  { type: "gt", comparison: 10, conditionResult: 75 },
+                ],
+              },
+              dataSources: [],
+            });
+          },
+        ),
+      );
+
+      const result = await callHandler({ url: metricAlertUrl });
+
+      expect(getStructuredContent(result)).toMatchObject({
+        metricMonitor: { id: "789", name: "Error count" },
+      });
+      expect(reads).toEqual(["mapping:456", "detector:789"]);
+    });
+
+    it("rejects a metric alert URL when get_alert_rule is not available", async () => {
+      await expect(
+        getSentryResource.handler(
+          { url: metricAlertUrl },
+          {
+            ...baseContext,
+            availableToolNames: new Set(["get_sentry_resource"]),
+          },
+        ),
+      ).rejects.toThrow("Metric alert resources require the inspect skill");
+    });
+  });
+
   // ─── URL mode: error cases ────────────────────────────────────────────────
   describe("URL mode — error cases", () => {
     it("throws for unsupported URL path (settings)", async () => {
@@ -1135,6 +1200,22 @@ describe("get_sentry_resource", () => {
         ]),
       });
       expect(desc).toContain("dashboards");
+    });
+
+    it("advertises metric alerts only when get_alert_rule is available", () => {
+      const withoutAlertRule = resolveDescription(
+        getSentryResource.description,
+        {
+          experimentalMode: false,
+          availableToolNames: new Set(["get_sentry_resource"]),
+        },
+      );
+      const withAlertRule = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set(["get_sentry_resource", "get_alert_rule"]),
+      });
+      expect(withoutAlertRule).not.toContain("metric alerts");
+      expect(withAlertRule).toContain("metric alerts");
     });
 
     it("omits monitor hints when get_monitor_details is unavailable", () => {
