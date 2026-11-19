@@ -11,8 +11,9 @@
  *
  * If no server is already running on the target port, one is started
  * automatically in the background and shut down when the child exits.
- * If one is already running, this command attaches to it as an SSE consumer
- * so events still tail to the terminal.
+ * If a Local or Spotlight receiver is already running, this command attaches
+ * to it as an SSE consumer so events still tail to the terminal. Another
+ * process on the default port makes it capture on a free port instead.
  */
 
 import type { ChildProcess, StdioOptions } from "node:child_process";
@@ -172,10 +173,11 @@ type EventTail = {
 type EventTailOptions = {
   port: number;
   /**
-   * Capture on a free port when the daemon holds `port`. Only for the default
-   * port: a `--port` the user chose stays an error.
+   * Capture on a free port when the daemon or a server that is not a receiver
+   * holds `port`. Only for the default port: a `--port` the user chose stays
+   * an error.
    */
-  freePortIfDaemon?: boolean;
+  freePortIfHeld?: boolean;
   host: string;
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
@@ -322,7 +324,7 @@ function freePortNotice(
  */
 async function openEventTail({
   port,
-  freePortIfDaemon = false,
+  freePortIfHeld = false,
   host,
   activeFilters,
   useJson,
@@ -332,22 +334,24 @@ async function openEventTail({
   const url = formatLocalServerUrl(host, port);
 
   let running = false;
-  let heldByDaemon = false;
+  // Why this run captures on a free port instead of `port`, if it does.
+  let heldNotice: ((boundPort: number) => string) | undefined;
   try {
     running = await isServerRunning(url);
   } catch (err) {
-    if (
-      !(
-        freePortIfDaemon &&
-        err instanceof ValidationError &&
-        err.field === PORT_HELD_BY_DAEMON_FIELD
-      )
-    ) {
+    if (!(freePortIfHeld && err instanceof ValidationError)) throw err;
+    if (err.field === PORT_HELD_BY_DAEMON_FIELD) {
+      // The daemon's receiver only takes session traffic, and it stays up
+      // while it retains sessions, so a plain run gets its own receiver.
+      heldNotice = (bound) =>
+        `${freePortNotice(port, bound, "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`;
+    } else if (err.field === PORT_IN_USE_FIELD) {
+      // A server that is not a receiver would drop every event.
+      heldNotice = (bound) =>
+        freePortNotice(port, bound, "is held by another process");
+    } else {
       throw err;
     }
-    // The daemon's receiver only takes session traffic, and it stays up while
-    // it retains sessions, so a plain run gets its own receiver instead.
-    heldByDaemon = true;
   }
 
   if (running) {
@@ -361,22 +365,20 @@ async function openEventTail({
     });
   }
 
-  if (!heldByDaemon) {
+  if (!heldNotice) {
     logger.info("No server detected, starting one in the background...");
   }
   try {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port: heldByDaemon ? 0 : port,
+      port: heldNotice ? 0 : port,
       host,
       activeFilters,
       useJson,
       showAttributes,
     });
-    if (heldByDaemon) {
-      logger.info(
-        `${freePortNotice(port, Number(new URL(bg.url).port), "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
-      );
+    if (heldNotice) {
+      logger.info(heldNotice(Number(new URL(bg.url).port)));
     }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
@@ -683,7 +685,7 @@ export const runCommand = buildCommand({
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
           port,
-          freePortIfDaemon: flags.port === undefined,
+          freePortIfHeld: flags.port === undefined,
           host: flags.host,
           activeFilters,
           useJson,

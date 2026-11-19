@@ -372,10 +372,9 @@ async function isStaleProbe(
   probe: "ok" | "refused" | "failed",
 ): Promise<boolean> {
   if (probe === "refused") return true;
-  return (
-    probe === "failed" &&
-    (await probeLocalHealth(daemonBaseUrl(state), 500)) === "other"
-  );
+  if (probe !== "failed") return false;
+  const holder = await probeLocalHealth(daemonBaseUrl(state), 500);
+  return holder === "receiver" || holder === "foreign";
 }
 
 /**
@@ -576,10 +575,12 @@ export async function ensureLocalDaemon({
       // A daemon child would only wait out the listener retries behind a
       // server that is not a Local daemon. A Local daemon there may be a
       // foreground owner still publishing discovery, so startup waits for it.
-      if (
-        (await probeLocalHealth(formatLocalServerUrl(host, port), 500)) ===
-        "other"
-      ) {
+      const holder = await probeLocalHealth(
+        formatLocalServerUrl(host, port),
+        500,
+      );
+      if (holder === "foreign") throw portInUseError(port);
+      if (holder === "receiver") {
         // A plain receiver answers /health like Spotlight's sidecar does, so
         // the probe cannot tell `local serve` from `local run`; name both.
         throw portInUseError(

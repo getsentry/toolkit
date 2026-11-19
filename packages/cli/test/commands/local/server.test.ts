@@ -34,6 +34,7 @@ import {
 import { openBrowser } from "../../../src/lib/browser.js";
 import {
   PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
   ValidationError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
@@ -1067,6 +1068,21 @@ describe("buildApp", () => {
     expect(res.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
   });
 
+  test("sets X-Powered-By on unknown routes and errors", async () => {
+    // isServerRunning recognizes a receiver by this header on /health, which
+    // must hold even when the response is an error.
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    app.get("/boom", () => {
+      throw new Error("boom");
+    });
+    const notFound = await app.request("/no-such-route");
+    expect(notFound.status).toBe(404);
+    expect(notFound.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
+    const failed = await app.request("/boom");
+    expect(failed.status).toBe(500);
+    expect(failed.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
+  });
+
   test("SSE event type carries no base64 suffix by default", async () => {
     const chunk = await readFirstSSEEvent("/stream");
     expect(chunk).toContain(`event: ${SENTRY_CONTENT_TYPE}\n`);
@@ -1078,13 +1094,60 @@ describe("buildApp", () => {
   });
 });
 
+describe("sentry local serve on a port held by another process", () => {
+  test("fails instead of attaching", async () => {
+    const foreign = new Hono();
+    foreign.get("/health", (c) => c.text("Not Found", 404));
+    const { server, port } = await tryListen(foreign, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+
+    try {
+      const error = await func
+        .call(
+          {},
+          {
+            port,
+            host: "127.0.0.1",
+            quiet: true,
+            filter: [],
+            format: "human",
+            attributes: false,
+            open: false,
+          },
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+});
+
 describe("isServerRunning", () => {
   test("returns true when /health answers with an error status", async () => {
     // Spotlight's sidecar can 5xx on /health while still holding the port and
     // ingesting envelopes. Reporting "no server" made the CLI try to bind the
     // port anyway and abort with "Port 8969 is already in use".
+    // The sidecar sets X-Powered-By in middleware, so the header comes back
+    // with the error too.
     const unhealthy = new Hono();
-    unhealthy.get("/health", (c) => c.text("Internal Server Error", 500));
+    unhealthy.get("/health", (c) => {
+      c.header("X-Powered-By", SERVER_IDENTIFIER);
+      return c.text("Internal Server Error", 500);
+    });
     const { server, port } = await tryListen(unhealthy, 0, "127.0.0.1");
 
     const savedFetch = globalThis.fetch;
@@ -1098,6 +1161,34 @@ describe("isServerRunning", () => {
       await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
         true,
       );
+    } finally {
+      globalThis.fetch = savedFetch;
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  test("rejects a port that an HTTP server other than a receiver holds", async () => {
+    // e.g. `python -m http.server 8969`: attaching to it loses every event.
+    const foreign = new Hono();
+    foreign.get("/health", (c) => c.text("Not Found", 404));
+    const { server, port } = await tryListen(foreign, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
     } finally {
       globalThis.fetch = savedFetch;
       await new Promise<void>((done) => server.close(() => done()));
