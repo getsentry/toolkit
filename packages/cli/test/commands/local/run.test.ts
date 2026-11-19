@@ -684,7 +684,9 @@ setInterval(() => {}, 1000);
         { port: 0, host: "127.0.0.1", verify: false, timeout: 1 },
         process.execPath,
         "-e",
-        `process.on("SIGINT", () => setTimeout(() => process.exit(0), 1500));require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");setInterval(() => {}, 1000);`,
+        // The ready file path comes in as an argument, not inside the code.
+        'process.on("SIGINT", () => setTimeout(() => process.exit(0), 1500));require("node:fs").writeFileSync(process.argv[1], "");setInterval(() => {}, 1000);',
+        ready,
       );
       await vi.waitFor(async () => {
         await readFile(ready, "utf8");
