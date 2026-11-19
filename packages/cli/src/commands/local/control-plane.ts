@@ -242,6 +242,8 @@ export function createLocalControlPlane({
     }
     const { session, others } = choice;
     if (others.length === 0) return session.id;
+    // Capability-scoped stream, ingest, and UI requests never see sibling IDs.
+    const control = hasControlCapability(c.req.raw, controlToken);
     if (access === "write") {
       const sessions = [session, ...others];
       throw new HTTPException(409, {
@@ -250,19 +252,20 @@ export function createLocalControlPlane({
             error: `Local session name "${reference}" is ambiguous; use its session ID.`,
             code: AMBIGUOUS_SESSION_CODE,
             reference,
-            sessionIds: sessions.map(({ id }) => id),
-            sessions: sessions.map(({ id, state, createdAt }) => ({
-              id,
-              state,
-              createdAt,
-            })),
+            ...(control && {
+              sessionIds: sessions.map(({ id }) => id),
+              sessions: sessions.map(({ id, state, createdAt }) => ({
+                id,
+                state,
+                createdAt,
+              })),
+            }),
           },
           { status: 409 },
         ),
       });
     }
-    // Capability-scoped stream and ingest requests never see sibling IDs.
-    if (hasControlCapability(c.req.raw, controlToken))
+    if (control)
       c.header(
         SESSION_CHOICE_HEADER,
         JSON.stringify({

@@ -55,9 +55,9 @@ open session, or to its newest session when none is open. When several open sess
 share the name, read responses carry an `X-Sentry-Local-Session-Choice` header, JSON
 with the chosen `id`, up to five `others` (each `id` and `createdAt`), and a `more`
 count of the rest, and the CLI prints a one-line note to stderr. Close, reset, and
-retention changes refuse such a name with HTTP 409 `ambiguous_session`, listing every
-match in `sessions` with its `id`, `state`, and `createdAt`; the CLI reports that as a
-user error. Daemons from older CLIs answered every shared-name lookup with that 409.
+retention changes refuse such a name with HTTP 409 `ambiguous_session`. For control
+clients it lists every match in `sessions` with its `id`, `state`, and `createdAt`;
+capability-scoped requests get the code only. The CLI reports it as a user error. Daemons from older CLIs answered every shared-name lookup with that 409.
 Session lookup commands accept names quoted or as separate words. For `event view` and
 `envelope view`, the final argument is the telemetry ID; preceding arguments
 form the session name. Event lookup uses the Sentry event ID from the envelope

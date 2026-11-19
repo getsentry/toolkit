@@ -532,6 +532,18 @@ describe("Local control plane", () => {
         ],
       });
     }
+    // A stream capability alone must not reveal the other sessions.
+    const viewer = await plane.app.request(
+      `/_local/v1/sessions/p/ui/close?cap=${stream}`,
+      { method: "POST", headers: { "Content-Type": "application/json" } },
+    );
+    expect(viewer.status).toBe(409);
+    const viewerBody: Record<string, unknown> = await viewer.json();
+    expect(viewerBody).toMatchObject({ code: "ambiguous_session" });
+    expect(viewerBody).not.toHaveProperty("sessionIds");
+    expect(viewerBody).not.toHaveProperty("sessions");
+    expect(JSON.stringify(viewerBody)).not.toContain(older.id);
+
     expect(plane.sessionStore.resolve(newer.id)).toMatchObject({
       state: "open",
       maxEnvelopes: newer.maxEnvelopes,
