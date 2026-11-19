@@ -1,9 +1,13 @@
 import {
   array,
+  boolean,
   constantFrom,
   assert as fcAssert,
+  nat,
+  oneof,
   property,
   string,
+  tuple,
 } from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
@@ -21,6 +25,37 @@ const eventIdArb = string({
 });
 const eventIdsArb = array(eventIdArb, { maxLength: 30 });
 
+/** Hex IDs in mixed case, with few digits so they often share prefixes. */
+const mixedCaseHexIdArb = string({
+  unit: constantFrom("0", "a", "A", "f", "F"),
+  minLength: 1,
+  maxLength: 32,
+});
+/** Replay segment keys: `<replay_id>:<segment_id>`. */
+const replayKeyArb = tuple(mixedCaseHexIdArb, nat({ max: 12 })).map(
+  ([replayId, segment]) => `${replayId}:${segment}`,
+);
+/** Lookup keys that are not hex, which match only in their own case. */
+const nonHexIdArb = string({
+  unit: constantFrom("0", "a", "A", "-", "x"),
+  minLength: 1,
+  maxLength: 16,
+});
+
+function swapCase(id: string): string {
+  return id.replace(/[a-z]/gi, (char) =>
+    char === char.toLowerCase() ? char.toUpperCase() : char.toLowerCase(),
+  );
+}
+
+/** Stored IDs of every kind, some also stored again in the other case. */
+const storedIdsArb = array(
+  tuple(oneof(mixedCaseHexIdArb, replayKeyArb, nonHexIdArb), boolean()),
+  { maxLength: 30 },
+).map((entries) =>
+  entries.flatMap(([id, twin]) => (twin ? [id, swapCase(id)] : [id])),
+);
+
 describe("property: Local event ID prefixes", () => {
   test("the prefix shown for each event opens that event and no other", () => {
     fcAssert(
@@ -31,6 +66,38 @@ describe("property: Local event ID prefixes", () => {
             prefix.length >= EVENT_ID_PREFIX_MIN_LENGTH || prefix === id,
           ).toBe(true);
           expect(matchEventIds(ids, prefix)).toEqual([id]);
+        }
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("each shown prefix of mixed-case, replay and non-hex IDs opens only its own event", () => {
+    fcAssert(
+      property(storedIdsArb, (ids) => {
+        for (const [id, prefix] of uniqueEventIdPrefixes(ids)) {
+          expect(id.startsWith(prefix)).toBe(true);
+          expect(
+            prefix.length >= EVENT_ID_PREFIX_MIN_LENGTH || prefix === id,
+          ).toBe(true);
+          expect(matchEventIds(ids, prefix)).toEqual([id]);
+        }
+      }),
+      { numRuns: DEFAULT_NUM_RUNS },
+    );
+  });
+
+  test("IDs that differ only in case show in full", () => {
+    fcAssert(
+      property(storedIdsArb, (ids) => {
+        const prefixes = uniqueEventIdPrefixes(ids);
+        for (const id of ids) {
+          const hasCaseTwin = ids.some(
+            (other) => other !== id && other.toLowerCase() === id.toLowerCase(),
+          );
+          if (hasCaseTwin) {
+            expect(prefixes.get(id)).toBe(id);
+          }
         }
       }),
       { numRuns: DEFAULT_NUM_RUNS },
