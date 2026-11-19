@@ -476,6 +476,10 @@ describe("oauth callback routes", () => {
         { req: { state: CLIENT_STATE } },
       );
       const [signature, payload] = signedState.split(".");
+      assert(
+        signature && payload,
+        "signed state should be <signature>.<payload>",
+      );
       const tamperedDigit = signature.endsWith("a") ? "b" : "a";
       const tamperedState = `${signature.slice(0, -1)}${tamperedDigit}.${payload}`;
 
