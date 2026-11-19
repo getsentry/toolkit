@@ -187,6 +187,8 @@ These are Sentry MCP application attributes that are not part of the MCP semanti
 - `app.consent.skill.<skill>.granted` - Per-skill boolean attributes for skills granted to the MCP request. Skill ids are normalized with `-` replaced by `_`
 - `app.side_quest.<id>` - `"shown"` or `"capped"` (detected but cut by the cap) for each side quest a tool call detected; unset when not detected. Ids are stable snake_case
 - `app.side_quests.detected`, `app.side_quests.shown` - Integer counts of side quests detected and shown; `0` when detectors ran and found none. Each shown quest also increments the `app.side_quest.shown` counter metric, tagged `side_quest.id`, which trace sampling does not drop
+- `app.side_quest.related_issues_open.issue_ids` - Comma-separated short IDs of the related issues that `update_issue`'s `related_issues_open` quest lists (up to 3), so analytics can match a later `get_sentry_resource` or `update_issue` call to a suggested issue
+- `app.side_quest.related_issues_open.count` - Integer count of related issues still open when `update_issue` shows the `related_issues_open` quest, the number its tip states; a lower bound when a relation type filled its page
 - `app.upstream.host` - Upstream Sentry host configured for the server
 - `app.url.full` - MCP URL configured for stdio
 

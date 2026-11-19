@@ -162,9 +162,43 @@ describe("search_errors structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&field=issue&field=title&field=project&field=timestamp&field=level&field=message&field=error.type&field=culprit&field=user.email&field=user.id&sort=-timestamp&statsPeriod=24h&yAxis=count%28%29",
+        "url": "https://test-org.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=issue&field=title&field=project&field=timestamp&field=level&field=message&field=error.type&field=culprit&field=user.email&field=user.id&sort=-timestamp&statsPeriod=24h&yAxis=count%28%29",
       }
     `);
+  });
+
+  it("searches every accessible project when projectSlug is omitted", async () => {
+    // Without `project`, Sentry only searches the user's team projects and
+    // rejects the search when the user is on no team.
+    const projectParams: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        ({ request }) => {
+          projectParams.push(new URL(request.url).searchParams.get("project"));
+          return HttpResponse.json({
+            valid: true,
+            projects: [],
+            dataset: [],
+            environment: [],
+            field: [],
+            query: { valid: true, error: null, fields: [] },
+            orderby: [],
+          });
+        },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          projectParams.push(new URL(request.url).searchParams.get("project"));
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await runSearch({ query: "level:error" });
+
+    expect(projectParams).toEqual(["-1", "-1"]);
   });
 
   it("returns aggregate rows without a follow-up when no issue is grouped", async () => {

@@ -11,6 +11,7 @@
  */
 
 import { logger } from "../logger.js";
+import { httpTargetAttribute } from "../../commands/local/http-target.js";
 
 const log = logger.withTag("semantic-display");
 
@@ -706,24 +707,15 @@ function getHttpTarget(
     includeFullUrl = true,
   }: { includeServerTarget?: boolean; includeFullUrl?: boolean } = {},
 ): string | undefined {
-  const route = getAttr(
-    attrs,
-    ["http.route", "url.template"],
-    SPAN_ATTRIBUTE_MAX_LENGTH,
+  const target = httpTargetAttribute((key) =>
+    key === "url.full" && !includeFullUrl
+      ? undefined
+      : getAttr(attrs, [key], SPAN_ATTRIBUTE_MAX_LENGTH),
   );
-  const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
-  const path = getAttr(attrs, ["url.path"], SPAN_ATTRIBUTE_MAX_LENGTH);
+  if (target) {
+    return formatHttpTarget(target.value);
+  }
   const serverTarget = getServerTarget(attrs);
-
-  if (route) {
-    return formatHttpTarget(route);
-  }
-  if (fullUrl && includeFullUrl) {
-    return formatHttpTarget(fullUrl);
-  }
-  if (path) {
-    return formatHttpTarget(path);
-  }
   if (includeServerTarget && serverTarget) {
     return formatHttpTarget(serverTarget);
   }

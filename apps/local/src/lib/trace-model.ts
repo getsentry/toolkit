@@ -1,4 +1,5 @@
 import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import { httpTargetAttribute } from "../../../../packages/cli/src/commands/local/http-target.ts";
 import {
   getEventMetadata,
   type EventMetadata,
@@ -94,6 +95,7 @@ function getPayloadSpan(
       operation ??
       item.type,
     payload,
+    operation,
   );
 
   return withoutUndefined({
@@ -143,10 +145,18 @@ const HTTP_METHODS = new Set([
  * (span v2 attributes or transaction span data).
  * Label them with the URL's origin and path so rows can be told apart,
  * grouped and searched. The query (cache busters, tokens) and fragment
- * stay in the span's attributes. Spans named by method only get the
- * route, or else the path, after the method.
+ * stay in the span's attributes.
+ *
+ * Spans named by method only ("GET", any case) get a target after the
+ * method, read in the CLI's `httpTargetAttribute` order. A server span
+ * (`http.server`) shows the route or path; any other span keeps the
+ * host it called, such as `GET api.stripe.com/v1/charges`.
  */
-function withCapturedUrl(description: string, payload: unknown): string {
+function withCapturedUrl(
+  description: string,
+  payload: unknown,
+  operation: string | undefined,
+): string {
   const data = spanData(payload);
   const url = getString(data["url.full"]);
   let parsed: URL | undefined;
@@ -155,16 +165,19 @@ function withCapturedUrl(description: string, payload: unknown): string {
   } catch {
     parsed = undefined;
   }
-  // Next.js edge `http.server` segments are named by method only ("GET").
-  if (HTTP_METHODS.has(description)) {
-    const path =
-      getString(data["http.route"]) ??
-      getString(data["url.path"]) ??
-      parsed?.pathname;
+  if (HTTP_METHODS.has(description.toUpperCase())) {
+    if (operation !== "http.server" && parsed)
+      return `${description} ${parsed.host}${parsed.pathname}`;
+    // A `url.full` that isn't an absolute URL has no path to show, so
+    // skip it and fall through to `url.path`.
+    const target = httpTargetAttribute((key) =>
+      key === "url.full" && !parsed ? undefined : getString(data[key]),
+    );
+    const path = target?.key === "url.full" ? parsed?.pathname : target?.value;
     return path ? `${description} ${path}` : description;
   }
   if (!parsed) return description;
-  const match = description.match(/^([A-Z]+ )?(.*)$/);
+  const match = description.match(/^([a-z]+ )?(.*)$/i);
   const method = match?.[1] ?? "";
   const target = match?.[2] ?? description;
   return target === parsed.hostname || target === parsed.host
@@ -201,7 +214,8 @@ function mergeSpan(
     ].some(
       (value) =>
         typeof value === "string" &&
-        withCapturedUrl(value.trim(), span.payload) === description,
+        withCapturedUrl(value.trim(), span.payload, span.operation) ===
+          description,
     );
     return named ? (captured ? 4 : 2) : 0;
   };
@@ -290,6 +304,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         description: withCapturedUrl(
           getString(value["description"]) ?? operation ?? id,
           value,
+          operation,
         ),
         startTimestamp,
         endTimestamp,
