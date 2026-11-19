@@ -295,7 +295,7 @@ describe("decodeEnvelope", () => {
   });
 
   test.each([
-    [{ type: "TypeError" }, "TypeError"],
+    [{ type: "TypeError" }, "TypeError: Fallback message"],
     [{ value: "Request rejected" }, "Request rejected"],
     [
       { stacktrace: { frames: [{ filename: "/app/task.ts" }] } },

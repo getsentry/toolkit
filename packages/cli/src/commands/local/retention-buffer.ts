@@ -79,7 +79,8 @@ function hasStackFilename(payload: unknown, filename: string): boolean {
     return (
       Array.isArray(frames) &&
       frames.some((frame) => {
-        // sentry-go frames carry only `abs_path`.
+        // sentry-go frames carry only `abs_path`. Matching a suffix of the full
+        // path is deliberate, unlike frameFile's basename, so `app/main.go` works.
         const { filename: name, abs_path: path } = record(frame);
         const candidate = typeof name === "string" && name ? name : path;
         return typeof candidate === "string" && candidate.endsWith(filename);

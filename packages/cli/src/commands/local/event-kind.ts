@@ -1,6 +1,10 @@
 /** Browser-safe event classification shared by the Local tail and viewer. */
 
-import { exceptionMessage, exceptionValues } from "./exception-values.js";
+import {
+  exceptionMessage,
+  exceptionValueText,
+  exceptionValues,
+} from "./exception-values.js";
 
 /**
  * Read SDK message text: a plain string, or a `logentry` / `message` object
@@ -34,15 +38,6 @@ export type EventDescription = {
   text: string | undefined;
 };
 
-/** Exception value as display text; null, undefined, and "" have none. */
-function valueText(value: unknown): string | undefined {
-  if (value === undefined || value === null || value === "") {
-    return;
-  }
-  // Payload values are parsed JSON, so they always serialize back.
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
 /**
  * Describe an event so the tail and the viewer label it the same way.
  *
@@ -59,7 +54,7 @@ export function describeEvent(
   const last = values.at(-1) as { type?: unknown; value?: unknown } | undefined;
   const errorType =
     typeof last?.type === "string" && last.type ? last.type : undefined;
-  const rawText = valueText(last?.value);
+  const rawText = exceptionValueText(last?.value);
   const exceptionText =
     rawText === undefined ? undefined : exceptionMessage(errorType, rawText);
   const messageText =

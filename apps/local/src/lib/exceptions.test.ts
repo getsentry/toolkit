@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getEventExceptions } from "./exceptions.ts";
+import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
 import { goPanicEvent } from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
 import { sdkException } from "../test-fixtures/sdk-exception.ts";
 
@@ -12,6 +12,34 @@ describe("getEventExceptions", () => {
     { exception: { values: [null, false, [], {}, { type: 42, value: [] }] } },
   ])("ignores malformed exception data: %j", (payload) => {
     expect(getEventExceptions(payload)).toEqual([]);
+  });
+
+  test.each([
+    [{ type: "E", value: 42 }, "E: 42"],
+    [{ type: "E", value: null }, "E: Unknown error"],
+    [{ value: 42 }, "Error: 42"],
+  ])("titles %j the way the tail does", (value, title) => {
+    const exceptions = getEventExceptions({ exception: { values: [value] } });
+    expect(exceptions).toHaveLength(1);
+    const [exception] = exceptions;
+    expect(exception && formatExceptionTitle(exception)).toBe(title);
+  });
+
+  test("reads a multi-line sentry-ruby message without the class name", () => {
+    const [exception] = getEventExceptions({
+      exception: {
+        values: [
+          {
+            type: "NoMethodError",
+            value:
+              "undefined method 'name' for nil (NoMethodError)\n\n    user.name",
+          },
+        ],
+      },
+    });
+    expect(exception?.value).toBe(
+      "undefined method 'name' for nil\n\n    user.name",
+    );
   });
 
   test("reads a sentry-go exception list", () => {

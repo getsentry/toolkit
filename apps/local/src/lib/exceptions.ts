@@ -1,5 +1,6 @@
 import {
   exceptionMessage,
+  exceptionValueText,
   exceptionValues,
 } from "../../../../packages/cli/src/commands/local/exception-values.ts";
 import { withoutUndefined } from "./objects.ts";
@@ -38,10 +39,17 @@ function coordinate(value: unknown): number | undefined {
     : undefined;
 }
 
-export function formatExceptionTitle(exception: EventException): string {
-  return (
-    [exception.type, exception.value].filter(Boolean).join(": ") || "Error"
-  );
+/**
+ * Title an exception the way the Local tail does: a typed exception without a
+ * value falls back to the event's message text.
+ */
+export function formatExceptionTitle(
+  exception: EventException,
+  message?: string,
+): string {
+  return exception.type
+    ? `${exception.type}: ${exception.value ?? message ?? "Unknown error"}`
+    : (exception.value ?? "Error: Unknown error");
 }
 
 /** SDK values and stack frames arrive oldest first; show the current error first. */
@@ -50,8 +58,14 @@ export function getEventExceptions(payload: unknown): EventException[] {
     .flatMap((value): EventException[] => {
       const exception = record(value);
       if (!exception) return [];
-      const type = text(exception["type"]);
-      const raw = text(exception["value"]);
+      const raw = exceptionValueText(exception["value"]);
+      // Only a string reads as message text, as in describeEvent; an untyped
+      // number is still an error, which the tail labels `Error`.
+      const type =
+        text(exception["type"]) ??
+        (raw !== undefined && typeof exception["value"] !== "string"
+          ? "Error"
+          : undefined);
       const message = raw && exceptionMessage(type, raw);
       const rawFrames = record(exception["stacktrace"])?.["frames"];
       const frames = Array.isArray(rawFrames)
@@ -59,6 +73,8 @@ export function getEventExceptions(payload: unknown): EventException[] {
             .flatMap((raw): ExceptionFrame[] => {
               const frame = record(raw);
               if (!frame) return [];
+              // Unlike the tail's frameFile basename, the viewer has room for
+              // the full path, which tells same-named files apart.
               const filename =
                 text(frame["filename"]) ??
                 text(frame["abs_path"]) ??
