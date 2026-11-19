@@ -26,7 +26,7 @@ test.each([1, 2])(
       await ingestReceiverEnvelope(retention.buffer, {
         body: Buffer.from(at(bodies, 0)),
       }),
-    ).toEqual({});
+    ).toEqual({ status: 200, body: {} });
     const frames: { id?: string; data: string }[] = [];
     const reader = retention.buffer.subscribe(
       buildSSEHandler({
@@ -43,7 +43,7 @@ test.each([1, 2])(
           }),
         ),
       );
-      expect(statuses).toEqual(Array(7).fill({}));
+      expect(statuses).toEqual(Array(7).fill({ status: 200, body: {} }));
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(
         frames.map((frame) => JSON.parse(frame.data)[1][0][1].message),
@@ -112,7 +112,7 @@ test("raw ingress assigns identity independently of an untrusted envelope header
     `{"__spotlight_envelope_id":"${forgedId}"}\n{"type":"event"}\n{}`,
   );
   expect(await ingestReceiverEnvelope(retention.buffer, { body: raw })).toEqual(
-    {},
+    { status: 200, body: {} },
   );
   const container = at(retention.buffer.read({ all: true }), 0);
   const id = receiverEnvelopeId(container);
@@ -449,9 +449,9 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
 });
 
 test.each([
-  "not-json",
-  '1\n{"type":"event"}\n{}',
-  '[]\n{"type":"event"}\n{}',
+  "{}\nnot-an-item-header\n{}",
+  '{}\n{"type":"event","length":99}\n{}',
+  "{}\n[]\n{}",
   '{}\n{"type":"event"}\nfalse',
 ])(
   "retains malformed raw delivery %j with a downloadable stable ID",
@@ -517,7 +517,7 @@ test("clear cancels preceding admissions and preserves live subscribers and sett
     await ingestReceiverEnvelope(retention.buffer, {
       body: Buffer.from(after),
     }),
-  ).toEqual({});
+  ).toEqual({ status: 200, body: {} });
   retention.buffer.stream(reader);
   retention.buffer.stream(reader);
   expect(seen).toEqual([after]);
@@ -552,7 +552,7 @@ test.each(["clear", "reset"] as const)(
       await ingestReceiverEnvelope(retention.buffer, {
         body: Buffer.from(envelope),
       }),
-    ).toEqual({});
+    ).toEqual({ status: 200, body: {} });
   },
 );
 
@@ -565,7 +565,10 @@ test("retention changes include preceding compressed admissions and preserve cur
     }),
   );
   await expect(retention.resize(1)).rejects.toThrow(/2 retained envelopes/);
-  expect(await Promise.all(writes)).toEqual([{}, {}]);
+  expect(await Promise.all(writes)).toEqual([
+    { status: 200, body: {} },
+    { status: 200, body: {} },
+  ]);
   const history = retention.buffer.read({ all: true });
   const cursor = receiverEnvelopeId(at(history, 1));
   const seen: string[] = [];
@@ -596,7 +599,7 @@ test("close drains an admitted decode before its final SSE lifecycle frame", asy
     encoding: "gzip",
   });
   plane.sessionStore.close(session.id);
-  expect(await writing).toEqual({});
+  expect(await writing).toEqual({ status: 200, body: {} });
   const text = await reading;
   expect(text).toContain("received");
   expect(text.indexOf("received")).toBeLessThan(
@@ -613,12 +616,15 @@ test("raw attachments remain byte exact and malformed SSE remains inspectable wi
     ),
     attachment,
   ]);
-  expect(await ingestReceiverEnvelope(retention.buffer, { body })).toEqual({});
+  expect(await ingestReceiverEnvelope(retention.buffer, { body })).toEqual({
+    status: 200,
+    body: {},
+  });
   expect(at(retention.buffer.read({ all: true }), 0).getData()).toEqual(body);
-  const malformed = Buffer.from("not-an-envelope");
+  const malformed = Buffer.from("{}\nnot-an-item-header\n");
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: malformed }),
-  ).toEqual({});
+  ).toEqual({ status: 200, body: {} });
   const latest = at(retention.buffer.read({ all: true }), 0);
   const frames: { id?: string; data: string }[] = [];
   const handler = buildSSEHandler({
@@ -645,7 +651,10 @@ test("malformed exception metadata cannot break raw filename queries", async () 
   const body = Buffer.from(
     '{}\n{"type":"event"}\n{"exception":{"values":"malformed"}}',
   );
-  expect(await ingestReceiverEnvelope(retention.buffer, { body })).toEqual({});
+  expect(await ingestReceiverEnvelope(retention.buffer, { body })).toEqual({
+    status: 200,
+    body: {},
+  });
   expect(retention.buffer.read({ filename: "app.ts" })).toEqual([]);
   expect(at(retention.buffer.read({ all: true }), 0).getData()).toEqual(body);
 });
@@ -660,7 +669,7 @@ test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize"
     "}";
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: Buffer.from(raw) }),
-  ).toEqual({});
+  ).toEqual({ status: 200, body: {} });
   const frames: { data: string }[] = [];
   buildSSEHandler({
     writeSSE: async (frame) => {

@@ -267,6 +267,36 @@ describe("Local control plane", () => {
     expect(await gzipped.json()).toEqual({});
   });
 
+  test("session ingest answers 200 with the id, and 400 to bodies that are not envelopes", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "malformed", cwd: "/malformed" }),
+    });
+    const { id, ingestUrl } = await created.json();
+    const post = (body: string) =>
+      plane.app.request(ingestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body,
+      });
+    const eventId = "0b6e5f9cb8d44f4e9a6f3e1c2d7a8b90";
+    const valid = await post(
+      `{"event_id":"${eventId}"}\n{"type":"event"}\n{"message":"ok"}`,
+    );
+    expect(valid.status).toBe(200);
+    expect(await valid.json()).toEqual({ id: eventId });
+    for (const body of ["", '{not json\n{"type":"event"}\n{}']) {
+      const response = await post(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: expect.any(String) });
+    }
+    expect(plane.sessionStore.getBuffer(id).read({ all: true })).toHaveLength(
+      1,
+    );
+  });
+
   test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
     let now = 1000;
     const sessionStore = createLocalSessionStore({ now: () => now });

@@ -30,6 +30,15 @@ export function readMessageText(value: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Whether an `event` item could not be decoded. The receiver keeps an item
+ * that is not JSON as `{ data }`, without the `type` it adds to every decoded
+ * item, so it is neither an exception nor a message.
+ */
+export function isUndecodedEvent(event: Record<string, unknown>): boolean {
+  return !("type" in event) && typeof event["data"] === "string";
+}
+
 /** How an event reads: its kind, thrown type, and the text to show for it. */
 export type EventDescription = {
   kind: "exception" | "message" | undefined;

@@ -767,6 +767,48 @@ describe("buildApp", () => {
     expect(buffer.read({ all: true })).toEqual([]);
   });
 
+  test("ingest answers 200 with the id, and 400 to bodies that are not envelopes", async () => {
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const app = buildApp(buffer);
+    const post = (
+      body: string | ReturnType<typeof gzipSync>,
+      encoding?: string,
+    ) =>
+      app.request("/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": SENTRY_CONTENT_TYPE,
+          ...(encoding ? { "Content-Encoding": encoding } : {}),
+        },
+        body,
+      });
+    for (const body of [
+      "",
+      '{not json\n{"type":"event"}\n{}',
+      '[]\n{"type":"event"}\n{}',
+      "not-an-envelope",
+    ]) {
+      const res = await post(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.any(String) });
+    }
+    expect((await post(gzipSync("{not json\n"), "gzip")).status).toBe(400);
+    expect(buffer.read({ all: true })).toEqual([]);
+    const id = "9ec79c33ec9942ab8353589fcb2e04dc";
+    const valid = await post(
+      `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"ok"}`,
+    );
+    expect(valid.status).toBe(200);
+    expect(await valid.json()).toEqual({ id });
+    // Like Relay, unknown item types and items without `length` are fine.
+    const unknown = await post(
+      '{}\n{"type":"future_item"}\n{"x":1}\n{"type":"event"}\n{"message":"ok"}',
+    );
+    expect(unknown.status).toBe(200);
+    expect(await unknown.json()).toEqual({});
+    expect(buffer.read({ all: true })).toHaveLength(2);
+  });
+
   test("ingest answers like Relay, with the envelope header event_id", async () => {
     const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);

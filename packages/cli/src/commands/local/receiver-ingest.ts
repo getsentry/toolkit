@@ -5,6 +5,7 @@ import { logger } from "../../lib/logger.js";
 import {
   createReceiverEnvelope,
   envelopeEventId,
+  readEnvelopeHeader,
   type ReceiverBuffer,
   withoutDsnHeader,
   withoutOwnDeliveries,
@@ -28,10 +29,21 @@ type ReceiverState = {
   requests: Set<Promise<unknown>>;
 };
 /**
- * Relay's body for an accepted envelope. SDKs such as sentry-elixir accept a
+ * An accepted envelope gets Relay's body. SDKs such as sentry-elixir accept a
  * delivery only on HTTP 200 with this JSON, and retry anything else.
  */
-type ReceiverAccepted = { id?: string };
+type ReceiverAccepted = { status: 200; body: { id?: string } };
+/** A body that is not an envelope: its JSON has the shape of Local's 410 body. */
+type ReceiverRejected = { status: 400; body: { error: string } };
+/** How the receiver answers a delivery: a JSON response or a bare status. */
+export type IngestResult =
+  | ReceiverAccepted
+  | ReceiverRejected
+  | 400
+  | 410
+  | 413
+  | 415
+  | 503;
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
 const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
 
@@ -52,20 +64,21 @@ export function onOversizedEnvelope(
 /** Tell this receiver's listeners when a delivery got HTTP 413. */
 export function reportIngestStatus(
   buffer: ReceiverBuffer,
-  result: number | ReceiverAccepted,
+  result: IngestResult,
 ): void {
   if (result !== 413) return;
   for (const listener of oversizedListeners.get(buffer) ?? []) listener();
 }
 
-/** Answer an ingest request: 200 with the accepted JSON, otherwise the bare status. */
-export function ingestResponse(
-  c: Context,
-  result: ReceiverAccepted | 400 | 410 | 413 | 415 | 503,
-): Response {
-  if (typeof result === "object") return c.json(result);
+/** Answer an ingest request with its JSON body, or with the bare status. */
+export function ingestResponse(c: Context, result: IngestResult): Response {
+  if (typeof result === "object") return c.json(result.body, result.status);
   if (result === 503) c.header("Retry-After", "1");
   return c.body(null, result);
+}
+
+function rejected(error: string): ReceiverRejected {
+  return { status: 400, body: { error } };
 }
 
 /** Stop consuming chunked input as soon as its encoded body exceeds the limit. */
@@ -175,7 +188,7 @@ export function ingestReceiverEnvelope(
      */
     closed?: boolean;
   },
-): Promise<ReceiverAccepted | 400 | 410 | 413 | 415 | 503> {
+): Promise<Exclude<IngestResult, 400>> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
   if (
     contentType &&
@@ -190,7 +203,7 @@ export function ingestReceiverEnvelope(
   if (state.pending.size >= MAX_PENDING) return Promise.resolve(503);
   const generation = state.generation;
   const operation = state.queue.then(
-    async (): Promise<ReceiverAccepted | 400 | 410 | 413 | 503> => {
+    async (): Promise<Exclude<IngestResult, 400 | 415>> => {
       if (generation !== state.generation) return 503;
       let body = input.body;
       if (encoding && encoding !== "identity") {
@@ -211,15 +224,22 @@ export function ingestReceiverEnvelope(
             "code" in error &&
             error.code === "ERR_BUFFER_TOO_LARGE"
             ? 413
-            : 400;
+            : rejected("The body could not be decompressed.");
         }
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
       if (input.closed) return 410;
-      const eventId = envelopeEventId(body);
-      const accepted = eventId ? { id: eventId } : {};
-      if (input.dropDsnHeader) body = withoutDsnHeader(body);
+      // Reject bodies that are not envelopes, as Relay does, and retain nothing.
+      if (!body.length) return rejected("The envelope is empty.");
+      const header = readEnvelopeHeader(body);
+      if (!header) return rejected("The envelope header is not a JSON object.");
+      const eventId = envelopeEventId(header.header);
+      const accepted: ReceiverAccepted = {
+        status: 200,
+        body: eventId ? { id: eventId } : {},
+      };
+      if (input.dropDsnHeader) body = withoutDsnHeader(body, header);
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)
         : body;

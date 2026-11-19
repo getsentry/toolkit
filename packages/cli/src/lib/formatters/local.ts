@@ -1,6 +1,9 @@
 /** Tail formatters for the local dev server. */
 
-import { describeEvent } from "../../commands/local/event-kind.js";
+import {
+  describeEvent,
+  isUndecodedEvent,
+} from "../../commands/local/event-kind.js";
 import {
   exceptionValues,
   frameFile,
@@ -377,12 +380,14 @@ type ExceptionValue = {
  *
  * `kind` is `message` for events with no typed exception: `captureMessage`,
  * Python `logging` records, and JavaScript messages that carry only a
- * synthetic stack. It is `error` otherwise, with the exception type in
- * `errorType` (`Error` when the event names none).
+ * synthetic stack. It is `invalid`, with level `invalid`, when the payload is
+ * not JSON, and `error` otherwise, with the exception type in `errorType`
+ * (`Error` when the event names none).
  */
 type EventSummary = (
   | { kind: "message" }
   | { kind: "error"; errorType: string }
+  | { kind: "invalid" }
 ) & {
   /** Event level (`fatal`, `error`, `warning`, `info`, `debug`); `error` when unset. */
   level: string;
@@ -396,6 +401,13 @@ type EventSummary = (
 
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
+  if (isUndecodedEvent(event)) {
+    return {
+      kind: "invalid",
+      level: "invalid",
+      text: "Event payload is not JSON",
+    };
+  }
   // Exceptions are ordered oldest→newest; the last one is what was thrown.
   const last = exceptionValues(event["exception"]).at(-1) as
     | ExceptionValue
@@ -1195,7 +1207,8 @@ function formatJsonObservation(
 /**
  * Format an `event` item as a JSON object, including the best stack frame.
  * Exceptions get `type: "error"` and an `error_type`; messages get
- * `type: "message"` and no `error_type`.
+ * `type: "message"` and no `error_type`. An item that is not JSON gets
+ * `type: "invalid"` and `level: "invalid"`.
  */
 function formatErrorJson(
   payload: Record<string, unknown>,
@@ -1539,7 +1552,8 @@ const NOT_TELEMETRY_ITEM_TYPES = new Set([
 /**
  * Whether an envelope shows the app is set up: it holds an item the active
  * filters let through, or, with no filters, any item that is not
- * housekeeping.
+ * housekeeping. An event that is not JSON never counts, even though the tail
+ * shows it under `-f error`.
  */
 export function envelopeHasTelemetry(
   container: {
@@ -1550,11 +1564,15 @@ export function envelopeHasTelemetry(
   activeFilters: ReadonlySet<FilterValue>,
 ): boolean {
   const items = container.getParsedEnvelope()?.envelope[1] ?? [];
-  return items.some(([{ type }, payload]) =>
-    activeFilters.size > 0
-      ? isItemIncluded(type, activeFilters, payload as Record<string, unknown>)
-      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type),
-  );
+  return items.some(([{ type }, payload]) => {
+    const item = payload as Record<string, unknown>;
+    if (ERROR_TYPES.has(type ?? "") && isUndecodedEvent(item)) {
+      return false;
+    }
+    return activeFilters.size > 0
+      ? isItemIncluded(type, activeFilters, item)
+      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type);
+  });
 }
 
 /**

@@ -418,8 +418,10 @@ export function withoutOwnDeliveries(
  * that DSN holds the ingest capability, and session envelopes reach holders of
  * the read capability, so drop the key. Only the header line is rewritten.
  */
-export function withoutDsnHeader(body: Buffer): Buffer {
-  const parsed = readEnvelopeHeader(body);
+export function withoutDsnHeader(
+  body: Buffer,
+  parsed = readEnvelopeHeader(body),
+): Buffer {
   if (!parsed || !("dsn" in parsed.header)) return body;
   delete parsed.header["dsn"];
   return Buffer.concat([
@@ -432,20 +434,24 @@ export function withoutDsnHeader(body: Buffer): Buffer {
  * The envelope header's `event_id` as Relay prints it: 32 lowercase hex digits
  * without hyphens. Undefined when the header has no valid event id.
  */
-export function envelopeEventId(body: Buffer): string | undefined {
-  const eventId = readEnvelopeHeader(body)?.header["event_id"];
+export function envelopeEventId(
+  header: Record<string, unknown>,
+): string | undefined {
+  const eventId = header["event_id"];
   if (typeof eventId !== "string") return;
   const simple = eventId.replaceAll("-", "").toLowerCase();
   return /^[0-9a-f]{32}$/.test(simple) ? simple : undefined;
 }
 
+/** The parsed first line of an envelope and where that line ends. */
+export type EnvelopeHeader = { header: Record<string, unknown>; end: number };
+
 /**
  * Parse only the first line, without frame(): it would parse every item and
- * reject envelopes that still have a usable header.
+ * reject envelopes that still have a usable header. Undefined when that line
+ * is not a JSON object, which Relay also rejects.
  */
-function readEnvelopeHeader(
-  body: Buffer,
-): { header: Record<string, unknown>; end: number } | undefined {
+export function readEnvelopeHeader(body: Buffer): EnvelopeHeader | undefined {
   const newline = body.indexOf(10);
   const end = newline < 0 ? body.length : newline;
   let header: unknown;

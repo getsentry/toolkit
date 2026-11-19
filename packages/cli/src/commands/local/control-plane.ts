@@ -572,7 +572,8 @@ export function createLocalControlPlane({
       return result;
     });
     if (outcome === 410) return closed();
-    if (typeof outcome === "object") sessionStore.recordActivity(id);
+    if (typeof outcome === "object" && outcome.status === 200)
+      sessionStore.recordActivity(id);
     return ingestResponse(c, outcome);
   };
   for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
