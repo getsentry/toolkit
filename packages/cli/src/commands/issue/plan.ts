@@ -6,12 +6,14 @@
  */
 
 import { isatty } from "node:tty";
+import { text } from "@sentry/toolkit-core/markdown";
 import type { SentryContext } from "../../context.js";
 import { triggerSolutionPlanning } from "../../lib/api-client.js";
 import { sentry } from "../../lib/app-identity.js";
 import { issueSelectorHelp } from "../../lib/arg-parsing.js";
 import { buildCommand } from "../../lib/command.js";
 import { ApiError, CliError, SeerError } from "../../lib/errors.js";
+import { renderMarkdown } from "../../lib/formatters/markdown.js";
 import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   formatSolution,
@@ -26,11 +28,19 @@ import { logger } from "../../lib/logger.js";
 import { prompt } from "../../lib/prompt.js";
 import {
   type AutofixState,
+  type CodeChange,
+  extractCodeChanges,
   extractExaminedFiles,
   extractNoSolutionReason,
+  extractPullRequests,
   extractRootCauses,
+  extractSingleRunStop,
   extractSolution,
+  isSingleRun,
+  isTerminalStatus,
   requireAutofixRunId,
+  type PullRequestLink,
+  type SingleRunStop,
   type SolutionArtifact,
 } from "../../types/seer.js";
 import {
@@ -69,7 +79,49 @@ type PlanData = {
   solution: SolutionArtifact["data"] | null;
   /** Context about why no solution was produced. Only present when solution is null. */
   no_solution_context?: NoSolutionContext;
+  code_changes?: CodeChange[];
+  pull_requests?: PullRequestLink[];
+  stop?: SingleRunStop;
 };
+
+function formatSingleRunFix(data: PlanData, changes: CodeChange[]): string {
+  const lines: string[] = [];
+  if (data.no_solution_context?.root_cause) {
+    lines.push(
+      `**Root cause:** ${text(data.no_solution_context.root_cause)}`,
+      "",
+    );
+  }
+
+  if (changes.length > 0) {
+    lines.push("## Code changes", "");
+    for (const repo of new Set(changes.map((change) => change.repo))) {
+      lines.push(`**${text(repo)}**`, "");
+      for (const change of changes.filter((c) => c.repo === repo)) {
+        lines.push(
+          `- ${text(change.path)} (+${change.added} −${change.removed})`,
+        );
+      }
+      lines.push("");
+    }
+  } else if (data.stop) {
+    lines.push(`**Seer stopped:** ${text(data.stop.reason)}`, "");
+    lines.push(text(data.stop.suggestion), "");
+  } else {
+    lines.push(
+      "Seer stopped after the root cause without changing code, for example because of the project's settings. Open the issue in Sentry for details.",
+    );
+  }
+
+  if (data.pull_requests?.length) {
+    lines.push("## Pull requests", "");
+    for (const pr of data.pull_requests) {
+      lines.push(`- ${text(pr.url)}`);
+    }
+  }
+
+  return renderMarkdown(lines.join("\n"));
+}
 
 /**
  * Format solution plan data for human-readable terminal output.
@@ -78,6 +130,9 @@ type PlanData = {
  * why no solution was produced.
  */
 function formatPlanOutput(data: PlanData): string {
+  if (data.code_changes) {
+    return formatSingleRunFix(data, data.code_changes);
+  }
   if (data.solution) {
     return formatSolution({ key: "solution", data: data.solution });
   }
@@ -162,6 +217,51 @@ function buildPlanData(state: AutofixState): PlanData {
     }
   }
 
+  return data;
+}
+
+async function waitForSingleRun(
+  state: AutofixState,
+  org: string,
+  issueId: string,
+  json: boolean,
+  issueText: string,
+): Promise<PlanData> {
+  const finalState = isTerminalStatus(state.status)
+    ? state
+    : await pollAutofixState({
+        orgSlug: org,
+        issueId,
+        json,
+        timeoutMessage:
+          "Seer is still working on the fix after 6 minutes. Try again or check the issue in Sentry web UI.",
+        timeoutHint:
+          "The fix may still be in progress.\n" +
+          `  Or retry: ${sentry`issue plan ${issueText}`}`,
+      });
+
+  if (finalState.status === "ERROR") {
+    if (finalState.failure_reason === "out_of_credits") {
+      throw new SeerError("out_of_credits", org);
+    }
+    throw new Error("Autofix failed. Check the Sentry web UI for details.");
+  }
+  if (finalState.status === "CANCELLED") {
+    throw new Error("Autofix was cancelled.");
+  }
+
+  const data: PlanData = {
+    ...buildPlanData(finalState),
+    code_changes: extractCodeChanges(finalState),
+  };
+  const pullRequests = extractPullRequests(finalState);
+  if (pullRequests.length > 0) {
+    data.pull_requests = pullRequests;
+  }
+  const stop = extractSingleRunStop(finalState);
+  if (stop) {
+    data.stop = stop;
+  }
   return data;
 }
 
@@ -283,6 +383,18 @@ export const planCommand = buildCommand({
         issueId: numericId,
         json: flags.json,
       });
+
+      if (isSingleRun(state)) {
+        return yield new CommandOutput(
+          await waitForSingleRun(
+            state,
+            org,
+            numericId,
+            flags.json,
+            issueArg.text,
+          ),
+        );
+      }
 
       // Root cause analysis can pause waiting for the user to confirm the
       // root cause before planning. When running interactively, confirm in the

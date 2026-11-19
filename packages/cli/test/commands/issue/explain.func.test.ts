@@ -231,6 +231,21 @@ describe("issue explain multiple IDs", () => {
     });
   });
 
+  test("points single runs at the fix in the closing hint", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockResolvedValue({
+      ...sampleState(sampleCause("Single cause")),
+      feature_id: "autofix_single_run",
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await loadCommand(explainCommand);
+    await func.call(context, { ...EXPLAIN_FLAGS, json: false }, "IOS-1");
+
+    const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
+    expect(output).toContain("To see the fix, run: sentry issue plan IOS-1");
+  });
+
   test("fails to parse when no issue ID is provided", async () => {
     const func = await loadCommand(explainCommand);
     await expect(

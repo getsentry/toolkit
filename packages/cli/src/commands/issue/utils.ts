@@ -61,7 +61,12 @@ import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits, shellQuote } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";
-import { type AutofixState, isTerminalStatus } from "../../types/seer.js";
+import {
+  type AutofixState,
+  extractRootCauses,
+  isSingleRun,
+  isTerminalStatus,
+} from "../../types/seer.js";
 
 const log = logger.withTag("issue.utils");
 
@@ -1150,6 +1155,13 @@ function shouldStopPolling(
   stopOnWaitingForUser: boolean,
 ): boolean {
   if (isTerminalStatus(state.status)) {
+    return true;
+  }
+  if (
+    stopOnWaitingForUser &&
+    isSingleRun(state) &&
+    extractRootCauses(state).length > 0
+  ) {
     return true;
   }
   if (
