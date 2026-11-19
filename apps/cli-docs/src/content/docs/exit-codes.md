@@ -18,6 +18,8 @@ react to failure categories without parsing stderr.
 | 40–49 | Feature | Feature availability and billing issues |
 | 50–59 | Operations | Upgrade and OAuth flow errors |
 | 60–69 | Command | Command-specific non-standard exits |
+| 124 | Shell convention | `sentry local run --timeout` stopped the app, as GNU `timeout` exits |
+| 252 | Shell convention | An argument could not be parsed |
 
 ## Complete Reference
 
@@ -45,6 +47,7 @@ react to failure categories without parsing stderr.
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
 | 64 | Verify Failed | `sentry local run --verify` received no matching events from the SDK |
+| 124 | Run Timeout | `sentry local run --timeout` stopped the app (the GNU `timeout` convention) |
 | 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 
 ## Scripting Examples
