@@ -41,6 +41,9 @@ account.
   `sentry-local#stop-clears`).
 - Each session or receiver keeps its most recent envelopes, 500 by default,
   and a user can set the limit from 1 to 50,000.
+- A session name selects its newest open session, or its newest session when
+  none is open, because every `local run --session` creates a new one. A
+  session ID always selects that session.
 - A missing or evicted session, event, or envelope is a not-found error that
   names what is missing and the list command to run
   (`sentry-local#missing-session-exit`).

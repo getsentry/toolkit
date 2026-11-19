@@ -20,7 +20,6 @@ import {
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
-import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
@@ -36,9 +35,7 @@ import {
 } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
-  AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
-  AmbiguousLocalSessionError,
   type LocalSessionStore,
 } from "./session-store.js";
 
@@ -56,6 +53,12 @@ import {
 } from "./retention-buffer.js";
 
 export const CONTROL_PLANE_PREFIX = "/_local/v1";
+
+/**
+ * Response header naming the session a shared name resolved to and the other
+ * open sessions with that name, as JSON `{ id, others: [{ id, createdAt }] }`.
+ */
+export const SESSION_CHOICE_HEADER = "X-Sentry-Local-Session-Choice";
 const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
@@ -224,19 +227,6 @@ export function createLocalControlPlane({
       sessionStore.resolve(reference);
       return true;
     } catch (error) {
-      if (error instanceof AmbiguousLocalSessionError) {
-        throw new HTTPException(409, {
-          res: Response.json(
-            {
-              error: error.message,
-              code: AMBIGUOUS_SESSION_CODE,
-              reference: error.reference,
-              sessionIds: error.sessionIds,
-            },
-            { status: 409 },
-          ),
-        });
-      }
       logger.debug("Local session was not found", error);
       return false;
     }
@@ -278,6 +268,31 @@ export function createLocalControlPlane({
     await next();
     return;
   });
+  // Tell the CLI which session a shared name picked so it can say so.
+  // Capability-scoped stream and ingest requests never see sibling IDs.
+  for (const path of [
+    `${CONTROL_PLANE_PREFIX}/sessions/:id`,
+    `${CONTROL_PLANE_PREFIX}/sessions/:id/*`,
+  ])
+    app.use(path, async (c, next) => {
+      const reference = c.req.param("id");
+      if (
+        reference !== undefined &&
+        hasControlCapability(c.req.raw, controlToken) &&
+        sessionExists(reference)
+      ) {
+        const { session, others } = sessionStore.choose(reference);
+        if (others.length > 0)
+          c.header(
+            SESSION_CHOICE_HEADER,
+            JSON.stringify({
+              id: session.id,
+              others: others.map(({ id, createdAt }) => ({ id, createdAt })),
+            }),
+          );
+      }
+      await next();
+    });
   const loopbackCors = cors({
     allowHeaders: [
       "Content-Type",

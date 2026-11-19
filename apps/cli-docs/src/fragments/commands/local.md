@@ -275,8 +275,12 @@ same way without wrapping a command.
 
 `sentry local session create <name> --json` returns separate SDK ingest and
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
-retried session creation idempotent. Use the session ID when multiple sessions
-share a label.
+retried session creation idempotent.
+
+Each `local run --session` creates a new session, so names repeat. A name
+picks its newest open session, or its newest session when none is open. When
+several open sessions share the name, the command uses the newest and notes the
+others on stderr; pass a session ID to pick one of them.
 
 How an SDK reaches a session depends on its Spotlight support:
 

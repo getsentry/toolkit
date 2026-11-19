@@ -10,6 +10,7 @@ import {
 } from "../../../src/commands/local/management.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
 import { CliError, EXIT, ResolutionError } from "../../../src/lib/errors.js";
+import { logger } from "../../../src/lib/logger.js";
 
 const CONTROL_TOKEN = "control-token";
 const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
@@ -132,9 +133,45 @@ describe("local session view", () => {
     daemonResponse = undefined;
   });
 
-  test("reports a shared session name as a user error that lists the IDs", async () => {
-    const one = plane.sessionStore.create({ label: "spike", cwd: "/one" });
-    const two = plane.sessionStore.create({ label: "spike", cwd: "/two" });
+  test("uses the newest open session for a reused name and notes the others", async () => {
+    const closed = plane.sessionStore.create({ label: "reused", cwd: "/old" });
+    plane.sessionStore.close(closed.id);
+    const older = plane.sessionStore.create({ label: "reused", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "reused", cwd: "/two" });
+    await ingestEvent(older.id, "a".repeat(32), "older run");
+    await ingestEvent(newer.id, "b".repeat(32), "newer run");
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const listed = await runCommand(eventRoute, "list", true, "reused");
+      expect(listed.error).toBeUndefined();
+      const { events } = JSON.parse(listed.stdout) as {
+        events: { eventId: string }[];
+      };
+      expect(events.map(({ eventId }) => eventId)).toEqual(["b".repeat(32)]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        `2 open sessions share that name; using the newest, ${newer.id}. Pass a session ID to use another: ${older.id} (open, started 0m ago).`,
+      );
+
+      warn.mockClear();
+      const viewed = await runCommand(sessionRoute, "view", true, newer.id);
+      expect(JSON.parse(viewed.stdout)).toMatchObject({ id: newer.id });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("reports an older daemon's shared-name 409 as a user error that lists the IDs", async () => {
+    daemonResponse = Response.json(
+      {
+        error: OLD_DAEMON_MESSAGE,
+        code: "ambiguous_session",
+        reference: "spike",
+        sessionIds: ["one", "two"],
+      },
+      { status: 409 },
+    );
 
     const error = await viewError("spike");
 
@@ -144,8 +181,8 @@ describe("local session view", () => {
       /^Local session name "spike" matches more than one session\./,
     );
     expect(message).not.toContain("HTTP 409");
-    expect(message).toContain(`Use session ID ${one.id}`);
-    expect(message).toContain(`Use session ID ${two.id}`);
+    expect(message).toContain("Use session ID one");
+    expect(message).toContain("Use session ID two");
     expect(classifySilenced(error)).toBe("user_input_error");
   });
 

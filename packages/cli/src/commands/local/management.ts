@@ -16,6 +16,7 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { formatLocalControlResult } from "../../lib/formatters/local.js";
+import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import {
   formatLocalEnvelopeList,
   formatLocalEventList,
@@ -44,7 +45,8 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
-import { AMBIGUOUS_SESSION_CODE, type LocalSession } from "./session-store.js";
+import type { LocalSession } from "./session-store.js";
+import { SESSION_CHOICE_HEADER } from "./control-plane.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -91,7 +93,7 @@ const DAEMON_CONNECTION_FLAGS = {
 const SESSION_REFERENCE_POSITIONAL = {
   kind: "array",
   parameter: {
-    brief: "Session ID or unique name",
+    brief: "Session ID or name",
     parse: parseLocalSession,
     placeholder: "session",
   },
@@ -140,15 +142,74 @@ async function controlJson(
       1,
     );
   }
+  noteSessionChoice(response.headers.get(SESSION_CHOICE_HEADER));
   if (response.status === 204 || response.status === 202) {
     return { ok: true };
   }
   return (await response.json()) as ControlResult;
 }
 
+type SessionChoice = {
+  id: string;
+  others: { id: string; createdAt: number }[];
+};
+
+function isSessionChoice(value: unknown): value is SessionChoice {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "others" in value &&
+    Array.isArray(value.others) &&
+    value.others.every(
+      (other: unknown) =>
+        typeof other === "object" &&
+        other !== null &&
+        "id" in other &&
+        typeof other.id === "string" &&
+        "createdAt" in other &&
+        Number.isFinite(other.createdAt),
+    )
+  );
+}
+
 /**
- * Turn the control plane's ambiguous-name 409 into a user-input error. Session
+ * Say which session a name shared by several open sessions resolved to, so a
+ * caller that meant another one can pass its ID.
+ */
+function noteSessionChoice(header: string | null): void {
+  if (!header) {
+    return;
+  }
+  let choice: unknown;
+  try {
+    choice = JSON.parse(header);
+  } catch (error) {
+    logger.debug("Could not read the Local session choice", error);
+    return;
+  }
+  if (!isSessionChoice(choice) || choice.others.length === 0) {
+    return;
+  }
+  const others = choice.others
+    .map(
+      ({ id, createdAt }) =>
+        `${id} (open, started ${formatRelativeTime(new Date(createdAt).toISOString())})`,
+    )
+    .join(", ");
+  logger.warn(
+    `${choice.others.length + 1} open sessions share that name; using the newest, ${choice.id}. Pass a session ID to use another: ${others}.`,
+  );
+}
+
+/** `code` of the ambiguous-name 409 from a daemon that an older CLI started. */
+const AMBIGUOUS_SESSION_CODE = "ambiguous_session";
+
+/**
+ * Turn an older daemon's ambiguous-name 409 into a user-input error. Session
  * labels may repeat, so a shared label is not a CLI failure (CLI-4T6, CLI-4FP).
+ * Current daemons resolve a shared name instead; see `noteSessionChoice`.
  */
 function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   if (

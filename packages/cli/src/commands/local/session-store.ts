@@ -49,24 +49,14 @@ export type CreateLocalSessionInput = {
   readonly maxEnvelopes?: number | undefined;
 };
 
-/** `code` of the control plane's 409 body for an ambiguous session name. */
-export const AMBIGUOUS_SESSION_CODE = "ambiguous_session";
-
-/** A label matches multiple sessions; callers must select an explicit ID. */
-export class AmbiguousLocalSessionError extends Error {
-  readonly reference: string;
-  /** IDs of the sessions that share the label. */
-  readonly sessionIds: string[];
-
-  constructor(reference: string, sessionIds: string[]) {
-    super(
-      `Local session name "${reference}" is ambiguous; use its session ID.`,
-    );
-    this.name = "AmbiguousLocalSessionError";
-    this.reference = reference;
-    this.sessionIds = sessionIds;
-  }
-}
+/**
+ * The session a reference resolved to and the other open sessions that share
+ * its name; `others` is empty for a session ID or a name with one open session.
+ */
+export type LocalSessionChoice = {
+  readonly session: LocalSession;
+  readonly others: LocalSession[];
+};
 
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
@@ -87,6 +77,8 @@ export type LocalSessionStore = {
   list: () => LocalSession[];
   pruneExpired: () => string[];
   recordActivity: (reference: string) => LocalSession;
+  /** Resolve a session ID or name; see {@link LocalSessionChoice}. */
+  choose: (reference: string) => LocalSessionChoice;
   resolve: (reference: string) => LocalSession;
 };
 
@@ -127,29 +119,33 @@ export function createLocalSessionStore({
     );
   const changed = () => onChange?.(list());
 
-  const resolveStored = (reference: string): StoredSession => {
+  /**
+   * Resolve a session ID, or a name to the newest of its open sessions, or to
+   * its newest session when none is open. Names repeat because each
+   * `local run --session` creates a session.
+   */
+  const chooseStored = (
+    reference: string,
+  ): { session: StoredSession; others: StoredSession[] } => {
     const byId = sessions.get(reference);
     if (byId) {
-      return byId;
+      return { session: byId, others: [] };
     }
-    const matches = [...sessions.values()].filter(
-      (session) => session.label === reference,
-    );
-    if (matches.length === 0) {
-      throw new Error(`Local session "${reference}" was not found.`);
-    }
-    if (matches.length > 1) {
-      throw new AmbiguousLocalSessionError(
-        reference,
-        matches.map((session) => session.id),
+    const named = [...sessions.values()]
+      .filter((session) => session.label === reference)
+      .sort(
+        (left, right) =>
+          right.createdAt - left.createdAt || right.id.localeCompare(left.id),
       );
-    }
-    const [match] = matches;
-    if (!match) {
+    const open = named.filter((session) => session.state === "open");
+    const [session] = open.length > 0 ? open : named;
+    if (!session) {
       throw new Error(`Local session "${reference}" was not found.`);
     }
-    return match;
+    return { session, others: open.filter((other) => other !== session) };
   };
+  const resolveStored = (reference: string): StoredSession =>
+    chooseStored(reference).session;
 
   const update = (
     session: StoredSession,
@@ -275,6 +271,13 @@ export function createLocalSessionStore({
       const session = resolveStored(reference);
       if (session.state === "retained") return toPublicSession(session);
       return toPublicSession(update(session, { lastActivityAt: now() }));
+    },
+    choose(reference) {
+      const { session, others } = chooseStored(reference);
+      return {
+        session: toPublicSession(session),
+        others: others.map(toPublicSession),
+      };
     },
     resolve(reference) {
       return toPublicSession(resolveStored(reference));

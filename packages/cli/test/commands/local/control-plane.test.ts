@@ -1,7 +1,10 @@
 import { request } from "node:http";
 import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
-import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
+import {
+  createLocalControlPlane,
+  SESSION_CHOICE_HEADER,
+} from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
   createLocalSessionStore,
@@ -445,38 +448,43 @@ describe("Local control plane", () => {
     expect(plane.sessionStore.resolve(session.id).maxEnvelopes).toBe(50000);
   });
 
-  test("reports ambiguous session names with ID guidance across control routes", async () => {
+  test("resolves a shared session name to its newest open session on every control route", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
-    const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
-    const two = plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const older = plane.sessionStore.create({ label: "My App", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const closed = plane.sessionStore.create({
+      label: "My App",
+      cwd: "/three",
+    });
+    plane.sessionStore.close(closed.id);
     for (const [method, suffix] of [
       ["GET", ""],
       ["GET", "/events"],
       ["GET", "/envelopes"],
-      ["GET", "/events/id"],
-      ["GET", "/envelopes/id"],
-      ["POST", "/close"],
+      ["GET", "/retention"],
       ["POST", "/reset"],
     ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },
       );
-      expect(response.status).toBe(409);
-      await expect(response.json()).resolves.toEqual({
-        error: 'Local session name "My App" is ambiguous; use its session ID.',
-        code: "ambiguous_session",
-        reference: "My App",
-        sessionIds: [one.id, two.id],
+      expect(response.status, suffix).toBeLessThan(300);
+      expect(
+        JSON.parse(response.headers.get(SESSION_CHOICE_HEADER) ?? "null"),
+      ).toEqual({
+        id: newer.id,
+        others: [{ id: older.id, createdAt: older.createdAt }],
       });
     }
-    expect(
-      (
-        await plane.app.request(`/_local/v1/sessions/${one.id}`, {
-          headers: controlHeaders(),
-        })
-      ).status,
-    ).toBe(200);
+    const viewed = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    await expect(viewed.json()).resolves.toMatchObject({ id: newer.id });
+    const byId = await plane.app.request(`/_local/v1/sessions/${older.id}`, {
+      headers: controlHeaders(),
+    });
+    expect(byId.status).toBe(200);
+    expect(byId.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
     expect(
       (
         await plane.app.request("/_local/v1/sessions/missing", {
@@ -484,6 +492,23 @@ describe("Local control plane", () => {
         })
       ).status,
     ).toBe(404);
+
+    const closedResponse = await plane.app.request(
+      "/_local/v1/sessions/My%20App/close",
+      { method: "POST", headers: controlHeaders() },
+    );
+    await expect(closedResponse.json()).resolves.toMatchObject({
+      id: newer.id,
+      state: "retained",
+    });
+    const remaining = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    expect(remaining.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+    await expect(remaining.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "open",
+    });
   });
 
   test("creates isolated sessions through its authenticated control API", async () => {

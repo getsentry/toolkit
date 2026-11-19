@@ -40,7 +40,7 @@ List retained envelopes for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local envelope view <session envelope...>`
 
@@ -60,7 +60,7 @@ List decoded events for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local event view <session event...>`
 
@@ -139,7 +139,7 @@ View or change session envelope retention
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 **Flags:**
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
@@ -156,7 +156,7 @@ View a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session close <session...>`
 
@@ -166,7 +166,7 @@ Close a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session reset <session...>`
 
@@ -176,7 +176,7 @@ Clear a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local run <command...>`
 
