@@ -674,6 +674,28 @@ setInterval(() => {}, 1000);
       },
     );
 
+    test("keeps the app's exit code when --timeout fires during a Ctrl-C shutdown", async () => {
+      const ctx = { ...makeContext(), process: { exitCode: undefined } };
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const ready = join(tmpDir, "ready");
+      // Takes 1.5s to shut down after SIGINT, so --timeout 1 fires meanwhile.
+      const run = func.call(
+        ctx,
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 1 },
+        process.execPath,
+        "-e",
+        // The ready file path comes in as an argument, not inside the code.
+        'process.on("SIGINT", () => setTimeout(() => process.exit(0), 1500));require("node:fs").writeFileSync(process.argv[1], "");setInterval(() => {}, 1000);',
+        ready,
+      );
+      await vi.waitFor(async () => {
+        await readFile(ready, "utf8");
+      });
+      signals.send("SIGINT");
+      await expect(run).resolves.toBeUndefined();
+      expect(ctx.process.exitCode).toBeUndefined();
+    }, 20_000);
+
     describe("with an app behind a wrapper that ignores SIGINT", () => {
       /**
        * Like `go run`: ignores SIGINT, dies from SIGTERM without passing it
@@ -755,21 +777,21 @@ app.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
         }
       }, 30_000);
 
-      test("--timeout leaves no app running", async () => {
+      test("--timeout leaves no app running and exits 124", async () => {
         const { wrapper, appPidFile } = await wrappedApp();
         const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
         try {
           const func = (await runCommand.loader()) as unknown as RunFunc;
-          await func
-            .call(
-              makeContext(),
-              { port: 0, host: "127.0.0.1", verify: false, timeout: 2 },
-              process.execPath,
-              wrapper,
-            )
-            .catch(() => undefined);
+          const ctx = { ...makeContext(), process: { exitCode: undefined } };
+          await func.call(
+            ctx,
+            { port: 0, host: "127.0.0.1", verify: false, timeout: 2 },
+            process.execPath,
+            wrapper,
+          );
           const pid = await appPid(appPidFile);
           expect(isRunning(pid)).toBe(false);
+          expect(ctx.process.exitCode).toBe(EXIT.RUN_TIMEOUT);
         } finally {
           warn.mockRestore();
         }
@@ -898,24 +920,69 @@ setInterval(() => {}, 1000);
     });
   });
 
-  test("--timeout kills the child after N seconds", async () => {
-    const func = (await runCommand.loader()) as unknown as RunFunc;
-    const ctx = makeContext();
-
-    // "sleep 60" would take too long — timeout at 1s should kill it
+  test.each([
+    { app: "dies from SIGTERM", args: ["sleep", "60"] },
+    {
+      app: "exits 0 on SIGTERM",
+      args: [
+        process.execPath,
+        "-e",
+        "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000);",
+      ],
+    },
+  ])("--timeout exits 124 when it stops an app that $app", async ({ args }) => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const ctx = { ...makeContext(), process: { exitCode: undefined } };
       await func.call(
         ctx,
         { port: 0, host: "127.0.0.1", verify: false, timeout: 1 },
-        "sleep",
-        "60",
+        ...(args as [string, ...string[]]),
       );
-      expect.unreachable("should have thrown");
-    } catch (err) {
-      expect(err).toBeInstanceOf(CliError);
-      // The child is killed by SIGTERM, resulting in a non-zero exit
-      expect((err as CliError).message).toContain("exited with code");
+      expect(ctx.process.exitCode).toBe(EXIT.RUN_TIMEOUT);
+      expect(info.mock.calls.map((c) => String(c[0]))).toContain(
+        "Stopped after 1s (--timeout)",
+      );
+    } finally {
+      info.mockRestore();
     }
+  });
+
+  test("--timeout exits 124 when the app ignores SIGTERM and gets SIGKILL", async () => {
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const ctx = { ...makeContext(), process: { exitCode: undefined } };
+      await func.call(
+        ctx,
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 1 },
+        process.execPath,
+        "-e",
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);",
+      );
+      expect(ctx.process.exitCode).toBe(EXIT.RUN_TIMEOUT);
+      const lines = info.mock.calls.map((c) => String(c[0]));
+      expect(lines).toContain("Stopping after 1s (--timeout)…");
+      expect(lines).toContain("Stopped after 1s (--timeout)");
+    } finally {
+      info.mockRestore();
+    }
+  }, 20_000);
+
+  test("--timeout keeps the exit code of an app that exits first", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+    const error = await func
+      .call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: false, timeout: 10 },
+        process.execPath,
+        "-e",
+        "process.exit(3)",
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).exitCode).toBe(3);
   });
 
   test("--verify with a quick-exit process throws VERIFY_FAILED", async () => {
@@ -941,6 +1008,7 @@ setInterval(() => {}, 1000);
   test("--verify with --timeout throws on timeout", async () => {
     const func = (await runCommand.loader()) as unknown as RunFunc;
     const ctx = makeContext();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
 
     try {
       await func.call(
@@ -954,6 +1022,12 @@ setInterval(() => {}, 1000);
       expect(err).toBeInstanceOf(VerifyFailedError);
       expect((err as CliError).message).toContain("Verification timed out");
       expect((err as CliError).exitCode).toBe(64);
+      // The --verify timeout is not the plain-run --timeout.
+      expect(
+        info.mock.calls.some((c) => String(c[0]).includes("(--timeout)")),
+      ).toBe(false);
+    } finally {
+      info.mockRestore();
     }
   });
 
@@ -1159,11 +1233,14 @@ setInterval(() => {}, 1000);
   });
 
   test("warns when the existing server's stream cannot be attached", async () => {
-    // `/health` answers but `/stream` does not — e.g. an unrelated service
-    // squatting on the port. Attaching fails, and since `run` keeps the child
-    // alive the user would otherwise get no hint that events are missing.
+    // `/health` answers like a receiver but `/stream` does not. Attaching
+    // fails, and since `run` keeps the child alive the user would otherwise
+    // get no hint that events are missing.
     const brokenApp = new Hono();
-    brokenApp.get("/health", (c) => c.text("OK"));
+    brokenApp.get("/health", (c) => {
+      c.header("X-Powered-By", serverModule.SERVER_IDENTIFIER);
+      return c.text("OK");
+    });
     const { server, port } = await tryListen(brokenApp, 0, "127.0.0.1");
 
     const savedFetch = globalThis.fetch;
@@ -1528,6 +1605,89 @@ describe("sentry local run messages", () => {
       daemonPort.mockRestore();
     }
   }, 30_000);
+
+  test("plain run captures on a free port while another process holds the default port", async () => {
+    // Something that isn't a receiver, such as `python -m http.server 8969`,
+    // answers /health without the receiver header.
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) throw new Error("Expected the native fetch");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        return url.port === String(DEFAULT_PORT)
+          ? new Response("Not Found", { status: 404 })
+          : await realFetch(input, init);
+      }),
+    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--",
+          process.execPath,
+          "-e",
+          "",
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(Number(receiver.port)).toBeGreaterThan(0);
+      expect(info).toHaveBeenCalledWith(
+        `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`,
+      );
+      expect(info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Connected to existing server"),
+      );
+    } finally {
+      info.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  }, 30_000);
+
+  test("plain run fails when another process holds an explicit --port", async () => {
+    const holder = await holdPort(0, "127.0.0.1");
+    const address = holder?.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    spawnCapture.env = undefined;
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: address.port, host: "127.0.0.1", verify: false, timeout: 0 },
+          "true",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${address.port} is already in use by another process`,
+        ),
+      });
+      expect(spawnCapture.env).toBeUndefined();
+    } finally {
+      globalThis.fetch = savedFetch;
+      await closeServer(holder);
+    }
+  });
 
   test("plain run still fails when the daemon holds an explicit --port", async () => {
     const daemonPort = makeDaemonHoldPort(45_678);
