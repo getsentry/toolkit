@@ -645,6 +645,78 @@ function findNoSolutionReasonInContainers(
   return searchContainersForNoSolutionReason(containers);
 }
 
+export type CodeChange = {
+  repo: string;
+  path: string;
+  type: string;
+  added: number;
+  removed: number;
+};
+
+export type SingleRunStop = { reason: string; suggestion: string };
+
+type MergedFilePatch = {
+  repo_name: string;
+  patch: { path: string; type: string; added: number; removed: number };
+};
+
+type SingleRunBlock = WithArtifacts & {
+  merged_file_patches?: MergedFilePatch[];
+};
+
+function singleRunBlocks(state: AutofixState): SingleRunBlock[] {
+  return (state as { blocks?: SingleRunBlock[] }).blocks ?? [];
+}
+
+export function extractCodeChanges(state: AutofixState): CodeChange[] {
+  const byFile = new Map<string, CodeChange>();
+  for (const block of singleRunBlocks(state)) {
+    for (const { repo_name, patch } of block.merged_file_patches ?? []) {
+      byFile.set(`${repo_name}:${patch.path}`, {
+        repo: repo_name,
+        path: patch.path,
+        type: patch.type,
+        added: patch.added,
+        removed: patch.removed,
+      });
+    }
+  }
+  return [...byFile.values()];
+}
+
+export type PullRequestLink = {
+  repo: string | undefined;
+  url: string;
+  number: number | undefined;
+};
+
+export function extractPullRequests(state: AutofixState): PullRequestLink[] {
+  const prStates =
+    (state as { repo_pr_states?: Record<string, unknown> }).repo_pr_states ??
+    {};
+  return Object.values(prStates).flatMap((prState) => {
+    const result = safeParse(PullRequestInfoSchema, prState);
+    if (!(result.success && result.output.pr_url)) {
+      return [];
+    }
+    const { repo_name, pr_url, pr_number } = result.output;
+    return [{ repo: repo_name, url: pr_url, number: pr_number }];
+  });
+}
+
+export function extractSingleRunStop(
+  state: AutofixState,
+): SingleRunStop | undefined {
+  const stops = singleRunBlocks(state)
+    .flatMap((block) => block.artifacts ?? [])
+    .filter((artifact) => artifact.key === "stop");
+  const data = stops.at(-1)?.data as Partial<SingleRunStop> | undefined;
+  if (typeof data?.reason === "string" && typeof data.suggestion === "string") {
+    return { reason: data.reason, suggestion: data.suggestion };
+  }
+  return;
+}
+
 /**
  * Extract file paths examined during root cause analysis.
  *
