@@ -1,5 +1,6 @@
 /** Bounded HTTP decoding and raw delivery identity for the Local receiver. */
 import { brotliDecompress, gunzip, inflate } from "node:zlib";
+import type { Context } from "hono";
 import { logger } from "../../lib/logger.js";
 import {
   createReceiverEnvelope,
@@ -55,6 +56,16 @@ export function reportIngestStatus(
 ): void {
   if (result !== 413) return;
   for (const listener of oversizedListeners.get(buffer) ?? []) listener();
+}
+
+/** Answer an ingest request: 200 with the accepted JSON, otherwise the bare status. */
+export function ingestResponse(
+  c: Context,
+  result: ReceiverAccepted | 400 | 410 | 413 | 415 | 503,
+): Response {
+  if (typeof result === "object") return c.json(result);
+  if (result === 503) c.header("Retry-After", "1");
+  return c.body(null, result);
 }
 
 /** Stop consuming chunked input as soon as its encoded body exceeds the limit. */

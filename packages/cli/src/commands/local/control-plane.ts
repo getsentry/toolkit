@@ -10,6 +10,7 @@ import { Buffer } from "node:buffer";
 import {
   drainReceiver,
   ingestReceiverEnvelope,
+  ingestResponse,
   onOversizedEnvelope,
   readReceiverBody,
   receiverEnvelopeId,
@@ -530,13 +531,9 @@ export function createLocalControlPlane({
       reportIngestStatus(buffer, result);
       return result;
     });
-    if (typeof outcome === "object") {
-      sessionStore.recordActivity(reference);
-      return c.json(outcome);
-    }
     if (outcome === 410) return closed();
-    if (outcome === 503) c.header("Retry-After", "1");
-    return c.body(null, outcome);
+    if (typeof outcome === "object") sessionStore.recordActivity(reference);
+    return ingestResponse(c, outcome);
   };
   for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);

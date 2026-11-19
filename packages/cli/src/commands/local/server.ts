@@ -31,6 +31,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
   ingestReceiverEnvelope,
+  ingestResponse,
   MAX_DECODED_BYTES,
   onOversizedEnvelope,
   readReceiverBody,
@@ -525,9 +526,7 @@ export function buildApp(
     });
 
     reportIngestStatus(buffer, result);
-    if (typeof result === "object") return c.json(result);
-    if (result === 503) c.header("Retry-After", "1");
-    return c.body(null, result);
+    return ingestResponse(c, result);
   };
 
   app.post("/stream", ingest);
