@@ -478,9 +478,9 @@ describe("Local daemon E2E", () => {
         `2 open sessions share that name; using the newest, ${second.id}.`,
       );
       expect(result.stderr).toContain(`${first.id} (open, started`);
+      if (parts[0] === "session")
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: second.id });
     }
-    const viewed = await cli("session", "view", "duplicate");
-    expect(JSON.parse(viewed.stdout)).toMatchObject({ id: second.id });
 
     const closed = await cli("session", "close", "duplicate");
     expect(closed.exitCode, closed.stderr).toBe(0);
