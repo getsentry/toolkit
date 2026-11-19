@@ -44,6 +44,7 @@ import {
   FILTER_VALUES,
   type FilterValue,
   FORMAT_VALUES,
+  createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   type FormatValue,
@@ -255,11 +256,17 @@ async function startBackgroundServer({
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
+  const replays = createReplayTracker();
   const subscriptionId = buffer.subscribe((container) => {
     try {
       const formatLines = useJson
         ? formatEnvelopeLinesJson(container, activeFilters, showAttributes)
-        : formatEnvelopeLines(container, activeFilters, showAttributes);
+        : formatEnvelopeLines(
+            container,
+            activeFilters,
+            showAttributes,
+            replays,
+          );
       for (const line of formatLines) {
         if (useJson) {
           printJsonLine(line);

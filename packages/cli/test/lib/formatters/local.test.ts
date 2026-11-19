@@ -1090,14 +1090,18 @@ describe("formatItem with attributes", () => {
     };
     const withoutAttrs = formatItem("transaction", event, serverHeader, "t");
     expect(withoutAttrs).toHaveLength(1);
-    const withAttrs = formatItem("transaction", event, serverHeader, "t", true);
+    const withAttrs = formatItem("transaction", event, serverHeader, "t", {
+      showAttributes: true,
+    });
     expect(withAttrs.length).toBeGreaterThan(1);
     expect(withAttrs.map(stripAnsi).join("\n")).toContain("tenant");
   });
 
   test("does not append a table for errors even when enabled", () => {
     const event = { timestamp: 1_700_000_000, message: "boom" };
-    const lines = formatItem("error", event, serverHeader, "e", true);
+    const lines = formatItem("error", event, serverHeader, "e", {
+      showAttributes: true,
+    });
     expect(lines).toHaveLength(1);
   });
 });

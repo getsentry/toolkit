@@ -980,30 +980,35 @@ export function itemTypeToFilterCategory(
   return undefined;
 }
 
-/** How many replay IDs the tail remembers, oldest dropped first. */
+/** How many replay IDs a tail remembers, oldest dropped first. */
 const MAX_SEEN_REPLAYS = 100;
 
-/** Replay IDs the tail has printed a line for, oldest first. */
-const seenReplays = new Set<string>();
-
 /**
- * Record a replay ID and return whether it is new. A tail that starts
- * mid-replay sees a later segment first, so this goes by ID, not segment 0.
+ * Records a replay ID and returns whether the tail has not printed it yet.
  * Items without an ID are always new.
  */
-function markReplaySeen(replayId: unknown): boolean {
-  if (typeof replayId !== "string" || !replayId) {
+export type ReplayTracker = (replayId: unknown) => boolean;
+
+/**
+ * Create the replay IDs one tail has printed a line for. A tail that starts
+ * mid-replay sees a later segment first, so this goes by ID, not segment 0.
+ */
+export function createReplayTracker(): ReplayTracker {
+  const seen = new Set<string>();
+  return (replayId) => {
+    if (typeof replayId !== "string" || !replayId) {
+      return true;
+    }
+    if (seen.has(replayId)) {
+      return false;
+    }
+    seen.add(replayId);
+    if (seen.size > MAX_SEEN_REPLAYS) {
+      const [oldest] = seen;
+      seen.delete(oldest as string);
+    }
     return true;
-  }
-  if (seenReplays.has(replayId)) {
-    return false;
-  }
-  seenReplays.add(replayId);
-  if (seenReplays.size > MAX_SEEN_REPLAYS) {
-    const [oldest] = seenReplays;
-    seenReplays.delete(oldest as string);
-  }
-  return true;
+  };
 }
 
 /**
@@ -1356,14 +1361,18 @@ export function formatItemJson(
  * Format a single envelope item into one or more output lines.
  *
  * When `showAttributes` is true, transaction items are followed by an indented
- * attribute table (see {@link formatAttributeTable}).
+ * attribute table (see {@link formatAttributeTable}). A tail passes its own
+ * `replays` so each session replay prints once.
  */
 export function formatItem(
   itemType: string | undefined,
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   fallbackLabel: string,
-  showAttributes = false,
+  {
+    showAttributes = false,
+    replays = createReplayTracker(),
+  }: { showAttributes?: boolean; replays?: ReplayTracker } = {},
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorItem(payload, header)];
@@ -1384,7 +1393,7 @@ export function formatItem(
   // Active replays send a replay_event and a recording every few seconds;
   // only the first segment the tail sees gets a line.
   if (itemType === "replay_event") {
-    return markReplaySeen(payload["replay_id"])
+    return replays(payload["replay_id"])
       ? [formatReplayItem(payload, header)]
       : [];
   }
@@ -1490,7 +1499,8 @@ export function formatEnvelopeLinesJson(
  *
  * When `activeFilters` is non-empty, only items whose category matches
  * one of the filter values are rendered; non-matching items are silently
- * dropped. When empty, all items are shown.
+ * dropped. When empty, all items are shown. A tail passes its own `replays`
+ * so each session replay prints once.
  */
 export function formatEnvelopeLines(
   container: {
@@ -1502,6 +1512,7 @@ export function formatEnvelopeLines(
   },
   activeFilters: ReadonlySet<FilterValue>,
   showAttributes = false,
+  replays: ReplayTracker = createReplayTracker(),
 ): string[] {
   const parsed = container.getParsedEnvelope();
   if (!parsed) {
@@ -1524,7 +1535,7 @@ export function formatEnvelopeLines(
         payload,
         header,
         itemHeader.type ?? container.getContentType(),
-        showAttributes,
+        { showAttributes, replays },
       ),
     );
   }

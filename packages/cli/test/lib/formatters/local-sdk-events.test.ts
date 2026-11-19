@@ -512,9 +512,9 @@ describe("log attributes", () => {
   });
 
   test("with --attributes, SDK attributes are listed under the line", () => {
-    const lines = formatItem("log", werkzeugLog, header, "log", true).map(
-      stripAnsi,
-    );
+    const lines = formatItem("log", werkzeugLog, header, "log", {
+      showAttributes: true,
+    }).map(stripAnsi);
     expect(lines.length).toBeGreaterThan(1);
     const table = lines.slice(1).join("\n");
     expect(table).toContain("sdk attributes");

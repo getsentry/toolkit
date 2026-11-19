@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  createReplayTracker,
   formatEnvelopeLines,
   formatErrorItem,
   formatItem,
@@ -362,6 +363,8 @@ describe("session replays", () => {
     const lines = formatEnvelopeLines(
       replayEnvelope(0, ["http://localhost:3000/client"]),
       new Set(),
+      false,
+      createReplayTracker(),
     ).map((line) => stripAnsi(line));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("[REPLAY]");
@@ -370,35 +373,32 @@ describe("session replays", () => {
   });
 
   test("later segments of a replay already shown print nothing", () => {
-    formatEnvelopeLines(replayEnvelope(0, []), new Set());
-    expect(formatEnvelopeLines(replayEnvelope(1, []), new Set())).toEqual([]);
+    const replays = createReplayTracker();
+    formatEnvelopeLines(replayEnvelope(0, []), new Set(), false, replays);
+    expect(
+      formatEnvelopeLines(replayEnvelope(1, []), new Set(), false, replays),
+    ).toEqual([]);
   });
 
   test("a tail that starts mid-replay prints the first segment it sees", () => {
-    const midReplayId = "5e2d6c1f0b4a4d8f9c3b7a2e1d0f9c8b";
-    const envelope = {
-      ...replayEnvelope(7, ["http://localhost:3000/cart"]),
-      getParsedEnvelope: () => ({
-        envelope: [
-          nextjsHeader,
-          [
-            [
-              { type: "replay_event" },
-              {
-                ...replayEvent(7, ["http://localhost:3000/cart"]),
-                replay_id: midReplayId,
-                event_id: midReplayId,
-              },
-            ],
-          ],
-        ] as [Record<string, unknown>, [{ type?: string }, unknown][]],
-      }),
-    };
-    const lines = formatEnvelopeLines(envelope, new Set()).map((line) =>
-      stripAnsi(line),
+    const replays = createReplayTracker();
+    const envelope = replayEnvelope(7, ["http://localhost:3000/cart"]);
+    const lines = formatEnvelopeLines(envelope, new Set(), false, replays).map(
+      (line) => stripAnsi(line),
     );
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("replay 5e2d6c1f http://localhost:3000/cart");
-    expect(formatEnvelopeLines(envelope, new Set())).toEqual([]);
+    expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/cart");
+    expect(formatEnvelopeLines(envelope, new Set(), false, replays)).toEqual(
+      [],
+    );
+  });
+
+  test("each tail tracks its own replays", () => {
+    const envelope = replayEnvelope(3, []);
+    for (const replays of [createReplayTracker(), createReplayTracker()]) {
+      expect(
+        formatEnvelopeLines(envelope, new Set(), false, replays),
+      ).toHaveLength(1);
+    }
   });
 });
