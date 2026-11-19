@@ -1,6 +1,6 @@
 import { getActiveSpan } from "@sentry/core";
 import { relatedIssuesFixture } from "@sentry/mcp-server-mocks";
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { RelatedIssuesResponseSchema } from "../api-client/schema";
 import {
   RELATED_ISSUES_LIMIT,
@@ -81,6 +81,7 @@ describe("buildUpdateIssueSideQuests", () => {
     const attributes = captureSpanAttributes();
     const related = relatedIssues();
     const [, open] = related.data;
+    assert(open, "Expected the fixture's unresolved related issue");
     related.data = Array.from({ length: 4 }, (_, index) => ({
       ...open,
       issue: { ...open.issue, shortId: `WEB-${index + 1}` },
