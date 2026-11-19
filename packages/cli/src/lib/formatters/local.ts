@@ -1525,20 +1525,21 @@ function transactionHasAiActivity(payload: Record<string, unknown>): boolean {
   return false;
 }
 
-/** Item types an SDK sends as telemetry, unlike `session` or `client_report`. */
-const TELEMETRY_ITEM_TYPES = new Set([
-  ...ERROR_TYPES,
-  "transaction",
-  "span",
-  "log",
-  "replay_event",
-  "replay_recording",
-  "replay_video",
+/**
+ * Housekeeping item types an SDK sends on its own, even when nothing else
+ * reaches Sentry Local. Every other type counts as telemetry, so item types
+ * that SDKs add later count without a change here.
+ */
+const NOT_TELEMETRY_ITEM_TYPES = new Set([
+  "session",
+  "sessions",
+  "client_report",
 ]);
 
 /**
  * Whether an envelope shows the app is set up: it holds an item the active
- * filters let through, or, with no filters, any telemetry item.
+ * filters let through, or, with no filters, any item that is not
+ * housekeeping.
  */
 export function envelopeHasTelemetry(
   container: {
@@ -1552,7 +1553,7 @@ export function envelopeHasTelemetry(
   return items.some(([{ type }, payload]) =>
     activeFilters.size > 0
       ? isItemIncluded(type, activeFilters, payload as Record<string, unknown>)
-      : TELEMETRY_ITEM_TYPES.has(type ?? ""),
+      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type),
   );
 }
 

@@ -1233,13 +1233,16 @@ const SEND_ONE_EVENT = [
   ].join(" "),
 ];
 
-/** Node `-e` args for an app that posts one envelope per item type, in order. */
-function sendItems(...types: string[]): string[] {
+/**
+ * Node `-e` args for an app that posts one envelope per item type, in order,
+ * then stays up (or exits 0 with `thenExit`).
+ */
+function sendItems(types: string[], thenExit = false): string[] {
   return [
     "-e",
     `const id = "b".repeat(32);
 const send = (type) => fetch(process.env.SENTRY_SPOTLIGHT, { method: "POST", headers: { "content-type": "application/x-sentry-envelope" }, body: [JSON.stringify({ event_id: id }), JSON.stringify({ type }), JSON.stringify({ event_id: id, type, message: "verify me" })].join(String.fromCharCode(10)) });
-(async () => { for (const type of ${JSON.stringify(types)}) await send(type); setTimeout(() => {}, 30000); })();`,
+(async () => { for (const type of ${JSON.stringify(types)}) await send(type); ${thenExit ? "process.exit(0);" : "setTimeout(() => {}, 30000);"} })();`,
   ];
 }
 
@@ -1318,28 +1321,65 @@ describe("sentry local run --verify receiver", () => {
   });
 
   test.each([
-    { sent: ["session", "client_report"], filter: [] },
-    { sent: ["transaction", "log"], filter: ["error" as const] },
+    {
+      sent: ["session", "client_report"],
+      filter: [],
+      message:
+        "Verification timed out after 2s: the SDK connected but sent only session, client_report",
+    },
+    {
+      sent: ["transaction", "log"],
+      filter: ["error" as const],
+      message:
+        "Verification timed out after 2s: the SDK connected but sent only transaction, log (nothing matching -f error)",
+    },
   ])(
     "times out when only $sent arrive (filter: $filter)",
-    async ({ sent, filter }) => {
-      const func = (await runCommand.loader()) as unknown as RunFunc;
-      const error = await func
-        .call(
-          makeContext(),
-          { port: 0, host: "127.0.0.1", verify: true, timeout: 2, filter },
-          process.execPath,
-          ...sendItems(...sent),
-        )
-        .catch((err: unknown) => err);
-      expect(error).toBeInstanceOf(VerifyFailedError);
-      expect((error as CliError).message).toContain("Verification timed out");
-      expect((error as CliError).exitCode).toBe(64);
+    async ({ sent, filter, message }) => {
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const error = await func
+          .call(
+            makeContext(),
+            { port: 0, host: "127.0.0.1", verify: true, timeout: 2, filter },
+            process.execPath,
+            ...sendItems(sent),
+          )
+          .catch((err: unknown) => err);
+        expect(error).toBeInstanceOf(VerifyFailedError);
+        expect((error as CliError).message).toBe(message);
+        expect((error as CliError).exitCode).toBe(64);
+        // The SDK reached the receiver, so the DSN hint would mislead.
+        expect(
+          warn.mock.calls.map((c) => String(c[0])).join("\n"),
+        ).not.toContain("SENTRY_DSN");
+      } finally {
+        warn.mockRestore();
+      }
     },
   );
 
+  test("says the SDK connected when the app exits after only a session", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+    const error = await func
+      .call(
+        makeContext(),
+        { port: 0, host: "127.0.0.1", verify: true, timeout: 20, filter: [] },
+        process.execPath,
+        ...sendItems(["session"], true),
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(VerifyFailedError);
+    expect((error as CliError).message).toBe(
+      "Process exited before verifying: the SDK connected but sent only session",
+    );
+    expect((error as CliError).exitCode).toBe(64);
+  });
+
   test.each([
     { sent: ["session", "log"], filter: [] },
+    { sent: ["session", "check_in"], filter: [] },
     { sent: ["transaction", "event"], filter: ["error" as const] },
   ])(
     "verifies once $sent arrive (filter: $filter)",
@@ -1351,7 +1391,7 @@ describe("sentry local run --verify receiver", () => {
           makeContext(),
           { port: 0, host: "127.0.0.1", verify: true, timeout: 20, filter },
           process.execPath,
-          ...sendItems(...sent),
+          ...sendItems(sent),
         );
         expect(info.mock.calls.map((c) => String(c[0]))).toContain(
           "Setup verified — your app is sending events to Sentry Local",

@@ -46,7 +46,7 @@ When `local run` sees `wrangler dev` and a `wrangler.json`, `wrangler.jsonc`, or
 
 ### Check your setup with `--verify`
 
-`sentry local run --verify -- <command>` starts your app, waits for its first event, then stops it. It exits 0 once an error, transaction, span, log or replay arrives, or, with `--filter`, an item of those types. Sessions and client reports alone don't count. It fails if the app exits, crashes, or sends nothing within the timeout (30 seconds, or `--timeout <seconds>`). When port 8969 is busy, it verifies on a free port.
+`sentry local run --verify -- <command>` starts your app, waits for its first event, then stops it. It exits 0 once the SDK sends telemetry: any item other than a session or client report or, with `--filter`, an item that `--filter` would show in the tail. It fails if the app exits, crashes, or sends nothing within the timeout (30 seconds, or `--timeout <seconds>`). When port 8969 is busy, it verifies on a free port.
 
 A Cloudflare Worker sends nothing until it handles a request, so send one to it while `--verify` waits.
 

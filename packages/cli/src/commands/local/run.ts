@@ -1043,16 +1043,32 @@ async function* runWithVerify(
   const spotlightUrl = `${url}/stream`;
 
   // Only telemetry the active filters show counts: an SDK sends sessions and
-  // client reports even when nothing else reaches Sentry Local.
+  // client reports even when nothing else reaches Sentry Local. Remember what
+  // did arrive, so a timeout can say the SDK connected.
   const activeFilters = new Set(flags.filter);
+  const uncountedTypes = new Set<string>();
   let subscriptionId: string | undefined;
   const envelopeReceived = new Promise<void>((resolveEnvelope) => {
     subscriptionId = buffer.subscribe((container) => {
       if (envelopeHasTelemetry(container, activeFilters)) {
         resolveEnvelope();
+        return;
+      }
+      for (const [{ type }] of container.getParsedEnvelope()?.envelope[1] ??
+        []) {
+        if (type) {
+          uncountedTypes.add(type);
+        }
       }
     });
   });
+  const connectedNote = (): string | undefined => {
+    if (uncountedTypes.size === 0) {
+      return;
+    }
+    const filters = [...activeFilters].map((f) => `-f ${f}`).join(" ");
+    return `the SDK connected but sent only ${[...uncountedTypes].join(", ")}${filters ? ` (nothing matching ${filters})` : ""}`;
+  };
 
   const childEnv = buildChildEnv(spotlightUrl, commandSource, cwd);
   const wrangler = await injectWranglerSpotlightBinding(
@@ -1183,6 +1199,13 @@ async function* runWithVerify(
       return;
     }
     case "timeout": {
+      const connected = connectedNote();
+      if (connected) {
+        // The SDK reached this receiver, so the DSN and port hints don't apply.
+        throw new VerifyFailedError(
+          `Verification timed out after ${verifyTimeout}s: ${connected}`,
+        );
+      }
       if (wrangler.injected) {
         logger.warn(
           `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
@@ -1209,7 +1232,12 @@ async function* runWithVerify(
         throw spawnFailureError(wrangler.args[0] ?? "", spawnError, cwd);
       }
       if (outcome.code === 0) {
-        throw new VerifyFailedError("Process exited before sending any events");
+        const connected = connectedNote();
+        throw new VerifyFailedError(
+          connected
+            ? `Process exited before verifying: ${connected}`
+            : "Process exited before sending any events",
+        );
       }
       throw new VerifyFailedError(
         `Process crashed with code ${outcome.code}`,
