@@ -1,4 +1,5 @@
 import { request } from "node:http";
+import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
@@ -592,9 +593,82 @@ describe("Local control plane", () => {
         ).status,
       ).toBe(403);
     }
+    // A path under the ingest capability can't climb to the stream-capability
+    // UI actions.
+    for (const dots of ["..", "%2e%2e"]) {
+      expect(
+        (
+          await post(
+            `${ingest}/${caps.ingest}/${dots}/${dots}/ui/reset?cap=${caps.ingest}`,
+          )
+        ).status,
+      ).toBe(401);
+    }
     expect(
       plane.sessionStore.getBuffer(session.id).read({ all: true }),
     ).toHaveLength(3);
+  });
+
+  test("drops the DSN, which holds the ingest capability, from session envelope headers", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "go", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://127.0.0.1:8969/_local/v1/sessions/${session.id}`;
+    const item = '{"message":"hi"}';
+    const envelope = [
+      JSON.stringify({
+        event_id: "dsn-header",
+        dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
+        sdk: { name: "sentry.go" },
+      }),
+      `{"type":"event","length":${item.length}}`,
+      item,
+    ].join("\n");
+    // PHP and Ruby compress their requests.
+    for (const [body, headers] of [
+      [envelope, {}],
+      [gzipSync(envelope), { "Content-Encoding": "gzip" }],
+    ] as const) {
+      const posted = await plane.app.request(
+        `${base}/ingest/${caps.ingest}/api/0/envelope/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-sentry-envelope",
+            ...headers,
+          },
+          body,
+        },
+      );
+      expect(posted.status).toBe(204);
+    }
+
+    const stored = plane.sessionStore
+      .getBuffer(session.id)
+      .read({ all: true })
+      .map((container) => container.getData().toString("utf8"));
+    expect(stored).toHaveLength(2);
+    for (const data of stored) {
+      expect(data).not.toContain(caps.ingest);
+      expect(data).toContain('"event_id":"dsn-header"');
+      expect(data.endsWith(`\n${item}`)).toBe(true);
+    }
+
+    const controller = new AbortController();
+    const response = await plane.app.request(
+      `${base}/stream?cap=${caps.stream}`,
+      { signal: controller.signal },
+    );
+    const reader = response.body!.getReader();
+    let streamed = "";
+    try {
+      while ((streamed.match(/dsn-header/g) ?? []).length < 2)
+        streamed += new TextDecoder().decode((await reader.read()).value);
+    } finally {
+      controller.abort();
+      await reader.cancel();
+    }
+    expect(streamed).not.toContain(caps.ingest);
   });
 
   test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
