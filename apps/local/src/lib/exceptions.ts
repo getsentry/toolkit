@@ -3,6 +3,7 @@ import {
   exceptionValueText,
   exceptionValues,
 } from "../../../../packages/cli/src/commands/local/exception-values.ts";
+import { readMessageText } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { withoutUndefined } from "./objects.ts";
 
 /** Display fields from untrusted SDK exception payloads; raw JSON stays intact. */
@@ -39,23 +40,19 @@ function coordinate(value: unknown): number | undefined {
     : undefined;
 }
 
-/**
- * Title an exception the way the Local tail does: a typed exception without a
- * value falls back to the event's message text.
- */
-export function formatExceptionTitle(
-  exception: EventException,
-  message?: string,
-): string {
+/** Title an exception the way the Local tail does. */
+export function formatExceptionTitle(exception: EventException): string {
   return exception.type
-    ? `${exception.type}: ${exception.value ?? message ?? "Unknown error"}`
+    ? `${exception.type}: ${exception.value ?? "Unknown error"}`
     : (exception.value ?? "Error: Unknown error");
 }
 
 /** SDK values and stack frames arrive oldest first; show the current error first. */
 export function getEventExceptions(payload: unknown): EventException[] {
-  return exceptionValues(record(payload)?.["exception"])
-    .flatMap((value): EventException[] => {
+  const event = record(payload);
+  const values = exceptionValues(event?.["exception"]);
+  return values
+    .flatMap((value, index): EventException[] => {
       const exception = record(value);
       if (!exception) return [];
       const raw = exceptionValueText(exception["value"]);
@@ -66,7 +63,14 @@ export function getEventExceptions(payload: unknown): EventException[] {
         (raw !== undefined && typeof exception["value"] !== "string"
           ? "Error"
           : undefined);
-      const message = raw && exceptionMessage(type, raw);
+      // Like describeEvent, a typed current error without a value reads the
+      // event's message text, so the list and the detail title agree.
+      const message =
+        (raw && exceptionMessage(type, raw)) ??
+        (type && index === values.length - 1
+          ? (readMessageText(event?.["logentry"]) ??
+            readMessageText(event?.["message"]))
+          : undefined);
       const rawFrames = record(exception["stacktrace"])?.["frames"];
       const frames = Array.isArray(rawFrames)
         ? rawFrames

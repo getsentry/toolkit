@@ -163,7 +163,7 @@ export function getEventMetadata(
   return withoutUndefined({
     title:
       (exception?.type || exception?.value
-        ? formatExceptionTitle(exception, message)
+        ? formatExceptionTitle(exception)
         : undefined) ??
       (type === "event" ? message : undefined) ??
       transaction ??

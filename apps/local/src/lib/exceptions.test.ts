@@ -25,6 +25,19 @@ describe("getEventExceptions", () => {
     expect(exception && formatExceptionTitle(exception)).toBe(title);
   });
 
+  test("titles a typed exception without a value with the event message", () => {
+    const [current, cause] = getEventExceptions({
+      message: "Fallback message",
+      exception: { values: [{ type: "CauseError" }, { type: "TypeError" }] },
+    });
+    expect(current && formatExceptionTitle(current)).toBe(
+      "TypeError: Fallback message",
+    );
+    expect(cause && formatExceptionTitle(cause)).toBe(
+      "CauseError: Unknown error",
+    );
+  });
+
   test("reads a multi-line sentry-ruby message without the class name", () => {
     const [exception] = getEventExceptions({
       exception: {
