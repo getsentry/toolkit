@@ -227,7 +227,7 @@ export default defineTool({
       output += `**Name:** ${attachment.name}\n`;
       output += `**Type:** ${attachment.type}\n`;
       output += `**Size:** ${attachment.size} bytes\n`;
-      output += `**MIME Type:** ${attachment.mimetype}\n`;
+      output += `**MIME Type:** ${attachment.mimetype ?? "unknown"}\n`;
       output += `**Created:** ${attachment.dateCreated}\n\n`;
       output += "To download this attachment with the attachmentId provided:\n";
       output += `${formatToolCallInstruction({
