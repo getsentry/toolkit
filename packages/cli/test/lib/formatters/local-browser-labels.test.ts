@@ -242,6 +242,127 @@ describe("Next.js browser spans and logs", () => {
 });
 
 describe("page URL on browser spans", () => {
+  /** The JSON label for a span batch, which the tail line should agree with. */
+  function jsonLabel(payload: Record<string, unknown>) {
+    const [line] = formatItemJson("span", payload, nextjsHeader);
+    return (JSON.parse(line ?? "{}") as { label?: string }).label;
+  }
+
+  /** A browser segment as `startSpan` sends it, with or without a name or op. */
+  function customSpan(name: string | undefined, values: Record<string, Value>) {
+    const { name: _name, ...span } = browserSpan("", {
+      "url.full": "http://localhost:3000/cart",
+      ...values,
+    });
+    return name === undefined ? span : { ...span, name };
+  }
+
+  test.each([
+    [
+      "an op-less custom span keeps its name",
+      "checkout-submit",
+      {},
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a URL path keeps its name",
+      "checkout-submit",
+      { "url.path": "/cart" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a route keeps its name",
+      "checkout-submit",
+      { "http.route": "/cart/:id" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a server address keeps its name",
+      "checkout-submit",
+      { "server.address": "localhost", "server.port": 3000 },
+      "checkout-submit",
+    ],
+    [
+      "a custom span with a named op keeps its name",
+      "checkout flow",
+      { "sentry.op": "ui.action" },
+      "checkout flow",
+    ],
+    [
+      "an op-less span with no name uses the URL",
+      undefined,
+      {},
+      "localhost:3000/cart",
+    ],
+    ["an op-less custom span named trace keeps its name", "trace", {}, "trace"],
+    ["an op-less custom span named get keeps its name", "get", {}, "get"],
+    [
+      "an op-less custom span named connect keeps its name",
+      "connect",
+      {},
+      "connect",
+    ],
+    [
+      "a lowercase method word beats a URL path too",
+      "delete",
+      { "url.path": "/cart" },
+      "delete",
+    ],
+    [
+      "an op-less span named only a method uses the URL",
+      "GET",
+      {},
+      "localhost:3000/cart",
+    ],
+    [
+      "an op-less span named its URL uses the URL",
+      "http://localhost:3000/cart",
+      {},
+      "localhost:3000/cart",
+    ],
+    [
+      "a nameless span with an exception uses the exception type",
+      undefined,
+      { "url.full": "", "exception.type": "TypeError" },
+      "TypeError",
+    ],
+    [
+      "a nameless span with only an HTTP method shows the method",
+      undefined,
+      { "url.full": "", "http.request.method": "GET" },
+      "GET",
+    ],
+    [
+      "an op-less span with an HTTP method uses the URL",
+      "submit",
+      { "http.request.method": "POST" },
+      "POST localhost:3000/cart",
+    ],
+    [
+      "an http.client span uses the URL",
+      "GET http://localhost:3000/api/orders",
+      {
+        "sentry.op": "http.client",
+        "http.request.method": "GET",
+        "url.full": "http://localhost:3000/api/orders",
+      },
+      "GET localhost:3000/api/orders",
+    ],
+    [
+      "a resource span uses the URL",
+      "localhost",
+      {
+        "sentry.op": "resource.script",
+        "url.full": "http://localhost:3000/_next/static/chunks/main.js",
+      },
+      "localhost:3000/_next/static/chunks/main.js",
+    ],
+  ])("%s, in the tail and in JSON", (_case, name, values, label) => {
+    const payload = { items: [customSpan(name, values)] };
+    expect(tail("span", payload)[0]).toContain(` ${label} `);
+    expect(jsonLabel(payload)).toBe(label);
+  });
+
   test("a custom span keeps its name instead of the page URL", () => {
     const payload = {
       items: [browserSpan("checkout flow", { "sentry.op": "ui.action" })],
