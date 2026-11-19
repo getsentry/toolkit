@@ -34,6 +34,18 @@ its receiver stops after the first envelope.
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
+The daemon also accepts `<ingestUrl>/stream`, which PHP's Spotlight transport
+posts to, and `<ingestUrl>/api/<project>/envelope/`, which Go, Rust, Ruby, and
+PHP build from a DSN such as
+`http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+Node.js and Python post to `ingestUrl` as is. Ruby uses only the host and port
+from `SENTRY_SPOTLIGHT` and posts to `/stream`, so the session path and its key
+are lost, and Ruby needs the DSN form. `local run --session` creates a new
+session on every run and sets only `SENTRY_SPOTLIGHT`, so DSN-based SDKs use a
+session from `local session create <name> --json` and run outside
+`local run`; read their events with `local event list <id>`. Those SDKs copy
+the DSN into each envelope header, so the daemon drops the header's `dsn` key
+before it stores or streams a session envelope.
 Treat those URLs as credentials. Terminal output redacts them, including the
 `Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
@@ -58,7 +70,9 @@ characters matches no prefix, so short lookup keys keep working.
 
 Without `--json`, `session list`, `event list`, and `envelope list` print
 tables. The event table shows each ID as its shortest unique prefix of at least
-8 characters, so it can be passed to `event view`. `--json` prints the control
+8 characters, so it can be passed to `event view`. Uniqueness ignores case, like
+hex references do, so IDs that differ only in case show in full and open by the
+exact match. `--json` prints the control
 plane's response unchanged.
 
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds
@@ -211,7 +225,10 @@ The **Capture actions** menu labels each action by its scope:
   This action is available only to a loopback-served viewer with existing receiver
   permissions. If deletion fails, the view stays paused and offers Reconnect.
 - **Stop capture** stops scoped-session ingestion immediately: later ingestion
-  receives HTTP 410, including requests whose bodies finish after Stop. Saved
+  receives HTTP 410, including requests whose bodies finish after Stop. A
+  request that was still being read at Stop and turns out too large gets 413,
+  and its `sentry.local.oversized` event reaches stream readers before the
+  closing session event. Saved
   events remain readable for three hours from the first stop; retries and
   attempted ingestion do not extend that deadline. Reloading the archive does
   not resume capture. Duplicate stop requests are guarded and requests time out

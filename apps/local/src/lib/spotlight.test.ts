@@ -1,4 +1,8 @@
 import { describe, expect, test } from "vitest";
+import {
+  goPanicEvent,
+  rubyExceptionEvent,
+} from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
 import { sdkException } from "../test-fixtures/sdk-exception.ts";
 import {
   sessionsAggregateEnvelope,
@@ -177,6 +181,17 @@ describe("getStreamUrlFromHash", () => {
 });
 
 describe("decodeEnvelope", () => {
+  test.each([
+    ["*errors.errorString: order 7 not found", goPanicEvent],
+    ["OrderNotFound: order 7 not found", rubyExceptionEvent],
+  ])("titles a non-JS SDK exception as %s", (title, event) => {
+    const [item] = decodeEnvelope(
+      JSON.stringify([{ sdk: event.sdk }, [[{ type: "event" }, event]]]),
+      "sdk-exception",
+    );
+    expect(item?.metadata?.title).toBe(title);
+  });
+
   test("reads typed HTTP attributes from streamed spans without changing their payload", () => {
     const span = {
       trace_id: "trace-123",
@@ -280,8 +295,47 @@ describe("decodeEnvelope", () => {
   });
 
   test.each([
-    [{ type: "TypeError" }, "TypeError"],
-    [{ value: "Request rejected" }, "Request rejected"],
+    [
+      "a typed exception without a value reads logentry before message",
+      {
+        message: "from message",
+        logentry: { formatted: "from logentry" },
+        exception: { values: [{ type: "TypeError" }] },
+      },
+      "TypeError: from logentry",
+    ],
+    [
+      "an untyped exception reads the event message first",
+      {
+        message: "message text",
+        exception: { values: [{ value: "exception text" }] },
+      },
+      "message text",
+    ],
+    [
+      "an untyped number with an event message is a message",
+      {
+        message: "Checkout retry limit reached",
+        exception: { values: [{ value: 42 }] },
+      },
+      "Checkout retry limit reached",
+    ],
+    [
+      "an untyped non-string value is an error",
+      { exception: { values: [{ value: true }] } },
+      "Error: true",
+    ],
+  ])("titles events the way the tail does: %s", (_name, event, title) => {
+    const [item] = decodeEnvelope(
+      JSON.stringify([{}, [[{ type: "event" }, event]]]),
+      "sdk-event",
+    );
+    expect(item?.metadata?.title).toBe(title);
+  });
+
+  test.each([
+    [{ type: "TypeError" }, "TypeError: Fallback message"],
+    [{ value: "Request rejected" }, "Fallback message"],
     [
       { stacktrace: { frames: [{ filename: "/app/task.ts" }] } },
       "Fallback message",

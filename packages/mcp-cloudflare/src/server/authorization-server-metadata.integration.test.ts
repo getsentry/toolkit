@@ -27,9 +27,9 @@ describe("authorization server metadata", () => {
       "/.well-known/oauth-authorization-server/mcp/sentry/mcp-server",
     );
 
-    expect(root.code_challenge_methods_supported).toEqual(["S256"]);
-    expect(scoped.code_challenge_methods_supported).toEqual(
-      root.code_challenge_methods_supported,
+    expect(root["code_challenge_methods_supported"]).toEqual(["S256"]);
+    expect(scoped["code_challenge_methods_supported"]).toEqual(
+      root["code_challenge_methods_supported"],
     );
   });
 });

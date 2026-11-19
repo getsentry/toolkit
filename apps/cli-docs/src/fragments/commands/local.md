@@ -19,7 +19,7 @@ With no command, `local run` picks one from the project, in this order:
 1. An `artisan` file (Laravel): `composer run dev` when `composer.json` has a `dev` script, as the Laravel skeleton does to start the server, queue, logs, and Vite together, or else `php artisan serve`. A `Gemfile` with `bin/rails` (Rails): `ruby bin/dev` when the app has a Ruby `bin/dev`, `sh bin/dev` for a shell one (not on Windows), or else `ruby bin/rails server`. Both come before `package.json`, whose `dev` script in these apps only starts Vite
 2. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
 3. `manage.py`: `python manage.py runserver` (Django)
-4. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by `create_app()` or `make_app()` uses the framework that factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
+4. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by any call, such as `create_app()` or `myapp.get_application()`, uses the framework that the factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask, when its parameters are all optional. An `async` or generic factory, or one with required parameters, runs as a script with a hint. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
 5. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
 6. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
 7. `Gemfile` with `config.ru`: `bundle exec rackup` (Rack, such as Sinatra). Rack 3 and Sinatra 4 need the `rackup` gem in the `Gemfile`
@@ -127,8 +127,6 @@ Sentry.init({
 
 **Not supported yet.** The Next.js edge runtime (`@sentry/vercel-edge`) has no Spotlight support. Edge errors still arrive through the Node.js server, but edge messages and logs do not.
 
-`--session` currently only captures from Node.js and Python, which post to the exact `SENTRY_SPOTLIGHT` URL. PHP adds `/stream` to that URL, Ruby takes only its host and port and posts to `/stream`, and Go and Rust send through the DSN, so their events don't reach a session yet. Run them without `--session`.
-
 ## Browser UI
 
 Use `--open` with `sentry local` or `sentry local run` to launch the Sentry Local UI ([local.sentry.dev](https://local.sentry.dev)) in your browser. The UI connects to the local receiver via the loopback stream endpoint and provides a visual workspace for browsing errors, traces, logs, and AI spans captured during the session.
@@ -159,9 +157,9 @@ Errors show their level, the exception type, message, and the newest stack frame
 
 Events and logs use the same labels: a warning is `[WARNING]` whether the SDK sent `warning` or `warn`, and an event's logger shows as `[logger:name]`. A log's logger name is an SDK attribute, so it shows only with `-a`.
 
-The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged `[BROWSER]` when they show signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and from the SDK name otherwise. A browser log sent while no replay is recording has none of these, so it is tagged from the SDK name.
+The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name. Server-only SDKs such as Node, Bun, or Cloudflare always show `[SERVER]`. SDKs that run on both sides, such as Next.js, SvelteKit, Nuxt, Remix, or Astro, show `[BROWSER]` when the item has signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and `[SERVER]` otherwise. A browser log sent while no replay is recording, or a custom browser span outside a pageload or navigation, has none of these, so it shows `[SERVER]`.
 
-A session replay prints one line when it starts, with its short ID and first page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything.
+A session replay prints one line the first time the tail sees it, with its short ID and page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
@@ -280,9 +278,34 @@ viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent. Use the session ID when multiple sessions
 share a label.
 
+How an SDK reaches a session depends on its Spotlight support:
+
+- **Node.js and Python** send to the session's ingest URL as is, so
+  `local run --session` needs no setup.
+- **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
+  it, which the session accepts.
+- **Go, Rust, and Ruby** (and PHP, if you prefer) send through a DSN, which
+  `local run --session` doesn't set. It also creates a new session on every
+  run, so create one session and run the app yourself:
+
+  1. Run `sentry local session create <name> --json` and take its `ingestUrl`.
+  2. Add `local@` after `http://` and `/0` at the end to get
+     `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+  3. Start the app directly with that `SENTRY_DSN`, not under
+     `local run --session`.
+  4. Read what it sent with `sentry local event list <id>`.
+
+  Ruby uses only the host and port from `SENTRY_SPOTLIGHT` and posts to
+  `/stream`, so the session path and its key are lost. Set
+  `config.spotlight = false` only if your app turns Spotlight on itself.
+
+The daemon removes the `dsn` from each envelope header it captures into a
+session, because that DSN holds the ingest capability.
+
 `sentry local session list`, `sentry local event list`, and
 `sentry local envelope list` print tables; add `--json` for the full records.
 The event table shows each event ID cut to the shortest unique prefix of at
-least 8 characters, and `sentry local event view` accepts that prefix. A prefix
+least 8 characters, and `sentry local event view` accepts that prefix. Prefixes
+are unique in any case; IDs that differ only in case show in full. A prefix
 that matches more than one event fails and lists the matching IDs. A bare replay
 ID opens the replay's first segment; add `:<segment_id>` for another one.

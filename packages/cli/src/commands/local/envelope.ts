@@ -413,6 +413,37 @@ export function withoutOwnDeliveries(
   ]);
 }
 
+/**
+ * Go, Ruby and PHP copy their DSN into every envelope header. Under a session
+ * that DSN holds the ingest capability, and session envelopes reach holders of
+ * the read capability, so drop the key. Only the header line is rewritten.
+ */
+export function withoutDsnHeader(body: Buffer): Buffer {
+  // Only the first line is needed, so skip frame(): it would parse every item
+  // and reject envelopes that still have a usable header.
+  const newline = body.indexOf(10);
+  const end = newline < 0 ? body.length : newline;
+  let header: unknown;
+  try {
+    header = JSON.parse(
+      body
+        .subarray(0, end)
+        .toString("utf8")
+        .replace(/^\uFEFF/, ""),
+    );
+  } catch {
+    // Malformed envelopes stay byte-exact for raw inspection.
+    logger.debug("Local receiver kept an undecodable envelope header.");
+    return body;
+  }
+  if (!isEnvelopeObject(header) || !("dsn" in header)) return body;
+  delete header["dsn"];
+  return Buffer.concat([
+    Buffer.from(JSON.stringify(header)),
+    body.subarray(end),
+  ]);
+}
+
 /** Retain raw bytes synchronously; decode lazily without allowing parse errors out. */
 export function createReceiverEnvelope(input: {
   body: Buffer;

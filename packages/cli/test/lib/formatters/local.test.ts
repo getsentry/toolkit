@@ -26,6 +26,10 @@ import {
 import { parseEventTimestamp } from "../../../src/commands/local/timestamp.js";
 import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 import { at } from "../../helpers.js";
+import {
+  goPanicEvent,
+  rubyExceptionEvent,
+} from "../../fixtures/local-sdk-events.js";
 
 describe("formatTime", () => {
   test("formats epoch seconds", () => {
@@ -82,6 +86,98 @@ describe("formatErrorItem", () => {
     const result = stripAnsi(formatErrorItem(event, serverHeader));
     expect(result).toContain("[ERROR]   [SERVER]  Something went wrong");
     expect(result).not.toContain("Error: Something went wrong");
+  });
+
+  test("reads a sentry-go exception list and its abs_path frames", () => {
+    const result = stripAnsi(
+      formatErrorItem(goPanicEvent, { sdk: goPanicEvent.sdk }),
+    );
+    expect(result).toContain(
+      "*errors.errorString: order 7 not found [main.go:47] [handleOrder]",
+    );
+  });
+
+  test("drops the class name Ruby appends to the message", () => {
+    const result = stripAnsi(
+      formatErrorItem(rubyExceptionEvent, { sdk: rubyExceptionEvent.sdk }),
+    );
+    expect(result).toContain("OrderNotFound: order 7 not found [");
+    expect(result).not.toContain("(OrderNotFound)");
+  });
+
+  test("drops the class name from the first line of a multi-line Ruby message", () => {
+    const event = {
+      ...rubyExceptionEvent,
+      exception: {
+        values: [
+          {
+            ...rubyExceptionEvent.exception.values[0],
+            type: "NoMethodError",
+            value:
+              "undefined method 'name' for nil (NoMethodError)\n\n    user.name\n        ^^^^^",
+          },
+        ],
+      },
+    };
+    const result = stripAnsi(formatErrorItem(event, { sdk: event.sdk }));
+    expect(result).toContain("NoMethodError: undefined method 'name' for nil");
+    expect(result).not.toContain("(NoMethodError)");
+  });
+
+  test.each([
+    [{ value: null }, "[ERROR]   [SERVER]  Error: Unknown error"],
+    [{ value: 42 }, "[ERROR]   [SERVER]  Error: 42"],
+    [{ value: true }, "[ERROR]   [SERVER]  Error: true"],
+    [{ value: { code: 7 } }, '[ERROR]   [SERVER]  Error: {"code":7}'],
+  ])("an untyped exception with value %j is not a message", (value, line) => {
+    const event = { timestamp: 1_700_000_000, exception: { values: [value] } };
+    expect(stripAnsi(formatErrorItem(event, serverHeader))).toContain(line);
+  });
+
+  test.each([
+    [
+      {
+        exception: { values: [{ type: "TypeError", value: "x is undefined" }] },
+      },
+      "[ERROR]   [SERVER]  TypeError: x is undefined",
+    ],
+    [
+      {
+        level: "warning",
+        message: "Checkout retry limit reached",
+        exception: {
+          values: [
+            {
+              value: "Checkout retry limit reached",
+              mechanism: { type: "generic", handled: true, synthetic: true },
+            },
+          ],
+        },
+      },
+      "[WARNING] [SERVER]  Checkout retry limit reached",
+    ],
+    [
+      { logentry: { formatted: "Payment failed for order 42" } },
+      "[ERROR]   [SERVER]  Payment failed for order 42",
+    ],
+    [
+      {
+        logentry: { message: "Checkout failed" },
+        exception: {
+          values: [{ type: "ZeroDivisionError", value: "division by zero" }],
+        },
+      },
+      "[ERROR]   [SERVER]  ZeroDivisionError: division by zero",
+    ],
+    [
+      { exception: { values: [{ type: "ValueError", value: "" }] } },
+      "[ERROR]   [SERVER]  ValueError: Unknown error",
+    ],
+  ])("tail line for %j is unchanged", (event, line) => {
+    const result = stripAnsi(
+      formatErrorItem({ timestamp: 1_700_000_000, ...event }, serverHeader),
+    );
+    expect(result).toContain(line);
   });
 
   test("falls back to Unknown error when no exception or message", () => {
@@ -781,6 +877,19 @@ describe("formatItemJson", () => {
     expect(parsed.source).toBe("server");
   });
 
+  test("formats a sentry-go exception list", () => {
+    const parsed = JSON.parse(
+      at(formatItemJson("event", goPanicEvent, { sdk: goPanicEvent.sdk }), 0),
+    );
+    expect(parsed).toMatchObject({
+      error_type: "*errors.errorString",
+      message: "order 7 not found",
+      filename: "main.go",
+      lineno: 47,
+      function: "handleOrder",
+    });
+  });
+
   test("adds the versioned observation schema to JSON records", () => {
     const lines = formatItemJson(
       "error",
@@ -1090,14 +1199,18 @@ describe("formatItem with attributes", () => {
     };
     const withoutAttrs = formatItem("transaction", event, serverHeader, "t");
     expect(withoutAttrs).toHaveLength(1);
-    const withAttrs = formatItem("transaction", event, serverHeader, "t", true);
+    const withAttrs = formatItem("transaction", event, serverHeader, "t", {
+      showAttributes: true,
+    });
     expect(withAttrs.length).toBeGreaterThan(1);
     expect(withAttrs.map(stripAnsi).join("\n")).toContain("tenant");
   });
 
   test("does not append a table for errors even when enabled", () => {
     const event = { timestamp: 1_700_000_000, message: "boom" };
-    const lines = formatItem("error", event, serverHeader, "e", true);
+    const lines = formatItem("error", event, serverHeader, "e", {
+      showAttributes: true,
+    });
     expect(lines).toHaveLength(1);
   });
 });

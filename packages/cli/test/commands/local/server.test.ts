@@ -793,6 +793,22 @@ describe("buildApp", () => {
     expect(res.status).toBe(204);
   });
 
+  test("plain receivers keep the envelope header dsn", async () => {
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const app = buildApp(buffer);
+    const envelope =
+      '{"dsn":"http://local@127.0.0.1:8969/0"}\n{"type":"event"}\n{"message":"test"}';
+    const res = await app.request("/api/0/envelope/", {
+      method: "POST",
+      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+      body: envelope,
+    });
+    expect(res.status).toBe(204);
+    expect(buffer.read({ all: true })[0]?.getData().toString("utf8")).toBe(
+      envelope,
+    );
+  });
+
   test("ingest rejects oversized payloads with 413", async () => {
     const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);

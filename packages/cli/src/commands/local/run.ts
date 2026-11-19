@@ -21,7 +21,12 @@ import { basename, resolve } from "node:path";
 import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
-import { terminalSignalsProcess } from "../../lib/child-signals.js";
+import {
+  appIsRunning,
+  signalApp,
+  startsOwnProcessGroup,
+  terminalSignalsProcess,
+} from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -45,6 +50,7 @@ import {
   FILTER_VALUES,
   type FilterValue,
   FORMAT_VALUES,
+  createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   type FormatValue,
@@ -256,11 +262,17 @@ async function startBackgroundServer({
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
+  const replays = createReplayTracker();
   const subscriptionId = buffer.subscribe((container) => {
     try {
       const formatLines = useJson
         ? formatEnvelopeLinesJson(container, activeFilters, showAttributes)
-        : formatEnvelopeLines(container, activeFilters, showAttributes);
+        : formatEnvelopeLines(
+            container,
+            activeFilters,
+            showAttributes,
+            replays,
+          );
       for (const line of formatLines) {
         if (useJson) {
           printJsonLine(line);
@@ -707,6 +719,7 @@ export const runCommand = buildCommand({
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
+    const ownGroup = startsOwnProcessGroup();
     let child: ChildProcess;
     try {
       const [cmd = "", ...cmdArgs] = wrangler.args;
@@ -715,6 +728,7 @@ export const runCommand = buildCommand({
         resolveCwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
+        detached: ownGroup,
       });
       forwardChildOutput(child, useJson);
     } catch (err) {
@@ -725,26 +739,36 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const interruptState = { interrupted: false };
-    const interrupts = interruptForwarder(child);
+    const interruptState = { interrupted: false, timedOut: false };
+    const interrupts = interruptForwarder(child, ownGroup);
     const onSigint = () => {
       interruptState.interrupted = true;
       interrupts.forward();
     };
     const onSigterm = () => {
       interruptState.interrupted = true;
-      child.kill("SIGTERM");
+      signalApp(child, "SIGTERM", ownGroup);
+    };
+    const onSighup = () => {
+      interruptState.interrupted = true;
+      signalApp(child, "SIGHUP", ownGroup);
     };
     // `on`, not `once`: a second signal must reach the app too, not kill the
     // CLI and leave the app running.
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
+    // In its own group the app no longer gets the hangup sent to the CLI's
+    // group or session, so pass it on.
+    if (ownGroup) {
+      process.on("SIGHUP", onSighup);
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
       timeoutId = setTimeout(() => {
         logger.warn(`Timeout: killing child after ${flags.timeout}s`);
-        void gracefulKill(child);
+        interruptState.timedOut = true;
+        void gracefulKill(child, ownGroup);
       }, flags.timeout * 1000);
     }
 
@@ -770,9 +794,17 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      // A wrapper such as `go run` can exit while the app it started keeps
+      // running. Stop what is left once the user asked the app to stop, with
+      // the signal handlers still installed so a second signal reaches the
+      // group instead of killing the CLI mid-cleanup.
+      if (ownGroup && (interruptState.interrupted || interruptState.timedOut)) {
+        await gracefulKill(child, ownGroup);
+      }
       interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
@@ -825,7 +857,10 @@ const INTERRUPT_FALLBACK_MS = 3000;
  * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
  * SIGINT anyway. Later SIGINTs are always passed on.
  */
-function interruptForwarder(child: ChildProcess): {
+function interruptForwarder(
+  child: ChildProcess,
+  ownGroup: boolean,
+): {
   forward: () => void;
   dispose: () => void;
 } {
@@ -834,7 +869,7 @@ function interruptForwarder(child: ChildProcess): {
   const send = () => {
     clearTimeout(fallback);
     fallback = undefined;
-    child.kill("SIGINT");
+    signalApp(child, "SIGINT", ownGroup);
   };
   return {
     forward() {
@@ -861,8 +896,22 @@ const DEFAULT_VERIFY_TIMEOUT_S = 30;
 /** Grace period before escalating SIGTERM to SIGKILL. */
 const KILL_GRACE_MS = 5000;
 
-/** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
-async function gracefulKill(child: ChildProcess): Promise<void> {
+/** How often to check whether the app's process group has exited. */
+const GROUP_POLL_MS = 50;
+
+/**
+ * Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive.
+ * With its own process group the whole group is signalled, so a wrapper that
+ * exited early does not leave the app it started running.
+ */
+async function gracefulKill(
+  child: ChildProcess,
+  ownGroup: boolean,
+): Promise<void> {
+  if (ownGroup) {
+    await stopProcessGroup(child);
+    return;
+  }
   // No pid means the spawn failed: there is nothing to kill, and `close` may
   // never fire, so waiting for it would hang.
   if (child.exitCode !== null || child.pid === undefined) {
@@ -897,6 +946,34 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
       await new Promise<void>((r) => child.on("close", () => r()));
     }
   }
+}
+
+/** SIGTERM the app's process group, then SIGKILL whatever is left after the grace period. */
+async function stopProcessGroup(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (pid === undefined || !appIsRunning(pid)) {
+    return;
+  }
+  signalApp(child, "SIGTERM", true);
+  if (!(await waitForAppExit(pid, KILL_GRACE_MS))) {
+    signalApp(child, "SIGKILL", true);
+    await waitForAppExit(pid, KILL_GRACE_MS);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    await new Promise<void>((r) => child.once("close", () => r()));
+  }
+}
+
+/** Wait until no process is left in the group `pid`, up to `ms`. */
+async function waitForAppExit(pid: number, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (appIsRunning(pid)) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((r) => setTimeout(r, GROUP_POLL_MS));
+  }
+  return true;
 }
 
 /**
@@ -982,6 +1059,7 @@ async function* runWithVerify(
 
   let child: ChildProcess;
   const useJson = flags.format === "json";
+  const ownGroup = startsOwnProcessGroup();
   try {
     const [cmd = "", ...cmdArgs] = wrangler.args;
     child = spawnUserCommand(cmd, cmdArgs, {
@@ -989,6 +1067,7 @@ async function* runWithVerify(
       resolveCwd: cwd,
       env: childEnv,
       stdio: childStdio(useJson),
+      detached: ownGroup,
     });
     forwardChildOutput(child, useJson);
   } catch (err) {
@@ -997,17 +1076,26 @@ async function* runWithVerify(
   }
 
   const signalState: { current: NodeJS.Signals | null } = { current: null };
-  const interrupts = interruptForwarder(child);
+  const interrupts = interruptForwarder(child, ownGroup);
   const onSigint = () => {
     signalState.current = "SIGINT";
     interrupts.forward();
   };
   const onSigterm = () => {
     signalState.current = "SIGTERM";
-    child.kill("SIGTERM");
+    signalApp(child, "SIGTERM", ownGroup);
+  };
+  const onSighup = () => {
+    signalState.current = "SIGHUP";
+    signalApp(child, "SIGHUP", ownGroup);
   };
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
+  // In its own group the app no longer gets the hangup sent to the CLI's
+  // group or session, so pass it on.
+  if (ownGroup) {
+    process.on("SIGHUP", onSighup);
+  }
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -1061,7 +1149,7 @@ async function* runWithVerify(
 
   // Clean up — keep signal handlers active during graceful kill
   try {
-    await gracefulKill(child);
+    await gracefulKill(child, ownGroup);
   } finally {
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
@@ -1069,6 +1157,7 @@ async function* runWithVerify(
     interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
     await shutdownServer(server);
   }
 
@@ -1090,6 +1179,13 @@ async function* runWithVerify(
       if (wrangler.injected) {
         logger.warn(
           `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
+        );
+      } else {
+        const dsn = new URL(url);
+        dsn.username = "key";
+        dsn.pathname = "/0";
+        logger.warn(
+          `SDKs without Spotlight support, such as Go and Rust, need SENTRY_DSN=${dsn.href} instead.`,
         );
       }
       if (fellBack) {

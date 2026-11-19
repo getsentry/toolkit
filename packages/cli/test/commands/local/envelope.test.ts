@@ -1,6 +1,9 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
-import { createReceiverEnvelope } from "../../../src/commands/local/envelope.js";
+import {
+  createReceiverEnvelope,
+  withoutDsnHeader,
+} from "../../../src/commands/local/envelope.js";
 import {
   prepareReceiverEnvelope,
   receiverEnvelopeId,
@@ -229,5 +232,25 @@ describe("receiver envelope codec", () => {
       firstId,
     );
     expect(first.getData()).toBe(body);
+  });
+});
+
+describe("withoutDsnHeader", () => {
+  const items = '\n{"type":"event","length":16}\n{"message":"hi"}';
+
+  test("drops the dsn key, even after a UTF-8 BOM, and keeps item bytes", () => {
+    const body = Buffer.from(
+      `\uFEFF{"event_id":"e1","dsn":"http://local@127.0.0.1:8969/_local/v1/sessions/s/ingest/cap/0"}${items}`,
+    );
+    expect(withoutDsnHeader(body).toString("utf8")).toBe(
+      `{"event_id":"e1"}${items}`,
+    );
+  });
+
+  test("returns the same bytes when there is no dsn or the header is not JSON", () => {
+    for (const header of ['{"event_id":"e1"}', "not json"]) {
+      const body = Buffer.from(`${header}${items}`);
+      expect(withoutDsnHeader(body)).toBe(body);
+    }
   });
 });
