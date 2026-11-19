@@ -12,7 +12,7 @@ Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js an
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
-The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
+The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. An SDK that hard-codes 8969 won't reach that port, so make sure it reads `SENTRY_SPOTLIGHT`. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
 
 With no command, `local run` picks one from the project, in this order:
 
@@ -155,7 +155,7 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, `user.`, and similar prefixes, plus Python's `asctime` and Django's `request` and `server_time`) are hidden; add `--attributes` (`-a`) to list them under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself are hidden: `sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, and similar prefixes, the scope user (`user.id`, `user.email`, `user.name`, `user.username`, `user.ip_address`), Python's `asctime`, `request` and `server_time`, Rust's `os.name`, `os.version` and `parent_span_id`, and Ruby's `parameters`. Your own attributes, such as `user.plan`, still show. Add `--attributes` (`-a`) to list the hidden ones under each log line.
 
 Events and logs use the same labels: a warning is `[WARNING]` whether the SDK sent `warning` or `warn`, and an event's logger shows as `[logger:name]`. A log's logger name is an SDK attribute, so it shows only with `-a`.
 
@@ -284,4 +284,5 @@ share a label.
 `sentry local envelope list` print tables; add `--json` for the full records.
 The event table shows each event ID cut to the shortest unique prefix of at
 least 8 characters, and `sentry local event view` accepts that prefix. A prefix
-that matches more than one event fails and lists the matching IDs.
+that matches more than one event fails and lists the matching IDs. A bare replay
+ID opens the replay's first segment; add `:<segment_id>` for another one.

@@ -47,13 +47,14 @@ header, event/transaction item header, or payload, in that order; envelopes
 without an event ID retain their generated envelope ID as the lookup key.
 Replay SDKs send every segment of a replay with the replay ID as its event ID,
 so a replay segment's lookup key is `<replay_id>:<segment_id>`.
-`event view` also takes a prefix of 8 or more characters when exactly one
-event ID starts with it. An exact ID always wins. A prefix that matches several
-events gets HTTP 409 with code `ambiguous_event` and the matching `eventIds`,
-which the CLI reports as an error (exit code 23) that lists them. A shorter
-reference matches only exactly, so short lookup keys keep working. Segments of
-one replay share a prefix, so open one with its full `<replay_id>:<segment_id>`
-key.
+`event view` resolves a reference in this order: the event ID equal to it; a
+bare replay ID, when every event ID that starts with it is
+`<reference>:<segment_id>`, opens the lowest segment; a prefix of 8 or more
+characters that exactly one event ID starts with. Hex references match in any
+case. A prefix that matches several events gets HTTP 409 with code
+`ambiguous_event` and every matching ID in `eventIds`; the CLI reports it as an
+error (exit code 23) that lists the first 10. A reference shorter than 8
+characters matches no prefix, so short lookup keys keep working.
 
 Without `--json`, `session list`, `event list`, and `envelope list` print
 tables. The event table shows each ID as its shortest unique prefix of at least
@@ -325,8 +326,11 @@ transactions, show their op and transaction name.
 
 A trace's error count is its error events: exceptions and error-level messages.
 Failing spans and error-level logs are not counted again. A span or segment
-named only by its HTTP method, such as a Next.js edge `GET`, is labeled with its
-`http.route`, or else its `url.path` or URL path.
+named only by its HTTP method (in any case), such as a Next.js edge `GET`, gets
+a target after the method. The viewer and the tail read the same attributes, in
+order: `http.route`, `url.template`, `url.full`, then `url.path`. A server span
+(`http.server`) shows the route or path; any other span keeps the host it called,
+such as `GET api.stripe.com/v1/charges`.
 
 Log inspectors show the message, level, and attributes. Requests summarize useful
 metadata and related telemetry. Waterfall spans are keyboard-selectable and open

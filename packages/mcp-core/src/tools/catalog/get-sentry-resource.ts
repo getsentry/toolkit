@@ -22,6 +22,7 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { isNumericId } from "../../utils/slug-validation";
 import getAIConversationDetails from "./get-agent-conversation-details";
+import getAlertRule from "./get-alert-rule";
 import getDashboardDetails from "./get-dashboard-details";
 import getIssueDetails from "./get-issue-details";
 import getMonitorDetails from "./get-monitor-details";
@@ -53,7 +54,8 @@ export type ResolvedResourceType =
   | FullySupportedType
   | RecognizedType
   | "profile"
-  | "span";
+  | "span"
+  | "metric_alert";
 
 export interface ResolvedResourceParams {
   type: ResolvedResourceType;
@@ -83,6 +85,8 @@ export interface ResolvedResourceParams {
   selectedSnapshot?: string | undefined;
   // Dashboard params
   dashboardIdOrTitle?: string;
+  // Metric alert params
+  alertRuleId?: string;
 }
 
 /**
@@ -279,7 +283,7 @@ function resolveFromParsedUrl(
     }
     throw new UserInputError(
       "Could not determine resource type from URL. " +
-        "Supported URL patterns: issues, events, traces, agent conversations, profiles, replays, monitors, dashboards, and releases.",
+        "Supported URL patterns: issues, events, traces, agent conversations, profiles, replays, monitors, metric alerts, dashboards, and releases.",
     );
   }
 
@@ -438,6 +442,16 @@ function resolveFromParsedUrl(
         organizationSlug,
         dashboardIdOrTitle: parsed.dashboardId,
       };
+
+    case "metric_alert":
+      if (!parsed.alertRuleId) {
+        throw new UserInputError("Could not extract alert rule ID from URL.");
+      }
+      return {
+        type: "metric_alert",
+        organizationSlug,
+        alertRuleId: parsed.alertRuleId,
+      };
   }
 }
 
@@ -511,7 +525,7 @@ export default defineTool({
   requiredScopes: ["event:read", "project:read"],
 
   description: ({ availableToolNames }) => {
-    // Monitors and dashboards delegate to inspect-only catalog tools, so only
+    // Monitors, metric alerts, and dashboards delegate to inspect-only catalog tools, so only
     // advertise them when those tools are available in this session. The URL
     // parser still recognises them; other sessions get a runtime error.
     const resources = [
@@ -523,6 +537,9 @@ export default defineTool({
       "replays",
       ...(isToolAvailable("get_monitor_details", availableToolNames)
         ? ["monitors"]
+        : []),
+      ...(isToolAvailable("get_alert_rule", availableToolNames)
+        ? ["metric alerts"]
         : []),
       ...(isToolAvailable("get_dashboard_details", availableToolNames)
         ? ["dashboards"]
@@ -754,6 +771,19 @@ export default defineTool({
               "dashboardIdOrTitle",
             ),
             regionUrl: context.constraints.regionUrl ?? null,
+          },
+          context,
+        );
+
+      case "metric_alert":
+        assertCatalogToolAvailable(context, "get_alert_rule", "Metric alert");
+        return await getAlertRule.handler(
+          {
+            organizationSlug: resolved.organizationSlug,
+            regionUrl: context.constraints.regionUrl ?? null,
+            kind: "metric",
+            projectSlug: null,
+            ruleIdOrName: requireResolved(resolved.alertRuleId, "alertRuleId"),
           },
           context,
         );

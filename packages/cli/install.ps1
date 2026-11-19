@@ -25,6 +25,9 @@
 # Everything runs inside a function so `irm ... | iex` never changes the
 # caller's session preferences, and failures throw instead of calling `exit`
 # (which would close the user's terminal when run through iex).
+#
+# Invoke-Install, right below, is the whole install from start to finish.
+# Every other function is a helper for one of its steps.
 function Install-SentryCli {
   $ErrorActionPreference = 'Stop'
   # Invoke-WebRequest progress rendering makes downloads dramatically slower
@@ -38,7 +41,266 @@ function Install-SentryCli {
     Write-Verbose "Could not enable TLS 1.2: $_"
   }
 
+  $asset = 'sentry-windows-x64.exe'
+  # What error reports say about the install. Each step updates it.
   $state = @{ Step = 'start'; Version = 'unknown'; Arch = 'unknown' }
+
+  function Invoke-Install {
+    Assert-WindowsX64
+    $release = Resolve-Release
+    $binary = Save-Binary $release
+    try {
+      Invoke-Setup $binary
+      if ($env:SENTRY_INIT -eq '1') { Invoke-Init $binary }
+    } finally {
+      # The running temp binary cannot always be deleted on Windows; try anyway.
+      Remove-Item -LiteralPath $binary -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  # -------------------------------------------------------------------------
+  # Step 1: check that this machine can run the binary
+  # -------------------------------------------------------------------------
+
+  function Assert-WindowsX64 {
+    $state.Step = 'detect-os'
+    if ($env:OS -ne 'Windows_NT') {
+      Stop-Install 'This installer is for Windows. On macOS and Linux, run: curl https://cli.sentry.dev/install -fsS | bash'
+    }
+
+    $state.Step = 'detect-arch'
+    # 32-bit PowerShell on 64-bit Windows reports x86 here and sets
+    # PROCESSOR_ARCHITEW6432 to the real architecture.
+    $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    $state.Arch = "$arch"
+    if ($arch -ne 'AMD64') {
+      Stop-Install "Unsupported: windows-$arch (only windows-x64 is supported). Install Node.js and run: npm install -g sentry"
+    }
+    $state.Arch = 'x64'
+  }
+
+  # -------------------------------------------------------------------------
+  # Step 2: find the release to install
+  #
+  # Sentry's release registry is the source of truth for versions, download
+  # URLs, and checksums. When it is down, a pinned version still downloads
+  # from its GitHub release, without checksums; "latest" needs the registry.
+  # -------------------------------------------------------------------------
+
+  # Returns @{ Version; Gz; Raw }, where Gz and Raw are the compressed and
+  # plain downloads as @{ Url; Sha256 }, or $null when the release lacks one.
+  function Resolve-Release {
+    $state.Step = 'resolve-version'
+    if ($env:SENTRY_VERSION -eq 'nightly') {
+      Stop-Install 'The PowerShell installer only installs stable releases. Install stable, then run: sentry cli upgrade nightly'
+    }
+
+    $version = ''
+    $registryPath = 'latest'
+    if ($env:SENTRY_VERSION) {
+      $version = $env:SENTRY_VERSION -replace '^cli@', '' -replace '^v', ''
+      $state.Version = $version
+      if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+        Stop-Install "Invalid release version: $version"
+      }
+      $registryPath = $version
+    }
+
+    $metadata = Get-RegistryRelease $registryPath
+    if ($null -ne $metadata) {
+      $release = @{
+        Version = "$($metadata.version)"
+        Gz = Get-RegistryFile $metadata "$asset.gz"
+        Raw = Get-RegistryFile $metadata $asset
+      }
+      $state.Version = $release.Version
+      if ($null -eq $release.Gz -and $null -eq $release.Raw) {
+        Stop-Install "Sentry CLI $($release.Version) has no $asset build"
+      }
+      return $release
+    }
+
+    if (-not $version) {
+      Stop-Install "Failed to fetch latest stable version from Sentry's release registry. Retry or set SENTRY_VERSION to install a specific version."
+    }
+    Write-Host "Could not resolve $registryPath from Sentry's release registry. Trying GitHub..." -ForegroundColor DarkGray
+    Write-Warning 'GitHub fallback downloads are not checksum-verified.'
+    $base = "https://github.com/getsentry/toolkit/releases/download/cli@$version/$asset"
+    return @{
+      Version = $version
+      Gz = @{ Url = "$base.gz"; Sha256 = '' }
+      Raw = @{ Url = $base; Sha256 = '' }
+    }
+  }
+
+  # Returns the registry's metadata for 'latest' or a version, or $null when
+  # the registry is unreachable or answers with something unusable. Stops
+  # when a pinned version does not exist.
+  function Get-RegistryRelease([string]$Path) {
+    try {
+      $metadata = Invoke-RestMethod -UseBasicParsing -TimeoutSec 10 `
+        -Uri "https://release-registry.services.sentry.io/apps/sentry/$Path"
+    } catch {
+      if ((Get-ErrorStatus $_) -eq 404 -and $Path -ne 'latest') {
+        Stop-Install "Unknown Sentry CLI version: $Path"
+      }
+      Write-Verbose "Release registry lookup failed: $_"
+      return $null
+    }
+
+    # Ignore an answer that is not the release that was asked for.
+    $registryVersion = "$($metadata.version)"
+    if ($Path -eq 'latest' -and $registryVersion -notmatch '^\d+\.\d+\.\d+$') { return $null }
+    if ($Path -ne 'latest' -and $registryVersion -ne $Path) { return $null }
+    return $metadata
+  }
+
+  # Returns @{ Url; Sha256 } for one entry in the registry's `files`, or $null.
+  function Get-RegistryFile($Metadata, [string]$Name) {
+    $entry = $Metadata.files.PSObject.Properties[$Name]
+    if ($null -eq $entry -or "$($entry.Value.url)" -notmatch '^https://') { return $null }
+    return @{ Url = "$($entry.Value.url)"; Sha256 = "$($entry.Value.checksums.'sha256-hex')" }
+  }
+
+  # -------------------------------------------------------------------------
+  # Step 3: download and verify the binary
+  # -------------------------------------------------------------------------
+
+  # Downloads the release to a temporary .exe and returns its path. Prefers
+  # the gzip download (~60% smaller) and falls back to the plain binary when
+  # it is missing. A checksum mismatch is fatal, never a reason to fall back.
+  function Save-Binary($Release) {
+    $state.Step = 'download'
+    $binary = Join-Path ([System.IO.Path]::GetTempPath()) "sentry-install-$([guid]::NewGuid().ToString('N')).exe"
+    $archive = "$binary.gz"
+
+    Write-Host "Downloading sentry v$($Release.Version)..." -ForegroundColor DarkGray
+    try {
+      if ($null -ne $Release.Gz -and (Save-Download $Release.Gz $archive)) {
+        Confirm-Download $Release.Gz $archive
+        Expand-Gzip $archive $binary
+      } elseif ($null -ne $Release.Raw) {
+        if (-not (Save-Download $Release.Raw $binary)) {
+          Stop-Install "Failed to download $($Release.Raw.Url)"
+        }
+        Confirm-Download $Release.Raw $binary
+      } else {
+        Stop-Install "Failed to download $($Release.Gz.Url)"
+      }
+    } catch {
+      Remove-Item -LiteralPath $binary -Force -ErrorAction SilentlyContinue
+      throw
+    } finally {
+      Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+    }
+    return $binary
+  }
+
+  # Downloads $File.Url to $Path. Returns $false when the download fails.
+  function Save-Download($File, [string]$Path) {
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri $File.Url -OutFile $Path
+      return $true
+    } catch {
+      Write-Verbose "Download of $($File.Url) failed: $_"
+      return $false
+    }
+  }
+
+  # Checks the download against its checksum, if it has one. A broken
+  # transfer or proxy can corrupt the first copy, so a mismatch downloads it
+  # once more before giving up.
+  function Confirm-Download($File, [string]$Path) {
+    if (Test-Sha256 $Path $File.Sha256) { return }
+
+    Write-Host 'The download was incomplete or corrupt. Downloading it again...' -ForegroundColor DarkGray
+    if (-not (Save-Download $File $Path)) {
+      Stop-Install "Failed to download $($File.Url)"
+    }
+    if (Test-Sha256 $Path $File.Sha256) { return }
+
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    Stop-Install "Checksum mismatch for $asset $($state.Version): expected $($File.Sha256), got $actual"
+  }
+
+  # True when the file matches the SHA-256 hex digest, or there is none.
+  function Test-Sha256([string]$Path, [string]$Expected) {
+    if (-not $Expected) { return $true }
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    return $actual -eq $Expected.ToLowerInvariant()
+  }
+
+  function Expand-Gzip([string]$Archive, [string]$Destination) {
+    $source = [System.IO.File]::OpenRead($Archive)
+    try {
+      $gzip = New-Object System.IO.Compression.GZipStream($source, [System.IO.Compression.CompressionMode]::Decompress)
+      $target = [System.IO.File]::Create($Destination)
+      try { $gzip.CopyTo($target) } finally { $target.Dispose(); $gzip.Dispose() }
+    } finally {
+      $source.Dispose()
+    }
+  }
+
+  # -------------------------------------------------------------------------
+  # Step 4: hand off to the binary
+  # -------------------------------------------------------------------------
+
+  # `sentry cli setup --install` places the binary and handles the user PATH,
+  # completions, agent skills, install-method recording, and first-run login.
+  function Invoke-Setup([string]$Binary) {
+    $state.Step = 'setup'
+    $setupArgs = @('cli', 'setup', '--install', '--method', 'curl', '--channel', 'stable')
+    if ($env:SENTRY_NO_MODIFY_PATH -eq '1') { $setupArgs += '--no-modify-path' }
+
+    $userPathBefore = Get-UserPathEntries
+    & $Binary @setupArgs
+    if ($LASTEXITCODE -ne 0) {
+      Stop-Install "sentry cli setup failed with exit code $LASTEXITCODE"
+    }
+
+    # Setup saves the install directory to the user PATH, which only new
+    # terminals pick up. Add what it added to this session too.
+    $added = @(Get-UserPathEntries | Where-Object { $userPathBefore -notcontains $_ })
+    if ($added.Count -gt 0) {
+      $env:PATH = (@($added) + @("$env:PATH")) -join [System.IO.Path]::PathSeparator
+    }
+  }
+
+  # Runs init from the downloaded binary, which is the one setup just
+  # installed, so the installer never has to know where setup put it.
+  function Invoke-Init([string]$Binary) {
+    $state.Step = 'init'
+    & $Binary init
+    if ($LASTEXITCODE -ne 0) {
+      # Like the bash installer, report init failures to the caller but not
+      # to installer telemetry: init errors are not installation failures.
+      throw "sentry init failed with exit code $LASTEXITCODE"
+    }
+  }
+
+  # Entries of the persisted user PATH, expanded. Empty on non-Windows hosts.
+  function Get-UserPathEntries {
+    return @("$([Environment]::GetEnvironmentVariable('Path', 'User'))" -split ';' | Where-Object { $_ })
+  }
+
+  # -------------------------------------------------------------------------
+  # Errors
+  # -------------------------------------------------------------------------
+
+  # Reports the error, then throws it.
+  function Stop-Install([string]$Message) {
+    Send-InstallError $Message
+    throw $Message
+  }
+
+  # Returns the HTTP status of a failed web request, or 0 without a response.
+  function Get-ErrorStatus($ErrorRecord) {
+    $response = $ErrorRecord.Exception.Response
+    if ($null -ne $response -and $null -ne $response.StatusCode) {
+      return [int]$response.StatusCode
+    }
+    return 0
+  }
 
   # Fire-and-forget error report via the envelope API, mirroring the bash
   # installer. Uses the CLI's public write-only DSN. No PII collected.
@@ -82,234 +344,7 @@ function Install-SentryCli {
     }
   }
 
-  function Stop-Install([string]$Message) {
-    Send-InstallError $Message
-    throw $Message
-  }
-
-  # Returns the HTTP status of a failed web request, or 0 without a response.
-  function Get-ErrorStatus($ErrorRecord) {
-    $response = $ErrorRecord.Exception.Response
-    if ($null -ne $response -and $null -ne $response.StatusCode) {
-      return [int]$response.StatusCode
-    }
-    return 0
-  }
-
-  # Fetch release metadata (download URLs and checksums) from Sentry's release
-  # registry. Returns $null when the registry is unreachable or returns
-  # something unusable; stops when a pinned version does not exist.
-  function Get-RegistryRelease([string]$Path) {
-    try {
-      $metadata = Invoke-RestMethod -UseBasicParsing -TimeoutSec 10 `
-        -Uri "https://release-registry.services.sentry.io/apps/sentry/$Path"
-    } catch {
-      if ((Get-ErrorStatus $_) -eq 404 -and $Path -ne 'latest') {
-        Stop-Install "Unknown Sentry CLI version: $Path"
-      }
-      Write-Verbose "Release registry lookup failed: $_"
-      return $null
-    }
-    $registryVersion = "$($metadata.version)"
-    if ($Path -eq 'latest' -and $registryVersion -notmatch '^\d+\.\d+\.\d+$') { return $null }
-    if ($Path -ne 'latest' -and $registryVersion -ne $Path) { return $null }
-    return $metadata
-  }
-
-  # Returns @{ Url; Sha256 } for one registry file entry, or $null.
-  function Get-RegistryFile($Metadata, [string]$Name) {
-    $entry = $Metadata.files.PSObject.Properties[$Name]
-    if ($null -eq $entry -or "$($entry.Value.url)" -notmatch '^https://') { return $null }
-    return @{ Url = "$($entry.Value.url)"; Sha256 = "$($entry.Value.checksums.'sha256-hex')" }
-  }
-
-  # Usage: Test-Sha256 <file> <expected-hex>; a missing checksum matches.
-  function Test-Sha256([string]$Path, [string]$Expected) {
-    if (-not $Expected) { return $true }
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
-    return $actual -eq $Expected.ToLowerInvariant()
-  }
-
-  # Usage: Assert-Sha256 <file> <expected-hex>; a missing checksum is a no-op.
-  function Assert-Sha256([string]$Path, [string]$Expected) {
-    if (Test-Sha256 $Path $Expected) { return }
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
-    Stop-Install "Checksum mismatch for $asset ${version}: expected $Expected, got $actual"
-  }
-
-  # Usage: Repair-Download <file> <url> <expected-hex>. Downloads the file once
-  # more when it does not match its checksum, like the bash installer, since
-  # a broken transfer or proxy can corrupt the first copy.
-  function Repair-Download([string]$Path, [string]$Url, [string]$Expected) {
-    if (Test-Sha256 $Path $Expected) { return }
-    Write-Host 'The download was incomplete or corrupt. Downloading it again...' -ForegroundColor DarkGray
-    try {
-      Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Path
-    } catch {
-      Stop-Install "Failed to download $Url"
-    }
-  }
-
-  # Registry outage fallback: the newest `cli@x.y.z` Toolkit release.
-  function Find-LatestToolkitVersion {
-    # GitHub may have many pages of MCP releases before its newest CLI release.
-    for ($page = 1; $page -le 20; $page++) {
-      try {
-        # Windows PowerShell 5.1 emits a JSON array as one object; piping
-        # through ForEach-Object flattens it so an empty page has no items.
-        $releases = @(Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 `
-          -Uri "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=$page" |
-          ForEach-Object { $_ })
-      } catch {
-        Stop-Install 'Failed to list Toolkit releases'
-      }
-      if ($releases.Count -eq 0) { break }
-      foreach ($release in $releases) {
-        if (-not $release.prerelease -and "$($release.tag_name)" -match '^cli@\d+\.\d+\.\d+$') {
-          return "$($release.tag_name)".Substring(4)
-        }
-      }
-    }
-    Stop-Install "Failed to fetch latest stable version from Sentry's release registry and GitHub. Retry or set SENTRY_VERSION to install a specific version."
-  }
-
-  # Entries of the persisted user PATH, expanded. Empty on non-Windows hosts.
-  function Get-UserPathEntries {
-    return @("$([Environment]::GetEnvironmentVariable('Path', 'User'))" -split ';' | Where-Object { $_ })
-  }
-
-  $state.Step = 'detect-os'
-  if ($env:OS -ne 'Windows_NT') {
-    Stop-Install 'This installer is for Windows. On macOS and Linux, run: curl https://cli.sentry.dev/install -fsS | bash'
-  }
-
-  $state.Step = 'detect-arch'
-  # 32-bit PowerShell on 64-bit Windows reports x86 here and sets
-  # PROCESSOR_ARCHITEW6432 to the real architecture.
-  $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
-  $state.Arch = "$arch"
-  if ($arch -ne 'AMD64') {
-    Stop-Install "Unsupported: windows-$arch (only windows-x64 is supported). Install Node.js and run: npm install -g sentry"
-  }
-  $state.Arch = 'x64'
-
-  # Sentry's release registry is the source of truth for versions, download
-  # URLs, and checksums. GitHub is only a fallback for registry outages.
-  $state.Step = 'resolve-version'
-  if ($env:SENTRY_VERSION -eq 'nightly') {
-    Stop-Install 'The PowerShell installer only installs stable releases. Install stable, then run: sentry cli upgrade nightly'
-  }
-  $registryPath = 'latest'
-  $version = ''
-  if ($env:SENTRY_VERSION) {
-    $version = $env:SENTRY_VERSION -replace '^cli@', '' -replace '^v', ''
-    $state.Version = $version
-    if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
-      Stop-Install "Invalid release version: $version"
-    }
-    $registryPath = $version
-  }
-
-  $asset = 'sentry-windows-x64.exe'
-  $metadata = Get-RegistryRelease $registryPath
-  if ($null -ne $metadata) {
-    $version = "$($metadata.version)"
-    $gz = Get-RegistryFile $metadata "$asset.gz"
-    $raw = Get-RegistryFile $metadata $asset
-    if ($null -eq $gz -and $null -eq $raw) {
-      Stop-Install "Sentry CLI $version has no $asset build"
-    }
-  } else {
-    Write-Host "Could not resolve $registryPath from Sentry's release registry. Trying GitHub..." -ForegroundColor DarkGray
-    if (-not $version) { $version = Find-LatestToolkitVersion }
-    $base = "https://github.com/getsentry/toolkit/releases/download/cli@$version/$asset"
-    $gz = @{ Url = "$base.gz"; Sha256 = '' }
-    $raw = @{ Url = $base; Sha256 = '' }
-    Write-Warning 'GitHub fallback downloads are not checksum-verified.'
-  }
-  $state.Version = $version
-
-  $state.Step = 'download'
-  $tmpBinary = Join-Path ([System.IO.Path]::GetTempPath()) "sentry-install-$([guid]::NewGuid().ToString('N')).exe"
-  $tmpArchive = "$tmpBinary.gz"
-
-  Write-Host "Downloading sentry v$version..." -ForegroundColor DarkGray
-  try {
-    # Prefer the gzip asset (~60% smaller); fall back to the raw binary when it
-    # is missing. A checksum mismatch that a second download does not fix is
-    # fatal, never a reason to fall back.
-    $downloaded = $false
-    if ($null -ne $gz) {
-      try {
-        Invoke-WebRequest -UseBasicParsing -Uri $gz.Url -OutFile $tmpArchive
-        $downloaded = $true
-      } catch {
-        Write-Verbose "Compressed download failed, trying raw binary: $_"
-      }
-    }
-    if ($downloaded) {
-      Repair-Download $tmpArchive $gz.Url $gz.Sha256
-      Assert-Sha256 $tmpArchive $gz.Sha256
-      $source = [System.IO.File]::OpenRead($tmpArchive)
-      try {
-        $gzip = New-Object System.IO.Compression.GZipStream($source, [System.IO.Compression.CompressionMode]::Decompress)
-        $target = [System.IO.File]::Create($tmpBinary)
-        try { $gzip.CopyTo($target) } finally { $target.Dispose(); $gzip.Dispose() }
-      } finally {
-        $source.Dispose()
-      }
-    } elseif ($null -ne $raw) {
-      try {
-        Invoke-WebRequest -UseBasicParsing -Uri $raw.Url -OutFile $tmpBinary
-      } catch {
-        Stop-Install "Failed to download $($raw.Url)"
-      }
-      Repair-Download $tmpBinary $raw.Url $raw.Sha256
-      Assert-Sha256 $tmpBinary $raw.Sha256
-    } else {
-      Stop-Install "Failed to download $($gz.Url)"
-    }
-  } catch {
-    Remove-Item -LiteralPath $tmpBinary -Force -ErrorAction SilentlyContinue
-    throw
-  } finally {
-    Remove-Item -LiteralPath $tmpArchive -Force -ErrorAction SilentlyContinue
-  }
-
-  try {
-    # Delegate placement, PATH, completions, agent skills, install-method
-    # recording, and first-run login to the binary itself.
-    $state.Step = 'setup'
-    $setupArgs = @('cli', 'setup', '--install', '--method', 'curl', '--channel', 'stable')
-    if ($env:SENTRY_NO_MODIFY_PATH -eq '1') { $setupArgs += '--no-modify-path' }
-    $userPathBefore = Get-UserPathEntries
-    & $tmpBinary @setupArgs
-    if ($LASTEXITCODE -ne 0) {
-      Stop-Install "sentry cli setup failed with exit code $LASTEXITCODE"
-    }
-
-    # Setup persists the install directory on the user PATH, which only new
-    # terminals pick up. Mirror what it added into this session too.
-    $added = @(Get-UserPathEntries | Where-Object { $userPathBefore -notcontains $_ })
-    if ($added.Count -gt 0) {
-      $env:PATH = (@($added) + @("$env:PATH")) -join [System.IO.Path]::PathSeparator
-    }
-
-    if ($env:SENTRY_INIT -eq '1') {
-      # Run init from the downloaded binary, which is the one setup just
-      # installed, so the installer never has to know where setup put it.
-      $state.Step = 'init'
-      & $tmpBinary init
-      if ($LASTEXITCODE -ne 0) {
-        # Like the bash installer, report init failures to the caller but not
-        # to installer telemetry: init errors are not installation failures.
-        throw "sentry init failed with exit code $LASTEXITCODE"
-      }
-    }
-  } finally {
-    # The running temp binary cannot always be deleted on Windows; try anyway.
-    Remove-Item -LiteralPath $tmpBinary -Force -ErrorAction SilentlyContinue
-  }
+  Invoke-Install
 }
 
 Install-SentryCli

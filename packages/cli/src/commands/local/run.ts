@@ -286,6 +286,22 @@ async function startBackgroundServer({
 }
 
 /**
+ * Say that this run listens on `boundPort` because `defaultPort` is taken.
+ * An SDK that hard-codes the default port sends there instead, and the
+ * daemon drops traffic that isn't for a session without a word, so the
+ * notice says to use SENTRY_SPOTLIGHT.
+ *
+ * @param reason - Why the default port is taken, e.g. "is in use"
+ */
+function freePortNotice(
+  defaultPort: number,
+  boundPort: number,
+  reason: string,
+): string {
+  return `Port ${defaultPort} ${reason}, so this run listens on port ${boundPort} instead. SDKs that hard-code ${defaultPort} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+}
+
+/**
  * Get a live event tail on `host:port`, whichever way is available.
  *
  * Prefers attaching to whatever already holds the port so we never compete
@@ -304,7 +320,7 @@ async function openEventTail({
   const url = formatLocalServerUrl(host, port);
 
   let running = false;
-  let listenPort = port;
+  let heldByDaemon = false;
   try {
     running = await isServerRunning(url);
   } catch (err) {
@@ -319,10 +335,7 @@ async function openEventTail({
     }
     // The daemon's receiver only takes session traffic, and it stays up while
     // it retains sessions, so a plain run gets its own receiver instead.
-    logger.info(
-      `The Local daemon is using port ${port}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
-    );
-    listenPort = 0;
+    heldByDaemon = true;
   }
 
   if (running) {
@@ -336,18 +349,23 @@ async function openEventTail({
     });
   }
 
-  if (listenPort === port) {
+  if (!heldByDaemon) {
     logger.info("No server detected, starting one in the background...");
   }
   try {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port: listenPort,
+      port: heldByDaemon ? 0 : port,
       host,
       activeFilters,
       useJson,
       showAttributes,
     });
+    if (heldByDaemon) {
+      logger.info(
+        `${freePortNotice(port, Number(new URL(bg.url).port), "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
+      );
+    }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
   } catch (err) {
@@ -574,7 +592,7 @@ export const runCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -910,8 +928,8 @@ async function listenForVerify(
         PORT_IN_USE_FIELD,
       );
     }
-    logger.info(`Port ${DEFAULT_PORT} is in use; verifying on a free port`);
     const bound = await tryListen(app, 0, host, { retries: 0 });
+    logger.info(freePortNotice(DEFAULT_PORT, bound.port, "is in use"));
     return { ...bound, fellBack: true };
   }
 }
@@ -1077,9 +1095,7 @@ async function* runWithVerify(
       if (fellBack) {
         // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
         // port, so it reaches whatever holds that port instead of this receiver.
-        logger.warn(
-          `Verify used port ${boundPort} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-        );
+        logger.warn(freePortNotice(DEFAULT_PORT, boundPort, "is in use"));
       }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,

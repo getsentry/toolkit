@@ -18,8 +18,10 @@ const routes = [
     dest: "/install-source/install$1/index.html",
     check: true,
   },
+  // Only the raw script is plain text; the browser page above stays HTML.
   {
     src: "^/install$",
+    missing: [{ type: "header", key: "accept", value: { re: ".*text/html.*" } }],
     headers: { "Content-Type": "text/plain; charset=utf-8" },
     continue: true,
   },

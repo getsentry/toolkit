@@ -42,16 +42,8 @@ const TRACE_ID_RE = /^[0-9a-f]{32}$/i;
 /** Longest title kept in a summary; longer ones end in `…`. */
 const MAX_TITLE_LENGTH = 200;
 
-/** Log levels from least to most severe; logs send `warn`, events `warning`. */
-const LOG_LEVEL_ORDER = [
-  "trace",
-  "debug",
-  "info",
-  "warn",
-  "warning",
-  "error",
-  "fatal",
-];
+/** Log levels from least to most severe. */
+const LOG_LEVEL_ORDER = ["trace", "debug", "info", "warning", "error", "fatal"];
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -109,11 +101,16 @@ function logTraceId(log: Record<string, unknown>): string | undefined {
   );
 }
 
-/** Severity rank of a log level; unknown levels rank lowest. */
+/**
+ * Severity rank of a log level; unknown levels rank lowest. Logs send `warn`
+ * and events send `warning`; both rank the same.
+ */
 function levelRank(level: unknown): number {
-  return typeof level === "string"
-    ? LOG_LEVEL_ORDER.indexOf(level.toLowerCase())
-    : -1;
+  if (typeof level !== "string") {
+    return -1;
+  }
+  const lower = level.toLowerCase();
+  return LOG_LEVEL_ORDER.indexOf(lower === "warn" ? "warning" : lower);
 }
 
 /** The first log with the batch's most severe level. */

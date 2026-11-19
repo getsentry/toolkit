@@ -972,7 +972,7 @@ export const FrameInterface = z
   })
   .partial();
 
-const StacktraceSchema = z
+export const StacktraceSchema = z
   .object({
     frames: z.array(FrameInterface),
     framesOmitted: z.array(z.unknown()).nullable().optional(),
