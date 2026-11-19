@@ -11042,7 +11042,7 @@
   {
     "name": "get_sentry_resource",
     "title": "Get Sentry Resource",
-    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
+    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, metric alerts, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
     "inputSchema": {
       "type": "object",
       "properties": {
