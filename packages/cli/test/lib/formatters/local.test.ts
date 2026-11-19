@@ -26,6 +26,10 @@ import {
 import { parseEventTimestamp } from "../../../src/commands/local/timestamp.js";
 import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 import { at } from "../../helpers.js";
+import {
+  goPanicEvent,
+  rubyExceptionEvent,
+} from "../../fixtures/local-sdk-events.js";
 
 describe("formatTime", () => {
   test("formats epoch seconds", () => {
@@ -82,6 +86,23 @@ describe("formatErrorItem", () => {
     const result = stripAnsi(formatErrorItem(event, serverHeader));
     expect(result).toContain("[ERROR]   [SERVER]  Something went wrong");
     expect(result).not.toContain("Error: Something went wrong");
+  });
+
+  test("reads a sentry-go exception list and its abs_path frames", () => {
+    const result = stripAnsi(
+      formatErrorItem(goPanicEvent, { sdk: goPanicEvent.sdk }),
+    );
+    expect(result).toContain(
+      "*errors.errorString: order 7 not found [main.go:47] [handleOrder]",
+    );
+  });
+
+  test("drops the class name Ruby appends to the message", () => {
+    const result = stripAnsi(
+      formatErrorItem(rubyExceptionEvent, { sdk: rubyExceptionEvent.sdk }),
+    );
+    expect(result).toContain("OrderNotFound: order 7 not found [");
+    expect(result).not.toContain("(OrderNotFound)");
   });
 
   test.each([
@@ -833,6 +854,19 @@ describe("formatItemJson", () => {
     expect(parsed.colno).toBe(5);
     expect(parsed.function).toBe("handleRequest");
     expect(parsed.source).toBe("server");
+  });
+
+  test("formats a sentry-go exception list", () => {
+    const parsed = JSON.parse(
+      at(formatItemJson("event", goPanicEvent, { sdk: goPanicEvent.sdk }), 0),
+    );
+    expect(parsed).toMatchObject({
+      error_type: "*errors.errorString",
+      message: "order 7 not found",
+      filename: "main.go",
+      lineno: 47,
+      function: "handleOrder",
+    });
   });
 
   test("adds the versioned observation schema to JSON records", () => {
