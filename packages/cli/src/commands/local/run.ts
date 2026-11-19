@@ -778,14 +778,16 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
-      interrupts.dispose();
-      process.removeListener("SIGINT", onSigint);
-      process.removeListener("SIGTERM", onSigterm);
       // A wrapper such as `go run` can exit while the app it started keeps
-      // running. Stop what is left once the user asked the app to stop.
+      // running. Stop what is left once the user asked the app to stop, with
+      // the signal handlers still installed so a second signal reaches the
+      // group instead of killing the CLI mid-cleanup.
       if (ownGroup && (interruptState.interrupted || interruptState.timedOut)) {
         await gracefulKill(child, ownGroup);
       }
+      interrupts.dispose();
+      process.removeListener("SIGINT", onSigint);
+      process.removeListener("SIGTERM", onSigterm);
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);

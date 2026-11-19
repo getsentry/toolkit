@@ -794,6 +794,56 @@ app.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
         },
         30_000,
       );
+
+      test("keeps its signal handlers until the leftover app is stopped", async () => {
+        // A wrapper that exits on SIGINT, and an app that ignores SIGINT and
+        // SIGTERM, so stopping the leftover app takes the whole grace period.
+        const appPidFile = join(tmpDir, "stubborn-pid");
+        const app = join(tmpDir, "stubborn.cjs");
+        const wrapper = join(tmpDir, "quick-wrapper.cjs");
+        await writeFile(
+          app,
+          `process.on("SIGINT", () => {});
+process.on("SIGTERM", () => {});
+require("node:fs").writeFileSync(${JSON.stringify(appPidFile)}, String(process.pid));
+setTimeout(() => {}, 20_000);
+`,
+        );
+        await writeFile(
+          wrapper,
+          `require("node:child_process").spawn(process.execPath, [${JSON.stringify(app)}], { stdio: "inherit" });
+setInterval(() => {}, 1000);
+`,
+        );
+        const appStateAtRemoval: boolean[] = [];
+        let pid = 0;
+        const removeListener = process.removeListener.bind(process);
+        const removal = vi
+          .spyOn(process, "removeListener")
+          .mockImplementation((event, listener) => {
+            if (event === "SIGINT") {
+              appStateAtRemoval.push(isRunning(pid));
+            }
+            return removeListener(event, listener);
+          });
+        try {
+          const ctx = { ...makeContext(), process: { exitCode: undefined } };
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const run = func.call(
+            ctx,
+            { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+            process.execPath,
+            wrapper,
+          );
+          pid = await appPid(appPidFile);
+          signals.send("SIGINT");
+          await expect(run).resolves.toBeUndefined();
+          expect(appStateAtRemoval).toEqual([false]);
+          expect(isRunning(pid)).toBe(false);
+        } finally {
+          removal.mockRestore();
+        }
+      }, 30_000);
     });
   });
 

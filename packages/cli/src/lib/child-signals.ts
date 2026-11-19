@@ -9,36 +9,73 @@ import { logger } from "./logger.js";
 
 const log = logger.withTag("child-signals");
 
+/** A process's group and its controlling terminal's foreground group. */
+type TerminalGroups = {
+  pgrp: number;
+  /** -1 (or 0 from BSD `ps`) when the process has no controlling terminal. */
+  tpgid: number;
+};
+
 /**
- * Whether a `/proc/<pid>/stat` line belongs to a process in the foreground
- * process group of its controlling terminal (its `pgrp` equals the
- * terminal's `tpgid`). A process with no terminal has `tpgid` -1.
+ * Read `pgrp` and `tpgid` from a `/proc/<pid>/stat` line.
  *
  * The command name in parentheses can hold spaces and `)`, so the fields are
  * read after the last `)`.
- *
- * @internal Exported for testing.
  */
-export function isForegroundStat(stat: string): boolean {
+function parseStatGroups(stat: string): TerminalGroups {
   // After "pid (comm) ": state ppid pgrp session tty_nr tpgid ...
   const fields = stat
     .slice(stat.lastIndexOf(")") + 1)
     .trim()
     .split(/\s+/);
-  const pgrp = Number(fields[2]);
-  const tpgid = Number(fields[5]);
+  return { pgrp: Number(fields[2]), tpgid: Number(fields[5]) };
+}
+
+function isForeground({ pgrp, tpgid }: TerminalGroups): boolean {
   return tpgid > 0 && pgrp === tpgid;
 }
 
-/** The `ps` fallback for {@link isForegroundStat} where there is no `/proc`. */
-function isForegroundByPs(pid: number): boolean {
-  const output = execFileSync("ps", ["-o", "pgid=,tpgid=", "-p", String(pid)], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: 1000,
-  });
-  const [pgid, tpgid] = output.trim().split(/\s+/).map(Number);
-  return tpgid !== undefined && tpgid > 0 && pgid === tpgid;
+/**
+ * Whether a `/proc/<pid>/stat` line belongs to a process in the foreground
+ * process group of its controlling terminal (its `pgrp` equals the
+ * terminal's `tpgid`). A process with no terminal has `tpgid` -1.
+ *
+ * @internal Exported for testing.
+ */
+export function isForegroundStat(stat: string): boolean {
+  return isForeground(parseStatGroups(stat));
+}
+
+/**
+ * The process groups of `pid`, from `/proc` on Linux and `ps` elsewhere, or
+ * `undefined` when neither can tell.
+ */
+function readTerminalGroups(
+  pid: number,
+  platform: NodeJS.Platform,
+): TerminalGroups | undefined {
+  try {
+    if (platform === "linux") {
+      return parseStatGroups(readFileSync(`/proc/${pid}/stat`, "utf8"));
+    }
+    const output = execFileSync(
+      "ps",
+      ["-o", "pgid=,tpgid=", "-p", String(pid)],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+      },
+    );
+    const [pgrp = Number.NaN, tpgid = Number.NaN] = output
+      .trim()
+      .split(/\s+/)
+      .map(Number);
+    return { pgrp, tpgid };
+  } catch (error) {
+    log.debug(`Could not read the process group of ${pid}`, error);
+    return undefined;
+  }
 }
 
 /**
@@ -58,31 +95,35 @@ export function terminalSignalsProcess(
   if (pid === undefined || platform === "win32") {
     return false;
   }
-  try {
-    if (platform === "linux") {
-      return isForegroundStat(readFileSync(`/proc/${pid}/stat`, "utf8"));
-    }
-    return isForegroundByPs(pid);
-  } catch (error) {
-    log.debug(`Could not read the process group of ${pid}`, error);
-    return false;
-  }
+  const groups = readTerminalGroups(pid, platform);
+  return groups !== undefined && isForeground(groups);
 }
 
 /**
  * Whether to start the wrapped app in its own process group.
  *
- * Outside a terminal's foreground group (agents, CI, `--verify` under a tool)
- * nothing signals the app's helpers for us, and a wrapper such as `go run`
- * ignores SIGINT, so signalling only the wrapper leaves the real app running.
- * Its own group lets the CLI signal the whole tree it started. In a terminal
- * the app stays in the foreground group, so Ctrl-C still reaches it once.
- * Windows has no process groups.
+ * With no controlling terminal (agents, CI, `--verify` under a tool) nothing
+ * signals the app's helpers for us, and a wrapper such as `go run` ignores
+ * SIGINT, so signalling only the wrapper leaves the real app running. Its own
+ * group lets the CLI signal the whole tree it started.
+ *
+ * Node starts that group in a new session, which leaves the terminal, so a
+ * CLI with a terminal keeps the app beside it: in the foreground Ctrl-C still
+ * reaches the app once, and as a background job the app still gets SIGHUP
+ * when the terminal closes. When the terminal can't be read, the app also
+ * stays beside the CLI. Windows has no process groups.
+ *
+ * @param pid - The CLI's pid; a parameter for testing
  */
 export function startsOwnProcessGroup(
   platform: NodeJS.Platform = process.platform,
+  pid: number = process.pid,
 ): boolean {
-  return platform !== "win32" && !terminalSignalsProcess(process.pid, platform);
+  if (platform === "win32") {
+    return false;
+  }
+  const groups = readTerminalGroups(pid, platform);
+  return groups !== undefined && groups.tpgid <= 0;
 }
 
 /**

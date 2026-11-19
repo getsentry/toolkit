@@ -88,6 +88,68 @@ describe("startsOwnProcessGroup", () => {
   test("is false on Windows, which has no process groups", () => {
     expect(startsOwnProcessGroup("win32")).toBe(false);
   });
+
+  test.skipIf(process.platform === "win32")(
+    "is true for a CLI with no controlling terminal",
+    () => {
+      const child = spawn(
+        process.execPath,
+        ["-e", "setTimeout(() => {}, 5000)"],
+        { detached: true, stdio: "ignore" },
+      );
+      try {
+        expect(startsOwnProcessGroup(process.platform, child.pid)).toBe(true);
+      } finally {
+        child.kill("SIGKILL");
+      }
+    },
+  );
+
+  /**
+   * Run `command` in a new pty with job control on, and return the pid it
+   * prints as `pid=<n>`. util-linux `script` makes the shell the pty's
+   * foreground job.
+   */
+  async function pidInTerminal(
+    command: string,
+  ): Promise<{ pid: number; stop: () => void }> {
+    const child = spawn("script", ["-qec", command, "/dev/null"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const pid = await new Promise<number>((resolve, reject) => {
+      let out = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        out += chunk.toString();
+        const match = /pid=(\d+)/.exec(out);
+        if (match) resolve(Number(match[1]));
+      });
+      child.once("error", reject);
+    });
+    return { pid, stop: () => child.kill("SIGKILL") };
+  }
+
+  test.skipIf(process.platform !== "linux" || !whichSync("script"))(
+    "is false for a CLI in a terminal, in the foreground or as a background job",
+    async () => {
+      // Its own group would take the app off the terminal: no single Ctrl-C
+      // in the foreground, and no SIGHUP for a background job.
+      const foreground = await pidInTerminal("echo pid=$$; exec sleep 5");
+      try {
+        expect(startsOwnProcessGroup("linux", foreground.pid)).toBe(false);
+      } finally {
+        foreground.stop();
+      }
+      const background = await pidInTerminal(
+        "set -m; sleep 5 & echo pid=$!; wait",
+      );
+      try {
+        expect(terminalSignalsProcess(background.pid, "linux")).toBe(false);
+        expect(startsOwnProcessGroup("linux", background.pid)).toBe(false);
+      } finally {
+        background.stop();
+      }
+    },
+  );
 });
 
 describe("signalApp", () => {
