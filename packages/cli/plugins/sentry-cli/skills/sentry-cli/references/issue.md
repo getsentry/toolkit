@@ -195,6 +195,82 @@ sentry issue tags FRONT-ABC browser.name --json
 sentry issue tags FRONT-ABC release --json --fields key,totalValues,topValues
 ```
 
+### `sentry issue comment <issue> <text>`
+
+Comment on an issue, optionally attaching videos
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+| `<text>` | Comment text (Markdown) |
+
+**Flags:**
+- `-a, --attach <value>... - Path of a video to attach (repeatable)`
+- `-n, --dry-run - Show what would happen without making changes`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Comment ID; absent with --dry-run |
+| `dateCreated` | string | When the comment was posted |
+| `author` | string | Who posted the comment |
+| `text` | string | Comment text, including links to attached videos |
+| `attachments` | array | Videos attached to the comment |
+| `dryRun` | boolean | True when --dry-run made no change |
+
+**Examples:**
+
+```bash
+# Comment on an issue
+sentry issue comment my-org/FRONT-ABC "Fixed in the next deploy"
+
+# Attach a screen recording of the bug
+sentry issue comment FRONT-ABC "Repro steps below" --attach repro.mp4
+
+# Check attachments without posting
+sentry issue comment FRONT-ABC "Repro" --attach a.mp4 --attach b.webm --dry-run
+```
+
+### `sentry issue comments <issue>`
+
+List an issue's comments and their videos
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `<issue>` | Issue: @latest, @most_frequent, &lt;org&gt;/ID, &lt;org&gt;/&lt;project&gt;#ID, &lt;project&gt;-suffix, ID, or suffix |
+
+**Flags:**
+- `-d, --download <value> - Directory to save attached videos into`
+
+**JSON Fields** (use `--json --fields` to select specific fields):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Comment ID; absent with --dry-run |
+| `dateCreated` | string | When the comment was posted |
+| `author` | string | Who posted the comment |
+| `text` | string | Comment text, including links to attached videos |
+| `attachments` | array | Videos attached to the comment |
+| `dryRun` | boolean | True when --dry-run made no change |
+
+**Examples:**
+
+```bash
+# Read the comments on an issue
+sentry issue comments my-org/FRONT-ABC
+
+# Save the attached videos to ./videos
+sentry issue comments FRONT-ABC --download ./videos
+
+# Get comments and video URLs as JSON
+sentry issue comments FRONT-ABC --json --fields author,text,attachments
+```
+
 ### `sentry issue explain <issue...>`
 
 Analyze one or more issues using Seer AI

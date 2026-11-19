@@ -44,6 +44,7 @@ import {
 } from "../telemetry/offline-transport.js";
 import { makeNodeTransportWithDeadline } from "../telemetry/zstd-transport.js";
 import type { McpServerConfig } from "./config.js";
+import { readLocalFile } from "./local-files.js";
 import { reportCliError } from "../error-reporting.js";
 import { omitUndefined } from "../omit-undefined.js";
 
@@ -441,6 +442,8 @@ export async function serveMcpStdio(
     }),
     experimentalMode: config.experimental,
     transport: "stdio",
+    // Runs on the user's machine, so tools can attach the user's files.
+    readLocalFile: (path) => readLocalFile(path),
     // mcp-core uses the returned token for later tool calls, so a
     // long-running server recovers from an expired CLI session.
     ...(options.refreshAccessToken && {
