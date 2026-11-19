@@ -31,6 +31,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
   ingestReceiverEnvelope,
+  ingestResponse,
   MAX_DECODED_BYTES,
   onOversizedEnvelope,
   readReceiverBody,
@@ -516,7 +517,7 @@ export function buildApp(
     const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    const status = await ingestReceiverEnvelope(buffer, {
+    const result = await ingestReceiverEnvelope(buffer, {
       body,
       encoding: contentEncoding,
       contentType,
@@ -524,9 +525,8 @@ export function buildApp(
       userAgent,
     });
 
-    reportIngestStatus(buffer, status);
-    if (status === 503) c.header("Retry-After", "1");
-    return c.body(null, status);
+    reportIngestStatus(buffer, result);
+    return ingestResponse(c, result);
   };
 
   app.post("/stream", ingest);

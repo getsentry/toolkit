@@ -54,7 +54,7 @@ async function fixture() {
 describe("Local session lifecycle", () => {
   test("close freezes ingestion and expiry while preserving saved envelopes", async () => {
     const f = await fixture();
-    expect((await f.ingest("saved")).status).toBe(204);
+    expect((await f.ingest("saved")).status).toBe(200);
     const closed = await (await f.action("close")).json();
     f.advance(1000);
     expect((await f.ingest("late")).status).toBe(410);
@@ -163,7 +163,7 @@ describe("Local session lifecycle", () => {
     // delivery is decoding.
     await new Promise((resolve) => setImmediate(resolve));
     await f.action("close");
-    expect((await pending).status).toBe(204);
+    expect((await pending).status).toBe(200);
     expect(
       f.store.getRetention(f.session.id).getSettings().retainedEnvelopes,
     ).toBe(1);

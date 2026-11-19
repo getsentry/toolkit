@@ -8,6 +8,7 @@
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
+import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import {
   afterEach,
@@ -765,32 +766,45 @@ describe("buildApp", () => {
     expect(buffer.read({ all: true })).toEqual([]);
   });
 
-  test("ingest endpoint accepts envelopes and returns 204", async () => {
+  test("ingest answers like Relay, with the envelope header event_id", async () => {
     const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
-
-    const envelope =
-      '{"sdk":{"name":"sentry.node"}}\n{"type":"event"}\n{"message":"test"}';
-    const res = await app.request("/stream", {
-      method: "POST",
-      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
-      body: envelope,
-    });
-    expect(res.status).toBe(204);
-  });
-
-  test("ingest via /api/:projectId/envelope/ returns 204", async () => {
-    const buffer = createLocalRetentionBuffer(10).buffer;
-    const app = buildApp(buffer);
-
-    const envelope =
-      '{"sdk":{"name":"sentry.node"}}\n{"type":"event"}\n{"message":"test"}';
-    const res = await app.request("/api/123/envelope/", {
-      method: "POST",
-      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
-      body: envelope,
-    });
-    expect(res.status).toBe(204);
+    const id = "9ec79c33ec9942ab8353589fcb2e04dc";
+    const withId = `{"event_id":"${id}","sdk":{"name":"sentry.elixir"}}\n{"type":"event"}\n{"message":"test"}`;
+    const post = (
+      path: string,
+      body: string | ReturnType<typeof gzipSync>,
+      encoding?: string,
+    ) =>
+      app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": SENTRY_CONTENT_TYPE,
+          ...(encoding ? { "Content-Encoding": encoding } : {}),
+        },
+        body,
+      });
+    for (const path of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      const res = await post(path, withId);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(await res.json()).toEqual({ id });
+    }
+    const gzipped = await post("/stream", gzipSync(withId), "gzip");
+    expect(await gzipped.json()).toEqual({ id });
+    // Relay prints the id without hyphens.
+    const hyphenated = await post(
+      "/stream",
+      '{"event_id":"9EC79C33-EC99-42AB-8353-589FCB2E04DC"}\n{"type":"event"}\n{}',
+    );
+    expect(await hyphenated.json()).toEqual({ id });
+    // Envelopes without an event, such as sessions or logs, get an empty object.
+    const withoutId = await post(
+      "/stream",
+      '{"sdk":{"name":"sentry.node"}}\n{"type":"session"}\n{}',
+    );
+    expect(withoutId.status).toBe(200);
+    expect(await withoutId.json()).toEqual({});
   });
 
   test("plain receivers keep the envelope header dsn", async () => {
@@ -803,7 +817,7 @@ describe("buildApp", () => {
       headers: { "Content-Type": SENTRY_CONTENT_TYPE },
       body: envelope,
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
     expect(buffer.read({ all: true })[0]?.getData().toString("utf8")).toBe(
       envelope,
     );
