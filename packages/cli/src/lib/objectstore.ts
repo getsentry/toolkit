@@ -24,7 +24,6 @@ import { ApiError, isNetworkError } from "./errors.js";
 import {
   createHttp1Dispatcher,
   destroyHttp1Dispatcher,
-  type NodeRequestInit,
 } from "./http1-dispatcher.js";
 
 export type { ObjectstoreConfig };
@@ -32,7 +31,9 @@ export type { ObjectstoreConfig };
 /** A file to upload under an object key. */
 export type ObjectUpload = { key: string; path: string };
 
-type Options = { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+type Options = {
+  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+};
 
 /**
  * Run `work` with a fetch that sends every request over one HTTP/1.1
@@ -41,11 +42,13 @@ type Options = { fetch: (input: string, init?: RequestInit) => Promise<Response>
  * failure (`TypeError: fetch failed`) with its cause, which undici otherwise
  * hides.
  */
-async function withCliErrors<T>(work: (options: Options) => Promise<T>): Promise<T> {
+async function withCliErrors<T>(
+  work: (options: Options) => Promise<T>,
+): Promise<T> {
   const dispatcher = createHttp1Dispatcher();
   const options: Options = {
     fetch: (input, init) =>
-      customFetch(input, { ...init, ...(dispatcher && { dispatcher }) } as NodeRequestInit),
+      customFetch(input, { ...init, ...(dispatcher && { dispatcher }) }),
   };
   try {
     return await work(options);
