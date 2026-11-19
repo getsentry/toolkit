@@ -39,8 +39,10 @@ import { logger } from "../../lib/logger.js";
 import {
   AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
-  AmbiguousLocalSessionError,
+  type LocalSessionChoice,
   type LocalSessionStore,
+  SESSION_CHOICE_HEADER,
+  SESSION_CHOICE_LIMIT,
 } from "./session-store.js";
 
 import {
@@ -219,28 +221,65 @@ export function createLocalControlPlane({
   // This token dies with the daemon and never authorizes the control API.
   const viewerCapability = randomBytes(24).toString("base64url");
   const directoryUrl = `${baseUrl}${VIEWER_SESSIONS_PATH}?cap=${viewerCapability}`;
-  const sessionExists = (reference: string): boolean => {
+  /**
+   * Resolve the route's session ID or name once per request, so a session
+   * created or closed mid-request cannot switch the target. A name that
+   * several open sessions share reads from the newest, which control clients
+   * see in {@link SESSION_CHOICE_HEADER}. A `write` refuses it with a 409 that
+   * lists them, so close, reset, and retention never act on a guess.
+   */
+  const routeSessionId = (
+    c: Context,
+    access: "read" | "write" = "read",
+  ): string | undefined => {
+    const reference = c.req.param("id") ?? "";
     sessionStore.pruneExpired();
+    let choice: LocalSessionChoice;
     try {
-      sessionStore.resolve(reference);
-      return true;
+      choice = sessionStore.choose(reference);
     } catch (error) {
-      if (error instanceof AmbiguousLocalSessionError) {
-        throw new HTTPException(409, {
-          res: Response.json(
-            {
-              error: error.message,
-              code: AMBIGUOUS_SESSION_CODE,
-              reference: error.reference,
-              sessionIds: error.sessionIds,
-            },
-            { status: 409 },
-          ),
-        });
-      }
       logger.debug("Local session was not found", error);
-      return false;
+      return undefined;
     }
+    const { session, others } = choice;
+    if (others.length === 0) return session.id;
+    // Capability-scoped stream, ingest, and UI requests never see sibling IDs.
+    const control = hasControlCapability(c.req.raw, controlToken);
+    if (access === "write") {
+      const sessions = [session, ...others];
+      throw new HTTPException(409, {
+        res: Response.json(
+          {
+            error: `Local session name "${reference}" is ambiguous; use its session ID.`,
+            code: AMBIGUOUS_SESSION_CODE,
+            reference,
+            ...(control && {
+              sessionIds: sessions.map(({ id }) => id),
+              sessions: sessions.map(({ id, state, createdAt }) => ({
+                id,
+                state,
+                createdAt,
+              })),
+            }),
+          },
+          { status: 409 },
+        ),
+      });
+    }
+    if (control)
+      c.header(
+        SESSION_CHOICE_HEADER,
+        JSON.stringify({
+          id: session.id,
+          others: others
+            .slice(0, SESSION_CHOICE_LIMIT)
+            .map(({ id, createdAt }) => ({ id, createdAt })),
+          ...(others.length > SESSION_CHOICE_LIMIT && {
+            more: others.length - SESSION_CHOICE_LIMIT,
+          }),
+        }),
+      );
+    return session.id;
   };
 
   app.use("*", async (c, next) => {
@@ -424,10 +463,11 @@ export function createLocalControlPlane({
   });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
-    const session = sessionStore.resolve(c.req.param("id"));
+    const session = sessionStore.resolve(id);
     const capabilities = sessionStore.getCapabilities(session.id);
     const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
     return c.json({
@@ -487,23 +527,23 @@ export function createLocalControlPlane({
   // Node SDK Spotlight transports send pathname only, so the ingest capability
   // must live in the path. Keep query-based ingestion for existing raw clients.
   const ingest = async (c: Context) => {
-    const reference = c.req.param("id") ?? "";
-    if (!sessionExists(reference)) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
-    const capabilities = sessionStore.getCapabilities(reference);
+    const capabilities = sessionStore.getCapabilities(id);
     if ((c.req.param("cap") ?? c.req.query("cap")) !== capabilities.ingest) {
       return c.body(null, 401);
     }
 
-    const isClosed = () => sessionStore.resolve(reference).state === "retained";
+    const isClosed = () => sessionStore.resolve(id).state === "retained";
     const closed = () =>
       c.json(
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
     if (isClosed()) return closed();
-    const buffer = sessionStore.getBuffer(reference);
+    const buffer = sessionStore.getBuffer(id);
     const browserBeacon =
       c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
       c.req.header("origin");
@@ -533,24 +573,24 @@ export function createLocalControlPlane({
     });
     if (outcome === 410) return closed();
     if (typeof outcome === "object" && outcome.status === 200)
-      sessionStore.recordActivity(reference);
+      sessionStore.recordActivity(id);
     return ingestResponse(c, outcome);
   };
   for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
-    const capabilities = sessionStore.getCapabilities(c.req.param("id"));
-    const buffer = sessionStore.getBuffer(c.req.param("id"));
+    const capabilities = sessionStore.getCapabilities(id);
+    const buffer = sessionStore.getBuffer(id);
     if (c.req.query("cap") !== capabilities.stream) {
       return c.body(null, 401);
     }
     return streamSSE(c, async (stream) => {
-      const reference = c.req.param("id");
-      const retention = sessionStore.getRetention(reference);
+      const retention = sessionStore.getRetention(id);
       // Serialize metadata and envelopes so a close notification is the final
       // message, after every envelope accepted before capture stopped.
       let pending = Promise.resolve();
@@ -593,7 +633,7 @@ export function createLocalControlPlane({
       const finished = new Promise<void>((resolve) => {
         finish = resolve;
       });
-      const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
+      const unsubscribeSession = sessionStore.subscribe(id, (event) => {
         if (event.state === "retained" && event.action !== "reset") {
           void drainReceiver(buffer)
             .then(async () => {
@@ -608,7 +648,7 @@ export function createLocalControlPlane({
       });
       stream.onAbort(finish);
       try {
-        const { state, expiresAt } = sessionStore.resolve(reference);
+        const { state, expiresAt } = sessionStore.resolve(id);
         if (state === "retained") {
           await drainReceiver(buffer);
           buffer.stream(readerId);
@@ -627,7 +667,7 @@ export function createLocalControlPlane({
     });
   });
 
-  const updateRetention = async (c: Context) => {
+  const updateRetention = async (c: Context, id: string) => {
     const input: unknown = await c.req.json().catch(() => undefined);
     const value =
       typeof input === "object" && input !== null && "maxEnvelopes" in input
@@ -635,67 +675,72 @@ export function createLocalControlPlane({
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      await sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
-      return c.json(
-        sessionStore.getRetention(c.req.param("id") ?? "").getSettings(),
-      );
+      await sessionStore.setMaxEnvelopes(id, value);
+      return c.json(sessionStore.getRetention(id).getSettings());
     } catch (error) {
       if (error instanceof RetentionLimitError)
         return c.json({ error: error.message }, error.status);
       throw error;
     }
   };
-  app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
-    sessionExists(c.req.param("id"))
-      ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
-      : c.body(null, 404),
-  );
+  app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) => {
+    const id = routeSessionId(c);
+    return id
+      ? c.json(sessionStore.getRetention(id).getSettings())
+      : c.body(null, 404);
+  });
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, async (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c, "write");
+    if (!id) {
       return c.body(null, 404);
     }
-    return await updateRetention(c);
+    return await updateRetention(c, id);
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c, "write");
+    if (!id) {
       return c.body(null, 404);
     }
-    sessionStore.reset(c.req.param("id"));
+    sessionStore.reset(id);
     return c.body(null, 204);
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/close`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c, "write");
+    if (!id) {
       return c.body(null, 404);
     }
-    return c.json(sessionStore.close(c.req.param("id")));
+    return c.json(sessionStore.close(id));
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ui/:action`, async (c) => {
-    if (!(isSessionUiAction(c.req.path) && sessionExists(c.req.param("id")))) {
+    if (!isSessionUiAction(c.req.path)) {
       return c.body(null, 404);
     }
-    if (
-      c.req.query("cap") !==
-      sessionStore.getCapabilities(c.req.param("id")).stream
-    ) {
+    const id = routeSessionId(c, "write");
+    if (!id) {
+      return c.body(null, 404);
+    }
+    if (c.req.query("cap") !== sessionStore.getCapabilities(id).stream) {
       return c.body(null, 401);
     }
-    if (c.req.param("action") === "retention") return await updateRetention(c);
+    if (c.req.param("action") === "retention")
+      return await updateRetention(c, id);
     if (c.req.param("action") === "reset") {
-      sessionStore.reset(c.req.param("id"));
+      sessionStore.reset(id);
       return c.body(null, 204);
     }
-    return c.json(sessionStore.close(c.req.param("id")));
+    return c.json(sessionStore.close(id));
   });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/envelopes`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
     const envelopes = sessionStore
-      .getBuffer(c.req.param("id"))
+      .getBuffer(id)
       .read({ all: true })
       .map((container) => {
         const parsed = container.getParsedEnvelope();
@@ -719,11 +764,12 @@ export function createLocalControlPlane({
   });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/events`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
     const events = sessionStore
-      .getBuffer(c.req.param("id"))
+      .getBuffer(id)
       .read({ all: true })
       .flatMap((container) => {
         const parsed = container.getParsedEnvelope();
@@ -737,12 +783,13 @@ export function createLocalControlPlane({
   });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/events/:eventId`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
     const reference = c.req.param("eventId");
     const events = sessionStore
-      .getBuffer(c.req.param("id"))
+      .getBuffer(id)
       .read({ all: true })
       .flatMap((container) => {
         const parsed = container.getParsedEnvelope();
@@ -777,11 +824,12 @@ export function createLocalControlPlane({
   });
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/envelopes/:envelopeId`, (c) => {
-    if (!sessionExists(c.req.param("id"))) {
+    const id = routeSessionId(c);
+    if (!id) {
       return c.body(null, 404);
     }
     const container = sessionStore
-      .getBuffer(c.req.param("id"))
+      .getBuffer(id)
       .read({ envelopeId: c.req.param("envelopeId") })[0];
     if (!container) {
       return c.body(null, 404);

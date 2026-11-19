@@ -16,6 +16,7 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { formatLocalControlResult } from "../../lib/formatters/local.js";
+import { formatRelativeTime } from "../../lib/formatters/time-utils.js";
 import {
   formatLocalEnvelopeList,
   formatLocalEventList,
@@ -44,7 +45,11 @@ import {
   OPTIONAL_MAX_ENVELOPES_FLAG,
 } from "./retention-buffer.js";
 import { LOOPBACK_HOSTS } from "./loopback.js";
-import { AMBIGUOUS_SESSION_CODE, type LocalSession } from "./session-store.js";
+import {
+  AMBIGUOUS_SESSION_CODE,
+  type LocalSession,
+  SESSION_CHOICE_HEADER,
+} from "./session-store.js";
 
 type DaemonFlags = {
   readonly foreground: boolean;
@@ -91,7 +96,7 @@ const DAEMON_CONNECTION_FLAGS = {
 const SESSION_REFERENCE_POSITIONAL = {
   kind: "array",
   parameter: {
-    brief: "Session ID or unique name",
+    brief: "Session ID or name",
     parse: parseLocalSession,
     placeholder: "session",
   },
@@ -115,6 +120,7 @@ async function controlJson(
 ): Promise<ControlResult> {
   const state = await ensureLocalDaemon(daemon);
   const response = await requestLocalDaemon(state, path, init);
+  noteSessionChoice(response.headers.get(SESSION_CHOICE_HEADER));
   if (response.status === 404 && notFound) {
     await response.body?.cancel();
     throw await notFound();
@@ -146,9 +152,108 @@ async function controlJson(
   return (await response.json()) as ControlResult;
 }
 
+type SessionChoice = {
+  id: string;
+  others: { id: string; createdAt: number }[];
+  more?: number;
+};
+
+/** A session's state and when it started, such as `open, started 4m ago`. */
+function describeSession(state: unknown, createdAt: number): string {
+  return `${state === "open" ? "open" : "closed"}, started ${formatRelativeTime(new Date(createdAt).toISOString())}`;
+}
+
+function isSessionChoice(value: unknown): value is SessionChoice {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    (!("more" in value) || Number.isInteger(value.more)) &&
+    "others" in value &&
+    Array.isArray(value.others) &&
+    value.others.every(
+      (other: unknown) =>
+        typeof other === "object" &&
+        other !== null &&
+        "id" in other &&
+        typeof other.id === "string" &&
+        "createdAt" in other &&
+        Number.isFinite(other.createdAt),
+    )
+  );
+}
+
+/** Sessions already named in a note, so one command says it once. */
+const notedSessionChoices = new Set<string>();
+
 /**
- * Turn the control plane's ambiguous-name 409 into a user-input error. Session
- * labels may repeat, so a shared label is not a CLI failure (CLI-4T6, CLI-4FP).
+ * Say which session a name shared by several open sessions resolved to, so a
+ * caller that meant another one can pass its ID.
+ */
+function noteSessionChoice(header: string | null): void {
+  if (!header) {
+    return;
+  }
+  let choice: unknown;
+  try {
+    choice = JSON.parse(header);
+  } catch (error) {
+    logger.debug("Could not read the Local session choice", error);
+    return;
+  }
+  if (
+    !isSessionChoice(choice) ||
+    choice.others.length === 0 ||
+    notedSessionChoices.has(choice.id)
+  ) {
+    return;
+  }
+  notedSessionChoices.add(choice.id);
+  const more = choice.more ?? 0;
+  const others = choice.others
+    .map(({ id, createdAt }) => `${id} (${describeSession("open", createdAt)})`)
+    .join(", ");
+  logger.warn(
+    `${choice.others.length + more + 1} open sessions share that name; using the newest, ${choice.id}. Pass a session ID to use another: ${others}${more > 0 ? ` and ${more} more` : ""}.`,
+  );
+}
+
+/** Most matching sessions or events that an ambiguity error lists. */
+const AMBIGUOUS_HINT_LIMIT = 10;
+
+/** Hints for the first {@link AMBIGUOUS_HINT_LIMIT} matches, then a count. */
+function ambiguityHints(hints: string[]): string[] {
+  return hints.length > AMBIGUOUS_HINT_LIMIT
+    ? [
+        ...hints.slice(0, AMBIGUOUS_HINT_LIMIT),
+        `+${hints.length - AMBIGUOUS_HINT_LIMIT} more`,
+      ]
+    : hints;
+}
+
+/** The `sessions` of an ambiguous-name 409 as hints with state and age. */
+function sessionHints(sessions: unknown[]): string[] {
+  return sessions.flatMap((session) =>
+    typeof session === "object" &&
+    session !== null &&
+    "id" in session &&
+    typeof session.id === "string" &&
+    "createdAt" in session &&
+    typeof session.createdAt === "number" &&
+    Number.isFinite(session.createdAt)
+      ? [
+          `Use session ID ${session.id} (${describeSession("state" in session ? session.state : undefined, session.createdAt)})`,
+        ]
+      : [],
+  );
+}
+
+/**
+ * Turn the control plane's ambiguous-name 409 into a user-input error. A
+ * current daemon returns it when a change such as close names a session that
+ * several open sessions share; an older daemon returns it for any lookup.
+ * Session labels may repeat, so this is not a CLI failure (CLI-4T6, CLI-4FP).
  */
 function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   if (
@@ -161,20 +266,21 @@ function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   ) {
     return;
   }
-  const sessionIds =
-    "sessionIds" in body && Array.isArray(body.sessionIds)
-      ? body.sessionIds.filter((id): id is string => typeof id === "string")
-      : [];
+  const hints =
+    "sessions" in body && Array.isArray(body.sessions)
+      ? sessionHints(body.sessions)
+      : "sessionIds" in body && Array.isArray(body.sessionIds)
+        ? body.sessionIds
+            .filter((id): id is string => typeof id === "string")
+            .map((id) => `Use session ID ${id}`)
+        : [];
   return new ResolutionError(
     `Local session name "${redactCredentialText(body.reference)}"`,
     "matches more than one session",
     sentry`local session list`,
-    sessionIds.map((id) => `Use session ID ${id}`),
+    ambiguityHints(hints),
   );
 }
-
-/** Most matching event IDs that an ambiguous `local event view` error lists. */
-const AMBIGUOUS_EVENT_HINT_LIMIT = 10;
 
 /**
  * Turn the control plane's 409 for an event ID prefix that matches several
@@ -199,12 +305,7 @@ function ambiguousEventError(body: unknown): ResolutionError | undefined {
   const eventIds = body.eventIds.filter(
     (id): id is string => typeof id === "string",
   );
-  const hints = eventIds
-    .slice(0, AMBIGUOUS_EVENT_HINT_LIMIT)
-    .map((id) => `Use event ID ${id}`);
-  if (eventIds.length > AMBIGUOUS_EVENT_HINT_LIMIT) {
-    hints.push(`+${eventIds.length - AMBIGUOUS_EVENT_HINT_LIMIT} more`);
-  }
+  const hints = ambiguityHints(eventIds.map((id) => `Use event ID ${id}`));
   return new ResolutionError(
     `Local event ID "${redactCredentialText(body.reference)}"`,
     `matches more than one event in session "${session}"`,

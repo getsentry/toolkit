@@ -40,7 +40,7 @@ List retained envelopes for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local envelope view <session envelope...>`
 
@@ -60,7 +60,7 @@ List decoded events for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local event view <session event...>`
 
@@ -139,7 +139,7 @@ View or change session envelope retention
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 **Flags:**
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
@@ -156,7 +156,7 @@ View a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session close <session...>`
 
@@ -166,7 +166,7 @@ Close a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session reset <session...>`
 
@@ -176,7 +176,7 @@ Clear a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local run <command...>`
 
@@ -192,7 +192,7 @@ Run a command with the local dev server enabled
 - `-p, --port <value> - Port for the local server (default: 8969)`
 - `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
-- `-V, --verify - Verify SDK sends events, then exit`
+- `-V, --verify - Wait for the app's first event (of the --filter types, if set), then exit`
 - `-t, --timeout <value> - Stop the child after N seconds and exit 124 (0 = no timeout; defaults to 30 s in --verify mode, which exits 64) - (default: "0")`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
 - `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`

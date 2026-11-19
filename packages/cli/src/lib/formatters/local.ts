@@ -1484,43 +1484,6 @@ export function formatItem(
 }
 
 /**
- * Housekeeping item types an SDK sends on its own, even when nothing else
- * reaches Sentry Local. Every other type counts as telemetry, so item types
- * that SDKs add later count without a change here.
- */
-const NOT_TELEMETRY_ITEM_TYPES = new Set([
-  "session",
-  "sessions",
-  "client_report",
-]);
-
-/**
- * Whether an envelope shows the app is set up: it holds an item the active
- * filters let through, or, with no filters, any item that is not
- * housekeeping. An event that is not JSON never counts, even though the tail
- * shows it under `-f error`.
- */
-export function envelopeHasTelemetry(
-  container: {
-    getParsedEnvelope: () => {
-      envelope: [Record<string, unknown>, [{ type?: string }, unknown][]];
-    } | null;
-  },
-  activeFilters: ReadonlySet<FilterValue>,
-): boolean {
-  const items = container.getParsedEnvelope()?.envelope[1] ?? [];
-  return items.some(([{ type }, payload]) => {
-    const item = payload as Record<string, unknown>;
-    if (ERROR_TYPES.has(type ?? "") && isUndecodedEvent(item)) {
-      return false;
-    }
-    return activeFilters.size > 0
-      ? isItemIncluded(type, activeFilters, item)
-      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type);
-  });
-}
-
-/**
  * Check whether an item should be shown given active filters.
  *
  * When `payload` is provided and the `ai` filter is active, transactions
@@ -1573,6 +1536,43 @@ function transactionHasAiActivity(payload: Record<string, unknown>): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Housekeeping item types an SDK sends on its own, even when nothing else
+ * reaches Sentry Local. Every other type counts as telemetry, so item types
+ * that SDKs add later count without a change here.
+ */
+const NOT_TELEMETRY_ITEM_TYPES = new Set([
+  "session",
+  "sessions",
+  "client_report",
+]);
+
+/**
+ * Whether an envelope shows the app is set up: it holds an item the active
+ * filters let through, or, with no filters, any item that is not
+ * housekeeping. An event that is not JSON never counts, even though the tail
+ * shows it under `-f error`.
+ */
+export function envelopeHasTelemetry(
+  container: {
+    getParsedEnvelope: () => {
+      envelope: [Record<string, unknown>, [{ type?: string }, unknown][]];
+    } | null;
+  },
+  activeFilters: ReadonlySet<FilterValue>,
+): boolean {
+  const items = container.getParsedEnvelope()?.envelope[1] ?? [];
+  return items.some(([{ type }, payload]) => {
+    const item = payload as Record<string, unknown>;
+    if (ERROR_TYPES.has(type ?? "") && isUndecodedEvent(item)) {
+      return false;
+    }
+    return activeFilters.size > 0
+      ? isItemIncluded(type, activeFilters, item)
+      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type);
+  });
 }
 
 /**
