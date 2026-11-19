@@ -863,7 +863,7 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     path: "/api/0/projects/:org/:project/trace-items/:itemId/",
     fetch: ({ params }) =>
       HttpResponse.json({
-        itemId: params.itemId,
+        itemId: params["itemId"],
         timestamp: "2025-04-22T16:51:03.608875Z",
         attributes: [],
         meta: {},
