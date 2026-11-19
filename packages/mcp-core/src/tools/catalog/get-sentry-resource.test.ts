@@ -1217,6 +1217,7 @@ describe("event package selection", () => {
               "performance": null,
               "platform": "python",
               "request": null,
+              "stacktrace": null,
               "tags": [
                 {
                   "key": "level",
