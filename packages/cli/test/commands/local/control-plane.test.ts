@@ -231,6 +231,42 @@ describe("Local control plane", () => {
     );
   });
 
+  test("session ingest answers like Relay on every ingest path", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "phoenix", cwd: "/phoenix" }),
+    });
+    const { ingestUrl } = await created.json();
+    const id = "0b6e5f9cb8d44f4e9a6f3e1c2d7a8b90";
+    const envelope = `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"boom"}`;
+    for (const url of [
+      ingestUrl,
+      `${ingestUrl}/stream`,
+      `${ingestUrl}/api/0/envelope/`,
+      `${ingestUrl}/api/0/envelope`,
+    ]) {
+      const response = await plane.app.request(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body: envelope,
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ id });
+    }
+    const gzipped = await plane.app.request(ingestUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-sentry-envelope",
+        "Content-Encoding": "gzip",
+      },
+      body: gzipSync('{}\n{"type":"log"}\n{"items":[]}'),
+    });
+    expect(gzipped.status).toBe(200);
+    expect(await gzipped.json()).toEqual({});
+  });
+
   test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
     let now = 1000;
     const sessionStore = createLocalSessionStore({ now: () => now });
@@ -268,7 +304,7 @@ describe("Local control plane", () => {
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body: '{}\n{"type":"event"}\n{"event_id":"fresh","message":"fresh capture"}',
     });
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     expect(
       sessionStore.getBuffer(replacement.id).read({ all: true }),
     ).toHaveLength(1);
@@ -649,7 +685,7 @@ describe("Local control plane", () => {
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body: envelope,
     });
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     expect(
       controlPlane.sessionStore.getBuffer(session.id).read({ all: true }),
     ).toHaveLength(1);
@@ -682,7 +718,7 @@ describe("Local control plane", () => {
     // `<dsn path>/api/<project>/envelope/` from a DSN.
     for (const suffix of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
       expect((await post(`${ingest}/${caps.ingest}${suffix}`)).status).toBe(
-        204,
+        200,
       );
       expect((await post(`${ingest}/wrong${suffix}`)).status).toBe(401);
       expect((await post(`${ingest}/${caps.stream}${suffix}`)).status).toBe(
@@ -743,7 +779,7 @@ describe("Local control plane", () => {
           body,
         },
       );
-      expect(posted.status).toBe(204);
+      expect(posted.status).toBe(200);
     }
 
     const stored = plane.sessionStore
@@ -941,7 +977,7 @@ describe("Local control plane", () => {
             .join("\n"),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
     }
 
     const listed = await plane.app.request(
@@ -979,7 +1015,7 @@ describe("Local control plane", () => {
           body: lines.map((line) => JSON.stringify(line)).join("\n"),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
     };
     const before = Date.now();
 
@@ -1191,7 +1227,7 @@ describe("Local control plane", () => {
             .join("\n"),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const listed = await plane.app.request(
         `/_local/v1/sessions/${session.id}/events`,
         { headers: controlHeaders() },
@@ -1367,7 +1403,7 @@ describe("Local daemon receiver compatibility", () => {
           ),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const events = await plane.app.request(
         `/_local/v1/sessions/${session.id}/events/compressed`,
         { headers: controlHeaders() },
@@ -1395,7 +1431,7 @@ describe("Local daemon receiver compatibility", () => {
         body: '{"event_id":"browser"}\n{"type":"event"}\n{"message":"browser SDK"}',
       },
     );
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     const response = await plane.app.request(
       `/_local/v1/sessions/${session.id}/events/browser`,
       { headers: controlHeaders() },

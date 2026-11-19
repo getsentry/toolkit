@@ -1159,11 +1159,14 @@ setInterval(() => {}, 1000);
   });
 
   test("warns when the existing server's stream cannot be attached", async () => {
-    // `/health` answers but `/stream` does not — e.g. an unrelated service
-    // squatting on the port. Attaching fails, and since `run` keeps the child
-    // alive the user would otherwise get no hint that events are missing.
+    // `/health` answers like a receiver but `/stream` does not. Attaching
+    // fails, and since `run` keeps the child alive the user would otherwise
+    // get no hint that events are missing.
     const brokenApp = new Hono();
-    brokenApp.get("/health", (c) => c.text("OK"));
+    brokenApp.get("/health", (c) => {
+      c.header("X-Powered-By", serverModule.SERVER_IDENTIFIER);
+      return c.text("OK");
+    });
     const { server, port } = await tryListen(brokenApp, 0, "127.0.0.1");
 
     const savedFetch = globalThis.fetch;
@@ -1470,6 +1473,89 @@ describe("sentry local run messages", () => {
       daemonPort.mockRestore();
     }
   }, 30_000);
+
+  test("plain run captures on a free port while another process holds the default port", async () => {
+    // Something that isn't a receiver, such as `python -m http.server 8969`,
+    // answers /health without the receiver header.
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) throw new Error("Expected the native fetch");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        return url.port === String(DEFAULT_PORT)
+          ? new Response("Not Found", { status: 404 })
+          : await realFetch(input, init);
+      }),
+    );
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--",
+          process.execPath,
+          "-e",
+          "",
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(Number(receiver.port)).toBeGreaterThan(0);
+      expect(info).toHaveBeenCalledWith(
+        `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`,
+      );
+      expect(info).not.toHaveBeenCalledWith(
+        expect.stringContaining("Connected to existing server"),
+      );
+    } finally {
+      info.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  }, 30_000);
+
+  test("plain run fails when another process holds an explicit --port", async () => {
+    const holder = await holdPort(0, "127.0.0.1");
+    const address = holder?.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    spawnCapture.env = undefined;
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: address.port, host: "127.0.0.1", verify: false, timeout: 0 },
+          "true",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${address.port} is already in use by another process`,
+        ),
+      });
+      expect(spawnCapture.env).toBeUndefined();
+    } finally {
+      globalThis.fetch = savedFetch;
+      await closeServer(holder);
+    }
+  });
 
   test("plain run still fails when the daemon holds an explicit --port", async () => {
     const daemonPort = makeDaemonHoldPort(45_678);

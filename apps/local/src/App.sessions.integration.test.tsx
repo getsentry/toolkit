@@ -78,7 +78,7 @@ async function startDaemon(now = Date.now, preferredPort = 0) {
           body: `${JSON.stringify({ event_id: crypto.randomUUID() })}\n{"type":"transaction"}\n${JSON.stringify({ transaction })}\n`,
         })
       ).status,
-    ).toBe(204);
+    ).toBe(200);
   };
   return {
     port,

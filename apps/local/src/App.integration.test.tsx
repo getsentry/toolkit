@@ -100,7 +100,7 @@ async function sendEnvelope(
     headers: { "Content-Type": SENTRY_CONTENT_TYPE },
     body: envelope(transaction, options),
   });
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 async function sendLog(
@@ -124,7 +124,7 @@ async function sendLog(
       "",
     ].join("\n"),
   });
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 function renderViewer(port: number, path = "/") {
@@ -493,7 +493,7 @@ describe("local receiver to viewer integration", () => {
           "\n",
         ),
       });
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const row = await screen.findByRole("button", {
         name: /^View event:/,
       });
@@ -845,7 +845,7 @@ describe("local receiver to viewer integration", () => {
         headers: { "Content-Type": SENTRY_CONTENT_TYPE },
         body: `{}\n${JSON.stringify(header)}\n${content}\n`,
       });
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const wire = JSON.parse(await received) as [
         unknown,
         [[unknown, { data: string }]],

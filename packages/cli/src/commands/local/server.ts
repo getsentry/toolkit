@@ -18,9 +18,10 @@ import { isLoopbackHost } from "./loopback.js";
  * Start a local development server that captures Sentry SDK envelopes,
  * or attach to one already running on the same port.
  *
- * On startup the command probes `http://<host>:<port>/health`. If a server
- * is already listening, the command attaches as an SSE consumer and tails
- * events from it. Otherwise it starts its own Hono HTTP server.
+ * On startup the command probes `http://<host>:<port>/health`. If a Local or
+ * Spotlight receiver is already listening, the command attaches as an SSE
+ * consumer and tails events from it. Any other server there is an error.
+ * Otherwise it starts its own Hono HTTP server.
  *
  * The command runs until interrupted (Ctrl-C / SIGTERM).
  */
@@ -31,6 +32,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
 import {
   ingestReceiverEnvelope,
+  ingestResponse,
   MAX_DECODED_BYTES,
   onOversizedEnvelope,
   readReceiverBody,
@@ -516,7 +518,7 @@ export function buildApp(
     const contentEncoding = c.req.header("content-encoding");
     const userAgent = c.req.header("user-agent");
 
-    const status = await ingestReceiverEnvelope(buffer, {
+    const result = await ingestReceiverEnvelope(buffer, {
       body,
       encoding: contentEncoding,
       contentType,
@@ -524,9 +526,8 @@ export function buildApp(
       userAgent,
     });
 
-    reportIngestStatus(buffer, status);
-    if (status === 503) c.header("Retry-After", "1");
-    return c.body(null, status);
+    reportIngestStatus(buffer, result);
+    return ingestResponse(c, result);
   };
 
   app.post("/stream", ingest);
@@ -697,13 +698,15 @@ export function tryListen(
 
 /**
  * Ask `${url}/health` who holds the port: `none` for a transport failure
- * (connection refused, timeout), `daemon` for a Sentry Local daemon, and
- * `other` for any other HTTP reply, including an error status.
+ * (connection refused, timeout), `daemon` for a Sentry Local daemon,
+ * `receiver` for a Local or Spotlight receiver, which sends the
+ * {@link SERVER_IDENTIFIER} header even on an error status, and `foreign` for
+ * any other HTTP server.
  */
 export async function probeLocalHealth(
   url: string,
   timeoutMs: number,
-): Promise<"none" | "daemon" | "other"> {
+): Promise<"none" | "daemon" | "receiver" | "foreign"> {
   let res: Response;
   try {
     res = await fetch(`${url}/health`, {
@@ -718,27 +721,30 @@ export async function probeLocalHealth(
   }
   await res.body?.cancel();
   if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
+  if (res.headers.get("X-Powered-By") !== SERVER_IDENTIFIER) {
+    logger.debug(
+      `Server at ${url} answered /health with HTTP ${res.status} and is not a receiver`,
+    );
+    return "foreign";
+  }
   if (!res.ok) {
     logger.debug(
-      `Server at ${url} answered /health with HTTP ${res.status}; treating the port as occupied`,
+      `Receiver at ${url} answered /health with HTTP ${res.status}; attaching anyway`,
     );
   }
-  return "other";
+  return "receiver";
 }
 
 /**
- * Check whether something is already serving on the given URL.
+ * Check whether a receiver to attach to is already serving on the given URL.
  *
- * Any HTTP reply — including an error status — means the port is taken, so
- * this deliberately does not require a 2xx. Spotlight's own sidecar can
- * answer `/health` with a 5xx while still holding the port and ingesting
- * envelopes; treating that as "nothing there" made the CLI try to bind the
- * port anyway and abort with `Port 8969 is already in use`, killing
- * the user's dev command instead of attaching to the sidecar.
+ * A receiver is recognized by its {@link SERVER_IDENTIFIER} header, not by a
+ * 2xx: Spotlight's own sidecar can answer `/health` with a 5xx while still
+ * holding the port and ingesting envelopes, and attaching to it is right.
  *
  * Only a transport-level failure (connection refused, timeout) counts as
- * "no server". If the responder turns out not to speak the envelope
- * protocol, {@link consumeSSE} reports that when the stream fails to open.
+ * "no server". Any other HTTP server, such as `python -m http.server`, throws
+ * a port-in-use error: attaching to it would lose every event.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
   const holder = await probeLocalHealth(url, 2000);
@@ -748,7 +754,10 @@ export async function isServerRunning(url: string): Promise<boolean> {
       PORT_HELD_BY_DAEMON_FIELD,
     );
   }
-  return holder === "other";
+  if (holder === "foreign") {
+    throw portInUseError(Number(new URL(url).port || 80));
+  }
+  return holder === "receiver";
 }
 
 /** Apply only an explicitly requested limit when attaching to an existing receiver. */

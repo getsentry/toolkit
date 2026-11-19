@@ -89,7 +89,7 @@ async function ingestEvent(
       body: `${JSON.stringify({ event_id: eventId })}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, level: "error", message })}`,
     },
   );
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 /** Send one replay segment envelope; its event ID is `<replayId>:<segmentId>`. */
@@ -117,7 +117,7 @@ async function ingestReplaySegment(
         .join("\n"),
     },
   );
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 /** Run `local session view` and return what it throws. */

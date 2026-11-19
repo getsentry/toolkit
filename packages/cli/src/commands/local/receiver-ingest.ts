@@ -1,8 +1,10 @@
 /** Bounded HTTP decoding and raw delivery identity for the Local receiver. */
 import { brotliDecompress, gunzip, inflate } from "node:zlib";
+import type { Context } from "hono";
 import { logger } from "../../lib/logger.js";
 import {
   createReceiverEnvelope,
+  envelopeEventId,
   type ReceiverBuffer,
   withoutDsnHeader,
   withoutOwnDeliveries,
@@ -25,6 +27,11 @@ type ReceiverState = {
   /** Requests still reading their body or reporting their status. */
   requests: Set<Promise<unknown>>;
 };
+/**
+ * Relay's body for an accepted envelope. SDKs such as sentry-elixir accept a
+ * delivery only on HTTP 200 with this JSON, and retry anything else.
+ */
+type ReceiverAccepted = { id?: string };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
 const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
 
@@ -45,10 +52,20 @@ export function onOversizedEnvelope(
 /** Tell this receiver's listeners when a delivery got HTTP 413. */
 export function reportIngestStatus(
   buffer: ReceiverBuffer,
-  status: number,
+  result: number | ReceiverAccepted,
 ): void {
-  if (status !== 413) return;
+  if (result !== 413) return;
   for (const listener of oversizedListeners.get(buffer) ?? []) listener();
+}
+
+/** Answer an ingest request: 200 with the accepted JSON, otherwise the bare status. */
+export function ingestResponse(
+  c: Context,
+  result: ReceiverAccepted | 400 | 410 | 413 | 415 | 503,
+): Response {
+  if (typeof result === "object") return c.json(result);
+  if (result === 503) c.header("Retry-After", "1");
+  return c.body(null, result);
 }
 
 /** Stop consuming chunked input as soon as its encoded body exceeds the limit. */
@@ -158,7 +175,7 @@ export function ingestReceiverEnvelope(
      */
     closed?: boolean;
   },
-): Promise<204 | 400 | 410 | 413 | 415 | 503> {
+): Promise<ReceiverAccepted | 400 | 410 | 413 | 415 | 503> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
   if (
     contentType &&
@@ -173,7 +190,7 @@ export function ingestReceiverEnvelope(
   if (state.pending.size >= MAX_PENDING) return Promise.resolve(503);
   const generation = state.generation;
   const operation = state.queue.then(
-    async (): Promise<204 | 400 | 410 | 413 | 503> => {
+    async (): Promise<ReceiverAccepted | 400 | 410 | 413 | 503> => {
       if (generation !== state.generation) return 503;
       let body = input.body;
       if (encoding && encoding !== "identity") {
@@ -200,12 +217,14 @@ export function ingestReceiverEnvelope(
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
       if (input.closed) return 410;
+      const eventId = envelopeEventId(body);
+      const accepted = eventId ? { id: eventId } : {};
       if (input.dropDsnHeader) body = withoutDsnHeader(body);
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)
         : body;
       // Envelopes with only Local's own delivery telemetry use no retention.
-      if (!delivery) return 204;
+      if (!delivery) return accepted;
       buffer.put(
         createReceiverEnvelope({
           body: delivery,
@@ -213,7 +232,7 @@ export function ingestReceiverEnvelope(
           userAgent: input.userAgent,
         }),
       );
-      return 204;
+      return accepted;
     },
   );
   state.pending.add(operation);
