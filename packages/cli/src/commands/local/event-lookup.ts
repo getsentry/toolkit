@@ -15,8 +15,12 @@ const HEX_REFERENCE = /^[0-9a-f]+(?::\d+)?$/i;
 /** What follows the replay ID in a replay segment's lookup key. */
 const SEGMENT_SUFFIX = /^:(\d+)$/;
 
-/** A hex reference and the stored IDs it is checked against compare without case. */
-function foldHexCase(value: string): string {
+/**
+ * The case-free form IDs compare by: a hex reference and the stored IDs it is
+ * checked against, and every stored ID when picking prefixes, since a
+ * hex-looking prefix of a non-hex ID is also looked up without case.
+ */
+function foldCase(value: string): string {
   return value.toLowerCase();
 }
 
@@ -36,7 +40,7 @@ export function matchEventIds(
     return [reference];
   }
   const key = HEX_REFERENCE.test(reference)
-    ? foldHexCase
+    ? foldCase
     : (value: string) => value;
   const wanted = key(reference);
   const exact = eventIds.filter((id) => key(id) === wanted);
@@ -77,6 +81,7 @@ function firstReplaySegment(
   return first?.id;
 }
 
+/** Compares UTF-16 code units, like the default `.sort()`; not `localeCompare`, which orders by locale. */
 function compare(left: string, right: string): number {
   if (left === right) {
     return 0;
@@ -114,7 +119,7 @@ export function uniqueEventIdPrefixes(
   eventIds: readonly string[],
 ): Map<string, string> {
   const sorted = [...new Set(eventIds)]
-    .map((id) => ({ id, key: foldHexCase(id) }))
+    .map((id) => ({ id, key: foldCase(id) }))
     .sort((left, right) => compare(left.key, right.key));
   return new Map(
     sorted.map(({ id, key }, index) => {

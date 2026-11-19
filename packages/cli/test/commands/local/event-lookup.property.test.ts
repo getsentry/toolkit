@@ -48,13 +48,40 @@ function swapCase(id: string): string {
   );
 }
 
-/** Stored IDs of every kind, some also stored again in the other case. */
-const storedIdsArb = array(
-  tuple(oneof(mixedCaseHexIdArb, replayKeyArb, nonHexIdArb), boolean()),
-  { maxLength: 30 },
-).map((entries) =>
-  entries.flatMap(([id, twin]) => (twin ? [id, swapCase(id)] : [id])),
+/**
+ * IDs that share one base of 8+ characters in random case and end in short
+ * tails that differ, like `AAAAAAAA1…` and `aaaaaaaa2…`.
+ */
+const nearTwinIdsArb = tuple(
+  string({
+    unit: constantFrom("0", "a", "A", "f", "F"),
+    minLength: EVENT_ID_PREFIX_MIN_LENGTH,
+    maxLength: 12,
+  }),
+  array(
+    tuple(
+      boolean(),
+      oneof(
+        string({ unit: constantFrom("1", "2", "f", "F"), maxLength: 3 }),
+        nat({ max: 3 }).map((segment) => `:${segment}`),
+      ),
+    ),
+    { minLength: 2, maxLength: 4 },
+  ),
+).map(([base, tails]) =>
+  tails.map(([flip, tail]) => `${flip ? swapCase(base) : base}${tail}`),
 );
+
+/** Stored IDs of every kind, some also stored again in the other case. */
+const storedIdsArb = tuple(
+  array(tuple(oneof(mixedCaseHexIdArb, replayKeyArb, nonHexIdArb), boolean()), {
+    maxLength: 30,
+  }),
+  nearTwinIdsArb,
+).map(([entries, nearTwins]) => [
+  ...entries.flatMap(([id, twin]) => (twin ? [id, swapCase(id)] : [id])),
+  ...nearTwins,
+]);
 
 describe("property: Local event ID prefixes", () => {
   test("the prefix shown for each event opens that event and no other", () => {
