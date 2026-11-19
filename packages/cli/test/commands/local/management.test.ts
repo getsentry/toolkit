@@ -91,6 +91,34 @@ async function ingestEvent(
   expect(response.status).toBe(204);
 }
 
+/** Send one replay segment envelope; its event ID is `<replayId>:<segmentId>`. */
+async function ingestReplaySegment(
+  sessionId: string,
+  replayId: string,
+  segmentId: number,
+): Promise<void> {
+  const { ingest } = plane.sessionStore.getCapabilities(sessionId);
+  const response = await plane.app.request(
+    `${CONTROL_PLANE_PREFIX}/sessions/${sessionId}/ingest/${ingest}`,
+    {
+      method: "POST",
+      body: [
+        { event_id: replayId },
+        { type: "replay_event" },
+        {
+          type: "replay_event",
+          replay_id: replayId,
+          event_id: replayId,
+          segment_id: segmentId,
+        },
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n"),
+    },
+  );
+  expect(response.status).toBe(204);
+}
+
 /** Run `local session view` and return what it throws. */
 function viewError(reference: string): Promise<unknown> {
   return commandError(sessionRoute, "view", reference);
@@ -323,27 +351,8 @@ describe("local event view with an event ID prefix", () => {
       cwd: "/work/prefix",
     });
     const replayId = "cccccccc4444444444444444444444c4";
-    const { ingest } = plane.sessionStore.getCapabilities(session.id);
     for (const segmentId of [0, 1]) {
-      const response = await plane.app.request(
-        `${CONTROL_PLANE_PREFIX}/sessions/${session.id}/ingest/${ingest}`,
-        {
-          method: "POST",
-          body: [
-            { event_id: replayId },
-            { type: "replay_event" },
-            {
-              type: "replay_event",
-              replay_id: replayId,
-              event_id: replayId,
-              segment_id: segmentId,
-            },
-          ]
-            .map((line) => JSON.stringify(line))
-            .join("\n"),
-        },
-      );
-      expect(response.status).toBe(204);
+      await ingestReplaySegment(session.id, replayId, segmentId);
     }
 
     const listed = await runCommand(eventRoute, "list", false, "prefix-replay");
@@ -375,6 +384,77 @@ describe("local event view with an event ID prefix", () => {
     expect((error as ResolutionError).message).toContain(
       `Use event ID ${replayId}:1`,
     );
+  });
+
+  test("opens the first segment for a bare replay ID", async () => {
+    const session = plane.sessionStore.create({
+      label: "bare-replay",
+      cwd: "/work/prefix",
+    });
+    const replayId = "eeeeeeee5555555555555555555555e5";
+    for (const segmentId of [1, 0]) {
+      await ingestReplaySegment(session.id, replayId, segmentId);
+    }
+
+    const viewed = await runCommand(
+      eventRoute,
+      "view",
+      true,
+      "bare-replay",
+      replayId,
+    );
+    expect(viewed.error).toBeUndefined();
+    expect(JSON.parse(viewed.stdout)).toMatchObject({
+      eventId: `${replayId}:0`,
+    });
+  });
+
+  test("matches an event ID or prefix typed in upper case", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-case",
+      cwd: "/work/prefix",
+    });
+    await ingestEvent(session.id, third, "third event");
+
+    for (const reference of [
+      third.toUpperCase(),
+      third.slice(0, 8).toUpperCase(),
+    ]) {
+      const viewed = await runCommand(
+        eventRoute,
+        "view",
+        true,
+        "prefix-case",
+        reference,
+      );
+      expect(viewed.error).toBeUndefined();
+      expect(JSON.parse(viewed.stdout)).toMatchObject({ eventId: third });
+    }
+  });
+
+  test("lists at most 10 matches for an ambiguous prefix", async () => {
+    const session = plane.sessionStore.create({
+      label: "prefix-capped",
+      cwd: "/work/prefix",
+    });
+    for (let index = 0; index < 12; index += 1) {
+      await ingestEvent(
+        session.id,
+        `dddddddd${index.toString(16).padStart(24, "0")}`,
+        `event ${index}`,
+      );
+    }
+
+    const error = await commandError(
+      eventRoute,
+      "view",
+      "prefix-capped",
+      "dddddddd",
+    );
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message.match(/Use event ID /g)).toHaveLength(10);
+    expect(message).toContain("+2 more");
   });
 
   test("says a prefix needs 8 characters when a shorter one matches nothing", async () => {
