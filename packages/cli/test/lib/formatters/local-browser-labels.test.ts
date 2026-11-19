@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  createReplayTracker,
   formatEnvelopeLines,
   formatErrorItem,
   formatItem,
@@ -154,6 +155,78 @@ describe("Next.js browser spans and logs", () => {
     expect(jsonSource("log", payload)).toBe("browser");
   });
 
+  describe("server-only SDKs ignore browser hints", () => {
+    const nodeHeader = {
+      sdk: { name: "sentry.javascript.node", version: "11.14.0" },
+    };
+    const lines = (
+      header: Record<string, unknown>,
+      itemType: string,
+      payload: Record<string, unknown>,
+    ) =>
+      formatItem(itemType, payload, header, itemType).map((line) =>
+        stripAnsi(line),
+      );
+
+    test("a Node log with a user agent stays [SERVER]", () => {
+      const payload = {
+        items: [
+          {
+            level: "info",
+            body: "request handled",
+            attributes: attributes({ "user_agent.original": USER_AGENT }),
+          },
+        ],
+      };
+      expect(lines(nodeHeader, "log", payload)[0]).toContain("[SERVER]");
+    });
+
+    test("a Node span with a custom navigation op stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "route change",
+        attributes: attributes({ "sentry.op": "navigation" }),
+      };
+      expect(lines(nodeHeader, "span", { items: [span] })[0]).toContain(
+        "[SERVER]",
+      );
+    });
+
+    test("late Node spans with a navigation op stay [SERVER]", () => {
+      const late = (span_id: string) => ({
+        ...serverRequestSpan,
+        span_id,
+        parent_span_id: "a000000000000001",
+        is_segment: false,
+        attributes: attributes({
+          "sentry.op": "navigation",
+          "sentry.segment.id": "a000000000000001",
+          "sentry.segment.name": "GET /orders",
+        }),
+      });
+      const payload = {
+        items: [late("c000000000000001"), late("c000000000000002")],
+      };
+      expect(lines(nodeHeader, "span", payload)[0]).toContain(
+        "[SERVER]  GET /orders [+2 spans]",
+      );
+    });
+
+    test("a Next.js server function span with a user agent stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "generateMetadata",
+        attributes: attributes({
+          "sentry.op": "function.nextjs",
+          "sentry.origin": "auto.function.nextjs",
+          "user_agent.original": USER_AGENT,
+        }),
+      };
+      expect(tail("span", { items: [span] })[0]).toContain("[SERVER]");
+      expect(jsonSource("span", { items: [span] })).toBe("server");
+    });
+  });
+
   test("a server log stays [SERVER]", () => {
     const payload = {
       items: [
@@ -290,6 +363,8 @@ describe("session replays", () => {
     const lines = formatEnvelopeLines(
       replayEnvelope(0, ["http://localhost:3000/client"]),
       new Set(),
+      false,
+      createReplayTracker(),
     ).map((line) => stripAnsi(line));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("[REPLAY]");
@@ -297,7 +372,33 @@ describe("session replays", () => {
     expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/client");
   });
 
-  test("later segments print nothing", () => {
-    expect(formatEnvelopeLines(replayEnvelope(1, []), new Set())).toEqual([]);
+  test("later segments of a replay already shown print nothing", () => {
+    const replays = createReplayTracker();
+    formatEnvelopeLines(replayEnvelope(0, []), new Set(), false, replays);
+    expect(
+      formatEnvelopeLines(replayEnvelope(1, []), new Set(), false, replays),
+    ).toEqual([]);
+  });
+
+  test("a tail that starts mid-replay prints the first segment it sees", () => {
+    const replays = createReplayTracker();
+    const envelope = replayEnvelope(7, ["http://localhost:3000/cart"]);
+    const lines = formatEnvelopeLines(envelope, new Set(), false, replays).map(
+      (line) => stripAnsi(line),
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/cart");
+    expect(formatEnvelopeLines(envelope, new Set(), false, replays)).toEqual(
+      [],
+    );
+  });
+
+  test("each tail tracks its own replays", () => {
+    const envelope = replayEnvelope(3, []);
+    for (const replays of [createReplayTracker(), createReplayTracker()]) {
+      expect(
+        formatEnvelopeLines(envelope, new Set(), false, replays),
+      ).toHaveLength(1);
+    }
   });
 });

@@ -1,6 +1,10 @@
 /** Tail formatters for the local dev server. */
 
 import { describeEvent } from "../../commands/local/event-kind.js";
+import {
+  groupSpansBySegment,
+  type SpanSegment,
+} from "../../commands/local/span-segments.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -172,17 +176,11 @@ export function formatType(level: string): string {
 const MOBILE_MARKERS = ["cocoa", "android", "react-native", "flutter"];
 
 /**
- * JavaScript SDK name substrings treated as server-side when the item itself
- * doesn't say where it ran (logs, spans, sessions). Meta-framework SDKs send
- * the same name from the browser and the server, so their events are told
- * apart by platform and runtime instead (see {@link inferSourceName}).
- * Envelope headers carry only the SDK name and version, not `sdk.packages`,
- * so server-only SDKs have to be listed here by name.
+ * JavaScript SDK name substrings for meta-frameworks that send the same SDK
+ * name from the browser and the server. Their spans and logs are placed by
+ * browser-only attributes (see {@link hasBrowserAttributes}).
  */
-const SERVER_JS_MARKERS = [
-  "node",
-  "bun",
-  "deno",
+const BOTH_SIDES_JS_MARKERS = [
   "nextjs",
   "remix",
   "astro",
@@ -191,6 +189,18 @@ const SERVER_JS_MARKERS = [
   "solidstart",
   "react-router",
   "tanstackstart",
+];
+
+/**
+ * JavaScript SDK name substrings that only run on the server. Envelope
+ * headers carry only the SDK name and version, not `sdk.packages`, so they
+ * have to be listed here by name. Other `sentry.javascript.*` SDKs run in the
+ * browser.
+ */
+const SERVER_JS_MARKERS = [
+  "node",
+  "bun",
+  "deno",
   "cloudflare",
   "hono",
   "vercel-edge",
@@ -218,8 +228,8 @@ const BROWSER_OP_RE = /^(?:pageload|navigation|(?:ui|resource|browser)\..+)$/;
  * Whether span or log attributes show the browser SDK made them: a browser
  * op, a `browser.*` attribute (web vitals), a browser instrumentation origin
  * such as `auto.http.browser`, or a session replay ID, which only the browser
- * records. The browser SDK also sets `user_agent.original` on every span, but
- * server SDKs set it on HTTP spans too, so it only counts on other spans.
+ * records. `user_agent.original` doesn't count: the browser SDK sets it on
+ * every span, but server SDKs set it from the request too.
  */
 function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
   const op = typeof attrs["sentry.op"] === "string" ? attrs["sentry.op"] : "";
@@ -228,7 +238,6 @@ function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
     BROWSER_OP_RE.test(op) ||
     (typeof origin === "string" && origin.split(".").includes("browser")) ||
     attrs["sentry.replay_id"] !== undefined ||
-    (attrs["user_agent.original"] !== undefined && !op.startsWith("http.")) ||
     Object.keys(attrs).some((key) => key.startsWith("browser."))
   );
 }
@@ -239,10 +248,10 @@ function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
  * Event payloads say it directly: server SDKs set a `runtime` context (Node,
  * Cloudflare Workers, Vercel Edge, Bun, Deno) or a non-JavaScript platform,
  * and browser events have `platform: "javascript"` with no runtime. Spans and
- * logs have neither, so their `attributes` are checked for browser-only
- * signs (see {@link hasBrowserAttributes}). This is the only way to split
- * meta-framework SDKs such as Next.js, which use one SDK name on both sides.
- * Items without those fall back to the SDK name in the envelope header.
+ * logs have neither, so they go by SDK name. Only when that name doesn't
+ * settle it (a meta-framework such as Next.js, which uses one name on both
+ * sides, or no name) are their `attributes` checked for browser-only signs
+ * (see {@link hasBrowserAttributes}).
  */
 function inferSourceName(
   header: Record<string, unknown>,
@@ -254,15 +263,19 @@ function inferSourceName(
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
     return "mobile";
   }
-  if (attributes.some(hasBrowserAttributes)) {
-    return "browser";
-  }
   const contexts = payload?.["contexts"] as Record<string, unknown> | undefined;
   if (contexts?.["runtime"]) {
     return "server";
   }
   if (typeof payload?.["platform"] === "string") {
     return payload["platform"] === "javascript" ? "browser" : "server";
+  }
+  const bothSides =
+    !name ||
+    (name.startsWith("sentry.javascript.") &&
+      BOTH_SIDES_JS_MARKERS.some((m) => name.includes(m)));
+  if (bothSides) {
+    return attributes.some(hasBrowserAttributes) ? "browser" : "server";
   }
   if (
     name.startsWith("sentry.javascript.") &&
@@ -910,105 +923,13 @@ export function formatSingleSpan(
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header, undefined, [flat])} ${msg}`;
 }
 
-/** Spans of one segment that arrived in the same batch. */
-type SpanGroup = {
-  /** The segment span, or the top span of the group when it is missing. */
-  head: StreamedSpan;
-  /** Whether {@link head} is the segment span itself, not just its top span. */
-  isSegment: boolean;
-  spans: StreamedSpan[];
-};
-
-/**
- * The segment a streamed span belongs to: its `sentry.segment.id`, its own ID
- * when it is a segment, else the top ancestor found in the same batch.
- */
-function segmentKey(
-  span: StreamedSpan,
-  byId: ReadonlyMap<string, StreamedSpan>,
-): string | undefined {
-  const segmentId = span.attributes?.["sentry.segment.id"]?.value;
-  if (typeof segmentId === "string" && segmentId) {
-    return segmentId;
-  }
-  let top = span;
-  const seen = new Set<StreamedSpan>();
-  while (!top.is_segment && top.parent_span_id && !seen.has(top)) {
-    seen.add(top);
-    const parent = byId.get(top.parent_span_id);
-    if (!parent) {
-      break;
-    }
-    top = parent;
-  }
-  return top.span_id;
-}
-
-/**
- * Whether a streamed span is a segment: flagged `is_segment`, its own
- * `sentry.segment.id`, or a root span with no parent.
- */
-function isSegmentSpan(span: StreamedSpan): boolean {
-  return (
-    span.is_segment === true ||
-    !span.parent_span_id ||
-    (span.span_id !== undefined &&
-      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
-  );
-}
-
-/**
- * Group a span batch by segment, in the order each segment first appears.
- * Spans with no span or segment ID each form their own group.
- */
-function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
-  const byId = new Map<string, StreamedSpan>();
-  for (const span of items) {
-    if (span.span_id) {
-      byId.set(span.span_id, span);
-    }
-  }
-  const groups = new Map<string | StreamedSpan, StreamedSpan[]>();
-  for (const span of items) {
-    const key = segmentKey(span, byId) ?? span;
-    const spans = groups.get(key);
-    if (spans) {
-      spans.push(span);
-    } else {
-      groups.set(key, [span]);
-    }
-  }
-  return [...groups.values()].map((spans) => {
-    const segment = spans.find(isSegmentSpan);
-    // Without its segment, the group's top span is the one whose parent is
-    // not in the batch and that started first.
-    const top = spans
-      .filter((span) => !(span.parent_span_id && byId.has(span.parent_span_id)))
-      .sort(
-        (a, b) =>
-          (parseEventTimestamp(a.start_timestamp) ?? 0) -
-          (parseEventTimestamp(b.start_timestamp) ?? 0),
-      )[0];
-    return {
-      head: segment ?? top ?? (spans[0] as StreamedSpan),
-      isSegment: segment !== undefined,
-      spans,
-    };
-  });
-}
-
 /** One tail line for spans whose segment wasn't in the same batch. */
 function formatLateSpansLine(
-  group: SpanGroup,
+  group: SpanSegment<StreamedSpan>,
   header: Record<string, unknown>,
 ): string {
-  const segmentName = group.head.attributes?.["sentry.segment.name"]?.value;
-  const name =
-    typeof segmentName === "string" && segmentName
-      ? segmentName
-      : (group.head.name ?? "unnamed span");
   const msg =
-    sanitize(name) +
+    sanitize(group.name ?? "unnamed span") +
     formatSpanCount(group.spans.length, "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
@@ -1119,9 +1040,40 @@ export function itemTypeToFilterCategory(
   return undefined;
 }
 
+/** How many replay IDs a tail remembers, oldest dropped first. */
+const MAX_SEEN_REPLAYS = 100;
+
 /**
- * Format the first `replay_event` of a session replay: its short ID and the
- * page it started on.
+ * Records a replay ID and returns whether the tail has not printed it yet.
+ * Items without an ID are always new.
+ */
+export type ReplayTracker = (replayId: unknown) => boolean;
+
+/**
+ * Create the replay IDs one tail has printed a line for. A tail that starts
+ * mid-replay sees a later segment first, so this goes by ID, not segment 0.
+ */
+export function createReplayTracker(): ReplayTracker {
+  const seen = new Set<string>();
+  return (replayId) => {
+    if (typeof replayId !== "string" || !replayId) {
+      return true;
+    }
+    if (seen.has(replayId)) {
+      return false;
+    }
+    seen.add(replayId);
+    if (seen.size > MAX_SEEN_REPLAYS) {
+      const [oldest] = seen;
+      seen.delete(oldest as string);
+    }
+    return true;
+  };
+}
+
+/**
+ * Format the first `replay_event` the tail sees for a session replay: its
+ * short ID and the page in its `urls`.
  *
  * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
  */
@@ -1472,14 +1424,18 @@ export function formatItemJson(
  * Format a single envelope item into one or more output lines.
  *
  * When `showAttributes` is true, transaction items are followed by an indented
- * attribute table (see {@link formatAttributeTable}).
+ * attribute table (see {@link formatAttributeTable}). A tail passes its own
+ * `replays` so each session replay prints once.
  */
 export function formatItem(
   itemType: string | undefined,
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   fallbackLabel: string,
-  showAttributes = false,
+  {
+    showAttributes = false,
+    replays = createReplayTracker(),
+  }: { showAttributes?: boolean; replays?: ReplayTracker } = {},
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorItem(payload, header)];
@@ -1498,9 +1454,9 @@ export function formatItem(
     return formatLogItem(payload, header, showAttributes);
   }
   // Active replays send a replay_event and a recording every few seconds;
-  // only the first segment gets a line.
+  // only the first segment the tail sees gets a line.
   if (itemType === "replay_event") {
-    return payload["segment_id"] === 0
+    return replays(payload["replay_id"])
       ? [formatReplayItem(payload, header)]
       : [];
   }
@@ -1606,7 +1562,8 @@ export function formatEnvelopeLinesJson(
  *
  * When `activeFilters` is non-empty, only items whose category matches
  * one of the filter values are rendered; non-matching items are silently
- * dropped. When empty, all items are shown.
+ * dropped. When empty, all items are shown. A tail passes its own `replays`
+ * so each session replay prints once.
  */
 export function formatEnvelopeLines(
   container: {
@@ -1618,6 +1575,7 @@ export function formatEnvelopeLines(
   },
   activeFilters: ReadonlySet<FilterValue>,
   showAttributes = false,
+  replays: ReplayTracker = createReplayTracker(),
 ): string[] {
   const parsed = container.getParsedEnvelope();
   if (!parsed) {
@@ -1640,13 +1598,14 @@ export function formatEnvelopeLines(
         payload,
         header,
         itemHeader.type ?? container.getContentType(),
-        showAttributes,
+        { showAttributes, replays },
       ),
     );
   }
 
   // Items can print nothing on purpose (later replay segments), so the
-  // fallback line is only for an envelope with no items at all.
+  // fallback line is only for an envelope with no items and no active
+  // filters.
   if (lines.length > 0 || items.length > 0 || activeFilters.size > 0) {
     return lines;
   }
