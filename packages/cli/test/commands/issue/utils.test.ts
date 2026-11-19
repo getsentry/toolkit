@@ -1142,34 +1142,13 @@ describe("pollAutofixState", () => {
   });
 
   test("stops once a single run has its root cause", async () => {
-    globalThis.fetch = async () =>
-      new Response(
-        JSON.stringify({
-          autofix: {
-            run_id: 12_345,
-            status: "PROCESSING",
-            feature_id: "autofix_single_run",
-            blocks: [
-              {
-                artifacts: [
-                  {
-                    key: "root_cause",
-                    data: {
-                      headline: "Regex rejects ids",
-                      cause: "Too strict.",
-                    },
-                    reason: "",
-                  },
-                ],
-              },
-            ],
-          },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+    const autofix = {
+      run_id: 12_345,
+      status: "PROCESSING",
+      feature_id: "autofix_single_run",
+      blocks: [{ artifacts: [{ key: "root_cause", data: { headline: "x" } }] }],
+    };
+    globalThis.fetch = async () => Response.json({ autofix });
 
     const result = await pollAutofixState({
       orgSlug: "test-org",
