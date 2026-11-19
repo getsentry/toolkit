@@ -127,7 +127,7 @@ Sentry.init({
 
 **Not supported yet.** The Next.js edge runtime (`@sentry/vercel-edge`) has no Spotlight support. Edge errors still arrive through the Node.js server, but edge messages and logs do not.
 
-`--session` captures only from SDKs that post to the exact `SENTRY_SPOTLIGHT` URL, such as Node.js, Python, and Ruby. PHP adds `/stream` to the URL, and Go and Rust send through the DSN, so their events don't reach a session yet. Run them without `--session`.
+`--session` currently only captures from Node.js and Python, which post to the exact `SENTRY_SPOTLIGHT` URL. PHP adds `/stream` to that URL, Ruby takes only its host and port and posts to `/stream`, and Go and Rust send through the DSN, so their events don't reach a session yet. Run them without `--session`.
 
 ## Browser UI
 
