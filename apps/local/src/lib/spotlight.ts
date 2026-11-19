@@ -1,4 +1,4 @@
-import { describeEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
+import { describeEventForDisplay } from "./exceptions.ts";
 import { jsonText, withoutUndefined } from "./objects.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
@@ -108,12 +108,11 @@ function contextFeedback(
 function describedEventTitle(
   event: Record<string, unknown>,
 ): string | undefined {
-  const { kind, errorType, text } = describeEvent(event);
+  const { kind, errorType, text } = describeEventForDisplay(event);
   if (kind === "exception") {
     return `${errorType ?? "Error"}: ${text ?? "Unknown error"}`;
   }
-  // Dev servers colour their console logs; captured messages keep the escapes.
-  return kind === "message" && text ? getString(stripAnsi(text)) : undefined;
+  return kind === "message" ? text : undefined;
 }
 
 /** Derive display metadata from this payload without inheriting its parent event. */
