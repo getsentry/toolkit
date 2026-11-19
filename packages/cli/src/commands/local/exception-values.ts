@@ -16,23 +16,39 @@ export function exceptionValues(exception: unknown): unknown[] {
 }
 
 /**
- * An exception's message without a trailing ` (<type>)`. Ruby's
- * `detailed_message`, which sentry-ruby sends, appends the class name that the
- * type already shows.
+ * An exception value as display text. Strings pass through; other values read
+ * as JSON, as Relay keeps them. null, undefined, and "" have no text, so
+ * callers show `Unknown error`.
+ */
+export function exceptionValueText(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  // Payload values are parsed JSON, so they always serialize back.
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/**
+ * An exception's message without a trailing ` (<type>)` on its first line.
+ * Ruby's `detailed_message`, which sentry-ruby sends, appends the class name
+ * that the type already shows to the first line, before any code snippet.
  */
 export function exceptionMessage(
   type: string | undefined,
   value: string,
 ): string {
+  const lineEnd = value.indexOf("\n");
+  const line = lineEnd === -1 ? value : value.slice(0, lineEnd);
+  const first = line.endsWith("\r") ? line.slice(0, -1) : line;
   const suffix = ` (${type})`;
-  return type && value.length > suffix.length && value.endsWith(suffix)
-    ? value.slice(0, -suffix.length)
+  return type && first.length > suffix.length && first.endsWith(suffix)
+    ? first.slice(0, -suffix.length) + value.slice(first.length)
     : value;
 }
 
 /**
  * The file a stack frame names: `filename`, else the basename of `abs_path`,
- * which is all sentry-go sends.
+ * which is all sentry-go sends. A URL drops its query and hash.
  */
 export function frameFile(frame: {
   filename?: unknown;
@@ -41,7 +57,11 @@ export function frameFile(frame: {
   if (typeof frame.filename === "string" && frame.filename) {
     return frame.filename;
   }
-  return typeof frame.abs_path === "string"
-    ? frame.abs_path.split(/[\\/]/).at(-1) || undefined
-    : undefined;
+  if (typeof frame.abs_path !== "string") {
+    return;
+  }
+  const path = /^[a-z][a-z\d+.-]*:\/\//i.test(frame.abs_path)
+    ? frame.abs_path.replace(/[?#].*$/, "")
+    : frame.abs_path;
+  return path.split(/[\\/]/).at(-1) || undefined;
 }
