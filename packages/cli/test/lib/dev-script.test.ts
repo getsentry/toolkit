@@ -694,6 +694,85 @@ describe("detectDevCommand: Python app scanning", () => {
   });
 });
 
+describe("detectDevCommand: Python factory calls and signatures", () => {
+  test.each([
+    [
+      "get_application()",
+      "from myapp import get_application\n\napp = get_application()\n",
+    ],
+    ["build_app()", "from myapp import build_app\n\napp = build_app()\n"],
+    [
+      "a dotted factory with arguments",
+      "from myapp import factories\n\napplication = factories.create_application(debug=True)\n",
+    ],
+  ])(
+    "serves an app built by %s with the declared framework",
+    async (_name, source) => {
+      await writeFile(join(tmpDir, "requirements.txt"), "fastapi\n");
+      await writeFile(join(tmpDir, "main.py"), source);
+      const result = await detectDevCommand(tmpDir);
+      expect(result!.source).toBe("main.py (FastAPI)");
+      expect(result!.args[3]).toMatch(/^main:(app|application)$/);
+    },
+  );
+
+  test("serves an app built by build_app() under Flask", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "flask\n");
+    await writeFile(join(tmpDir, "app.py"), "app = build_app()\n");
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual([
+      "python",
+      "-m",
+      "flask",
+      "--app",
+      "app:app",
+      "run",
+    ]);
+  });
+
+  test("still runs an app that is not a call as a script", async () => {
+    await writeFile(join(tmpDir, "requirements.txt"), "fastapi\n");
+    await writeFile(
+      join(tmpDir, "main.py"),
+      "app = settings.app\nprint(app)\n",
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual(["python", "main.py"]);
+  });
+
+  test("serves a factory whose parameters all have defaults", async () => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      'from fastapi import FastAPI\n\ndef create_app(\n    config: dict | None = None,\n    *,\n    title="x, y",\n    **extra,\n):\n    return FastAPI(title=title)\n',
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toContain("--factory");
+  });
+
+  test.each([
+    ["a required parameter", "def create_app(config):\n    return FastAPI()\n"],
+    [
+      "a required keyword-only parameter",
+      "def create_app(*, settings):\n    return FastAPI()\n",
+    ],
+    ["an async factory", "async def create_app():\n    return FastAPI()\n"],
+    ["a generic factory", "def create_app[T]():\n    return FastAPI()\n"],
+    [
+      "a required parameter with an = in its annotation",
+      "def create_app(port: Annotated[int, Field(gt=0)]):\n    return FastAPI()\n",
+    ],
+  ])("runs a factory with %s as a script, with a hint", async (_name, body) => {
+    await writeFile(
+      join(tmpDir, "main.py"),
+      `from fastapi import FastAPI\n\n${body}`,
+    );
+    const result = await detectDevCommand(tmpDir);
+    expect(result!.args).toEqual(["python", "main.py"]);
+    expect(result!.hint).toContain("create_app");
+    expect(result!.hint).not.toContain("main:app");
+  });
+});
+
 describe("detectDevCommand: Rust, Ruby, and PHP", () => {
   const CARGO = '[package]\nname = "app"\n';
 
