@@ -89,6 +89,15 @@ node .agents/skills/verify-toolkit/scripts/check-results.mjs subset WIDE_DIR DIR
 node .agents/skills/verify-toolkit/scripts/check-results.mjs local DIR
 ```
 
+`scripts/mcp-apps-host.mjs` acts as an MCP Apps host for
+`render_sentry_chart` on the mock server: it reads the tool's `ui://` view,
+mounts it in headless Chromium through the ext-apps `AppBridge`, and writes
+screenshots, `host-log.json`, and `checks.txt` to `--out`:
+
+```bash
+node .agents/skills/verify-toolkit/scripts/mcp-apps-host.mjs --out DIR
+```
+
 `scripts/sentry-offline.mjs` runs one CLI command with the same offline env,
 and writes `command.txt`, `stdout.txt`, `stderr.txt`, and `exit-code.txt`:
 

@@ -1,0 +1,8 @@
+PASS mcp-apps#tool-meta: render_sentry_chart _meta.ui.resourceUri=ui://sentry/chart/v1.html, openai/outputTemplate=ui://sentry/chart/v1.html
+PASS mcp-apps#view-resource: resources/read ui://sentry/chart/v1.html: text/html;profile=mcp-app, 407 KiB HTML
+PASS mcp-apps#view-renders: light chart with hover tooltip "Sep 10, 16:00 UTC count() 91" -> docs/evidence/mcp-apps-chart/chart-light.png
+PASS mcp-apps#view-theme: host theme light=rgb(255, 255, 255) dark=rgb(30, 26, 37) -> docs/evidence/mcp-apps-chart/chart-dark.png
+PASS mcp-apps#range-roundtrip: "errors · level:error · Last 24 hours" -> view called render_sentry_chart period=7d through the host, got 56 buckets -> docs/evidence/mcp-apps-chart/chart-range-7d.png
+PASS mcp-apps#open-link: ui/open-link https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&field=count%28%29&sort=-count%28%29&statsPeriod=7d&mode=aggregate&yAxis=count%28%29
+PASS mcp-apps#grouped: top groups "frontend@2.4.1 | frontend@2.4.0 | frontend@2.3.9" -> docs/evidence/mcp-apps-chart/chart-grouped-dark.png
+PASS mcp-apps#default-csp: 0 console errors under the default CSP

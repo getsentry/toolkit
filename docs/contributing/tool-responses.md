@@ -232,6 +232,30 @@ experimental sessions first stays pending until it graduates. The PR that
 makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
+## MCP Apps Views
+
+A tool can name an inline view for hosts that support
+[MCP Apps](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx),
+such as Claude and VS Code. `render_sentry_chart` is the example:
+
+- The view is a `UiResource` in `packages/mcp-core/src/ui-resources.ts` with a
+  versioned `ui://` URI. The server lists it, with mime type
+  `text/html;profile=mcp-app`, only when the session lists a tool that names
+  it.
+- The tool sets `_meta: uiToolMeta(resource)`, which writes
+  `_meta.ui.resourceUri` for MCP Apps hosts and `openai/outputTemplate` for
+  ChatGPT. Add both keys to `ALLOWED_TOOL_META`.
+- The view source lives outside `src/` (the chart is in
+  `packages/mcp-core/chart-app/`) and is bundled into a generated string
+  module, so stdio and the Worker serve it without a file system. Run
+  `pnpm --filter @sentry/mcp-core generate-chart-app` after changing it;
+  `ci:policy` fails when the generated file is stale.
+- The view renders `structuredContent` and validates it with the tool's own
+  output schema. The text content stays the compact JSON payload, so hosts
+  without MCP Apps get the full answer.
+- Prove a view with `.agents/skills/verify-toolkit/map/mcp-apps.md`, which
+  mounts it through the ext-apps `AppBridge` in headless Chromium.
+
 ## Suggested Actions
 
 Use `suggestedActions` when a tool result reveals a concrete follow-up tool call
