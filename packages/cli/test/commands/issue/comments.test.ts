@@ -42,6 +42,7 @@ let uploads: Array<{ name: string; type: string; size: number }>;
 let postedText: string | undefined;
 let uploadStatus: number;
 let commentsBody: unknown[] | undefined;
+let commentPages: unknown[][] | undefined;
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
@@ -50,6 +51,7 @@ beforeEach(() => {
   postedText = undefined;
   uploadStatus = 201;
   commentsBody = undefined;
+  commentPages = undefined;
   setAuthToken("test-token");
   setOrgRegion("test-org", REGION_URL);
   globalThis.fetch = mockFetch(async (input, init) => {
@@ -93,6 +95,16 @@ beforeEach(() => {
     }
     if (pathname === `${ISSUE_PATH}comments/` && commentsBody) {
       return Response.json(commentsBody);
+    }
+    if (pathname === `${ISSUE_PATH}comments/` && commentPages) {
+      const cursor = new URL(request.url).searchParams.get("cursor") ?? "";
+      const index = cursor ? Number(cursor.split(":")[1]) : 0;
+      const hasNext = index + 1 < commentPages.length;
+      return Response.json(commentPages[index], {
+        headers: {
+          Link: `<${REGION_URL}${ISSUE_PATH}comments/>; rel="next"; results="${hasNext}"; cursor="0:${index + 1}:0"`,
+        },
+      });
     }
     if (pathname === `${ISSUE_PATH}comments/`) {
       return Response.json([
@@ -313,6 +325,59 @@ describe("issue comment", () => {
 });
 
 describe("issue comments", () => {
+  test("follows pagination to list every comment", async () => {
+    const comment = (id: string) => ({
+      id,
+      dateCreated: "2026-10-21T12:00:00Z",
+      user: { name: "Jane Developer" },
+      data: { text: `comment ${id}` },
+    });
+    commentPages = [[comment("3"), comment("2")], [comment("1")]];
+
+    const result = await runCli([
+      "issue",
+      "comments",
+      "test-org/12345",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      JSON.parse(result.stdout).map((item: { id: string }) => item.id),
+    ).toEqual(["3", "2", "1"]);
+    const listRequests = requests.filter(
+      (request) => new URL(request.url).pathname === `${ISSUE_PATH}comments/`,
+    );
+    expect(listRequests).toHaveLength(2);
+    expect(new URL(listRequests[1]?.url ?? "").searchParams.get("cursor")).toBe(
+      "0:1:0",
+    );
+  });
+
+  test("lists video URLs for the issue being read, not the link's", async () => {
+    commentsBody = [
+      {
+        id: "902",
+        dateCreated: "2026-10-21T12:00:00Z",
+        user: { name: "Mallory" },
+        data: {
+          text: "[a.mp4](/api/0/organizations/other-org/issues/999/comment-attachments/7/)",
+        },
+      },
+    ];
+
+    const result = await runCli([
+      "issue",
+      "comments",
+      "test-org/12345",
+      "--json",
+    ]);
+
+    expect(JSON.parse(result.stdout)[0].attachments).toEqual([
+      { id: "7", name: "a.mp4", url: `${REGION_URL}${VIDEO_PATH}` },
+    ]);
+  });
+
   test("--download builds the URL from the issue, not the comment link", async () => {
     const dir = join(getConfigDir(), "videos");
     commentsBody = [

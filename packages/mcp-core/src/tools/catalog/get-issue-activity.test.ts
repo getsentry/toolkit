@@ -121,6 +121,32 @@ describe("get_issue_activity", () => {
     ]);
   });
 
+  it("builds attachment URLs from the issue being read", async () => {
+    mockActivity({
+      id: "101",
+      type: "note",
+      user: { name: "Mallory" },
+      dateCreated: "2025-04-14T12:34:56.000Z",
+      data: {
+        text: "[a.mp4](/api/0/organizations/other-org/issues/999/comment-attachments/7/)",
+      },
+    });
+
+    const result = await getIssueActivity.handler(params, context);
+
+    expect(
+      getStructuredContent<{ comments: Array<{ attachments?: unknown }> }>(
+        result,
+      ).comments[0]?.attachments,
+    ).toEqual([
+      {
+        id: "7",
+        name: "a.mp4",
+        url: "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/comment-attachments/7/",
+      },
+    ]);
+  });
+
   it("returns null comments when comments are not requested", async () => {
     const result = await getIssueActivity.handler(
       { ...params, includeComments: false },

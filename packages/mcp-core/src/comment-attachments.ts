@@ -89,6 +89,19 @@ export type CommentAttachmentLink = {
 const ATTACHMENT_LINK =
   /\[((?:\\.|[^\]\\])*)\]\((\/api\/0\/organizations\/[\w-]+\/issues\/[\w-]+\/comment-attachments\/(\d+)\/)\)/g;
 
+/**
+ * API path of a video attached to an issue's comments. Built from the issue
+ * being read rather than taken from the comment link, which anyone in the
+ * organization can write.
+ */
+export function commentAttachmentPath(
+  organizationSlug: string,
+  issueId: string,
+  attachmentId: string,
+): string {
+  return `/api/0/organizations/${encodeURIComponent(organizationSlug)}/issues/${encodeURIComponent(issueId)}/comment-attachments/${encodeURIComponent(attachmentId)}/`;
+}
+
 /** Markdown link for an uploaded video, with link-text brackets escaped. */
 export function commentAttachmentMarkdown(attachment: {
   name: string;

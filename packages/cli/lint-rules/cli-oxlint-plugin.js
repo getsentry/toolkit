@@ -498,7 +498,10 @@ const MANUAL_API_REQUEST_EXCEPTIONS = new Map([
     ],
   ],
   // Issue comments are not in the public API schema.
-  ["lib/api/issue-comments.ts", ["listIssueComments", "createIssueComment"]],
+  [
+    "lib/api/issue-comments.ts",
+    ["fetchIssueCommentPage", "createIssueComment"],
+  ],
   // Unauthenticated transport for the generated shared-issue call on another host.
   ["lib/api/issues.ts", ["getSharedIssue"]],
   // Unauthenticated transport for the generated handoff claim before login exists.

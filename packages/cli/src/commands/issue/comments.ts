@@ -7,7 +7,10 @@
 
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { parseCommentAttachments } from "@sentry/mcp-core/comment-attachments";
+import {
+  commentAttachmentPath,
+  parseCommentAttachments,
+} from "@sentry/mcp-core/comment-attachments";
 import type { SentryContext } from "../../context.js";
 import {
   createIssueCommentWithVideos,
@@ -47,10 +50,15 @@ function commentAuthor(comment: IssueComment): string {
   );
 }
 
-/** Comment output with each linked video's full API URL. */
+/**
+ * Comment output with each linked video's full API URL, built from the issue
+ * being read, the same URL `--download` fetches.
+ */
 function toOutput(
   comment: IssueComment,
   regionUrl: string,
+  org: string,
+  issueId: string,
 ): IssueCommentOutput {
   const text = comment.data.text ?? "";
   const origin = regionUrl.replace(/\/$/, "");
@@ -62,7 +70,7 @@ function toOutput(
     attachments: parseCommentAttachments(text).map((link) => ({
       id: link.id,
       name: link.name,
-      url: `${origin}${link.path}`,
+      url: `${origin}${commentAttachmentPath(org, issueId, link.id)}`,
     })),
   };
 }
@@ -160,7 +168,9 @@ export const commentCommand = buildCommand({
       },
       () => createIssueCommentWithVideos(org, issue.id, text, videos),
     );
-    yield new CommandOutput(toOutput(comment, await resolveOrgRegion(org)));
+    yield new CommandOutput(
+      toOutput(comment, await resolveOrgRegion(org), org, issue.id),
+    );
     return { hint: `Issue: ${issue.shortId}.` };
   },
 });
@@ -217,7 +227,9 @@ export const commentsCommand = buildCommand({
       () =>
         Promise.all([listIssueComments(org, issue.id), resolveOrgRegion(org)]),
     );
-    const output = comments.map((comment) => toOutput(comment, regionUrl));
+    const output = comments.map((comment) =>
+      toOutput(comment, regionUrl, org, issue.id),
+    );
 
     if (flags.download !== undefined) {
       const dir = flags.download;

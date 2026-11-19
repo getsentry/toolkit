@@ -16,6 +16,7 @@ import {
   COMMENT_ATTACHMENT_EXTENSIONS,
   type CommentAttachment,
   commentAttachmentContentType,
+  commentAttachmentPath,
 } from "@sentry/mcp-core/comment-attachments";
 import {
   array,
@@ -31,7 +32,11 @@ import { isNetworkError, ValidationError } from "../errors.js";
 import { resolveOrgRegion } from "../region.js";
 import { getSdkConfig } from "../sentry-client.js";
 import {
+  API_MAX_PER_PAGE,
   apiRequestToRegion,
+  autoPaginate,
+  paginatedResponse,
+  parseLinkHeader,
   throwApiError,
   throwRawApiError,
 } from "./infrastructure.js";
@@ -60,15 +65,34 @@ const CommentAttachmentSchema = object({
   url: string(),
 });
 
-/** Comments on an issue, newest first. */
+/** One page of an issue's comments, newest first. */
+async function fetchIssueCommentPage(
+  regionUrl: string,
+  orgSlug: string,
+  issueId: string,
+  cursor: string | undefined,
+) {
+  const { data, headers } = await apiRequestToRegion(
+    regionUrl,
+    `/organizations/${encodeURIComponent(orgSlug)}/issues/${encodeURIComponent(issueId)}/comments/`,
+    {
+      params: { per_page: API_MAX_PER_PAGE, cursor },
+      schema: array(IssueCommentSchema),
+    },
+  );
+  const { nextCursor } = parseLinkHeader(headers.get("link") ?? null);
+  return paginatedResponse(data, nextCursor);
+}
+
+/** Every comment on an issue, newest first, following pagination. */
 export async function listIssueComments(
   orgSlug: string,
   issueId: string,
 ): Promise<IssueComment[]> {
-  const { data } = await apiRequestToRegion(
-    await resolveOrgRegion(orgSlug),
-    `/organizations/${encodeURIComponent(orgSlug)}/issues/${encodeURIComponent(issueId)}/comments/`,
-    { schema: array(IssueCommentSchema) },
+  const regionUrl = await resolveOrgRegion(orgSlug);
+  const { data } = await autoPaginate(
+    (cursor) => fetchIssueCommentPage(regionUrl, orgSlug, issueId, cursor),
+    Number.MAX_SAFE_INTEGER,
   );
   return data;
 }
@@ -186,7 +210,7 @@ export async function downloadIssueCommentAttachment(
     throw new ValidationError(`Invalid attachment ID: ${attachmentId}`);
   }
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const url = `${regionUrl.replace(/\/$/, "")}/api/0/organizations/${encodeURIComponent(orgSlug)}/issues/${encodeURIComponent(issueId)}/comment-attachments/${attachmentId}/`;
+  const url = `${regionUrl.replace(/\/$/, "")}${commentAttachmentPath(orgSlug, issueId, attachmentId)}`;
   const response = await getSdkConfig(regionUrl).fetch(url, {
     method: "GET",
   });

@@ -4,6 +4,7 @@ import {
   appendCommentAttachments,
   COMMENT_ATTACHMENT_EXTENSIONS,
   commentAttachmentContentType,
+  commentAttachmentPath,
   parseCommentAttachments,
 } from "../../comment-attachments";
 import { UserInputError } from "../../errors";
@@ -79,7 +80,10 @@ async function readVideos(
   );
 }
 
-function mapNote(comment: IssueComment, absoluteUrl: (path: string) => string) {
+function mapNote(
+  comment: IssueComment,
+  attachmentUrl: (attachmentId: string) => string,
+) {
   const text = comment.data ? readString(comment.data, "text") : null;
   return {
     id: formatId(comment.commentId ?? comment.id),
@@ -90,7 +94,7 @@ function mapNote(comment: IssueComment, absoluteUrl: (path: string) => string) {
     attachments: parseCommentAttachments(text).map((link) => ({
       id: link.id,
       name: link.name,
-      url: absoluteUrl(link.path),
+      url: attachmentUrl(link.id),
     })),
   };
 }
@@ -178,7 +182,15 @@ export default defineTool({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
       issueUrl: apiService.getIssueUrl(parsed.organizationSlug, parsed.issueId),
-      note: mapNote(comment, (path) => apiService.getAbsoluteApiUrl(path)),
+      note: mapNote(comment, (attachmentId) =>
+        apiService.getAbsoluteApiUrl(
+          commentAttachmentPath(
+            parsed.organizationSlug,
+            parsed.issueId,
+            attachmentId,
+          ),
+        ),
+      ),
     });
   },
 });

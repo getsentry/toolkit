@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { IssueActivity, IssueComment } from "../../api-client/types";
-import { parseCommentAttachments } from "../../comment-attachments";
+import {
+  commentAttachmentPath,
+  parseCommentAttachments,
+} from "../../comment-attachments";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import {
@@ -286,7 +289,7 @@ function mapExternalIssue(type: string, data: Record<string, unknown>) {
 
 function mapActivity(
   activity: IssueActivity | IssueComment,
-  absoluteUrl: (path: string) => string,
+  attachmentUrl: (attachmentId: string) => string,
 ): IssueActivityEntry {
   const text = getActivityText(activity);
   const commentId = activity.commentId;
@@ -306,7 +309,7 @@ function mapActivity(
     entry.attachments = attachments.map((link) => ({
       id: link.id,
       name: link.name,
-      url: absoluteUrl(link.path),
+      url: attachmentUrl(link.id),
     }));
   }
 
@@ -398,7 +401,15 @@ export default defineTool({
     ]);
 
     const toEntry = (item: IssueActivity | IssueComment) =>
-      mapActivity(item, (path) => apiService.getAbsoluteApiUrl(path));
+      mapActivity(item, (attachmentId) =>
+        apiService.getAbsoluteApiUrl(
+          commentAttachmentPath(
+            parsed.organizationSlug,
+            parsed.issueId,
+            attachmentId,
+          ),
+        ),
+      );
     return structuredResult({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
