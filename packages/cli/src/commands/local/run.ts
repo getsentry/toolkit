@@ -594,7 +594,7 @@ export const runCommand = buildCommand({
         kind: "parsed",
         parse: textParser(parseTimeout),
         brief:
-          "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
+          "Stop the child after N seconds and exit 124 (0 = no timeout; defaults to 30 s in --verify mode, which exits 64)",
         default: "0",
       },
       format: {
@@ -768,7 +768,12 @@ export const runCommand = buildCommand({
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
       timeoutId = setTimeout(() => {
-        logger.warn(`Timeout: killing child after ${flags.timeout}s`);
+        // The user already stopped the app, so it is shutting down: let it
+        // finish and keep its exit code.
+        if (interruptState.interrupted) {
+          return;
+        }
+        logger.info(`Stopping after ${flags.timeout}s (--timeout)…`);
         interruptState.timedOut = true;
         void gracefulKill(child, ownGroup);
       }, flags.timeout * 1000);
@@ -813,6 +818,13 @@ export const runCommand = buildCommand({
       }
     }
 
+    // How the app ends once --timeout stops it depends on the app (0, 143,
+    // 137, ...), so report the timeout itself.
+    if (interruptState.timedOut) {
+      logger.info(`Stopped after ${flags.timeout}s (--timeout)`);
+      this.process.exitCode = EXIT.RUN_TIMEOUT;
+      return;
+    }
     const exitCode = exit.signal
       ? signalExitCode(exit.signal)
       : (exit.code ?? EXIT.GENERAL);

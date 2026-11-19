@@ -46,6 +46,10 @@ The `<PREFIX>` variants put the URL where your bundler can inline it into browse
 
 When `local run` sees `wrangler dev` and a `wrangler.json`, `wrangler.jsonc`, or `wrangler.toml`, it also adds `--var SENTRY_SPOTLIGHT:<url>`, because Wrangler does not pass process env vars to Worker code. An explicit `--var SENTRY_SPOTLIGHT:...` is kept. No project file is changed.
 
+### Stop after a set time with `--timeout`
+
+`sentry local run --timeout <seconds> -- <command>` stops your app after that many seconds and exits 124, as GNU `timeout` does, whatever exit code the app gives when it stops. If the app exits on its own first, `local run` exits with the app's code.
+
 ### Check your setup with `--verify`
 
 `sentry local run --verify -- <command>` starts your app, waits for its first event, then stops it. It exits 0 once an event arrives. It fails if the app exits, crashes, or sends nothing within the timeout (30 seconds, or `--timeout <seconds>`). When port 8969 is busy, it verifies on a free port.

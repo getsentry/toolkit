@@ -193,7 +193,7 @@ Run a command with the local dev server enabled
 - `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-V, --verify - Verify SDK sends events, then exit`
-- `-t, --timeout <value> - Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode) - (default: "0")`
+- `-t, --timeout <value> - Stop the child after N seconds and exit 124 (0 = no timeout; defaults to 30 s in --verify mode, which exits 64) - (default: "0")`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
 - `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
