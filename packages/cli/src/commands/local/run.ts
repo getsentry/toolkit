@@ -766,6 +766,12 @@ export const runCommand = buildCommand({
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
       timeoutId = setTimeout(() => {
+        // The user already stopped the app, so it is shutting down: let it
+        // finish and keep its exit code.
+        if (interruptState.interrupted) {
+          return;
+        }
+        logger.info(`Stopping after ${flags.timeout}s (--timeout)…`);
         interruptState.timedOut = true;
         void gracefulKill(child, ownGroup);
       }, flags.timeout * 1000);

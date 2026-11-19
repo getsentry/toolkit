@@ -18,6 +18,8 @@ react to failure categories without parsing stderr.
 | 40–49 | Feature | Feature availability and billing issues |
 | 50–59 | Operations | Upgrade and OAuth flow errors |
 | 60–69 | Command | Command-specific non-standard exits |
+| 124 | Shell convention | `sentry local run --timeout` stopped the app, as GNU `timeout` exits |
+| 252 | Shell convention | An argument could not be parsed |
 
 ## Complete Reference
 

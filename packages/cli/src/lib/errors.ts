@@ -77,7 +77,7 @@ export const EXIT = {
   // 30–39: API & network (HTTP 502/503/504 family)
   /** Sentry API returned an error */
   API: 30,
-  /** Operation timed out */
+  /** API operation timed out */
   TIMEOUT: 31,
   /** Rate limited by the Sentry API — wait before retrying */
   RATE_LIMITED: 32,
