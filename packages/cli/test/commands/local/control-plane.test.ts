@@ -1,13 +1,11 @@
 import { request } from "node:http";
 import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
-import {
-  createLocalControlPlane,
-  SESSION_CHOICE_HEADER,
-} from "../../../src/commands/local/control-plane.js";
+import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
   createLocalSessionStore,
+  SESSION_CHOICE_HEADER,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
 import { at } from "../../helpers.js";
@@ -462,7 +460,6 @@ describe("Local control plane", () => {
       ["GET", "/events"],
       ["GET", "/envelopes"],
       ["GET", "/retention"],
-      ["POST", "/reset"],
     ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
@@ -493,14 +490,7 @@ describe("Local control plane", () => {
       ).status,
     ).toBe(404);
 
-    const closedResponse = await plane.app.request(
-      "/_local/v1/sessions/My%20App/close",
-      { method: "POST", headers: controlHeaders() },
-    );
-    await expect(closedResponse.json()).resolves.toMatchObject({
-      id: newer.id,
-      state: "retained",
-    });
+    plane.sessionStore.close(newer.id);
     const remaining = await plane.app.request("/_local/v1/sessions/My%20App", {
       headers: controlHeaders(),
     });
@@ -509,6 +499,82 @@ describe("Local control plane", () => {
       id: older.id,
       state: "open",
     });
+  });
+
+  test("refuses to change a session by a name that several open sessions share", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const older = plane.sessionStore.create({ label: "p", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "p", cwd: "/two" });
+    const { stream } = plane.sessionStore.getCapabilities(newer.id);
+    for (const [suffix, body] of [
+      ["/close", "{}"],
+      ["/reset", "{}"],
+      ["/retention", JSON.stringify({ maxEnvelopes: 10 })],
+      [`/ui/close?cap=${stream}`, "{}"],
+    ] as const) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/p${suffix}`,
+        {
+          method: "POST",
+          headers: { ...controlHeaders(), "Content-Type": "application/json" },
+          body,
+        },
+      );
+      expect(response.status, suffix).toBe(409);
+      expect(response.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+      await expect(response.json()).resolves.toMatchObject({
+        code: "ambiguous_session",
+        reference: "p",
+        sessionIds: [newer.id, older.id],
+        sessions: [
+          { id: newer.id, state: "open", createdAt: newer.createdAt },
+          { id: older.id, state: "open", createdAt: older.createdAt },
+        ],
+      });
+    }
+    expect(plane.sessionStore.resolve(newer.id)).toMatchObject({
+      state: "open",
+      maxEnvelopes: newer.maxEnvelopes,
+    });
+    expect(plane.sessionStore.resolve(older.id).state).toBe("open");
+
+    const byId = await plane.app.request(
+      `/_local/v1/sessions/${newer.id}/close`,
+      {
+        method: "POST",
+        headers: controlHeaders(),
+      },
+    );
+    expect(byId.status).toBe(200);
+    const byName = await plane.app.request("/_local/v1/sessions/p/close", {
+      method: "POST",
+      headers: controlHeaders(),
+    });
+    await expect(byName.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "retained",
+    });
+  });
+
+  test("caps the sessions it names when many open sessions share a name", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const sessions = Array.from({ length: 300 }, () =>
+      plane.sessionStore.create({ label: "busy", cwd: "/busy" }),
+    );
+    const response = await plane.app.request("/_local/v1/sessions/busy", {
+      headers: controlHeaders(),
+    });
+    expect(response.status).toBe(200);
+    const header = response.headers.get(SESSION_CHOICE_HEADER) ?? "";
+    expect(header.length).toBeLessThan(1024);
+    const choice = JSON.parse(header) as {
+      id: string;
+      others: { id: string }[];
+      more: number;
+    };
+    expect(choice.id).toBe(sessions.at(-1)?.id);
+    expect(choice.others).toHaveLength(5);
+    expect(choice.more).toBe(294);
   });
 
   test("creates isolated sessions through its authenticated control API", async () => {

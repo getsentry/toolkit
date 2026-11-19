@@ -482,12 +482,16 @@ describe("Local daemon E2E", () => {
         expect(JSON.parse(result.stdout)).toMatchObject({ id: second.id });
     }
 
-    const closed = await cli("session", "close", "duplicate");
+    const refused = await cli("session", "close", "duplicate");
+    expect(refused.exitCode).toBe(23);
+    expect(refused.stderr).toContain(
+      'Local session name "duplicate" matches more than one session.',
+    );
+    expect(refused.stderr).toContain(
+      `Use session ID ${first.id} (open, started`,
+    );
+    const closed = await cli("session", "close", second.id);
     expect(closed.exitCode, closed.stderr).toBe(0);
-    expect(JSON.parse(closed.stdout)).toMatchObject({
-      id: second.id,
-      state: "retained",
-    });
     const remaining = await cli("session", "view", "duplicate");
     expect(remaining.exitCode, remaining.stderr).toBe(0);
     expect(remaining.stderr).not.toContain("share that name");

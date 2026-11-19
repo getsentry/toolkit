@@ -49,6 +49,20 @@ export type CreateLocalSessionInput = {
   readonly maxEnvelopes?: number | undefined;
 };
 
+/** `code` of the control plane's 409 body for an ambiguous session name. */
+export const AMBIGUOUS_SESSION_CODE = "ambiguous_session";
+
+/**
+ * Response header naming the session a shared name resolved to for a read,
+ * as JSON `{ id, others: [{ id, createdAt }], more? }`. `others` lists at most
+ * {@link SESSION_CHOICE_LIMIT} of the other open sessions and `more` counts
+ * the rest, which keeps the header small however many runs were left open.
+ */
+export const SESSION_CHOICE_HEADER = "X-Sentry-Local-Session-Choice";
+
+/** Most other open sessions that {@link SESSION_CHOICE_HEADER} names. */
+export const SESSION_CHOICE_LIMIT = 5;
+
 /**
  * The session a reference resolved to and the other open sessions that share
  * its name; `others` is empty for a session ID or a name with one open session.
@@ -135,7 +149,7 @@ export function createLocalSessionStore({
       .filter((session) => session.label === reference)
       .sort(
         (left, right) =>
-          right.createdAt - left.createdAt || right.id.localeCompare(left.id),
+          right.createdAt - left.createdAt || (left.id < right.id ? 1 : -1),
       );
     const open = named.filter((session) => session.state === "open");
     const [session] = open.length > 0 ? open : named;

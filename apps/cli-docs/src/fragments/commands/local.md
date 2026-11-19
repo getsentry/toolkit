@@ -277,10 +277,12 @@ same way without wrapping a command.
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent.
 
-Each `local run --session` creates a new session, so names repeat. A name
-picks its newest open session, or its newest session when none is open. When
-several open sessions share the name, the command uses the newest and notes the
-others on stderr; pass a session ID to pick one of them.
+Each `local run --session` creates a new session, so names repeat. Commands
+that read, such as `event list` and `session view`, use the name's newest open
+session, or its newest session when none is open. When several open sessions
+share the name, they use the newest and note the others on stderr. `session
+close` and other commands that change a session refuse a name that several open
+sessions share and list them, so pass the session ID instead.
 
 How an SDK reaches a session depends on its Spotlight support:
 

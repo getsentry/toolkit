@@ -50,12 +50,14 @@ Treat those URLs as credentials. Terminal output redacts them, including the
 `Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a
 retained session expires, reusing its key creates a fresh session with new capabilities.
-A name resolves to its newest open session, or to its newest session when none is
-open, and a session ID resolves to exactly that session. When several open sessions
-share the name, control responses carry an `X-Sentry-Local-Session-Choice` header,
-JSON with the chosen `id` and the `others` (each `id` and `createdAt`), and the CLI
-prints a one-line note to stderr. Daemons from older CLIs answered a shared name with
-HTTP 409 `ambiguous_session`; the CLI still reports that as a user error.
+A session ID resolves to exactly that session. For reads, a name resolves to its newest
+open session, or to its newest session when none is open. When several open sessions
+share the name, read responses carry an `X-Sentry-Local-Session-Choice` header, JSON
+with the chosen `id`, up to five `others` (each `id` and `createdAt`), and a `more`
+count of the rest, and the CLI prints a one-line note to stderr. Close, reset, and
+retention changes refuse such a name with HTTP 409 `ambiguous_session`, listing every
+match in `sessions` with its `id`, `state`, and `createdAt`; the CLI reports that as a
+user error. Daemons from older CLIs answered every shared-name lookup with that 409.
 Session lookup commands accept names quoted or as separate words. For `event view` and
 `envelope view`, the final argument is the telemetry ID; preceding arguments
 form the session name. Event lookup uses the Sentry event ID from the envelope
