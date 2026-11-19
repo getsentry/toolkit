@@ -1,4 +1,8 @@
-import { isLoopbackHost, parseStreamEndpoint } from "./spotlight.ts";
+import {
+  isLoopbackHost,
+  parseStreamEndpoint,
+  readConnectionLink,
+} from "./spotlight.ts";
 
 const DIRECTORY_STORAGE_KEY = "sentry.local.session-directory";
 export type ViewerSession = {
@@ -39,7 +43,7 @@ export function parseSessionDirectoryUrl(
 export function getInitialSessionDirectory(
   streamUrl: string,
 ): string | undefined {
-  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const link = readConnectionLink(window.location.hash);
   let saved: string | null = null;
   try {
     saved = window.sessionStorage.getItem(DIRECTORY_STORAGE_KEY);
@@ -47,12 +51,12 @@ export function getInitialSessionDirectory(
     /* Storage may be disabled. */
   }
   const directory = parseSessionDirectoryUrl(
-    fragment.has("directory") ? fragment.get("directory") : saved,
+    link.directory ?? saved,
     streamUrl,
   );
   // The startup effect removes the fragment before discovery can finish. Save
   // its validated capability now so an early reload cannot lose the picker.
-  if (directory && fragment.has("directory")) saveSessionDirectory(directory);
+  if (directory && link.directory !== null) saveSessionDirectory(directory);
   return directory;
 }
 

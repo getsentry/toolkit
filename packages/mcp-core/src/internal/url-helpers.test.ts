@@ -535,6 +535,39 @@ describe("parseSentryUrl", () => {
     });
   });
 
+  describe("metric alert URLs", () => {
+    it("parses a metric alert notification URL", () => {
+      expect(
+        parseSentryUrl(
+          "https://my-org.sentry.io/alerts/rules/details/281012/?alert=10606471897&detection_type=static&referrer=metric-alert-slack",
+        ),
+      ).toEqual({
+        type: "metric_alert",
+        organizationSlug: "my-org",
+        alertRuleId: "281012",
+      });
+    });
+
+    it("parses a metric alert URL with organizations path", () => {
+      expect(
+        parseSentryUrl(
+          "https://sentry.io/organizations/my-org/alerts/rules/details/123/",
+        ),
+      ).toEqual({
+        type: "metric_alert",
+        organizationSlug: "my-org",
+        alertRuleId: "123",
+      });
+    });
+
+    it.each([
+      "https://my-org.sentry.io/alerts/rules/",
+      "https://my-org.sentry.io/alerts/rules/backend/123/details/",
+    ])("returns unknown for non-metric alert URL %s", (url) => {
+      expect(parseSentryUrl(url).type).toBe("unknown");
+    });
+  });
+
   describe("dashboard URLs", () => {
     it("parses dashboard URL with numeric ID (subdomain)", () => {
       expect(parseSentryUrl("https://my-org.sentry.io/dashboard/542438/"))

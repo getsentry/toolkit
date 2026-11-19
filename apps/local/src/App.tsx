@@ -84,11 +84,14 @@ import {
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
+  pluralize,
 } from "@/lib/presentation.ts";
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
   getStreamUrlFromHash,
+  itemTime,
+  readConnectionLink,
   parseStreamEndpoint,
   isLoopbackHost,
   REMOTE_STREAM_STORAGE_KEY,
@@ -261,7 +264,7 @@ function EventEntry({
         ) : null}
         {columns.includes("time") ? (
           <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-            {formatTimestamp(item.timestamp)}
+            {formatTimestamp(itemTime(item))}
           </time>
         ) : null}
       </button>
@@ -710,18 +713,22 @@ export default function App() {
   });
   useEffect(() => {
     const onHashChange = () => {
+      const link = readConnectionLink(window.location.hash);
+      if (!link.present) return;
       const linkedStreamUrl = getStreamUrlFromHash(window.location.hash);
-      if (!linkedStreamUrl) return;
-      const directory = parseSessionDirectoryUrl(
-        new URLSearchParams(window.location.hash.slice(1)).get("directory"),
-        linkedStreamUrl,
-      );
-      connectToEndpointRef.current(linkedStreamUrl);
-      if (directory) {
-        saveSessionDirectory(directory);
-        setDirectoryUrl(directory);
+      if (linkedStreamUrl) {
+        connectToEndpointRef.current(linkedStreamUrl);
+        const directory = parseSessionDirectoryUrl(
+          link.directory,
+          linkedStreamUrl,
+        );
+        if (directory) {
+          saveSessionDirectory(directory);
+          setDirectoryUrl(directory);
+        }
       }
-      // The link carries capabilities; keep them out of the address bar.
+      // The link carries capabilities, even a refused one; keep them out of
+      // the address bar.
       void navigate(
         { pathname: window.location.pathname, search: window.location.search },
         { replace: true },
@@ -935,11 +942,7 @@ export default function App() {
         envelopeReceivedAt(eventId) ??
         (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
       // Items with no SDK time, such as replay recordings, show when they arrived.
-      items = items?.map((item) =>
-        item.timestamp === undefined
-          ? { ...item, timestamp: receivedAt / 1000 }
-          : item,
-      );
+      items = items?.map((item) => ({ ...item, receivedAt }));
       const itemTypes = [...new Set(items?.map((item) => item.type))];
       setLatestEventTime((latest) =>
         latest === undefined ? receivedAt : Math.max(latest, receivedAt),
@@ -1505,9 +1508,10 @@ export default function App() {
                               {activeWorkspace.label}
                             </h1>
                             <span className="text-xs tabular-nums text-muted-foreground">
-                              {searchedItems.length}{" "}
-                              {activeWorkspace.singularLabel}
-                              {searchedItems.length === 1 ? "" : "s"}
+                              {pluralize(
+                                searchedItems.length,
+                                activeWorkspace.singularLabel,
+                              )}
                             </span>
                           </div>
                           {newItemCount > 0 ? (
@@ -1521,9 +1525,11 @@ export default function App() {
                                 }
                               }}
                             >
-                              View {newItemCount} new{" "}
-                              {activeWorkspace.singularLabel}
-                              {newItemCount === 1 ? "" : "s"}
+                              View{" "}
+                              {pluralize(
+                                newItemCount,
+                                `new ${activeWorkspace.singularLabel}`,
+                              )}
                             </button>
                           ) : null}
                         </div>

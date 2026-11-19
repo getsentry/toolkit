@@ -2,7 +2,7 @@
  * Unified URL parsing utilities for Sentry resources.
  *
  * Parses Sentry URLs to identify resource types and extract relevant identifiers.
- * Supports issue, trace, profile, event, replay, monitor, and dashboard URLs across different
+ * Supports issue, trace, profile, event, replay, monitor, metric alert, and dashboard URLs across different
  * Sentry URL formats (subdomain, path-based organization, self-hosted).
  */
 
@@ -22,6 +22,7 @@ export type SentryResourceType =
   | "release"
   | "snapshot"
   | "dashboard"
+  | "metric_alert"
   | "unknown";
 
 /**
@@ -67,6 +68,8 @@ export interface ParsedSentryUrl {
   selectedSnapshot?: string | undefined;
   /** Dashboard numeric ID (for dashboard URLs) */
   dashboardId?: string;
+  /** Legacy metric alert rule ID (for metric alert rule URLs) */
+  alertRuleId?: string;
 }
 
 /**
@@ -82,6 +85,7 @@ export interface ParsedSentryUrl {
  * - Replay: `/explore/replays/{replayId}/` or `/replays/{replayId}/`
  * - Monitor: `/crons/{monitorSlug}/` or `/monitors/{monitorSlug}/`
  * - Release: `/releases/{version}/`
+ * - Metric alert: `/alerts/rules/details/{alertRuleId}/`
  * - Dashboard: `/dashboard/{dashboardId}/`
  *
  * Organization slug is extracted from:
@@ -424,6 +428,24 @@ function identifyResource(
         type: "event",
         organizationSlug,
         eventId,
+      };
+    }
+  }
+
+  // Metric alert URL: /alerts/rules/details/{alertRuleId}/
+  // Metric alert notifications link here, usually with ?alert={incidentId}.
+  const alertsIndex = pathParts.indexOf("alerts");
+  if (
+    alertsIndex !== -1 &&
+    pathParts[alertsIndex + 1] === "rules" &&
+    pathParts[alertsIndex + 2] === "details"
+  ) {
+    const alertRuleId = pathParts[alertsIndex + 3];
+    if (alertRuleId && /^\d+$/.test(alertRuleId)) {
+      return {
+        type: "metric_alert",
+        organizationSlug,
+        alertRuleId,
       };
     }
   }

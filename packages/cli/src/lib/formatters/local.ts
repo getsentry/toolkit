@@ -1,9 +1,6 @@
 /** Tail formatters for the local dev server. */
 
-import {
-  classifyEvent,
-  readMessageText,
-} from "../../commands/local/event-kind.js";
+import { describeEvent } from "../../commands/local/event-kind.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -382,15 +379,7 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
     | { values?: ExceptionValue[] }
     | undefined;
   // values is ordered oldest→newest; the last one is what was thrown.
-  const last = exception?.values?.at(-1);
-  const errorType =
-    typeof last?.type === "string" && last.type ? last.type : undefined;
-  const exceptionText =
-    last?.value === undefined || last.value === ""
-      ? undefined
-      : stringifyUnknown(last.value);
-  const messageText =
-    readMessageText(event["logentry"]) ?? readMessageText(event["message"]);
+  const frames = exception?.values?.at(-1)?.stacktrace?.frames;
   const level =
     typeof event["level"] === "string" && event["level"]
       ? event["level"]
@@ -399,17 +388,15 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
     typeof event["logger"] === "string" && event["logger"]
       ? event["logger"]
       : undefined;
-  const frames = last?.stacktrace?.frames;
-
-  const text = errorType ? exceptionText : (messageText ?? exceptionText);
-  if (classifyEvent(event) === "message" && text) {
+  const { kind, errorType, text } = describeEvent(event);
+  if (kind === "message" && text) {
     return { kind: "message", level, text, frames, logger };
   }
   return {
     kind: "error",
     level,
     errorType: errorType ?? "Error",
-    text: text ?? messageText ?? "Unknown error",
+    text: text ?? "Unknown error",
     frames,
     logger,
   };
@@ -539,16 +526,40 @@ const SDK_ATTRIBUTE_PREFIXES = [
   "exception.",
   "error.",
   "user_agent.",
-  "logger.",
-  "user.",
 ];
 
 /**
- * Exact keys that SDK logging integrations add, such as the Python `logging`
- * record's `asctime` and the `request` and `server_time` extras that Django's
- * dev server sets on every access log.
+ * Exact log attribute keys that SDKs add on their own: the scope user they
+ * copy onto every log, the Python `logging` record's `asctime`, and the
+ * `server_time` extra that Django's dev server sets on access logs.
  */
-const SDK_ATTRIBUTE_KEYS = new Set(["asctime", "request", "server_time"]);
+const SDK_LOG_ATTRIBUTE_KEYS = new Set([
+  "user.id",
+  "user.email",
+  "user.name",
+  "user.username",
+  "user.ip_address",
+  "asctime",
+  "server_time",
+]);
+
+/**
+ * Log attribute keys that one SDK adds, keyed by its `sentry.sdk.name`
+ * prefix. Other SDKs leave these names free for custom attributes.
+ * sentry-rust adds the OS and the active span; sentry-ruby keeps the
+ * `parameters:` argument of `Sentry.logger.info` as an attribute.
+ */
+const SDK_LOG_ATTRIBUTE_KEYS_BY_SDK: readonly [string, ReadonlySet<string>][] =
+  [
+    ["sentry.rust", new Set(["os.name", "os.version", "parent_span_id"])],
+    ["sentry.ruby", new Set(["parameters"])],
+  ];
+
+/**
+ * A `request` value that is an object repr, like the socket or
+ * `WSGIRequest` that Python's `logging` extras put on access logs.
+ */
+const REQUEST_REPR_RE = /^<(?:WSGIRequest|ASGIRequest|socket)\b/;
 
 /** Two-space indent prefix for nested attribute-table lines. */
 const ATTR_INDENT = "  ";
@@ -560,9 +571,37 @@ const ATTR_INDENT = "  ";
  */
 function isSdkAttribute(key: string): boolean {
   const lower = key.toLowerCase();
-  return (
-    SDK_ATTRIBUTE_KEYS.has(lower) ||
-    SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+  return SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/**
+ * Whether a log attribute was added by the SDK rather than the app. Adds the
+ * log-only keys, such as `logger.*` from logging integrations, to
+ * {@link isSdkAttribute}; on a span the same keys are custom. A bare `request` counts only when
+ * the SDK is Python or the value is an object repr, so an app's own
+ * `request` attribute still shows.
+ */
+function isSdkLogAttribute(
+  key: string,
+  value: unknown,
+  sdkName: string,
+): boolean {
+  const lower = key.toLowerCase();
+  if (
+    isSdkAttribute(key) ||
+    SDK_LOG_ATTRIBUTE_KEYS.has(lower) ||
+    lower.startsWith("logger.")
+  ) {
+    return true;
+  }
+  if (lower === "request") {
+    return (
+      sdkName.startsWith("sentry.python") ||
+      (typeof value === "string" && REQUEST_REPR_RE.test(value))
+    );
+  }
+  return SDK_LOG_ATTRIBUTE_KEYS_BY_SDK.some(
+    ([sdk, keys]) => sdkName.startsWith(sdk) && keys.has(lower),
   );
 }
 
@@ -682,6 +721,27 @@ function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
 }
 
 /**
+ * Split a log's attributes into the app's own and the SDK's, by
+ * {@link isSdkLogAttribute}. The SDK name comes from the log's
+ * `sentry.sdk.name`, else the envelope header.
+ */
+function splitLogAttributes(
+  logEntry: LogEntry,
+  header: Record<string, unknown>,
+): { custom: [string, unknown][]; sdk: [string, unknown][] } {
+  const fromLog = logEntry.attributes?.["sentry.sdk.name"]?.value;
+  const fromHeader = (header["sdk"] as { name?: unknown } | undefined)?.name;
+  const name = fromLog ?? fromHeader;
+  const sdkName = typeof name === "string" ? name : "";
+  const custom: [string, unknown][] = [];
+  const sdk: [string, unknown][] = [];
+  for (const entry of logAttributeEntries(logEntry)) {
+    (isSdkLogAttribute(entry[0], entry[1], sdkName) ? sdk : custom).push(entry);
+  }
+  return { custom, sdk };
+}
+
+/**
  * Extract the trace ID from a log entry's attributes.
  *
  * Logs carry no `contexts.trace`; the trace ID lives in the SDK-default
@@ -701,18 +761,20 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
  * lines align column-for-column and are easy to scan. SDK-default attributes
- * (`sentry.*`, `code.*`, `logger.*`, `user.*`, … see
- * {@link SDK_ATTRIBUTE_PREFIXES} and {@link SDK_ATTRIBUTE_KEYS}) are omitted
- * from the inline list; the trace ID is surfaced as a compact `[trace:…]`
- * token instead.
+ * (`sentry.*`, `code.*`, `logger.*`, the scope user, … see
+ * {@link isSdkLogAttribute}) are omitted from the inline list; the trace ID
+ * is surfaced as a compact `[trace:…]` token instead.
  */
-export function formatSingleLog(logEntry: LogEntry, source: string): string {
+export function formatSingleLog(
+  logEntry: LogEntry,
+  source: string,
+  header: Record<string, unknown> = {},
+): string {
   const level = logEntry.level ?? "log";
   let msg = sanitize(logEntry.body ?? "");
 
-  const attrs = logAttributeEntries(logEntry)
-    .filter(([k]) => !isSdkAttribute(k))
-    .sort(([a], [b]) => a.localeCompare(b))
+  const attrs = splitLogAttributes(logEntry, header)
+    .custom.sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v))}]`));
   if (attrs.length > 0) {
     msg += ` ${attrs.join(" ")}`;
@@ -749,13 +811,11 @@ export function formatLogItem(
   // One log batch comes from one SDK client, so any browser log places all.
   const source = inferSource(header, undefined, items.map(logAttributes));
   return items.flatMap((logEntry) => {
-    const line = formatSingleLog(logEntry, source);
+    const line = formatSingleLog(logEntry, source, header);
     if (!showAttributes) {
       return [line];
     }
-    const sdk = logAttributeEntries(logEntry).filter(([k]) =>
-      isSdkAttribute(k),
-    );
+    const { sdk } = splitLogAttributes(logEntry, header);
     return [line, ...formatAttrGroup("sdk attributes", sdk)];
   });
 }
@@ -1297,20 +1357,7 @@ function formatLogJson(
         level: entry.level ?? "log",
         message: stripBidi(entry.body ?? ""),
         attributes: entry.attributes
-          ? Object.fromEntries(
-              Object.entries(entry.attributes)
-                .filter(
-                  ([k, v]) =>
-                    isUserLogAttribute(k) &&
-                    (includeAttributes || !isSdkAttribute(k)) &&
-                    v.value !== null &&
-                    v.value !== undefined,
-                )
-                .map(([k, v]) => [
-                  stripBidi(k),
-                  typeof v.value === "string" ? stripBidi(v.value) : v.value,
-                ]),
-            )
+          ? jsonLogAttributes(entry, header, includeAttributes)
           : undefined,
         source,
       },
@@ -1318,6 +1365,22 @@ function formatLogJson(
       header,
     ),
   );
+}
+
+/**
+ * A log's attributes for its JSON record: the custom ones, plus the SDK ones
+ * (except `sentry.*`) when `includeAttributes` is true.
+ */
+function jsonLogAttributes(
+  entry: LogEntry,
+  header: Record<string, unknown>,
+  includeAttributes: boolean,
+): Record<string, unknown> {
+  const { custom, sdk } = splitLogAttributes(entry, header);
+  const entries = includeAttributes
+    ? [...custom, ...sdk.filter(([k]) => isUserLogAttribute(k))]
+    : custom;
+  return Object.fromEntries(entries);
 }
 
 /** Format a standalone span item as JSON objects (one per span). */

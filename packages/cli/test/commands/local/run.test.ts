@@ -1250,6 +1250,7 @@ describe("sentry local run --verify receiver", () => {
 
   test("says which port it used when verify on a fallback port times out", async () => {
     const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const context = makeParsedRunContext();
     try {
@@ -1272,10 +1273,12 @@ describe("sentry local run --verify receiver", () => {
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
       const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
-      expect(warn).toHaveBeenCalledWith(
-        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-      );
+      const notice = `Port ${DEFAULT_PORT} is in use, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+      // Once when it binds, and again when nothing arrived.
+      expect(info).toHaveBeenCalledWith(notice);
+      expect(warn).toHaveBeenCalledWith(notice);
     } finally {
+      info.mockRestore();
       warn.mockRestore();
       busy.mockRestore();
     }
@@ -1358,7 +1361,7 @@ describe("sentry local run messages", () => {
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       expect(info).toHaveBeenCalledWith(
-        `The Local daemon is using port ${DEFAULT_PORT}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
+        `Port ${DEFAULT_PORT} is held by the Local daemon, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT. Add --session <name> to capture into the daemon instead.`,
       );
     } finally {
       info.mockRestore();

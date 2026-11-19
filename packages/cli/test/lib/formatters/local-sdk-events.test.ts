@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  formatAttributeTable,
   formatItem,
   formatItemJson,
 } from "../../../src/lib/formatters/local.js";
@@ -554,6 +555,132 @@ describe("log attributes", () => {
     expect(Object.keys(attributes).some((k) => k.startsWith("sentry."))).toBe(
       false,
     );
+  });
+});
+
+describe("SDK log attributes stay log-only", () => {
+  /** One log item from the given SDK with the given attributes. */
+  function sdkLog(
+    sdkName: string,
+    attributes: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      items: [
+        {
+          timestamp: 1_794_045_606.1,
+          level: "info",
+          body: "Checkout done",
+          attributes: Object.fromEntries(
+            Object.entries({ "sentry.sdk.name": sdkName, ...attributes }).map(
+              ([key, value]) => [key, { value }],
+            ),
+          ),
+        },
+      ],
+    };
+  }
+
+  /** The tail line for one log item, without colors. */
+  function logLine(sdkName: string, attributes: Record<string, unknown>) {
+    const header = { sdk: { name: sdkName, version: "1.0.0" } };
+    const lines = formatItem("log", sdkLog(sdkName, attributes), header, "log");
+    return stripAnsi(lines[0] ?? "");
+  }
+
+  test("custom user.* attributes stay on the line", () => {
+    const line = logLine("sentry.python.flask", {
+      "user.id": "42",
+      "user.plan": "pro",
+    });
+    expect(line).toContain("[user.plan=pro]");
+    expect(line).not.toContain("user.id");
+  });
+
+  test("a bare request is hidden only when it is an SDK repr", () => {
+    expect(
+      logLine("sentry.javascript.node", { request: "checkout" }),
+    ).toContain("[request=checkout]");
+    expect(
+      logLine("sentry.javascript.node", {
+        request: "<WSGIRequest: GET '/boom'>",
+      }),
+    ).not.toContain("request=");
+  });
+
+  test("Rust log attributes are hidden without --attributes", () => {
+    const attributes = {
+      "os.name": "macos",
+      "os.version": "15.1",
+      parent_span_id: "b0e6f15b45c36b12",
+      order_id: "o-1",
+    };
+    const line = logLine("sentry.rust", attributes);
+    expect(line).toContain("[order_id=o-1]");
+    for (const key of ["os.name", "os.version", "parent_span_id"]) {
+      expect(line).not.toContain(key);
+    }
+    // Other SDKs keep the same keys as custom attributes.
+    expect(logLine("sentry.javascript.node", attributes)).toContain(
+      "[os.name=macos]",
+    );
+
+    const header = { sdk: { name: "sentry.rust", version: "0.40.0" } };
+    const table = formatItem(
+      "log",
+      sdkLog("sentry.rust", attributes),
+      header,
+      "log",
+      true,
+    )
+      .map(stripAnsi)
+      .slice(1)
+      .join("\n");
+    expect(table).toContain("os.name");
+    expect(table).toContain("parent_span_id");
+  });
+
+  test("Ruby's parameters attribute is hidden without --attributes", () => {
+    const line = logLine("sentry.ruby.rails", {
+      parameters: '["jane"]',
+      "sentry.message.parameter.0": "jane",
+      order_id: "o-1",
+    });
+    expect(line).toContain("[order_id=o-1]");
+    expect(line).not.toContain("parameters");
+  });
+
+  test("transactions keep log-only keys as custom attributes", () => {
+    const data = {
+      asctime: "2026-11-17 10:00:06,101",
+      "logger.name": "app",
+      request: "checkout",
+      server_time: "10:00:06",
+      "user.email": "jane@example.com",
+      "http.method": "GET",
+    };
+    const event = {
+      timestamp: 1_794_045_606.2,
+      start_timestamp: 1_794_045_606.1,
+      contexts: { trace: { op: "http.server", data } },
+    };
+    const header = { sdk: { name: "sentry.python.flask", version: "2.42.0" } };
+    const [line] = formatItemJson("transaction", event, header, true);
+    const record = JSON.parse(line ?? "{}") as {
+      attributes: Record<string, Record<string, string>>;
+    };
+    expect(Object.keys(record.attributes["user"] ?? {}).sort()).toEqual([
+      "asctime",
+      "logger.name",
+      "request",
+      "server_time",
+      "user.email",
+    ]);
+    expect(record.attributes["sdk"]).toEqual({ "http.method": "GET" });
+
+    const table = formatAttributeTable(event).map(stripAnsi).join("\n");
+    const userGroup = table.slice(0, table.indexOf("sdk attributes"));
+    expect(userGroup).toContain("user.email");
+    expect(userGroup).toContain("asctime");
   });
 });
 

@@ -25,6 +25,8 @@ export type LocalFeedItem = {
   id: string;
   type: string;
   timestamp?: number | string | undefined;
+  /** When the receiver got the item's envelope, in epoch milliseconds. */
+  receivedAt?: number | undefined;
   text: string;
   payload: unknown;
   metadata?: EventMetadata;
@@ -292,11 +294,36 @@ function normalizeRemoteStreamUrl(stream: string | null): string | undefined {
   return endpoint?.kind === "remote" ? endpoint.url : undefined;
 }
 
+/**
+ * When to show and sort an item by: its SDK time, else when it was received.
+ * Trace timing reads only `timestamp`, so a late receive time cannot stretch a
+ * trace.
+ */
+export function itemTime(item: LocalFeedItem): number | string | undefined {
+  return item.timestamp ?? item.receivedAt;
+}
+
+/**
+ * The raw `stream` and `directory` a CLI link carries in the URL fragment.
+ * `present` is true when either is there, so callers clear both even when a
+ * value fails validation.
+ */
+export function readConnectionLink(hash: string): {
+  present: boolean;
+  stream: string | null;
+  directory: string | null;
+} {
+  const fragment = new URLSearchParams(hash.replace(/^#/, ""));
+  return {
+    present: fragment.has("stream") || fragment.has("directory"),
+    stream: fragment.get("stream"),
+    directory: fragment.get("directory"),
+  };
+}
+
 /** Read the CLI-provided stream endpoint without allowing arbitrary targets. */
 export function getStreamUrlFromHash(hash: string): string | undefined {
-  return normalizeLoopbackStreamUrl(
-    new URLSearchParams(hash.replace(/^#/, "")).get("stream"),
-  );
+  return normalizeLoopbackStreamUrl(readConnectionLink(hash).stream);
 }
 
 /** Public viewer query links may select only a credential-free loopback receiver. */
