@@ -236,7 +236,8 @@ export default defineTool({
         params.query,
         projectId,
         params.dataset,
-        [params.yAxis],
+        // Discover reads group-by columns from `field`, so list it first.
+        params.groupBy ? [params.groupBy, params.yAxis] : [params.yAxis],
         `-${params.yAxis}`,
         [params.yAxis],
         params.groupBy ? [params.groupBy] : [],

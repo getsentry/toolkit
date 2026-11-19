@@ -181,6 +181,24 @@ describe("render_sentry_chart", () => {
     expect(projects).not.toEqual(projectSlug ? ["-1"] : []);
   });
 
+  it("links grouped errors charts to Discover with the group-by column", async () => {
+    mswServer.use(
+      http.get(TIMESERIES_URL, () => HttpResponse.json({ timeSeries: [] })),
+    );
+
+    const chart = getStructuredContent<ChartResult>(
+      await renderSentryChart.handler(
+        { ...baseParams, groupBy: "release" },
+        context,
+      ),
+    );
+
+    expect(new URL(chart.url).searchParams.getAll("field")).toEqual([
+      "release",
+      "count()",
+    ]);
+  });
+
   it("returns an empty chart when a grouped query matches nothing", async () => {
     mswServer.use(
       http.get(TIMESERIES_URL, () => HttpResponse.json({ timeSeries: [] })),
