@@ -729,3 +729,24 @@ test("a new session link in an open tab switches to that run's sessions", async 
     await second.stop();
   }
 });
+
+test("a pasted link with a stream the viewer refuses still leaves the address bar", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    await daemon.ingest(web, "/first-run");
+    renderSession(web);
+    await screen.findAllByText("/first-run");
+    await act(async () => {
+      window.location.hash = new URLSearchParams({
+        stream: "https://collector.example.com/stream",
+        directory: web.directoryUrl,
+      }).toString();
+    });
+    await waitFor(() => expect(window.location.hash).toBe(""));
+    expect(screen.getAllByText("/first-run").length).toBeGreaterThan(0);
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+});

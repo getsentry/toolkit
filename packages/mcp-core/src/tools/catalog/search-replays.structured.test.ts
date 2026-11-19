@@ -166,7 +166,7 @@ describe("search_replays structured output", () => {
             "type": "tool_call",
           },
         ],
-        "url": "https://test-org.sentry.io/explore/replays/?query=count_errors%3A%3E0&environment=production&sort=-count_errors&statsPeriod=24h",
+        "url": "https://test-org.sentry.io/explore/replays/?project=-1&query=count_errors%3A%3E0&environment=production&sort=-count_errors&statsPeriod=24h",
       }
     `);
   });

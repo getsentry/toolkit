@@ -321,7 +321,7 @@ test("returning from a sampled function keeps its row shown and focused", () => 
     (document.activeElement as HTMLElement | null)?.dataset["spanId"],
   ).toBe(id);
   fireEvent.click(
-    screen.getByRole("button", { name: "Hide sampled functions" }),
+    screen.getByRole("button", { name: /^Hide sampled functions/ }),
   );
   expect(
     screen.queryAllByRole("button", { name: "Inspect span work" }),

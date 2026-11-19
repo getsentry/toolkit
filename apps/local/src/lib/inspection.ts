@@ -1,6 +1,6 @@
 import { classifyEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { jsonText } from "./objects.ts";
-import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
+import { getEventMetadata, itemTime, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
 
 export function record(value: unknown): Record<string, unknown> {
@@ -258,7 +258,7 @@ export function sdkInventory(items: readonly LocalFeedItem[]): SdkEntry[] {
       key = `${name}@${version}`;
     const previous = entries.get(key);
     const lastSeen =
-      item.timestamp ??
+      itemTime(item) ??
       text(item.envelopeHeader?.["sent_at"]) ??
       previous?.lastSeen;
     entries.set(key, {

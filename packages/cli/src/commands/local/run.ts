@@ -2,7 +2,8 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read by the Node.js and Python SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js, Python, and Ruby SDKs, and by
+ * PHP through its `spotlight` option) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
  * browser bundles. Browser SDKs do not read those variants yet; the app
@@ -292,6 +293,22 @@ async function startBackgroundServer({
 }
 
 /**
+ * Say that this run listens on `boundPort` because `defaultPort` is taken.
+ * An SDK that hard-codes the default port sends there instead, and the
+ * daemon drops traffic that isn't for a session without a word, so the
+ * notice says to use SENTRY_SPOTLIGHT.
+ *
+ * @param reason - Why the default port is taken, e.g. "is in use"
+ */
+function freePortNotice(
+  defaultPort: number,
+  boundPort: number,
+  reason: string,
+): string {
+  return `Port ${defaultPort} ${reason}, so this run listens on port ${boundPort} instead. SDKs that hard-code ${defaultPort} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+}
+
+/**
  * Get a live event tail on `host:port`, whichever way is available.
  *
  * Prefers attaching to whatever already holds the port so we never compete
@@ -310,7 +327,7 @@ async function openEventTail({
   const url = formatLocalServerUrl(host, port);
 
   let running = false;
-  let listenPort = port;
+  let heldByDaemon = false;
   try {
     running = await isServerRunning(url);
   } catch (err) {
@@ -325,10 +342,7 @@ async function openEventTail({
     }
     // The daemon's receiver only takes session traffic, and it stays up while
     // it retains sessions, so a plain run gets its own receiver instead.
-    logger.info(
-      `The Local daemon is using port ${port}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
-    );
-    listenPort = 0;
+    heldByDaemon = true;
   }
 
   if (running) {
@@ -342,18 +356,23 @@ async function openEventTail({
     });
   }
 
-  if (listenPort === port) {
+  if (!heldByDaemon) {
     logger.info("No server detected, starting one in the background...");
   }
   try {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port: listenPort,
+      port: heldByDaemon ? 0 : port,
       host,
       activeFilters,
       useJson,
       showAttributes,
     });
+    if (heldByDaemon) {
+      logger.info(
+        `${freePortNotice(port, Number(new URL(bg.url).port), "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
+      );
+    }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
   } catch (err) {
@@ -404,12 +423,16 @@ function autoDetectErrorMessage(): string {
     `Usage: ${sentry`local run -- <command>`}`,
     "",
     "Supported auto-detection:",
+    "  - artisan (Laravel: composer run dev, or php artisan serve)",
+    "  - Gemfile with bin/rails (Rails: bin/dev, or bin/rails server)",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
     "  - a FastAPI app in app.py / main.py (uvicorn)",
     "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
     "  - app.py / main.py (Python script)",
     "  - FLASK_APP in a Python project (flask run)",
+    "  - Gemfile with config.ru (Rack)",
+    "  - Cargo.toml with a binary target (Rust)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
     "",
@@ -473,7 +496,10 @@ export const runCommand = buildCommand({
       "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
       "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
       "What your SDK needs:\n" +
-      "  - Node.js and Python servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
+      "  - Go and Rust have no Spotlight support. Set\n" +
+      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -573,7 +599,7 @@ export const runCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -909,8 +935,8 @@ async function listenForVerify(
         PORT_IN_USE_FIELD,
       );
     }
-    logger.info(`Port ${DEFAULT_PORT} is in use; verifying on a free port`);
     const bound = await tryListen(app, 0, host, { retries: 0 });
+    logger.info(freePortNotice(DEFAULT_PORT, bound.port, "is in use"));
     return { ...bound, fellBack: true };
   }
 }
@@ -1076,9 +1102,7 @@ async function* runWithVerify(
       if (fellBack) {
         // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
         // port, so it reaches whatever holds that port instead of this receiver.
-        logger.warn(
-          `Verify used port ${boundPort} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-        );
+        logger.warn(freePortNotice(DEFAULT_PORT, boundPort, "is in use"));
       }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
