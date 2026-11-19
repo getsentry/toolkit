@@ -509,7 +509,7 @@ export function createLocalControlPlane({
     // Close can occur while the body is being read or decoded. Tracking the
     // request lets close drain it, so a 413 reaches readers before the closing
     // frame. Retention still stops at the close.
-    const status = await trackReceiverRequest(buffer, async () => {
+    const outcome = await trackReceiverRequest(buffer, async () => {
       const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
       const result =
         typeof body === "number"
@@ -530,10 +530,13 @@ export function createLocalControlPlane({
       reportIngestStatus(buffer, result);
       return result;
     });
-    if (status === 410) return closed();
-    if (status === 503) c.header("Retry-After", "1");
-    if (status === 204) sessionStore.recordActivity(reference);
-    return c.body(null, status);
+    if (typeof outcome === "object") {
+      sessionStore.recordActivity(reference);
+      return c.json(outcome);
+    }
+    if (outcome === 410) return closed();
+    if (outcome === 503) c.header("Retry-After", "1");
+    return c.body(null, outcome);
   };
   for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
