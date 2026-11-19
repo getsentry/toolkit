@@ -174,7 +174,10 @@ export default defineTool({
       projectSlug: params.projectSlug ?? undefined,
     });
 
-    let projectId: string | undefined;
+    // Without a project, Sentry only charts projects whose teams the user
+    // belongs to. `-1` covers every project the user can access, as the UI's
+    // "All Projects" does.
+    let projectId = "-1";
     if (params.projectSlug) {
       const project = await apiService.getProject({
         organizationSlug,

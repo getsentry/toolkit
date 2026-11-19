@@ -88,7 +88,7 @@ describe("render_sentry_chart", () => {
           "statsPeriod": "1h",
         },
         "title": "count()",
-        "url": "https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&field=count%28%29&sort=-count%28%29&statsPeriod=1h&mode=aggregate&yAxis=count%28%29",
+        "url": "https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=count%28%29&sort=-count%28%29&statsPeriod=1h&mode=aggregate&yAxis=count%28%29",
         "valueType": "integer",
         "valueUnit": null,
         "yAxis": "count()",
@@ -157,6 +157,28 @@ describe("render_sentry_chart", () => {
       time: "2025-09-10T23:00:00.000Z",
       value: 120,
     });
+  });
+
+  it.each([
+    ["every accessible project when projectSlug is omitted", null, ["-1"]],
+    [
+      "only the named project",
+      "cloudflare-mcp",
+      [expect.stringMatching(/^\d+$/)],
+    ],
+  ])("charts %s", async (_, projectSlug, expected) => {
+    let projects: string[] | undefined;
+    mswServer.use(
+      http.get(TIMESERIES_URL, ({ request }) => {
+        projects = new URL(request.url).searchParams.getAll("project");
+        return HttpResponse.json({ timeSeries: [] });
+      }),
+    );
+
+    await renderSentryChart.handler({ ...baseParams, projectSlug }, context);
+
+    expect(projects).toEqual(expected);
+    expect(projects).not.toEqual(projectSlug ? ["-1"] : []);
   });
 
   it("returns an empty chart when a grouped query matches nothing", async () => {
