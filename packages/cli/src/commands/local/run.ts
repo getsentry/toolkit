@@ -56,6 +56,7 @@ import {
   formatEnvelopeLinesJson,
   type FormatValue,
   printLocalViewerHint,
+  sanitize,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
 import { spawnFailureError } from "../../lib/spawn-failure.js";
@@ -1056,8 +1057,10 @@ async function* runWithVerify(
       }
       for (const [{ type }] of container.getParsedEnvelope()?.envelope[1] ??
         []) {
-        if (type) {
-          uncountedTypes.add(type);
+        // Item types are untrusted input that ends up in the terminal.
+        const safeType = type ? sanitize(type).trim() : "";
+        if (safeType) {
+          uncountedTypes.add(safeType);
         }
       }
     });

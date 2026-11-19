@@ -1360,6 +1360,28 @@ describe("sentry local run --verify receiver", () => {
     },
   );
 
+  test("strips terminal escapes and line breaks from item types in the error", async () => {
+    const func = (await runCommand.loader()) as unknown as RunFunc;
+    const error = await func
+      .call(
+        makeContext(),
+        {
+          port: 0,
+          host: "127.0.0.1",
+          verify: true,
+          timeout: 2,
+          filter: ["error" as const],
+        },
+        process.execPath,
+        ...sendItems(["\u001b[31mevil\u001b[0m\nError: forged \u202eline"]),
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(VerifyFailedError);
+    expect((error as CliError).message).toBe(
+      "Verification timed out after 2s: the SDK connected but sent only evil Error: forged line (nothing matching -f error)",
+    );
+  });
+
   test("says the SDK connected when the app exits after only a session", async () => {
     const func = (await runCommand.loader()) as unknown as RunFunc;
     const error = await func
