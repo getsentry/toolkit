@@ -16,6 +16,15 @@ const HEX_REFERENCE = /^[0-9a-f]+(?::\d+)?$/i;
 const SEGMENT_SUFFIX = /^:(\d+)$/;
 
 /**
+ * The case-free form IDs compare by: a hex reference and the stored IDs it is
+ * checked against, and every stored ID when picking prefixes, since a
+ * hex-looking prefix of a non-hex ID is also looked up without case.
+ */
+function foldCase(value: string): string {
+  return value.toLowerCase();
+}
+
+/**
  * Distinct event IDs that `reference` selects, in this order: the ID equal to
  * it; for a bare replay ID, whose every match is `<reference>:<segment>`, the
  * lowest segment; else every ID it is a prefix of. Hex references match stored
@@ -31,7 +40,7 @@ export function matchEventIds(
     return [reference];
   }
   const key = HEX_REFERENCE.test(reference)
-    ? (value: string) => value.toLowerCase()
+    ? foldCase
     : (value: string) => value;
   const wanted = key(reference);
   const exact = eventIds.filter((id) => key(id) === wanted);
@@ -72,6 +81,14 @@ function firstReplaySegment(
   return first?.id;
 }
 
+/** Compares UTF-16 code units, like the default `.sort()`; not `localeCompare`, which orders by locale. */
+function compare(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  return left < right ? -1 : 1;
+}
+
 function sharedPrefixLength(left: string, right: string | undefined): number {
   if (right === undefined) {
     return 0;
@@ -90,18 +107,25 @@ function sharedPrefixLength(left: string, right: string | undefined): number {
 /**
  * Shortest prefix of each event ID, at least
  * {@link EVENT_ID_PREFIX_MIN_LENGTH} characters, that no other listed ID
- * starts with, so each one shown by `local event list` opens with
+ * starts with in any case, so each one shown by `local event list` opens with
  * `local event view`. An ID that is a prefix of another stays whole.
+ *
+ * Prefixes compare like hex references in {@link matchEventIds}, without
+ * case. That also covers non-hex IDs, which only match in their own case, so
+ * at worst they show a few more characters. IDs that differ only in case share
+ * every case-free prefix, so they show in full and open by the exact match.
  */
 export function uniqueEventIdPrefixes(
   eventIds: readonly string[],
 ): Map<string, string> {
-  const sorted = [...new Set(eventIds)].sort();
+  const sorted = [...new Set(eventIds)]
+    .map((id) => ({ id, key: foldCase(id) }))
+    .sort((left, right) => compare(left.key, right.key));
   return new Map(
-    sorted.map((id, index) => {
+    sorted.map(({ id, key }, index) => {
       const shared = Math.max(
-        sharedPrefixLength(id, sorted[index - 1]),
-        sharedPrefixLength(id, sorted[index + 1]),
+        sharedPrefixLength(key, sorted[index - 1]?.key),
+        sharedPrefixLength(key, sorted[index + 1]?.key),
       );
       return [
         id,

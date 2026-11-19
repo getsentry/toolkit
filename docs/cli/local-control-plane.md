@@ -70,7 +70,9 @@ characters matches no prefix, so short lookup keys keep working.
 
 Without `--json`, `session list`, `event list`, and `envelope list` print
 tables. The event table shows each ID as its shortest unique prefix of at least
-8 characters, so it can be passed to `event view`. `--json` prints the control
+8 characters, so it can be passed to `event view`. Uniqueness ignores case, like
+hex references do, so IDs that differ only in case show in full and open by the
+exact match. `--json` prints the control
 plane's response unchanged.
 
 Each `event list` entry keeps `envelopeId`, `eventId`, and `itemTypes`, and adds

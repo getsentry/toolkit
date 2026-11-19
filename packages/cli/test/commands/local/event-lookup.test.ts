@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { matchEventIds } from "../../../src/commands/local/event-lookup.js";
+import {
+  matchEventIds,
+  uniqueEventIdPrefixes,
+} from "../../../src/commands/local/event-lookup.js";
 
 const replayId = "aaaaaaaa1111111111111111111111a1";
 
@@ -41,5 +44,26 @@ describe("matchEventIds", () => {
 
   test("a short non-hex key still matches only exactly", () => {
     expect(matchEventIds(["One", "one"], "One")).toEqual(["One"]);
+  });
+});
+
+describe("uniqueEventIdPrefixes", () => {
+  test("IDs that share a prefix in another case get prefixes that open only them", () => {
+    const upper = "AAAAAAAA111111111111111111111111";
+    const lower = "aaaaaaaa222222222222222222222222";
+    const ids = [upper, lower];
+    const prefixes = uniqueEventIdPrefixes(ids);
+    expect(prefixes.get(upper)).toBe("AAAAAAAA1");
+    expect(prefixes.get(lower)).toBe("aaaaaaaa2");
+    expect(matchEventIds(ids, "AAAAAAAA1")).toEqual([upper]);
+    expect(matchEventIds(ids, "aaaaaaaa2")).toEqual([lower]);
+  });
+
+  test("IDs that differ only in case show in full", () => {
+    const upper = "AAAAAAAA111111111111111111111111";
+    const lower = upper.toLowerCase();
+    const prefixes = uniqueEventIdPrefixes([upper, lower]);
+    expect(prefixes.get(upper)).toBe(upper);
+    expect(prefixes.get(lower)).toBe(lower);
   });
 });
