@@ -105,9 +105,30 @@ describe("formatErrorItem", () => {
     expect(result).not.toContain("(OrderNotFound)");
   });
 
+  test("drops the class name from the first line of a multi-line Ruby message", () => {
+    const event = {
+      ...rubyExceptionEvent,
+      exception: {
+        values: [
+          {
+            ...rubyExceptionEvent.exception.values[0],
+            type: "NoMethodError",
+            value:
+              "undefined method 'name' for nil (NoMethodError)\n\n    user.name\n        ^^^^^",
+          },
+        ],
+      },
+    };
+    const result = stripAnsi(formatErrorItem(event, { sdk: event.sdk }));
+    expect(result).toContain("NoMethodError: undefined method 'name' for nil");
+    expect(result).not.toContain("(NoMethodError)");
+  });
+
   test.each([
     [{ value: null }, "[ERROR]   [SERVER]  Error: Unknown error"],
     [{ value: 42 }, "[ERROR]   [SERVER]  Error: 42"],
+    [{ value: true }, "[ERROR]   [SERVER]  Error: true"],
+    [{ value: { code: 7 } }, '[ERROR]   [SERVER]  Error: {"code":7}'],
   ])("an untyped exception with value %j is not a message", (value, line) => {
     const event = { timestamp: 1_700_000_000, exception: { values: [value] } };
     expect(stripAnsi(formatErrorItem(event, serverHeader))).toContain(line);

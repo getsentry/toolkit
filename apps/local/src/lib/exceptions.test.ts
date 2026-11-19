@@ -9,7 +9,7 @@ describe("getEventExceptions", () => {
     {},
     { exception: null },
     { exception: { values: "invalid" } },
-    { exception: { values: [null, false, [], {}, { type: 42, value: [] }] } },
+    { exception: { values: [null, false, [], {}] } },
   ])("ignores malformed exception data: %j", (payload) => {
     expect(getEventExceptions(payload)).toEqual([]);
   });
@@ -18,6 +18,8 @@ describe("getEventExceptions", () => {
     [{ type: "E", value: 42 }, "E: 42"],
     [{ type: "E", value: null }, "E: Unknown error"],
     [{ value: 42 }, "Error: 42"],
+    [{ value: true }, "Error: true"],
+    [{ type: 42, value: [] }, "Error: []"],
   ])("titles %j the way the tail does", (value, title) => {
     const exceptions = getEventExceptions({ exception: { values: [value] } });
     expect(exceptions).toHaveLength(1);

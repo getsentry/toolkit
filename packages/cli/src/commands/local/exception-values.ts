@@ -16,16 +16,16 @@ export function exceptionValues(exception: unknown): unknown[] {
 }
 
 /**
- * An exception value as display text: a non-empty string, or a number as SDKs
- * sometimes send; anything else has no text, so callers show `Unknown error`.
+ * An exception value as display text. Strings pass through; other values read
+ * as JSON, as Relay keeps them. null, undefined, and "" have no text, so
+ * callers show `Unknown error`.
  */
 export function exceptionValueText(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value || undefined;
+  if (value === undefined || value === null || value === "") {
+    return;
   }
-  return typeof value === "number" && Number.isFinite(value)
-    ? String(value)
-    : undefined;
+  // Payload values are parsed JSON, so they always serialize back.
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 /**
@@ -38,7 +38,8 @@ export function exceptionMessage(
   value: string,
 ): string {
   const lineEnd = value.indexOf("\n");
-  const first = lineEnd === -1 ? value : value.slice(0, lineEnd);
+  const line = lineEnd === -1 ? value : value.slice(0, lineEnd);
+  const first = line.endsWith("\r") ? line.slice(0, -1) : line;
   const suffix = ` (${type})`;
   return type && first.length > suffix.length && first.endsWith(suffix)
     ? first.slice(0, -suffix.length) + value.slice(first.length)

@@ -1,4 +1,4 @@
-import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
+import { describeEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { jsonText, withoutUndefined } from "./objects.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
@@ -104,14 +104,24 @@ function contextFeedback(
   return isRecord(contexts["feedback"]) ? contexts["feedback"] : {};
 }
 
+/** An event's title as the Local tail prints it; undefined when it has neither kind. */
+function describedEventTitle(
+  event: Record<string, unknown>,
+): string | undefined {
+  const { kind, errorType, text } = describeEvent(event);
+  if (kind === "exception") {
+    return `${errorType ?? "Error"}: ${text ?? "Unknown error"}`;
+  }
+  // Dev servers colour their console logs; captured messages keep the escapes.
+  return kind === "message" && text ? getString(stripAnsi(text)) : undefined;
+}
+
 /** Derive display metadata from this payload without inheriting its parent event. */
 export function getEventMetadata(
   payload: unknown,
   type: string,
 ): EventMetadata {
   const event = isRecord(payload) ? payload : {};
-  const exception =
-    type === "event" ? getEventExceptions(payload)[0] : undefined;
   const transaction = getString(event["transaction"]);
   const description = getString(event["description"]);
   // Dev servers colour their console logs; captured messages keep the escapes.
@@ -162,15 +172,12 @@ export function getEventMetadata(
 
   return withoutUndefined({
     title:
-      (exception?.type || exception?.value
-        ? formatExceptionTitle(exception)
-        : undefined) ??
+      (type === "event" ? describedEventTitle(event) : undefined) ??
       (type === "event" ? message : undefined) ??
       transaction ??
       description ??
       message ??
       route ??
-      (exception ? formatExceptionTitle(exception) : undefined) ??
       (type === "sessions" ? sessionCountsTitle(event) : undefined) ??
       type,
     ...((type === "event" || type === "log") && message ? { message } : {}),

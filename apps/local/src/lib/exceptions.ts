@@ -3,7 +3,7 @@ import {
   exceptionValueText,
   exceptionValues,
 } from "../../../../packages/cli/src/commands/local/exception-values.ts";
-import { readMessageText } from "../../../../packages/cli/src/commands/local/event-kind.ts";
+import { describeEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
 import { withoutUndefined } from "./objects.ts";
 
 /** Display fields from untrusted SDK exception payloads; raw JSON stays intact. */
@@ -63,13 +63,12 @@ export function getEventExceptions(payload: unknown): EventException[] {
         (raw !== undefined && typeof exception["value"] !== "string"
           ? "Error"
           : undefined);
-      // Like describeEvent, a typed current error without a value reads the
-      // event's message text, so the list and the detail title agree.
+      // A typed current error without a value takes describeEvent's text (the
+      // event message), so the detail heading matches the list title.
       const message =
         (raw && exceptionMessage(type, raw)) ??
-        (type && index === values.length - 1
-          ? (readMessageText(event?.["logentry"]) ??
-            readMessageText(event?.["message"]))
+        (type && index === values.length - 1 && event
+          ? describeEvent(event).text
           : undefined);
       const rawFrames = record(exception["stacktrace"])?.["frames"];
       const frames = Array.isArray(rawFrames)

@@ -65,6 +65,12 @@ describe("exceptionMessage", () => {
       " (OrderNotFound)",
     ],
     [
+      "drops the class name before a Windows line ending",
+      "NoMethodError",
+      "undefined method 'name' for nil (NoMethodError)\r\n    user.name",
+      "undefined method 'name' for nil\r\n    user.name",
+    ],
+    [
       "keeps untyped messages",
       undefined,
       "order 7 not found (undefined)",
@@ -83,10 +89,10 @@ describe("exceptionValueText", () => {
     ["", undefined],
     [null, undefined],
     [undefined, undefined],
-    [true, undefined],
-    [[], undefined],
-    [{}, undefined],
-    [Number.NaN, undefined],
+    [true, "true"],
+    [[], "[]"],
+    [{}, "{}"],
+    [{ code: 7 }, '{"code":7}'],
   ])("reads %j as %j", (value, expected) => {
     expect(exceptionValueText(value)).toBe(expected);
   });
