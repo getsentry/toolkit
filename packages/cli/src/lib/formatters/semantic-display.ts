@@ -284,8 +284,12 @@ function isUnnamed(label: string): boolean {
   return label === "unnamed" || label === UNNAMED_SPAN;
 }
 
+/**
+ * An HTTP method as SDKs write it in span names. Case-sensitive, so a custom
+ * span named `trace` or `delete` keeps its name.
+ */
 const HTTP_METHOD_RE =
-  /^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)$/i;
+  /^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)$/;
 
 /**
  * Whether a span name says more than its URL: not empty, not
