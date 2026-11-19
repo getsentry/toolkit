@@ -195,6 +195,15 @@ catalogs:
     '@cloudflare/workers-types':
       specifier: ^4.20260405.1
       version: 4.20260405.1
+    '@modelcontextprotocol/client':
+      specifier: 2.4.0
+      version: 2.4.0
+    '@modelcontextprotocol/core':
+      specifier: 2.4.0
+      version: 2.4.0
+    '@modelcontextprotocol/ext-apps':
+      specifier: 2.0.4
+      version: 2.0.4
     '@modelcontextprotocol/server':
       specifier: 2.4.0
       version: 2.4.0
@@ -312,6 +321,9 @@ catalogs:
     oxlint:
       specifier: 1.93.0
       version: 1.93.0
+    playwright-core:
+      specifier: 1.65.1
+      version: 1.65.1
     react:
       specifier: ^19.2.8
       version: 19.2.8
@@ -1021,6 +1033,9 @@ importers:
       '@logtape/sentry':
         specifier: ^1.1.1
         version: 1.1.1(@logtape/logtape@1.1.1)
+      '@modelcontextprotocol/ext-apps':
+        specifier: 'catalog:'
+        version: 2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -1058,15 +1073,27 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: ^4.0.33
         version: 4.0.40(zod@4.6.7)
+      '@modelcontextprotocol/client':
+        specifier: 'catalog:'
+        version: 2.4.0
+      '@modelcontextprotocol/core':
+        specifier: 'catalog:'
+        version: 2.4.0
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(@cfworker/json-schema@4.1.1)(supports-color@10.1.0)(zod@4.6.7)
       '@sentry/mcp-server-mocks':
         specifier: workspace:*
         version: link:../mcp-server-mocks
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       msw:
         specifier: 'catalog:'
         version: 2.15.0(@types/node@22.20.3)(typescript@7.0.2)
+      playwright-core:
+        specifier: 'catalog:'
+        version: 1.65.1
       tiktoken:
         specifier: ^1.0.18
         version: 1.0.22
@@ -2990,6 +3017,24 @@ packages:
   '@modelcontextprotocol/core@2.4.0':
     resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
     engines: {node: '>=20'}
+
+  '@modelcontextprotocol/ext-apps@2.0.4':
+    resolution: {integrity: sha512-B+PcbuGiaf0e5I3uy4iO5tS3Abo+5w8JvZFzHMzQdq9yVwP836zJkw2+KCGOQ0r4TM1fuQi4JdnbuWjkS4aBvg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@modelcontextprotocol/client': ^2.0.0
+      '@modelcontextprotocol/core': ^2.0.0
+      '@modelcontextprotocol/server': ^2.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
+      zod: ^4.6.6
+    peerDependenciesMeta:
+      '@modelcontextprotocol/server':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   '@modelcontextprotocol/sdk@1.32.2':
     resolution: {integrity: sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==}
@@ -7354,6 +7399,11 @@ packages:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
 
+  playwright-core@1.65.1:
+    resolution: {integrity: sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   pngjs@7.0.0:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
@@ -10421,6 +10471,17 @@ snapshots:
   '@modelcontextprotocol/core@2.4.0':
     dependencies:
       zod: 4.6.7
+
+  '@modelcontextprotocol/ext-apps@2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.7)':
+    dependencies:
+      '@modelcontextprotocol/client': 2.4.0
+      '@modelcontextprotocol/core': 2.4.0
+      '@standard-schema/spec': 1.1.0
+      zod: 4.6.7
+    optionalDependencies:
+      '@modelcontextprotocol/server': 2.4.0
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(supports-color@10.1.0)(zod@4.6.7)':
     dependencies:
@@ -14763,6 +14824,8 @@ snapshots:
   pkce-challenge@5.0.0: {}
 
   pkce-challenge@5.0.1: {}
+
+  playwright-core@1.65.1: {}
 
   pngjs@7.0.0: {}
 
