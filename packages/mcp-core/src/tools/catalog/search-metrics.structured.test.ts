@@ -153,7 +153,7 @@ describe("search_metrics structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/metrics/?statsPeriod=24h&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22metric.name%3Ahttp.request.duration%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22sum%28value%29%22%5D%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22sum%28value%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22samples%22%7D",
+        "url": "https://test-org.sentry.io/explore/metrics/?project=-1&statsPeriod=24h&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22metric.name%3Ahttp.request.duration%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22sum%28value%29%22%5D%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22sum%28value%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22samples%22%7D",
       }
     `);
   });
