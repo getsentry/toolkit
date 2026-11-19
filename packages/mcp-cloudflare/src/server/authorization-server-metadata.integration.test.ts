@@ -9,13 +9,13 @@ const workerEnv = {
 } as Env;
 
 async function fetchMetadata(path: string): Promise<Record<string, unknown>> {
-  const response = await handler.fetch!(
+  const response = await handler.fetch(
     new Request(`https://mcp.sentry.dev${path}`),
     workerEnv,
     createExecutionContext(),
   );
   expect(response.status).toBe(200);
-  return response.json();
+  return await response.json();
 }
 
 describe("authorization server metadata", () => {
@@ -27,9 +27,9 @@ describe("authorization server metadata", () => {
       "/.well-known/oauth-authorization-server/mcp/sentry/mcp-server",
     );
 
-    expect(root.code_challenge_methods_supported).toEqual(["S256"]);
-    expect(scoped.code_challenge_methods_supported).toEqual(
-      root.code_challenge_methods_supported,
+    expect(root["code_challenge_methods_supported"]).toEqual(["S256"]);
+    expect(scoped["code_challenge_methods_supported"]).toEqual(
+      root["code_challenge_methods_supported"],
     );
   });
 });
