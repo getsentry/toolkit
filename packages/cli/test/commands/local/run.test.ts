@@ -51,7 +51,7 @@ import {
   wranglerSetupHint,
 } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { refuseLocalHealthProbes, useTestConfigDir } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 /**
@@ -113,6 +113,8 @@ type RunFunc = (
 ) => Promise<void>;
 
 let tmpDir: string;
+
+refuseLocalHealthProbes();
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "run-test-"));

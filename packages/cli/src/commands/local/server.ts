@@ -698,7 +698,8 @@ export function tryListen(
 
 /**
  * Ask `${url}/health` who holds the port:
- * - `none`: the connection was refused, so nothing listens there.
+ * - `none`: the connection was refused, so nothing listens there, or the
+ *   address cannot be reached at all, which the bind then reports itself.
  * - `daemon`: a Sentry Local daemon.
  * - `receiver`: a Local or Spotlight receiver, which sends the
  *   {@link SERVER_IDENTIFIER} header even on an error status.
@@ -719,7 +720,7 @@ export async function probeLocalHealth(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (isConnectionRefused(err) || !isTransportFailure(err)) {
+    if (NO_HOLDER_CODES.has(fetchCauseCode(err))) {
       logger.debug(`No existing server at ${url}`, message);
       return "none";
     }
@@ -872,23 +873,32 @@ function isAbortError(err: unknown): boolean {
 }
 
 /**
- * Whether a failed `fetch` failed on the wire: it timed out, or Node's fetch
- * rejected it with a socket or parser cause, such as a reset or a reply that
- * is not HTTP. Any other error says nothing about what holds the port.
+ * Connect failures that mean nothing can hold the port: it was refused, the
+ * host does not resolve, or the address is unreachable or not local. The
+ * bind gives the accurate error for a bad --host, not "port in use".
  */
-function isTransportFailure(err: unknown): boolean {
-  return (
-    (err instanceof Error && err.name === "TimeoutError") ||
-    (err instanceof TypeError && err.cause !== undefined)
-  );
+const NO_HOLDER_CODES = new Set<string | undefined>([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EADDRNOTAVAIL",
+]);
+
+/** The `code` of a failed `fetch`'s cause, such as `ECONNREFUSED`. */
+function fetchCauseCode(err: unknown): string | undefined {
+  const cause = err instanceof Error ? err.cause : undefined;
+  return cause instanceof Error &&
+    "code" in cause &&
+    typeof cause.code === "string"
+    ? cause.code
+    : undefined;
 }
 
 /** Whether a failed `fetch` found nothing listening at the address. */
 export function isConnectionRefused(err: unknown): boolean {
-  const cause = err instanceof Error ? err.cause : undefined;
-  return (
-    cause instanceof Error && "code" in cause && cause.code === "ECONNREFUSED"
-  );
+  return fetchCauseCode(err) === "ECONNREFUSED";
 }
 
 /** Sleep with abort support, suppressing abort errors. */

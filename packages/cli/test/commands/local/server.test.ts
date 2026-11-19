@@ -44,7 +44,7 @@ import {
   ValidationError,
 } from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
-import { at } from "../../helpers.js";
+import { at, refuseLocalHealthProbes } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -287,6 +287,8 @@ test("keeps reading after a retained reset notification until Close", async () =
     stdout.mockRestore();
   }
 });
+
+refuseLocalHealthProbes();
 
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
@@ -1323,12 +1325,78 @@ describe("isServerRunning", () => {
   });
 
   test("returns false when no server is running", async () => {
-    // isServerRunning uses global fetch which is mocked in tests.
-    // Verify the function handles connection errors gracefully.
-    const result = await isServerRunning("http://127.0.0.1:19999");
-    expect(result).toBe(false);
+    vi.stubGlobal("fetch", rejectLikeNodeFetch("ECONNREFUSED"));
+    try {
+      await expect(isServerRunning("http://127.0.0.1:19999")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
+
+  test("returns false when both localhost addresses refuse", async () => {
+    // Dual-stack `localhost`: Node wraps both refusals in an AggregateError
+    // and copies ECONNREFUSED onto it.
+    const refused = Object.assign(
+      new AggregateError(
+        [
+          Object.assign(new Error("connect ECONNREFUSED ::1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+          Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+        ],
+        "",
+      ),
+      { code: "ECONNREFUSED" },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed", { cause: refused });
+      }),
+    );
+    try {
+      await expect(isServerRunning("http://localhost:8969")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test.each([
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EADDRNOTAVAIL",
+  ])(
+    "returns false for an address it cannot reach (%s), so the bind reports it",
+    async (code) => {
+      // A bad --host is not a busy port; the bind's own error says what's wrong.
+      vi.stubGlobal("fetch", rejectLikeNodeFetch(code));
+      try {
+        await expect(isServerRunning("http://typo.invalid:8969")).resolves.toBe(
+          false,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });
+
+/** A fetch that fails the way Node's does when the connection fails with `code`. */
+function rejectLikeNodeFetch(code: string) {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code}`), { code }),
+    });
+  });
+}
 
 describe("oversized envelopes", () => {
   /** One byte over the encoded ingest limit; SDKs ignore the 413 and drop it. */
