@@ -67,7 +67,7 @@ type ShortlistAttributesAgentOutput = z.output<
 
 /** What find mode shows: an optional best match, then the other candidates in order. */
 export interface AttributeMatches {
-  best?: TraceItemAttribute;
+  best?: TraceItemAttribute | undefined;
   candidates: TraceItemAttribute[];
 }
 

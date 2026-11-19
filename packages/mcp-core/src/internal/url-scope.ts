@@ -7,7 +7,7 @@ export function resolveScopedOrganizationSlug({
   urlOrganizationSlug,
 }: {
   resourceLabel: string;
-  scopedOrganizationSlug?: string | null;
+  scopedOrganizationSlug?: string | null | undefined;
   urlOrganizationSlug: string;
 }): string {
   if (!scopedOrganizationSlug) {
@@ -29,7 +29,7 @@ export function resolveScopedProjectSlug({
   urlProjectSlug,
 }: {
   resourceLabel: string;
-  scopedProjectSlug?: string | null;
+  scopedProjectSlug?: string | null | undefined;
   urlProjectSlug: string;
 }): string {
   if (!scopedProjectSlug) {
@@ -51,7 +51,7 @@ export function assertScopedProjectSlug({
   actualProjectSlug,
 }: {
   resourceLabel: string;
-  scopedProjectSlug?: string | null;
+  scopedProjectSlug?: string | null | undefined;
   actualProjectSlug: string;
 }): string {
   if (!scopedProjectSlug) {
@@ -73,7 +73,7 @@ export function resolveScopedProjectSlugOrId({
   urlProjectSlug,
 }: {
   resourceLabel: string;
-  scopedProjectSlugOrId?: string | number | null;
+  scopedProjectSlugOrId?: string | number | null | undefined;
   urlProjectSlug: string;
 }): string | number {
   if (

@@ -13,6 +13,7 @@ import {
   seriesColor,
 } from "../../../src/lib/formatters/chart-core.js";
 import type { TimeseriesResult } from "../../../src/types/dashboard.js";
+import { at } from "../../helpers.js";
 
 function makeTimeseries(
   overrides: Partial<TimeseriesResult> = {},
@@ -75,7 +76,7 @@ describe("incomplete buckets", () => {
 
   test("buildChartModel carries per-bucket incomplete flags", () => {
     const data = makeTimeseries();
-    data.series[0].values[3] = {
+    at(data.series, 0).values[3] = {
       timestamp: 1_700_000_180,
       value: 30,
       incomplete: true,
@@ -91,7 +92,7 @@ describe("incomplete buckets", () => {
 
   test("single-series bars fade incomplete columns", () => {
     const data = makeTimeseries();
-    data.series[0].values[3] = {
+    at(data.series, 0).values[3] = {
       timestamp: 1_700_000_180,
       value: 30,
       incomplete: true,
@@ -230,7 +231,7 @@ describe("buildCategoricalChartModel", () => {
 describe("rasterizeChart", () => {
   test("downsamples dense nullable buckets and keeps unmeasured columns empty", () => {
     const model = buildChartModel(makeTimeseries())!;
-    model.series[0].values = [10, null, 20, 30, 40, 50, 60, 70, 80];
+    at(model.series, 0).values = [10, null, 20, 30, 40, 50, 60, 70, 80];
     model.buckets = 9;
 
     // 16px fits 8 one-pixel columns two pixels apart. Column 1 covers only

@@ -137,7 +137,7 @@ export class ZipWriter {
    */
   static async create(
     outputPath: string,
-    options: { compression?: ZipCompression } = {},
+    options: { compression?: ZipCompression | undefined } = {},
   ): Promise<ZipWriter> {
     const fh = await open(outputPath, "w");
     const writer = new ZipWriter(fh, options.compression ?? "deflate");

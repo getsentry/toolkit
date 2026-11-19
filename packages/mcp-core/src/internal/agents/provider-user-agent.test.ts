@@ -63,7 +63,10 @@ describe("provider User-Agent on direct streamText calls", () => {
       vi.stubEnv(key, key === apiKey ? "test-key" : "");
     }
     setAgentProvider(provider);
-    setProviderBaseUrls({ openaiBaseUrl, anthropicBaseUrl });
+    setProviderBaseUrls({
+      ...(openaiBaseUrl !== undefined && { openaiBaseUrl }),
+      ...(anthropicBaseUrl !== undefined && { anthropicBaseUrl }),
+    });
     setServerVersion("1.2.3-x");
 
     const userAgents: (string | null)[] = [];

@@ -94,7 +94,7 @@ type ListFlags = {
  * {@link ListFlags} plus the name filter taken from the target
  * (`sentry project list <org>/web-*`), which the handlers apply.
  */
-type ProjectListFlags = ListFlags & { readonly filter?: string };
+type ProjectListFlags = ListFlags & { readonly filter?: string | undefined };
 
 /**
  * Project with optional organization context for display.
@@ -275,8 +275,8 @@ export function buildContextKey(
 /** Result of resolving organizations to fetch projects from */
 type OrgResolution = {
   orgs: string[];
-  footer?: string;
-  skippedSelfHosted?: number;
+  footer?: string | undefined;
+  skippedSelfHosted?: number | undefined;
 };
 
 /**
@@ -324,7 +324,10 @@ export function displayProjectTable(projects: ProjectWithOrg[]): string {
  * that mirrors `fetchOrgProjectsSafe` — re-throws auth errors but
  * silently returns empty for other failures (403, network errors).
  */
-type PaginatedResult = { projects: ProjectWithOrg[]; nextCursor?: string };
+type PaginatedResult = {
+  projects: ProjectWithOrg[];
+  nextCursor?: string | undefined;
+};
 
 async function fetchPaginatedSafe(
   org: string,
@@ -351,7 +354,7 @@ async function fetchPaginatedSafe(
 async function fetchAutoDetectProjects(
   orgs: string[],
   flags: ProjectListFlags,
-): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string }> {
+): Promise<{ projects: ProjectWithOrg[]; nextCursor?: string | undefined }> {
   if (orgs.length === 1 && !flags.platform && !flags.filter) {
     return await fetchPaginatedSafe(orgs[0] as string, flags.limit);
   }
@@ -749,11 +752,11 @@ export async function handleProjectSearch(
   flags: ProjectListFlags,
   options?: {
     /** Original user input before normalization — for clearer messages. */
-    originalSlug?: string;
+    originalSlug?: string | undefined;
     /** Organization slug to scope the search to (e.g. from "org/My Project"). */
-    scopedOrg?: string;
+    scopedOrg?: string | undefined;
     /** Classification supplied by the dispatcher after its target pre-check. */
-    projectSearchResolution?: ProjectSearchTargetResolution;
+    projectSearchResolution?: ProjectSearchTargetResolution | undefined;
   },
 ): Promise<ListResult<ProjectWithOrg>> {
   const { originalSlug, scopedOrg, projectSearchResolution } = options ?? {};

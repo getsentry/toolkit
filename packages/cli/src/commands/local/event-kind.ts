@@ -21,6 +21,7 @@ export function readMessageText(value: unknown): string | undefined {
   if (typeof message === "string" && message) {
     return message;
   }
+  return undefined;
 }
 
 /**
@@ -35,7 +36,7 @@ export function readMessageText(value: unknown): string | undefined {
 export function classifyEvent(
   event: Record<string, unknown>,
 ): "exception" | "message" | undefined {
-  const exception = event.exception as
+  const exception = event["exception"] as
     | { values?: { type?: unknown; value?: unknown }[] }
     | undefined;
   const values = Array.isArray(exception?.values) ? exception.values : [];
@@ -44,8 +45,8 @@ export function classifyEvent(
     return "exception";
   }
   const hasText =
-    readMessageText(event.logentry) !== undefined ||
-    readMessageText(event.message) !== undefined ||
+    readMessageText(event["logentry"]) !== undefined ||
+    readMessageText(event["message"]) !== undefined ||
     (last?.value !== undefined && last.value !== "");
   if (hasText) {
     return "message";

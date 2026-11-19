@@ -55,12 +55,17 @@ export function createNativeModelFallbacks(
     typeof fallbackOrOptions === "string"
       ? { fallbackModelId: fallbackOrOptions }
       : fallbackOrOptions;
+  // @openrouter/ai-sdk-provider 1.5.4 types `providerMetadata` with optional
+  // keys (`id?: string | null | undefined`), which is not a JSONValue under
+  // exactOptionalPropertyTypes, so its models do not match the LanguageModelV2
+  // interface they implement. The runtime values are JSON, so assert the
+  // interface here.
   const chatModel = (modelId: string) =>
-    options.parallelToolCalls === undefined
+    (options.parallelToolCalls === undefined
       ? openrouter(modelId)
       : openrouter.chat(modelId, {
           parallelToolCalls: options.parallelToolCalls,
-        });
+        })) as ChatModel;
 
   return createFallbackModel([
     chatModel(primaryModelId),
@@ -138,11 +143,13 @@ function retryDelayMs(error: unknown, retryCount: number): number | undefined {
 function wait(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the platform rejects with the signal's own abort reason, often a DOMException or a caller-chosen value, and callers check it verbatim
       reject(signal.reason);
       return;
     }
     const onAbort = () => {
       clearTimeout(timer);
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the platform rejects with the signal's own abort reason, often a DOMException or a caller-chosen value, and callers check it verbatim
       reject(signal?.reason);
     };
     const timer = setTimeout(() => {

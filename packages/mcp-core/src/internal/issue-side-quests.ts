@@ -22,7 +22,7 @@ import type { ToolSession } from "./tool-helpers/tool-call-formatting";
 export interface IssueSideQuestInput {
   event: Event;
   /** Optional; a detector works without it. */
-  sourceMapDebug?: SourceMapDebug;
+  sourceMapDebug?: SourceMapDebug | undefined;
 }
 
 /**
@@ -143,7 +143,7 @@ const JS_SOURCE_MAP_ERRORS: ReadonlyMap<
 function getErrorFile(data: Record<string, unknown> | null | undefined) {
   // most JS processing errors name the file in `url`; sources content and
   // location errors name it in `source`
-  const file = data?.url ?? data?.source;
+  const file = data?.["url"] ?? data?.["source"];
   return typeof file === "string" && file.length > 0 ? file : null;
 }
 
@@ -212,7 +212,7 @@ function detectJsSourceMapFailure({
     return quest(`${NOT_APPLIED}${where}, ${MINIFIED}: ${fallback}`);
   }
   const [only] = diagnosis;
-  if (diagnosis.length === 1 && diagnosed.size === files.size) {
+  if (only && diagnosis.length === 1 && diagnosed.size === files.size) {
     return quest(`${NOT_APPLIED}, ${MINIFIED}: ${only.problem}. ${only.fix}`);
   }
 
@@ -337,8 +337,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function hasFrames(stacktrace: unknown): boolean {
   return (
     isRecord(stacktrace) &&
-    Array.isArray(stacktrace.frames) &&
-    stacktrace.frames.length > 0
+    Array.isArray(stacktrace["frames"]) &&
+    stacktrace["frames"].length > 0
   );
 }
 
@@ -359,9 +359,11 @@ function hasStackFrames(event: Event): boolean {
     if (type !== "exception" && type !== "threads") {
       return false;
     }
-    const values = Array.isArray(data.values) ? data.values : [data.value];
+    const values = Array.isArray(data["values"])
+      ? data["values"]
+      : [data["value"]];
     return values.some(
-      (value) => isRecord(value) && hasFrames(value.stacktrace),
+      (value) => isRecord(value) && hasFrames(value["stacktrace"]),
     );
   });
 }
@@ -505,12 +507,14 @@ function getEventMessages(event: Event): string[] {
       continue;
     }
     if (type === "message") {
-      messages.push(data.formatted, data.message);
+      messages.push(data["formatted"], data["message"]);
     }
     if (type === "exception") {
-      const values = Array.isArray(data.values) ? data.values : [data.value];
+      const values = Array.isArray(data["values"])
+        ? data["values"]
+        : [data["value"]];
       for (const value of values) {
-        messages.push(isRecord(value) ? value.value : null);
+        messages.push(isRecord(value) ? value["value"] : null);
       }
     }
   }

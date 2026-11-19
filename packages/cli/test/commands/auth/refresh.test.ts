@@ -5,7 +5,15 @@
  * Covers the env-token guard and the main refresh flow.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { refreshCommand } from "../../../src/commands/auth/refresh.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as dbAuth from "../../../src/lib/db/auth.js";
@@ -39,10 +47,18 @@ function createContext() {
   return { context, getStdout: () => stdoutLines.join("") };
 }
 
+/** Fields of a `RefreshTokenResult` that these tests do not vary. */
+const REFRESH_RESULT_BASE = {
+  host: "https://sentry.io",
+  identity: "user-1",
+  source: "oauth",
+  refreshable: true,
+} satisfies Partial<dbAuth.RefreshTokenResult>;
+
 describe("refreshCommand.func", () => {
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let refreshTokenSpy: ReturnType<typeof spyOn>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let refreshTokenSpy: MockInstance<(typeof dbAuth)["refreshToken"]>;
   let func: RefreshFunc;
 
   beforeEach(async () => {
@@ -84,10 +100,11 @@ describe("refreshCommand.func", () => {
   test("env token (SENTRY_TOKEN): throws AuthError with SENTRY_TOKEN in message", async () => {
     isEnvTokenActiveSpy.mockReturnValue(true);
     // Clear SENTRY_AUTH_TOKEN so SENTRY_TOKEN takes priority
-    const savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    const savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_AUTH_TOKEN"];
     // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
-    process.env.SENTRY_TOKEN = "sntrys_token_456";
+    // Set env var directly — getActiveEnvVarName() reads env vars via getEnvToken()
+    process.env["SENTRY_TOKEN"] = "sntrys_token_456";
 
     const { context } = createContext();
 
@@ -100,9 +117,9 @@ describe("refreshCommand.func", () => {
       // Should NOT say SENTRY_AUTH_TOKEN
       expect((err as AuthError).message).not.toContain("SENTRY_AUTH_TOKEN");
     } finally {
-      delete process.env.SENTRY_TOKEN;
+      delete process.env["SENTRY_TOKEN"];
       if (savedAuthToken !== undefined) {
-        process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+        process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
       }
     }
 
@@ -135,6 +152,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,
@@ -157,6 +175,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "current_token",
       refreshed: false,
       expiresIn: 1800,
@@ -178,6 +197,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
     });
@@ -198,6 +218,7 @@ describe("refreshCommand.func", () => {
       refreshToken: "refresh_abc",
     });
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,
@@ -215,10 +236,12 @@ describe("refreshCommand.func", () => {
 });
 
 describe("refreshCommand.func scope re-authentication (--scope / --read-only)", () => {
-  let isEnvTokenActiveSpy: ReturnType<typeof spyOn>;
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let refreshTokenSpy: ReturnType<typeof spyOn>;
-  let runInteractiveLoginSpy: ReturnType<typeof spyOn>;
+  let isEnvTokenActiveSpy: MockInstance<(typeof dbAuth)["isEnvTokenActive"]>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let refreshTokenSpy: MockInstance<(typeof dbAuth)["refreshToken"]>;
+  let runInteractiveLoginSpy: MockInstance<
+    (typeof interactiveLogin)["runInteractiveLogin"]
+  >;
   let func: RefreshFunc;
 
   beforeEach(async () => {
@@ -358,6 +381,7 @@ describe("refreshCommand.func scope re-authentication (--scope / --read-only)", 
 
   test("no scope flags uses standard token refresh path", async () => {
     refreshTokenSpy.mockResolvedValue({
+      ...REFRESH_RESULT_BASE,
       token: "new_token",
       refreshed: true,
       expiresIn: 3600,

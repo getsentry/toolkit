@@ -109,7 +109,7 @@ function eventIdFrom(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const id = (value as Record<string, unknown>).event_id;
+  const id = (value as Record<string, unknown>)["event_id"];
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
@@ -126,12 +126,12 @@ function replaySegmentId(items: unknown[]): number | undefined {
     const [itemHeader, payload] = item as [unknown, unknown];
     const segmentId =
       typeof payload === "object" && payload !== null
-        ? (payload as Record<string, unknown>).segment_id
+        ? (payload as Record<string, unknown>)["segment_id"]
         : undefined;
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
-      (itemHeader as Record<string, unknown>).type === "replay_event" &&
+      (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
       typeof segmentId === "number" &&
       Number.isInteger(segmentId)
     ) {
@@ -158,7 +158,7 @@ function eventSummary(parsed: {
     ) {
       return [];
     }
-    const type = (item[0] as Record<string, unknown>).type;
+    const type = (item[0] as Record<string, unknown>)["type"];
     if (type !== "event" && type !== "transaction") {
       return [];
     }
@@ -251,6 +251,7 @@ export function createLocalControlPlane({
     )
       return c.body(null, 403);
     await next();
+    return;
   });
 
   app.get("/health", (c) => {
@@ -273,6 +274,7 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     await next();
+    return;
   });
   const loopbackCors = cors({
     allowHeaders: [
@@ -635,9 +637,12 @@ export function createLocalControlPlane({
       ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
       : c.body(null, 404),
   );
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
-    sessionExists(c.req.param("id")) ? updateRetention(c) : c.body(null, 404),
-  );
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, async (c) => {
+    if (!sessionExists(c.req.param("id"))) {
+      return c.body(null, 404);
+    }
+    return await updateRetention(c);
+  });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
     if (!sessionExists(c.req.param("id"))) {
@@ -686,7 +691,7 @@ export function createLocalControlPlane({
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]
-              .map((item) =>
+              .map((item: unknown) =>
                 Array.isArray(item) && typeof item[0] === "object" && item[0]
                   ? stringifyUnknown(
                       (item[0] as { type?: unknown }).type ?? "unknown",

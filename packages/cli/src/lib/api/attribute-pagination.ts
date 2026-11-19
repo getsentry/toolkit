@@ -25,7 +25,7 @@ export type AttributeTypePage = {
   positions: (string | undefined)[];
   /** Keys on each raw page fetched, by that page's cursor ("" for the first). */
   pageKeys: Map<string, Set<string>>;
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** Map key for a raw page's cursor (the first page has none). */

@@ -103,8 +103,8 @@ function buildViewData(
   dashboard: {
     id: string;
     title: string;
-    dateCreated?: string;
-    environment?: string[];
+    dateCreated?: string | undefined;
+    environment?: string[] | undefined;
   },
   widgetResults: Map<number, WidgetDataResult>,
   widgets: DashboardWidget[],
@@ -129,7 +129,7 @@ function buildViewData(
       title: w.title,
       displayType: w.displayType,
       widgetType: w.widgetType,
-      description: (w as Record<string, unknown>).description as
+      description: (w as Record<string, unknown>)["description"] as
         | string
         | undefined,
       layout: w.layout,
@@ -313,7 +313,7 @@ export const viewCommand = buildCommand({
 
       // Library mode: honor external abort signal (e.g., consumer break)
       const externalSignal = (this.process as { abortSignal?: AbortSignal })
-        ?.abortSignal;
+        .abortSignal;
       if (externalSignal) {
         externalSignal.addEventListener("abort", stop, { once: true });
       }

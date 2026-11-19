@@ -10,7 +10,7 @@ describe("fetchEveryPage", () => {
     };
 
     await expect(
-      fetchEveryPage(async (cursor) => pages[cursor ?? "first"], "listing"),
+      fetchEveryPage(async (cursor) => pages[cursor ?? "first"]!, "listing"),
     ).resolves.toEqual([1, 2, 3]);
   });
 

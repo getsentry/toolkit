@@ -272,7 +272,7 @@ describe("local event view with an event ID prefix", () => {
       ["bbbbbbbb", third],
       ["aaaaaaaa1", first],
       [second, second],
-    ]) {
+    ] as [string, string][]) {
       const viewed = await runCommand(
         eventRoute,
         "view",

@@ -129,18 +129,18 @@ describe("runFeaturesAgent", () => {
 
     await runFeaturesAgent("sk-or-test", ["react"]);
 
-    const tools = requests[0].tools as Array<{
+    const tools = requests[0]!.tools as Array<{
       function: {
         name: string;
         parameters: { properties: Record<string, Record<string, unknown>> };
       };
     }>;
     const path = tools.find((tool) => tool.function.name === "fetch_doc_page")
-      ?.function.parameters.properties.path;
-    expect(path?.minLength).toBeUndefined();
-    expect(path?.description).toMatch(/\nconstraints: minimum length 1$/);
+      ?.function.parameters.properties["path"];
+    expect(path?.["minLength"]).toBeUndefined();
+    expect(path?.["description"]).toMatch(/\nconstraints: minimum length 1$/);
 
-    const results = requests[1].messages.filter(
+    const results = requests[1]!.messages.filter(
       (message) => message.role === "tool",
     );
     expect(
@@ -171,7 +171,7 @@ describe("runFeaturesAgent", () => {
       },
     ]);
     // Mastra sent the keys of tool results in sorted order.
-    expect(results[1].content).toBe(
+    expect(results[1]!.content).toBe(
       '{"hits":[{"description":"d","title":"JS","url":"https://docs.sentry.io/platforms/javascript/"}]}',
     );
   });

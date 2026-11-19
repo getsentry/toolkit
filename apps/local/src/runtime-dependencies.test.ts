@@ -8,6 +8,6 @@ const packageJson = JSON.parse(
 
 describe("Local runtime dependencies", () => {
   test("declares tslib for dialog dependencies that import its ESM helpers", () => {
-    expect(packageJson.dependencies.tslib).toBeDefined();
+    expect(packageJson.dependencies["tslib"]).toBeDefined();
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { assert, describe, it, expect } from "vitest";
 import type { Flamegraph } from "../../../api-client/types";
 import {
   analyzeHotPathsFromFlamegraph,
@@ -115,8 +115,8 @@ describe("analyzer", () => {
 
       expect(hotPaths).toHaveLength(2);
       // First path should be the one with longer duration (100ms > 60ms)
-      expect(hotPaths[0].duration).toBe(100_000_000);
-      expect(hotPaths[1].duration).toBe(60_000_000);
+      expect(hotPaths[0]?.duration).toBe(100_000_000);
+      expect(hotPaths[1]?.duration).toBe(60_000_000);
     });
 
     it("calculates percentage of total correctly", () => {
@@ -128,9 +128,9 @@ describe("analyzer", () => {
 
       // Total samples: 50 + 30 = 80
       // First path: 50/80 = 62.5%
-      expect(hotPaths[0].percentOfTotal).toBeCloseTo(62.5, 1);
+      expect(hotPaths[0]?.percentOfTotal).toBeCloseTo(62.5, 1);
       // Second path: 30/80 = 37.5%
-      expect(hotPaths[1].percentOfTotal).toBeCloseTo(37.5, 1);
+      expect(hotPaths[1]?.percentOfTotal).toBeCloseTo(37.5, 1);
     });
 
     it("filters to user code when focusOnUserCode is true", () => {
@@ -141,9 +141,9 @@ describe("analyzer", () => {
       });
 
       // User code frames should be filtered
-      expect(hotPaths[0].userCodeFrames).toHaveLength(2);
+      expect(hotPaths[0]?.userCodeFrames).toHaveLength(2);
       expect(
-        hotPaths[0].userCodeFrames.every((f) => f.frame.is_application),
+        hotPaths[0]?.userCodeFrames.every((f) => f.frame.is_application),
       ).toBe(true);
     });
 
@@ -178,9 +178,9 @@ describe("analyzer", () => {
       );
 
       expect(callStack).toHaveLength(3);
-      expect(callStack[0].depth).toBe(0);
-      expect(callStack[1].depth).toBe(1);
-      expect(callStack[2].depth).toBe(2);
+      expect(callStack[0]?.depth).toBe(0);
+      expect(callStack[1]?.depth).toBe(1);
+      expect(callStack[2]?.depth).toBe(2);
     });
 
     it("marks root and leaf frames correctly", () => {
@@ -193,16 +193,16 @@ describe("analyzer", () => {
       );
 
       // First frame is leaf (leaf-to-root order)
-      expect(callStack[0].isLeaf).toBe(true);
-      expect(callStack[0].isRoot).toBe(false);
+      expect(callStack[0]?.isLeaf).toBe(true);
+      expect(callStack[0]?.isRoot).toBe(false);
 
       // Middle frame
-      expect(callStack[1].isRoot).toBe(false);
-      expect(callStack[1].isLeaf).toBe(false);
+      expect(callStack[1]?.isRoot).toBe(false);
+      expect(callStack[1]?.isLeaf).toBe(false);
 
       // Last frame is root
-      expect(callStack[2].isRoot).toBe(true);
-      expect(callStack[2].isLeaf).toBe(false);
+      expect(callStack[2]?.isRoot).toBe(true);
+      expect(callStack[2]?.isLeaf).toBe(false);
     });
 
     it("handles single-frame stacks", () => {
@@ -215,8 +215,8 @@ describe("analyzer", () => {
 
       expect(callStack).toHaveLength(1);
       // Single frame is both root and leaf
-      expect(callStack[0].isRoot).toBe(true);
-      expect(callStack[0].isLeaf).toBe(true);
+      expect(callStack[0]?.isRoot).toBe(true);
+      expect(callStack[0]?.isLeaf).toBe(true);
     });
 
     it("preserves frame index reference", () => {
@@ -227,9 +227,9 @@ describe("analyzer", () => {
         flamegraph.shared.frame_infos,
       );
 
-      expect(callStack[0].frameIndex).toBe(0);
-      expect(callStack[1].frameIndex).toBe(1);
-      expect(callStack[2].frameIndex).toBe(2);
+      expect(callStack[0]?.frameIndex).toBe(0);
+      expect(callStack[1]?.frameIndex).toBe(1);
+      expect(callStack[2]?.frameIndex).toBe(2);
     });
   });
 
@@ -242,11 +242,8 @@ describe("analyzer", () => {
 
       expect(hotspots.length).toBeGreaterThan(0);
       // Should be sorted by weight (highest first)
-      for (let i = 1; i < hotspots.length; i++) {
-        expect(hotspots[i - 1].frameInfo.weight).toBeGreaterThanOrEqual(
-          hotspots[i].frameInfo.weight,
-        );
-      }
+      const weights = hotspots.map((hotspot) => hotspot.frameInfo.weight);
+      expect(weights).toEqual([...weights].sort((a, b) => b - a));
     });
 
     it("filters to user code when requested", () => {
@@ -338,7 +335,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 30% slower (comparison uses sumDuration)
-      current.shared.frame_infos[0].sumDuration = 208000000; // 160ms * 1.3 = 208ms
+      frameInfoAt(current, 0).sumDuration = 208000000; // 160ms * 1.3 = 208ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -348,7 +345,7 @@ describe("analyzer", () => {
         (c) => c.changeType === "major_regression",
       );
       expect(regressions.length).toBeGreaterThan(0);
-      expect(regressions[0].percentChange).toBeGreaterThan(20);
+      expect(regressions[0]?.percentChange).toBeGreaterThan(20);
     });
 
     it("detects minor regression (10-20% slower)", () => {
@@ -356,7 +353,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 15% slower (comparison uses sumDuration)
-      current.shared.frame_infos[1].sumDuration = 184000000; // 160ms * 1.15 = 184ms
+      frameInfoAt(current, 1).sumDuration = 184000000; // 160ms * 1.15 = 184ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -373,7 +370,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 20% faster (comparison uses sumDuration)
-      current.shared.frame_infos[0].sumDuration = 128000000; // 160ms * 0.8 = 128ms
+      frameInfoAt(current, 0).sumDuration = 128000000; // 160ms * 0.8 = 128ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -390,7 +387,7 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Make current 5% slower (within no_change threshold, uses sumDuration)
-      current.shared.frame_infos[0].sumDuration = 168000000; // 160ms * 1.05 = 168ms
+      frameInfoAt(current, 0).sumDuration = 168000000; // 160ms * 1.05 = 168ms
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: false,
@@ -417,8 +414,8 @@ describe("analyzer", () => {
       const current = createMockFlamegraph();
 
       // Create different severity changes
-      current.shared.frame_infos[0].weight = 240; // major regression (+50%)
-      current.shared.frame_infos[1].weight = 176; // minor regression (+10%)
+      frameInfoAt(current, 0).weight = 240; // major regression (+50%)
+      frameInfoAt(current, 1).weight = 176; // minor regression (+10%)
 
       const comparisons = compareFrameStats(baseline, current, {
         focusOnUserCode: true,
@@ -472,3 +469,9 @@ describe("analyzer", () => {
     });
   });
 });
+
+function frameInfoAt(flamegraph: Flamegraph, index: number) {
+  const frameInfo = flamegraph.shared.frame_infos[index];
+  assert(frameInfo, `Mock flamegraph has no frame info at index ${index}`);
+  return frameInfo;
+}

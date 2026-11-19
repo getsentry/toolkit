@@ -100,7 +100,10 @@ import {
 } from "@/lib/spotlight.ts";
 import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
 import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
-import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
+import {
+  workspaceNavigation,
+  workspaceNavigationFor,
+} from "@/lib/workspace-navigation.ts";
 import {
   eventListLabel,
   isErrorEvent,
@@ -406,9 +409,7 @@ export default function App() {
     workspaceView,
   );
 
-  const activeWorkspace = workspaceNavigation.find(
-    (entry) => entry.id === workspaceView,
-  )!;
+  const activeWorkspace = workspaceNavigationFor(workspaceView);
   const workspaceItems = activeWorkspace.getItems(telemetry);
   const hasRetainedItems = items.length > 0 || telemetry.envelopes.length > 0;
   const retainedItemCount = items.length + telemetry.envelopes.length;
@@ -461,9 +462,7 @@ export default function App() {
   const newItemCount = newItems.length;
 
   const markItemsSeen = (view = workspaceView) => {
-    const viewedItems = workspaceNavigation
-      .find((entry) => entry.id === view)!
-      .getItems(telemetry);
+    const viewedItems = workspaceNavigationFor(view).getItems(telemetry);
     setLastViewedItemIds((itemIds) => ({
       ...itemIds,
       [view]: viewedItems.at(-1)?.id,
@@ -930,7 +929,7 @@ export default function App() {
         // Undecodable envelopes stay inspectable as raw text.
       }
       // Replayed history must keep its receive time, not the time it loaded.
-      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAt = items?.[0]?.envelopeHeader?.["sent_at"];
       const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
       const receivedAt =
         envelopeReceivedAt(eventId) ??
@@ -1089,6 +1088,7 @@ export default function App() {
           <DialogFooter>
             <Button
               variant="outline"
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- focus Cancel when the destructive confirmation dialog opens.
               autoFocus
               onClick={() => setIsDeleteConfirmationOpen(false)}
             >
@@ -1337,7 +1337,8 @@ export default function App() {
                     new URL(currentEndpoint.url).pathname === "/stream",
                   )}
                   sessionPicker={
-                    activeDirectoryUrl && !isDisconnected ? (
+                    // showConnectionLanding is false here, so the receiver is connected.
+                    activeDirectoryUrl ? (
                       <SessionSwitcher
                         key={activeDirectoryUrl}
                         refreshKey={closedSessionUrl}

@@ -154,5 +154,6 @@ export const deleteCommand = buildDeleteCommand({
       throw enrichDeleteError(error, org, version);
     }
     yield new CommandOutput({ deleted: true, org, version });
+    return;
   },
 });

@@ -3,7 +3,7 @@ import { createSearchToolsTool } from "./special/search-tools";
 import { createExecuteTool } from "./special/execute-tool";
 import type { ToolConfig } from "./types";
 
-type ToolRegistry = Record<string, ToolConfig<any>>;
+type ToolRegistry = Record<string, ToolConfig>;
 
 function getAllTools(): ToolRegistry {
   return allTools;

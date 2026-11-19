@@ -10,12 +10,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { isatty } from "node:tty";
@@ -27,6 +23,8 @@ import { ApiError, CliError } from "../../../src/lib/errors.js";
 import { logger } from "../../../src/lib/logger.js";
 import { prompt } from "../../../src/lib/prompt.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 vi.mock("node:tty", () => ({ isatty: vi.fn() }));
 vi.mock("../../../src/lib/prompt.js", () => ({ prompt: vi.fn() }));
@@ -59,15 +57,18 @@ function waitingState(causes: RootCause[]): AutofixState {
 
 function createMockContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
 
-async function runPlan(context: ReturnType<typeof createMockContext>) {
-  const func = await planCommand.loader();
-  await func.call(context, PLAN_FLAGS, "IOS-1");
+async function runPlan(
+  context: ReturnType<typeof createMockContext>,
+  json = false,
+) {
+  const func = await loadCommand(planCommand);
+  await func.call(context, { ...PLAN_FLAGS, json }, "IOS-1");
 }
 
 describe("issue plan waiting-for-user-response", () => {
@@ -139,11 +140,48 @@ describe("issue plan waiting-for-user-response", () => {
   });
 });
 
+function singleRunState(status: string, ...blocks: unknown[]): AutofixState {
+  const rootCause = {
+    key: "root_cause",
+    data: { headline: "Regex rejects ids" },
+  };
+  return {
+    status,
+    run_id: 42,
+    feature_id: "autofix_single_run",
+    blocks: [{ artifacts: [rootCause] }, ...blocks],
+  };
+}
+
+const fixedState = (): AutofixState => ({
+  ...singleRunState("COMPLETED", {
+    merged_file_patches: [
+      {
+        repo_name: "org/api",
+        patch: { path: "src/ids.ts", type: "M", added: 3, removed: 1 },
+      },
+    ],
+  }),
+  repo_pr_states: {
+    "org/api": {
+      repo_name: "org/api",
+      pr_number: 7,
+      pr_url: "https://github.com/org/api/pull/7",
+    },
+  },
+});
+
+function writtenOutput(context: ReturnType<typeof createMockContext>): string {
+  return context.stdout.write.mock.calls
+    .map((call) => String(call[0]))
+    .join("");
+}
+
 function completedState(): AutofixState {
   return { status: "COMPLETED", run_id: 42, steps: [] };
 }
 
-describe("issue plan after solution planning", () => {
+describe("issue plan after root cause analysis", () => {
   let resolveSpy: ReturnType<typeof vi.spyOn>;
   let analyzeSpy: ReturnType<typeof vi.spyOn>;
   let pollSpy: ReturnType<typeof vi.spyOn>;
@@ -261,5 +299,78 @@ describe("issue plan after solution planning", () => {
 
     expect(triggerSolutionPlanning).toHaveBeenCalledWith("test-org", "1", 42);
     expect(pollSpy).toHaveBeenCalled();
+  });
+
+  test("shows the changed files and PR of a completed single run", async () => {
+    analyzeSpy.mockResolvedValue(fixedState());
+
+    const human = createMockContext();
+    await runPlan(human);
+    const output = writtenOutput(human);
+    expect(output).toContain("Regex rejects ids");
+    expect(output).toContain("src/ids.ts (+3 −1)");
+    expect(output).toContain("https://github.com/org/api/pull/7");
+
+    const json = createMockContext();
+    await runPlan(json, true);
+    expect(JSON.parse(writtenOutput(json))).toMatchObject({
+      solution: null,
+      code_changes: [
+        {
+          repo: "org/api",
+          path: "src/ids.ts",
+          type: "M",
+          added: 3,
+          removed: 1,
+        },
+      ],
+      pull_requests: [
+        {
+          repo: "org/api",
+          url: "https://github.com/org/api/pull/7",
+          number: 7,
+        },
+      ],
+    });
+    expect(triggerSolutionPlanning).not.toHaveBeenCalled();
+    expect(pollSpy).not.toHaveBeenCalled();
+  });
+
+  test("shows why a single run stopped without changing code", async () => {
+    const stop = {
+      reason: "Fix needs a migration.",
+      suggestion: "Add it by hand.",
+    };
+    analyzeSpy.mockResolvedValue(
+      singleRunState("COMPLETED", { artifacts: [{ key: "stop", data: stop }] }),
+    );
+
+    const context = createMockContext();
+    await runPlan(context);
+
+    expect(writtenOutput(context)).toContain(stop.reason);
+    expect(writtenOutput(context)).toContain(stop.suggestion);
+  });
+
+  test("throws when a single run failed", async () => {
+    analyzeSpy.mockResolvedValue(singleRunState("ERROR"));
+
+    await expect(runPlan(createMockContext())).rejects.toThrow(
+      /Autofix failed/,
+    );
+  });
+
+  test("waits for a single run still writing the fix", async () => {
+    analyzeSpy.mockResolvedValue(singleRunState("PROCESSING"));
+    pollSpy.mockResolvedValue(fixedState());
+
+    const context = createMockContext();
+    await runPlan(context);
+
+    expect(pollSpy).toHaveBeenCalledWith(
+      expect.not.objectContaining({ stopOnWaitingForUser: true }),
+    );
+    expect(triggerSolutionPlanning).not.toHaveBeenCalled();
+    expect(writtenOutput(context)).toContain("src/ids.ts (+3 −1)");
   });
 });

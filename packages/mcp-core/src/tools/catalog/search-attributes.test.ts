@@ -92,7 +92,7 @@ const FULL_PAGE = manyAttributes(1000);
 
 /** The keys in the output's attribute table, in order. */
 function tableKeys(output: string): string[] {
-  return [...output.matchAll(/^\| `([^`]+)` \|/gm)].map(([, key]) => key);
+  return [...output.matchAll(/^\| `([^`]+)` \|/gm)].map(([, key]) => key!);
 }
 
 /** Serve attributes per `substringMatch` and record each one requested. */

@@ -20,7 +20,13 @@ vi.mock("../../telem/logging", () => ({
   logWarn: vi.fn(),
 }));
 
-type MockIssue = typeof issueFixture;
+/**
+ * The issue fixture. Tests swap `assignedTo` for any shape the API accepts or
+ * returns, including request-body echoes.
+ */
+type MockIssue = Omit<typeof issueFixture, "assignedTo"> & {
+  assignedTo: unknown;
+};
 
 function structured(result: unknown) {
   assertStructuredOnlyResult(result);
@@ -28,9 +34,7 @@ function structured(result: unknown) {
 }
 
 const serverContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -1248,7 +1252,8 @@ describe("update_issue", () => {
           lastRequestBody = (await request.json()) as Record<string, unknown>;
           currentIssue = {
             ...currentIssue,
-            assignedTo: lastRequestBody.assignedTo ?? currentIssue.assignedTo,
+            assignedTo:
+              lastRequestBody["assignedTo"] ?? currentIssue.assignedTo,
           };
           return HttpResponse.json(currentIssue);
         },
@@ -1302,8 +1307,8 @@ describe("update_issue", () => {
             ...currentIssue,
             status: "ignored",
             statusDetails: {
-              ignoreCount: lastRequestBody.ignoreCount,
-              ignoreWindow: lastRequestBody.ignoreWindow,
+              ignoreCount: lastRequestBody["ignoreCount"],
+              ignoreWindow: lastRequestBody["ignoreWindow"],
             },
           };
           return HttpResponse.json(currentIssue);
@@ -1935,7 +1940,7 @@ describe("update_issue", () => {
       },
       context: serverContext,
     });
-    expect(prepared.reason).toBe("Resolvedbecausefix deployed");
+    expect(prepared["reason"]).toBe("Resolvedbecausefix deployed");
   });
 
   it.each(["\0", " \0 \0 "])(

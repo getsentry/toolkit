@@ -386,6 +386,6 @@ describe("runQueryAgent", () => {
       "auto",
       "none",
     ]);
-    expect(requests[5].tools).toHaveLength(2);
+    expect(requests[5]!.tools).toHaveLength(2);
   });
 });
