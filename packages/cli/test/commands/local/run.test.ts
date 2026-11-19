@@ -63,6 +63,7 @@ import type { Writer } from "../../../src/types/index.js";
 const spawnCapture: {
   args?: readonly string[];
   child?: ChildProcess | undefined;
+  detached?: boolean | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   stdio?: Parameters<typeof import("node:child_process").spawn>[2]["stdio"];
 } = {};
@@ -83,6 +84,7 @@ vi.mock("node:child_process", async (importOriginal) => {
         spawnCapture.env = options.env;
       }
       spawnCapture.stdio = options?.stdio;
+      spawnCapture.detached = options?.detached;
       const child = actual.spawn(cmd, [...args], options ?? {});
       spawnCapture.child = child;
       return child;
@@ -530,14 +532,14 @@ setInterval(() => {}, 1000);
       const spy = vi
         .spyOn(process, "on")
         .mockImplementation((event, listener) => {
-          if (event === "SIGINT" || event === "SIGTERM") {
+          if (event === "SIGINT" || event === "SIGTERM" || event === "SIGHUP") {
             handlers.set(event, listener as () => void);
             return process;
           }
           return on(event, listener);
         });
       return {
-        send(signal: "SIGINT" | "SIGTERM") {
+        send(signal: "SIGINT" | "SIGTERM" | "SIGHUP") {
           const handler = handlers.get(signal);
           if (!handler) {
             throw new Error(`run installed no ${signal} handler`);
@@ -590,6 +592,10 @@ setInterval(() => {}, 1000);
       const foreground = vi
         .spyOn(childSignals, "terminalSignalsProcess")
         .mockReturnValue(true);
+      // In a terminal the app shares the CLI's foreground group.
+      const ownGroup = vi
+        .spyOn(childSignals, "startsOwnProcessGroup")
+        .mockReturnValue(false);
       try {
         const func = (await runCommand.loader()) as unknown as RunFunc;
         const run = func.call(
@@ -605,8 +611,10 @@ setInterval(() => {}, 1000);
         signals.send("SIGINT");
         await expect(run).resolves.toBeUndefined();
         expect(await readFile(count, "utf8")).toBe("1");
+        expect(spawnCapture.detached).toBe(false);
       } finally {
         foreground.mockRestore();
+        ownGroup.mockRestore();
       }
     });
 
@@ -615,6 +623,10 @@ setInterval(() => {}, 1000);
       const foreground = vi
         .spyOn(childSignals, "terminalSignalsProcess")
         .mockReturnValue(true);
+      // In a terminal the app shares the CLI's foreground group.
+      const ownGroup = vi
+        .spyOn(childSignals, "startsOwnProcessGroup")
+        .mockReturnValue(false);
       try {
         const func = (await runCommand.loader()) as unknown as RunFunc;
         const run = func.call(
@@ -633,6 +645,7 @@ setInterval(() => {}, 1000);
         expect(foreground).toHaveBeenCalledTimes(1);
       } finally {
         foreground.mockRestore();
+        ownGroup.mockRestore();
       }
     });
 
@@ -660,6 +673,229 @@ setInterval(() => {}, 1000);
         expect(ctx.process.exitCode).toBe(code);
       },
     );
+
+    describe("with an app behind a wrapper that ignores SIGINT", () => {
+      /**
+       * Like `go run`: ignores SIGINT, dies from SIGTERM without passing it
+       * on, and starts the real app as its own child. The app writes its pid
+       * to `appPidFile` and runs until a signal stops it, or exits by itself
+       * after 20s so a failing test leaves nothing behind.
+       */
+      async function wrappedApp(): Promise<{
+        wrapper: string;
+        appPidFile: string;
+      }> {
+        const appPidFile = join(tmpDir, "app-pid");
+        const app = join(tmpDir, "app.cjs");
+        const wrapper = join(tmpDir, "go-run.cjs");
+        await writeFile(
+          app,
+          `require("node:fs").writeFileSync(${JSON.stringify(appPidFile)}, String(process.pid));
+setTimeout(() => {}, 20_000);
+`,
+        );
+        await writeFile(
+          wrapper,
+          `process.on("SIGINT", () => {});
+const app = require("node:child_process").spawn(process.execPath, [${JSON.stringify(app)}], { stdio: "inherit" });
+app.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
+`,
+        );
+        return { wrapper, appPidFile };
+      }
+
+      async function appPid(appPidFile: string): Promise<number> {
+        let pid = 0;
+        await vi.waitFor(async () => {
+          pid = Number(await readFile(appPidFile, "utf8"));
+          expect(pid).toBeGreaterThan(1);
+        });
+        return pid;
+      }
+
+      function isRunning(pid: number): boolean {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      let ownGroup: ReturnType<typeof vi.spyOn>;
+      beforeEach(() => {
+        // No terminal: agents, CI and tools running --verify.
+        ownGroup = vi
+          .spyOn(childSignals, "startsOwnProcessGroup")
+          .mockReturnValue(true);
+      });
+      afterEach(() => {
+        ownGroup.mockRestore();
+      });
+
+      test("--verify leaves no app running when it times out", async () => {
+        const { wrapper, appPidFile } = await wrappedApp();
+        const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+        try {
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const error = await func
+            .call(
+              makeContext(),
+              { port: 0, host: "127.0.0.1", verify: true, timeout: 2 },
+              process.execPath,
+              wrapper,
+            )
+            .catch((err: unknown) => err);
+          expect(error).toBeInstanceOf(VerifyFailedError);
+          const pid = await appPid(appPidFile);
+          expect(spawnCapture.detached).toBe(true);
+          expect(isRunning(pid)).toBe(false);
+        } finally {
+          warn.mockRestore();
+        }
+      }, 30_000);
+
+      test("--timeout leaves no app running", async () => {
+        const { wrapper, appPidFile } = await wrappedApp();
+        const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+        try {
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          await func
+            .call(
+              makeContext(),
+              { port: 0, host: "127.0.0.1", verify: false, timeout: 2 },
+              process.execPath,
+              wrapper,
+            )
+            .catch(() => undefined);
+          const pid = await appPid(appPidFile);
+          expect(isRunning(pid)).toBe(false);
+        } finally {
+          warn.mockRestore();
+        }
+      }, 30_000);
+
+      test.each(["SIGINT", "SIGTERM"] as const)(
+        "%s stops the app, not just the wrapper",
+        async (signal) => {
+          const { wrapper, appPidFile } = await wrappedApp();
+          const ctx = { ...makeContext(), process: { exitCode: undefined } };
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const run = func.call(
+            ctx,
+            { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+            process.execPath,
+            wrapper,
+          );
+          const pid = await appPid(appPidFile);
+          signals.send(signal);
+          await expect(run).resolves.toBeUndefined();
+          expect(isRunning(pid)).toBe(false);
+        },
+        30_000,
+      );
+
+      test("passes a hangup on to the app's group", async () => {
+        // Without a terminal, a supervisor's hangup to the CLI's group no
+        // longer reaches the app in its own group.
+        const { wrapper, appPidFile } = await wrappedApp();
+        const ctx = { ...makeContext(), process: { exitCode: undefined } };
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          ctx,
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          wrapper,
+        );
+        const pid = await appPid(appPidFile);
+        signals.send("SIGHUP");
+        await expect(run).resolves.toBeUndefined();
+        expect(isRunning(pid)).toBe(false);
+      }, 30_000);
+
+      test("--verify passes a hangup on to the app's group, then exits from it", async () => {
+        const { wrapper, appPidFile } = await wrappedApp();
+        // --verify re-raises the signal on itself once the app is gone; keep
+        // that one from reaching the test worker.
+        const kill = process.kill.bind(process);
+        const selfSignals: (string | number | undefined)[] = [];
+        const killSpy = vi
+          .spyOn(process, "kill")
+          .mockImplementation((target, signal) => {
+            if (target === process.pid) {
+              selfSignals.push(signal);
+              return true;
+            }
+            return kill(target, signal);
+          });
+        try {
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const run = func.call(
+            makeContext(),
+            { port: 0, host: "127.0.0.1", verify: true, timeout: 20 },
+            process.execPath,
+            wrapper,
+          );
+          const pid = await appPid(appPidFile);
+          signals.send("SIGHUP");
+          await expect(run).resolves.toBeUndefined();
+          expect(isRunning(pid)).toBe(false);
+          expect(selfSignals).toEqual(["SIGHUP"]);
+        } finally {
+          killSpy.mockRestore();
+        }
+      }, 30_000);
+
+      test("keeps its signal handlers until the leftover app is stopped", async () => {
+        // A wrapper that exits on SIGINT, and an app that ignores SIGINT and
+        // SIGTERM, so stopping the leftover app takes the whole grace period.
+        const appPidFile = join(tmpDir, "stubborn-pid");
+        const app = join(tmpDir, "stubborn.cjs");
+        const wrapper = join(tmpDir, "quick-wrapper.cjs");
+        await writeFile(
+          app,
+          `process.on("SIGINT", () => {});
+process.on("SIGTERM", () => {});
+require("node:fs").writeFileSync(${JSON.stringify(appPidFile)}, String(process.pid));
+setTimeout(() => {}, 20_000);
+`,
+        );
+        await writeFile(
+          wrapper,
+          `require("node:child_process").spawn(process.execPath, [${JSON.stringify(app)}], { stdio: "inherit" });
+setInterval(() => {}, 1000);
+`,
+        );
+        const appStateAtRemoval: boolean[] = [];
+        let pid = 0;
+        const removeListener = process.removeListener.bind(process);
+        const removal = vi
+          .spyOn(process, "removeListener")
+          .mockImplementation((event, listener) => {
+            if (event === "SIGINT") {
+              appStateAtRemoval.push(isRunning(pid));
+            }
+            return removeListener(event, listener);
+          });
+        try {
+          const ctx = { ...makeContext(), process: { exitCode: undefined } };
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const run = func.call(
+            ctx,
+            { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+            process.execPath,
+            wrapper,
+          );
+          pid = await appPid(appPidFile);
+          signals.send("SIGINT");
+          await expect(run).resolves.toBeUndefined();
+          expect(appStateAtRemoval).toEqual([false]);
+          expect(isRunning(pid)).toBe(false);
+        } finally {
+          removal.mockRestore();
+        }
+      }, 30_000);
+    });
   });
 
   test("--timeout kills the child after N seconds", async () => {
@@ -1115,6 +1351,7 @@ describe("sentry local run --verify receiver", () => {
 
   test("says which port it used when verify on a fallback port times out", async () => {
     const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const context = makeParsedRunContext();
     try {
@@ -1137,10 +1374,12 @@ describe("sentry local run --verify receiver", () => {
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
       const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
-      expect(warn).toHaveBeenCalledWith(
-        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-      );
+      const notice = `Port ${DEFAULT_PORT} is in use, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+      // Once when it binds, and again when nothing arrived.
+      expect(info).toHaveBeenCalledWith(notice);
+      expect(warn).toHaveBeenCalledWith(notice);
     } finally {
+      info.mockRestore();
       warn.mockRestore();
       busy.mockRestore();
     }
@@ -1223,7 +1462,7 @@ describe("sentry local run messages", () => {
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       expect(info).toHaveBeenCalledWith(
-        `The Local daemon is using port ${DEFAULT_PORT}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
+        `Port ${DEFAULT_PORT} is held by the Local daemon, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT. Add --session <name> to capture into the daemon instead.`,
       );
     } finally {
       info.mockRestore();
@@ -1301,9 +1540,32 @@ describe("sentry local run messages", () => {
         `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
       );
       expect(warnings.join("\n")).not.toContain("Verification timed out");
+      expect(warnings.join("\n")).not.toContain("SENTRY_DSN");
     } finally {
       warn.mockRestore();
       await rm(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("--verify suggests a SENTRY_DSN for SDKs without Spotlight when it times out", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 1 },
+          "sleep",
+          "30",
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
+      expect(warn).toHaveBeenCalledWith(
+        `SDKs without Spotlight support, such as Go and Rust, need SENTRY_DSN=http://key@127.0.0.1:${port}/0 instead.`,
+      );
+    } finally {
+      warn.mockRestore();
     }
   }, 30_000);
 });

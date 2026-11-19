@@ -88,6 +88,8 @@ test("meaningful standard content keeps precedence over populated aliases", () =
 test.each([
   [{ message: null }, "Event"],
   [goPanicEvent, "Exception"],
+  [{ exception: { values: [{ value: null }] } }, "Exception"],
+  [{ exception: { values: [{ value: 42 }] } }, "Exception"],
   [{ message: "" }, "Event"],
   [{ logentry: { message: "", params: [] } }, "Event"],
   [{ message: "Payment retry limit reached" }, "Message"],

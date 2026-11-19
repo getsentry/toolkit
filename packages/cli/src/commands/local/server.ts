@@ -51,11 +51,16 @@ import {
 } from "../../lib/errors.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
-import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
+import type {
+  FilterValue,
+  FormatValue,
+  ReplayTracker,
+} from "../../lib/formatters/local.js";
 import {
   FILTER_VALUES,
   FORMAT_VALUES,
   printLocalViewerHint,
+  createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   formatItem,
@@ -905,6 +910,8 @@ async function consumeSSEWithWarning(
   let retries = 0;
   let retryDelay = SSE_INITIAL_RETRY_MS;
   let hasConnectedBefore = false;
+  // Reconnects resume the same tail, so a replay already shown stays shown.
+  const replays = createReplayTracker();
 
   while (!signal.aborted) {
     const result = await attemptSSEConnection({
@@ -915,6 +922,7 @@ async function consumeSSEWithWarning(
       quiet,
       useJson,
       showAttributes,
+      replays,
       lastEventId,
       onId: (id) => {
         lastEventId = id;
@@ -1021,6 +1029,8 @@ type ConsumeSSEOnceOptions = {
   quiet: boolean;
   useJson: boolean;
   showAttributes: boolean;
+  /** The replays this tail has printed, kept across reconnects. */
+  replays: ReplayTracker;
   lastEventId: string | undefined;
   onId: (id: string) => void;
   /** Called when the receiver rejects an envelope as too large. */
@@ -1046,6 +1056,7 @@ async function consumeSSEOnce(
     quiet,
     useJson,
     showAttributes,
+    replays,
     lastEventId,
     onId,
     onOversized,
@@ -1099,7 +1110,7 @@ async function consumeSSEOnce(
     } else if (type === LOCAL_OVERSIZED_EVENT) {
       onOversized();
     } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
-      processSSEEvent(data, activeFilters, useJson, showAttributes);
+      processSSEEvent(data, activeFilters, useJson, showAttributes, replays);
     }
   };
 
@@ -1124,8 +1135,9 @@ async function consumeSSEOnce(
 function processSSEEvent(
   data: string,
   activeFilters: ReadonlySet<FilterValue>,
-  useJson = false,
-  showAttributes = false,
+  useJson: boolean,
+  showAttributes: boolean,
+  replays: ReplayTracker,
 ): void {
   try {
     const envelope = JSON.parse(data) as [
@@ -1145,7 +1157,7 @@ function processSSEEvent(
             payload,
             header,
             itemHeader.type ?? "envelope",
-            showAttributes,
+            { showAttributes, replays },
           );
       for (const line of lines) {
         printLocalEventLine(line, useJson);
@@ -1246,7 +1258,7 @@ export const serverCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -1364,14 +1376,22 @@ export const serverCommand = buildCommand({
     const useJson = flags.format === "json";
 
     if (!flags.quiet) {
-      const formatFn = useJson ? formatEnvelopeLinesJson : formatEnvelopeLines;
+      const replays = createReplayTracker();
       buffer.subscribe((container) => {
         try {
-          for (const line of formatFn(
-            container,
-            activeFilters,
-            flags.attributes,
-          )) {
+          const lines = useJson
+            ? formatEnvelopeLinesJson(
+                container,
+                activeFilters,
+                flags.attributes,
+              )
+            : formatEnvelopeLines(
+                container,
+                activeFilters,
+                flags.attributes,
+                replays,
+              );
+          for (const line of lines) {
             printLocalEventLine(line, useJson);
           }
         } catch (err) {

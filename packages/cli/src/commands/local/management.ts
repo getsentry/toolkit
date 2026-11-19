@@ -173,6 +173,9 @@ function ambiguousSessionError(body: unknown): ResolutionError | undefined {
   );
 }
 
+/** Most matching event IDs that an ambiguous `local event view` error lists. */
+const AMBIGUOUS_EVENT_HINT_LIMIT = 10;
+
 /**
  * Turn the control plane's 409 for an event ID prefix that matches several
  * events into a user-input error that lists them.
@@ -193,13 +196,20 @@ function ambiguousEventError(body: unknown): ResolutionError | undefined {
     return;
   }
   const session = redactCredentialText(body.session);
+  const eventIds = body.eventIds.filter(
+    (id): id is string => typeof id === "string",
+  );
+  const hints = eventIds
+    .slice(0, AMBIGUOUS_EVENT_HINT_LIMIT)
+    .map((id) => `Use event ID ${id}`);
+  if (eventIds.length > AMBIGUOUS_EVENT_HINT_LIMIT) {
+    hints.push(`+${eventIds.length - AMBIGUOUS_EVENT_HINT_LIMIT} more`);
+  }
   return new ResolutionError(
     `Local event ID "${redactCredentialText(body.reference)}"`,
     `matches more than one event in session "${session}"`,
     sentry`local event list ${session}`,
-    body.eventIds
-      .filter((id): id is string => typeof id === "string")
-      .map((id) => `Use event ID ${id}`),
+    hints,
   );
 }
 

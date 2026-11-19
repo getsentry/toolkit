@@ -1175,6 +1175,62 @@ test.each([
   },
 );
 
+test.each([
+  [
+    "http.server",
+    "GET",
+    {
+      "url.template": "/api/items/{id}",
+      "url.full": "http://localhost:3000/api/items/7",
+    },
+    "GET /api/items/{id}",
+  ],
+  [
+    "http.client",
+    "GET",
+    { "url.full": "https://api.stripe.com/v1/charges?limit=1" },
+    "GET api.stripe.com/v1/charges",
+  ],
+  ["http.server", "get", { "url.path": "/api/edge" }, "get /api/edge"],
+  [
+    "http.server",
+    "GET",
+    { "url.full": "/api/edge?x=1", "url.path": "/api/edge" },
+    "GET /api/edge",
+  ],
+  [
+    "resource.script",
+    "get localhost",
+    { "url.full": "http://localhost:5173/src/app.js?v=1" },
+    "get http://localhost:5173/src/app.js",
+  ],
+])(
+  "a %s span named %o is labeled with its target",
+  (op, name, attributes, title) => {
+    const [trace] = buildTraceGroups(
+      decodeEnvelope(
+        spanEnvelope([
+          {
+            trace_id: "target",
+            span_id: "segment",
+            is_segment: true,
+            name,
+            start_timestamp: 1,
+            end_timestamp: 1.1,
+            attributes: Object.fromEntries(
+              Object.entries({ "sentry.op": op, ...attributes }).map(
+                ([key, value]) => [key, { type: "string", value }],
+              ),
+            ),
+          },
+        ]),
+        "target",
+      ),
+    );
+    expect(trace?.title).toBe(title);
+  },
+);
+
 test("span counts leave out the transaction and segment like the tail's [N spans]", () => {
   // Django /queries/: the tail printed [7 spans] while the viewer showed 8.
   const children = Array.from({ length: 7 }, (_, index) => ({

@@ -302,7 +302,7 @@ describe("app", () => {
           "none",
         ],
         revocation_endpoint: "https://mcp.sentry.dev/oauth/token",
-        code_challenge_methods_supported: ["plain", "S256"],
+        code_challenge_methods_supported: ["S256"],
         prompt_values_supported: ["consent", "select_account"],
       });
     });

@@ -1,9 +1,12 @@
-/** Tests for telling whether the terminal already sent a Ctrl-C to a child. */
+/** Tests for signalling a wrapped app and telling whether the terminal already did. */
 
 import { spawn } from "node:child_process";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
+  appIsRunning,
   isForegroundStat,
+  signalApp,
+  startsOwnProcessGroup,
   terminalSignalsProcess,
 } from "../../src/lib/child-signals.js";
 import { whichSync } from "../../src/lib/which.js";
@@ -79,4 +82,136 @@ describe("terminalSignalsProcess", () => {
       }
     },
   );
+});
+
+describe("startsOwnProcessGroup", () => {
+  test("is false on Windows, which has no process groups", () => {
+    expect(startsOwnProcessGroup("win32")).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "is true for a CLI with no controlling terminal",
+    () => {
+      const child = spawn(
+        process.execPath,
+        ["-e", "setTimeout(() => {}, 5000)"],
+        { detached: true, stdio: "ignore" },
+      );
+      try {
+        expect(startsOwnProcessGroup(process.platform, child.pid)).toBe(true);
+      } finally {
+        child.kill("SIGKILL");
+      }
+    },
+  );
+
+  /**
+   * Run `command` in a new pty with job control on, and return the pid it
+   * prints as `pid=<n>`. util-linux `script` makes the shell the pty's
+   * foreground job.
+   */
+  async function pidInTerminal(
+    command: string,
+  ): Promise<{ pid: number; stop: () => void }> {
+    const child = spawn("script", ["-qec", command, "/dev/null"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const pid = await new Promise<number>((resolve, reject) => {
+      let out = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        out += chunk.toString();
+        const match = /pid=(\d+)/.exec(out);
+        if (match) resolve(Number(match[1]));
+      });
+      child.once("error", reject);
+    });
+    return { pid, stop: () => child.kill("SIGKILL") };
+  }
+
+  test.skipIf(process.platform !== "linux" || !whichSync("script"))(
+    "is false for a CLI in a terminal, in the foreground or as a background job",
+    async () => {
+      // Its own group would take the app off the terminal: no single Ctrl-C
+      // in the foreground, and no SIGHUP for a background job.
+      const foreground = await pidInTerminal("echo pid=$$; exec sleep 5");
+      try {
+        expect(startsOwnProcessGroup("linux", foreground.pid)).toBe(false);
+      } finally {
+        foreground.stop();
+      }
+      const background = await pidInTerminal(
+        "set -m; sleep 5 & echo pid=$!; wait",
+      );
+      try {
+        expect(terminalSignalsProcess(background.pid, "linux")).toBe(false);
+        expect(startsOwnProcessGroup("linux", background.pid)).toBe(false);
+      } finally {
+        background.stop();
+      }
+    },
+  );
+});
+
+describe("signalApp", () => {
+  test("signals only the app when it has no group of its own", () => {
+    const child = { pid: 4242, kill: vi.fn() };
+    signalApp(child as never, "SIGTERM", false);
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+  });
+
+  test("never signals a group for a missing pid or pid 1", () => {
+    for (const pid of [undefined, 0, 1]) {
+      const child = { pid, kill: vi.fn() };
+      signalApp(child as never, "SIGTERM", true);
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    }
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "reaches a grandchild in the app's own group",
+    async () => {
+      // The app starts a grandchild, prints its pid, and ignores SIGTERM
+      // itself, so only the group signal can stop the grandchild.
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          `process.on("SIGTERM", () => {});
+const g = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+console.log(g.pid);
+setInterval(() => {}, 1000);`,
+        ],
+        { detached: true, stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const pid = child.pid ?? 0;
+      try {
+        const grandchild = await new Promise<number>((resolve) => {
+          child.stdout.once("data", (chunk: Buffer) =>
+            resolve(Number(chunk.toString().trim())),
+          );
+        });
+        expect(appIsRunning(pid)).toBe(true);
+        signalApp(child, "SIGTERM", true);
+        await vi.waitFor(() => {
+          expect(() => process.kill(grandchild, 0)).toThrow();
+        });
+        expect(appIsRunning(pid)).toBe(true);
+        signalApp(child, "SIGKILL", true);
+        await vi.waitFor(() => {
+          expect(appIsRunning(pid)).toBe(false);
+        });
+      } finally {
+        if (appIsRunning(pid)) {
+          process.kill(-pid, "SIGKILL");
+        }
+      }
+    },
+  );
+});
+
+describe("appIsRunning", () => {
+  test("is false for pid 0 and 1, which are not an app's group", () => {
+    expect(appIsRunning(0)).toBe(false);
+    expect(appIsRunning(1)).toBe(false);
+  });
 });

@@ -1,14 +1,14 @@
 /** Tail formatters for the local dev server. */
 
+import { describeEvent } from "../../commands/local/event-kind.js";
 import {
-  classifyEvent,
-  readMessageText,
-} from "../../commands/local/event-kind.js";
-import {
-  exceptionMessage,
   exceptionValues,
   frameFile,
 } from "../../commands/local/exception-values.js";
+import {
+  groupSpansBySegment,
+  type SpanSegment,
+} from "../../commands/local/span-segments.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -25,6 +25,7 @@ import {
   hasAiAttributes,
   inferSemanticOp,
   mergeTransactionAttributes,
+  UNNAMED_SPAN,
 } from "./semantic-display.js";
 
 const log = logger.withTag("local-formatter");
@@ -180,17 +181,11 @@ export function formatType(level: string): string {
 const MOBILE_MARKERS = ["cocoa", "android", "react-native", "flutter"];
 
 /**
- * JavaScript SDK name substrings treated as server-side when the item itself
- * doesn't say where it ran (logs, spans, sessions). Meta-framework SDKs send
- * the same name from the browser and the server, so their events are told
- * apart by platform and runtime instead (see {@link inferSourceName}).
- * Envelope headers carry only the SDK name and version, not `sdk.packages`,
- * so server-only SDKs have to be listed here by name.
+ * JavaScript SDK name substrings for meta-frameworks that send the same SDK
+ * name from the browser and the server. Their spans and logs are placed by
+ * browser-only attributes (see {@link hasBrowserAttributes}).
  */
-const SERVER_JS_MARKERS = [
-  "node",
-  "bun",
-  "deno",
+const BOTH_SIDES_JS_MARKERS = [
   "nextjs",
   "remix",
   "astro",
@@ -199,6 +194,18 @@ const SERVER_JS_MARKERS = [
   "solidstart",
   "react-router",
   "tanstackstart",
+];
+
+/**
+ * JavaScript SDK name substrings that only run on the server. Envelope
+ * headers carry only the SDK name and version, not `sdk.packages`, so they
+ * have to be listed here by name. Other `sentry.javascript.*` SDKs run in the
+ * browser.
+ */
+const SERVER_JS_MARKERS = [
+  "node",
+  "bun",
+  "deno",
   "cloudflare",
   "hono",
   "vercel-edge",
@@ -226,8 +233,8 @@ const BROWSER_OP_RE = /^(?:pageload|navigation|(?:ui|resource|browser)\..+)$/;
  * Whether span or log attributes show the browser SDK made them: a browser
  * op, a `browser.*` attribute (web vitals), a browser instrumentation origin
  * such as `auto.http.browser`, or a session replay ID, which only the browser
- * records. The browser SDK also sets `user_agent.original` on every span, but
- * server SDKs set it on HTTP spans too, so it only counts on other spans.
+ * records. `user_agent.original` doesn't count: the browser SDK sets it on
+ * every span, but server SDKs set it from the request too.
  */
 function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
   const op = typeof attrs["sentry.op"] === "string" ? attrs["sentry.op"] : "";
@@ -236,7 +243,6 @@ function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
     BROWSER_OP_RE.test(op) ||
     (typeof origin === "string" && origin.split(".").includes("browser")) ||
     attrs["sentry.replay_id"] !== undefined ||
-    (attrs["user_agent.original"] !== undefined && !op.startsWith("http.")) ||
     Object.keys(attrs).some((key) => key.startsWith("browser."))
   );
 }
@@ -247,10 +253,10 @@ function hasBrowserAttributes(attrs: Record<string, unknown>): boolean {
  * Event payloads say it directly: server SDKs set a `runtime` context (Node,
  * Cloudflare Workers, Vercel Edge, Bun, Deno) or a non-JavaScript platform,
  * and browser events have `platform: "javascript"` with no runtime. Spans and
- * logs have neither, so their `attributes` are checked for browser-only
- * signs (see {@link hasBrowserAttributes}). This is the only way to split
- * meta-framework SDKs such as Next.js, which use one SDK name on both sides.
- * Items without those fall back to the SDK name in the envelope header.
+ * logs have neither, so they go by SDK name. Only when that name doesn't
+ * settle it (a meta-framework such as Next.js, which uses one name on both
+ * sides, or no name) are their `attributes` checked for browser-only signs
+ * (see {@link hasBrowserAttributes}).
  */
 function inferSourceName(
   header: Record<string, unknown>,
@@ -262,15 +268,19 @@ function inferSourceName(
   if (MOBILE_MARKERS.some((m) => name.includes(m))) {
     return "mobile";
   }
-  if (attributes.some(hasBrowserAttributes)) {
-    return "browser";
-  }
   const contexts = payload?.["contexts"] as Record<string, unknown> | undefined;
   if (contexts?.["runtime"]) {
     return "server";
   }
   if (typeof payload?.["platform"] === "string") {
     return payload["platform"] === "javascript" ? "browser" : "server";
+  }
+  const bothSides =
+    !name ||
+    (name.startsWith("sentry.javascript.") &&
+      BOTH_SIDES_JS_MARKERS.some((m) => name.includes(m)));
+  if (bothSides) {
+    return attributes.some(hasBrowserAttributes) ? "browser" : "server";
   }
   if (
     name.startsWith("sentry.javascript.") &&
@@ -390,14 +400,7 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
   const last = exceptionValues(event["exception"]).at(-1) as
     | ExceptionValue
     | undefined;
-  const errorType =
-    typeof last?.type === "string" && last.type ? last.type : undefined;
-  const exceptionText =
-    last?.value === undefined || last.value === ""
-      ? undefined
-      : exceptionMessage(errorType, stringifyUnknown(last.value));
-  const messageText =
-    readMessageText(event["logentry"]) ?? readMessageText(event["message"]);
+  const frames = last?.stacktrace?.frames;
   const level =
     typeof event["level"] === "string" && event["level"]
       ? event["level"]
@@ -406,17 +409,15 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
     typeof event["logger"] === "string" && event["logger"]
       ? event["logger"]
       : undefined;
-  const frames = last?.stacktrace?.frames;
-
-  const text = errorType ? exceptionText : (messageText ?? exceptionText);
-  if (classifyEvent(event) === "message" && text) {
+  const { kind, errorType, text } = describeEvent(event);
+  if (kind === "message" && text) {
     return { kind: "message", level, text, frames, logger };
   }
   return {
     kind: "error",
     level,
     errorType: errorType ?? "Error",
-    text: text ?? messageText ?? "Unknown error",
+    text: text ?? "Unknown error",
     frames,
     logger,
   };
@@ -546,16 +547,40 @@ const SDK_ATTRIBUTE_PREFIXES = [
   "exception.",
   "error.",
   "user_agent.",
-  "logger.",
-  "user.",
 ];
 
 /**
- * Exact keys that SDK logging integrations add, such as the Python `logging`
- * record's `asctime` and the `request` and `server_time` extras that Django's
- * dev server sets on every access log.
+ * Exact log attribute keys that SDKs add on their own: the scope user they
+ * copy onto every log, the Python `logging` record's `asctime`, and the
+ * `server_time` extra that Django's dev server sets on access logs.
  */
-const SDK_ATTRIBUTE_KEYS = new Set(["asctime", "request", "server_time"]);
+const SDK_LOG_ATTRIBUTE_KEYS = new Set([
+  "user.id",
+  "user.email",
+  "user.name",
+  "user.username",
+  "user.ip_address",
+  "asctime",
+  "server_time",
+]);
+
+/**
+ * Log attribute keys that one SDK adds, keyed by its `sentry.sdk.name`
+ * prefix. Other SDKs leave these names free for custom attributes.
+ * sentry-rust adds the OS and the active span; sentry-ruby keeps the
+ * `parameters:` argument of `Sentry.logger.info` as an attribute.
+ */
+const SDK_LOG_ATTRIBUTE_KEYS_BY_SDK: readonly [string, ReadonlySet<string>][] =
+  [
+    ["sentry.rust", new Set(["os.name", "os.version", "parent_span_id"])],
+    ["sentry.ruby", new Set(["parameters"])],
+  ];
+
+/**
+ * A `request` value that is an object repr, like the socket or
+ * `WSGIRequest` that Python's `logging` extras put on access logs.
+ */
+const REQUEST_REPR_RE = /^<(?:WSGIRequest|ASGIRequest|socket)\b/;
 
 /** Two-space indent prefix for nested attribute-table lines. */
 const ATTR_INDENT = "  ";
@@ -567,9 +592,37 @@ const ATTR_INDENT = "  ";
  */
 function isSdkAttribute(key: string): boolean {
   const lower = key.toLowerCase();
-  return (
-    SDK_ATTRIBUTE_KEYS.has(lower) ||
-    SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+  return SDK_ATTRIBUTE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/**
+ * Whether a log attribute was added by the SDK rather than the app. Adds the
+ * log-only keys, such as `logger.*` from logging integrations, to
+ * {@link isSdkAttribute}; on a span the same keys are custom. A bare `request` counts only when
+ * the SDK is Python or the value is an object repr, so an app's own
+ * `request` attribute still shows.
+ */
+function isSdkLogAttribute(
+  key: string,
+  value: unknown,
+  sdkName: string,
+): boolean {
+  const lower = key.toLowerCase();
+  if (
+    isSdkAttribute(key) ||
+    SDK_LOG_ATTRIBUTE_KEYS.has(lower) ||
+    lower.startsWith("logger.")
+  ) {
+    return true;
+  }
+  if (lower === "request") {
+    return (
+      sdkName.startsWith("sentry.python") ||
+      (typeof value === "string" && REQUEST_REPR_RE.test(value))
+    );
+  }
+  return SDK_LOG_ATTRIBUTE_KEYS_BY_SDK.some(
+    ([sdk, keys]) => sdkName.startsWith(sdk) && keys.has(lower),
   );
 }
 
@@ -689,6 +742,27 @@ function logAttributeEntries(logEntry: LogEntry): [string, unknown][] {
 }
 
 /**
+ * Split a log's attributes into the app's own and the SDK's, by
+ * {@link isSdkLogAttribute}. The SDK name comes from the log's
+ * `sentry.sdk.name`, else the envelope header.
+ */
+function splitLogAttributes(
+  logEntry: LogEntry,
+  header: Record<string, unknown>,
+): { custom: [string, unknown][]; sdk: [string, unknown][] } {
+  const fromLog = logEntry.attributes?.["sentry.sdk.name"]?.value;
+  const fromHeader = (header["sdk"] as { name?: unknown } | undefined)?.name;
+  const name = fromLog ?? fromHeader;
+  const sdkName = typeof name === "string" ? name : "";
+  const custom: [string, unknown][] = [];
+  const sdk: [string, unknown][] = [];
+  for (const entry of logAttributeEntries(logEntry)) {
+    (isSdkLogAttribute(entry[0], entry[1], sdkName) ? sdk : custom).push(entry);
+  }
+  return { custom, sdk };
+}
+
+/**
  * Extract the trace ID from a log entry's attributes.
  *
  * Logs carry no `contexts.trace`; the trace ID lives in the SDK-default
@@ -708,18 +782,20 @@ function extractLogTraceId(logEntry: LogEntry): string | undefined {
  *
  * User-supplied attributes are rendered alphabetically by key so repeated log
  * lines align column-for-column and are easy to scan. SDK-default attributes
- * (`sentry.*`, `code.*`, `logger.*`, `user.*`, … see
- * {@link SDK_ATTRIBUTE_PREFIXES} and {@link SDK_ATTRIBUTE_KEYS}) are omitted
- * from the inline list; the trace ID is surfaced as a compact `[trace:…]`
- * token instead.
+ * (`sentry.*`, `code.*`, `logger.*`, the scope user, … see
+ * {@link isSdkLogAttribute}) are omitted from the inline list; the trace ID
+ * is surfaced as a compact `[trace:…]` token instead.
  */
-export function formatSingleLog(logEntry: LogEntry, source: string): string {
+export function formatSingleLog(
+  logEntry: LogEntry,
+  source: string,
+  header: Record<string, unknown> = {},
+): string {
   const level = logEntry.level ?? "log";
   let msg = sanitize(logEntry.body ?? "");
 
-  const attrs = logAttributeEntries(logEntry)
-    .filter(([k]) => !isSdkAttribute(k))
-    .sort(([a], [b]) => a.localeCompare(b))
+  const attrs = splitLogAttributes(logEntry, header)
+    .custom.sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => muted(`[${sanitize(k)}=${sanitize(String(v))}]`));
   if (attrs.length > 0) {
     msg += ` ${attrs.join(" ")}`;
@@ -756,13 +832,11 @@ export function formatLogItem(
   // One log batch comes from one SDK client, so any browser log places all.
   const source = inferSource(header, undefined, items.map(logAttributes));
   return items.flatMap((logEntry) => {
-    const line = formatSingleLog(logEntry, source);
+    const line = formatSingleLog(logEntry, source, header);
     if (!showAttributes) {
       return [line];
     }
-    const sdk = logAttributeEntries(logEntry).filter(([k]) =>
-      isSdkAttribute(k),
-    );
+    const { sdk } = splitLogAttributes(logEntry, header);
     return [line, ...formatAttrGroup("sdk attributes", sdk)];
   });
 }
@@ -825,9 +899,8 @@ export function formatSingleSpan(
   header: Record<string, unknown>,
   spanCount = "",
 ): string {
-  const spanName = sanitize(span.name ?? "unnamed span");
   const flat = flattenSpanAttributes(span.attributes);
-  const semantic = formatSemanticSpanDisplay(flat, spanName);
+  const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
 
   let msg = sanitize(semantic.label);
   if (semantic.metadata.length > 0) {
@@ -857,105 +930,13 @@ export function formatSingleSpan(
   return `${muted(ts)} ${formatType("trace")} ${inferSource(header, undefined, [flat])} ${msg}`;
 }
 
-/** Spans of one segment that arrived in the same batch. */
-type SpanGroup = {
-  /** The segment span, or the top span of the group when it is missing. */
-  head: StreamedSpan;
-  /** Whether {@link head} is the segment span itself, not just its top span. */
-  isSegment: boolean;
-  spans: StreamedSpan[];
-};
-
-/**
- * The segment a streamed span belongs to: its `sentry.segment.id`, its own ID
- * when it is a segment, else the top ancestor found in the same batch.
- */
-function segmentKey(
-  span: StreamedSpan,
-  byId: ReadonlyMap<string, StreamedSpan>,
-): string | undefined {
-  const segmentId = span.attributes?.["sentry.segment.id"]?.value;
-  if (typeof segmentId === "string" && segmentId) {
-    return segmentId;
-  }
-  let top = span;
-  const seen = new Set<StreamedSpan>();
-  while (!top.is_segment && top.parent_span_id && !seen.has(top)) {
-    seen.add(top);
-    const parent = byId.get(top.parent_span_id);
-    if (!parent) {
-      break;
-    }
-    top = parent;
-  }
-  return top.span_id;
-}
-
-/**
- * Whether a streamed span is a segment: flagged `is_segment`, its own
- * `sentry.segment.id`, or a root span with no parent.
- */
-function isSegmentSpan(span: StreamedSpan): boolean {
-  return (
-    span.is_segment === true ||
-    !span.parent_span_id ||
-    (span.span_id !== undefined &&
-      span.span_id === span.attributes?.["sentry.segment.id"]?.value)
-  );
-}
-
-/**
- * Group a span batch by segment, in the order each segment first appears.
- * Spans with no span or segment ID each form their own group.
- */
-function groupSpansBySegment(items: StreamedSpan[]): SpanGroup[] {
-  const byId = new Map<string, StreamedSpan>();
-  for (const span of items) {
-    if (span.span_id) {
-      byId.set(span.span_id, span);
-    }
-  }
-  const groups = new Map<string | StreamedSpan, StreamedSpan[]>();
-  for (const span of items) {
-    const key = segmentKey(span, byId) ?? span;
-    const spans = groups.get(key);
-    if (spans) {
-      spans.push(span);
-    } else {
-      groups.set(key, [span]);
-    }
-  }
-  return [...groups.values()].map((spans) => {
-    const segment = spans.find(isSegmentSpan);
-    // Without its segment, the group's top span is the one whose parent is
-    // not in the batch and that started first.
-    const top = spans
-      .filter((span) => !(span.parent_span_id && byId.has(span.parent_span_id)))
-      .sort(
-        (a, b) =>
-          (parseEventTimestamp(a.start_timestamp) ?? 0) -
-          (parseEventTimestamp(b.start_timestamp) ?? 0),
-      )[0];
-    return {
-      head: segment ?? top ?? (spans[0] as StreamedSpan),
-      isSegment: segment !== undefined,
-      spans,
-    };
-  });
-}
-
 /** One tail line for spans whose segment wasn't in the same batch. */
 function formatLateSpansLine(
-  group: SpanGroup,
+  group: SpanSegment<StreamedSpan>,
   header: Record<string, unknown>,
 ): string {
-  const segmentName = group.head.attributes?.["sentry.segment.name"]?.value;
-  const name =
-    typeof segmentName === "string" && segmentName
-      ? segmentName
-      : (group.head.name ?? "unnamed span");
   const msg =
-    sanitize(name) +
+    sanitize(group.name ?? "unnamed span") +
     formatSpanCount(group.spans.length, "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
@@ -1066,9 +1047,40 @@ export function itemTypeToFilterCategory(
   return undefined;
 }
 
+/** How many replay IDs a tail remembers, oldest dropped first. */
+const MAX_SEEN_REPLAYS = 100;
+
 /**
- * Format the first `replay_event` of a session replay: its short ID and the
- * page it started on.
+ * Records a replay ID and returns whether the tail has not printed it yet.
+ * Items without an ID are always new.
+ */
+export type ReplayTracker = (replayId: unknown) => boolean;
+
+/**
+ * Create the replay IDs one tail has printed a line for. A tail that starts
+ * mid-replay sees a later segment first, so this goes by ID, not segment 0.
+ */
+export function createReplayTracker(): ReplayTracker {
+  const seen = new Set<string>();
+  return (replayId) => {
+    if (typeof replayId !== "string" || !replayId) {
+      return true;
+    }
+    if (seen.has(replayId)) {
+      return false;
+    }
+    seen.add(replayId);
+    if (seen.size > MAX_SEEN_REPLAYS) {
+      const [oldest] = seen;
+      seen.delete(oldest as string);
+    }
+    return true;
+  };
+}
+
+/**
+ * Format the first `replay_event` the tail sees for a session replay: its
+ * short ID and the page in its `urls`.
  *
  * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
  */
@@ -1304,20 +1316,7 @@ function formatLogJson(
         level: entry.level ?? "log",
         message: stripBidi(entry.body ?? ""),
         attributes: entry.attributes
-          ? Object.fromEntries(
-              Object.entries(entry.attributes)
-                .filter(
-                  ([k, v]) =>
-                    isUserLogAttribute(k) &&
-                    (includeAttributes || !isSdkAttribute(k)) &&
-                    v.value !== null &&
-                    v.value !== undefined,
-                )
-                .map(([k, v]) => [
-                  stripBidi(k),
-                  typeof v.value === "string" ? stripBidi(v.value) : v.value,
-                ]),
-            )
+          ? jsonLogAttributes(entry, header, includeAttributes)
           : undefined,
         source,
       },
@@ -1325,6 +1324,22 @@ function formatLogJson(
       header,
     ),
   );
+}
+
+/**
+ * A log's attributes for its JSON record: the custom ones, plus the SDK ones
+ * (except `sentry.*`) when `includeAttributes` is true.
+ */
+function jsonLogAttributes(
+  entry: LogEntry,
+  header: Record<string, unknown>,
+  includeAttributes: boolean,
+): Record<string, unknown> {
+  const { custom, sdk } = splitLogAttributes(entry, header);
+  const entries = includeAttributes
+    ? [...custom, ...sdk.filter(([k]) => isUserLogAttribute(k))]
+    : custom;
+  return Object.fromEntries(entries);
 }
 
 /** Format a standalone span item as JSON objects (one per span). */
@@ -1339,10 +1354,7 @@ function formatSpanJson(
   }
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
-    const semantic = formatSemanticSpanDisplay(
-      flat,
-      span.name ?? "unnamed span",
-    );
+    const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
     return formatJsonObservation(
       {
         type: "span",
@@ -1416,14 +1428,18 @@ export function formatItemJson(
  * Format a single envelope item into one or more output lines.
  *
  * When `showAttributes` is true, transaction items are followed by an indented
- * attribute table (see {@link formatAttributeTable}).
+ * attribute table (see {@link formatAttributeTable}). A tail passes its own
+ * `replays` so each session replay prints once.
  */
 export function formatItem(
   itemType: string | undefined,
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   fallbackLabel: string,
-  showAttributes = false,
+  {
+    showAttributes = false,
+    replays = createReplayTracker(),
+  }: { showAttributes?: boolean; replays?: ReplayTracker } = {},
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorItem(payload, header)];
@@ -1442,9 +1458,9 @@ export function formatItem(
     return formatLogItem(payload, header, showAttributes);
   }
   // Active replays send a replay_event and a recording every few seconds;
-  // only the first segment gets a line.
+  // only the first segment the tail sees gets a line.
   if (itemType === "replay_event") {
-    return payload["segment_id"] === 0
+    return replays(payload["replay_id"])
       ? [formatReplayItem(payload, header)]
       : [];
   }
@@ -1550,7 +1566,8 @@ export function formatEnvelopeLinesJson(
  *
  * When `activeFilters` is non-empty, only items whose category matches
  * one of the filter values are rendered; non-matching items are silently
- * dropped. When empty, all items are shown.
+ * dropped. When empty, all items are shown. A tail passes its own `replays`
+ * so each session replay prints once.
  */
 export function formatEnvelopeLines(
   container: {
@@ -1562,6 +1579,7 @@ export function formatEnvelopeLines(
   },
   activeFilters: ReadonlySet<FilterValue>,
   showAttributes = false,
+  replays: ReplayTracker = createReplayTracker(),
 ): string[] {
   const parsed = container.getParsedEnvelope();
   if (!parsed) {
@@ -1584,13 +1602,14 @@ export function formatEnvelopeLines(
         payload,
         header,
         itemHeader.type ?? container.getContentType(),
-        showAttributes,
+        { showAttributes, replays },
       ),
     );
   }
 
   // Items can print nothing on purpose (later replay segments), so the
-  // fallback line is only for an envelope with no items at all.
+  // fallback line is only for an envelope with no items and no active
+  // filters.
   if (lines.length > 0 || items.length > 0 || activeFilters.size > 0) {
     return lines;
   }

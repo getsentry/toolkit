@@ -858,7 +858,10 @@ async function executeSearchEvents(
         })
       : null;
   seerOutcome.translation = seerTranslation;
-  if (seerTranslation && !projectId) {
+  // Without a project, Sentry only searches projects whose teams the user
+  // belongs to, and rejects the search when there are none. `-1` searches
+  // every project the user can access, as the UI's "All Projects" does.
+  if (!projectId) {
     projectId = "-1";
   }
 
