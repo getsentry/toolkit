@@ -34,6 +34,15 @@ its receiver stops after the first envelope.
 `local session create <name> --json` returns distinct `ingestUrl`, `streamUrl`, and `directoryUrl`
 capabilities for SDK ingestion, single-session streaming, and browser session discovery. The ingest capability lives in
 the URL path so SDK transports that omit query parameters still deliver events.
+The daemon also accepts `<ingestUrl>/stream`, which PHP's Spotlight transport
+posts to, and `<ingestUrl>/api/<project>/envelope/`, which Go, Rust, Ruby, and
+PHP build from a DSN such as
+`http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0` (with
+Spotlight off). Node.js and Python post to `ingestUrl` as is. Ruby's Spotlight
+transport always posts to the root `/stream`, which carries no capability, so
+Ruby needs the DSN form. Those SDKs copy the DSN into each envelope header, so
+the daemon drops the header's `dsn` key before it stores or streams a session
+envelope.
 Treat those URLs as credentials. Terminal output redacts them, including the
 `Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a

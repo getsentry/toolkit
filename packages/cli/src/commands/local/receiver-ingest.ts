@@ -4,6 +4,7 @@ import { logger } from "../../lib/logger.js";
 import {
   createReceiverEnvelope,
   type ReceiverBuffer,
+  withoutDsnHeader,
   withoutOwnDeliveries,
 } from "./envelope.js";
 export {
@@ -124,6 +125,8 @@ export function ingestReceiverEnvelope(
     body: Buffer;
     contentType?: string;
     encoding?: string | undefined;
+    /** Drop the envelope header's `dsn`, which can carry a session capability. */
+    dropDsnHeader?: boolean;
     /** URL the delivery was posted to, which identifies the receiver's own routes. */
     receiverUrl?: string;
     userAgent?: string | undefined;
@@ -169,6 +172,7 @@ export function ingestReceiverEnvelope(
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
+      if (input.dropDsnHeader) body = withoutDsnHeader(body);
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)
         : body;

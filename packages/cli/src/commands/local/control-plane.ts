@@ -59,8 +59,6 @@ const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
-const SESSION_INGEST_RE =
-  /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+(?:\/stream|\/api\/[^/]+\/envelope\/?)?$/;
 /**
  * Paths that write to a session; each carries the ingest capability. SDKs
  * post to the ingest URL itself (Node, Python), add `/stream` to it (PHP's
@@ -73,6 +71,9 @@ const SESSION_INGEST_PATHS = [
   "/api/:projectId/envelope",
   "/api/:projectId/envelope/",
 ].map((suffix) => `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap${suffix}`);
+const SESSION_INGEST_RE = new RegExp(
+  `^(?:${SESSION_INGEST_PATHS.map((path) => path.replace(/:\w+/g, "[^/]+")).join("|")})$`,
+);
 const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
@@ -515,6 +516,7 @@ export function createLocalControlPlane({
         ? SENTRY_CONTENT_TYPE
         : (c.req.header("content-type") ?? ""),
       encoding,
+      dropDsnHeader: true,
       receiverUrl: c.req.url,
       userAgent: c.req.header("user-agent"),
     });

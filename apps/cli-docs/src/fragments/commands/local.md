@@ -254,6 +254,22 @@ viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent. Use the session ID when multiple sessions
 share a label.
 
+How an SDK reaches a session depends on its Spotlight support:
+
+- **Node.js and Python** send to the session's ingest URL as is, so
+  `local run --session` needs no setup.
+- **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
+  it, which the session accepts.
+- **Go, Rust, and Ruby** (and PHP, if you prefer): turn Spotlight off and set
+  `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+  This is the `ingestUrl` from `sentry local session view <id> --json` with
+  `local@` and `/0` added. Ruby's Spotlight transport always posts to the
+  daemon's root `/stream`, which carries no capability, so a session can't
+  accept it.
+
+The daemon removes the `dsn` from each envelope header it captures into a
+session, because that DSN holds the ingest capability.
+
 `sentry local session list`, `sentry local event list`, and
 `sentry local envelope list` print tables; add `--json` for the full records.
 The event table shows each event ID cut to the shortest unique prefix of at
