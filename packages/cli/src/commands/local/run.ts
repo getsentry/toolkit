@@ -574,7 +574,7 @@ export const runCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
