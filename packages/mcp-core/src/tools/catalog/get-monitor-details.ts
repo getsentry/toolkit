@@ -133,7 +133,7 @@ function toConfig(
   }
   return {
     scheduleType: readString(config, "schedule_type"),
-    schedule: readSchedule(config.schedule),
+    schedule: readSchedule(config["schedule"]),
     timezone: readString(config, "timezone"),
     checkinMarginMinutes: readNumber(config, "checkin_margin"),
     maxRuntimeMinutes: readNumber(config, "max_runtime"),

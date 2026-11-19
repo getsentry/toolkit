@@ -211,9 +211,9 @@ Produce the tailored integration guide.`;
           tools,
         });
 
-        const inputTokens = result.totalUsage?.inputTokens ?? 0;
-        const outputTokens = result.totalUsage?.outputTokens ?? 0;
-        const stepCount = result.steps?.length ?? 0;
+        const inputTokens = result.totalUsage.inputTokens ?? 0;
+        const outputTokens = result.totalUsage.outputTokens ?? 0;
+        const stepCount = result.steps.length;
         const usedModelId = getUsedModelId(result);
 
         span.setAttribute("agent.model", usedModelId);
@@ -259,8 +259,8 @@ Produce the tailored integration guide.`;
           tools,
         });
 
-        const fbInputTokens = fallback.totalUsage?.inputTokens ?? 0;
-        const fbOutputTokens = fallback.totalUsage?.outputTokens ?? 0;
+        const fbInputTokens = fallback.totalUsage.inputTokens ?? 0;
+        const fbOutputTokens = fallback.totalUsage.outputTokens ?? 0;
         const fallbackModelId = getUsedModelId(fallback);
 
         span.setAttribute("agent.model", fallbackModelId);

@@ -36,7 +36,9 @@ function normalizeUrl(url: string | undefined): string | null {
 
 function toResult(organization: {
   slug: string;
-  links?: { organizationUrl?: string; regionUrl?: string };
+  links?:
+    | { organizationUrl?: string; regionUrl?: string | undefined }
+    | undefined;
 }): OrganizationResult {
   return {
     slug: organization.slug,

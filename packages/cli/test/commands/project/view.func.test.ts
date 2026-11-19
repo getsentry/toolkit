@@ -12,12 +12,8 @@ import { viewCommand } from "../../../src/commands/project/view.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -26,12 +22,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/browser.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/browser.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -41,17 +33,15 @@ import { AuthError, ContextError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
-import type { ProjectKey, SentryProject } from "../../../src/types/sentry.js";
+import type { SentryProject } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleProject: SentryProject = {
   id: "42",
@@ -62,21 +52,12 @@ const sampleProject: SentryProject = {
   status: "active",
 };
 
-const _sampleKeys: ProjectKey[] = [
-  {
-    id: "key-1",
-    name: "Default",
-    dsn: { public: "https://abc123@o1.ingest.sentry.io/42" },
-    isActive: true,
-  },
-];
-
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
       commandPrefix: ["sentry", "project", "view"],
     },
@@ -111,7 +92,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false }, "my-org/test-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -129,7 +110,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(
       context,
       { json: false, web: false },
@@ -145,7 +126,7 @@ describe("viewCommand.func", () => {
     openInBrowserSpy.mockResolvedValue(undefined);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: false, web: true }, "my-org/test-project");
 
     expect(openInBrowserSpy).toHaveBeenCalled();
@@ -172,7 +153,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       // No target arg triggers AutoDetect
@@ -188,14 +169,14 @@ describe("viewCommand.func", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { ...sampleProject, slug: "frontend" },
     });
-    getProjectSpy.mockResolvedValue({ ...sampleProject, slug: "frontend" });
     tryGetPrimaryDsnSpy.mockResolvedValue(
       "https://abc123@o1.ingest.sentry.io/42",
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false }, "frontend");
 
     expect(resolveProjectBoundSlugSpy).toHaveBeenCalledWith(
@@ -212,7 +193,7 @@ describe("viewCommand.func", () => {
 
   test("org-only target (org/) throws ContextError", async () => {
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(context, { json: false, web: false }, "my-org/");
@@ -245,7 +226,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // No target arg triggers AutoDetect
     await func.call(context, { json: false, web: false });
 
@@ -259,7 +240,7 @@ describe("viewCommand.func", () => {
     resolveAllTargetsSpy.mockResolvedValue({ targets: [] });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false }),
@@ -273,7 +254,7 @@ describe("viewCommand.func", () => {
     });
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     try {
       await func.call(context, { json: false, web: false });
@@ -299,7 +280,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false }, "my-org/bad-project"),
@@ -312,15 +293,15 @@ describe("viewCommand.func", () => {
     resolveProjectBoundSlugSpy.mockResolvedValue({
       org: "acme",
       project: "frontend",
+      projectData: { ...sampleProject, slug: "frontend" },
     });
+    // The search already returned the project, so the DSN lookup is the
+    // only API call left on this path.
     const apiErr = new Error("403 Forbidden");
-    getProjectSpy.mockRejectedValue(apiErr);
-    tryGetPrimaryDsnSpy.mockResolvedValue(
-      "https://abc123@o1.ingest.sentry.io/42",
-    );
+    tryGetPrimaryDsnSpy.mockRejectedValue(apiErr);
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false }, "frontend"),
@@ -349,7 +330,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false }),
@@ -363,7 +344,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
 
     await expect(
       func.call(context, { json: false, web: false }, "my-org/test-project"),
@@ -383,7 +364,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false }, "my-org/test-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -405,7 +386,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false }, "my-org/test-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -420,7 +401,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     await func.call(context, { json: true, web: false }, "my-org/test-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -438,7 +419,7 @@ describe("viewCommand.func", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await viewCommand.loader();
+    const func = await loadCommand(viewCommand);
     // `fields` is auto-injected by the buildCommand wrapper; pass through
     // the flag shape the wrapper would forward.
     await func.call(

@@ -185,8 +185,8 @@ describe("legacy accounts without a host", () => {
   test("switching to one backfills its host before it is used", async () => {
     const { resetEnvTokenHostForTesting } =
       await import("../../../src/lib/env-token-host.js");
-    delete process.env.SENTRY_HOST;
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_HOST"];
+    delete process.env["SENTRY_URL"];
     resetEnvTokenHostForTesting();
     getDatabase()
       .query(

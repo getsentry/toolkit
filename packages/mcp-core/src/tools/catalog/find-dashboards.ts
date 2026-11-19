@@ -57,8 +57,10 @@ async function listVisibleDashboards({
   cursor: string | null;
   projectId: string | number | undefined;
 }): Promise<{ dashboards: DashboardListItem[]; nextCursor: string | null }> {
-  const { data, nextCursor } = await paginate(
-    { limit, cursor: cursor ?? undefined, maxPages: MAX_LIST_PAGES },
+  const { data, nextCursor } = await paginate<DashboardListItem>(
+    cursor === null
+      ? { limit, maxPages: MAX_LIST_PAGES }
+      : { limit, cursor, maxPages: MAX_LIST_PAGES },
     async (perPage, pageCursor) => {
       const page = await apiService.listDashboards({
         organizationSlug,
@@ -75,7 +77,7 @@ async function listVisibleDashboards({
                 dashboards: page.dashboards,
                 projectId,
               }),
-        nextCursor: page.nextCursor ?? undefined,
+        ...(page.nextCursor === null ? {} : { nextCursor: page.nextCursor }),
       };
     },
   );

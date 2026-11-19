@@ -40,7 +40,10 @@ describe("span segments", () => {
       sdk: { name: "sentry.javascript.nextjs", version: "11.14.0" },
     };
     const { title } = summarizeEnvelope({
-      envelope: [header, [[{ type: "span" }, payload]]],
+      envelope: [
+        { ...header, __spotlight_envelope_id: "test-envelope" },
+        [[{ type: "span" }, payload]],
+      ],
     });
     const [line] = formatItem("span", payload, header, "span").map((l) =>
       stripAnsi(l),

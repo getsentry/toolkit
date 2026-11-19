@@ -37,6 +37,7 @@ import type {
   TimeseriesResult,
   UnsupportedResult,
 } from "../../../src/types/dashboard.js";
+import { at } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Constants (must match source)
@@ -73,30 +74,30 @@ function usePlainMode() {
   let savedPlain: string | undefined;
 
   beforeEach(() => {
-    savedNoColor = process.env.NO_COLOR;
-    savedForceColor = process.env.FORCE_COLOR;
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
+    savedNoColor = process.env["NO_COLOR"];
+    savedForceColor = process.env["FORCE_COLOR"];
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
 
-    process.env.NO_COLOR = "1";
-    delete process.env.FORCE_COLOR;
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    process.env["NO_COLOR"] = "1";
+    delete process.env["FORCE_COLOR"];
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   });
 
   afterEach(() => {
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
     if (savedForceColor === undefined) {
-      delete process.env.FORCE_COLOR;
+      delete process.env["FORCE_COLOR"];
     } else {
-      process.env.FORCE_COLOR = savedForceColor;
+      process.env["FORCE_COLOR"] = savedForceColor;
     }
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -114,26 +115,26 @@ function useRenderedMode() {
   let savedChalkLevel: typeof chalk.level;
 
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    savedNoColor = process.env.NO_COLOR;
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    savedNoColor = process.env["NO_COLOR"];
     savedChalkLevel = chalk.level;
 
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
-    delete process.env.NO_COLOR;
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
+    delete process.env["NO_COLOR"];
     chalk.level = 3;
   });
 
   afterEach(() => {
     chalk.level = savedChalkLevel;
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
   });
 }
@@ -329,14 +330,14 @@ describe("formatDashboardWithData", () => {
       const output = formatDashboardWithData(data);
       const lines = output.split("\n");
       // First line contains title and period
-      const firstLine = stripAnsi(lines[0]);
+      const firstLine = stripAnsi(at(lines, 0));
       expect(firstLine).toContain("24h");
     });
 
     test("renders environment with green color", () => {
       const data = makeDashboardData({ environment: ["production"] });
       const output = formatDashboardWithData(data);
-      const firstLine = stripAnsi(output.split("\n")[0]);
+      const firstLine = stripAnsi(at(output.split("\n"), 0));
       expect(firstLine).toContain("production");
     });
 
@@ -345,9 +346,9 @@ describe("formatDashboardWithData", () => {
       const data = makeDashboardData({ url });
       const output = formatDashboardWithData(data);
       // Rendered mode: title line, muted underline, blank separator
-      const secondLine = stripAnsi(output.split("\n")[1]);
+      const secondLine = stripAnsi(at(output.split("\n"), 1));
       expect(secondLine).toMatch(/^─+$/);
-      expect(stripAnsi(output.split("\n")[2])).toBe("");
+      expect(stripAnsi(at(output.split("\n"), 2))).toBe("");
     });
   });
 

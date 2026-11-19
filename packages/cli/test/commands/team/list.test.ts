@@ -12,12 +12,8 @@ import { listCommand } from "../../../src/commands/team/list.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
@@ -27,12 +23,8 @@ import { DEFAULT_SENTRY_URL } from "../../../src/lib/constants.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
@@ -43,17 +35,15 @@ import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryTeam } from "../../../src/types/sentry.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // Sample test data
 const sampleTeams: SentryTeam[] = [
@@ -78,8 +68,8 @@ const sampleTeams: SentryTeam[] = [
 ];
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -102,13 +92,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs JSON array when --json flag is set", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -121,13 +118,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("outputs empty JSON array when no teams found with --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -136,13 +140,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes 'No teams found' when empty without --json", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -151,13 +162,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("writes header and rows for human output", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -181,13 +199,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
       name: `Team ${i}`,
     }));
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(manyTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 5, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -196,13 +221,20 @@ describe("listCommand.func — project-search (bare slug)", () => {
 
   test("shows all teams when count is under limit", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ slug: "test-org-proj", orgSlug: "test-org" }],
+      projects: [
+        {
+          id: "1",
+          slug: "test-org-proj",
+          name: "test-org-proj",
+          orgSlug: "test-org",
+        },
+      ],
       orgs: [],
     });
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "test-org-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -213,7 +245,7 @@ describe("listCommand.func — project-search (bare slug)", () => {
     findProjectsBySlugSpy.mockResolvedValue({ projects: [], orgs: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "unknown-proj");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -242,12 +274,11 @@ describe("listCommand.func — explicit org/project", () => {
         data: sampleTeams.filter(
           (team) => !opts?.query || team.slug.includes(opts.query),
         ),
-        nextCursor: undefined,
       }),
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/backnd");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -260,11 +291,10 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockRejectedValue(new ApiError("Not found", 404));
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/zzzzzz");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -277,7 +307,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockRejectedValue(new ApiError("Forbidden", 403));
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await expect(
       func.call(context, { limit: 30, json: false }, "my-org/my-project"),
     ).rejects.toThrow("Forbidden");
@@ -288,7 +318,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, "my-org/my-project");
 
     expect(listProjectTeamsSpy).toHaveBeenCalledWith("my-org", "my-project");
@@ -298,7 +328,7 @@ describe("listCommand.func — explicit org/project", () => {
     listProjectTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, "my-org/my-project");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -333,7 +363,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listTeamsSpy).toHaveBeenCalledWith("default-org");
@@ -344,7 +374,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listTeamsSpy).toHaveBeenCalledWith("detected-org");
@@ -359,7 +389,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     expect(listOrganizationsSpy).toHaveBeenCalled();
@@ -370,7 +400,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue(sampleTeams);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -384,7 +414,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -397,7 +427,7 @@ describe("listCommand.func — auto-detect mode", () => {
     listTeamsSpy.mockResolvedValue([]);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: false }, undefined);
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -429,11 +459,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("returns paginated JSON with hasMore=false when no nextCursor", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -451,7 +480,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 2, json: true }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -468,7 +497,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -481,11 +510,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output shows count without next-page hint when no more", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -496,11 +524,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("human output 'No teams found' when empty and no cursor", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 25, json: false }, "my-org/");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
@@ -514,11 +541,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 25, json: false, cursor: "explicit:cursor:value" },
@@ -538,11 +564,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(
       context,
       { limit: 25, json: false, cursor: "next" },
@@ -564,7 +589,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(context, { limit: 25, json: false, cursor: "next" }, "my-org/"),
@@ -573,7 +598,7 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
 
   test("throws ValidationError when --cursor used outside org-all mode", async () => {
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
 
     await expect(
       func.call(
@@ -587,11 +612,10 @@ describe("listCommand.func — org-all mode (cursor pagination)", () => {
   test("passes perPage from limit to paginated call", async () => {
     listTeamsPaginatedSpy.mockResolvedValue({
       data: [],
-      nextCursor: undefined,
     });
 
     const { context } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 10, json: false }, "my-org/");
 
     expect(listTeamsPaginatedSpy).toHaveBeenCalledWith(
@@ -612,7 +636,6 @@ describe("listCommand.func — name filter", () => {
     setOrgRegion("test-org", DEFAULT_SENTRY_URL);
     listTeamsPaginatedSpy.mockResolvedValue({
       data: sampleTeams,
-      nextCursor: undefined,
     });
   });
 
@@ -624,7 +647,7 @@ describe("listCommand.func — name filter", () => {
 
   async function runJson(...args: (string | undefined)[]) {
     const { context, stdoutWrite } = createMockContext();
-    const func = await listCommand.loader();
+    const func = await loadCommand(listCommand);
     await func.call(context, { limit: 30, json: true }, ...args);
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");
     const parsed = JSON.parse(output);

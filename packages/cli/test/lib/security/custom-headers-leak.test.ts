@@ -47,8 +47,10 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
   test("getSharedIssue with attacker baseUrl does not leak custom headers (direct-call regression)", async () => {
     // Simulates someone bypassing applySentryUrlContext and calling
     // getSharedIssue directly with an attacker-controlled baseUrl.
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: secret";
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    // Simulates someone bypassing applySentryUrlContext and calling
+    // getSharedIssue directly with an attacker-controlled baseUrl.
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     captureEnvTokenHost();
 
     // Intercept fetch to capture outbound headers
@@ -80,9 +82,9 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     // User runs `sentry auth login --url https://sentry.acme.com` before
     // having any token. The device-code request MUST carry the IAP
     // token or the IAP proxy will block it.
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_TOKEN;
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: legit";
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_TOKEN"];
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: legit";
 
     // `applyLoginUrl` (from login command) registers the trust anchor
     const { applyLoginUrl } =
@@ -106,10 +108,10 @@ describe("CVE: custom-headers leak (share URL + auth-login bypass)", () => {
     // does NOT call registerLoginTrustAnchor. So no-token
     // applyCustomHeaders must still fail closed even though SENTRY_URL
     // is set.
-    delete process.env.SENTRY_AUTH_TOKEN;
-    delete process.env.SENTRY_TOKEN;
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: secret";
-    process.env.SENTRY_URL = "https://evil.com"; // simulating rc shim write
+    delete process.env["SENTRY_AUTH_TOKEN"];
+    delete process.env["SENTRY_TOKEN"];
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    process.env["SENTRY_URL"] = "https://evil.com"; // simulating rc shim write
     // Intentionally NOT calling applyLoginUrl — attacker flow doesn't
 
     const { resetLoginTrustAnchorForTesting } =

@@ -9,7 +9,7 @@ interface ChatInputProps {
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onStop: () => void;
-  onSlashCommand?: (command: string) => void;
+  onSlashCommand?: ((command: string) => void) | undefined;
 }
 
 export function ChatInput({
@@ -37,6 +37,7 @@ export function ChatInput({
       }, 600); // Delay to account for 500ms animation
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [isOpen]);
 
   // Re-focus when loading finishes
@@ -81,9 +82,7 @@ export function ChatInput({
 
       // Move cursor after the inserted newline
       setTimeout(() => {
-        if (textarea) {
-          textarea.selectionStart = textarea.selectionEnd = start + 1;
-        }
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
       }, 0);
       return;
     }

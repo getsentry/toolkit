@@ -1,6 +1,6 @@
 import {
   _INTERNAL_flushLogsBuffer,
-  type Envelope,
+  type EventEnvelope,
   type ErrorEvent,
   type Transport,
 } from "@sentry/core";
@@ -40,7 +40,7 @@ function captureTelemetry() {
   // Enable capture only after every delivery route is intercepted.
   client.getOptions().enabled = true;
   // Library mode drops logs; lift that so log scrubbing is exercised too.
-  client.getOptions().beforeSendLog = undefined;
+  delete client.getOptions().beforeSendLog;
   client.init();
   function serializedEnvelope(type: string): string {
     const envelope = send.mock.calls.find(([entry]) =>
@@ -101,7 +101,7 @@ describe("telemetry credential boundaries", () => {
     expect(serialized).not.toContain("SYNTHETIC");
     expect(serialized).toContain("[REDACTED]");
     expect(serialized).toContain('"status":500');
-    expect(event.contexts?.cli_error?.detail).toBe(headerError);
+    expect(event.contexts?.["cli_error"]?.["detail"]).toBe(headerError);
   });
 
   test("scrubs exception causes in the outgoing Sentry envelope", async () => {
@@ -185,6 +185,7 @@ describe("telemetry credential boundaries", () => {
     const resetUrl =
       "http://127.0.0.1:8969/_local/v1/sessions/sdk/ui/reset?cap=LOCAL_READ_SECRET";
     const event: ErrorEvent = {
+      type: undefined,
       message: `Rejected POST ${ingestUrl}`,
       request: { url: ingestUrl },
       breadcrumbs: [{ type: "http", data: { url: streamUrl } }],
@@ -205,7 +206,7 @@ describe("telemetry credential boundaries", () => {
       expect(serialized).toContain("/_local/v1/sessions/sdk/");
     }
     expect(event.request?.url).toBe(ingestUrl);
-    expect(event.extra?.resetUrl).toBe(resetUrl);
+    expect(event.extra?.["resetUrl"]).toBe(resetUrl);
   });
 
   test("redacts before deriving a grouping key from the first line", () => {
@@ -218,8 +219,8 @@ describe("telemetry credential boundaries", () => {
     const data: { token: string; circular?: unknown } = { token };
     data.circular = data;
     const bytes = new Uint8Array([1, 2, 3]);
-    const envelope: Envelope = [
-      {},
+    const envelope: EventEnvelope = [
+      { event_id: "0".repeat(32), sent_at: new Date(0).toISOString() },
       [
         [{ type: "event" }, { extra: data }],
         [

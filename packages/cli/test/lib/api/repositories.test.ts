@@ -7,7 +7,15 @@
  * lore on cache-write resilience).
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { listRepositoriesCached } from "../../../src/lib/api/repositories.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -35,8 +43,8 @@ function repoApiResponse(repos: { name: string }[]): Response {
 describe("listRepositoriesCached", () => {
   useTestConfigDir("repo-cache-");
   let originalFetch: typeof globalThis.fetch;
-  let getSpy: ReturnType<typeof spyOn>;
-  let setSpy: ReturnType<typeof spyOn>;
+  let getSpy: MockInstance<(typeof repoCache)["getCachedRepos"]>;
+  let setSpy: MockInstance<(typeof repoCache)["setCachedRepos"]>;
 
   beforeEach(() => {
     setAuthToken("test-token", 3600, "test-refresh");
