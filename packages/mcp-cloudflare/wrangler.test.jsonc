@@ -24,6 +24,12 @@
       "id": "test-oauth-kv",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "MCP_RESPONSE_CACHE_BUCKET",
+      "bucket_name": "test-response-cache",
+    },
+  ],
   // Disable observability to avoid OTel issues in tests
   "observability": {
     "enabled": false,
