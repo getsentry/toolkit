@@ -117,7 +117,7 @@ The MCP OAuth Provider is built with `@cloudflare/workers-oauth-provider` and pr
 The integration with Sentry OAuth happens through:
 
 1. **Authorization redirect** - After MCP consent, redirect to Sentry OAuth
-2. **Code exchange** - Exchange Sentry auth code for tokens
+2. **Code exchange** - Exchange Sentry auth code for tokens. If the upstream authorization returns an `error` instead of a code, the callback first validates the signed state, the client approval cookie, and that the client's `redirect_uri` is registered, then redirects the MCP client there per RFC 6749 §4.1.2.1 with its original `state`, `iss`, and a fixed `error_description`. `access_denied` and `temporarily_unavailable` pass through; every other code becomes `server_error`. If any validation fails, the callback returns a local error and never redirects.
 3. **Token storage** - Store Sentry tokens in MCP token props
 4. **Token reuse on refresh** - Re-issue MCP tokens while the cached Sentry access token is still usable
 
