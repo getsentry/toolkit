@@ -237,10 +237,8 @@ export const createCommand = buildCommand({
       dataset,
       timeWindow: flags["time-window"],
       triggers,
+      projects,
     };
-    if (projects && projects.length > 0) {
-      body.projects = projects;
-    }
     if (flags.environment !== undefined) {
       body.environment = flags.environment;
     }
@@ -265,9 +263,10 @@ export const createCommand = buildCommand({
     const created = await createMetricAlertRule(orgSlug, body);
     yield new CommandOutput({
       org: orgSlug,
-      id: stringifyUnknown(created.id ?? ""),
-      name: stringifyUnknown(created.name ?? flags.name),
-      status: metricAlertStatusLabel(created.status),
+      id: stringifyUnknown(created["id"] ?? ""),
+      name: stringifyUnknown(created["name"] ?? flags.name),
+      status: metricAlertStatusLabel(created["status"]),
     } satisfies MetricAlertCreateOutput);
+    return;
   },
 });

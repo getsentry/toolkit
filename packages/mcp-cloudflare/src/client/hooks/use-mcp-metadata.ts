@@ -5,26 +5,24 @@
  */
 import { useState, useEffect, useCallback } from "react";
 
+/** The `/api/metadata` response the chat reads. */
 export interface McpMetadata {
-  type: "mcp-metadata";
-  prompts: Array<{
-    name: string;
-    description: string;
-    parameters: Record<
-      string,
-      {
-        type: string;
-        required: boolean;
-        description?: string;
-      }
-    >;
-  }>;
   tools: string[];
-  resources?: Array<{
-    name: string;
-    description: string;
-  }>;
-  timestamp: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Reads the tool list from a response, or null when it has none. */
+function parseMcpMetadata(data: unknown): McpMetadata | null {
+  if (!isRecord(data) || !Array.isArray(data["tools"])) {
+    return null;
+  }
+  const tools: unknown[] = data["tools"];
+  return {
+    tools: tools.filter((tool): tool is string => typeof tool === "string"),
+  };
 }
 
 interface UseMcpMetadataResult {
@@ -53,12 +51,16 @@ export function useMcpMetadata(enabled = true): UseMcpMetadataResult {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const errorData: unknown = await response.json().catch(() => ({}));
+        const message =
+          isRecord(errorData) && typeof errorData["error"] === "string"
+            ? errorData["error"]
+            : "";
+        throw new Error(message || `HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      setMetadata(data);
+      const data: unknown = await response.json();
+      setMetadata(parseMcpMetadata(data));
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to fetch metadata";

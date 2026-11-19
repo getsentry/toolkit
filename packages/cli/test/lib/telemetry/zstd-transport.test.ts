@@ -16,6 +16,7 @@ import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingHttpHeaders } from "node:http";
 import { gunzipSync, zstdDecompressSync } from "node:zlib";
 import { createEnvelope } from "@sentry/core";
+import type { NodeTransportOptions } from "../../../src/lib/telemetry/zstd-transport.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   hasZstdSupport,
@@ -25,6 +26,8 @@ import {
   normalizeBody,
   shouldFallbackToDefault,
 } from "../../../src/lib/telemetry/zstd-transport.js";
+
+type HttpModule = NonNullable<NodeTransportOptions["httpModule"]>;
 
 /** No-op for SDK callbacks that require a function but return nothing meaningful. */
 function noop(): void {
@@ -49,31 +52,26 @@ type CapturedRequest = {
  * the shim and the capture buffer for test assertions.
  */
 function buildMockHttpModule(response: MockResponseShape): {
-  httpModule: {
-    request: (opts: unknown, cb?: (res: unknown) => void) => ClientRequest;
-  };
+  httpModule: HttpModule;
   captured: CapturedRequest;
 } {
   const captured: CapturedRequest = { chunks: [], options: {} };
-  const httpModule = {
-    request: (opts: unknown, cb?: (res: unknown) => void) => {
-      captured.options = opts as Record<string, unknown>;
+  const httpModule: HttpModule = {
+    request: (opts, cb) => {
+      captured.options =
+        typeof opts === "object" && !(opts instanceof URL) ? { ...opts } : {};
 
       // The ClientRequest must behave as a Writable so that
       // `Readable.from(payload).pipe(req)` succeeds. We fake one from
       // an EventEmitter and expose `write`/`end` that push into the
       // captured buffer.
-      const req = new EventEmitter() as unknown as ClientRequest & {
-        write: (chunk: Buffer | string) => boolean;
-        end: (chunk?: Buffer | string) => void;
-      };
-      req.write = (chunk: Buffer | string) => {
+      const write = (chunk: Buffer | string) => {
         captured.chunks.push(
           Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
         );
         return true;
       };
-      req.end = (chunk?: Buffer | string) => {
+      const end = (chunk?: Buffer | string) => {
         if (chunk !== undefined) {
           captured.chunks.push(
             Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
@@ -97,7 +95,10 @@ function buildMockHttpModule(response: MockResponseShape): {
           });
         });
       };
-      return req;
+      return Object.assign(new EventEmitter(), {
+        write,
+        end,
+      }) as unknown as ClientRequest;
     },
   };
   return { httpModule: httpModule, captured };
@@ -134,7 +135,7 @@ describe("makeCompressedTransport", () => {
     ]);
     await transport.send(envelope);
 
-    const headers = captured.options.headers as Record<string, string>;
+    const headers = captured.options["headers"] as Record<string, string>;
     expect(headers["content-encoding"]).toBe("zstd");
 
     const wire = Buffer.concat(captured.chunks);
@@ -167,7 +168,7 @@ describe("makeCompressedTransport", () => {
     ]);
     await transport.send(envelope);
 
-    const headers = captured.options.headers as Record<string, string>;
+    const headers = captured.options["headers"] as Record<string, string>;
     expect(headers["content-encoding"]).toBeUndefined();
 
     // The wire body should be exactly the serialized envelope
@@ -244,8 +245,8 @@ describe("makeCompressedTransport", () => {
   });
 
   test("proxy configured: falls back to SDK's makeNodeTransport (no zstd applied)", async () => {
-    const savedProxy = process.env.https_proxy;
-    process.env.https_proxy = "http://proxy.internal:3128";
+    const savedProxy = process.env["https_proxy"];
+    process.env["https_proxy"] = "http://proxy.internal:3128";
     try {
       // The SDK's makeNodeTransport also honors options.httpModule, so
       // we can route both paths through our mock and tell them apart by
@@ -266,16 +267,16 @@ describe("makeCompressedTransport", () => {
       ]);
       await transport.send(envelope);
 
-      const headers = captured.options.headers as Record<string, string>;
+      const headers = captured.options["headers"] as Record<string, string>;
       expect(headers["content-encoding"]).toBeUndefined();
       // And the wire body is the raw envelope (not zstd-compressed).
       const wire = Buffer.concat(captured.chunks);
       expect(wire.toString("utf-8")).toContain('"type":"event"');
     } finally {
       if (savedProxy === undefined) {
-        delete process.env.https_proxy;
+        delete process.env["https_proxy"];
       } else {
-        process.env.https_proxy = savedProxy;
+        process.env["https_proxy"] = savedProxy;
       }
     }
   });
@@ -287,15 +288,15 @@ describe("makeCompressedTransport", () => {
     // and records as network_error.
     const throwingMod = {
       request: (_opts: unknown, _cb?: unknown) => {
-        const req = new EventEmitter() as unknown as ClientRequest & {
-          write: (c: unknown) => boolean;
-          end: () => void;
-        };
-        req.write = () => true;
-        req.end = () => {
-          process.nextTick(() => req.emit("error", new Error("ECONNREFUSED")));
-        };
-        return req;
+        const req: EventEmitter = Object.assign(new EventEmitter(), {
+          write: () => true,
+          end: () => {
+            process.nextTick(() =>
+              req.emit("error", new Error("ECONNREFUSED")),
+            );
+          },
+        });
+        return req as unknown as ClientRequest;
       },
     };
     const transport = makeCompressedTransport({
@@ -312,10 +313,10 @@ describe("makeCompressedTransport", () => {
   });
 
   test("proxy configured + URL is no_proxy exempt: uses zstd transport", async () => {
-    const savedProxy = process.env.https_proxy;
-    const savedNoProxy = process.env.no_proxy;
-    process.env.https_proxy = "http://proxy.internal:3128";
-    process.env.no_proxy = "example.com";
+    const savedProxy = process.env["https_proxy"];
+    const savedNoProxy = process.env["no_proxy"];
+    process.env["https_proxy"] = "http://proxy.internal:3128";
+    process.env["no_proxy"] = "example.com";
     try {
       const { httpModule, captured } = buildMockHttpModule({
         statusCode: 200,
@@ -335,14 +336,14 @@ describe("makeCompressedTransport", () => {
       expect(captured.chunks.length).toBeGreaterThan(0);
     } finally {
       if (savedProxy === undefined) {
-        delete process.env.https_proxy;
+        delete process.env["https_proxy"];
       } else {
-        process.env.https_proxy = savedProxy;
+        process.env["https_proxy"] = savedProxy;
       }
       if (savedNoProxy === undefined) {
-        delete process.env.no_proxy;
+        delete process.env["no_proxy"];
       } else {
-        process.env.no_proxy = savedNoProxy;
+        process.env["no_proxy"] = savedNoProxy;
       }
     }
   });
@@ -430,22 +431,22 @@ describe("isNoProxyExempt", () => {
   let savedNoProxyUpper: string | undefined;
 
   beforeEach(() => {
-    savedNoProxy = process.env.no_proxy;
-    savedNoProxyUpper = process.env.NO_PROXY;
-    delete process.env.no_proxy;
-    delete process.env.NO_PROXY;
+    savedNoProxy = process.env["no_proxy"];
+    savedNoProxyUpper = process.env["NO_PROXY"];
+    delete process.env["no_proxy"];
+    delete process.env["NO_PROXY"];
   });
 
   afterEach(() => {
     if (savedNoProxy === undefined) {
-      delete process.env.no_proxy;
+      delete process.env["no_proxy"];
     } else {
-      process.env.no_proxy = savedNoProxy;
+      process.env["no_proxy"] = savedNoProxy;
     }
     if (savedNoProxyUpper === undefined) {
-      delete process.env.NO_PROXY;
+      delete process.env["NO_PROXY"];
     } else {
-      process.env.NO_PROXY = savedNoProxyUpper;
+      process.env["NO_PROXY"] = savedNoProxyUpper;
     }
   });
 
@@ -454,23 +455,23 @@ describe("isNoProxyExempt", () => {
   });
 
   test("suffix match in no_proxy → exempt", () => {
-    process.env.no_proxy = "example.com,internal.lan";
+    process.env["no_proxy"] = "example.com,internal.lan";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(true);
   });
 
   test("no match → not exempt", () => {
-    process.env.no_proxy = "other.com";
+    process.env["no_proxy"] = "other.com";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(false);
   });
 
   test("NO_PROXY (uppercase) also recognized", () => {
-    process.env.NO_PROXY = "example.com";
+    process.env["NO_PROXY"] = "example.com";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(true);
   });
 
   test("lowercase takes precedence over uppercase", () => {
-    process.env.no_proxy = "other.com";
-    process.env.NO_PROXY = "example.com";
+    process.env["no_proxy"] = "other.com";
+    process.env["NO_PROXY"] = "example.com";
     // Lowercase wins → uppercase ignored → no match → not exempt
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(false);
   });
@@ -478,12 +479,14 @@ describe("isNoProxyExempt", () => {
   test("trims whitespace around comma-separated entries", () => {
     // Common config style: `"a.com, b.com"` — both entries should match
     // even with the leading space after the comma.
-    process.env.no_proxy = "other.com, ingest.example.com";
+    // Common config style: `"a.com, b.com"` — both entries should match
+    // even with the leading space after the comma.
+    process.env["no_proxy"] = "other.com, ingest.example.com";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(true);
   });
 
   test("ignores empty entries (trailing comma, double comma)", () => {
-    process.env.no_proxy = "other.com,, , example.com,";
+    process.env["no_proxy"] = "other.com,, , example.com,";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(true);
     // Empty entry must not match every host (would be true if `endsWith("")`
     // were ever evaluated).
@@ -491,14 +494,14 @@ describe("isNoProxyExempt", () => {
   });
 
   test("'*' wildcard exempts all hosts", () => {
-    process.env.no_proxy = "*";
+    process.env["no_proxy"] = "*";
     expect(isNoProxyExempt(new URL("https://ingest.example.com/"))).toBe(true);
     expect(isNoProxyExempt(new URL("https://anything.test/"))).toBe(true);
     expect(isNoProxyExempt(new URL("http://192.0.2.1:8080/"))).toBe(true);
   });
 
   test("'*' wildcard alongside other entries still exempts everything", () => {
-    process.env.no_proxy = "specific.com, *, other.com";
+    process.env["no_proxy"] = "specific.com, *, other.com";
     expect(isNoProxyExempt(new URL("https://unrelated.test/"))).toBe(true);
   });
 
@@ -506,7 +509,10 @@ describe("isNoProxyExempt", () => {
     // The wildcard check requires `*` to be a standalone entry.
     // A bizarre value like `"*.example.com"` is treated as a literal
     // suffix: `endsWith("*.example.com")` is false for normal hosts.
-    process.env.no_proxy = "*.example.com";
+    // The wildcard check requires `*` to be a standalone entry.
+    // A bizarre value like `"*.example.com"` is treated as a literal
+    // suffix: `endsWith("*.example.com")` is false for normal hosts.
+    process.env["no_proxy"] = "*.example.com";
     expect(isNoProxyExempt(new URL("https://foo.example.com/"))).toBe(false);
   });
 });
@@ -531,7 +537,12 @@ describe("shouldFallbackToDefault", () => {
 
   beforeEach(() => {
     for (const k of PROXY_VARS) {
-      saved[k] = process.env[k];
+      const value = process.env[k];
+      if (value === undefined) {
+        delete saved[k];
+      } else {
+        saved[k] = value;
+      }
       delete process.env[k];
     }
   });
@@ -565,36 +576,36 @@ describe("shouldFallbackToDefault", () => {
   });
 
   test("lowercase https_proxy → fallback (HTTPS URL)", () => {
-    process.env.https_proxy = "http://proxy.internal:3128";
+    process.env["https_proxy"] = "http://proxy.internal:3128";
     expect(shouldFallbackToDefault(httpsUrl, opts)).toBe(true);
   });
 
   test("uppercase HTTPS_PROXY → fallback (HTTPS URL)", () => {
-    process.env.HTTPS_PROXY = "http://proxy.internal:3128";
+    process.env["HTTPS_PROXY"] = "http://proxy.internal:3128";
     expect(shouldFallbackToDefault(httpsUrl, opts)).toBe(true);
   });
 
   test("lowercase wins over uppercase when both are set", () => {
-    process.env.https_proxy = "http://winning.proxy:3128";
-    process.env.HTTPS_PROXY = "http://losing.proxy:3128";
+    process.env["https_proxy"] = "http://winning.proxy:3128";
+    process.env["HTTPS_PROXY"] = "http://losing.proxy:3128";
     // Both trigger fallback; this just asserts the lookup doesn't
     // crash on duplicate vars and that the function still returns true.
     expect(shouldFallbackToDefault(httpsUrl, opts)).toBe(true);
   });
 
   test("HTTPS URL falls back to http_proxy when https_proxy is unset (matches SDK precedent)", () => {
-    process.env.http_proxy = "http://proxy.internal:3128";
+    process.env["http_proxy"] = "http://proxy.internal:3128";
     expect(shouldFallbackToDefault(httpsUrl, opts)).toBe(true);
   });
 
   test("uppercase HTTP_PROXY → fallback (http URL)", () => {
-    process.env.HTTP_PROXY = "http://proxy.internal:3128";
+    process.env["HTTP_PROXY"] = "http://proxy.internal:3128";
     expect(shouldFallbackToDefault(httpUrl, opts)).toBe(true);
   });
 
   test("uppercase NO_PROXY exemption keeps zstd path even with proxy set", () => {
-    process.env.HTTPS_PROXY = "http://proxy.internal:3128";
-    process.env.NO_PROXY = "example.com";
+    process.env["HTTPS_PROXY"] = "http://proxy.internal:3128";
+    process.env["NO_PROXY"] = "example.com";
     expect(shouldFallbackToDefault(httpsUrl, opts)).toBe(false);
   });
 });

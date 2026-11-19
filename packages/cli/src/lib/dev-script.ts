@@ -1,6 +1,6 @@
 /** Auto-detect the project's development server command from filesystem markers. */
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sentry } from "./app-identity.js";
@@ -41,13 +41,17 @@ export type DetectOptions = {
  * Detect the project's dev command by inspecting filesystem markers in priority order.
  *
  * Detection priority:
- * 1. package.json scripts (dev > develop > serve > start)
- * 2. manage.py (Django)
- * 3. app.py, then main.py (FastAPI, Flask, or a plain Python script)
- * 4. wsgi.py (Flask, or a script with a `__main__` guard)
- * 5. FLASK_APP env var, in a project with a Python marker (Flask)
- * 6. go.mod (Go)
- * 7. docker-compose.yml / compose.yml (Docker Compose)
+ * 1. artisan (Laravel) and Gemfile with bin/rails (Rails), ahead of the
+ *    package.json `dev` script that only starts their asset server
+ * 2. package.json scripts (dev > develop > serve > start)
+ * 3. manage.py (Django)
+ * 4. app.py, then main.py (FastAPI, Flask, or a plain Python script)
+ * 5. wsgi.py (Flask, or a script with a `__main__` guard)
+ * 6. FLASK_APP env var, in a project with a Python marker (Flask)
+ * 7. Gemfile with config.ru (Rack)
+ * 8. Cargo.toml with a binary target (Rust)
+ * 9. go.mod (Go)
+ * 10. docker-compose.yml / compose.yml (Docker Compose)
  *
  * Python commands run the project's virtualenv interpreter when one exists,
  * even if it is not activated (see `findPython`).
@@ -65,12 +69,16 @@ export async function detectDevCommand(
   // Looked up on first use: the PATH lookup spawns a process.
   const python = () => (found ??= findPython(cwd, env, platform));
   const result =
+    (await tryLaravel(cwd)) ??
+    (await tryRails(cwd, platform)) ??
     (await tryPackageJson(cwd, platform)) ??
     tryDjango(cwd, python) ??
     (await tryPythonApp(cwd, "app.py", python, true)) ??
     (await tryPythonApp(cwd, "main.py", python, true)) ??
     (await tryPythonApp(cwd, "wsgi.py", python, false)) ??
     tryFlaskAppEnv(cwd, env, python) ??
+    tryRack(cwd) ??
+    (await tryCargo(cwd)) ??
     (await tryGoMod(cwd)) ??
     (await tryDockerCompose(cwd));
   return result;
@@ -138,7 +146,11 @@ function findPython(
 ): string {
   const [binDir, exe] =
     platform === "win32" ? ["Scripts", ".exe"] : ["bin", ""];
-  for (const root of [env.VIRTUAL_ENV, join(cwd, ".venv"), join(cwd, "venv")]) {
+  for (const root of [
+    env["VIRTUAL_ENV"],
+    join(cwd, ".venv"),
+    join(cwd, "venv"),
+  ]) {
     if (!root) {
       continue;
     }
@@ -181,7 +193,7 @@ function tryFlaskAppEnv(
   python: PythonLookup,
 ): DetectedCommand | null {
   if (
-    !env.FLASK_APP ||
+    !env["FLASK_APP"] ||
     !PYTHON_MARKERS.some((file) => existsSync(join(cwd, file)))
   ) {
     return null;
@@ -605,6 +617,136 @@ function pyprojectDependencies(contents: string): string[] {
     }
   }
   return names;
+}
+
+/**
+ * Check for an `artisan` file (Laravel). Runs `composer run dev` when
+ * composer.json has a `dev` script, which the Laravel skeleton uses to start
+ * the server, queue, logs, and Vite together, or else `php artisan serve`.
+ */
+async function tryLaravel(cwd: string): Promise<DetectedCommand | null> {
+  if (!isFile(join(cwd, "artisan"))) {
+    return null;
+  }
+  const composer = await readFile(join(cwd, "composer.json"), "utf-8").catch(
+    () => null,
+  );
+  if (composer !== null && hasComposerDevScript(composer)) {
+    return {
+      args: ["composer", "run", "dev"],
+      source: "composer.json dev (Laravel)",
+    };
+  }
+  return { args: ["php", "artisan", "serve"], source: "artisan (Laravel)" };
+}
+
+/** Whether composer.json source declares `scripts.dev`. */
+function hasComposerDevScript(source: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(source);
+    const scripts =
+      typeof parsed === "object" && parsed !== null && "scripts" in parsed
+        ? parsed.scripts
+        : null;
+    return typeof scripts === "object" && scripts !== null && "dev" in scripts;
+  } catch (error) {
+    logger.debug(
+      "Failed to parse composer.json for dev script detection",
+      error,
+    );
+    return false;
+  }
+}
+
+/**
+ * Check for a Gemfile with `bin/rails` (Rails). Prefers `bin/dev`, which
+ * newer Rails apps use to start the server with their asset watchers.
+ * Scripts run through their interpreter, so a lost exec bit or Windows,
+ * which cannot run extensionless scripts, still works. A shell `bin/dev`
+ * (foreman) is skipped on Windows.
+ */
+async function tryRails(
+  cwd: string,
+  platform: NodeJS.Platform,
+): Promise<DetectedCommand | null> {
+  if (
+    !(existsSync(join(cwd, "Gemfile")) && isFile(join(cwd, "bin", "rails")))
+  ) {
+    return null;
+  }
+  const dev = await readFile(join(cwd, "bin", "dev"), "utf-8").catch(
+    () => null,
+  );
+  if (dev !== null) {
+    const shell = shebangShell(dev);
+    if (!shell) {
+      return { args: ["ruby", "bin/dev"], source: "bin/dev (Rails)" };
+    }
+    if (platform !== "win32") {
+      return { args: [shell, "bin/dev"], source: "bin/dev (Rails)" };
+    }
+  }
+  return { args: ["ruby", "bin/rails", "server"], source: "bin/rails (Rails)" };
+}
+
+/**
+ * The shell, `sh` or `bash`, that a script's shebang names, as in
+ * `#!/usr/bin/env sh` or `#!/bin/bash`, or undefined for any other script.
+ */
+function shebangShell(script: string): "sh" | "bash" | undefined {
+  if (!script.startsWith("#!")) {
+    return;
+  }
+  const [program = "", arg = ""] = (script.split("\n", 1)[0] ?? "")
+    .slice(2)
+    .trim()
+    .split(WHITESPACE_RE);
+  const name = (program.endsWith("/env") ? arg : program).split("/").pop();
+  return name === "sh" || name === "bash" ? name : undefined;
+}
+
+/**
+ * Check for a Gemfile with config.ru and return `bundle exec rackup`.
+ * Rack 3 and Sinatra 4 moved `rackup` into the `rackup` gem, which the
+ * Gemfile must then list.
+ */
+function tryRack(cwd: string): DetectedCommand | null {
+  if (
+    !(existsSync(join(cwd, "Gemfile")) && existsSync(join(cwd, "config.ru")))
+  ) {
+    return null;
+  }
+  return { args: ["bundle", "exec", "rackup"], source: "config.ru (Rack)" };
+}
+
+/**
+ * Check for a Cargo.toml package with a binary target and return
+ * `cargo run`. A virtual workspace (no `[package]`) or a library-only crate
+ * has nothing for `cargo run` to start.
+ */
+async function tryCargo(cwd: string): Promise<DetectedCommand | null> {
+  const manifest = await readFile(join(cwd, "Cargo.toml"), "utf-8").catch(
+    () => null,
+  );
+  if (manifest === null || !CARGO_PACKAGE_RE.test(manifest)) {
+    return null;
+  }
+  const hasBinary =
+    CARGO_BINARY_RE.test(manifest) ||
+    existsSync(join(cwd, "src", "main.rs")) ||
+    existsSync(join(cwd, "src", "bin"));
+  return hasBinary ? { args: ["cargo", "run"], source: "Cargo.toml" } : null;
+}
+
+/** Matches the `[package]` table header of a Cargo.toml. */
+const CARGO_PACKAGE_RE = /^\s*\[package\]/m;
+
+/** Matches a Cargo.toml `default-run` key or `[[bin]]` target. */
+const CARGO_BINARY_RE = /^\s*(?:default-run\s*=|\[\[bin\]\])/m;
+
+/** Whether `path` exists and is a regular file. */
+function isFile(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
 }
 
 /** Check for go.mod and return `go run .` */

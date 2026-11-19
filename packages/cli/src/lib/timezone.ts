@@ -229,7 +229,7 @@ function osReportsNonUtc(): boolean {
 export function initTimezone(): string | null {
   // An explicit TZ — from the user's shell or a prior invocation — is
   // authoritative. Never override it.
-  if (process.env.TZ) {
+  if (process.env["TZ"]) {
     return null;
   }
 
@@ -250,6 +250,6 @@ export function initTimezone(): string | null {
     return null;
   }
 
-  process.env.TZ = zone;
+  process.env["TZ"] = zone;
   return zone;
 }

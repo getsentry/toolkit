@@ -81,7 +81,7 @@ export function finalizeDocsAnswer(
 
   const body = answer.replace(SOURCES_SECTION_RE, "").trim();
   const citations = uniqueCanonicalDocsUrls(
-    [...body.matchAll(MARKDOWN_LINK_URL_RE)].map((match) => match[1]),
+    [...body.matchAll(MARKDOWN_LINK_URL_RE)].flatMap((match) => match[1] ?? []),
   );
   if (citations.length === 0) {
     throw new Error("Docs query answer must include an inline citation.");

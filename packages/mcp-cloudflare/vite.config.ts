@@ -58,8 +58,12 @@ export default defineConfig({
         find: /^@sentry\/(cloudflare|server-utils)(\/.*)?$/,
         replacement: "$&",
         customResolver(source, _importer, options) {
+          // Rollup hands over `importerAttributes: undefined` but its
+          // `resolve` options type only accepts the key when it is set.
+          const { importerAttributes, ...resolveOptions } = options;
           return this.resolve(source, sentrySdkPackage, {
-            ...options,
+            ...resolveOptions,
+            ...(importerAttributes && { importerAttributes }),
             skipSelf: true,
           });
         },

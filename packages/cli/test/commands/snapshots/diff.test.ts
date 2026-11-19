@@ -19,6 +19,7 @@ import { PNG } from "pngjs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { diffCommand } from "../../../src/commands/snapshots/diff.js";
 import { ValidationError } from "../../../src/lib/errors.js";
+import { loadCommand } from "../../helpers.js";
 
 let tmpDir: string;
 let baseDir: string;
@@ -82,7 +83,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "added.png"), png([1, 1, 1]));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(harness.context, { output: outDir }, baseDir, headDir);
 
     // A mask was written for the changed image, but not the unchanged one.
@@ -97,7 +98,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "a.png"), png([255, 255, 255]));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(
       harness.context,
       { output: outDir, "fail-on-diff": true },
@@ -113,7 +114,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "a.png"), png([5, 5, 5]));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(
       harness.context,
       { output: outDir, "fail-on-diff": true },
@@ -131,7 +132,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "new.png"), png([4, 5, 6]));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(harness.context, { output: outDir }, baseDir, headDir);
 
     const out = harness.output();
@@ -144,7 +145,7 @@ describe("snapshots diff", () => {
 
     // Without --selective, a base-only image is a removal → fail-on-diff exits 1.
     const removedHarness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(
       removedHarness.context,
       { output: outDir, "fail-on-diff": true },
@@ -170,7 +171,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "bad.png"), Buffer.from("not a png BBBB"));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(
       harness.context,
       { output: outDir, "fail-on-diff": true },
@@ -188,7 +189,7 @@ describe("snapshots diff", () => {
     writeFileSync(join(headDir, "a.png"), png([255, 255, 255]));
 
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await func.call(
       harness.context,
       { output: outDir, "no-antialiasing": true },
@@ -201,7 +202,7 @@ describe("snapshots diff", () => {
 
   test("rejects a missing base directory", async () => {
     const harness = createContext();
-    const func = await diffCommand.loader();
+    const func = await loadCommand(diffCommand);
     await expect(
       func.call(harness.context, {}, join(tmpDir, "nope"), headDir),
     ).rejects.toThrow(ValidationError);

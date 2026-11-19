@@ -37,23 +37,23 @@ let originalSentryUrl: string | undefined;
 let originalSentryHost: string | undefined;
 
 beforeEach(() => {
-  originalSentryUrl = process.env.SENTRY_URL;
-  originalSentryHost = process.env.SENTRY_HOST;
+  originalSentryUrl = process.env["SENTRY_URL"];
+  originalSentryHost = process.env["SENTRY_HOST"];
   // Clear SENTRY_HOST/SENTRY_URL for consistent base URL in tests
-  delete process.env.SENTRY_HOST;
-  delete process.env.SENTRY_URL;
+  delete process.env["SENTRY_HOST"];
+  delete process.env["SENTRY_URL"];
 });
 
 afterEach(() => {
   if (originalSentryUrl !== undefined) {
-    process.env.SENTRY_URL = originalSentryUrl;
+    process.env["SENTRY_URL"] = originalSentryUrl;
   } else {
-    delete process.env.SENTRY_URL;
+    delete process.env["SENTRY_URL"];
   }
   if (originalSentryHost !== undefined) {
-    process.env.SENTRY_HOST = originalSentryHost;
+    process.env["SENTRY_HOST"] = originalSentryHost;
   } else {
-    delete process.env.SENTRY_HOST;
+    delete process.env["SENTRY_HOST"];
   }
 });
 
@@ -566,14 +566,14 @@ describe("buildDashboardUrl properties", () => {
 
 describe("SENTRY_HOST precedence", () => {
   test("SENTRY_HOST takes precedence over SENTRY_URL for URL builders", () => {
-    process.env.SENTRY_HOST = "https://host.company.com";
-    process.env.SENTRY_URL = "https://url.company.com";
+    process.env["SENTRY_HOST"] = "https://host.company.com";
+    process.env["SENTRY_URL"] = "https://url.company.com";
     expect(buildOrgUrl("my-org")).toContain("host.company.com");
     expect(buildOrgUrl("my-org")).not.toContain("url.company.com");
   });
 
   test("SENTRY_HOST alone configures self-hosted URL builders", () => {
-    process.env.SENTRY_HOST = "https://sentry.company.com";
+    process.env["SENTRY_HOST"] = "https://sentry.company.com";
     expect(getOrgBaseUrl("my-org")).toBe("https://sentry.company.com");
     expect(buildOrgUrl("my-org")).toBe(
       "https://sentry.company.com/organizations/my-org/",
@@ -585,7 +585,7 @@ describe("self-hosted URLs", () => {
   const SELF_HOSTED_URL = "https://sentry.company.com";
 
   beforeEach(() => {
-    process.env.SENTRY_URL = SELF_HOSTED_URL;
+    process.env["SENTRY_URL"] = SELF_HOSTED_URL;
   });
 
   test("getOrgBaseUrl returns base URL without subdomain", () => {

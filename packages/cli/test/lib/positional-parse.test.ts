@@ -9,6 +9,7 @@
 import {
   ArgumentParseError,
   buildApplication,
+  type Command,
   type CommandContext,
   ExitCode,
   run,
@@ -70,7 +71,7 @@ type EchoTarget = OrgProjectTarget<Awaited<ReturnType<typeof echoResolver>>>;
 
 /** Run `test cmd ...args` through Stricli, as the CLI does. */
 async function runCommand(
-  command: ReturnType<typeof buildCommand>,
+  command: Command<TestContext>,
   args: string[],
 ): Promise<{ stderr: string; exitCode: number | undefined }> {
   const app = buildApplication(

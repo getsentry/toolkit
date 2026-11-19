@@ -4,8 +4,8 @@ import type { FrameInterface } from "../api-client";
 export type Frame = z.infer<typeof FrameInterface>;
 
 export type CodeLocation = {
-  repository?: string;
-  path?: string;
+  repository?: string | undefined;
+  path?: string | undefined;
   line?: number;
   url: string;
 };

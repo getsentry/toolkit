@@ -258,14 +258,10 @@ export function extractResponseMetricOptions(
   const rateLimitScope = response.headers.get(RATE_LIMIT_SCOPE_HEADER);
 
   return {
-    responseReason:
-      responseReason === "local_rate_limit" ? responseReason : undefined,
-    rateLimitScope:
-      rateLimitScope === "ip" ||
+    ...(responseReason === "local_rate_limit" && { responseReason }),
+    ...((rateLimitScope === "ip" ||
       rateLimitScope === "user" ||
-      rateLimitScope === "sentry_access"
-        ? rateLimitScope
-        : undefined,
+      rateLimitScope === "sentry_access") && { rateLimitScope }),
   };
 }
 

@@ -48,7 +48,7 @@ const mockOrganization = (
     ({ request, params }) =>
       HttpResponse.json({
         id: "1",
-        slug: params.org,
+        slug: params["org"],
         name: "Test Org",
         ...(new URL(request.url).searchParams.get("include_feature_flags") ===
         "1"
@@ -114,8 +114,8 @@ describe("search_issues", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse());
     // Seer translation stays off unless a test enables it.
     mswServer.use(mockOrganization([]));
@@ -353,9 +353,9 @@ describe("search_issues", () => {
   });
 
   it("should search issues with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -411,9 +411,9 @@ describe("search_issues", () => {
   });
 
   it("suggests only follow-ups the session can call", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -541,9 +541,9 @@ describe("search_issues", () => {
   });
 
   it("should handle project slug parameter", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get("https://sentry.io/api/0/projects/*/*/", ({ request }) => {
@@ -784,9 +784,9 @@ describe("search_issues", () => {
   ])(
     "notes an untranslated natural-language query that finds nothing (no agent): %s",
     async (query, notes) => {
-      process.env.OPENAI_API_KEY = "";
-      process.env.ANTHROPIC_API_KEY = "";
-      process.env.OPENROUTER_API_KEY = "";
+      process.env["OPENAI_API_KEY"] = "";
+      process.env["ANTHROPIC_API_KEY"] = "";
+      process.env["OPENROUTER_API_KEY"] = "";
       mswServer.use(
         http.get("https://sentry.io/api/0/organizations/*/issues/", () =>
           HttpResponse.json([]),
@@ -934,9 +934,9 @@ describe("search_issues", () => {
   });
 
   it("rewrites unsupported OR and parentheses before calling the API (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     let sentQuery: string | null = null;
     mswServer.use(

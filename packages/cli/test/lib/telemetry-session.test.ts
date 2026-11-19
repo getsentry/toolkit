@@ -13,7 +13,14 @@
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import {
   createBeforeExitHandler,
   markSessionCrashed,
@@ -138,8 +145,12 @@ describe("createBeforeExitHandler", () => {
 });
 
 describe("markSessionCrashed", () => {
-  let getCurrentScopeSpy: ReturnType<typeof spyOn>;
-  let getIsolationScopeSpy: ReturnType<typeof spyOn>;
+  let getCurrentScopeSpy:
+    | MockInstance<(typeof Sentry)["getCurrentScope"]>
+    | undefined;
+  let getIsolationScopeSpy:
+    | MockInstance<(typeof Sentry)["getIsolationScope"]>
+    | undefined;
 
   afterEach(() => {
     getCurrentScopeSpy?.mockRestore();

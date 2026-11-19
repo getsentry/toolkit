@@ -16,13 +16,18 @@ The Local daemon behind `--session` is the exception: it only takes session traf
 
 With no command, `local run` picks one from the project, in this order:
 
-1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
-2. `manage.py`: `python manage.py runserver` (Django)
-3. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by any call, such as `create_app()` or `myapp.get_application()`, uses the framework that the factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask, when its parameters are all optional. An `async` or generic factory, or one with required parameters, runs as a script with a hint. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
-4. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
-5. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
-6. `go.mod`: `go run .`
-7. `docker-compose.yml` or `compose.yml`: `docker compose up`
+1. An `artisan` file (Laravel): `composer run dev` when `composer.json` has a `dev` script, as the Laravel skeleton does to start the server, queue, logs, and Vite together, or else `php artisan serve`. A `Gemfile` with `bin/rails` (Rails): `ruby bin/dev` when the app has a Ruby `bin/dev`, `sh bin/dev` for a shell one (not on Windows), or else `ruby bin/rails server`. Both come before `package.json`, whose `dev` script in these apps only starts Vite
+2. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
+3. `manage.py`: `python manage.py runserver` (Django)
+4. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by any call, such as `create_app()` or `myapp.get_application()`, uses the framework that the factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask, when its parameters are all optional. An `async` or generic factory, or one with required parameters, runs as a script with a hint. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
+5. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
+6. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
+7. `Gemfile` with `config.ru`: `bundle exec rackup` (Rack, such as Sinatra). Rack 3 and Sinatra 4 need the `rackup` gem in the `Gemfile`
+8. `Cargo.toml` with a `[package]` and a binary target (`src/main.rs`, `src/bin/`, `[[bin]]`, or `default-run`): `cargo run`
+9. `go.mod`: `go run .`
+10. `docker-compose.yml` or `compose.yml`: `docker compose up`
+
+A `composer.json` without `artisan`, a `Gemfile` with neither `bin/rails` nor `config.ru`, a Cargo virtual workspace, and a library-only crate have no standard dev server, so pass the command after `--`. A Rails or Rust app runs on the host even when it also has a `compose.yml`; pass `-- docker compose up` to use Compose.
 
 Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. The `flask --app` option needs Flask 2.2 or later; with an older Flask, pass the command after `--`. Pass a command after `--` to skip detection.
 
@@ -48,6 +53,25 @@ A Cloudflare Worker sends nothing until it handles a request, so send one to it 
 ## SDK setup
 
 **Node.js and Python servers.** Nothing to do. They read `SENTRY_SPOTLIGHT`.
+
+**Ruby.** Nothing to do with `sentry-ruby` 5.20 or later. It reads `SENTRY_SPOTLIGHT` as the URL to send to.
+
+**PHP.** `sentry-php` 4.11 or later reads `SENTRY_SPOTLIGHT` from `$_SERVER`, which not every server fills from the environment. To be sure, pass it in your `\Sentry\init()` options:
+
+```php
+\Sentry\init([
+    'dsn' => '...',
+    'spotlight' => getenv('SENTRY_SPOTLIGHT'),
+]);
+```
+
+On Laravel, uncomment this line in `config/sentry.php`:
+
+```php
+'spotlight' => env('SENTRY_SPOTLIGHT', false),
+```
+
+**Go and Rust.** Their SDKs have no Spotlight support. Point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
 
 **Browser apps** (Next.js, Vite, and other bundlers). Pass the prefixed variable to the Spotlight integration in your client config:
 
@@ -102,6 +126,8 @@ Sentry.init({
 ```
 
 **Not supported yet.** The Next.js edge runtime (`@sentry/vercel-edge`) has no Spotlight support. Edge errors still arrive through the Node.js server, but edge messages and logs do not.
+
+`--session` currently only captures from Node.js and Python, which post to the exact `SENTRY_SPOTLIGHT` URL. PHP adds `/stream` to that URL, Ruby takes only its host and port and posts to `/stream`, and Go and Rust send through the DSN, so their events don't reach a session yet. Run them without `--session`.
 
 ## Browser UI
 

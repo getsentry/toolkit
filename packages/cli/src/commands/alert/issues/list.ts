@@ -56,6 +56,7 @@ import { logger } from "../../../lib/logger.js";
 import {
   dispatchOrgScopedList,
   type FetchResult as FetchResultOf,
+  type GroupFetchOptions,
   jsonTransformListResult,
   type ListCommandMeta,
   type ListResult,
@@ -100,7 +101,7 @@ type AlertRuleListFetchResult = {
   target: ResolvedTarget;
   rules: IssueAlertRule[];
   hasMore?: boolean;
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };
 
 /** Success/failure wrapper for per-target fetches */
@@ -116,8 +117,8 @@ type AlertRuleRow = { rule: IssueAlertRule; target: ResolvedTarget };
 type IssueAlertListResult = ListResult<IssueAlertRule> & {
   displayRows?: AlertRuleRow[];
   title?: string;
-  moreHint?: string;
-  footer?: string;
+  moreHint?: string | undefined;
+  footer?: string | undefined;
 };
 
 const issueAlertListMeta: ListCommandMeta = {
@@ -134,7 +135,7 @@ const issueAlertListMeta: ListCommandMeta = {
  */
 async function fetchRulesForTarget(
   target: ResolvedTarget,
-  options: { limit: number; startCursor?: string },
+  options: GroupFetchOptions,
 ): Promise<FetchResult> {
   const result = await withAuthGuard(async () => {
     const { data: rules, nextCursor } = await paginate(
@@ -216,7 +217,7 @@ type ResolvedTargetsOptions = {
   parsed: ParsedOrgProject;
   flags: ListFlags;
   cwd: string;
-  projectSearchResolution?: ProjectSearchTargetResolution;
+  projectSearchResolution?: ProjectSearchTargetResolution | undefined;
 };
 
 // inherent multi-target resolution, compound cursor, error handling, and display logic
@@ -329,9 +330,7 @@ async function handleResolvedTargets(
   );
   const filteredRows = flags.query
     ? allRows.filter((row) =>
-        (row.rule.name ?? "")
-          .toLowerCase()
-          .includes(flags.query?.toLowerCase() ?? ""),
+        row.rule.name.toLowerCase().includes(flags.query?.toLowerCase() ?? ""),
       )
     : allRows;
 
@@ -453,7 +452,7 @@ function formatIssueAlertListHuman(result: IssueAlertListResult): string {
 
   const tableRows: Row[] = rows.map(({ rule: r, target }) => ({
     id: r.id,
-    name: tableCell(r.name ?? "(untitled)"),
+    name: tableCell(r.name),
     ...(isMultiProject && {
       project: `${target.org}/${target.project}`,
     }),
