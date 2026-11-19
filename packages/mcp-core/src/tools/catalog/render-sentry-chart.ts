@@ -12,6 +12,7 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
+import { CHART_UI_RESOURCE, uiToolMeta } from "../../ui-resources";
 import { PUBLIC_EVENTS_DATASETS } from "../../utils/events-datasets";
 import {
   type ChartResult,
@@ -148,6 +149,7 @@ export default defineTool({
     openWorldHint: true,
   },
   outputSchema: renderSentryChartOutputSchema,
+  _meta: uiToolMeta(CHART_UI_RESOURCE),
   async handler(params, context: ServerContext) {
     if ((params.start === null) !== (params.end === null)) {
       throw new UserInputError("Pass both `start` and `end`, or neither.");

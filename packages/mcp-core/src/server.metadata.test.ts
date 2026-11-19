@@ -34,6 +34,9 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
   // Claude Code keeps it loaded so a pasted Sentry URL works without a tool
   // search. See docs/mcp/harnesses.md.
   get_sentry_resource: ["anthropic/alwaysLoad"],
+  // MCP Apps hosts (Claude, VS Code) read `ui`; ChatGPT reads
+  // `openai/outputTemplate`. See src/ui-resources.ts.
+  render_sentry_chart: ["ui", "openai/outputTemplate"],
 };
 
 /** Tools that return no `structuredContent` by design. */

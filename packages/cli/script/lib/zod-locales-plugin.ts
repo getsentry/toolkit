@@ -10,7 +10,8 @@
  * directly to set the default locale, so that path is not touched.
  *
  * Shared by the CLI bundles (`script/bundle.ts`, `script/build.ts`), which
- * inline `@sentry/mcp-core` for `sentry mcp`.
+ * inline `@sentry/mcp-core` for `sentry mcp`, the `@sentry/mcp-server`
+ * bundle, and the MCP Apps chart view (`mcp-core/scripts/generate-chart-app.ts`).
  */
 
 import { existsSync } from "node:fs";

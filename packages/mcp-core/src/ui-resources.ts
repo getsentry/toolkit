@@ -2,6 +2,7 @@
  * MCP Apps views: `ui://` HTML resources that a host renders inline for a
  * tool result. A tool opts in with `_meta: uiToolMeta(resource)`, and the
  * server lists each resource that a registered tool references.
+ * Views are generated HTML strings, so they need no file system at runtime.
  *
  * Spec: https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
  */
@@ -11,6 +12,7 @@ import type {
 } from "@modelcontextprotocol/ext-apps";
 import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/server";
+import { CHART_APP_HTML } from "./ui/chart-app.generated";
 
 export interface UiResource {
   /** Hosts cache a view by its URI, so bump the version when the HTML changes. */
@@ -23,7 +25,19 @@ export interface UiResource {
   meta: McpUiResourceMeta;
 }
 
-export const UI_RESOURCES: readonly UiResource[] = [];
+/** The render_sentry_chart view. Built from chart-app/ by generate-chart-app. */
+export const CHART_UI_RESOURCE: UiResource = {
+  uri: "ui://sentry/chart/v1.html",
+  name: "sentry_chart",
+  title: "Sentry Chart",
+  description:
+    "Interactive time series chart for render_sentry_chart results, with a range picker and a link to Sentry.",
+  html: CHART_APP_HTML,
+  // Self-contained, so it loads nothing from the network.
+  meta: { csp: {}, prefersBorder: true },
+};
+
+export const UI_RESOURCES: readonly UiResource[] = [CHART_UI_RESOURCE];
 
 /**
  * `_meta` for a tool whose result renders in `resource`. ChatGPT reads
