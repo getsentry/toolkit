@@ -7,6 +7,7 @@ import {
   type ReceiverEnvelope,
   type ReceiverBuffer,
 } from "./receiver-ingest.js";
+import { exceptionValues } from "./exception-values.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
@@ -73,20 +74,18 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function hasStackFilename(payload: unknown, filename: string): boolean {
-  const values = record(record(payload)["exception"])["values"];
-  return (
-    Array.isArray(values) &&
-    values.some((value) => {
-      const frames = record(record(value)["stacktrace"])["frames"];
-      return (
-        Array.isArray(frames) &&
-        frames.some((frame) => {
-          const candidate = record(frame)["filename"];
-          return typeof candidate === "string" && candidate.endsWith(filename);
-        })
-      );
-    })
-  );
+  return exceptionValues(record(payload)["exception"]).some((value) => {
+    const frames = record(record(value)["stacktrace"])["frames"];
+    return (
+      Array.isArray(frames) &&
+      frames.some((frame) => {
+        // sentry-go frames carry only `abs_path`.
+        const { filename: name, abs_path: path } = record(frame);
+        const candidate = typeof name === "string" && name ? name : path;
+        return typeof candidate === "string" && candidate.endsWith(filename);
+      })
+    );
+  });
 }
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,

@@ -1,5 +1,7 @@
 /** Browser-safe event classification shared by the Local tail and viewer. */
 
+import { exceptionValues } from "./exception-values.js";
+
 /**
  * Read SDK message text: a plain string, or a `logentry` / `message` object
  * with `formatted` or `message`. Empty strings count as no text.
@@ -36,11 +38,8 @@ export function readMessageText(value: unknown): string | undefined {
 export function classifyEvent(
   event: Record<string, unknown>,
 ): "exception" | "message" | undefined {
-  const exception = event["exception"] as
-    | { values?: { type?: unknown; value?: unknown }[] }
-    | undefined;
-  const values = Array.isArray(exception?.values) ? exception.values : [];
-  const last = values.at(-1);
+  const values = exceptionValues(event["exception"]);
+  const last = values.at(-1) as { type?: unknown; value?: unknown } | undefined;
   if (typeof last?.type === "string" && last.type) {
     return "exception";
   }

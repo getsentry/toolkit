@@ -1,4 +1,8 @@
 import { describe, expect, test } from "vitest";
+import {
+  goPanicEvent,
+  rubyExceptionEvent,
+} from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
 import { sdkException } from "../test-fixtures/sdk-exception.ts";
 import {
   sessionsAggregateEnvelope,
@@ -177,6 +181,17 @@ describe("getStreamUrlFromHash", () => {
 });
 
 describe("decodeEnvelope", () => {
+  test.each([
+    ["*errors.errorString: order 7 not found", goPanicEvent],
+    ["OrderNotFound: order 7 not found", rubyExceptionEvent],
+  ])("titles a non-JS SDK exception as %s", (title, event) => {
+    const [item] = decodeEnvelope(
+      JSON.stringify([{ sdk: event.sdk }, [[{ type: "event" }, event]]]),
+      "sdk-exception",
+    );
+    expect(item?.metadata?.title).toBe(title);
+  });
+
   test("reads typed HTTP attributes from streamed spans without changing their payload", () => {
     const span = {
       trace_id: "trace-123",

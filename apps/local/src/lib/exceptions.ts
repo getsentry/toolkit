@@ -1,3 +1,7 @@
+import {
+  exceptionMessage,
+  exceptionValues,
+} from "../../../../packages/cli/src/commands/local/exception-values.ts";
 import { withoutUndefined } from "./objects.ts";
 
 /** Display fields from untrusted SDK exception payloads; raw JSON stays intact. */
@@ -42,14 +46,13 @@ export function formatExceptionTitle(exception: EventException): string {
 
 /** SDK values and stack frames arrive oldest first; show the current error first. */
 export function getEventExceptions(payload: unknown): EventException[] {
-  const values = record(record(payload)?.["exception"])?.["values"];
-  if (!Array.isArray(values)) return [];
-  return values
+  return exceptionValues(record(payload)?.["exception"])
     .flatMap((value): EventException[] => {
       const exception = record(value);
       if (!exception) return [];
       const type = text(exception["type"]);
-      const message = text(exception["value"]);
+      const raw = text(exception["value"]);
+      const message = raw && exceptionMessage(type, raw);
       const rawFrames = record(exception["stacktrace"])?.["frames"];
       const frames = Array.isArray(rawFrames)
         ? rawFrames

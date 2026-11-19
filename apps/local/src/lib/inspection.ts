@@ -1,4 +1,5 @@
 import { classifyEvent } from "../../../../packages/cli/src/commands/local/event-kind.ts";
+import { exceptionValues } from "../../../../packages/cli/src/commands/local/exception-values.ts";
 import { jsonText } from "./objects.ts";
 import { getEventMetadata, type LocalFeedItem } from "./spotlight.ts";
 import { getEventExceptions, formatExceptionTitle } from "./exceptions.ts";
@@ -308,8 +309,8 @@ export function eventSummaryFields(
   const p = record(payload);
   // A message's synthetic exception only carries its stack.
   const exceptions =
-    classifyEvent(p) === "exception" ? record(p["exception"])["values"] : [];
-  const handled = (Array.isArray(exceptions) ? exceptions : [])
+    classifyEvent(p) === "exception" ? exceptionValues(p["exception"]) : [];
+  const handled = exceptions
     .map((exception) => record(record(exception)["mechanism"])["handled"])
     .filter((value): value is boolean => typeof value === "boolean");
   return Object.entries({

@@ -11,6 +11,7 @@ import {
   createReceiverEnvelope,
 } from "../../../src/commands/local/receiver-ingest.js";
 import { at } from "../../helpers.js";
+import { goPanicEvent } from "../../fixtures/local-sdk-events.js";
 
 const envelope = '{}\n{"type":"event"}\n{"message":"received"}';
 
@@ -89,6 +90,19 @@ test("raw delivery IDs stay stable across streaming and filename lookup", () => 
   expect(at(frames, 0).id).toBe(originalId);
   expect(buffer.read({ filename: "app.ts" })).toEqual([container]);
   expect(buffer.read({ envelopeId: originalId })).toEqual([container]);
+});
+
+test("filename lookup matches sentry-go frames by abs_path", () => {
+  const buffer = createLocalRetentionBuffer(3).buffer;
+  buffer.put(
+    createReceiverEnvelope({
+      contentType: "application/x-sentry-envelope",
+      body: Buffer.from(
+        `{}\n{"type":"event"}\n${JSON.stringify(goPanicEvent)}`,
+      ),
+    }),
+  );
+  expect(buffer.read({ filename: "main.go" })).toHaveLength(1);
 });
 
 test("raw ingress assigns identity independently of an untrusted envelope header", async () => {

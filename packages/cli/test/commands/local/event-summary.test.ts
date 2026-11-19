@@ -1,7 +1,21 @@
 import { describe, expect, test } from "vitest";
 import { summarizeEnvelope } from "../../../src/commands/local/event-summary.js";
+import { goPanicEvent } from "../../fixtures/local-sdk-events.js";
 
 describe("summarizeEnvelope", () => {
+  test("summarizes a sentry-go event with a plain exception list", () => {
+    expect(
+      summarizeEnvelope({
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope", sdk: goPanicEvent.sdk },
+          [[{ type: "event" }, goPanicEvent]],
+        ],
+      }),
+    ).toMatchObject({
+      title: "*errors.errorString: order 7 not found",
+    });
+  });
+
   test("cuts a long title so list entries stay small", () => {
     const body = `SELECT ${"column, ".repeat(100)}id FROM orders`;
     const { title } = summarizeEnvelope({
