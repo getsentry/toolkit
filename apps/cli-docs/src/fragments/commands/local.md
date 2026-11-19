@@ -12,17 +12,22 @@ Runs a command with `SENTRY_SPOTLIGHT` set to the local server's URL. Node.js an
 
 If nothing is listening on the port, a server is started in the background and shut down when your command exits. If something already is — the Spotlight desktop app's own sidecar, or a `sentry local serve` in another terminal — the command attaches to it as an SSE consumer, so events still tail to your terminal either way.
 
-The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
+The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. An SDK that hard-codes 8969 won't reach that port, so make sure it reads `SENTRY_SPOTLIGHT`. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
 
 With no command, `local run` picks one from the project, in this order:
 
-1. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
-2. `manage.py`: `python manage.py runserver` (Django)
-3. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by `create_app()` or `make_app()` uses the framework that factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
-4. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
-5. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
-6. `go.mod`: `go run .`
-7. `docker-compose.yml` or `compose.yml`: `docker compose up`
+1. An `artisan` file (Laravel): `composer run dev` when `composer.json` has a `dev` script, as the Laravel skeleton does to start the server, queue, logs, and Vite together, or else `php artisan serve`. A `Gemfile` with `bin/rails` (Rails): `ruby bin/dev` when the app has a Ruby `bin/dev`, `sh bin/dev` for a shell one (not on Windows), or else `ruby bin/rails server`. Both come before `package.json`, whose `dev` script in these apps only starts Vite
+2. `package.json` scripts: `dev`, `develop`, `serve`, then `start`
+3. `manage.py`: `python manage.py runserver` (Django)
+4. `app.py`, then `main.py`: a top-level `app = FastAPI(...)` runs with `python -m uvicorn <module>:app --reload`, and a top-level `app = Flask(...)` with `python -m flask --app <module>:app run`, using the variable the app is assigned to. A top-level `app` or `application` built by any call, such as `create_app()` or `myapp.get_application()`, uses the framework that the factory builds when it is defined in the same file, or else the one that `pyproject.toml` or `requirements.txt` declares. With no top-level app, a top-level `def create_app():` or `def make_app():` factory runs with `python -m uvicorn <module>:create_app --factory --reload` for FastAPI or `python -m flask --app <module>:create_app run` for Flask, when its parameters are all optional. An `async` or generic factory, or one with required parameters, runs as a script with a hint. Docstrings, strings, and comments are ignored. A file with an `if __name__ == "__main__":` block, or with no app, runs as `python <file>`, with a hint when it imports FastAPI or Flask
+5. `wsgi.py`: a Flask app runs with `python -m flask --app wsgi:app run`, and a file with an `if __name__ == "__main__":` block as `python wsgi.py`
+6. `FLASK_APP` set, in a directory with `app.py`, `main.py`, `wsgi.py`, `pyproject.toml`, or `requirements.txt`: `python -m flask run`
+7. `Gemfile` with `config.ru`: `bundle exec rackup` (Rack, such as Sinatra). Rack 3 and Sinatra 4 need the `rackup` gem in the `Gemfile`
+8. `Cargo.toml` with a `[package]` and a binary target (`src/main.rs`, `src/bin/`, `[[bin]]`, or `default-run`): `cargo run`
+9. `go.mod`: `go run .`
+10. `docker-compose.yml` or `compose.yml`: `docker compose up`
+
+A `composer.json` without `artisan`, a `Gemfile` with neither `bin/rails` nor `config.ru`, a Cargo virtual workspace, and a library-only crate have no standard dev server, so pass the command after `--`. A Rails or Rust app runs on the host even when it also has a `compose.yml`; pass `-- docker compose up` to use Compose.
 
 Python commands use the project's virtualenv even when it is not activated: `VIRTUAL_ENV`, then `.venv/`, then `venv/`. Without one, they use `python`, or `python3` when only that is on your `PATH`. The `flask --app` option needs Flask 2.2 or later; with an older Flask, pass the command after `--`. Pass a command after `--` to skip detection.
 
@@ -48,6 +53,25 @@ A Cloudflare Worker sends nothing until it handles a request, so send one to it 
 ## SDK setup
 
 **Node.js and Python servers.** Nothing to do. They read `SENTRY_SPOTLIGHT`.
+
+**Ruby.** Nothing to do with `sentry-ruby` 5.20 or later. It reads `SENTRY_SPOTLIGHT` as the URL to send to.
+
+**PHP.** `sentry-php` 4.11 or later reads `SENTRY_SPOTLIGHT` from `$_SERVER`, which not every server fills from the environment. To be sure, pass it in your `\Sentry\init()` options:
+
+```php
+\Sentry\init([
+    'dsn' => '...',
+    'spotlight' => getenv('SENTRY_SPOTLIGHT'),
+]);
+```
+
+On Laravel, uncomment this line in `config/sentry.php`:
+
+```php
+'spotlight' => env('SENTRY_SPOTLIGHT', false),
+```
+
+**Go and Rust.** Their SDKs have no Spotlight support. Point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
 
 **Browser apps** (Next.js, Vite, and other bundlers). Pass the prefixed variable to the Spotlight integration in your client config:
 
@@ -129,13 +153,13 @@ By default, incoming envelopes are pretty-printed to the terminal:
 14:32:04 [WARNING] [BROWSER] Cart is empty [page.tsx:24:19] [onClick]
 ```
 
-Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself (`sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, `user.`, and similar prefixes, plus Python's `asctime` and Django's `request` and `server_time`) are hidden; add `--attributes` (`-a`) to list them under each log line.
+Errors show their level, the exception type, message, and the newest stack frame from your app. Messages, such as `captureMessage` calls and Python `logging` records, show their level and text, plus the logger name when there is one. Transactions show the operation, duration, and span count. Logs show the severity level, message, and custom attributes. Attributes the SDK adds itself are hidden: `sentry.`, `http.`, `url.`, `db.`, `server.`, `code.`, `thread.`, `logger.`, and similar prefixes, the scope user (`user.id`, `user.email`, `user.name`, `user.username`, `user.ip_address`), Python's `asctime`, `request` and `server_time`, Rust's `os.name`, `os.version` and `parent_span_id`, and Ruby's `parameters`. Your own attributes, such as `user.plan`, still show. Add `--attributes` (`-a`) to list the hidden ones under each log line.
 
 Events and logs use the same labels: a warning is `[WARNING]` whether the SDK sent `warning` or `warn`, and an event's logger shows as `[logger:name]`. A log's logger name is an SDK attribute, so it shows only with `-a`.
 
-The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged `[BROWSER]` when they show signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and from the SDK name otherwise. A browser log sent while no replay is recording has none of these, so it is tagged from the SDK name.
+The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name. Server-only SDKs such as Node, Bun, or Cloudflare always show `[SERVER]`. SDKs that run on both sides, such as Next.js, SvelteKit, Nuxt, Remix, or Astro, show `[BROWSER]` when the item has signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and `[SERVER]` otherwise. A browser log sent while no replay is recording, or a custom browser span outside a pageload or navigation, has none of these, so it shows `[SERVER]`.
 
-A session replay prints one line when it starts, with its short ID and first page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything.
+A session replay prints one line the first time the tail sees it, with its short ID and page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
@@ -274,4 +298,5 @@ session, because that DSN holds the ingest capability.
 `sentry local envelope list` print tables; add `--json` for the full records.
 The event table shows each event ID cut to the shortest unique prefix of at
 least 8 characters, and `sentry local event view` accepts that prefix. A prefix
-that matches more than one event fails and lists the matching IDs.
+that matches more than one event fails and lists the matching IDs. A bare replay
+ID opens the replay's first segment; add `:<segment_id>` for another one.

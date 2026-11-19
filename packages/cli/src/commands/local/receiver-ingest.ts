@@ -22,6 +22,8 @@ type ReceiverState = {
   generation: number;
   queue: Promise<unknown>;
   pending: Set<Promise<unknown>>;
+  /** Requests still reading their body or reporting their status. */
+  requests: Set<Promise<unknown>>;
 };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
 const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
@@ -87,6 +89,7 @@ function stateFor(buffer: ReceiverBuffer): ReceiverState {
     generation: 0,
     queue: Promise.resolve(),
     pending: new Set(),
+    requests: new Set(),
   };
   receivers.set(buffer, state);
   for (const method of ["clear", "reset"] as const) {
@@ -99,10 +102,29 @@ function stateFor(buffer: ReceiverBuffer): ReceiverState {
   return state;
 }
 
-/** Wait only for writes and controls admitted before this call. */
+/** Wait only for requests, writes, and controls admitted before this call. */
 export async function drainReceiver(buffer: ReceiverBuffer): Promise<void> {
   const state = stateFor(buffer);
-  await Promise.allSettled([...state.pending, state.queue]);
+  await Promise.allSettled([...state.requests, ...state.pending, state.queue]);
+}
+
+/**
+ * Count a request in this receiver's drain from its first body byte to its
+ * status report, so a close waits to tell readers why a delivery it already
+ * started reading was rejected.
+ */
+export function trackReceiverRequest<T>(
+  buffer: ReceiverBuffer,
+  request: () => Promise<T>,
+): Promise<T> {
+  const { requests } = stateFor(buffer);
+  const operation = request();
+  requests.add(operation);
+  void operation.then(
+    () => requests.delete(operation),
+    () => requests.delete(operation),
+  );
+  return operation;
 }
 
 /** Keep retention updates between earlier writes and later admissions. */
@@ -130,8 +152,13 @@ export function ingestReceiverEnvelope(
     /** URL the delivery was posted to, which identifies the receiver's own routes. */
     receiverUrl?: string;
     userAgent?: string | undefined;
+    /**
+     * Capture had stopped by the time the body finished arriving. The size
+     * limits still apply first, so a late oversized delivery reports 413.
+     */
+    closed?: boolean;
   },
-): Promise<204 | 400 | 413 | 415 | 503> {
+): Promise<204 | 400 | 410 | 413 | 415 | 503> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
   if (
     contentType &&
@@ -146,7 +173,7 @@ export function ingestReceiverEnvelope(
   if (state.pending.size >= MAX_PENDING) return Promise.resolve(503);
   const generation = state.generation;
   const operation = state.queue.then(
-    async (): Promise<204 | 400 | 413 | 503> => {
+    async (): Promise<204 | 400 | 410 | 413 | 503> => {
       if (generation !== state.generation) return 503;
       let body = input.body;
       if (encoding && encoding !== "identity") {
@@ -172,6 +199,7 @@ export function ingestReceiverEnvelope(
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
+      if (input.closed) return 410;
       if (input.dropDsnHeader) body = withoutDsnHeader(body);
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)

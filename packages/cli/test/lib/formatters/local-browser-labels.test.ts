@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  createReplayTracker,
   formatEnvelopeLines,
   formatErrorItem,
   formatItem,
@@ -154,6 +155,78 @@ describe("Next.js browser spans and logs", () => {
     expect(jsonSource("log", payload)).toBe("browser");
   });
 
+  describe("server-only SDKs ignore browser hints", () => {
+    const nodeHeader = {
+      sdk: { name: "sentry.javascript.node", version: "11.14.0" },
+    };
+    const lines = (
+      header: Record<string, unknown>,
+      itemType: string,
+      payload: Record<string, unknown>,
+    ) =>
+      formatItem(itemType, payload, header, itemType).map((line) =>
+        stripAnsi(line),
+      );
+
+    test("a Node log with a user agent stays [SERVER]", () => {
+      const payload = {
+        items: [
+          {
+            level: "info",
+            body: "request handled",
+            attributes: attributes({ "user_agent.original": USER_AGENT }),
+          },
+        ],
+      };
+      expect(lines(nodeHeader, "log", payload)[0]).toContain("[SERVER]");
+    });
+
+    test("a Node span with a custom navigation op stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "route change",
+        attributes: attributes({ "sentry.op": "navigation" }),
+      };
+      expect(lines(nodeHeader, "span", { items: [span] })[0]).toContain(
+        "[SERVER]",
+      );
+    });
+
+    test("late Node spans with a navigation op stay [SERVER]", () => {
+      const late = (span_id: string) => ({
+        ...serverRequestSpan,
+        span_id,
+        parent_span_id: "a000000000000001",
+        is_segment: false,
+        attributes: attributes({
+          "sentry.op": "navigation",
+          "sentry.segment.id": "a000000000000001",
+          "sentry.segment.name": "GET /orders",
+        }),
+      });
+      const payload = {
+        items: [late("c000000000000001"), late("c000000000000002")],
+      };
+      expect(lines(nodeHeader, "span", payload)[0]).toContain(
+        "[SERVER]  GET /orders [+2 spans]",
+      );
+    });
+
+    test("a Next.js server function span with a user agent stays [SERVER]", () => {
+      const span = {
+        ...serverRequestSpan,
+        name: "generateMetadata",
+        attributes: attributes({
+          "sentry.op": "function.nextjs",
+          "sentry.origin": "auto.function.nextjs",
+          "user_agent.original": USER_AGENT,
+        }),
+      };
+      expect(tail("span", { items: [span] })[0]).toContain("[SERVER]");
+      expect(jsonSource("span", { items: [span] })).toBe("server");
+    });
+  });
+
   test("a server log stays [SERVER]", () => {
     const payload = {
       items: [
@@ -169,6 +242,127 @@ describe("Next.js browser spans and logs", () => {
 });
 
 describe("page URL on browser spans", () => {
+  /** The JSON label for a span batch, which the tail line should agree with. */
+  function jsonLabel(payload: Record<string, unknown>) {
+    const [line] = formatItemJson("span", payload, nextjsHeader);
+    return (JSON.parse(line ?? "{}") as { label?: string }).label;
+  }
+
+  /** A browser segment as `startSpan` sends it, with or without a name or op. */
+  function customSpan(name: string | undefined, values: Record<string, Value>) {
+    const { name: _name, ...span } = browserSpan("", {
+      "url.full": "http://localhost:3000/cart",
+      ...values,
+    });
+    return name === undefined ? span : { ...span, name };
+  }
+
+  test.each([
+    [
+      "an op-less custom span keeps its name",
+      "checkout-submit",
+      {},
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a URL path keeps its name",
+      "checkout-submit",
+      { "url.path": "/cart" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a route keeps its name",
+      "checkout-submit",
+      { "http.route": "/cart/:id" },
+      "checkout-submit",
+    ],
+    [
+      "an op-less custom span with a server address keeps its name",
+      "checkout-submit",
+      { "server.address": "localhost", "server.port": 3000 },
+      "checkout-submit",
+    ],
+    [
+      "a custom span with a named op keeps its name",
+      "checkout flow",
+      { "sentry.op": "ui.action" },
+      "checkout flow",
+    ],
+    [
+      "an op-less span with no name uses the URL",
+      undefined,
+      {},
+      "localhost:3000/cart",
+    ],
+    ["an op-less custom span named trace keeps its name", "trace", {}, "trace"],
+    ["an op-less custom span named get keeps its name", "get", {}, "get"],
+    [
+      "an op-less custom span named connect keeps its name",
+      "connect",
+      {},
+      "connect",
+    ],
+    [
+      "a lowercase method word beats a URL path too",
+      "delete",
+      { "url.path": "/cart" },
+      "delete",
+    ],
+    [
+      "an op-less span named only a method uses the URL",
+      "GET",
+      {},
+      "localhost:3000/cart",
+    ],
+    [
+      "an op-less span named its URL uses the URL",
+      "http://localhost:3000/cart",
+      {},
+      "localhost:3000/cart",
+    ],
+    [
+      "a nameless span with an exception uses the exception type",
+      undefined,
+      { "url.full": "", "exception.type": "TypeError" },
+      "TypeError",
+    ],
+    [
+      "a nameless span with only an HTTP method shows the method",
+      undefined,
+      { "url.full": "", "http.request.method": "GET" },
+      "GET",
+    ],
+    [
+      "an op-less span with an HTTP method uses the URL",
+      "submit",
+      { "http.request.method": "POST" },
+      "POST localhost:3000/cart",
+    ],
+    [
+      "an http.client span uses the URL",
+      "GET http://localhost:3000/api/orders",
+      {
+        "sentry.op": "http.client",
+        "http.request.method": "GET",
+        "url.full": "http://localhost:3000/api/orders",
+      },
+      "GET localhost:3000/api/orders",
+    ],
+    [
+      "a resource span uses the URL",
+      "localhost",
+      {
+        "sentry.op": "resource.script",
+        "url.full": "http://localhost:3000/_next/static/chunks/main.js",
+      },
+      "localhost:3000/_next/static/chunks/main.js",
+    ],
+  ])("%s, in the tail and in JSON", (_case, name, values, label) => {
+    const payload = { items: [customSpan(name, values)] };
+    expect(tail("span", payload)[0]).toContain(` ${label} `);
+    expect(jsonLabel(payload)).toBe(label);
+  });
+
   test("a custom span keeps its name instead of the page URL", () => {
     const payload = {
       items: [browserSpan("checkout flow", { "sentry.op": "ui.action" })],
@@ -290,6 +484,8 @@ describe("session replays", () => {
     const lines = formatEnvelopeLines(
       replayEnvelope(0, ["http://localhost:3000/client"]),
       new Set(),
+      false,
+      createReplayTracker(),
     ).map((line) => stripAnsi(line));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("[REPLAY]");
@@ -297,7 +493,33 @@ describe("session replays", () => {
     expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/client");
   });
 
-  test("later segments print nothing", () => {
-    expect(formatEnvelopeLines(replayEnvelope(1, []), new Set())).toEqual([]);
+  test("later segments of a replay already shown print nothing", () => {
+    const replays = createReplayTracker();
+    formatEnvelopeLines(replayEnvelope(0, []), new Set(), false, replays);
+    expect(
+      formatEnvelopeLines(replayEnvelope(1, []), new Set(), false, replays),
+    ).toEqual([]);
+  });
+
+  test("a tail that starts mid-replay prints the first segment it sees", () => {
+    const replays = createReplayTracker();
+    const envelope = replayEnvelope(7, ["http://localhost:3000/cart"]);
+    const lines = formatEnvelopeLines(envelope, new Set(), false, replays).map(
+      (line) => stripAnsi(line),
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/cart");
+    expect(formatEnvelopeLines(envelope, new Set(), false, replays)).toEqual(
+      [],
+    );
+  });
+
+  test("each tail tracks its own replays", () => {
+    const envelope = replayEnvelope(3, []);
+    for (const replays of [createReplayTracker(), createReplayTracker()]) {
+      expect(
+        formatEnvelopeLines(envelope, new Set(), false, replays),
+      ).toHaveLength(1);
+    }
   });
 });

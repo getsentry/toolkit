@@ -6242,7 +6242,7 @@
   {
     "name": "get_event_stacktrace",
     "title": "Get Event Stacktrace",
-    "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
+    "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6500,6 +6500,87 @@
             }
           ],
           "description": "Every thread on the event, listed only when the `thread` selector matched none or several."
+        },
+        "stacktrace": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "frames": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filename": {
+                        "type": "string"
+                      },
+                      "absPath": {
+                        "description": "Present only when it differs from filename.",
+                        "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "package": {
+                        "type": "string"
+                      },
+                      "function": {
+                        "type": "string"
+                      },
+                      "lineNo": {
+                        "type": "number"
+                      },
+                      "colNo": {
+                        "type": "number"
+                      },
+                      "inApp": {
+                        "description": "Present on application frames.",
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "contextLine": {
+                        "description": "The source line at lineNo.",
+                        "type": "string"
+                      },
+                      "preContext": {
+                        "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "postContext": {
+                        "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "vars": {
+                        "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                },
+                "framesOmitted": {
+                  "type": ["number", "null"]
+                }
+              },
+              "required": ["frames", "framesOmitted"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The event-level stacktrace, when the event has no threads but has a stack outside them, as on a captured message."
         }
       },
       "required": [
@@ -6510,7 +6591,8 @@
         "threadCount",
         "selection",
         "thread",
-        "availableThreads"
+        "availableThreads",
+        "stacktrace"
       ],
       "additionalProperties": false
     },
@@ -7735,6 +7817,87 @@
               ],
               "description": "The crashed thread's stacktrace, when there is no exception."
             },
+            "stacktrace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "frames": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "filename": {
+                            "type": "string"
+                          },
+                          "absPath": {
+                            "description": "Present only when it differs from filename.",
+                            "type": "string"
+                          },
+                          "module": {
+                            "type": "string"
+                          },
+                          "package": {
+                            "type": "string"
+                          },
+                          "function": {
+                            "type": "string"
+                          },
+                          "lineNo": {
+                            "type": "number"
+                          },
+                          "colNo": {
+                            "type": "number"
+                          },
+                          "inApp": {
+                            "description": "Present on application frames.",
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "contextLine": {
+                            "description": "The source line at lineNo.",
+                            "type": "string"
+                          },
+                          "preContext": {
+                            "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "postContext": {
+                            "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "vars": {
+                            "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                    },
+                    "framesOmitted": {
+                      "type": ["number", "null"]
+                    }
+                  },
+                  "required": ["frames", "framesOmitted"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The event-level stacktrace, which Sentry keeps outside exceptions and threads, as on a captured message."
+            },
             "request": {
               "anyOf": [
                 {
@@ -8167,6 +8330,7 @@
             "threads",
             "threadCount",
             "crashedThread",
+            "stacktrace",
             "request",
             "csp",
             "performance",
@@ -10878,7 +11042,7 @@
   {
     "name": "get_sentry_resource",
     "title": "Get Sentry Resource",
-    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
+    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, metric alerts, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
     "inputSchema": {
       "type": "object",
       "properties": {

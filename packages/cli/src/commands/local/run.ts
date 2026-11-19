@@ -2,7 +2,8 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read by the Node.js and Python SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js, Python, and Ruby SDKs, and by
+ * PHP through its `spotlight` option) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
  * browser bundles. Browser SDKs do not read those variants yet; the app
@@ -20,7 +21,12 @@ import { basename, resolve } from "node:path";
 import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
-import { terminalSignalsProcess } from "../../lib/child-signals.js";
+import {
+  appIsRunning,
+  signalApp,
+  startsOwnProcessGroup,
+  terminalSignalsProcess,
+} from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -44,6 +50,7 @@ import {
   FILTER_VALUES,
   type FilterValue,
   FORMAT_VALUES,
+  createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   type FormatValue,
@@ -255,11 +262,17 @@ async function startBackgroundServer({
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
+  const replays = createReplayTracker();
   const subscriptionId = buffer.subscribe((container) => {
     try {
       const formatLines = useJson
         ? formatEnvelopeLinesJson(container, activeFilters, showAttributes)
-        : formatEnvelopeLines(container, activeFilters, showAttributes);
+        : formatEnvelopeLines(
+            container,
+            activeFilters,
+            showAttributes,
+            replays,
+          );
       for (const line of formatLines) {
         if (useJson) {
           printJsonLine(line);
@@ -285,6 +298,22 @@ async function startBackgroundServer({
 }
 
 /**
+ * Say that this run listens on `boundPort` because `defaultPort` is taken.
+ * An SDK that hard-codes the default port sends there instead, and the
+ * daemon drops traffic that isn't for a session without a word, so the
+ * notice says to use SENTRY_SPOTLIGHT.
+ *
+ * @param reason - Why the default port is taken, e.g. "is in use"
+ */
+function freePortNotice(
+  defaultPort: number,
+  boundPort: number,
+  reason: string,
+): string {
+  return `Port ${defaultPort} ${reason}, so this run listens on port ${boundPort} instead. SDKs that hard-code ${defaultPort} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+}
+
+/**
  * Get a live event tail on `host:port`, whichever way is available.
  *
  * Prefers attaching to whatever already holds the port so we never compete
@@ -303,7 +332,7 @@ async function openEventTail({
   const url = formatLocalServerUrl(host, port);
 
   let running = false;
-  let listenPort = port;
+  let heldByDaemon = false;
   try {
     running = await isServerRunning(url);
   } catch (err) {
@@ -318,10 +347,7 @@ async function openEventTail({
     }
     // The daemon's receiver only takes session traffic, and it stays up while
     // it retains sessions, so a plain run gets its own receiver instead.
-    logger.info(
-      `The Local daemon is using port ${port}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
-    );
-    listenPort = 0;
+    heldByDaemon = true;
   }
 
   if (running) {
@@ -335,18 +361,23 @@ async function openEventTail({
     });
   }
 
-  if (listenPort === port) {
+  if (!heldByDaemon) {
     logger.info("No server detected, starting one in the background...");
   }
   try {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port: listenPort,
+      port: heldByDaemon ? 0 : port,
       host,
       activeFilters,
       useJson,
       showAttributes,
     });
+    if (heldByDaemon) {
+      logger.info(
+        `${freePortNotice(port, Number(new URL(bg.url).port), "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
+      );
+    }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
   } catch (err) {
@@ -397,12 +428,16 @@ function autoDetectErrorMessage(): string {
     `Usage: ${sentry`local run -- <command>`}`,
     "",
     "Supported auto-detection:",
+    "  - artisan (Laravel: composer run dev, or php artisan serve)",
+    "  - Gemfile with bin/rails (Rails: bin/dev, or bin/rails server)",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
     "  - a FastAPI app in app.py / main.py (uvicorn)",
     "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
     "  - app.py / main.py (Python script)",
     "  - FLASK_APP in a Python project (flask run)",
+    "  - Gemfile with config.ru (Rack)",
+    "  - Cargo.toml with a binary target (Rust)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
     "",
@@ -466,7 +501,10 @@ export const runCommand = buildCommand({
       "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
       "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
       "What your SDK needs:\n" +
-      "  - Node.js and Python servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
+      "  - Go and Rust have no Spotlight support. Set\n" +
+      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -566,7 +604,7 @@ export const runCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -681,6 +719,7 @@ export const runCommand = buildCommand({
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
+    const ownGroup = startsOwnProcessGroup();
     let child: ChildProcess;
     try {
       const [cmd = "", ...cmdArgs] = wrangler.args;
@@ -689,6 +728,7 @@ export const runCommand = buildCommand({
         resolveCwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
+        detached: ownGroup,
       });
       forwardChildOutput(child, useJson);
     } catch (err) {
@@ -699,26 +739,36 @@ export const runCommand = buildCommand({
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const interruptState = { interrupted: false };
-    const interrupts = interruptForwarder(child);
+    const interruptState = { interrupted: false, timedOut: false };
+    const interrupts = interruptForwarder(child, ownGroup);
     const onSigint = () => {
       interruptState.interrupted = true;
       interrupts.forward();
     };
     const onSigterm = () => {
       interruptState.interrupted = true;
-      child.kill("SIGTERM");
+      signalApp(child, "SIGTERM", ownGroup);
+    };
+    const onSighup = () => {
+      interruptState.interrupted = true;
+      signalApp(child, "SIGHUP", ownGroup);
     };
     // `on`, not `once`: a second signal must reach the app too, not kill the
     // CLI and leave the app running.
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
+    // In its own group the app no longer gets the hangup sent to the CLI's
+    // group or session, so pass it on.
+    if (ownGroup) {
+      process.on("SIGHUP", onSighup);
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
       timeoutId = setTimeout(() => {
         logger.warn(`Timeout: killing child after ${flags.timeout}s`);
-        void gracefulKill(child);
+        interruptState.timedOut = true;
+        void gracefulKill(child, ownGroup);
       }, flags.timeout * 1000);
     }
 
@@ -744,9 +794,17 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      // A wrapper such as `go run` can exit while the app it started keeps
+      // running. Stop what is left once the user asked the app to stop, with
+      // the signal handlers still installed so a second signal reaches the
+      // group instead of killing the CLI mid-cleanup.
+      if (ownGroup && (interruptState.interrupted || interruptState.timedOut)) {
+        await gracefulKill(child, ownGroup);
+      }
       interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
@@ -799,7 +857,10 @@ const INTERRUPT_FALLBACK_MS = 3000;
  * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
  * SIGINT anyway. Later SIGINTs are always passed on.
  */
-function interruptForwarder(child: ChildProcess): {
+function interruptForwarder(
+  child: ChildProcess,
+  ownGroup: boolean,
+): {
   forward: () => void;
   dispose: () => void;
 } {
@@ -808,7 +869,7 @@ function interruptForwarder(child: ChildProcess): {
   const send = () => {
     clearTimeout(fallback);
     fallback = undefined;
-    child.kill("SIGINT");
+    signalApp(child, "SIGINT", ownGroup);
   };
   return {
     forward() {
@@ -835,8 +896,22 @@ const DEFAULT_VERIFY_TIMEOUT_S = 30;
 /** Grace period before escalating SIGTERM to SIGKILL. */
 const KILL_GRACE_MS = 5000;
 
-/** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
-async function gracefulKill(child: ChildProcess): Promise<void> {
+/** How often to check whether the app's process group has exited. */
+const GROUP_POLL_MS = 50;
+
+/**
+ * Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive.
+ * With its own process group the whole group is signalled, so a wrapper that
+ * exited early does not leave the app it started running.
+ */
+async function gracefulKill(
+  child: ChildProcess,
+  ownGroup: boolean,
+): Promise<void> {
+  if (ownGroup) {
+    await stopProcessGroup(child);
+    return;
+  }
   // No pid means the spawn failed: there is nothing to kill, and `close` may
   // never fire, so waiting for it would hang.
   if (child.exitCode !== null || child.pid === undefined) {
@@ -873,6 +948,34 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
   }
 }
 
+/** SIGTERM the app's process group, then SIGKILL whatever is left after the grace period. */
+async function stopProcessGroup(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (pid === undefined || !appIsRunning(pid)) {
+    return;
+  }
+  signalApp(child, "SIGTERM", true);
+  if (!(await waitForAppExit(pid, KILL_GRACE_MS))) {
+    signalApp(child, "SIGKILL", true);
+    await waitForAppExit(pid, KILL_GRACE_MS);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    await new Promise<void>((r) => child.once("close", () => r()));
+  }
+}
+
+/** Wait until no process is left in the group `pid`, up to `ms`. */
+async function waitForAppExit(pid: number, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (appIsRunning(pid)) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((r) => setTimeout(r, GROUP_POLL_MS));
+  }
+  return true;
+}
+
 /**
  * Bind the verify receiver without waiting out another listener.
  *
@@ -902,8 +1005,8 @@ async function listenForVerify(
         PORT_IN_USE_FIELD,
       );
     }
-    logger.info(`Port ${DEFAULT_PORT} is in use; verifying on a free port`);
     const bound = await tryListen(app, 0, host, { retries: 0 });
+    logger.info(freePortNotice(DEFAULT_PORT, bound.port, "is in use"));
     return { ...bound, fellBack: true };
   }
 }
@@ -956,6 +1059,7 @@ async function* runWithVerify(
 
   let child: ChildProcess;
   const useJson = flags.format === "json";
+  const ownGroup = startsOwnProcessGroup();
   try {
     const [cmd = "", ...cmdArgs] = wrangler.args;
     child = spawnUserCommand(cmd, cmdArgs, {
@@ -963,6 +1067,7 @@ async function* runWithVerify(
       resolveCwd: cwd,
       env: childEnv,
       stdio: childStdio(useJson),
+      detached: ownGroup,
     });
     forwardChildOutput(child, useJson);
   } catch (err) {
@@ -971,17 +1076,26 @@ async function* runWithVerify(
   }
 
   const signalState: { current: NodeJS.Signals | null } = { current: null };
-  const interrupts = interruptForwarder(child);
+  const interrupts = interruptForwarder(child, ownGroup);
   const onSigint = () => {
     signalState.current = "SIGINT";
     interrupts.forward();
   };
   const onSigterm = () => {
     signalState.current = "SIGTERM";
-    child.kill("SIGTERM");
+    signalApp(child, "SIGTERM", ownGroup);
+  };
+  const onSighup = () => {
+    signalState.current = "SIGHUP";
+    signalApp(child, "SIGHUP", ownGroup);
   };
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
+  // In its own group the app no longer gets the hangup sent to the CLI's
+  // group or session, so pass it on.
+  if (ownGroup) {
+    process.on("SIGHUP", onSighup);
+  }
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -1035,7 +1149,7 @@ async function* runWithVerify(
 
   // Clean up — keep signal handlers active during graceful kill
   try {
-    await gracefulKill(child);
+    await gracefulKill(child, ownGroup);
   } finally {
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
@@ -1043,6 +1157,7 @@ async function* runWithVerify(
     interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
     await shutdownServer(server);
   }
 
@@ -1065,13 +1180,18 @@ async function* runWithVerify(
         logger.warn(
           `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
         );
+      } else {
+        const dsn = new URL(url);
+        dsn.username = "key";
+        dsn.pathname = "/0";
+        logger.warn(
+          `SDKs without Spotlight support, such as Go and Rust, need SENTRY_DSN=${dsn.href} instead.`,
+        );
       }
       if (fellBack) {
         // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
         // port, so it reaches whatever holds that port instead of this receiver.
-        logger.warn(
-          `Verify used port ${boundPort} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-        );
+        logger.warn(freePortNotice(DEFAULT_PORT, boundPort, "is in use"));
       }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,

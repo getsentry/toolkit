@@ -67,7 +67,9 @@ export function createScopedAuthorizationServerMetadataResponse(
       "none",
     ],
     revocation_endpoint: new URL("/oauth/token", requestUrl.origin).href,
-    code_challenge_methods_supported: ["plain", "S256"],
+    // Match the provider's root metadata. workers-oauth-provider rejects
+    // `plain` PKCE unless `allowPlainPKCE` is set, which we do not set.
+    code_challenge_methods_supported: ["S256"],
     prompt_values_supported: SUPPORTED_PROMPT_VALUES,
   };
 

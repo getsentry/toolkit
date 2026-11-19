@@ -1,5 +1,5 @@
 import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
-import type { LocalFeedItem } from "./spotlight.ts";
+import { itemTime, type LocalFeedItem } from "./spotlight.ts";
 import { spanData, text } from "./inspection.ts";
 export type EventColumn = "time" | "type" | "level" | "logger" | "duration";
 export type EventFilters = {
@@ -18,7 +18,7 @@ export function loggerForItem(item: LocalFeedItem): string | undefined {
   return text(spanData(item.payload)["sentry.logger.name"]);
 }
 function timestamp(item: LocalFeedItem): number {
-  const value = parseEventTimestamp(item.timestamp);
+  const value = parseEventTimestamp(itemTime(item));
   if (value === undefined) return -Infinity;
   return value < 1e12 ? value * 1000 : value;
 }

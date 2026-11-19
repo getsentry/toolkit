@@ -84,6 +84,60 @@ describe("formatErrorItem", () => {
     expect(result).not.toContain("Error: Something went wrong");
   });
 
+  test.each([
+    [{ value: null }, "[ERROR]   [SERVER]  Error: Unknown error"],
+    [{ value: 42 }, "[ERROR]   [SERVER]  Error: 42"],
+  ])("an untyped exception with value %j is not a message", (value, line) => {
+    const event = { timestamp: 1_700_000_000, exception: { values: [value] } };
+    expect(stripAnsi(formatErrorItem(event, serverHeader))).toContain(line);
+  });
+
+  test.each([
+    [
+      {
+        exception: { values: [{ type: "TypeError", value: "x is undefined" }] },
+      },
+      "[ERROR]   [SERVER]  TypeError: x is undefined",
+    ],
+    [
+      {
+        level: "warning",
+        message: "Checkout retry limit reached",
+        exception: {
+          values: [
+            {
+              value: "Checkout retry limit reached",
+              mechanism: { type: "generic", handled: true, synthetic: true },
+            },
+          ],
+        },
+      },
+      "[WARNING] [SERVER]  Checkout retry limit reached",
+    ],
+    [
+      { logentry: { formatted: "Payment failed for order 42" } },
+      "[ERROR]   [SERVER]  Payment failed for order 42",
+    ],
+    [
+      {
+        logentry: { message: "Checkout failed" },
+        exception: {
+          values: [{ type: "ZeroDivisionError", value: "division by zero" }],
+        },
+      },
+      "[ERROR]   [SERVER]  ZeroDivisionError: division by zero",
+    ],
+    [
+      { exception: { values: [{ type: "ValueError", value: "" }] } },
+      "[ERROR]   [SERVER]  ValueError: Unknown error",
+    ],
+  ])("tail line for %j is unchanged", (event, line) => {
+    const result = stripAnsi(
+      formatErrorItem({ timestamp: 1_700_000_000, ...event }, serverHeader),
+    );
+    expect(result).toContain(line);
+  });
+
   test("falls back to Unknown error when no exception or message", () => {
     const event = { timestamp: 1_700_000_000 };
     const result = stripAnsi(formatErrorItem(event, serverHeader));
@@ -1090,14 +1144,18 @@ describe("formatItem with attributes", () => {
     };
     const withoutAttrs = formatItem("transaction", event, serverHeader, "t");
     expect(withoutAttrs).toHaveLength(1);
-    const withAttrs = formatItem("transaction", event, serverHeader, "t", true);
+    const withAttrs = formatItem("transaction", event, serverHeader, "t", {
+      showAttributes: true,
+    });
     expect(withAttrs.length).toBeGreaterThan(1);
     expect(withAttrs.map(stripAnsi).join("\n")).toContain("tenant");
   });
 
   test("does not append a table for errors even when enabled", () => {
     const event = { timestamp: 1_700_000_000, message: "boom" };
-    const lines = formatItem("error", event, serverHeader, "e", true);
+    const lines = formatItem("error", event, serverHeader, "e", {
+      showAttributes: true,
+    });
     expect(lines).toHaveLength(1);
   });
 });

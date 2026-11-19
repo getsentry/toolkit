@@ -94,7 +94,7 @@
       },
       {
         "name": "get_event_stacktrace",
-        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
+        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -164,7 +164,7 @@
       },
       {
         "name": "get_sentry_resource",
-        "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
+        "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, metric alerts, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
         "requiredScopes": ["event:read", "project:read"]
       },
       {
@@ -289,7 +289,7 @@
       },
       {
         "name": "get_event_stacktrace",
-        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
+        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -445,7 +445,7 @@
       },
       {
         "name": "get_event_stacktrace",
-        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
+        "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
         "requiredScopes": ["event:read"]
       },
       {

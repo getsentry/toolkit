@@ -790,3 +790,57 @@ test("replay recordings show when they were received instead of unknown time", a
   expect(row.textContent).not.toContain("unknown time");
   expect(row.textContent).toContain(new Date(receivedAt).toLocaleTimeString());
 });
+
+test("an untimed item in a trace does not stretch the trace to its receive time", async () => {
+  // A 400 ms transaction, then a sentry-python cron check-in in the same
+  // trace that the receiver got 222 s later. Check-ins carry no timestamp.
+  const uuidv7 = (ms: number) =>
+    `${ms
+      .toString(16)
+      .padStart(12, "0")
+      .replace(/^(.{8})(.{4})$/, "$1-$2")}-7abc-8def-0123456789ab`;
+  const finishedAt = 1_794_947_420.913;
+  const traceId = "8f2a6c1e4b7d4f0a9c3e5b1d7a2f6c8e";
+  renderCapture({ path: "/traces" });
+  const source = await openSource();
+  const send = (lastEventId: string, items: unknown[]) =>
+    act(async () =>
+      source.dispatchEvent(
+        new MessageEvent("application/x-sentry-envelope", {
+          data: JSON.stringify([{}, items]),
+          lastEventId,
+        }),
+      ),
+    );
+  await send(uuidv7(finishedAt * 1000 + 50), [
+    [
+      { type: "transaction" },
+      {
+        type: "transaction",
+        transaction: "nightly-report",
+        start_timestamp: finishedAt - 0.4,
+        timestamp: finishedAt,
+        contexts: {
+          trace: { trace_id: traceId, span_id: "a1b2c3d4e5f60718", op: "task" },
+        },
+      },
+    ],
+  ]);
+  await send(uuidv7(finishedAt * 1000 + 222_000), [
+    [
+      { type: "check_in" },
+      {
+        check_in_id: "5f1c0e8a2b9d4c7e8f3a1b6d0c9e2f4a",
+        monitor_slug: "nightly-report",
+        status: "ok",
+        duration: 0.4,
+        contexts: { trace: { trace_id: traceId, span_id: "a1b2c3d4e5f60718" } },
+      },
+    ],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: "View trace nightly-report",
+  });
+  expect(row.textContent).toMatch(/400(\.0+)? ms/);
+  expect(row.textContent).not.toContain("222");
+});
