@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getActiveSpan, metrics } from "@sentry/core";
 import { inlineCode } from "@sentry/toolkit-core/markdown";
 import { z } from "zod";
@@ -117,9 +118,10 @@ export const TOOL_CALL_FINGERPRINT_ATTRIBUTE = "app.tool_call.fingerprint";
 
 /**
  * A short, stable id for a tool call: the tool name and its arguments in key
- * order, hashed. A shown quest records the fingerprints of its `next` calls,
- * and every tool call records its own, so analytics can tell when a later
- * call from the same user is one a quest offered.
+ * order, hashed with SHA-256 and cut to 16 hex characters. A shown quest
+ * records the fingerprints of its `next` calls, and every tool call records
+ * its own, so analytics can tell when a later call from the same user is one
+ * a quest offered.
  *
  * Scope keys (organization, project, region) are left out: the server fills
  * them from constraints or the default organization, so an agent may or may
@@ -135,17 +137,10 @@ export function fingerprintToolCall(
         !CONSTRAINT_PARAMETER_KEYS.has(key) && value != null && value !== "",
     )
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return fnv1a(JSON.stringify([tool, entries]));
-}
-
-/** 32-bit FNV-1a as 8 hex characters. Not for security; only stability matters. */
-function fnv1a(input: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
+  return createHash("sha256")
+    .update(JSON.stringify([tool, entries]))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 /**

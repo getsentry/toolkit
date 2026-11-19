@@ -236,7 +236,7 @@ describe("fingerprintToolCall", () => {
 
   it("is a short hex id", () => {
     expect(fingerprintToolCall("get_sentry_resource", call)).toMatch(
-      /^[0-9a-f]{8}$/,
+      /^[0-9a-f]{16}$/,
     );
   });
 
