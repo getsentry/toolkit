@@ -90,12 +90,37 @@ describe("LocalSessionStore", () => {
     });
   });
 
-  test("rejects ambiguous labels instead of selecting an arbitrary session", () => {
-    const store = createLocalSessionStore({ now: () => 1000 });
-    store.create({ label: "web", cwd: "/work/one" });
-    store.create({ label: "web", cwd: "/work/two" });
+  test("resolves a reused label to its open session, else the newest one", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const first = store.create({ label: "web", cwd: "/work/one" });
+    now = 2000;
+    const second = store.create({ label: "web", cwd: "/work/two" });
+    store.close(second.id);
 
-    expect(() => store.resolve("web")).toThrow(/ambiguous/i);
+    expect(store.resolve("web").id).toBe(first.id);
+    expect(store.choose("web").others).toEqual([]);
+    store.close(first.id);
+    expect(store.resolve("web").id).toBe(second.id);
+    expect(() => store.resolve("api")).toThrow(/not found/);
+  });
+
+  test("picks the newest open session for a shared label and names the others", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const older = store.create({ label: "web", cwd: "/work/one" });
+    now = 2000;
+    const newer = store.create({ label: "web", cwd: "/work/two" });
+    now = 3000;
+    store.recordActivity(older.id);
+
+    const choice = store.choose("web");
+    expect(choice.session.id).toBe(newer.id);
+    expect(choice.others.map(({ id }) => id)).toEqual([older.id]);
+    expect(store.choose(older.id)).toMatchObject({
+      session: { id: older.id },
+      others: [],
+    });
   });
 
   test("reuses a session when an agent retries with the same client ID", () => {

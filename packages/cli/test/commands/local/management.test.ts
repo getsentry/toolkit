@@ -10,6 +10,7 @@ import {
 } from "../../../src/commands/local/management.js";
 import { classifySilenced } from "../../../src/lib/error-reporting.js";
 import { CliError, EXIT, ResolutionError } from "../../../src/lib/errors.js";
+import { logger } from "../../../src/lib/logger.js";
 
 const CONTROL_TOKEN = "control-token";
 const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
@@ -132,9 +133,119 @@ describe("local session view", () => {
     daemonResponse = undefined;
   });
 
-  test("reports a shared session name as a user error that lists the IDs", async () => {
-    const one = plane.sessionStore.create({ label: "spike", cwd: "/one" });
-    const two = plane.sessionStore.create({ label: "spike", cwd: "/two" });
+  test("uses the newest open session for a reused name and notes the others", async () => {
+    const closed = plane.sessionStore.create({ label: "reused", cwd: "/old" });
+    plane.sessionStore.close(closed.id);
+    const older = plane.sessionStore.create({ label: "reused", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "reused", cwd: "/two" });
+    await ingestEvent(older.id, "a".repeat(32), "older run");
+    await ingestEvent(newer.id, "b".repeat(32), "newer run");
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const listed = await runCommand(eventRoute, "list", true, "reused");
+      expect(listed.error).toBeUndefined();
+      const { events } = JSON.parse(listed.stdout) as {
+        events: { eventId: string }[];
+      };
+      expect(events.map(({ eventId }) => eventId)).toEqual(["b".repeat(32)]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        `2 open sessions share that name; using the newest, ${newer.id}. Pass a session ID to use another: ${older.id} (open, started 0m ago).`,
+      );
+
+      warn.mockClear();
+      const viewed = await runCommand(sessionRoute, "view", true, newer.id);
+      expect(JSON.parse(viewed.stdout)).toMatchObject({ id: newer.id });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("refuses to close a name that several open sessions share and lists their state and age", async () => {
+    const older = plane.sessionStore.create({ label: "shared", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "shared", cwd: "/two" });
+
+    const error = await commandError(sessionRoute, "close", "shared");
+
+    expect(error).toBeInstanceOf(ResolutionError);
+    const { message } = error as ResolutionError;
+    expect(message).toMatch(
+      /^Local session name "shared" matches more than one session\./,
+    );
+    expect(message).toContain(
+      `Use session ID ${newer.id} (open, started 0m ago)`,
+    );
+    expect(message).toContain(
+      `Use session ID ${older.id} (open, started 0m ago)`,
+    );
+    expect(classifySilenced(error)).toBe("user_input_error");
+    expect(plane.sessionStore.resolve(newer.id).state).toBe("open");
+    expect(plane.sessionStore.resolve(older.id).state).toBe("open");
+  });
+
+  test("notes the chosen session once, even when the lookup fails", async () => {
+    const older = plane.sessionStore.create({ label: "noted", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "noted", cwd: "/two" });
+    await ingestEvent(newer.id, `${"c".repeat(8)}1${"0".repeat(23)}`, "one");
+    await ingestEvent(newer.id, `${"c".repeat(8)}2${"0".repeat(23)}`, "two");
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const ambiguous = await commandError(
+        eventRoute,
+        "view",
+        "noted",
+        "cccccccc",
+      );
+      expect(ambiguous).toBeInstanceOf(ResolutionError);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain(
+        `using the newest, ${newer.id}. Pass a session ID to use another: ${older.id}`,
+      );
+
+      const missing = await commandError(
+        eventRoute,
+        "view",
+        "noted",
+        "d".repeat(32),
+      );
+      expect(missing).toBeInstanceOf(ResolutionError);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("counts the open sessions it does not name", async () => {
+    const sessions = Array.from({ length: 8 }, () =>
+      plane.sessionStore.create({ label: "crowd", cwd: "/crowd" }),
+    );
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await runCommand(sessionRoute, "view", true, "crowd");
+      expect(warn).toHaveBeenCalledTimes(1);
+      const note = String(warn.mock.calls[0]?.[0]);
+      expect(note).toMatch(
+        new RegExp(
+          `^8 open sessions share that name; using the newest, ${sessions.at(-1)?.id}\\.`,
+        ),
+      );
+      expect(note).toMatch(/\(open, started 0m ago\) and 2 more\.$/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("reports an older daemon's shared-name 409 as a user error that lists the IDs", async () => {
+    daemonResponse = Response.json(
+      {
+        error: OLD_DAEMON_MESSAGE,
+        code: "ambiguous_session",
+        reference: "spike",
+        sessionIds: ["one", "two"],
+      },
+      { status: 409 },
+    );
 
     const error = await viewError("spike");
 
@@ -144,8 +255,8 @@ describe("local session view", () => {
       /^Local session name "spike" matches more than one session\./,
     );
     expect(message).not.toContain("HTTP 409");
-    expect(message).toContain(`Use session ID ${one.id}`);
-    expect(message).toContain(`Use session ID ${two.id}`);
+    expect(message).toContain("Use session ID one");
+    expect(message).toContain("Use session ID two");
     expect(classifySilenced(error)).toBe("user_input_error");
   });
 

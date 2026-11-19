@@ -5,6 +5,7 @@ import { createLocalControlPlane } from "../../../src/commands/local/control-pla
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
   createLocalSessionStore,
+  SESSION_CHOICE_HEADER,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
 import { at } from "../../helpers.js";
@@ -481,38 +482,42 @@ describe("Local control plane", () => {
     expect(plane.sessionStore.resolve(session.id).maxEnvelopes).toBe(50000);
   });
 
-  test("reports ambiguous session names with ID guidance across control routes", async () => {
+  test("resolves a shared session name to its newest open session on every control route", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
-    const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
-    const two = plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const older = plane.sessionStore.create({ label: "My App", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const closed = plane.sessionStore.create({
+      label: "My App",
+      cwd: "/three",
+    });
+    plane.sessionStore.close(closed.id);
     for (const [method, suffix] of [
       ["GET", ""],
       ["GET", "/events"],
       ["GET", "/envelopes"],
-      ["GET", "/events/id"],
-      ["GET", "/envelopes/id"],
-      ["POST", "/close"],
-      ["POST", "/reset"],
+      ["GET", "/retention"],
     ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },
       );
-      expect(response.status).toBe(409);
-      await expect(response.json()).resolves.toEqual({
-        error: 'Local session name "My App" is ambiguous; use its session ID.',
-        code: "ambiguous_session",
-        reference: "My App",
-        sessionIds: [one.id, two.id],
+      expect(response.status, suffix).toBeLessThan(300);
+      expect(
+        JSON.parse(response.headers.get(SESSION_CHOICE_HEADER) ?? "null"),
+      ).toEqual({
+        id: newer.id,
+        others: [{ id: older.id, createdAt: older.createdAt }],
       });
     }
-    expect(
-      (
-        await plane.app.request(`/_local/v1/sessions/${one.id}`, {
-          headers: controlHeaders(),
-        })
-      ).status,
-    ).toBe(200);
+    const viewed = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    await expect(viewed.json()).resolves.toMatchObject({ id: newer.id });
+    const byId = await plane.app.request(`/_local/v1/sessions/${older.id}`, {
+      headers: controlHeaders(),
+    });
+    expect(byId.status).toBe(200);
+    expect(byId.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
     expect(
       (
         await plane.app.request("/_local/v1/sessions/missing", {
@@ -520,6 +525,104 @@ describe("Local control plane", () => {
         })
       ).status,
     ).toBe(404);
+
+    plane.sessionStore.close(newer.id);
+    const remaining = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    expect(remaining.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+    await expect(remaining.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "open",
+    });
+  });
+
+  test("refuses to change a session by a name that several open sessions share", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const older = plane.sessionStore.create({ label: "p", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "p", cwd: "/two" });
+    const { stream } = plane.sessionStore.getCapabilities(newer.id);
+    for (const [suffix, body] of [
+      ["/close", "{}"],
+      ["/reset", "{}"],
+      ["/retention", JSON.stringify({ maxEnvelopes: 10 })],
+      [`/ui/close?cap=${stream}`, "{}"],
+    ] as const) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/p${suffix}`,
+        {
+          method: "POST",
+          headers: { ...controlHeaders(), "Content-Type": "application/json" },
+          body,
+        },
+      );
+      expect(response.status, suffix).toBe(409);
+      expect(response.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+      await expect(response.json()).resolves.toMatchObject({
+        code: "ambiguous_session",
+        reference: "p",
+        sessionIds: [newer.id, older.id],
+        sessions: [
+          { id: newer.id, state: "open", createdAt: newer.createdAt },
+          { id: older.id, state: "open", createdAt: older.createdAt },
+        ],
+      });
+    }
+    // A stream capability alone must not reveal the other sessions.
+    const viewer = await plane.app.request(
+      `/_local/v1/sessions/p/ui/close?cap=${stream}`,
+      { method: "POST", headers: { "Content-Type": "application/json" } },
+    );
+    expect(viewer.status).toBe(409);
+    const viewerBody: Record<string, unknown> = await viewer.json();
+    expect(viewerBody).toMatchObject({ code: "ambiguous_session" });
+    expect(viewerBody).not.toHaveProperty("sessionIds");
+    expect(viewerBody).not.toHaveProperty("sessions");
+    expect(JSON.stringify(viewerBody)).not.toContain(older.id);
+
+    expect(plane.sessionStore.resolve(newer.id)).toMatchObject({
+      state: "open",
+      maxEnvelopes: newer.maxEnvelopes,
+    });
+    expect(plane.sessionStore.resolve(older.id).state).toBe("open");
+
+    const byId = await plane.app.request(
+      `/_local/v1/sessions/${newer.id}/close`,
+      {
+        method: "POST",
+        headers: controlHeaders(),
+      },
+    );
+    expect(byId.status).toBe(200);
+    const byName = await plane.app.request("/_local/v1/sessions/p/close", {
+      method: "POST",
+      headers: controlHeaders(),
+    });
+    await expect(byName.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "retained",
+    });
+  });
+
+  test("caps the sessions it names when many open sessions share a name", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const sessions = Array.from({ length: 300 }, () =>
+      plane.sessionStore.create({ label: "busy", cwd: "/busy" }),
+    );
+    const response = await plane.app.request("/_local/v1/sessions/busy", {
+      headers: controlHeaders(),
+    });
+    expect(response.status).toBe(200);
+    const header = response.headers.get(SESSION_CHOICE_HEADER) ?? "";
+    expect(header.length).toBeLessThan(1024);
+    const choice = JSON.parse(header) as {
+      id: string;
+      others: { id: string }[];
+      more: number;
+    };
+    expect(choice.id).toBe(sessions.at(-1)?.id);
+    expect(choice.others).toHaveLength(5);
+    expect(choice.more).toBe(294);
   });
 
   test("creates isolated sessions through its authenticated control API", async () => {

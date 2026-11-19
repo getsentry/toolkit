@@ -463,24 +463,42 @@ describe("Local daemon E2E", () => {
     30_000,
   );
 
-  test("surfaces duplicate session name guidance through the CLI", async () => {
+  test("resolves a reused session name to its newest open session through the CLI", async () => {
     const port = await availablePort();
     const first = await createSession("duplicate", port);
-    await createSession("duplicate", port);
+    const second = await createSession("duplicate", port);
     for (const parts of [
       ["session", "view"],
-      ["session", "close"],
       ["event", "list"],
       ["envelope", "list"],
     ]) {
       const result = await cli(...parts, "duplicate");
-      expect(result.exitCode).toBe(23);
+      expect(result.exitCode, result.stderr).toBe(0);
       expect(result.stderr).toContain(
-        'Local session name "duplicate" matches more than one session.',
+        `2 open sessions share that name; using the newest, ${second.id}.`,
       );
-      expect(result.stderr).toContain(`Use session ID ${first.id}`);
+      expect(result.stderr).toContain(`${first.id} (open, started`);
+      if (parts[0] === "session")
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: second.id });
     }
-    expect((await cli("session", "view", first.id)).exitCode).toBe(0);
+
+    const refused = await cli("session", "close", "duplicate");
+    expect(refused.exitCode).toBe(23);
+    expect(refused.stderr).toContain(
+      'Local session name "duplicate" matches more than one session.',
+    );
+    expect(refused.stderr).toContain(
+      `Use session ID ${first.id} (open, started`,
+    );
+    const closed = await cli("session", "close", second.id);
+    expect(closed.exitCode, closed.stderr).toBe(0);
+    const remaining = await cli("session", "view", "duplicate");
+    expect(remaining.exitCode, remaining.stderr).toBe(0);
+    expect(remaining.stderr).not.toContain("share that name");
+    expect(JSON.parse(remaining.stdout)).toMatchObject({
+      id: first.id,
+      state: "open",
+    });
   }, 30_000);
 
   test("isolates sessions and capabilities, queries retained telemetry and clears only one session", async () => {
