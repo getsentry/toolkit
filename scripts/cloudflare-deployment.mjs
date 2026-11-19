@@ -14,6 +14,8 @@ const WORKER_DIRS = {
 const SETTLE_ATTEMPTS = 15;
 const SETTLE_DELAY_MS = 2_000;
 const READABLE_STREAK = 3;
+// Observed lag is under 6 s; 60 s gives about ten times that.
+const READABLE_TIMEOUT_MS = 60_000;
 
 // Messages are fixed strings, so they are safe to print in CI logs, unlike
 // errors from fetch or JSON parsing that may carry API content.
@@ -266,14 +268,28 @@ export async function listSettled(
  * Whether Cloudflare serves the version by ID. Right after `versions upload`
  * this read can return 404 (code 100146) for a few seconds, and Wrangler's
  * `versions deploy` makes exactly this read before it creates a deployment.
+ * 404, 429, 5xx, and network errors mean "not yet"; any other answer, such as
+ * an auth error, cannot fix itself and fails at once.
  */
 export async function isVersionReadable(env, versionId, worker = WORKER) {
-  const response = await workerApi(
-    env,
-    worker,
-    `versions/${encodeURIComponent(versionId)}`,
-  );
-  if (response.status === 404) return false;
+  let response;
+  try {
+    response = await workerApi(
+      env,
+      worker,
+      `versions/${encodeURIComponent(versionId)}`,
+    );
+  } catch (error) {
+    if (error instanceof DeploymentError) throw error;
+    return false;
+  }
+  if (
+    response.status === 404 ||
+    response.status === 429 ||
+    response.status >= 500
+  ) {
+    return false;
+  }
   if (!response.ok) {
     throw new DeploymentError("Cloudflare version lookup failed");
   }
@@ -281,15 +297,18 @@ export async function isVersionReadable(env, versionId, worker = WORKER) {
   return body.success === true && body.result?.id === versionId;
 }
 
-// Reads can flip between replicas, so one success is not enough.
+// Reads can flip between replicas, so one success is not enough. The wait is
+// bounded so a version that never appears fails the step instead of holding
+// the production deploy queue.
 async function waitUntilReadable(
   env,
   versionIds,
   worker,
-  { readVersion = isVersionReadable, sleep = delay } = {},
+  { readVersion = isVersionReadable, sleep = delay, now = Date.now } = {},
 ) {
+  const deadline = now() + READABLE_TIMEOUT_MS;
   let streak = 0;
-  for (let attempt = 1; attempt <= SETTLE_ATTEMPTS; attempt++) {
+  while (now() < deadline) {
     const readable = await Promise.all(
       versionIds.map((versionId) => readVersion(env, versionId, worker)),
     );
@@ -298,7 +317,7 @@ async function waitUntilReadable(
     await sleep(SETTLE_DELAY_MS);
   }
   throw new DeploymentError(
-    "Cloudflare does not serve the Worker version to deploy",
+    "Cloudflare did not serve the Worker version within 60 seconds",
   );
 }
 

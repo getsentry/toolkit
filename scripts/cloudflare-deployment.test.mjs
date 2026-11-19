@@ -513,14 +513,20 @@ test("a version that reads once and then 404s again is not ready", async () => {
 });
 
 test("never deploys a version Cloudflare does not serve", async () => {
+  let clock = 0;
   await assert.rejects(
     deployVersions({}, { [candidateVersion]: 100 }, `${marker}:promote`, {
       readVersion: async () => false,
-      sleep: noSleep,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      now: () => clock,
       spawn: () => assert.fail("must not deploy"),
     }),
-    /does not serve the Worker version/,
+    /did not serve the Worker version within 60 seconds/,
   );
+  // Gives up at the deadline instead of holding the deploy queue.
+  assert.equal(clock, 60_000);
   await assert.rejects(
     deployVersions({}, { "../other": 100 }, "message", {
       readVersion: readable,
@@ -530,7 +536,7 @@ test("never deploys a version Cloudflare does not serve", async () => {
   );
 });
 
-test("reads a version by ID and treats only 404 as not ready", async (t) => {
+test("treats 404, 429, and 5xx as not ready and fails fast on auth errors", async (t) => {
   const env = {
     CLOUDFLARE_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
     CLOUDFLARE_API_TOKEN: "token",
@@ -546,6 +552,8 @@ test("reads a version by ID and treats only 404 as not ready", async (t) => {
     new Response(
       JSON.stringify({ success: true, result: { id: candidateVersion } }),
     ),
+    new Response("{}", { status: 503 }),
+    new Response("{}", { status: 429 }),
     new Response("{}", { status: 403 }),
   ];
   const urls = [];
@@ -555,6 +563,8 @@ test("reads a version by ID and treats only 404 as not ready", async (t) => {
   });
   assert.equal(await isVersionReadable(env, candidateVersion), false);
   assert.equal(await isVersionReadable(env, candidateVersion), true);
+  assert.equal(await isVersionReadable(env, candidateVersion), false);
+  assert.equal(await isVersionReadable(env, candidateVersion), false);
   await assert.rejects(
     isVersionReadable(env, candidateVersion),
     /version lookup failed/,
@@ -562,5 +572,25 @@ test("reads a version by ID and treats only 404 as not ready", async (t) => {
   assert.equal(
     urls[0],
     `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/sentry-mcp/versions/${candidateVersion}`,
+  );
+});
+
+test("a network error while reading a version means not ready yet", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new TypeError("fetch failed");
+  });
+  assert.equal(
+    await isVersionReadable(
+      {
+        CLOUDFLARE_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+        CLOUDFLARE_API_TOKEN: "token",
+      },
+      candidateVersion,
+    ),
+    false,
+  );
+  await assert.rejects(
+    isVersionReadable({}, candidateVersion),
+    /account ID and API token are required/,
   );
 });

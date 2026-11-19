@@ -251,7 +251,9 @@ Every traffic change goes through `deployVersions()` in
 `scripts/cloudflare-deployment.mjs`. Cloudflare can answer 404 (code 100146)
 for a version for a few seconds after `wrangler versions upload`, and
 `wrangler versions deploy` fails on that read. `deployVersions()` waits until
-Cloudflare serves each version by ID on three reads in a row, then deploys.
+Cloudflare serves each version by ID on three reads in a row, then deploys. It
+gives up after 60 seconds, before any traffic moves, so a version that never
+appears fails the job instead of holding the deploy queue.
 `scripts/deploy-workflow.test.mjs` fails any workflow that calls
 `wrangler versions deploy` directly.
 
