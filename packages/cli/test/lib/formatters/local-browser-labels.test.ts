@@ -221,11 +221,13 @@ describe("page URL on browser spans", () => {
       {},
       "localhost:3000/cart",
     ],
+    ["an op-less custom span named trace keeps its name", "trace", {}, "trace"],
+    ["an op-less custom span named get keeps its name", "get", {}, "get"],
     [
-      "an op-less custom span named a lowercase method word keeps its name",
-      "trace",
+      "an op-less custom span named connect keeps its name",
+      "connect",
       {},
-      "trace",
+      "connect",
     ],
     [
       "a lowercase method word beats a URL path too",
