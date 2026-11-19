@@ -11,6 +11,8 @@ import {
   recoverManualSnapshot,
   listSettled,
   recoverUnverifiedStage,
+  deployVersions,
+  isVersionReadable,
 } from "./cloudflare-deployment.mjs";
 
 const previousVersion = "11111111-1111-4111-8111-111111111111";
@@ -48,6 +50,7 @@ const recovered = {
   annotations: { "workers/message": "Toolkit recovery 123" },
 };
 const noSleep = async () => {};
+const readable = async () => true;
 
 test("extracts only a confirmed upload of the production Worker", () => {
   const session = {
@@ -292,6 +295,7 @@ test("restores only the captured version and checks Cloudflare's resulting state
     },
     list: async () => [recovered, candidate, previous],
     sleep: noSleep,
+    readVersion: readable,
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], "pnpm");
@@ -427,6 +431,7 @@ test("recovery rolls back a stage that Cloudflare lists late", async () => {
     {
       list: async () => reads.shift(),
       sleep: noSleep,
+      readVersion: readable,
       spawn: (...args) => {
         calls.push(args);
         return { status: 0 };
@@ -451,5 +456,111 @@ test("recovery fails instead of passing when a deployed stage never appears", as
   await assert.rejects(
     recoverUnverifiedStage({ ...journal, stageDeployed: true }, {}, options),
     /does not list the staged candidate/,
+  );
+});
+
+// Run 44604518080: `versions upload` created the candidate, then
+// `wrangler versions deploy` read it by ID about 3s later and got 404 (code
+// 100146), so the stage failed and prod stayed on the old version.
+test("deploys only after Cloudflare serves every version by ID", async () => {
+  const events = [];
+  const reads = { [previousVersion]: 0, [candidateVersion]: 0 };
+  await deployVersions(
+    {},
+    { [previousVersion]: 100, [candidateVersion]: 0 },
+    `${marker}:stage`,
+    {
+      readVersion: async (_env, versionId) => {
+        reads[versionId]++;
+        events.push("read");
+        return versionId === previousVersion || reads[versionId] > 2;
+      },
+      sleep: noSleep,
+      spawn: (...args) => {
+        events.push(args[1]);
+        return { status: 0 };
+      },
+    },
+  );
+  assert.equal(events.length, 11);
+  assert.ok(events.slice(0, 10).every((event) => event === "read"));
+  assert.deepEqual(events[10], [
+    "exec",
+    "wrangler",
+    "versions",
+    "deploy",
+    `${previousVersion}@100`,
+    `${candidateVersion}@0`,
+    "--yes",
+    "--message",
+    `${marker}:stage`,
+  ]);
+});
+
+test("a version that reads once and then 404s again is not ready", async () => {
+  const answers = [true, false, true, true, true];
+  let spawned = 0;
+  await deployVersions({}, { [candidateVersion]: 100 }, `${marker}:promote`, {
+    readVersion: async () => answers.shift(),
+    sleep: noSleep,
+    spawn: () => {
+      assert.equal(answers.length, 0);
+      spawned++;
+      return { status: 0 };
+    },
+  });
+  assert.equal(spawned, 1);
+});
+
+test("never deploys a version Cloudflare does not serve", async () => {
+  await assert.rejects(
+    deployVersions({}, { [candidateVersion]: 100 }, `${marker}:promote`, {
+      readVersion: async () => false,
+      sleep: noSleep,
+      spawn: () => assert.fail("must not deploy"),
+    }),
+    /does not serve the Worker version/,
+  );
+  await assert.rejects(
+    deployVersions({}, { "../other": 100 }, "message", {
+      readVersion: readable,
+      spawn: () => assert.fail("must not deploy"),
+    }),
+    /Invalid Worker versions/,
+  );
+});
+
+test("reads a version by ID and treats only 404 as not ready", async (t) => {
+  const env = {
+    CLOUDFLARE_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+    CLOUDFLARE_API_TOKEN: "token",
+  };
+  const responses = [
+    new Response(
+      JSON.stringify({
+        success: false,
+        errors: [{ code: 100146, message: "not found" }],
+      }),
+      { status: 404 },
+    ),
+    new Response(
+      JSON.stringify({ success: true, result: { id: candidateVersion } }),
+    ),
+    new Response("{}", { status: 403 }),
+  ];
+  const urls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    urls.push(url);
+    return responses.shift();
+  });
+  assert.equal(await isVersionReadable(env, candidateVersion), false);
+  assert.equal(await isVersionReadable(env, candidateVersion), true);
+  await assert.rejects(
+    isVersionReadable(env, candidateVersion),
+    /version lookup failed/,
+  );
+  assert.equal(
+    urls[0],
+    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/sentry-mcp/versions/${candidateVersion}`,
   );
 });

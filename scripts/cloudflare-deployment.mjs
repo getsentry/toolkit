@@ -6,8 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORKER = "sentry-mcp";
+// Wrangler reads each Worker's config from its package directory.
+const WORKER_DIRS = {
+  "sentry-mcp": "../packages/mcp-cloudflare",
+  "docs-mcp": "../apps/docs-mcp",
+};
 const SETTLE_ATTEMPTS = 15;
 const SETTLE_DELAY_MS = 2_000;
+const READABLE_STREAK = 3;
 
 // Messages are fixed strings, so they are safe to print in CI logs, unlike
 // errors from fetch or JSON parsing that may carry API content.
@@ -205,8 +211,7 @@ export function assertOwnedCandidate(deployments, journal) {
   return journal.previous.version;
 }
 
-/** Read deployment history for an existing Worker without exposing API responses. */
-export async function listDeployments(env, worker = WORKER) {
+function workerApi(env, worker, path) {
   if (
     !/^[0-9a-f]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID ?? "") ||
     !env.CLOUDFLARE_API_TOKEN
@@ -215,13 +220,18 @@ export async function listDeployments(env, worker = WORKER) {
       "Cloudflare account ID and API token are required",
     );
   }
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${encodeURIComponent(worker)}/deployments?per_page=3`,
+  return fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${encodeURIComponent(worker)}/${path}`,
     {
       headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
       signal: AbortSignal.timeout(15_000),
     },
   );
+}
+
+/** Read deployment history for an existing Worker without exposing API responses. */
+export async function listDeployments(env, worker = WORKER) {
+  const response = await workerApi(env, worker, "deployments?per_page=3");
   if (!response.ok) {
     throw new DeploymentError("Cloudflare deployment lookup failed");
   }
@@ -252,6 +262,82 @@ export async function listSettled(
   return deployments;
 }
 
+/**
+ * Whether Cloudflare serves the version by ID. Right after `versions upload`
+ * this read can return 404 (code 100146) for a few seconds, and Wrangler's
+ * `versions deploy` makes exactly this read before it creates a deployment.
+ */
+export async function isVersionReadable(env, versionId, worker = WORKER) {
+  const response = await workerApi(
+    env,
+    worker,
+    `versions/${encodeURIComponent(versionId)}`,
+  );
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    throw new DeploymentError("Cloudflare version lookup failed");
+  }
+  const body = await response.json();
+  return body.success === true && body.result?.id === versionId;
+}
+
+// Reads can flip between replicas, so one success is not enough.
+async function waitUntilReadable(
+  env,
+  versionIds,
+  worker,
+  { readVersion = isVersionReadable, sleep = delay } = {},
+) {
+  let streak = 0;
+  for (let attempt = 1; attempt <= SETTLE_ATTEMPTS; attempt++) {
+    const readable = await Promise.all(
+      versionIds.map((versionId) => readVersion(env, versionId, worker)),
+    );
+    streak = readable.every(Boolean) ? streak + 1 : 0;
+    if (streak === READABLE_STREAK) return;
+    await sleep(SETTLE_DELAY_MS);
+  }
+  throw new DeploymentError(
+    "Cloudflare does not serve the Worker version to deploy",
+  );
+}
+
+/**
+ * The only way to change production traffic. Waits until Cloudflare serves
+ * every version by ID, then runs `wrangler versions deploy`. Never call
+ * Wrangler's deploy directly: it fails with 100146 on a version that is not
+ * readable yet, and that failure stops the rollout.
+ */
+export async function deployVersions(
+  env,
+  traffic,
+  message,
+  { worker = WORKER, spawn = spawnSync, ...options } = {},
+) {
+  const versionIds = Object.keys(traffic);
+  if (
+    !Object.hasOwn(WORKER_DIRS, worker) ||
+    versionIds.length === 0 ||
+    !versionIds.every((id) => UUID.test(id))
+  ) {
+    throw new DeploymentError("Invalid Worker versions to deploy");
+  }
+  await waitUntilReadable(env, versionIds, worker, options);
+  runWrangler(
+    WORKER_DIRS[worker],
+    [
+      "versions",
+      "deploy",
+      ...versionIds.map((id) => `${id}@${traffic[id]}`),
+      "--yes",
+      "--message",
+      message,
+    ],
+    env,
+    spawn,
+  );
+}
+
 function runMarker(env) {
   if (
     !/^[1-9]\d*$/.test(env.SOURCE_RUN_ID ?? env.GITHUB_RUN_ID ?? "") ||
@@ -265,9 +351,10 @@ function runMarker(env) {
   return `toolkit-mcp:${env.SOURCE_RUN_ID ?? env.GITHUB_RUN_ID}:${env.SOURCE_RUN_ATTEMPT ?? env.GITHUB_RUN_ATTEMPT}:${env.SOURCE_SHA ?? env.TESTED_SHA}`;
 }
 
-function runWrangler(args, env, spawn = spawnSync) {
+// Call only from deployVersions.
+function runWrangler(dir, args, env, spawn) {
   const child = spawn("pnpm", ["exec", "wrangler", ...args], {
-    cwd: join(import.meta.dirname, "../packages/mcp-cloudflare"),
+    cwd: join(import.meta.dirname, dir),
     env,
     stdio: "inherit",
   });
@@ -313,18 +400,17 @@ export async function restorePreviousVersion(
   deployments,
   journal,
   env,
-  { list = listDeployments, sleep = delay, spawn = spawnSync } = {},
+  { list = listDeployments, sleep = delay, ...options } = {},
 ) {
   const previous = assertOwnedCandidate(deployments, journal);
   if (!UUID.test(previous)) {
     throw new DeploymentError("Invalid captured previous version");
   }
   const message = `Toolkit recovery ${env.GITHUB_RUN_ID}`;
-  runWrangler(
-    ["versions", "deploy", `${previous}@100`, "--yes", "--message", message],
-    env,
-    spawn,
-  );
+  await deployVersions(env, { [previous]: 100 }, message, {
+    sleep,
+    ...options,
+  });
   const current = await listSettled(
     env,
     (listed) => newestMessage(listed) === message,
@@ -433,17 +519,10 @@ async function main(command, env) {
         "Prior deployment changed before candidate staging",
       );
     }
-    runWrangler(
-      [
-        "versions",
-        "deploy",
-        `${journal.previous.version}@100`,
-        `${journal.candidateVersion}@0`,
-        "--yes",
-        "--message",
-        `${journal.marker}:stage`,
-      ],
+    await deployVersions(
       env,
+      { [journal.previous.version]: 100, [journal.candidateVersion]: 0 },
+      `${journal.marker}:stage`,
     );
     // Tells recovery that a stage exists even if Cloudflare does not list it.
     const deployed = { ...journal, stageDeployed: true };
@@ -460,16 +539,10 @@ async function main(command, env) {
   }
   if (command === "promote") {
     verifyStagedCandidate(deployments, journal);
-    runWrangler(
-      [
-        "versions",
-        "deploy",
-        `${journal.candidateVersion}@100`,
-        "--yes",
-        "--message",
-        `${journal.marker}:promote`,
-      ],
+    await deployVersions(
       env,
+      { [journal.candidateVersion]: 100 },
+      `${journal.marker}:promote`,
     );
     const promoted = verifyPromotedCandidate(
       await listSettled(
