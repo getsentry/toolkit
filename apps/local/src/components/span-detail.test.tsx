@@ -1,5 +1,12 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { formatDateTime } from "@/lib/presentation.ts";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
 import { SpanDetail } from "./span-detail.tsx";
@@ -99,6 +106,49 @@ test("span start and end times use local time, not raw epoch seconds", () => {
   const details =
     screen.getByRole("table", { name: "Span details" }).textContent ?? "";
   expect(details).not.toContain("1795010400.538");
-  expect(details).toContain(new Date(1795010400538).toLocaleTimeString());
-  expect(details).toContain(new Date(1795010400650).toLocaleTimeString());
+  expect(details).toContain(
+    formatDateTime(1795010400.538, { milliseconds: true }),
+  );
+  expect(details).toContain(
+    formatDateTime(1795010400.65, { milliseconds: true }),
+  );
+});
+
+test("span times keep milliseconds and show the date when it is not today", () => {
+  // A 40 ms span from an earlier day.
+  const [trace] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "GET /orders",
+              start_timestamp: 1_700_000_000.538,
+              timestamp: 1_700_000_000.578,
+              contexts: { trace: { trace_id: "trace", span_id: "root" } },
+            },
+          ],
+        ],
+      ]),
+      "fixture",
+    ),
+  );
+  const span = trace?.spans.find((entry) => entry.id === "root");
+  if (!trace || !span) throw new Error("Expected trace span");
+  render(<SpanDetail trace={trace} span={span} />);
+  const details = screen.getByRole("table", { name: "Span details" });
+  const time = (ms: number) =>
+    new Date(ms).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      fractionalSecondDigits: 3,
+    });
+  const start = within(details).getByRole("row", { name: /Start timestamp/ });
+  const end = within(details).getByRole("row", { name: /End timestamp/ });
+  const day = new Date(1_700_000_000_538).toLocaleDateString();
+  expect(start.textContent).toContain(`${day} ${time(1_700_000_000_538)}`);
+  expect(end.textContent).toContain(`${day} ${time(1_700_000_000_578)}`);
 });
