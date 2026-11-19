@@ -85,8 +85,7 @@ export function getEventExceptions(payload: unknown): EventException[] {
       // Elsewhere only a string reads as message text; an untyped number is
       // still an error, which the tail labels `Error`.
       const type = described
-        ? described.kind === "exception" &&
-          (described.errorType || described.text)
+        ? described.kind === "exception"
           ? (described.errorType ?? "Error")
           : undefined
         : (text(exception["type"]) ??
