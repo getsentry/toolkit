@@ -1578,13 +1578,13 @@ export const EventAttachmentSchema = z.object({
   name: z.string(),
   type: z.string(),
   size: z.number(),
-  // Sentry serializes `content_type` here, which may be null for attachments
-  // stored without one (e.g. some self-hosted instances).
+  // Sentry declares this as `str | None` (the attachment's `content_type`).
   mimetype: z.string().nullable(),
   dateCreated: z.string().datetime(),
   // Objectstore-backed attachments do not store a usable SHA1 (checksum is
   // unavailable), so we neither require nor surface it from this endpoint.
-  // Legacy field: `{ "Content-Type": mimetype }`, so values may be null too.
+  // Legacy `{ "Content-Type": ... }` field, declared `dict[str, str | None]`.
+  // Sentry has returned a null Content-Type here even when `mimetype` was set.
   headers: z.record(z.string(), z.string().nullable()).optional(),
 });
 

@@ -1179,4 +1179,22 @@ describe("EventAttachmentListSchema", () => {
     expect(attachment?.mimetype).toBeNull();
     expect(attachment?.headers).toEqual({ "Content-Type": null });
   });
+
+  it("accepts a null Content-Type header when mimetype is set", () => {
+    const [attachment] = EventAttachmentListSchema.parse([
+      {
+        id: "124",
+        event_id: "c2bcb3b9321c4cccb39079c8202dd082",
+        type: "event.attachment",
+        name: "screenshot.png",
+        mimetype: "image/png",
+        dateCreated: "2026-11-19T10:20:13.000000Z",
+        size: 42,
+        headers: { "Content-Type": null },
+        sha1: null,
+      },
+    ]);
+    expect(attachment?.mimetype).toBe("image/png");
+    expect(attachment?.headers).toEqual({ "Content-Type": null });
+  });
 });
