@@ -387,7 +387,7 @@ packageExtensionsChecksum: sha256-PIoL2jn0sFpFHgcMKW97dNeqBXVNxH6qFIzsWIBFOMY=
 pnpmfileChecksum: sha256-Ov3KZHuKeE0QxRj4zRZgvSDmIYPKMRpTDJcVa6X3RPs=
 
 patchedDependencies:
-  '@cloudflare/workers-oauth-provider@0.10.3': 34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8
+  '@cloudflare/workers-oauth-provider@0.10.3': b344570966186aa3fd016da543e99aabf3abd9a7b1cb6ba1ad038239e4305efa
   '@stricli/core@1.2.8': c1d70807ac8f612d2e942650da25753076478898ece26cbdef5af377bedcbadc
 
 importers:
@@ -875,7 +875,7 @@ importers:
         version: 3.0.232(react@19.2.8)(zod@4.6.7)
       '@cloudflare/workers-oauth-provider':
         specifier: 'catalog:'
-        version: 0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)
+        version: 0.10.3(patch_hash=b344570966186aa3fd016da543e99aabf3abd9a7b1cb6ba1ad038239e4305efa)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -9722,7 +9722,7 @@ snapshots:
   '@cloudflare/workerd-windows-64@1.20261101.1':
     optional: true
 
-  '@cloudflare/workers-oauth-provider@0.10.3(patch_hash=34910b67929c1888b1492384c514d6baeedc4a439f66e21375dee5af404834f8)': {}
+  '@cloudflare/workers-oauth-provider@0.10.3(patch_hash=b344570966186aa3fd016da543e99aabf3abd9a7b1cb6ba1ad038239e4305efa)': {}
 
   '@cloudflare/workers-types@4.20260405.1': {}
 

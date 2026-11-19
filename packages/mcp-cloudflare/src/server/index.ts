@@ -348,6 +348,13 @@ const wrappedOAuthProvider = {
       // handled in authorization-server-metadata.ts.
       clientIdMetadataDocumentEnabled: true,
       clientIdMetadataDocuments: CLIENT_ID_METADATA_DOCUMENTS,
+      // Our PRM echoes the query of the URL a client dials (`?utm_source=`,
+      // `?codemode=`), and clients disagree about whether that query and a
+      // trailing slash belong in the RFC 8707 resource. A login in one form
+      // and a token or refresh request in the other must not fail with
+      // `invalid_target` or an audience mismatch. Path (org/project) binding
+      // still applies. Provided by our workers-oauth-provider patch.
+      resourceMatchCanonical: true,
       tokenExchangeCallback: (options) =>
         tokenExchangeCallback(options, env, request, clientFamily),
       scopesSupported: Object.keys(SCOPES),
