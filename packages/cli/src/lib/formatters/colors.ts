@@ -86,7 +86,8 @@ export const header = (text: string): string => muted(text);
 
 // Status-based Coloring
 
-const STATUS_COLORS: Record<IssueStatus, (text: string) => string> = {
+const STATUS_COLORS: Partial<Record<string, (text: string) => string>> &
+  Record<IssueStatus, (text: string) => string> = {
   resolved: green,
   resolvedInNextRelease: green,
   unresolved: yellow,
@@ -101,15 +102,16 @@ export function statusColor(text: string, status: string | undefined): string {
   // Try exact match first (handles camelCase like resolvedInNextRelease),
   // then fall back to lowercase (handles unexpected uppercase from older instances).
   const colorFn =
-    STATUS_COLORS[status as IssueStatus] ??
-    STATUS_COLORS[status?.toLowerCase() as IssueStatus] ??
+    STATUS_COLORS[status ?? ""] ??
+    STATUS_COLORS[status?.toLowerCase() ?? ""] ??
     STATUS_COLORS.unresolved;
   return colorFn(text);
 }
 
 // Level-based Coloring
 
-const LEVEL_COLORS: Record<IssueLevel, (text: string) => string> = {
+const LEVEL_COLORS: Partial<Record<string, (text: string) => string>> &
+  Record<IssueLevel, (text: string) => string> = {
   fatal: red,
   error: red,
   warning: yellow,
@@ -121,8 +123,7 @@ const LEVEL_COLORS: Record<IssueLevel, (text: string) => string> = {
  * Color text based on issue level (case-insensitive)
  */
 export function levelColor(text: string, level: string | undefined): string {
-  const normalizedLevel = level?.toLowerCase() as IssueLevel;
-  const colorFn = LEVEL_COLORS[normalizedLevel];
+  const colorFn = LEVEL_COLORS[level?.toLowerCase() ?? ""];
   return colorFn ? colorFn(text) : text;
 }
 

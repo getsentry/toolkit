@@ -2,7 +2,15 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import {
   clearAuth,
   getAuthConfig,
@@ -19,7 +27,7 @@ import { useEnvSandbox, useTestConfigDir } from "../../helpers.js";
 const getConfigDir = useTestConfigDir("json-auth-migration-");
 useEnvSandbox(["SENTRY_AUTH_TOKEN", "SENTRY_TOKEN", "SENTRY_FORCE_ENV_TOKEN"]);
 
-let stderr: ReturnType<typeof vi.spyOn<typeof process.stderr, "write">>;
+let stderr: MockInstance<typeof process.stderr.write>;
 
 beforeEach(() => {
   stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

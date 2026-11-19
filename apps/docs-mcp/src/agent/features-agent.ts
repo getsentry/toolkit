@@ -177,7 +177,7 @@ function escapeControlCharsInStrings(text: string): string {
   let result = "";
   let inString = false;
   for (let i = 0; i < text.length; i++) {
-    const char = text[i];
+    const char = text.charAt(i);
     if (char === "\\" && i + 1 < text.length) {
       result += char + text[++i];
     } else {
@@ -339,9 +339,9 @@ Return the canonical feature slugs available for this platform.`;
         });
         const output = await parseFeaturesOutput(result.steps);
 
-        const inputTokens = result.totalUsage?.inputTokens ?? 0;
-        const outputTokens = result.totalUsage?.outputTokens ?? 0;
-        const stepCount = result.steps?.length ?? 0;
+        const inputTokens = result.totalUsage.inputTokens ?? 0;
+        const outputTokens = result.totalUsage.outputTokens ?? 0;
+        const stepCount = result.steps.length;
         const usedModelId = getUsedModelId(result);
 
         span.setAttribute("agent.model", usedModelId);

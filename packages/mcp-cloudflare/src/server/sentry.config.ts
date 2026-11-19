@@ -23,7 +23,7 @@ export default function getSentryConfig(env: Env): CloudflareOptions {
     ...(versionId ? { release: versionId } : {}),
     environment:
       env.SENTRY_ENVIRONMENT ??
-      (process.env.NODE_ENV !== "production" ? "development" : "production"),
+      (process.env["NODE_ENV"] !== "production" ? "development" : "production"),
     integrations: [Sentry.zodErrorsIntegration()],
   };
 }

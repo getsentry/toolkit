@@ -60,7 +60,7 @@ describe("runTailorAgent", () => {
       ...Array.from({ length: 9 }, () => "auto"),
       "none",
     ]);
-    expect(requests[9].tools).toHaveLength(2);
+    expect(requests[9]!.tools).toHaveLength(2);
   });
 
   test("synthesizes from the tool history when the agent ends without text", async () => {
@@ -83,9 +83,9 @@ describe("runTailorAgent", () => {
       PRIMARY_MODEL,
       FALLBACK_MODEL,
     ]);
-    expect(synthesis[1].tool_choice).toBe("none");
-    expect(synthesis[1].tools).toHaveLength(2);
-    expect(synthesis[1].messages.map((message) => message.role)).toEqual([
+    expect(synthesis[1]!.tool_choice).toBe("none");
+    expect(synthesis[1]!.tools).toHaveLength(2);
+    expect(synthesis[1]!.messages.map((message) => message.role)).toEqual([
       "system",
       "assistant",
       "tool",

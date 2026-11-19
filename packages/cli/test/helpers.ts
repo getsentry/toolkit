@@ -7,7 +7,13 @@
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { ArgumentParseError } from "@stricli/core";
+import {
+  ArgumentParseError,
+  type BaseArgs,
+  type BaseFlags,
+  type Command,
+  type CommandContext,
+} from "@stricli/core";
 import { afterEach, beforeEach, expect } from "vitest";
 import {
   resetAccountSelection,
@@ -19,11 +25,16 @@ import {
 import { CONFIG_DIR_ENV_VAR, closeDatabase } from "../src/lib/db/index.js";
 import { ENV_VAR_AGENTS } from "../src/lib/detect-agent.js";
 import { resetTipsCache } from "../src/lib/tips.js";
+import type { withProgress } from "../src/lib/polling.js";
+import type { SentryIssue } from "../src/types/index.js";
 
 // re-exporting a single constant, not a barrel
 export { TEST_TMP_DIR } from "./constants.js";
 
 import { TEST_TMP_DIR } from "./constants.js";
+
+/** First parameter of `fetch`, without relying on the DOM `RequestInfo` type. */
+type FetchInput = Parameters<typeof fetch>[0];
 
 mkdirSync(TEST_TMP_DIR, { recursive: true });
 
@@ -76,7 +87,7 @@ export async function cleanupTestDir(dir: string): Promise<void> {
  * Supports both full signature and simpler forms for tests that don't need input/init.
  */
 type FetchMockFn =
-  | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
+  | ((input: FetchInput, init?: RequestInit) => Promise<Response>)
   | (() => Promise<Response>);
 
 /**
@@ -223,7 +234,7 @@ export function mintSntrysToken(payload: Record<string, unknown>): string {
  * Used by tests that intercept `globalThis.fetch` and assert on the
  * destination URLs of captured calls.
  */
-export function extractFetchUrl(input: RequestInfo | URL): string {
+export function extractFetchUrl(input: FetchInput): string {
   if (typeof input === "string") {
     return input;
   }
@@ -292,7 +303,7 @@ export function installFetchMock(
   const fallbackBody = fallback?.body ?? { detail: "Not found" };
 
   globalThis.fetch = async (
-    input: RequestInfo | URL,
+    input: FetchInput,
     init?: RequestInit,
     // test mock router requires branching for method/URL/body matching
   ): Promise<Response> => {
@@ -301,7 +312,7 @@ export function installFetchMock(
     const body =
       init?.body && typeof init.body === "string" ? init.body : undefined;
 
-    calls.push({ url, method, body });
+    calls.push(body === undefined ? { url, method } : { url, method, body });
 
     for (const route of routes) {
       // Method filter
@@ -381,3 +392,127 @@ export function parseFailure(error: unknown): Error {
   expect(error).toBeInstanceOf(ArgumentParseError);
   return (error as ArgumentParseError).exception as Error;
 }
+
+/**
+ * The context a test passes to a command: only the fields, and the parts of
+ * them, that the command reads.
+ */
+export type TestCommandContext<CONTEXT extends CommandContext> = {
+  readonly [K in keyof CONTEXT]?: Partial<CONTEXT[K]>;
+};
+
+/** A loaded command function as tests call it. */
+export type TestCommandFunction<CONTEXT extends CommandContext> = (
+  this: TestCommandContext<CONTEXT>,
+  flags: BaseFlags,
+  ...args: BaseArgs
+) => Promise<void | Error>;
+
+/**
+ * Load the function behind a lazily loaded command. Stricli's loader
+ * resolves to either the function or a module whose default export is the
+ * function (`CommandModule`); this returns the function in both cases,
+ * always as an async function.
+ */
+export async function loadCommand<CONTEXT extends CommandContext>(
+  command: Command<CONTEXT>,
+): Promise<TestCommandFunction<CONTEXT>> {
+  const loaded = await command.loader();
+  const func = typeof loaded === "function" ? loaded : loaded.default;
+  return async function (this: TestCommandContext<CONTEXT>, flags, ...args) {
+    // The command reads only the context fields each test supplies.
+    return await func.call(this as CONTEXT, flags, ...args);
+  };
+}
+
+/**
+ * The element of `items` at `index`, failing the test when there is none.
+ * A negative index counts back from the end, as with `Array.prototype.at`.
+ */
+export function at<T>(items: ArrayLike<T>, index: number): T {
+  const position = index < 0 ? items.length + index : index;
+  if (position < 0 || position >= items.length) {
+    throw new Error(
+      `Expected an element at index ${index}, but there are ${items.length}`,
+    );
+  }
+  return items[position] as T;
+}
+
+/** `value`, failing the test when it is `null` or `undefined`. */
+export function must<T>(value: T | null | undefined, what = "a value"): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Expected ${what}, but got ${String(value)}`);
+  }
+  return value;
+}
+
+/**
+ * The error `promise` rejects with, failing the test when it resolves or
+ * rejects with something other than an Error.
+ */
+export async function rejection(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new Error(`Expected an Error rejection, but got ${String(error)}`);
+  }
+  throw new Error("Expected the promise to reject, but it resolved");
+}
+
+/** Keys of `T` whose properties are optional. */
+type OptionalKeys<T> = {
+  [K in keyof T]-?: object extends Pick<T, K> ? K : never;
+}[keyof T];
+
+/**
+ * A copy of `value` without the optional `keys`, for fixtures that need a
+ * field to be absent rather than set to a default.
+ */
+export function without<T extends object>(
+  value: T,
+  ...keys: OptionalKeys<T>[]
+): T {
+  const copy = { ...value };
+  for (const key of keys) {
+    delete copy[key];
+  }
+  return copy;
+}
+
+declare global {
+  /** The real `fetch`, saved by test/preload.ts before it stubs the global. */
+  var __originalFetch: typeof fetch | undefined;
+}
+
+/** The real `fetch` saved by test/preload.ts, for tests that need the network stack. */
+export function originalFetch(): typeof fetch {
+  const fetchImpl = globalThis.__originalFetch;
+  if (fetchImpl === undefined) {
+    throw new Error("test/preload.ts did not save the original fetch");
+  }
+  return fetchImpl;
+}
+
+/** The project summary embedded in an issue response. */
+export type IssueProject = NonNullable<SentryIssue["project"]>;
+
+/**
+ * Build the project summary embedded in an issue response, for fixtures that
+ * only care about the slug.
+ */
+export function issueProject(
+  slug: string,
+  overrides: Partial<IssueProject> = {},
+): IssueProject {
+  return { id: "1", name: slug, slug, platform: null, ...overrides };
+}
+
+/** Passthrough for `withProgress` that skips the spinner and runs `fn` directly. */
+export const passthroughWithProgress: typeof withProgress = (_options, fn) =>
+  fn(() => {
+    // Progress messages are not rendered in tests.
+  });

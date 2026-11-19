@@ -125,10 +125,7 @@ export default new Hono<{ Bindings: Env }>().get("/", async (c) => {
     // Check if this is an authentication error
     const authInfo = analyzeAuthError(error);
     if (authInfo.isAuthError) {
-      return c.json(
-        getAuthErrorResponse(authInfo),
-        authInfo.statusCode || (401 as any),
-      );
+      return c.json(getAuthErrorResponse(authInfo), authInfo.statusCode ?? 401);
     }
 
     const eventId = logIssue(error);

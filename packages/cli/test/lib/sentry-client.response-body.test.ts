@@ -360,12 +360,11 @@ describe("SDK response body recovery", () => {
       });
       const operation = listOrganizations({
         ...getSdkClientConfig(REGION_URL),
-        responseValidator:
-          failureKind === "validation"
-            ? () => {
-                throw validationError;
-              }
-            : undefined,
+        ...(failureKind === "validation" && {
+          responseValidator: () => {
+            throw validationError;
+          },
+        }),
       });
 
       if (failureKind === "validation") {
@@ -412,7 +411,7 @@ describe("SDK streaming compatibility", () => {
             controller.enqueue(bytes);
           },
         }),
-        { headers: contentType ? { "Content-Type": contentType } : undefined },
+        contentType ? { headers: { "Content-Type": contentType } } : {},
       );
       let calls = 0;
       globalThis.fetch = mockFetch(async () => {

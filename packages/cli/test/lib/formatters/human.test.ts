@@ -566,11 +566,16 @@ describe("writeIssueTable priority labels", () => {
     metadata: {},
   };
 
+  /** An issue as the API sends it, with a priority outside the typed enum. */
+  function issueWithPriority(priority: string): SentryIssue {
+    return JSON.parse(JSON.stringify({ ...baseMockIssue, priority }));
+  }
+
   test("critical priority renders in triage column", () => {
     const { writer, output } = capture();
     const rows: IssueTableRow[] = [
       {
-        issue: { ...baseMockIssue, priority: "critical" },
+        issue: issueWithPriority("critical"),
         orgSlug: "org",
         formatOptions: {},
       },
@@ -596,7 +601,7 @@ describe("writeIssueTable priority labels", () => {
     const { writer, output } = capture();
     const rows: IssueTableRow[] = [
       {
-        issue: { ...baseMockIssue, priority: "urgent" },
+        issue: issueWithPriority("urgent"),
         orgSlug: "org",
         formatOptions: {},
       },
@@ -722,16 +727,16 @@ describe("formatDashboardCreated", () => {
 
 describe("formatUpgradeResult", () => {
   // Force plain output so we get raw markdown (no ANSI codes)
-  const origPlain = process.env.SENTRY_PLAIN_OUTPUT;
+  const origPlain = process.env["SENTRY_PLAIN_OUTPUT"];
   function withPlain(fn: () => void) {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     try {
       fn();
     } finally {
       if (origPlain === undefined) {
-        delete process.env.SENTRY_PLAIN_OUTPUT;
+        delete process.env["SENTRY_PLAIN_OUTPUT"];
       } else {
-        process.env.SENTRY_PLAIN_OUTPUT = origPlain;
+        process.env["SENTRY_PLAIN_OUTPUT"] = origPlain;
       }
     }
   }

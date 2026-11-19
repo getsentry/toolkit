@@ -28,7 +28,7 @@ describe("web URLs for active credential hosts", () => {
   });
 
   test("uses a self-hosted token claim for web links and URL shape", () => {
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "https://sentry.example.com",
     });
@@ -43,7 +43,7 @@ describe("web URLs for active credential hosts", () => {
   });
 
   test("stored OAuth host wins over an inactive environment token", () => {
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "https://inactive.example.com",
     });
@@ -54,8 +54,8 @@ describe("web URLs for active credential hosts", () => {
   });
 
   test("explicit URLs still take priority for web links", () => {
-    process.env.SENTRY_URL = "https://configured.example.com/sentry";
-    process.env.SENTRY_AUTH_TOKEN = mintSntrysToken({
+    process.env["SENTRY_URL"] = "https://configured.example.com/sentry";
+    process.env["SENTRY_AUTH_TOKEN"] = mintSntrysToken({
       iat: 1,
       url: "https://token.example.com",
     });

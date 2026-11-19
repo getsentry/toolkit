@@ -10,9 +10,9 @@ export type CaptureHeaderProps = {
   streamUrl: string | null;
   connection: ConnectionState;
   isClosed: boolean;
-  expiresAt?: number;
-  session?: ViewerSession;
-  latestEventTime?: number;
+  expiresAt?: number | undefined;
+  session?: ViewerSession | undefined;
+  latestEventTime?: number | undefined;
   sessionPicker?: ReactNode;
   onReload: () => void;
   isReloading: boolean;
@@ -132,9 +132,7 @@ export function CaptureHeader({
             )}
           </div>
           <Badge variant={tone} className="shrink-0 font-normal">
-            <span role="status" aria-label="Capture state">
-              {state}
-            </span>
+            <output aria-label="Capture state">{state}</output>
           </Badge>
         </div>
         {currentSession?.cwd ? (

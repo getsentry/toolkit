@@ -12,7 +12,7 @@ interface ToolActionsProps {
 }
 
 export function ToolActions({ tools }: ToolActionsProps) {
-  if (!tools || tools.length === 0) return null;
+  if (tools.length === 0) return null;
 
   return (
     <div className="mt-4 space-y-3">

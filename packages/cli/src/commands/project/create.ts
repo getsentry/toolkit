@@ -156,7 +156,7 @@ async function handleCreateProject404(opts: {
   teamSlug: string;
   name: string;
   platform: string;
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 }): Promise<never> {
   const { orgSlug, teamSlug, name, platform, detectedFrom } = opts;
 
@@ -219,8 +219,8 @@ async function handleCreateProject404(opts: {
 async function resolveDryRunTeam(
   orgSlug: string,
   opts: {
-    team?: string;
-    detectedFrom?: string;
+    team?: string | undefined;
+    detectedFrom?: string | undefined;
     autoCreateSlug: string;
   },
 ): Promise<ResolvedTeam> {
@@ -260,7 +260,7 @@ type CreateProjectOpts = CreateProjectBaseOpts & {
   /** Team slug that will own the project. */
   teamSlug: string;
   /** Source used to resolve the organization, when auto-detected. */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /**
@@ -376,7 +376,7 @@ async function createProjectWithErrors(
 /** A validated project specification parsed from the command positionals. */
 type ParsedProjectSpec = {
   /** Explicit organization slug, when the name used org/name syntax. */
-  org?: string;
+  org?: string | undefined;
   /** Project display name. */
   name: string;
   /** Validated Sentry platform identifier. */
@@ -386,10 +386,10 @@ type ParsedProjectSpec = {
 /** `project create`'s positionals, parsed. */
 type ProjectSpecsInput = {
   /** Org prefix the names share, if any */
-  readonly explicitOrg?: string;
+  readonly explicitOrg?: string | undefined;
   readonly parsed: readonly ParsedProjectSpec[];
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
   readonly warnings: readonly string[];
 };
 
@@ -580,13 +580,13 @@ async function createOneProject(opts: {
   name: string;
   platform: string;
   flags: CreateFlags;
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
   /**
    * Slug to use when auto-creating a team in an org with no teams. Shared
    * across a multi-project batch so every project lands in (or previews) the
    * one team the first project creates — rather than each resolving its own.
    */
-  teamAutoCreateSlug?: string;
+  teamAutoCreateSlug?: string | undefined;
 }): Promise<ProjectCreatedResult> {
   const { orgSlug, name, platform, flags, detectedFrom } = opts;
   const expectedSlug = slugify(name);

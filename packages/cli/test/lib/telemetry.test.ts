@@ -15,6 +15,7 @@ import {
   expect,
   test,
   vi,
+  type MockInstance,
 } from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
 import { Database } from "../../src/lib/db/sqlite.js";
@@ -560,9 +561,10 @@ describe("isEpipeError", () => {
   });
 
   test("detects EPIPE in node_system_error context", () => {
-    const event = {
+    const event: Sentry.ErrorEvent = {
+      type: undefined,
       contexts: { node_system_error: { code: "EPIPE" } },
-    } as Sentry.ErrorEvent;
+    };
     expect(isEpipeError(event)).toBe(true);
   });
 
@@ -596,9 +598,10 @@ describe("isEbadfError", () => {
   });
 
   test("detects EBADF in node_system_error context", () => {
-    const event = {
+    const event: Sentry.ErrorEvent = {
+      type: undefined,
       contexts: { node_system_error: { code: "EBADF" } },
-    } as Sentry.ErrorEvent;
+    };
     expect(isEbadfError(event)).toBe(true);
   });
 
@@ -691,7 +694,7 @@ describe("setOrgProjectContext", () => {
 });
 
 describe("setFlagContext", () => {
-  let setTagSpy: ReturnType<typeof spyOn>;
+  let setTagSpy: MockInstance<(typeof Sentry)["setTag"]>;
 
   beforeEach(() => {
     setTagSpy = vi.spyOn(Sentry, "setTag");
@@ -821,7 +824,7 @@ describe("setFlagContext", () => {
 });
 
 describe("setArgsContext", () => {
-  let setContextSpy: ReturnType<typeof spyOn>;
+  let setContextSpy: MockInstance<(typeof Sentry)["setContext"]>;
 
   beforeEach(() => {
     setContextSpy = vi.spyOn(Sentry, "setContext");
@@ -1100,7 +1103,7 @@ describe("createTracedDatabase", () => {
 
     // columnNames is bun:sqlite-specific; skip assertion on Node.js
     if ("columnNames" in stmt) {
-      expect(stmt.columnNames).toEqual(["id", "name"]);
+      expect(stmt["columnNames"]).toEqual(["id", "name"]);
     }
     expect(typeof stmt.toString).toBe("function");
 
@@ -1122,8 +1125,9 @@ describe("createTracedDatabase", () => {
     }
 
     // finalize() is bun:sqlite-specific; skip on Node.js
-    if (typeof stmt.finalize === "function") {
-      expect(() => stmt.finalize()).not.toThrow();
+    const finalize = stmt["finalize"];
+    if (typeof finalize === "function") {
+      expect(() => finalize.call(stmt)).not.toThrow();
     }
 
     db.close();

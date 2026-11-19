@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "noEmit": true
+  },
+  // The package ships only the esbuild bundle of the CLI; its own source is
+  // the build script. The CLI's esbuild plugins it imports are checked here
+  // too, as this program reaches them.
+  "include": ["script"]
+}

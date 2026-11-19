@@ -20,7 +20,7 @@ import {
 } from "../../../src/lib/api/conversations.js";
 import { MAX_PAGINATION_PAGES } from "../../../src/lib/api/infrastructure.js";
 import type { ConversationStats } from "../../../src/types/conversation.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 // ============================================================================
 // Helpers
@@ -66,7 +66,7 @@ function mockSequential(
     const req = new Request(input, init);
     capturedUrls.push(req.url);
 
-    const resp = responses[callIndex];
+    const resp = at(responses, callIndex);
     callIndex += 1;
 
     return new Response(JSON.stringify(resp.body), {
@@ -368,7 +368,7 @@ describe("getConversationSpans", () => {
     const result = await getConversationSpans(ORG, CONV_ID);
 
     expect(result.spans).toHaveLength(1);
-    expect(result.spans[0].span_id).toBe("span-1-aabb1122");
+    expect(at(result.spans, 0).span_id).toBe("span-1-aabb1122");
     expect(result.title).toBe("Refund flow");
     expect(result.stats?.totalCost).toBe(0.0042);
     expect(result.stats?.totalTokens).toBe(100);
@@ -398,8 +398,8 @@ describe("getConversationSpans", () => {
     const result = await getConversationSpans(ORG, CONV_ID);
 
     expect(result.spans).toHaveLength(2);
-    expect(result.spans[0].span_id).toBe("span-page-1-aa11");
-    expect(result.spans[1].span_id).toBe("span-page-2-bb22");
+    expect(at(result.spans, 0).span_id).toBe("span-page-1-aa11");
+    expect(at(result.spans, 1).span_id).toBe("span-page-2-bb22");
     // Title is taken from the first page
     expect(result.title).toBe("Multi-page");
     expect(result.truncated).toBe(false);
