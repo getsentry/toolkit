@@ -37,12 +37,15 @@ the URL path so SDK transports that omit query parameters still deliver events.
 The daemon also accepts `<ingestUrl>/stream`, which PHP's Spotlight transport
 posts to, and `<ingestUrl>/api/<project>/envelope/`, which Go, Rust, Ruby, and
 PHP build from a DSN such as
-`http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0` (with
-Spotlight off). Node.js and Python post to `ingestUrl` as is. Ruby's Spotlight
-transport always posts to the root `/stream`, which carries no capability, so
-Ruby needs the DSN form. Those SDKs copy the DSN into each envelope header, so
-the daemon drops the header's `dsn` key before it stores or streams a session
-envelope.
+`http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+Node.js and Python post to `ingestUrl` as is. Ruby uses only the host and port
+from `SENTRY_SPOTLIGHT` and posts to `/stream`, so the session path and its key
+are lost, and Ruby needs the DSN form. `local run --session` creates a new
+session on every run and sets only `SENTRY_SPOTLIGHT`, so DSN-based SDKs use a
+session from `local session create <name> --json` and run outside
+`local run`; read their events with `local event list <id>`. Those SDKs copy
+the DSN into each envelope header, so the daemon drops the header's `dsn` key
+before it stores or streams a session envelope.
 Treat those URLs as credentials. Terminal output redacts them, including the
 `Starting:` line of `local run --session`; the wrapped app still gets the real URL.
 Use `--clientId <key>` to make session creation idempotent for retries. Once a

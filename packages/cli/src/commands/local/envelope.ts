@@ -419,11 +419,18 @@ export function withoutOwnDeliveries(
  * the read capability, so drop the key. Only the header line is rewritten.
  */
 export function withoutDsnHeader(body: Buffer): Buffer {
+  // Only the first line is needed, so skip frame(): it would parse every item
+  // and reject envelopes that still have a usable header.
   const newline = body.indexOf(10);
   const end = newline < 0 ? body.length : newline;
   let header: unknown;
   try {
-    header = JSON.parse(body.subarray(0, end).toString("utf8"));
+    header = JSON.parse(
+      body
+        .subarray(0, end)
+        .toString("utf8")
+        .replace(/^\uFEFF/, ""),
+    );
   } catch {
     // Malformed envelopes stay byte-exact for raw inspection.
     logger.debug("Local receiver kept an undecodable envelope header.");

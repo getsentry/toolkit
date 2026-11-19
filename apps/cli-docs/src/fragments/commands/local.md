@@ -284,12 +284,20 @@ How an SDK reaches a session depends on its Spotlight support:
   `local run --session` needs no setup.
 - **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
   it, which the session accepts.
-- **Go, Rust, and Ruby** (and PHP, if you prefer): turn Spotlight off and set
-  `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
-  This is the `ingestUrl` from `sentry local session view <id> --json` with
-  `local@` and `/0` added. Ruby's Spotlight transport always posts to the
-  daemon's root `/stream`, which carries no capability, so a session can't
-  accept it.
+- **Go, Rust, and Ruby** (and PHP, if you prefer) send through a DSN, which
+  `local run --session` doesn't set. It also creates a new session on every
+  run, so create one session and run the app yourself:
+
+  1. Run `sentry local session create <name> --json` and take its `ingestUrl`.
+  2. Add `local@` after `http://` and `/0` at the end to get
+     `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+  3. Start the app directly with that `SENTRY_DSN`, not under
+     `local run --session`.
+  4. Read what it sent with `sentry local event list <id>`.
+
+  Ruby uses only the host and port from `SENTRY_SPOTLIGHT` and posts to
+  `/stream`, so the session path and its key are lost. Set
+  `config.spotlight = false` only if your app turns Spotlight on itself.
 
 The daemon removes the `dsn` from each envelope header it captures into a
 session, because that DSN holds the ingest capability.
