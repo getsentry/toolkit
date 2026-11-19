@@ -349,9 +349,15 @@ export function drawChart(
     });
     tooltip.replaceChildren(timeRow, ...rows);
     tooltip.hidden = false;
-    const left = Math.min(px + 12, width - tooltip.offsetWidth - 4);
-    tooltip.style.left = `${left < px && px - tooltip.offsetWidth - 12 > 0 ? px - tooltip.offsetWidth - 12 : left}px`;
-    tooltip.style.top = `${MARGIN.top}px`;
+    // The tooltip is HTML, so convert viewBox units to CSS pixels. They
+    // differ when the container is narrower than the minimum viewBox width.
+    const box = root.getBoundingClientRect();
+    const toCss = box.width > 0 ? box.width / width : 1;
+    const cssX = px * toCss;
+    const tipWidth = tooltip.offsetWidth;
+    const left = Math.min(cssX + 12, box.width - tipWidth - 4);
+    tooltip.style.left = `${left < cssX && cssX - tipWidth - 12 > 0 ? cssX - tipWidth - 12 : Math.max(left, 0)}px`;
+    tooltip.style.top = `${MARGIN.top * toCss}px`;
   };
 
   root.addEventListener("pointermove", (event) => {
