@@ -1,6 +1,7 @@
 // Packages the built site (apps/cli-docs/dist) as Vercel Build Output API v3:
-// the static files, the routes below, and the /install/<handoff code> Edge
-// Function. Usage: node build-output.mjs <output dir, e.g. .vercel/output>
+// the static files, the routes below, and the Edge Function behind
+// /install/<handoff code> and /install.ps1/<handoff code>.
+// Usage: node build-output.mjs <output dir, e.g. .vercel/output>
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,8 +27,8 @@ const routes = [
     continue: true,
   },
   {
-    src: `^/install/(${HANDOFF_CODE.source.slice(1, -1)})$`,
-    dest: `/${HANDOFF_FUNCTION}?code=$1`,
+    src: `^/(install|install\\.ps1)/(${HANDOFF_CODE.source.slice(1, -1)})$`,
+    dest: `/${HANDOFF_FUNCTION}?script=$1&code=$2`,
   },
 ];
 
@@ -46,10 +47,13 @@ export function buildOutput(distDir, outputDir) {
     `${JSON.stringify({ runtime: "edge", entrypoint: "index.js" })}\n`,
   );
   const handler = readFileSync(new URL("./install-handoff.mjs", import.meta.url), "utf8");
-  const installScript = readFileSync(join(distDir, "install"), "utf8");
+  const scripts = {
+    install: readFileSync(join(distDir, "install"), "utf8"),
+    "install.ps1": readFileSync(join(distDir, "install.ps1"), "utf8"),
+  };
   writeFileSync(
     join(functionDir, "index.js"),
-    `${handler}\nexport default createHandler(${JSON.stringify(installScript)});\n`,
+    `${handler}\nexport default createHandler(${JSON.stringify(scripts)});\n`,
   );
 }
 
