@@ -1484,23 +1484,40 @@ export function formatItem(
 }
 
 /**
- * Whether every item in an envelope is an `event` that is not JSON. The tail
- * still shows those under `-f error`, but they prove nothing about the SDK,
- * so `--verify` does not count them.
+ * Housekeeping item types an SDK sends on its own, even when nothing else
+ * reaches Sentry Local. Every other type counts as telemetry, so item types
+ * that SDKs add later count without a change here.
  */
-export function hasOnlyInvalidEvents(container: {
-  getParsedEnvelope: () => {
-    envelope: [unknown, [{ type?: string }, Record<string, unknown>][]];
-  } | null;
-}): boolean {
+const NOT_TELEMETRY_ITEM_TYPES = new Set([
+  "session",
+  "sessions",
+  "client_report",
+]);
+
+/**
+ * Whether an envelope shows the app is set up: it holds an item the active
+ * filters let through, or, with no filters, any item that is not
+ * housekeeping. An event that is not JSON never counts, even though the tail
+ * shows it under `-f error`.
+ */
+export function envelopeHasTelemetry(
+  container: {
+    getParsedEnvelope: () => {
+      envelope: [Record<string, unknown>, [{ type?: string }, unknown][]];
+    } | null;
+  },
+  activeFilters: ReadonlySet<FilterValue>,
+): boolean {
   const items = container.getParsedEnvelope()?.envelope[1] ?? [];
-  return (
-    items.length > 0 &&
-    items.every(
-      ([{ type }, payload]) =>
-        ERROR_TYPES.has(type ?? "") && isUndecodedEvent(payload),
-    )
-  );
+  return items.some(([{ type }, payload]) => {
+    const item = payload as Record<string, unknown>;
+    if (ERROR_TYPES.has(type ?? "") && isUndecodedEvent(item)) {
+      return false;
+    }
+    return activeFilters.size > 0
+      ? isItemIncluded(type, activeFilters, item)
+      : type !== undefined && !NOT_TELEMETRY_ITEM_TYPES.has(type);
+  });
 }
 
 /**

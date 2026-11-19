@@ -1307,30 +1307,62 @@ describe("sentry local run --verify receiver", () => {
     }
   });
 
-  test("does not verify on an event that is not JSON", async () => {
-    const sendInvalidEvent = [
+  /** An app that posts one envelope with these item lines, then idles. */
+  function sendItems(...lines: string[]): string[] {
+    return [
       "-e",
-      [
-        "const body = ['{}', JSON.stringify({ type: 'event' }), 'not-json'].join(String.fromCharCode(10));",
-        "fetch(process.env.SENTRY_SPOTLIGHT, { method: 'POST', body }).then(() => setTimeout(() => {}, 30000));",
-      ].join(" "),
+      `fetch(process.env.SENTRY_SPOTLIGHT, { method: 'POST', body: ${JSON.stringify(["{}", ...lines].join("\n"))} }).then(() => setTimeout(() => {}, 30000));`,
     ];
+  }
+  const invalidEvent = ['{"type":"event","length":8}', "not-json"];
+  const session = ['{"type":"session"}', "{}"];
+  const transaction = ['{"type":"transaction"}', '{"type":"transaction"}'];
+  const validEvent = ['{"type":"event"}', '{"message":"verify me"}'];
+
+  async function verifyWithItems(
+    filter: NonNullable<Parameters<RunFunc>[0]["filter"]>,
+    lines: string[],
+  ): Promise<unknown> {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     try {
       const func = (await runCommand.loader()) as unknown as RunFunc;
-      const error = await func
+      return await func
         .call(
           makeContext(),
-          { port: 0, host: "127.0.0.1", verify: true, timeout: 2 },
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 2, filter },
           process.execPath,
-          ...sendInvalidEvent,
+          ...sendItems(...lines),
         )
         .catch((err: unknown) => err);
-      expect(error).toBeInstanceOf(VerifyFailedError);
-      expect((error as Error).message).toContain("Verification timed out");
     } finally {
       warn.mockRestore();
+      info.mockRestore();
     }
+  }
+
+  test.each([
+    ["alone", [], invalidEvent],
+    ["with a session", [], [...invalidEvent, ...session]],
+    ["with a session under -f error", ["error"], [...invalidEvent, ...session]],
+    [
+      "with filtered-out telemetry",
+      ["error"],
+      [...invalidEvent, ...transaction],
+    ],
+  ] as const)(
+    "does not verify on an event that is not JSON %s",
+    async (_name, filter, lines) => {
+      const error = await verifyWithItems([...filter], [...lines]);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      expect((error as Error).message).toContain("Verification timed out");
+    },
+  );
+
+  test("verifies on a valid error next to an event that is not JSON", async () => {
+    expect(
+      await verifyWithItems(["error"], [...invalidEvent, ...validEvent]),
+    ).toBeUndefined();
   });
 
   test("verifies on a free port when the default port is busy", async () => {

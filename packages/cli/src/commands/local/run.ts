@@ -51,9 +51,9 @@ import {
   type FilterValue,
   FORMAT_VALUES,
   createReplayTracker,
+  envelopeHasTelemetry,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
-  hasOnlyInvalidEvents,
   type FormatValue,
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
@@ -1041,10 +1041,13 @@ async function* runWithVerify(
 
   const spotlightUrl = `${url}/stream`;
 
+  // Only telemetry the active filters show counts: an SDK sends sessions and
+  // client reports even when nothing else reaches Sentry Local.
+  const activeFilters = new Set(flags.filter);
   let subscriptionId: string | undefined;
   const envelopeReceived = new Promise<void>((resolveEnvelope) => {
     subscriptionId = buffer.subscribe((container) => {
-      if (!hasOnlyInvalidEvents(container)) {
+      if (envelopeHasTelemetry(container, activeFilters)) {
         resolveEnvelope();
       }
     });
