@@ -56,20 +56,26 @@ export function getEventExceptions(payload: unknown): EventException[] {
       const exception = record(value);
       if (!exception) return [];
       const raw = exceptionValueText(exception["value"]);
-      // Only a string reads as message text, as in describeEvent; an untyped
-      // number is still an error, which the tail labels `Error`.
-      const type =
-        text(exception["type"]) ??
-        (raw !== undefined && typeof exception["value"] !== "string"
-          ? "Error"
-          : undefined);
-      // A typed current error without a value takes describeEvent's text (the
-      // event message), so the detail heading matches the list title.
-      const message =
-        (raw && exceptionMessage(type, raw)) ??
-        (type && index === values.length - 1 && event
-          ? describeEvent(event).text
-          : undefined);
+      // The current error reads as describeEvent describes the event, so the
+      // detail heading matches the list title and the tail: an explicit event
+      // message wins over an untyped value, and a typed error without a value
+      // takes the message text.
+      const described =
+        event && index === values.length - 1 ? describeEvent(event) : undefined;
+      // Elsewhere only a string reads as message text; an untyped number is
+      // still an error, which the tail labels `Error`.
+      const type = described
+        ? described.kind === "exception" &&
+          (described.errorType || described.text)
+          ? (described.errorType ?? "Error")
+          : undefined
+        : (text(exception["type"]) ??
+          (raw !== undefined && typeof exception["value"] !== "string"
+            ? "Error"
+            : undefined));
+      const message = described
+        ? described.text
+        : raw && exceptionMessage(type, raw);
       const rawFrames = record(exception["stacktrace"])?.["frames"];
       const frames = Array.isArray(rawFrames)
         ? rawFrames

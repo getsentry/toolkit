@@ -27,6 +27,21 @@ describe("getEventExceptions", () => {
     expect(exception && formatExceptionTitle(exception)).toBe(title);
   });
 
+  test.each([
+    [{ value: 42 }, "Checkout retry limit reached"],
+    [{ value: "Checkout retry limit reached" }, "Checkout retry limit reached"],
+    [{ type: "CheckoutError", value: 42 }, "CheckoutError: 42"],
+  ])(
+    "titles the current exception %j with an event message the way the tail does",
+    (value, title) => {
+      const [current] = getEventExceptions({
+        message: "Checkout retry limit reached",
+        exception: { values: [value] },
+      });
+      expect(current && formatExceptionTitle(current)).toBe(title);
+    },
+  );
+
   test("titles a typed exception without a value with the event message", () => {
     const [current, cause] = getEventExceptions({
       message: "Fallback message",

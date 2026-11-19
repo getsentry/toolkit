@@ -313,6 +313,14 @@ describe("decodeEnvelope", () => {
       "message text",
     ],
     [
+      "an untyped number with an event message is a message",
+      {
+        message: "Checkout retry limit reached",
+        exception: { values: [{ value: 42 }] },
+      },
+      "Checkout retry limit reached",
+    ],
+    [
       "an untyped non-string value is an error",
       { exception: { values: [{ value: true }] } },
       "Error: true",
