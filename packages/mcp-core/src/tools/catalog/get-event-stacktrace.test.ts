@@ -207,6 +207,7 @@ describe("get_event_stacktrace", () => {
           "message": null,
           "status": "selected",
         },
+        "stacktrace": null,
         "thread": {
           "crashed": true,
           "current": true,
@@ -428,6 +429,7 @@ describe("get_event_stacktrace", () => {
           "message": "No thread found with name "missing". Pass \`thread\` as a numeric thread id or exact thread name.",
           "status": "not_found",
         },
+        "stacktrace": null,
         "thread": null,
         "threadCount": 3,
       }
@@ -477,6 +479,58 @@ describe("get_event_stacktrace", () => {
       selection: { status: "no_threads" },
       thread: null,
       availableThreads: null,
+    });
+  });
+
+  it("returns the event-level stacktrace of an event without threads", async () => {
+    // a native captureMessage with attach_stacktrace keeps its stack outside threads
+    setupThreadMocks(
+      createDefaultEvent({
+        id: "message-event",
+        platform: "native",
+        type: "default",
+        entries: [
+          { type: "message", data: { formatted: "Texture cache miss" } },
+          {
+            type: "stacktrace",
+            data: {
+              frames: [
+                { filename: "main.c", function: "main", lineNo: 12 },
+                {
+                  filename: "texture.c",
+                  function: "load_texture",
+                  lineNo: 88,
+                  inApp: true,
+                },
+              ],
+              framesOmitted: null,
+              registers: null,
+              hasSystemFrames: false,
+            },
+          },
+        ],
+      }),
+    );
+
+    const result = await callHandler();
+
+    expect(result.selection).toEqual({
+      status: "no_threads",
+      message:
+        "This event has no threads; its event-level stacktrace is in `stacktrace`.",
+    });
+    expect(result.thread).toBeNull();
+    expect(result.stacktrace).toEqual({
+      frames: [
+        { filename: "main.c", function: "main", lineNo: 12 },
+        {
+          filename: "texture.c",
+          function: "load_texture",
+          lineNo: 88,
+          inApp: true,
+        },
+      ],
+      framesOmitted: null,
     });
   });
 

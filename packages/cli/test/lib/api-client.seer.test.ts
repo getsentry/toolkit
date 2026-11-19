@@ -112,6 +112,7 @@ describe("triggerRootCauseAnalysis", () => {
     [{ denialReason: "daily_cap_exceeded" }, "daily_cap_exceeded"],
     [{ denialReason: "not_enough_credits" }, undefined],
     [{ denialReason: null }, undefined],
+    [{ denialReason: "constructor" }, undefined],
     [{}, undefined],
   ])(
     "reads the denial reason from a 402 body (%j)",
@@ -343,7 +344,7 @@ describe("getAutofixState", () => {
 
     const result = await getAutofixState("test-org", "123456789");
     expect(result?.status).toBe("COMPLETED");
-    expect(result?.blocks).toEqual(blocks);
+    expect(result?.["blocks"]).toEqual(blocks);
   });
 });
 

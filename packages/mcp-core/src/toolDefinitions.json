@@ -1218,7 +1218,7 @@
   {
     "name": "create_project",
     "title": "Create Project",
-    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, and whether the repository linked.",
+    "description": "Create a new Sentry project for an app or service and provision its DSN (client key) for SDK setup. Optionally links a connected repository with a root code mapping. Returns the project, its DSN, whether the repository linked, and the Sentry signals its platform supports, each with a docs link.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1321,11 +1321,83 @@
             }
           ]
         },
-        "guidance": {
-          "type": "string"
+        "setup": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "type": "string",
+                  "description": "Platform display name, such as `Next.js`."
+                },
+                "docsUrl": {
+                  "type": "string",
+                  "description": "Sentry setup guide for the platform."
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "usefulFor": {
+                        "type": "string"
+                      },
+                      "recommended": {
+                        "description": "Set on signals the SDK's default setup turns on.",
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "docsUrl": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "usefulFor", "docsUrl"],
+                    "additionalProperties": false
+                  },
+                  "description": "Core signals the platform supports and the organization has enabled."
+                }
+              },
+              "required": ["platform", "docsUrl", "signals"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Setup knowledge for the project's platform, or null without one."
+        },
+        "suggestedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_call"
+              },
+              "toolName": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "toolName", "arguments", "reason"],
+            "additionalProperties": false
+          }
         }
       },
-      "required": ["project", "dsn", "repository", "guidance"],
+      "required": ["project", "dsn", "repository", "setup", "suggestedActions"],
       "additionalProperties": false
     },
     "requiredScopes": ["project:write", "team:read", "org:read"],
@@ -2985,7 +3057,7 @@
           "anyOf": [
             {
               "type": "string",
-              "description": "Filter by name or slug."
+              "description": "Filter by name or slug, or pass a numeric project ID."
             },
             {
               "type": "null"
@@ -6170,7 +6242,7 @@
   {
     "name": "get_event_stacktrace",
     "title": "Get Event Stacktrace",
-    "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several.",
+    "description": "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6428,6 +6500,87 @@
             }
           ],
           "description": "Every thread on the event, listed only when the `thread` selector matched none or several."
+        },
+        "stacktrace": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "frames": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filename": {
+                        "type": "string"
+                      },
+                      "absPath": {
+                        "description": "Present only when it differs from filename.",
+                        "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "package": {
+                        "type": "string"
+                      },
+                      "function": {
+                        "type": "string"
+                      },
+                      "lineNo": {
+                        "type": "number"
+                      },
+                      "colNo": {
+                        "type": "number"
+                      },
+                      "inApp": {
+                        "description": "Present on application frames.",
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "contextLine": {
+                        "description": "The source line at lineNo.",
+                        "type": "string"
+                      },
+                      "preContext": {
+                        "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "postContext": {
+                        "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "vars": {
+                        "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                },
+                "framesOmitted": {
+                  "type": ["number", "null"]
+                }
+              },
+              "required": ["frames", "framesOmitted"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The event-level stacktrace, when the event has no threads but has a stack outside them, as on a captured message."
         }
       },
       "required": [
@@ -6438,7 +6591,8 @@
         "threadCount",
         "selection",
         "thread",
-        "availableThreads"
+        "availableThreads",
+        "stacktrace"
       ],
       "additionalProperties": false
     },
@@ -7275,6 +7429,76 @@
           ],
           "additionalProperties": false
         },
+        "relatedIssues": {
+          "description": "Up to 5 other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.",
+          "type": "object",
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "shortId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "resolved",
+                          "ignored",
+                          "pending_deletion",
+                          "pending_merge",
+                          "reprocessing",
+                          "unresolved"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "project": {
+                    "type": ["string", "null"]
+                  },
+                  "relations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "similar_stacktrace",
+                        "same_trace",
+                        "contributing"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "shortId",
+                  "title",
+                  "status",
+                  "project",
+                  "relations"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "unavailableTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["similar_stacktrace", "same_trace", "contributing"]
+              },
+              "description": "Relation types that failed, so some may be missing."
+            }
+          },
+          "required": ["issues", "unavailableTypes"],
+          "additionalProperties": false
+        },
         "event": {
           "type": "object",
           "properties": {
@@ -7592,6 +7816,87 @@
                 }
               ],
               "description": "The crashed thread's stacktrace, when there is no exception."
+            },
+            "stacktrace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "frames": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "filename": {
+                            "type": "string"
+                          },
+                          "absPath": {
+                            "description": "Present only when it differs from filename.",
+                            "type": "string"
+                          },
+                          "module": {
+                            "type": "string"
+                          },
+                          "package": {
+                            "type": "string"
+                          },
+                          "function": {
+                            "type": "string"
+                          },
+                          "lineNo": {
+                            "type": "number"
+                          },
+                          "colNo": {
+                            "type": "number"
+                          },
+                          "inApp": {
+                            "description": "Present on application frames.",
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "contextLine": {
+                            "description": "The source line at lineNo.",
+                            "type": "string"
+                          },
+                          "preContext": {
+                            "description": "Up to 3 source lines before lineNo, on the most relevant frame only.",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "postContext": {
+                            "description": "Up to 3 source lines after lineNo, on the most relevant frame only.",
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "vars": {
+                            "description": "Local variables, on the most relevant frame only. Values longer than 200 characters of JSON are cut to a string.",
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "description": "Most recent call last. The most relevant frame is the last in-app frame."
+                    },
+                    "framesOmitted": {
+                      "type": ["number", "null"]
+                    }
+                  },
+                  "required": ["frames", "framesOmitted"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The event-level stacktrace, which Sentry keeps outside exceptions and threads, as on a captured message."
             },
             "request": {
               "anyOf": [
@@ -8025,6 +8330,7 @@
             "threads",
             "threadCount",
             "crashedThread",
+            "stacktrace",
             "request",
             "csp",
             "performance",
@@ -8219,7 +8525,7 @@
           }
         },
         "sideQuests": {
-          "description": "Optional setup fixes, most useful first. Not needed for the current task.",
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
           "type": "array",
           "items": {
             "type": "object",
@@ -10736,7 +11042,7 @@
   {
     "name": "get_sentry_resource",
     "title": "Get Sentry Resource",
-    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
+    "description": "Fetch a Sentry resource by URL or ID: issues, events, traces, spans, agent conversations, replays, monitors, metric alerts, dashboards, preprod snapshots, and snapshot images. Start here for any Sentry URL or issue, event, trace, or replay ID; the type is detected from the URL. To list agent conversations, use search_agent_conversations.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -16158,7 +16464,7 @@
         "inRelease": {
           "type": "string",
           "minLength": 1,
-          "description": "Release version that fixes the issue. Requires status `resolved`. Events from newer releases reopen it as a regression."
+          "description": "Full version of the release that fixes the issue, exactly as find_releases returns it (e.g. `my-app@1.2.3+45`). Requires status `resolved`. Events from newer releases reopen it as a regression."
         },
         "inCommit": {
           "type": "string",
@@ -16330,6 +16636,52 @@
             }
           ],
           "description": "Null when no reason was given."
+        },
+        "sideQuests": {
+          "description": "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tip": {
+                "type": "string"
+              },
+              "next": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": ["tool", "args"],
+                  "additionalProperties": false
+                }
+              },
+              "docs": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["id", "tip"],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

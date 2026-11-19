@@ -123,7 +123,7 @@ export async function callEmbeddedAgent<TOutput>({
   /** Whether this step produced a result that permits a final response. */
   isReadyToFinalize?: (step: StepResult<Record<string, Tool>>) => boolean;
   /** Cancels the model calls, such as when the MCP client cancels the tool call. */
-  abortSignal?: AbortSignal;
+  abortSignal?: AbortSignal | undefined;
 }): Promise<EmbeddedAgentResult<TOutput>> {
   const capturedToolCalls: ToolCall[] = [];
 
@@ -147,7 +147,7 @@ export async function callEmbeddedAgent<TOutput>({
       system,
       prompt,
       tools,
-      abortSignal,
+      ...(abortSignal === undefined ? {} : { abortSignal }),
       stopWhen: ({ steps }) =>
         steps.length >= MAX_WORK_STEPS && !shouldAllowFinalResponseStep(steps),
       prepareStep: ({ steps }) => {
@@ -380,7 +380,7 @@ function extractJsonCandidates(text: string): string[] {
   const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)\n?```/g;
   const allMatches = [...text.matchAll(codeBlockRegex)];
   for (const match of allMatches) {
-    candidates.add(match[1].trim());
+    candidates.add((match[1] ?? "").trim());
   }
 
   // Strategy 2: Find balanced JSON objects anywhere in the text.
@@ -403,7 +403,7 @@ function rescueFromText<TOutput>(
 ): TOutput | null {
   for (const candidate of extractJsonCandidates(text)) {
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed: unknown = JSON.parse(candidate);
       const result = schema.safeParse(parsed);
       if (result.success) {
         return result.data;

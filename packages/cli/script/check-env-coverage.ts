@@ -52,6 +52,10 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
     "bash-hook traceback template only; inherited SDK convention",
   ],
   [
+    "SENTRY_SPOTLIGHT",
+    "set by `local run` for the child app; the CLI only names it in Worker setup hints",
+  ],
+  [
     "SENTRY_TRACES_SAMPLE_RATE",
     "inherited from the SDK when spawning subprocesses, not a CLI config knob",
   ],
@@ -114,9 +118,10 @@ for (const file of files) {
   const content = await readFile(file, "utf-8");
   fileContents.set(file, content);
   for (const match of content.matchAll(ENV_CONST_RE)) {
+    const [, name] = match;
     const value = match.at(2) ?? match.at(3);
-    if (value && isUserFacing(value)) {
-      constMap.set(match[1], value);
+    if (name && value && isUserFacing(value)) {
+      constMap.set(name, value);
     }
   }
 }
@@ -134,7 +139,10 @@ function record(name: string, file: string, content: string, index: number) {
 
 for (const [file, content] of fileContents) {
   for (const match of content.matchAll(ENV_MEMBER_RE)) {
-    record(match[1], file, content, match.index);
+    const [, name] = match;
+    if (name) {
+      record(name, file, content, match.index);
+    }
   }
   for (const match of content.matchAll(ENV_BRACKET_RE)) {
     const ident = match[3];

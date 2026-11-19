@@ -237,7 +237,7 @@ export type OutputConfig<
   (
     | {
         jsonTransform?: undefined;
-        schema?: OutputSchemaFields<S> & SchemaMatches<T, S>;
+        schema?: (OutputSchemaFields<S> & SchemaMatches<T, S>) | undefined;
       }
     | {
         /**
@@ -254,7 +254,9 @@ export type OutputConfig<
          * When `jsonTransform` is set, `jsonExclude` is ignored.
          */
         jsonTransform: (data: T, fields?: string[]) => R;
-        schema?: OutputSchemaFields<S> & TransformSchemaMatches<R, S>;
+        schema?:
+          | (OutputSchemaFields<S> & TransformSchemaMatches<R, S>)
+          | undefined;
       }
   );
 
@@ -321,7 +323,7 @@ export type CommandReturn = {
    * cleanup output (e.g., table footer). Otherwise the wrapper writes
    * it via `writeFooter()`.
    */
-  hint?: string;
+  hint?: string | undefined;
 };
 
 /**
@@ -332,9 +334,9 @@ type RenderContext = {
   /** Whether `--json` was passed */
   json: boolean;
   /** Pre-parsed `--fields` value */
-  fields?: string[];
+  fields?: string[] | undefined;
   /** ANSI prefix to prepend to the output (e.g., clear-screen escape) */
-  clearPrefix?: string;
+  clearPrefix?: string | undefined;
 };
 
 /**
@@ -465,7 +467,7 @@ export type SchemaFieldInfo = {
   /** Human-readable type string (e.g. "string", "number", "object", "string | null") */
   type: string;
   /** Description from valibot's `description()` pipe action */
-  description?: string;
+  description?: string | undefined;
   /** Whether the field is optional in the schema */
   optional: boolean;
 };

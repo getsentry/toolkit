@@ -18,6 +18,8 @@ react to failure categories without parsing stderr.
 | 40–49 | Feature | Feature availability and billing issues |
 | 50–59 | Operations | Upgrade and OAuth flow errors |
 | 60–69 | Command | Command-specific non-standard exits |
+| 124 | Shell convention | `sentry local run --timeout` stopped the app, as GNU `timeout` exits |
+| 252 | Shell convention | An argument could not be parsed |
 
 ## Complete Reference
 
@@ -44,7 +46,8 @@ react to failure categories without parsing stderr.
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
-| 64 | Verify Failed | `sentry local run --verify` received no events from the SDK |
+| 64 | Verify Failed | `sentry local run --verify` received no matching events from the SDK |
+| 124 | Run Timeout | `sentry local run --timeout` stopped the app (the GNU `timeout` convention) |
 | 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 
 ## Scripting Examples
@@ -99,6 +102,9 @@ Run the command with `--help` to see the arguments it accepts.
 ## Notes
 
 - Exit codes below 128 are safe from collision with Unix signal exits (128+N).
+- `sentry local run` exits with your app's own exit code. If a signal kills
+  the app, it exits 128+N, like a shell: 130 for SIGINT, 143 for SIGTERM. When
+  you stop it with Ctrl-C or SIGTERM, it prints no error.
 - The `sentry api` command renders API error responses to stdout and exits
   with code 60 (Output Error), not 30 (API Error). This matches the `gh api`
   convention — the error response body is useful output. Parse the HTTP status

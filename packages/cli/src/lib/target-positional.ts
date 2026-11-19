@@ -135,7 +135,7 @@ export const projectBoundTarget = orgProjectTarget((parsed, context) =>
 
 /** An org argument, parsed: `org` is `undefined` to auto-detect. */
 export type OrgInput = {
-  readonly org?: string;
+  readonly org?: string | undefined;
   /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
   readonly baseUrl?: string;
 };

@@ -23,6 +23,11 @@
  * @see https://cli.sentry.dev/exit-codes/ for full reference
  */
 
+import type {
+  AutofixConflictResponse,
+  AutofixPaymentRequiredResponse,
+} from "@sentry/api";
+import { constants as osConstants } from "node:os";
 import { ArgumentScannerError, ExitCode } from "@stricli/core";
 import { redactCredentialText } from "./credential-redaction.js";
 import {
@@ -72,7 +77,7 @@ export const EXIT = {
   // 30–39: API & network (HTTP 502/503/504 family)
   /** Sentry API returned an error */
   API: 30,
-  /** Operation timed out */
+  /** API operation timed out */
   TIMEOUT: 31,
   /** Rate limited by the Sentry API — wait before retrying */
   RATE_LIMITED: 32,
@@ -100,7 +105,20 @@ export const EXIT = {
   OUTPUT_ERROR: 60,
   /** `sentry local run --verify` received no events from the SDK */
   VERIFY_FAILED: 64,
+
+  /** `sentry local run --timeout` stopped the app, as GNU `timeout` exits */
+  RUN_TIMEOUT: 124,
 } as const;
+
+/**
+ * The exit code a shell reports for a process killed by `signal`: 128 plus
+ * the signal number, so 130 for SIGINT and 143 for SIGTERM. A command that
+ * wraps a child (`sentry local run`) exits with it when the child dies from
+ * a signal.
+ */
+export function signalExitCode(signal: NodeJS.Signals): number {
+  return 128 + osConstants.signals[signal];
+}
 
 /**
  * Base class for all CLI errors.
@@ -201,7 +219,30 @@ export type ApiDenialReason =
   | "access_denied"
   | "expired"
   | "unrecognized"
-  | "daily_cap_exceeded";
+  | SeerDenialReason;
+
+/**
+ * Seer 402 `denialReason`s the CLI acts on. Taken from the generated API types
+ * so a renamed reason fails type-checking.
+ */
+export type SeerDenialReason = Extract<
+  NonNullable<AutofixPaymentRequiredResponse["denialReason"]>,
+  "daily_cap_exceeded"
+>;
+
+/**
+ * `values[key]` when `key` is one of the record's own keys, for looking up an
+ * untrusted `code` or `denialReason` from an error body in a map keyed by the
+ * values the API schema defines.
+ */
+export function lookupKnownKey<K extends string, V>(
+  values: Record<K, V>,
+  key: unknown,
+): V | undefined {
+  return typeof key === "string" && Object.hasOwn(values, key)
+    ? values[key as K]
+    : undefined;
+}
 
 /**
  * API request errors from Sentry.
@@ -214,21 +255,21 @@ export type ApiDenialReason =
  */
 export class ApiError extends CliError {
   readonly status: number;
-  readonly detail?: string;
-  readonly endpoint?: string;
+  readonly detail: string | undefined;
+  readonly endpoint: string | undefined;
 
   /**
    * Machine-readable `code` from the error body, when the server sent one
    * (e.g. `invalid_search_query`).
    */
-  readonly code?: string;
+  readonly code: string | undefined;
 
   /**
    * Function and argument the server rejected, sent with code
    * `invalid_function_argument` (e.g. `p75` and `cart.total`), plus its
    * `hint` when the server suggests a fix.
    */
-  readonly functionArgument?: FunctionArgument;
+  readonly functionArgument: FunctionArgument | undefined;
 
   /**
    * Set by centralized 403 enrichment in `infrastructure.ts`.
@@ -238,7 +279,7 @@ export class ApiError extends CliError {
   readonly enriched403: boolean;
 
   /** Set with the 401/403 enrichment in `infrastructure.ts`. */
-  readonly denialReason?: ApiDenialReason;
+  readonly denialReason: ApiDenialReason | undefined;
 
   constructor(
     message: string,
@@ -252,9 +293,9 @@ export class ApiError extends CliError {
       denialReason,
     }: {
       enriched403?: boolean;
-      code?: string;
-      functionArgument?: FunctionArgument;
-      denialReason?: ApiDenialReason;
+      code?: string | undefined;
+      functionArgument?: FunctionArgument | undefined;
+      denialReason?: ApiDenialReason | undefined;
     } = {},
   ) {
     super(message, EXIT.API);
@@ -291,7 +332,7 @@ export class ApiError extends CliError {
 export class RateLimitError extends ApiError {
   /** Distinct exit code so scripts and agents can back off without parsing stderr. */
   override readonly exitCode: number = EXIT.RATE_LIMITED;
-  readonly retryAfterMs?: number;
+  readonly retryAfterMs: number | undefined;
 
   constructor(endpoint: string, retryAfterMs?: number, serverDetail?: string) {
     const seconds = Math.max(1, Math.ceil((retryAfterMs ?? 0) / 1000));
@@ -372,7 +413,7 @@ export class MalformedAuthTokenError extends AuthError {
  * @param suggestion - Helpful hint for resolving the error
  */
 export class ConfigError extends CliError {
-  readonly suggestion?: string;
+  readonly suggestion: string | undefined;
 
   constructor(message: string, suggestion?: string) {
     super(message, EXIT.CONFIG);
@@ -437,7 +478,7 @@ function buildContextMessage(
   resource: string,
   command: string,
   alternatives: string[],
-  options?: { note?: string; isAutoDetect?: boolean },
+  options?: { note?: string | undefined; isAutoDetect?: boolean },
 ): string {
   const { note, isAutoDetect } = options ?? {};
   // Compound resources ("X and Y") need plural grammar
@@ -521,7 +562,7 @@ export class ContextError extends CliError {
   readonly resource: string;
   readonly command: string;
   readonly alternatives: string[];
-  readonly note?: string;
+  readonly note: string | undefined;
 
   constructor(
     resource: string,
@@ -688,10 +729,36 @@ export function validationError(
 }
 
 /**
+ * `ValidationError` field for `--open` with a non-loopback `--host`: the
+ * browser UI only connects to a loopback receiver (CLI-3XY).
+ */
+export const HOST_NOT_LOOPBACK_FIELD = "host.not_loopback";
+
+/**
  * `ValidationError` field for an argument with a line break that a `.cmd` or
  * `.bat` command cannot be given safely on Windows.
  */
 export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
+
+/**
+ * `ValidationError` field for a command the user asked the CLI to run that is
+ * not installed or not on PATH (spawn ENOENT, CLI-3NK).
+ */
+export const COMMAND_NOT_FOUND_FIELD = "command.not_found";
+
+/**
+ * `ValidationError` field for a port that another process holds, such as
+ * `sentry local serve` or a plain `sentry local run`. Error reporting
+ * silences it.
+ */
+export const PORT_IN_USE_FIELD = "port.in_use";
+
+/**
+ * `ValidationError` field for a port that a Sentry Local daemon holds, so a
+ * receiver can't start there without `--session`. Reported on purpose, unlike
+ * PORT_IN_USE_FIELD: it is this CLI's own daemon, not another app.
+ */
+export const PORT_HELD_BY_DAEMON_FIELD = "port.held_by_daemon";
 
 /**
  * Input validation errors.
@@ -700,12 +767,27 @@ export const COMMAND_LINE_BREAK_FIELD = "command.line_break";
  * @param field - Name of the invalid field
  */
 export class ValidationError extends CliError {
-  readonly field?: string;
+  readonly field: string | undefined;
 
   constructor(message: string, field?: string) {
     super(message, EXIT.VALIDATION);
     this.name = "ValidationError";
     this.field = field;
+  }
+}
+
+/**
+ * `sentry local run --verify` saw no event from the user's app: it exited,
+ * crashed, or timed out first. This reports on the app's Sentry setup, not a
+ * CLI failure.
+ *
+ * @param message - What the app did instead of sending an event
+ * @param exitCode - `EXIT.VERIFY_FAILED`, or the crashed app's exit code
+ */
+export class VerifyFailedError extends CliError {
+  constructor(message: string, exitCode: number = EXIT.VERIFY_FAILED) {
+    super(message, exitCode);
+    this.name = "VerifyFailedError";
   }
 }
 
@@ -772,14 +854,26 @@ export class UpgradeTransportError extends UpgradeError {
 
 // Seer Errors
 
+/**
+ * 409 `code`s Sentry sends when it won't start a run until Seer setup is done.
+ * Taken from the generated API types so a renamed code fails type-checking.
+ */
+type SeerSetupRequiredCode = Extract<
+  NonNullable<AutofixConflictResponse["code"]>,
+  "scm_integration_required" | "repos_not_linked"
+>;
+
+/**
+ * `not_enabled`, `no_budget`, `ai_disabled` and `out_of_credits` are the CLI's
+ * own; the rest are what Sentry sends.
+ */
 export type SeerErrorReason =
   | "not_enabled"
   | "no_budget"
   | "ai_disabled"
   | "out_of_credits"
-  | "daily_cap_exceeded"
-  | "scm_integration_required"
-  | "repos_not_linked";
+  | SeerDenialReason
+  | SeerSetupRequiredCode;
 
 /**
  * Seer-specific errors with actionable suggestions.
@@ -789,7 +883,7 @@ export type SeerErrorReason =
  */
 export class SeerError extends CliError {
   readonly reason: SeerErrorReason;
-  readonly orgSlug?: string;
+  readonly orgSlug: string | undefined;
 
   constructor(reason: SeerErrorReason, orgSlug?: string) {
     const messages: Record<SeerErrorReason, string> = {
@@ -878,7 +972,7 @@ export class SeerError extends CliError {
  * @param hint - Actionable suggestion (e.g., "Run the command again — the analysis may finish in the background.")
  */
 export class TimeoutError extends CliError {
-  readonly hint?: string;
+  readonly hint: string | undefined;
 
   constructor(message: string, hint?: string) {
     super(message, EXIT.TIMEOUT);

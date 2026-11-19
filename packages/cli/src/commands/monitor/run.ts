@@ -42,13 +42,9 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
-import {
-  CliError,
-  ConfigError,
-  stringifyUnknown,
-  ValidationError,
-} from "../../lib/errors.js";
+import { CliError, ConfigError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { spawnFailureError } from "../../lib/spawn-failure.js";
 import { spawnUserCommand } from "../../lib/windows-spawn.js";
 import { sentry } from "../../lib/app-identity.js";
 
@@ -372,7 +368,9 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
               // Map signal kills to 128+N (Unix convention: e.g. 130 for
               // SIGINT, 137 for SIGKILL, 143 for SIGTERM) so CI pipelines
               // and shell scripts inspecting $? see the correct exit code.
-              const sigNum = osConstants.signals[signal];
+              const signals: Partial<Record<NodeJS.Signals, number>> =
+                osConstants.signals;
+              const sigNum = signals[signal];
               resolve(128 + (sigNum ?? 1));
             } else {
               resolve(1);
@@ -414,14 +412,8 @@ The wrapped command receives the \`SENTRY_MONITOR_SLUG\` environment variable.`,
       "final",
     );
 
-    if (spawnError instanceof CliError) {
-      throw spawnError;
-    }
     if (spawnError) {
-      throw new CliError(
-        `Failed to start "${cmd}": ${stringifyUnknown(spawnError)}`,
-        1,
-      );
+      throw spawnFailureError(cmd, spawnError);
     }
 
     if (exitCode !== 0) {

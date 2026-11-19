@@ -1,3 +1,7 @@
+import {
+  ONE_DAY_SECONDS,
+  statsIntervalToSeconds,
+} from "@sentry/toolkit-core/stats-period";
 import { z } from "zod";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
@@ -20,26 +24,14 @@ const DROP_OUTCOMES = [
   "cardinality_limited",
 ] as const;
 
-// Sentry parses `interval` with `^(\d+)([hdmsw]?)$` (no unit means seconds),
-// and its Outcomes query (`get_constrained_date_range` in
+// Sentry's Outcomes query (`get_constrained_date_range` in
 // src/sentry/snuba/sessions_v2.py) rejects a bucket that is not a whole number
 // of minutes, is longer than one day, or does not divide one day evenly.
-const INTERVAL_UNIT_SECONDS: Record<string, number> = {
-  "": 1,
-  s: 1,
-  m: 60,
-  h: 3600,
-  d: 86_400,
-  w: 604_800,
-};
-const ONE_DAY_SECONDS = 86_400;
-
 function isSupportedInterval(value: string): boolean {
-  const match = /^(\d+)([hdmsw]?)$/.exec(value);
-  if (!match) {
+  const seconds = statsIntervalToSeconds(value);
+  if (seconds === undefined) {
     return false;
   }
-  const seconds = Number(match[1]) * INTERVAL_UNIT_SECONDS[match[2]];
   return seconds > 0 && seconds % 60 === 0 && ONE_DAY_SECONDS % seconds === 0;
 }
 

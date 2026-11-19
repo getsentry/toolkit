@@ -270,7 +270,7 @@ export function detectAgent(): AgentInfo | undefined {
   // 1. Highest priority: explicit override — any agent can self-identify.
   //    normalizeAgent returns undefined for falsy opt-outs ("false", "0"),
   //    which should fall through to the next detection level.
-  const aiAgent = env.AI_AGENT?.trim();
+  const aiAgent = env["AI_AGENT"]?.trim();
   if (aiAgent) {
     const normalized = normalizeAgent(aiAgent);
     if (normalized) {
@@ -280,7 +280,7 @@ export function detectAgent(): AgentInfo | undefined {
 
   // The role marker also exists outside agent execution; only this value
   // identifies an agent. Check before the map to retain Cursor's priority.
-  if (env.CURSOR_EXTENSION_HOST_ROLE === "agent-exec") {
+  if (env["CURSOR_EXTENSION_HOST_ROLE"] === "agent-exec") {
     return normalizeAgent("cursor" satisfies KnownAgent);
   }
 
@@ -293,13 +293,15 @@ export function detectAgent(): AgentInfo | undefined {
   }
 
   // 3. Claude Code / Cowork — requires branching logic, so not in the map
-  if (env.CLAUDECODE || env.CLAUDE_CODE) {
-    const agent: KnownAgent = env.CLAUDE_CODE_IS_COWORK ? "cowork" : "claude";
+  if (env["CLAUDECODE"] || env["CLAUDE_CODE"]) {
+    const agent: KnownAgent = env["CLAUDE_CODE_IS_COWORK"]
+      ? "cowork"
+      : "claude";
     return normalizeAgent(agent);
   }
 
   // 4. Lowest priority: generic AGENT fallback
-  const agentValue = env.AGENT?.trim();
+  const agentValue = env["AGENT"]?.trim();
   if (agentValue) {
     return normalizeAgent(agentValue);
   }
@@ -373,13 +375,14 @@ export async function getProcessInfoFromOS(
         { timeout: 500 },
       );
       const match = result.trim().match(PS_PPID_COMM_RE);
-      if (match?.[1] && match?.[2]) {
+      if (match?.[1] && match[2]) {
         return { name: basename(match[2].trim()), ppid: Number(match[1]) };
       }
     } catch (error) {
       log.debug(`Could not query ps for pid ${pid}`, error);
     }
   }
+  return undefined;
 }
 
 /**
@@ -397,7 +400,7 @@ function execFileUnreffed(
       args,
       { encoding: "utf-8", ...opts },
       (err, stdout) => {
-        if (err) {
+        if (err instanceof Error) {
           reject(err);
         } else {
           resolve(stdout);

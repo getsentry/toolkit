@@ -101,7 +101,7 @@ export type ImportPlan = {
   /** Provenance: which file path contributed each effective field */
   effectiveSources: {
     token?: string;
-    url?: string;
+    url?: string | undefined;
     org?: string;
     project?: string;
   };
@@ -129,7 +129,11 @@ export type ImportResult = {
   /** Whether the token was validated against the API (undefined if skipped) */
   tokenValid?: boolean;
   /** User identity from token validation */
-  user?: { name?: string; email?: string; username?: string };
+  user?: {
+    name?: string | undefined;
+    email?: string | undefined;
+    username?: string | undefined;
+  };
   /** Warnings emitted during import */
   warnings: string[];
 };
@@ -197,19 +201,19 @@ function extractFields(iniData: ReturnType<typeof parseIni>): {
     org?: string;
     project?: string;
   } = {};
-  const token = iniData.auth?.token?.trim();
+  const token = iniData["auth"]?.["token"]?.trim();
   if (token) {
     result.token = token;
   }
-  const url = iniData.defaults?.url?.trim();
+  const url = iniData["defaults"]?.["url"]?.trim();
   if (url) {
     result.url = url;
   }
-  const org = iniData.defaults?.org?.trim();
+  const org = iniData["defaults"]?.["org"]?.trim();
   if (org) {
     result.org = org;
   }
-  const project = iniData.defaults?.project?.trim();
+  const project = iniData["defaults"]?.["project"]?.trim();
   if (project) {
     result.project = project;
   }
@@ -696,7 +700,7 @@ export async function executeImport(
 /** Parse a stored import record from JSON. Returns null on parse failure. */
 function parseImportRecord(raw: string): ImportRecord | null {
   try {
-    const parsed = JSON.parse(raw) as ImportRecord;
+    const parsed = JSON.parse(raw) as ImportRecord | null;
     if (!Array.isArray(parsed?.sources)) {
       log.debug("Import record has invalid sources field");
       return null;

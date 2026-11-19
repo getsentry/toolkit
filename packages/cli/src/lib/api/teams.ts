@@ -22,6 +22,7 @@ import {
   unwrapResult,
 } from "./infrastructure.js";
 import { reportCliError } from "../error-reporting.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /**
  * List teams in an organization.
@@ -49,18 +50,22 @@ export async function listTeams(orgSlug: string): Promise<SentryTeam[]> {
  */
 export async function listTeamsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number; query?: string } = {},
+  options: {
+    cursor?: string | undefined;
+    perPage?: number | undefined;
+    query?: string | undefined;
+  } = {},
 ): Promise<PaginatedResponse<SentryTeam[]>> {
   const config = getOrgSdkConfig();
 
   const result = await listOrganizationTeams({
     ...config,
     path: { organization_id_or_slug: orgSlug },
-    query: {
+    query: omitUndefined({
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
       query: options.query,
-    },
+    }),
   });
 
   return unwrapPaginatedResult<SentryTeam[]>(result, "Failed to list teams");

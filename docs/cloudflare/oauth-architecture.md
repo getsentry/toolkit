@@ -418,6 +418,18 @@ response keeps the exact protected-resource query string in the RFC 8707
 `resource` parameter, while emitting a query-free `issuer` so the document
 remains valid RFC 8414 metadata.
 
+Because metadata echoes the query, clients disagree about whether a query such
+as `?utm_source=plugin` or `?codemode=false`, or a trailing slash, is part of
+the resource. A login can name `/mcp?utm_source=plugin` and a later code
+exchange or refresh name `/mcp`. The provider runs with
+`resourceMatchCanonical: true`, so the token endpoint compares the requested
+and granted resources, and `/mcp` compares a token's audience to the request
+URL, by scheme, host, port, and path only. The query and trailing slashes are
+ignored; the `/mcp/{org}/{project}` path binding is unchanged. The option is
+provided by the same version-specific pnpm patch as `clientIdMetadataDocuments`.
+When upgrading the provider, port it and run
+`pnpm --filter @sentry/mcp-cloudflare exec vitest run src/server/oauth/resource-indicator.integration.test.ts`.
+
 When a constrained OAuth request includes `resource=/mcp/{org}` or
 `resource=/mcp/{org}/{project}`, the approval page surfaces that scope to the
 user as a "Session scope" banner before permissions are granted.

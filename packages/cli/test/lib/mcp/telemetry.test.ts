@@ -76,11 +76,11 @@ async function openStore() {
   const { getDatabase } = await import("../../../src/lib/db/index.js");
   const { createEnvelopeStore } =
     await import("../../../src/lib/telemetry/offline-store.js");
-  const optedOut = process.env.SENTRY_CLI_NO_TELEMETRY;
-  process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+  const optedOut = process.env["SENTRY_CLI_NO_TELEMETRY"];
+  process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
   getDatabase();
   if (optedOut === undefined) {
-    delete process.env.SENTRY_CLI_NO_TELEMETRY;
+    delete process.env["SENTRY_CLI_NO_TELEMETRY"];
   }
   return {
     store: createEnvelopeStore(),
@@ -128,15 +128,15 @@ describe("initMcpTelemetry", () => {
   // A server started from a project shell or IDE inherits the app's DSN.
   test("ignores SENTRY_DSN and DEFAULT_SENTRY_DSN from the environment", async () => {
     const appDsn = "https://key@o1.ingest.sentry.io/1";
-    process.env.SENTRY_DSN = appDsn;
-    process.env.DEFAULT_SENTRY_DSN = appDsn;
+    process.env["SENTRY_DSN"] = appDsn;
+    process.env["DEFAULT_SENTRY_DSN"] = appDsn;
     const options = await initOptions();
     expect(options.dsn).toBe(SENTRY_CLI_DSN);
     expect(options.enabled).toBe(true);
   });
 
   test("ignores SENTRY_RELEASE so the reported release stays ours", async () => {
-    process.env.SENTRY_RELEASE = "spoofed";
+    process.env["SENTRY_RELEASE"] = "spoofed";
     const options = await initOptions();
     expect(options.release).toBe(CLI_VERSION);
   });
@@ -208,7 +208,7 @@ describe("initMcpTelemetry", () => {
     const { store, storedCount } = await openStore();
     await store.push(eventEnvelope("stored"));
     expect(storedCount()).toBe(1);
-    process.env.SENTRY_CLI_NO_TELEMETRY = "1";
+    process.env["SENTRY_CLI_NO_TELEMETRY"] = "1";
 
     await initOptions();
 

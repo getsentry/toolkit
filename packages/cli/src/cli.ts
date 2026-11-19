@@ -604,8 +604,8 @@ export async function runCli(
    * scan for the first slash-containing, non-flag token.
    */
   function extractOrgProjectFromArgv(argv: string[]): {
-    org?: string;
-    project?: string;
+    org?: string | undefined;
+    project?: string | undefined;
   } {
     for (const token of argv) {
       if (token.startsWith("-") || !token.includes("/")) {

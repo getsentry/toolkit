@@ -1,13 +1,14 @@
 ---
 name: verify-toolkit
-description: Prove Sentry MCP and Sentry CLI behavior in this repo by running the real stdio server and the `sentry` CLI from source, offline, and capturing MCP and terminal evidence. Use to verify a change to MCP tools, tool responses, skills, scopes, stdio auth, or CLI auth, or to check a claim from `map/`. For QA against a live Sentry org or a real agent client, use the `mcp-qa` skill instead.
+description: Prove Sentry MCP and Sentry CLI behavior in this repo by running the real stdio server and the `sentry` CLI from source, offline, and capturing MCP and terminal evidence. Use to verify a change to MCP tools, tool responses, skills, scopes, stdio auth, CLI auth, or `sentry local`, or to check a claim from `map/`. For QA against a live Sentry org or a real agent client, use the `mcp-qa` skill instead.
 ---
 
 # Verify Toolkit
 
 The primary surface is the Sentry MCP server over stdio, driven as an MCP
 client drives it: `initialize`, `tools/list`, `tools/call`. The secondary
-surface is the `sentry` CLI in a terminal. Two servers are available:
+surface is the `sentry` CLI in a terminal, including `sentry local`. Two
+servers are available:
 
 - **mock**: the eval server (`packages/mcp-server-evals/src/bin/start-mock-stdio.ts`).
   Real stdio transport and tool handlers, every skill, experimental mode, and
@@ -64,13 +65,14 @@ makes the MCP SDK validate every structured result against the tool's
 
 ```bash
 node .agents/skills/verify-toolkit/scripts/mcp-call.mjs --out DIR \
-  [--server mock|cli] [--no-token] [--server-arg ARG]... \
+  [--server mock|cli] [--no-token | --token TOKEN] [--server-arg ARG]... \
   [--call TOOL 'JSON_ARGS']...
 ```
 
 - `--server-arg` passes one argument to `sentry mcp`, such as
   `--server-arg --skills --server-arg inspect` or `--server-arg acme/`.
-- `--no-token` starts `sentry mcp` with no token and no login.
+- `--no-token` starts `sentry mcp` with no token and no login. `--token TOKEN`
+  sets `SENTRY_AUTH_TOKEN` to `TOKEN` instead of the fake token.
 - Mock fixtures use the org `sentry-mcp-evals`, project `cloudflare-mcp`,
   issue `CLOUDFLARE-MCP-41`, and trace `a4d1aae7216b47ff8117cf4e09ce9d0a`.
 
@@ -84,6 +86,7 @@ node .agents/skills/verify-toolkit/scripts/check-results.mjs surface DIR
 node .agents/skills/verify-toolkit/scripts/check-results.mjs read-only DIR
 node .agents/skills/verify-toolkit/scripts/check-results.mjs scoped DIR
 node .agents/skills/verify-toolkit/scripts/check-results.mjs subset WIDE_DIR DIR
+node .agents/skills/verify-toolkit/scripts/check-results.mjs local DIR
 ```
 
 `scripts/sentry-offline.mjs` runs one CLI command with the same offline env,
@@ -95,6 +98,21 @@ node .agents/skills/verify-toolkit/scripts/sentry-offline.mjs --out DIR [--token
 
 `--token` sets `SENTRY_AUTH_TOKEN` to a fake token. The script prints
 `PRINTED THE TOKEN` if that token appears in the output.
+
+`scripts/local-session.mjs` runs several `sentry local` commands against one
+Local daemon in one offline config dir, then runs `local daemon stop`. Each
+step writes the same four files to `step-<n>` under `--out`, and the stop
+writes them to `teardown`:
+
+```bash
+node .agents/skills/verify-toolkit/scripts/local-session.mjs --out DIR \
+  --step 'local run --session web --port {port} -- {node} {app}' \
+  --step 'local event list web --json'
+```
+
+It replaces `{port}` with a free port, `{node}` with the Node binary, and
+`{app}` with `scripts/local-app.mjs`, an app that sends one error through the
+real Sentry Node SDK. `check-results.mjs local DIR` checks its evidence.
 
 ## Evidence
 
@@ -110,13 +128,15 @@ claim it proves. Proof standards:
   the server, the transport, or the CLI.
 - Offline `sentry mcp` makes network attempts, such as a scope check at
   startup. They go to `127.0.0.1:9` and fail; check `server-stderr.txt` and
-  do not assume a skipped network call.
+  do not assume a skipped network call. The scripts turn off the CLI's
+  telemetry and its update check.
 - Cite the claim ID (`<file>#<id>`) with each artifact you report.
 
 ## Cleanup
 
 Each script stops the process it started and removes its temporary config
-dir. If you stop a script early, kill only the PID of the server it started.
+dir. `local-session.mjs` also stops the Local daemon its steps started, and
+kills that daemon's PID if it outlives `local daemon stop`. If you stop a script early, kill only the PID of the server it started.
 Never kill by process name: a developer's own `sentry mcp` may be running.
 Do not delete `$VERIFY_RUN`; it is the evidence.
 

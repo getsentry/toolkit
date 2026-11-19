@@ -425,6 +425,7 @@ describe("detectAgentFromProcessTree", () => {
       if (pid === process.ppid) {
         return { name: "cursor", ppid: 1 };
       }
+      return undefined;
     });
     expect(await detectAgentFromProcessTree()).toEqual(named("cursor"));
   });
@@ -439,6 +440,7 @@ describe("detectAgentFromProcessTree", () => {
       if (pid === shellPid) {
         return { name: "Cursor", ppid: 1 };
       }
+      return undefined;
     });
     expect(await detectAgentFromProcessTree()).toEqual(named("cursor"));
   });
@@ -448,6 +450,7 @@ describe("detectAgentFromProcessTree", () => {
       if (pid === process.ppid) {
         return { name: "Claude", ppid: 1 };
       }
+      return undefined;
     });
     expect(await detectAgentFromProcessTree()).toEqual(named("claude"));
   });
@@ -457,6 +460,7 @@ describe("detectAgentFromProcessTree", () => {
       if (pid === process.ppid) {
         return { name: "bash", ppid: 1 };
       }
+      return undefined;
     });
     expect(await detectAgentFromProcessTree()).toBeUndefined();
   });
@@ -470,6 +474,7 @@ describe("detectAgentFromProcessTree", () => {
       if (pid === 1) {
         return { name: "cursor", ppid: 0 };
       }
+      return undefined;
     });
     expect(await detectAgentFromProcessTree()).toBeUndefined();
   });

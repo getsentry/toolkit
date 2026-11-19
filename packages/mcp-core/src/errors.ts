@@ -19,7 +19,7 @@ export type AgentExecutionErrorOptions = ErrorOptions & {
    * Sentry event id from the single logIssue call that already reported this
    * unexpected agent failure. Downstream handlers must not file another issue.
    */
-  eventId?: string;
+  eventId?: string | undefined;
 };
 
 /**
@@ -32,7 +32,7 @@ export type AgentExecutionErrorOptions = ErrorOptions & {
  * is filed before this error is thrown; do not call logIssue again for it.
  */
 export class AgentExecutionError extends Error {
-  readonly eventId?: string;
+  readonly eventId?: string | undefined;
 
   constructor(message: string, options?: AgentExecutionErrorOptions) {
     super(message, options);

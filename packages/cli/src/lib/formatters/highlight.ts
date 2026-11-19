@@ -59,7 +59,10 @@ export function highlightCode(code: string, language?: string): string {
   try {
     const highlighter = loadCliHighlight();
     if (highlighter) {
-      return highlighter.highlight(code, { language, ignoreIllegals: true });
+      return highlighter.highlight(code, {
+        ...(language !== undefined && { language }),
+        ignoreIllegals: true,
+      });
     }
   } catch {
     // Fall through to the uniform color below.

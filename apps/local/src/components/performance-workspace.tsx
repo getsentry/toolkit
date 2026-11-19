@@ -8,14 +8,15 @@ import {
   type VitalName,
 } from "@/lib/performance.ts";
 import { ResizableWorkspace } from "./resizable-workspace.tsx";
+import { pluralize } from "@/lib/presentation.ts";
 function ms(value?: number) {
   return value === undefined ? "—" : `${value.toFixed(1)} ms`;
 }
 function Empty({ children }: { children: string }) {
   return (
-    <p role="status" className="p-6 text-sm text-muted-foreground">
+    <output className="block p-6 text-sm text-muted-foreground">
       {children}
-    </p>
+    </output>
   );
 }
 export function SpanAnalysis({
@@ -73,8 +74,10 @@ export function SpanAnalysis({
       <div className="border-b border-border p-3">
         <h1 className="text-sm font-semibold">{label}</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Grouped by captured operation and exact description. Durations and
-          sizes use only executions that include those values.
+          {kind === "resources"
+            ? "Grouped by operation and resource origin and path."
+            : "Grouped by captured operation and exact description."}{" "}
+          Durations and sizes use only executions that include those values.
         </p>
       </div>
       <ResizableWorkspace
@@ -209,7 +212,7 @@ export function WebVitalsWorkspace({
       <Empty>
         {query
           ? "No pages match this filter."
-          : "No Web Vitals captured. Send browser pageload transactions with performance measurements."}
+          : "No Web Vitals captured. Send browser pageloads with Web Vitals."}
       </Empty>
     );
   const available = (Object.keys(VITALS) as VitalName[]).filter((name) =>
@@ -217,7 +220,7 @@ export function WebVitalsWorkspace({
   );
   const metric = available.includes(chosenMetric)
     ? chosenMetric
-    : available[0]!;
+    : (available[0] ?? chosenMetric);
   const config = VITALS[metric];
   const max = Math.max(
     config.poor,
@@ -247,8 +250,7 @@ export function WebVitalsWorkspace({
                 >
                   <span className="block break-words">{page.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {page.visits.length} captured visit
-                    {page.visits.length === 1 ? "" : "s"}
+                    {pluralize(page.visits.length, "captured visit")}
                   </span>
                 </button>
               </li>
@@ -306,6 +308,7 @@ export function WebVitalsWorkspace({
                       </span>
                     </div>
                     <div
+                      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the bar is drawn with child elements, so it can't be an <img>
                       role="img"
                       aria-label={`${config.label}: ${valueLabel(measurement.value)}, ${measurement.rating}`}
                       className="mt-1 h-3 bg-muted"

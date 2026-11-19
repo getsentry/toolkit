@@ -39,7 +39,7 @@ const emptyCwd = mkdtempSync(join(tmpdir(), "scanner-flags-cwd-"));
 /** Run the real app with a mock context, capturing stdout and stderr. */
 async function runApp(
   args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number | string }> {
   let stdout = "";
   let stderr = "";
   const captureStderr = {

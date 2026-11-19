@@ -382,17 +382,16 @@ export async function getOAuthErrorTelemetry(
   const authenticateParams = parseAuthenticateParams(
     response.headers.get("WWW-Authenticate"),
   );
-  const headerError = bucketOAuthErrorCode(authenticateParams.error);
+  const headerError = bucketOAuthErrorCode(authenticateParams["error"]);
   if (headerError) {
     telemetry.oauthError = headerError;
-    telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-      authenticateParams.error_description,
-    );
-    if (!telemetry.oauthErrorReason) {
-      const json = await parseResponseJsonBody(response);
-      telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-        json?.error_description,
+    const reason =
+      bucketOAuthErrorDescription(authenticateParams["error_description"]) ||
+      bucketOAuthErrorDescription(
+        (await parseResponseJsonBody(response))?.["error_description"],
       );
+    if (reason) {
+      telemetry.oauthErrorReason = reason;
     }
     return telemetry;
   }
@@ -402,14 +401,15 @@ export async function getOAuthErrorTelemetry(
     return telemetry;
   }
 
-  const bodyError = bucketOAuthErrorCode(json.error);
+  const bodyError = bucketOAuthErrorCode(json["error"]);
   if (!bodyError) {
     return telemetry;
   }
 
   telemetry.oauthError = bodyError;
-  telemetry.oauthErrorReason = bucketOAuthErrorDescription(
-    json.error_description,
-  );
+  const reason = bucketOAuthErrorDescription(json["error_description"]);
+  if (reason) {
+    telemetry.oauthErrorReason = reason;
+  }
   return telemetry;
 }

@@ -10,7 +10,6 @@ import {
   constantFrom,
   double,
   assert as fcAssert,
-  option,
   property,
   record,
   stringMatching,
@@ -76,29 +75,20 @@ const transactionItemArb = record({
 
 /** Generate a flat TraceSpan (no children) */
 function makeSpanArb(): import("fast-check").Arbitrary<TraceSpan> {
-  return record({
-    span_id: hexId32Arb,
-    op: option(
-      constantFrom("http.server", "db.query", "cache.get", "http.client"),
-      {
-        nil: undefined,
-      },
-    ),
-    description: option(
-      constantFrom("GET /api", "SELECT *", "Redis GET", null),
-      {
-        nil: undefined,
-      },
-    ),
-    start_timestamp: unixTimestampArb,
-    timestamp: unixTimestampArb,
-    project_slug: option(slugArb, { nil: undefined }),
-    transaction: option(transactionNameArb, { nil: undefined }),
-    "transaction.op": option(
-      constantFrom("http.server", "browser", "celery_task"),
-      { nil: undefined },
-    ),
-  });
+  // Keys outside requiredKeys are sometimes absent, like unset API fields.
+  return record(
+    {
+      span_id: hexId32Arb,
+      op: constantFrom("http.server", "db.query", "cache.get", "http.client"),
+      description: constantFrom("GET /api", "SELECT *", "Redis GET", null),
+      start_timestamp: unixTimestampArb,
+      timestamp: unixTimestampArb,
+      project_slug: slugArb,
+      transaction: transactionNameArb,
+      "transaction.op": constantFrom("http.server", "browser", "celery_task"),
+    },
+    { requiredKeys: ["span_id", "start_timestamp", "timestamp"] },
+  );
 }
 
 /** Generate a list of flat TraceSpans (1-10) */

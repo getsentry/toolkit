@@ -30,16 +30,15 @@ const SAMPLE_PROMPTS = [
 interface ChatUIProps {
   messages: UIMessage[];
   input: string;
-  error?: Error | null;
+  error?: Error | undefined;
   isChatLoading: boolean;
-  isLocalStreaming?: boolean;
-  isMessageStreaming?: (messageId: string) => boolean;
+  isMessageStreaming?: ((messageId: string) => boolean) | undefined;
   isOpen?: boolean;
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onStop?: () => void;
-  onRetry?: () => void;
-  onSlashCommand?: (command: string) => void;
+  onRetry?: (() => void) | undefined;
+  onSlashCommand?: ((command: string) => void) | undefined;
   onSendPrompt?: (prompt: string) => void;
 }
 
@@ -48,7 +47,6 @@ export const ChatUI = ({
   input,
   error,
   isChatLoading,
-  isLocalStreaming,
   isMessageStreaming,
   isOpen = true,
   onInputChange,
@@ -70,7 +68,6 @@ export const ChatUI = ({
         <ChatMessages
           messages={messages}
           isChatLoading={isChatLoading}
-          isLocalStreaming={isLocalStreaming}
           isMessageStreaming={isMessageStreaming}
           error={error}
           onRetry={onRetry}

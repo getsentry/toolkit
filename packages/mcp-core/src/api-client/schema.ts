@@ -892,6 +892,16 @@ export const IssueSchema = z
 
 export const IssueListSchema = z.array(IssueSchema);
 
+/** Issue statuses the Sentry API returns (`GroupStatusStr`). */
+export const ISSUE_STATUSES = [
+  "resolved",
+  "ignored",
+  "pending_deletion",
+  "pending_merge",
+  "reprocessing",
+  "unresolved",
+] as const;
+
 /** Relation types the related issues endpoint supports (`RelationType`). */
 export const RELATED_ISSUE_TYPES = [
   "similar_stacktrace",
@@ -962,7 +972,7 @@ export const FrameInterface = z
   })
   .partial();
 
-const StacktraceSchema = z
+export const StacktraceSchema = z
   .object({
     frames: z.array(FrameInterface),
     framesOmitted: z.array(z.unknown()).nullable().optional(),
@@ -1068,7 +1078,8 @@ const EventTagsSchema = z.preprocess((value) => {
 
   // Sentry can occasionally return malformed tag entries (e.g. null keys).
   // Drop invalid tags so event parsing can still succeed.
-  return value.filter((tag) => {
+  const tags: unknown[] = value;
+  return tags.filter((tag) => {
     if (typeof tag !== "object" || tag === null) {
       return false;
     }
@@ -2113,15 +2124,15 @@ export const FlamegraphSchema = z.preprocess(
     // parseable so tools can render the explicit no-profile-data result.
     const body = value as Record<string, unknown>;
     const metadata =
-      body.metadata && typeof body.metadata === "object"
-        ? (body.metadata as Record<string, unknown>)
+      body["metadata"] && typeof body["metadata"] === "object"
+        ? (body["metadata"] as Record<string, unknown>)
         : {};
 
     return {
       ...body,
-      platform: body.platform ?? metadata.platform,
-      projectID: body.projectID ?? metadata.projectID,
-      transactionName: body.transactionName ?? metadata.transactionName,
+      platform: body["platform"] ?? metadata["platform"],
+      projectID: body["projectID"] ?? metadata["projectID"],
+      transactionName: body["transactionName"] ?? metadata["transactionName"],
     };
   },
   z

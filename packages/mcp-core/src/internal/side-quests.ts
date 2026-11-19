@@ -27,7 +27,7 @@ export interface SideQuest {
   /** A docs.sentry.io page for the fix. */
   docs?: string;
   /** One line per cause, when causes differ by file. */
-  details?: string[];
+  details?: string[] | undefined;
 }
 
 interface SideQuestCall {
@@ -67,7 +67,7 @@ export const sideQuestsSchema = z
   )
   .optional()
   .describe(
-    "Optional setup fixes, most useful first. Not needed for the current task.",
+    "Optional setup fixes and follow-ups, most useful first. Not needed for the current task.",
   );
 
 /**

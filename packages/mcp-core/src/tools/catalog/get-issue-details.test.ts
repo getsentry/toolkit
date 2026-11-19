@@ -12,6 +12,7 @@ import {
   eventFixture,
   issueNullCulpritFixture,
   mswServer,
+  relatedIssuesFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,9 +25,7 @@ import getIssueDetails, {
 } from "./get-issue-details.js";
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -210,9 +209,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -302,6 +299,7 @@ describe("get_issue_details", () => {
             "method": "GET",
             "url": "https://mcp.sentry.dev/sse",
           },
+          "stacktrace": null,
           "tags": [
             {
               "key": "environment",
@@ -979,9 +977,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1204,9 +1200,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1228,9 +1222,7 @@ describe("get_issue_details", () => {
           regionUrl: "https",
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1267,9 +1259,7 @@ describe("get_issue_details", () => {
           regionUrl: null,
         },
         {
-          constraints: {
-            organizationSlug: undefined,
-          },
+          constraints: {},
           accessToken: "access-token",
           userId: "1",
         },
@@ -1298,9 +1288,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1498,9 +1486,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -1712,9 +1698,7 @@ describe("get_issue_details", () => {
         regionUrl: null,
       },
       {
-        constraints: {
-          organizationSlug: undefined,
-        },
+        constraints: {},
         accessToken: "access-token",
         userId: "1",
       },
@@ -2013,10 +1997,10 @@ describe("structuredContent", () => {
       .structuredContent;
 
     // the issue level fields the markdown used to assemble
-    expect(payload.issue.shortId).toBe("CLOUDFLARE-MCP-41");
-    expect(payload.issue.url).toContain("CLOUDFLARE-MCP-41");
-    expect(typeof payload.issue.occurrences).toBe("number");
-    expect(typeof payload.issue.usersImpacted).toBe("number");
+    expect(payload["issue"].shortId).toBe("CLOUDFLARE-MCP-41");
+    expect(payload["issue"].url).toContain("CLOUDFLARE-MCP-41");
+    expect(typeof payload["issue"].occurrences).toBe("number");
+    expect(typeof payload["issue"].usersImpacted).toBe("number");
   });
 
   it("produces a payload that satisfies the schema", async () => {
@@ -2030,7 +2014,7 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns the same structured payload outside experimental mode", async () => {
+  it("returns the same structured payload outside experimental mode, apart from related issues", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
@@ -2041,7 +2025,220 @@ describe("structuredContent", () => {
       experimentalContext,
     );
 
-    expect(parsePayload(result)).toEqual(parsePayload(experimental));
+    // related issues are experimental only until the Seer load is checked
+    const { relatedIssues, ...rest } = parsePayload(experimental);
+    expect(relatedIssues).toBeDefined();
+    expect(parsePayload(result)).toEqual({
+      ...rest,
+      suggestedActions: rest.suggestedActions.filter(
+        (action) => action.toolName !== "find_related_issues",
+      ),
+    });
+  });
+
+  describe("related issues", () => {
+    const relatedUrl =
+      "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/related/";
+
+    function captureRelatedRequest(
+      response: () => Response = () => HttpResponse.json(relatedIssuesFixture),
+    ) {
+      const requests: URL[] = [];
+      mswServer.use(
+        http.get(relatedUrl, ({ request }) => {
+          requests.push(new URL(request.url));
+          return response();
+        }),
+      );
+      return requests;
+    }
+
+    it("lists the top related issues and suggests the full list", async () => {
+      mockLatestEvent();
+      const requests = captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+      expect(requests[0]?.searchParams.get("limit")).toBe("5");
+      // the latest event is the endpoint's default
+      expect(requests[0]?.searchParams.has("eventId")).toBe(false);
+      expect(payload.relatedIssues).toEqual({
+        issues: [
+          {
+            shortId: "CLOUDFLARE-MCP-42",
+            title: "Error: Tool list_projects is already registered",
+            status: "resolved",
+            project: "CLOUDFLARE-MCP",
+            relations: ["similar_stacktrace", "same_trace"],
+          },
+          {
+            shortId: "WEB-1A2",
+            title: "TypeError: Failed to fetch",
+            status: "unresolved",
+            project: "web",
+            relations: ["same_trace"],
+          },
+        ],
+        unavailableTypes: [],
+      });
+      expect(payload.suggestedActions[0]).toEqual({
+        type: "tool_call",
+        toolName: "find_related_issues",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+        },
+        reason:
+          "List every related issue with its similarity score before resolving or ignoring this one.",
+      });
+    });
+
+    it("doesn't look them up outside experimental mode", async () => {
+      mockLatestEvent();
+      const requests = captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, baseContext);
+      const payload = parsePayload(result);
+
+      expect(requests).toHaveLength(0);
+      expect(payload).not.toHaveProperty("relatedIssues");
+    });
+
+    it("keeps an empty list when nothing is related, without the suggestion", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [],
+          meta: relatedIssuesFixture.meta,
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(payload.relatedIssues).toEqual({
+        issues: [],
+        unavailableTypes: [],
+      });
+      expect(
+        payload.suggestedActions.map((action) => action.toolName),
+      ).not.toContain("find_related_issues");
+    });
+
+    it("names the relation types that failed", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [],
+          meta: {
+            types: [
+              {
+                type: "similar_stacktrace",
+                status: "unavailable",
+                detail: "Similar issues are temporarily unavailable.",
+              },
+              { type: "same_trace", status: "ok" },
+              { type: "contributing", status: "not_applicable" },
+            ],
+          },
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+
+      expect(parsePayload(result).relatedIssues?.unavailableTypes).toEqual([
+        "similar_stacktrace",
+      ]);
+    });
+
+    it("reports a status it doesn't know as null", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          ...relatedIssuesFixture,
+          data: relatedIssuesFixture.data.map((entry) => ({
+            ...entry,
+            issue: { ...entry.issue, status: "a_future_status" },
+          })),
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(
+        payload.relatedIssues?.issues.map((issue) => issue.status),
+      ).toEqual([null, null]);
+      // the MCP server rejects output that doesn't match the schema's enum
+      expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
+    });
+
+    it("leaves them out when the lookup fails", async () => {
+      mockLatestEvent();
+      // a Sentry version without the endpoint answers 404
+      captureRelatedRequest(() =>
+        HttpResponse.json({ detail: "Not found" }, { status: 404 }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(payload).not.toHaveProperty("relatedIssues");
+      expect(
+        payload.suggestedActions.map((action) => action.toolName),
+      ).not.toContain("find_related_issues");
+    });
+
+    it("drops issues from other projects in a project-scoped session", async () => {
+      mockLatestEvent();
+      captureRelatedRequest();
+
+      const result = await getIssueDetails.handler(params, {
+        ...experimentalContext,
+        constraints: {
+          ...experimentalContext.constraints,
+          projectSlug: "CLOUDFLARE-MCP",
+        },
+      });
+
+      expect(
+        parsePayload(result).relatedIssues?.issues.map(
+          (issue) => issue.shortId,
+        ),
+      ).toEqual(["CLOUDFLARE-MCP-42"]);
+    });
+
+    // same_trace follows the event's trace, so it must be the requested event's
+    it("finds them from an explicit event", async () => {
+      const eventId = "7ca573c0f4814912aaa9bdc77d1a7d51";
+      mswServer.use(
+        http.get(
+          `https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/6507376925/events/${eventId}/`,
+          () => HttpResponse.json(createDefaultEvent({ id: eventId })),
+        ),
+      );
+      const requests = captureRelatedRequest();
+
+      await getIssueDetails.handler(
+        { ...params, eventId },
+        experimentalContext,
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.searchParams.get("eventId")).toBe(eventId);
+      expect(requests[0]?.searchParams.getAll("type")).toEqual([
+        "similar_stacktrace",
+        "same_trace",
+        "contributing",
+      ]);
+    });
   });
 
   it("maps the event entries into fields rather than rendering markdown", async () => {
@@ -2051,9 +2248,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event).not.toHaveProperty("body");
-    expect(payload.event.message).toBe("Something went wrong");
-    expect(payload.event.tags).toEqual([
+    expect(payload["event"]).not.toHaveProperty("body");
+    expect(payload["event"].message).toBe("Something went wrong");
+    expect(payload["event"].tags).toEqual([
       { key: "level", value: "error" },
       { key: "environment", value: "production" },
     ]);
@@ -2067,7 +2264,7 @@ describe("structuredContent", () => {
       .structuredContent;
 
     expect(payload).not.toHaveProperty("responseNotes");
-    expect(payload.suggestedActions).toContainEqual(
+    expect(payload["suggestedActions"]).toContainEqual(
       expect.objectContaining({
         toolName: "get_issue_breadcrumbs",
         arguments: {
@@ -2084,7 +2281,7 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event.message).toBe("TOP-LEVEL-MESSAGE");
+    expect(payload["event"].message).toBe("TOP-LEVEL-MESSAGE");
   });
 
   it("returns structured content for an unsupported event type", async () => {
@@ -2107,10 +2304,10 @@ describe("structuredContent", () => {
     const payload = getStructuredContent<Record<string, any>>(result);
 
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
-    expect(payload.issue.shortId).toBe("FUTURE-TYPE-001");
-    expect(payload.event.type).toBe("future_ai_agent_trace");
-    expect(payload.event.exceptions).toBeNull();
-    expect(payload.event.tags).toEqual([{ key: "level", value: "error" }]);
+    expect(payload["issue"].shortId).toBe("FUTURE-TYPE-001");
+    expect(payload["event"].type).toBe("future_ai_agent_trace");
+    expect(payload["event"].exceptions).toBeNull();
+    expect(payload["event"].tags).toEqual([{ key: "level", value: "error" }]);
     // still reported, so support for the type gets added
     expect(logIssueSpy).toHaveBeenCalledWith(
       "Unsupported event type encountered: future_ai_agent_trace",
@@ -2149,8 +2346,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("transaction");
-    expect(payload.event.occurredAt).toBe("2025-08-06T18:00:01.250Z");
+    expect(payload["event"].type).toBe("transaction");
+    expect(payload["event"].occurredAt).toBe("2025-08-06T18:00:01.250Z");
   });
 
   it("takes occurredAt from dateReceived for a CSP event", async () => {
@@ -2171,8 +2368,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("csp");
-    expect(payload.event.occurredAt).toBe("2025-11-19T19:24:12.491Z");
+    expect(payload["event"].type).toBe("csp");
+    expect(payload["event"].occurredAt).toBe("2025-11-19T19:24:12.491Z");
   });
 
   it("takes occurredAt from dateReceived for an unknown event type", async () => {
@@ -2193,8 +2390,8 @@ describe("structuredContent", () => {
     );
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.type).toBe("future_ai_agent_trace");
-    expect(payload.event.occurredAt).toBe("2025-01-01T01:00:00.000Z");
+    expect(payload["event"].type).toBe("future_ai_agent_trace");
+    expect(payload["event"].occurredAt).toBe("2025-01-01T01:00:00.000Z");
   });
 
   it("maps a transaction's N+1 evidence and its spans", async () => {
@@ -2220,9 +2417,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.event.type).toBe("transaction");
+    expect(payload["event"].type).toBe("transaction");
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
-    expect(payload.event.performance).toMatchObject({
+    expect(payload["event"].performance).toMatchObject({
       issueType: "performance_n_plus_one_db_queries",
       transactionName: "/api/users",
       parentOperation: "GET /api/users",
@@ -2232,7 +2429,7 @@ describe("structuredContent", () => {
       ]),
     });
     // the span tree from the fetched trace, parents linked by id
-    expect(payload.event.performance.spans).toEqual([
+    expect(payload["event"].performance.spans).toEqual([
       {
         spanId: "parent123",
         parentSpanId: null,
@@ -2290,12 +2487,14 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays?.attached).toBe("1234567890abcdef1234567890abcdef");
-    // and the attached id is not repeated in the related list
-    expect(payload.replays?.related).not.toContain(
+    expect(payload["replays"]?.attached).toBe(
       "1234567890abcdef1234567890abcdef",
     );
-    expect(JSON.stringify(payload.event)).not.toContain(
+    // and the attached id is not repeated in the related list
+    expect(payload["replays"]?.related).not.toContain(
+      "1234567890abcdef1234567890abcdef",
+    );
+    expect(JSON.stringify(payload["event"])).not.toContain(
       "1234567890abcdef1234567890abcdef",
     );
   });
@@ -2307,7 +2506,7 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays).toBeNull();
+    expect(payload["replays"]).toBeNull();
   });
 
   it("maps external issues field by field so upstream extras cannot leak", async () => {
@@ -2377,12 +2576,12 @@ describe("structuredContent", () => {
       "project",
       "url",
     ]) {
-      expect(payload.issue).toHaveProperty(field);
+      expect(payload["issue"]).toHaveProperty(field);
     }
     // and the event identity markdown prints alongside it
-    expect(payload.event.occurredAt).toBe("2026-09-03T12:00:00.000Z");
-    expect(payload.event).toHaveProperty("id");
-    expect(payload.event).toHaveProperty("type");
+    expect(payload["event"].occurredAt).toBe("2026-09-03T12:00:00.000Z");
+    expect(payload["event"]).toHaveProperty("id");
+    expect(payload["event"]).toHaveProperty("type");
   });
 
   it("does not label an error's exception message as a query pattern", async () => {
@@ -2419,10 +2618,10 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.issue.queryPattern).toBeNull();
-    expect(payload.issue.location).toBeNull();
+    expect(payload["issue"].queryPattern).toBeNull();
+    expect(payload["issue"].location).toBeNull();
     // and the top level title wins for an error, not the metadata one
-    expect(payload.issue.title).not.toBe("metadata title");
+    expect(payload["issue"].title).not.toBe("metadata title");
   });
 
   it("uses the metadata fields for a performance issue", async () => {
@@ -2456,9 +2655,11 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.issue.title).toBe("N+1 Query");
-    expect(payload.issue.queryPattern).toBe("SELECT * FROM users WHERE id = ?");
-    expect(payload.issue.location).toBe("/api/checkout");
+    expect(payload["issue"].title).toBe("N+1 Query");
+    expect(payload["issue"].queryPattern).toBe(
+      "SELECT * FROM users WHERE id = ?",
+    );
+    expect(payload["issue"].location).toBe("/api/checkout");
   });
 
   it("caps related replays and reports the full count", async () => {
@@ -2490,9 +2691,9 @@ describe("structuredContent", () => {
     const payload = (result as { structuredContent: Record<string, any> })
       .structuredContent;
 
-    expect(payload.replays).not.toBeNull();
-    expect(payload.replays.relatedCount).toBe(51);
-    expect(payload.replays.related).toHaveLength(5);
+    expect(payload["replays"]).not.toBeNull();
+    expect(payload["replays"].relatedCount).toBe(51);
+    expect(payload["replays"].related).toHaveLength(5);
   });
 });
 
@@ -2772,6 +2973,7 @@ describe("selected event package versions", () => {
           "performance": null,
           "platform": "python",
           "request": null,
+          "stacktrace": null,
           "tags": [
             {
               "key": "level",

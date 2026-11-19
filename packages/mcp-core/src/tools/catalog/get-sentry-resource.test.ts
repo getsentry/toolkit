@@ -17,10 +17,10 @@ import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
-const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
-const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+const originalOpenAIApiKey = process.env["OPENAI_API_KEY"];
+const originalAnthropicApiKey = process.env["ANTHROPIC_API_KEY"];
+const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+const originalEmbeddedAgentProvider = process.env["EMBEDDED_AGENT_PROVIDER"];
 
 function expectReplayWithDeadClick(result: unknown) {
   const payload = getReplayDetailsOutputSchema.parse(
@@ -42,9 +42,7 @@ function expectReplayWithDeadClick(result: unknown) {
 }
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -155,25 +153,25 @@ describe("get_sentry_resource", () => {
     if (originalOpenAIApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     } else {
-      process.env.OPENAI_API_KEY = originalOpenAIApiKey;
+      process.env["OPENAI_API_KEY"] = originalOpenAIApiKey;
     }
 
     if (originalAnthropicApiKey === undefined) {
       Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     } else {
-      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+      process.env["ANTHROPIC_API_KEY"] = originalAnthropicApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalEmbeddedAgentProvider === undefined) {
       Reflect.deleteProperty(process.env, "EMBEDDED_AGENT_PROVIDER");
     } else {
-      process.env.EMBEDDED_AGENT_PROVIDER = originalEmbeddedAgentProvider;
+      process.env["EMBEDDED_AGENT_PROVIDER"] = originalEmbeddedAgentProvider;
     }
   });
 
@@ -422,7 +420,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/daily-backup/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "daily-backup",
         url: "https://my-org.sentry.io/crons/backend/daily-backup/",
       });
@@ -440,7 +438,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
@@ -469,7 +467,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -549,7 +547,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -613,7 +611,7 @@ describe("get_sentry_resource", () => {
           sentryProtocol: "http",
         },
       );
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         url: "http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/",
       });
     });
@@ -644,7 +642,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -656,7 +654,7 @@ describe("get_sentry_resource", () => {
         resourceId: "101",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -668,7 +666,7 @@ describe("get_sentry_resource", () => {
         resourceId: "Errors Overview",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -684,6 +682,71 @@ describe("get_sentry_resource", () => {
           },
         ),
       ).rejects.toThrow("Dashboard resources require the inspect skill");
+    });
+  });
+
+  // ─── URL mode: metric alert URLs ───────────────────────────────────────────
+  describe("URL mode — metric alert URLs", () => {
+    const metricAlertUrl =
+      "https://sentry-mcp-evals.sentry.io/alerts/rules/details/456/?alert=10606471897&referrer=metric-alert-slack";
+
+    it("dispatches a metric alert notification URL to get_alert_rule", async () => {
+      const reads: string[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rule-detector/",
+          ({ request }) => {
+            reads.push(
+              `mapping:${new URL(request.url).searchParams.get("alert_rule_id")}`,
+            );
+            return HttpResponse.json({ detectorId: "789" });
+          },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/:id/",
+          ({ params }) => {
+            reads.push(`detector:${String(params["id"])}`);
+            return HttpResponse.json({
+              id: "789",
+              alertRuleId: 456,
+              name: "Error count",
+              type: "metric_issue",
+              workflowIds: [],
+              dateCreated: "2025-01-01T00:00:00.000Z",
+              dateUpdated: "2025-01-01T00:00:00.000Z",
+              projectId: "4509109104082945",
+              enabled: true,
+              config: { detectionType: "static" },
+              conditionGroup: {
+                logicType: "any",
+                conditions: [
+                  { type: "gt", comparison: 10, conditionResult: 75 },
+                ],
+              },
+              dataSources: [],
+            });
+          },
+        ),
+      );
+
+      const result = await callHandler({ url: metricAlertUrl });
+
+      expect(getStructuredContent(result)).toMatchObject({
+        metricMonitor: { id: "789", name: "Error count" },
+      });
+      expect(reads).toEqual(["mapping:456", "detector:789"]);
+    });
+
+    it("rejects a metric alert URL when get_alert_rule is not available", async () => {
+      await expect(
+        getSentryResource.handler(
+          { url: metricAlertUrl },
+          {
+            ...baseContext,
+            availableToolNames: new Set(["get_sentry_resource"]),
+          },
+        ),
+      ).rejects.toThrow("Metric alert resources require the inspect skill");
     });
   });
 
@@ -1139,6 +1202,22 @@ describe("get_sentry_resource", () => {
       expect(desc).toContain("dashboards");
     });
 
+    it("advertises metric alerts only when get_alert_rule is available", () => {
+      const withoutAlertRule = resolveDescription(
+        getSentryResource.description,
+        {
+          experimentalMode: false,
+          availableToolNames: new Set(["get_sentry_resource"]),
+        },
+      );
+      const withAlertRule = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set(["get_sentry_resource", "get_alert_rule"]),
+      });
+      expect(withoutAlertRule).not.toContain("metric alerts");
+      expect(withAlertRule).toContain("metric alerts");
+    });
+
     it("omits monitor hints when get_monitor_details is unavailable", () => {
       const desc = resolveDescription(getSentryResource.description, {
         experimentalMode: false,
@@ -1219,6 +1298,7 @@ describe("event package selection", () => {
               "performance": null,
               "platform": "python",
               "request": null,
+              "stacktrace": null,
               "tags": [
                 {
                   "key": "level",

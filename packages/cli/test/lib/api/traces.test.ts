@@ -15,7 +15,7 @@ import {
   listSpans,
   listTransactions,
 } from "../../../src/lib/api/traces.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // listTransactions
@@ -64,7 +64,7 @@ describe("listTransactions", () => {
       const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex];
+      const resp = at(responses, callIndex);
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -325,7 +325,7 @@ describe("listSpans", () => {
       const req = new Request(input, init);
       capturedUrls.push(req.url);
 
-      const resp = responses[callIndex];
+      const resp = at(responses, callIndex);
       callIndex += 1;
 
       return new Response(JSON.stringify(resp.body), {
@@ -621,8 +621,8 @@ describe("getSpanDetails", () => {
     expect(capturedUrl).toContain(
       "/projects/my-org/my-project/trace-items/span-id-abc/",
     );
-    expect(capturedParams.item_type).toBe("spans");
-    expect(capturedParams.trace_id).toBe("trace-id-xyz");
+    expect(capturedParams["item_type"]).toBe("spans");
+    expect(capturedParams["trace_id"]).toBe("trace-id-xyz");
   });
 
   test("returns parsed attributes", async () => {
@@ -801,9 +801,9 @@ describe("getDetailedTrace", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].span_id).toBe("span-1");
+    expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]);
+    const url = new URL(at(getCapturedUrls(), 0));
     expect(url.searchParams.get("timestamp")).toBe("1700000000");
     expect(url.searchParams.get("statsPeriod")).toBeNull();
     expect(url.searchParams.has("limit")).toBe(false);
@@ -817,7 +817,7 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(1);
     expect(getCapturedUrls()).toHaveLength(1);
-    const url = new URL(getCapturedUrls()[0]);
+    const url = new URL(at(getCapturedUrls(), 0));
     expect(url.searchParams.get("statsPeriod")).toBe("14d");
     expect(url.searchParams.get("timestamp")).toBeNull();
   });
@@ -828,19 +828,19 @@ describe("getDetailedTrace", () => {
     const result = await getDetailedTrace("my-org", "abc123def456");
 
     expect(result).toHaveLength(1);
-    expect(result[0].span_id).toBe("span-1");
+    expect(at(result, 0).span_id).toBe("span-1");
     expect(getCapturedUrls()).toHaveLength(2);
-    expect(new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod")).toBe(
-      "14d",
-    );
-    expect(new URL(getCapturedUrls()[1]).searchParams.get("statsPeriod")).toBe(
-      "90d",
-    );
     expect(
-      new URL(getCapturedUrls()[0]).searchParams.get("timestamp"),
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("statsPeriod"),
+    ).toBe("14d");
+    expect(
+      new URL(at(getCapturedUrls(), 1)).searchParams.get("statsPeriod"),
+    ).toBe("90d");
+    expect(
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("timestamp"),
     ).toBeNull();
     expect(
-      new URL(getCapturedUrls()[1]).searchParams.get("timestamp"),
+      new URL(at(getCapturedUrls(), 1)).searchParams.get("timestamp"),
     ).toBeNull();
   });
 
@@ -853,11 +853,11 @@ describe("getDetailedTrace", () => {
 
     expect(result).toHaveLength(0);
     expect(getCapturedUrls()).toHaveLength(1);
-    expect(new URL(getCapturedUrls()[0]).searchParams.get("timestamp")).toBe(
-      "1700000000",
-    );
     expect(
-      new URL(getCapturedUrls()[0]).searchParams.get("statsPeriod"),
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("timestamp"),
+    ).toBe("1700000000");
+    expect(
+      new URL(at(getCapturedUrls(), 0)).searchParams.get("statsPeriod"),
     ).toBeNull();
   });
 

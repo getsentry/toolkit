@@ -20,9 +20,9 @@ export const ATTRIBUTE_TYPES: readonly TraceItemAttributeValueType[] = [
 /** A parsed filter argument. */
 export type AttributeFilter = {
   /** The `has:` terms, as Sentry's `query`: keys must co-occur with all of them */
-  query?: string;
+  query?: string | undefined;
   /** The free text: Sentry matches it as a substring of attribute names */
-  name?: string;
+  name?: string | undefined;
 };
 
 /**
