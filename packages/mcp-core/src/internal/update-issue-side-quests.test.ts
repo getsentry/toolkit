@@ -80,7 +80,7 @@ describe("buildUpdateIssueSideQuests", () => {
   it("records the listed issues' short IDs and the open count on the span", () => {
     const attributes = captureSpanAttributes();
     const related = relatedIssues();
-    const [, open] = related.data;
+    const open = related.data[1]!;
     related.data = Array.from({ length: 4 }, (_, index) => ({
       ...open,
       issue: { ...open.issue, shortId: `WEB-${index + 1}` },
