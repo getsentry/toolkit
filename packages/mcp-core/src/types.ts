@@ -77,6 +77,20 @@ export type CredentialRouter = {
   list(): Promise<RoutedCredential[]>;
 };
 
+/** A file read from the machine the MCP server runs on. */
+export type LocalFile = {
+  /** File name without its directory, e.g. `repro.mp4`. */
+  name: string;
+  data: Uint8Array;
+};
+
+/**
+ * Reads a local file the user named in a tool call. Only hosts that run on the
+ * user's machine (the CLI's stdio server) provide one; the hosted server has
+ * no local files.
+ */
+export type LocalFileReader = (path: string) => Promise<LocalFile>;
+
 export type ServerContext = {
   sentryHost?: string;
   sentryProtocol?: SentryProtocol;
@@ -119,6 +133,11 @@ export type ServerContext = {
    * default credential's token.
    */
   credentialRouter?: CredentialRouter;
+  /**
+   * Reads local files for tools that upload them, such as videos attached to
+   * issue comments. Unset on hosts without local file access.
+   */
+  readLocalFile?: LocalFileReader;
   /**
    * Aborts when the MCP client cancels the tool call. Set only on a per-call
    * copy of the context (see `withCallSignal`), never on the session context.

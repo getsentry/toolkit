@@ -94,6 +94,33 @@ describe("get_issue_activity", () => {
     `);
   });
 
+  it("lists videos attached to comments", async () => {
+    const path =
+      "/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/comment-attachments/7/";
+    mockActivity({
+      id: "100",
+      type: "note",
+      user: { name: "Jane Developer" },
+      dateCreated: "2025-04-14T12:34:56.000Z",
+      data: {
+        text: `Crash on save\n[repro.mp4](${path})\n[docs](https://docs.sentry.io/)`,
+      },
+    });
+
+    const result = await getIssueActivity.handler(params, context);
+
+    const structuredContent = getStructuredContent(result);
+    expect(getIssueActivityOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(
+      (structuredContent as { comments: Array<{ attachments?: unknown }> })
+        .comments[0]?.attachments,
+    ).toEqual([
+      { id: "7", name: "repro.mp4", url: `https://sentry.io${path}` },
+    ]);
+  });
+
   it("returns null comments when comments are not requested", async () => {
     const result = await getIssueActivity.handler(
       { ...params, includeComments: false },

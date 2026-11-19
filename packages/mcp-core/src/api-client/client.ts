@@ -23,11 +23,13 @@ import {
   type ApiTarget,
   ApiValidationError,
   applyTimeParams,
+  buildSentryApiUrl,
   createApiClientCore,
   createApiError,
   createApiTransport,
   createIdempotentOperationMatcher,
   nextPageCursor,
+  readErrorResponse,
   readJsonResponse,
   type RetryPolicy,
   selectIdempotentWrites,
@@ -149,6 +151,7 @@ import {
   IssueActivityListResponseSchema,
   IssueAlertRuleListSchema,
   IssueAlertRuleSchema,
+  IssueCommentAttachmentSchema,
   IssueCommentListSchema,
   IssueCommentSchema,
   IssueIntegrationListSchema,
@@ -231,6 +234,7 @@ import type {
   IssueAlertRule,
   IssueAlertRuleList,
   IssueComment,
+  IssueCommentAttachment,
   IssueCommentList,
   IssueIntegrationList,
   IssueList,
@@ -838,6 +842,14 @@ export class SentryApiService {
    * apiService.getIssueUrl("my-org", "PROJ-123")
    * ```
    */
+  /**
+   * Full URL for an API path that already carries the `/api/0` prefix, such
+   * as a comment attachment link read from comment text.
+   */
+  getAbsoluteApiUrl(path: string): string {
+    return `${this.origin()}${path}`;
+  }
+
   getIssueUrl(organizationSlug: string, issueId: string): string {
     return getIssueUrlUtil(this.host, organizationSlug, issueId, this.protocol);
   }
@@ -4376,6 +4388,56 @@ export class SentryApiService {
       opts,
     );
     return IssueCommentSchema.parse(body);
+  }
+
+  /**
+   * Uploads a video for an issue comment. The comment links the returned
+   * `url`; Sentry enforces the size limit and accepted video types.
+   */
+  async uploadIssueCommentAttachment(
+    {
+      organizationSlug,
+      issueId,
+      fileName,
+      contentType,
+      data,
+    }: {
+      organizationSlug: string;
+      issueId: string;
+      fileName: string;
+      contentType: string;
+      data: Uint8Array;
+    },
+    opts?: RequestOptions,
+  ): Promise<IssueCommentAttachment> {
+    const path = apiPath`/organizations/${organizationSlug}/issues/${issueId}/comment-attachments/`;
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([new Uint8Array(data)], { type: contentType }),
+      fileName,
+    );
+    // The core sends every body as JSON, so a multipart upload goes straight
+    // to the transport and lets fetch set the multipart boundary.
+    const response = await transport.request(
+      buildSentryApiUrl(this.origin(opts?.host), path),
+      {
+        method: "POST",
+        headers: this.requestHeaders(),
+        body: form,
+        ...(this.signal ? { signal: this.signal } : {}),
+      },
+    );
+    if (!response.ok) {
+      const body = await readErrorResponse(response);
+      throw createApiError(
+        body.detail ?? `Video upload failed (${response.status})`,
+        response.status,
+        body.detail,
+        body.json,
+      );
+    }
+    return IssueCommentAttachmentSchema.parse(await readJsonResponse(response));
   }
 
   async getIssueActivity(

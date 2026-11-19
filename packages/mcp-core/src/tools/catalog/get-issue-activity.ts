@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { IssueActivity, IssueComment } from "../../api-client/types";
+import { parseCommentAttachments } from "../../comment-attachments";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import {
@@ -54,6 +55,18 @@ const issueActivityEntrySchema = z.object({
     .nullable()
     .describe("Set when the comment ID differs from the activity ID."),
   text: z.string().nullable(),
+  attachments: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        url: z.string().describe("API URL that streams the video."),
+      }),
+    )
+    .optional()
+    .describe(
+      "Videos attached to a comment. Download one with `sentry issue comments <issue> --download <dir>`.",
+    ),
   assignee: z
     .object({
       id: z.string(),
@@ -273,6 +286,7 @@ function mapExternalIssue(type: string, data: Record<string, unknown>) {
 
 function mapActivity(
   activity: IssueActivity | IssueComment,
+  absoluteUrl: (path: string) => string,
 ): IssueActivityEntry {
   const text = getActivityText(activity);
   const commentId = activity.commentId;
@@ -287,6 +301,14 @@ function mapActivity(
         : null,
     text,
   };
+  const attachments = parseCommentAttachments(text);
+  if (attachments.length > 0) {
+    entry.attachments = attachments.map((link) => ({
+      id: link.id,
+      name: link.name,
+      url: absoluteUrl(link.path),
+    }));
+  }
 
   const data = activity.data;
   if (text || !isPlainObject(data) || Object.keys(data).length === 0) {
@@ -323,7 +345,7 @@ export default defineTool({
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
   description:
-    "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
+    "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when, plus any videos attached to comments.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -375,13 +397,15 @@ export default defineTool({
         : Promise.resolve([]),
     ]);
 
+    const toEntry = (item: IssueActivity | IssueComment) =>
+      mapActivity(item, (path) => apiService.getAbsoluteApiUrl(path));
     return structuredResult({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
       issueUrl: apiService.getIssueUrl(parsed.organizationSlug, parsed.issueId),
-      activity: activity.slice(0, params.limit).map(mapActivity),
+      activity: activity.slice(0, params.limit).map(toEntry),
       comments: params.includeComments
-        ? comments.slice(0, params.limit).map(mapActivity)
+        ? comments.slice(0, params.limit).map(toEntry)
         : null,
     });
   },
