@@ -8,6 +8,7 @@ import {
   unlinkExternalIssue,
 } from "../../../src/lib/issue-links.js";
 import { confirmByTyping } from "../../../src/lib/mutate-command.js";
+import { loadCommand, at } from "../../helpers.js";
 
 const { mockIsatty } = vi.hoisted(() => ({ mockIsatty: vi.fn(() => false) }));
 
@@ -97,7 +98,7 @@ describe("issue unlink", () => {
     "forwards resolved issue context and selector $selector",
     async ({ selector, expected }) => {
       const { context, output } = createMockContext();
-      const func = await unlinkCommand.loader();
+      const func = await loadCommand(unlinkCommand);
       await func.call(
         context,
         { ...defaultFlags, ...selector, yes: true },
@@ -133,7 +134,7 @@ describe("issue unlink", () => {
 
   test("refuses non-interactive mutation without explicit confirmation before resolving", async () => {
     const { context, output } = createMockContext();
-    const func = await unlinkCommand.loader();
+    const func = await loadCommand(unlinkCommand);
 
     await expect(
       func.call(context, defaultFlags, "APP-42", externalUrl),
@@ -149,7 +150,7 @@ describe("issue unlink", () => {
     "allows non-interactive --%s without prompting",
     async (flag) => {
       const { context } = createMockContext();
-      const func = await unlinkCommand.loader();
+      const func = await loadCommand(unlinkCommand);
       await func.call(
         context,
         { ...defaultFlags, [flag]: true },
@@ -172,7 +173,7 @@ describe("issue unlink", () => {
   test("confirms the selected issue and external URL before unlinking interactively", async () => {
     mockIsatty.mockReturnValue(true);
     const { context } = createMockContext();
-    const func = await unlinkCommand.loader();
+    const func = await loadCommand(unlinkCommand);
     await func.call(context, defaultFlags, "test-org/APP-42", externalUrl);
 
     expect(confirmByTyping).toHaveBeenCalledExactlyOnceWith(
@@ -181,7 +182,7 @@ describe("issue unlink", () => {
     );
     expect(unlinkExternalIssue).toHaveBeenCalledOnce();
     expect(vi.mocked(confirmByTyping).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(unlinkExternalIssue).mock.invocationCallOrder[0],
+      at(vi.mocked(unlinkExternalIssue).mock.invocationCallOrder, 0),
     );
   });
 
@@ -189,7 +190,7 @@ describe("issue unlink", () => {
     mockIsatty.mockReturnValue(true);
     vi.mocked(confirmByTyping).mockResolvedValue(false);
     const { context, output } = createMockContext();
-    const func = await unlinkCommand.loader();
+    const func = await loadCommand(unlinkCommand);
     await func.call(context, defaultFlags, "APP-42", externalUrl);
 
     expect(confirmByTyping).toHaveBeenCalledOnce();
@@ -206,7 +207,7 @@ describe("issue unlink", () => {
     };
     vi.mocked(unlinkExternalIssue).mockResolvedValue(result);
     const { context, output } = createMockContext();
-    const func = await unlinkCommand.loader();
+    const func = await loadCommand(unlinkCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true, json: true },

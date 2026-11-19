@@ -116,11 +116,27 @@ export function formatTimestamp(
   return toDate(timestamp)?.toLocaleTimeString() ?? String(timestamp);
 }
 
-/** Like formatTimestamp, with the local date added when it is not today. */
-export function formatDateTime(timestamp: number | string): string {
+const TIME_WITH_MILLISECONDS: Intl.DateTimeFormatOptions = {
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+};
+
+/**
+ * Like formatTimestamp, with the local date added when it is not today. Pass
+ * `milliseconds` where events can be closer together than a second.
+ */
+export function formatDateTime(
+  timestamp: number | string,
+  { milliseconds = false }: { milliseconds?: boolean } = {},
+): string {
   const date = toDate(timestamp);
   if (!date) return String(timestamp);
+  const time = milliseconds
+    ? date.toLocaleTimeString(undefined, TIME_WITH_MILLISECONDS)
+    : date.toLocaleTimeString();
   return date.toDateString() === new Date().toDateString()
-    ? date.toLocaleTimeString()
-    : `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+    ? time
+    : `${date.toLocaleDateString()} ${time}`;
 }

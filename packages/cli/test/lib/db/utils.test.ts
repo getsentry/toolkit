@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { upsert } from "../../../src/lib/db/utils.js";
+import { type SqlValue, upsert } from "../../../src/lib/db/utils.js";
 
 describe("upsert", () => {
   test("generates basic UPSERT statement", () => {
@@ -85,7 +85,7 @@ describe("upsert", () => {
   });
 
   test("throws error for empty data object", () => {
-    expect(() => upsert("auth", {}, ["id"])).toThrow(
+    expect(() => upsert<Record<string, SqlValue>>("auth", {}, ["id"])).toThrow(
       "upsert: data object must have at least one column",
     );
   });

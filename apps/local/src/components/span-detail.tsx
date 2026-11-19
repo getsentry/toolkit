@@ -4,8 +4,9 @@ import { Check, Copy, ChevronLeft } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
 import type { TraceGroup, TraceSpan } from "@/lib/trace-model.ts";
-import { formatTimestamp } from "@/lib/presentation.ts";
+import { formatDateTime } from "@/lib/presentation.ts";
 import { isErrorEvent } from "@/lib/workspace.ts";
+import { jsonText } from "@/lib/objects.ts";
 import { JsonView } from "./json-view.tsx";
 
 import {
@@ -66,13 +67,9 @@ export function DetailFields({
         </tbody>
       </table>
       {copiedField ? (
-        <span
-          role="status"
-          aria-label={`${copiedField} copied`}
-          className="sr-only"
-        >
+        <output aria-label={`${copiedField} copied`} className="sr-only">
           {copiedField} copied
-        </span>
+        </output>
       ) : null}
     </>
   );
@@ -154,7 +151,7 @@ export function RelatedTelemetry({
 }: {
   trace: TraceGroup;
   currentItemId?: string;
-  onSelect?: (item: LocalFeedItem) => void;
+  onSelect?: ((item: LocalFeedItem) => void) | undefined;
 }) {
   const items = trace.items.filter(
     (item) =>
@@ -202,11 +199,11 @@ export function SpanDetail({
 }: {
   span: TraceSpan;
   trace: TraceGroup;
-  onBack?: () => void;
-  onSelectRelatedItem?: (item: LocalFeedItem) => void;
+  onBack?: (() => void) | undefined;
+  onSelectRelatedItem?: ((item: LocalFeedItem) => void) | undefined;
 }) {
   const payload = detailRecord(span.payload);
-  const context = detailRecord(detailRecord(payload.contexts).trace);
+  const context = detailRecord(detailRecord(payload["contexts"])["trace"]);
   const fields: DetailField[] = [
     ...(span.durationMs === undefined
       ? []
@@ -222,7 +219,7 @@ export function SpanDetail({
       : [
           {
             label: "Start timestamp",
-            value: formatTimestamp(span.startTimestamp),
+            value: formatDateTime(span.startTimestamp, { milliseconds: true }),
             code: true,
           },
         ]),
@@ -231,7 +228,7 @@ export function SpanDetail({
       : [
           {
             label: "End timestamp",
-            value: formatTimestamp(span.endTimestamp),
+            value: formatDateTime(span.endTimestamp, { milliseconds: true }),
             code: true,
           },
         ]),
@@ -248,9 +245,9 @@ export function SpanDetail({
     { label: "Trace ID", value: trace.id, code: true },
   ];
   const attributes = attributeFields({
-    ...detailRecord(context.data),
-    ...detailRecord(payload.data),
-    ...detailRecord(payload.attributes),
+    ...detailRecord(context["data"]),
+    ...detailRecord(payload["data"]),
+    ...detailRecord(payload["attributes"]),
   });
   return (
     <section
@@ -276,7 +273,7 @@ export function SpanDetail({
       </header>
       <InspectorTabs
         key={`${trace.id}:${span.id}`}
-        json={JSON.stringify(span.payload, null, 2) ?? "null"}
+        json={jsonText(span.payload, 2) ?? "null"}
         overview={
           <>
             <AiInspector payload={span.payload} steps={span.children} />

@@ -27,6 +27,7 @@ import {
   type ServedAsset,
   toolkitDownload,
 } from "./install-scenarios.js";
+import { at, must } from "../helpers.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install.ps1");
 const hasPwsh =
@@ -69,13 +70,6 @@ function Invoke-RestMethod {
     if ($version -eq 'latest') { $version = $env:SENTRY_TEST_LATEST_VERSION }
     $body = (Get-Content -Raw -LiteralPath $env:SENTRY_TEST_REGISTRY_BODY).Replace('__VERSION__', $version)
     return ($body | ConvertFrom-Json)
-  }
-  if ($Uri -like 'https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=*') {
-    $page = $Uri.Split('=')[-1]
-    $file = [Environment]::GetEnvironmentVariable("SENTRY_TEST_RELEASES_PAGE_$page")
-    # Like Windows PowerShell 5.1, emit each JSON array as a single object.
-    if ($file) { return ,(Get-Content -Raw -LiteralPath $file | ConvertFrom-Json -NoEnumerate) }
-    return ,@()
   }
   throw "Unexpected Invoke-RestMethod $Uri"
 }
@@ -124,7 +118,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     writeFileSync(harnessPath, harness);
 
     env = {
-      PATH: process.env.PATH,
+      PATH: process.env["PATH"],
       HOME: join(testDir, "home"),
       USERPROFILE: join(testDir, "home"),
       TMPDIR: testDir,
@@ -137,7 +131,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
       GITHUB_PATH: join(testDir, "github-path"),
     };
     applyScenario(
-      { ...INSTALL_SCENARIOS[0], name: "default" },
+      { ...at(INSTALL_SCENARIOS, 0), name: "default" },
       served,
       testDir,
       env,
@@ -187,7 +181,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
 
   test("passes setup environment and hands off PATH handling", () => {
     const handoffCode = `sntryh_${"a".repeat(43)}`;
-    env.SENTRY_HANDOFF = handoffCode;
+    env["SENTRY_HANDOFF"] = handoffCode;
 
     const result = run();
 
@@ -211,20 +205,20 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   });
 
   test("runs sentry init with the downloaded binary when SENTRY_INIT=1", () => {
-    env.SENTRY_INIT = "1";
+    env["SENTRY_INIT"] = "1";
 
     const result = run();
 
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("post-args")).toEqual(["init"]);
-    const [initBinary] = recorded("post-binary");
-    expect(initBinary?.startsWith(join(testDir, "sentry-install-"))).toBe(true);
+    const initBinary = must(recorded("post-binary")[0], "the init binary");
+    expect(initBinary.startsWith(join(testDir, "sentry-install-"))).toBe(true);
     expect(existsSync(initBinary)).toBe(false);
   });
 
   test("fails when sentry init fails", () => {
-    env.SENTRY_INIT = "1";
-    env.SENTRY_TEST_POST_EXIT = "7";
+    env["SENTRY_INIT"] = "1";
+    env["SENTRY_TEST_POST_EXIT"] = "7";
 
     const result = run();
 
@@ -236,7 +230,7 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
   });
 
   test("passes --no-modify-path to setup when SENTRY_NO_MODIFY_PATH=1", () => {
-    env.SENTRY_NO_MODIFY_PATH = "1";
+    env["SENTRY_NO_MODIFY_PATH"] = "1";
 
     const result = run();
 
@@ -248,28 +242,28 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     {
       name: "non-Windows hosts",
       setup: () => {
-        delete env.OS;
+        delete env["OS"];
       },
       message: "This installer is for Windows",
     },
     {
       name: "unsupported architectures",
       setup: () => {
-        env.PROCESSOR_ARCHITECTURE = "ARM64";
+        env["PROCESSOR_ARCHITECTURE"] = "ARM64";
       },
       message: "only windows-x64 is supported",
     },
     {
       name: "the nightly channel",
       setup: () => {
-        env.SENTRY_VERSION = "nightly";
+        env["SENTRY_VERSION"] = "nightly";
       },
       message: "sentry cli upgrade nightly",
     },
     {
       name: "a failed setup",
       setup: () => {
-        env.SENTRY_TEST_SETUP_EXIT = "3";
+        env["SENTRY_TEST_SETUP_EXIT"] = "3";
       },
       message: "sentry cli setup failed with exit code 3",
     },

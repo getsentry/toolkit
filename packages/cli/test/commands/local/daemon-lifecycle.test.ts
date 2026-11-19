@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, originalFetch } from "../../helpers.js";
 import {
   LOCAL_DAEMON_STATE_FILENAME,
   readLocalDaemonState,
@@ -30,10 +30,7 @@ afterEach(() => {
 
 describe("Local daemon discovery", () => {
   test("rejects stale state when another service answers the public health endpoint", async () => {
-    vi.stubGlobal(
-      "fetch",
-      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
-    );
+    vi.stubGlobal("fetch", originalFetch());
     vi.spyOn(process, "kill").mockImplementation(() => {
       throw Object.assign(new Error("owner exited"), { code: "ESRCH" });
     });
@@ -58,7 +55,7 @@ describe("Local daemon discovery", () => {
       await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
     } finally {
       await new Promise<void>((resolve) => {
-        server.close(resolve);
+        server.close(() => resolve());
         server.closeAllConnections();
       });
     }
@@ -398,10 +395,7 @@ async function eventually<T>(
 }
 
 test("mirrors its sessions to the completion snapshot and removes it on shutdown", async () => {
-  vi.stubGlobal(
-    "fetch",
-    (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
-  );
+  vi.stubGlobal("fetch", originalFetch());
   const running = runLocalDaemonForeground({
     host: "127.0.0.1",
     port: await freePort(),

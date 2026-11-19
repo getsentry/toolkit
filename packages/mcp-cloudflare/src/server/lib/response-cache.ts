@@ -138,7 +138,7 @@ function isJson(response: Response): boolean {
 export type ResponseCacheOptions = {
   store: CacheStore;
   /** Used instead of `store` for R2-allowlisted URLs. */
-  allowlistedStore?: CacheStore;
+  allowlistedStore?: CacheStore | undefined;
   identity: string;
   /** The Sentry host's base URL, for cross-endpoint invalidation rules. */
   apiBaseUrl: string;

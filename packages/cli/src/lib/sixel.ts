@@ -231,7 +231,7 @@ export function parseTmuxInfo(output: string): TmuxInfo {
  * reported as no passthrough and no sixel.
  */
 function detectTmux(): TmuxInfo | undefined {
-  if (!getEnv().TMUX) {
+  if (!getEnv()["TMUX"]) {
     return;
   }
   try {
@@ -394,10 +394,10 @@ export function optedOut(): boolean {
     !(process.stdout.isTTY && process.stdin.isTTY) ||
     process.platform === "win32" || // MVP: probe is unix-only
     isPlainOutput() ||
-    !env.TERM ||
-    env.TERM === "dumb" ||
-    isTruthyEnv(env.SENTRY_NO_GRAPHICS ?? "") ||
-    isTruthyEnv(env.SENTRY_NO_SIXEL ?? "")
+    !env["TERM"] ||
+    env["TERM"] === "dumb" ||
+    isTruthyEnv(env["SENTRY_NO_GRAPHICS"] ?? "") ||
+    isTruthyEnv(env["SENTRY_NO_SIXEL"] ?? "")
   );
 }
 
@@ -575,7 +575,7 @@ export function canRenderKitty(): boolean {
  * session, mirroring the fit check {@link sixelFits} does for the banner.
  */
 export function terminalPixelWidth(
-  columns: number = process.stdout.columns ?? 80,
+  columns: number = process.stdout.columns || 80,
 ): number | undefined {
   const caps = detectSixelCaps();
   if (
@@ -594,7 +594,7 @@ export function terminalPixelWidth(
  * guessing, because a guessed row height corrupts the dashboard grid.
  */
 export function terminalPixelHeight(
-  rows: number = process.stdout.rows ?? 24,
+  rows: number = process.stdout.rows || 24,
 ): number | undefined {
   const caps = detectSixelCaps();
   if (
@@ -613,7 +613,7 @@ export function terminalPixelHeight(
  * affects sharpness, never layout.
  */
 export function tmuxKittyPlacement(
-  columns: number = process.stdout.columns ?? 80,
+  columns: number = process.stdout.columns || 80,
 ): TmuxKittyPlacement | undefined {
   if (!detectSixelCaps().tmux) {
     return;
@@ -659,7 +659,7 @@ function sixelBanner(): string | undefined {
  * caller falls back to the block-art banner.
  */
 export function graphicsBanner(
-  columns: number = process.stdout.columns ?? 80,
+  columns: number = process.stdout.columns || 80,
 ): string | undefined {
   // Re-evaluate the cheap, I/O-free gates on every call. detectSixelCaps caches
   // the probe result, so this ensures a later opt-out (NO_COLOR,

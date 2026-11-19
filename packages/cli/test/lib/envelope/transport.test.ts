@@ -57,20 +57,20 @@ describe("buildEnvelopeUrl", () => {
 
 describe("resolveDsn", () => {
   test("explicit --dsn flag takes priority over env", () => {
-    process.env.SENTRY_DSN = SELF_HOSTED_DSN;
+    process.env["SENTRY_DSN"] = SELF_HOSTED_DSN;
     const result = resolveDsn({ dsn: SAAS_DSN });
     expect(result).toBe(SAAS_DSN);
   });
 
   test("SENTRY_DSN env var used when no flag", () => {
-    process.env.SENTRY_DSN = SAAS_DSN;
-    const result = resolveDsn({ dsn: undefined });
+    process.env["SENTRY_DSN"] = SAAS_DSN;
+    const result = resolveDsn({});
     expect(result).toBe(SAAS_DSN);
   });
 
   test("returns undefined when neither flag nor env set", () => {
-    delete process.env.SENTRY_DSN;
-    const result = resolveDsn({ dsn: undefined });
+    delete process.env["SENTRY_DSN"];
+    const result = resolveDsn({});
     expect(result).toBeUndefined();
   });
 
@@ -80,8 +80,8 @@ describe("resolveDsn", () => {
   });
 
   test("trims whitespace from SENTRY_DSN env var", () => {
-    process.env.SENTRY_DSN = `\n${SAAS_DSN}\n`;
-    const result = resolveDsn({ dsn: undefined });
+    process.env["SENTRY_DSN"] = `\n${SAAS_DSN}\n`;
+    const result = resolveDsn({});
     expect(result).toBe(SAAS_DSN);
   });
 });
@@ -98,7 +98,7 @@ describe("resolveIngestDsn", () => {
   });
 
   test("returns flag/env DSN without scanning", async () => {
-    process.env.SENTRY_DSN = SAAS_DSN;
+    process.env["SENTRY_DSN"] = SAAS_DSN;
     await expect(resolveIngestDsn({}, "/tmp")).resolves.toBe(SAAS_DSN);
     expect(detectSpy).not.toHaveBeenCalled();
   });

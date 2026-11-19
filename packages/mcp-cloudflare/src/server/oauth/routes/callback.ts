@@ -55,7 +55,7 @@ function parseUpstreamScopes(scope: string | undefined): string[] | undefined {
 }
 
 function getUpstreamUserLabel(payload: {
-  user: { name: string | null; email?: string | null; id: string };
+  user: { name: string | null; email?: string | null | undefined; id: string };
 }): string {
   return payload.user.name ?? payload.user.email ?? payload.user.id;
 }

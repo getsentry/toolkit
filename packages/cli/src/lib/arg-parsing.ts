@@ -764,7 +764,7 @@ export type ListTargetOptions = {
 export type ListTargetInput = {
   readonly target: ListTarget;
   /** Base URL of a pasted Sentry web URL, for `applySentryUrlContext` */
-  readonly baseUrl?: string;
+  readonly baseUrl?: string | undefined;
 };
 
 /**

@@ -32,13 +32,11 @@ export default function DataWire({
         direction === "rtl" ? "wire-rtl" : "",
         className,
       ].join(" ")}
-      style={
-        {
-          "--period": `${periodSec}s`,
-          "--pulse-w": `${pulseWidthPct}%`,
-          "--delay": `${delaySec}s`,
-        } as React.CSSProperties
-      }
+      style={{
+        "--period": `${periodSec}s`,
+        "--pulse-w": `${pulseWidthPct}%`,
+        "--delay": `${delaySec}s`,
+      }}
     />
   );
 }

@@ -387,7 +387,7 @@ const params = {
 };
 
 const experimentalContext = {
-  constraints: { organizationSlug: undefined },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
   experimentalMode: true,
@@ -526,6 +526,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
             "method": "POST",
             "url": "https://shop.example.com/api/orders/",
           },
+          "stacktrace": null,
           "tags": [
             {
               "key": "browser",
@@ -714,7 +715,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.user).toEqual({
+    expect(payload["event"].user).toEqual({
       id: "1182",
       email: "jane@example.com",
       username: "jane",
@@ -730,7 +731,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
 
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = getStructuredContent<Record<string, any>>(result);
-    const [raised, cause] = payload.event.exceptions;
+    const [raised, cause] = payload["event"].exceptions;
 
     expect(raised.type).toBe("IntegrityError");
     expect(cause.type).toBe("UniqueViolation");
@@ -792,9 +793,9 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.threadCount).toBe(25);
-    expect(payload.event.threads).toHaveLength(20);
-    expect(payload.event.threads.at(-1).name).toBe("worker-20");
+    expect(payload["event"].threadCount).toBe(25);
+    expect(payload["event"].threads).toHaveLength(20);
+    expect(payload["event"].threads.at(-1).name).toBe("worker-20");
   });
 
   it("falls back to the ip and display_name user aliases", async () => {
@@ -811,7 +812,7 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     const result = await getIssueDetails.handler(params, experimentalContext);
     const payload = getStructuredContent<Record<string, any>>(result);
 
-    expect(payload.event.user).toMatchObject({
+    expect(payload["event"].user).toMatchObject({
       ipAddress: "203.0.113.24",
       name: "Jane Doe",
     });
@@ -831,10 +832,13 @@ describe("get_issue_details structuredContent for a realistic error", () => {
     const payload = getStructuredContent<Record<string, any>>(result);
 
     // the top level message is an empty string on an error event
-    expect(payload.event.message).toBeNull();
-    expect(payload.event.tags).toContainEqual({ key: "device", value: null });
+    expect(payload["event"].message).toBeNull();
+    expect(payload["event"].tags).toContainEqual({
+      key: "device",
+      value: null,
+    });
     // a context with nothing left is dropped
-    expect(payload.event.contexts).not.toHaveProperty("os");
+    expect(payload["event"].contexts).not.toHaveProperty("os");
   });
 
   it("lists the threads and maps the crashed one when there is no exception", async () => {
@@ -919,5 +923,46 @@ describe("get_issue_details structuredContent for a realistic error", () => {
       payload.event.crashedThread?.stacktrace?.frames.map((f) => f.function),
     ).toEqual(["main", "draw_frame"]);
     expect(JSON.stringify(payload)).not.toContain("0x0000000100f3c2a8");
+  });
+
+  it("maps the event-level stacktrace of a captured message", async () => {
+    // a native captureMessage with attach_stacktrace: no exception, no threads
+    mockDjangoIssue({
+      ...djangoErrorEvent,
+      type: "default",
+      platform: "native",
+      entries: [
+        { type: "message", data: { formatted: "Texture cache miss" } },
+        {
+          type: "stacktrace",
+          data: {
+            frames: [
+              frame({ filename: "main.c", function: "main", lineNo: 12 }),
+              frame({
+                filename: "texture.c",
+                function: "load_texture",
+                lineNo: 88,
+                inApp: true,
+              }),
+            ],
+            framesOmitted: null,
+            registers: null,
+            hasSystemFrames: false,
+          },
+        },
+      ],
+    });
+
+    const result = await getIssueDetails.handler(params, experimentalContext);
+    const payload = getIssueDetailsOutputSchema.parse(
+      getStructuredContent(result),
+    );
+
+    expect(payload.event.exceptions).toBeNull();
+    expect(payload.event.threads).toBeNull();
+    expect(payload.event.stacktrace?.frames.map((f) => f.function)).toEqual([
+      "main",
+      "load_texture",
+    ]);
   });
 });

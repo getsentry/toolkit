@@ -6,7 +6,7 @@ import {
   getWorkspaceEmptyState,
   pluralize,
 } from "./presentation.ts";
-import { workspaceViews } from "./workspace.ts";
+import { workspaceViews, type WorkspaceView } from "./workspace.ts";
 
 describe("getConnectionPresentation", () => {
   test("describes an active local receiver as connected", () => {
@@ -67,7 +67,7 @@ describe("getWorkspaceEmptyState", () => {
   });
 
   test("capturing views offer a relevant telemetry trigger", () => {
-    const triggers = {
+    const triggers: Record<WorkspaceView, RegExp> = {
       live: /send.*event/i,
       traces: /instrumented.*request|operation/i,
       errors: /error.*failed request/i,
@@ -77,6 +77,10 @@ describe("getWorkspaceEmptyState", () => {
       sdks: /session.*client report/i,
       feedback: /submit.*feedback/i,
       profiles: /profiling/i,
+      queries: /instrumented database query/i,
+      resources: /instrumented browser resources/i,
+      "web-vitals": /performance measurements/i,
+      attachments: /file attachment/i,
     };
     for (const view of workspaceViews) {
       expect(
@@ -115,8 +119,8 @@ describe("getWorkspaceEmptyState", () => {
 
 describe("formatTimestamp", () => {
   test("reads naive ISO times as UTC and numeric strings as epoch seconds", () => {
-    const previous = process.env.TZ;
-    process.env.TZ = "Asia/Kolkata";
+    const previous = process.env["TZ"];
+    process.env["TZ"] = "Asia/Kolkata";
     try {
       const utc = new Date("2026-11-17T20:30:20.913Z");
       // sentry-python can send ISO times with no timezone; Relay reads them as UTC.
@@ -134,8 +138,8 @@ describe("formatTimestamp", () => {
       );
       expect(formatTimestamp("not a time")).toBe("not a time");
     } finally {
-      if (previous === undefined) delete process.env.TZ;
-      else process.env.TZ = previous;
+      if (previous === undefined) delete process.env["TZ"];
+      else process.env["TZ"] = previous;
     }
   });
 });

@@ -175,8 +175,9 @@ export function createTieredStore({
       recordR2Lookup("miss");
       return;
     }
-    const remainingMs = Number(object.customMetadata?.expiresAt) - Date.now();
-    if (object.customMetadata?.v !== FORMAT_VERSION || !(remainingMs > 0)) {
+    const remainingMs =
+      Number(object.customMetadata?.["expiresAt"]) - Date.now();
+    if (object.customMetadata?.["v"] !== FORMAT_VERSION || !(remainingMs > 0)) {
       recordR2Lookup("expired");
       return;
     }

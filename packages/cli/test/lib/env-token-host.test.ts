@@ -34,8 +34,8 @@ describe("env-token-host", () => {
       url: "https://self-hosted.example.com",
       org: "synthetic-org",
     });
-    process.env.SENTRY_AUTH_TOKEN = `\x01\u00a0${token}\x7f`;
-    process.env.SENTRY_HOST = "https://different.example.com";
+    process.env["SENTRY_AUTH_TOKEN"] = `\x01\u00a0${token}\x7f`;
+    process.env["SENTRY_HOST"] = "https://different.example.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://self-hosted.example.com");
   });
@@ -46,37 +46,38 @@ describe("env-token-host", () => {
   });
 
   test("captures SENTRY_HOST when set", () => {
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://sentry.acme.com");
   });
 
   test("captures SENTRY_URL when SENTRY_HOST is unset", () => {
-    process.env.SENTRY_URL = "https://sentry.acme.com";
+    process.env["SENTRY_URL"] = "https://sentry.acme.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://sentry.acme.com");
   });
 
   test("prefers SENTRY_HOST over SENTRY_URL when both are set", () => {
-    process.env.SENTRY_HOST = "https://host.example.com";
-    process.env.SENTRY_URL = "https://url.example.com";
+    process.env["SENTRY_HOST"] = "https://host.example.com";
+    process.env["SENTRY_URL"] = "https://url.example.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://host.example.com");
   });
 
   test("normalizes bare hostname to https://", () => {
-    process.env.SENTRY_HOST = "sentry.acme.com";
+    process.env["SENTRY_HOST"] = "sentry.acme.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://sentry.acme.com");
   });
 
   test("is idempotent — second capture is a no-op", () => {
-    process.env.SENTRY_HOST = "https://first.example.com";
+    process.env["SENTRY_HOST"] = "https://first.example.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://first.example.com");
 
     // Change env AFTER initial capture — snapshot should NOT update
-    process.env.SENTRY_HOST = "https://second.example.com";
+    // Change env AFTER initial capture — snapshot should NOT update
+    process.env["SENTRY_HOST"] = "https://second.example.com";
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe("https://first.example.com");
   });
@@ -89,14 +90,15 @@ describe("env-token-host", () => {
     expect(getEnvTokenHost()).toBe(DEFAULT_SENTRY_URL);
 
     // Simulate shim write
-    process.env.SENTRY_URL = "https://injected-by-sentryclirc.com";
+    // Simulate shim write
+    process.env["SENTRY_URL"] = "https://injected-by-sentryclirc.com";
     // Second call is a no-op (idempotent)
     captureEnvTokenHost();
     expect(getEnvTokenHost()).toBe(DEFAULT_SENTRY_URL);
   });
 
   test("auto-captures on first getEnvTokenHost() call without explicit capture", () => {
-    process.env.SENTRY_HOST = "https://auto.example.com";
+    process.env["SENTRY_HOST"] = "https://auto.example.com";
     // Never call captureEnvTokenHost explicitly
     expect(getEnvTokenHost()).toBe("https://auto.example.com");
   });

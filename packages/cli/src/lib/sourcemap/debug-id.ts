@@ -348,7 +348,7 @@ export async function injectDebugId(
 type SourcemapJson = {
   mappings?: string;
   sources?: (string | null)[];
-  sections?: IndexMapSection[];
+  sections?: (IndexMapSection | null)[];
   debug_id?: string;
   debugId?: string;
 };
@@ -356,7 +356,7 @@ type SourcemapJson = {
 /** A section of an ECMA-426 index map, which Turbopack emits. */
 type IndexMapSection = {
   offset?: { line?: unknown };
-  map?: SourcemapJson;
+  map?: SourcemapJson | null;
 };
 
 /**
@@ -398,7 +398,7 @@ function insertGeneratedLine(map: SourcemapJson, line: number): void {
   let spanning: { map: SourcemapJson; start: number } | undefined;
   for (const section of map.sections) {
     const start = section?.offset?.line;
-    if (typeof start !== "number") {
+    if (!section || typeof start !== "number") {
       continue;
     }
     if (start >= line) {
@@ -432,7 +432,7 @@ function insertGeneratedLine(map: SourcemapJson, line: number): void {
 function mutateSourcemap(
   map: SourcemapJson,
   debugId: string,
-  options: { snippetLine?: number },
+  options: { snippetLine?: number | undefined },
 ): void {
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));

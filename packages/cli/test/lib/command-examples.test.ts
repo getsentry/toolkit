@@ -30,7 +30,7 @@ function helpText(): string {
     docs: { brief: "Test command", examples },
     parameters: {},
     async *func() {
-      yield null;
+      // no-op
     },
   });
   return (command as unknown as { fullDescription: string }).fullDescription;
@@ -59,7 +59,7 @@ describe("command examples", () => {
 
   test("--help goes through npx when npx launched the process", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    process.env.npm_command = "exec";
+    process.env["npm_command"] = "exec";
     expect(helpText()).toContain(
       "  npx -y @sentry/mcp-server issue list my-org/frontend # List issues",
     );

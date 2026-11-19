@@ -656,11 +656,11 @@ describe("queryAllWidgets timeseries", () => {
 
     const { path, params } = lastRequest();
     expect(path).toEqual({ organization_id_or_slug: ORG });
-    expect(params.dataset).toBe("errors");
-    expect(params.yAxis).toEqual(["count()"]);
-    expect(params.statsPeriod).toBe("24h");
-    expect(params.groupBy).toBeUndefined();
-    expect(params.topEvents).toBeUndefined();
+    expect(params["dataset"]).toBe("errors");
+    expect(params["yAxis"]).toEqual(["count()"]);
+    expect(params["statsPeriod"]).toBe("24h");
+    expect(params["groupBy"]).toBeUndefined();
+    expect(params["topEvents"]).toBeUndefined();
     expect(results.get(0)).toEqual({
       type: "timeseries",
       series: [
@@ -786,15 +786,15 @@ describe("queryAllWidgets timeseries", () => {
     await queryAllWidgets(REGION, ORG, dashboard, { period: "1h" });
 
     const { params } = lastRequest();
-    expect(params.groupBy).toEqual([
+    expect(params["groupBy"]).toEqual([
       "severity",
       "count()",
       "count_unique(user)",
       "max(timestamp)",
     ]);
-    expect(params.sort).toBe("-max(timestamp)");
-    expect(params.topEvents).toBe(5);
-    expect(params.excludeOther).toBe("1");
+    expect(params["sort"]).toBe("-max(timestamp)");
+    expect(params["topEvents"]).toBe(5);
+    expect(params["excludeOther"]).toBe("1");
   });
 
   test("labels grouped series by group values and marks Other", async () => {

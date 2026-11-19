@@ -219,7 +219,7 @@ describe("createResponseCache", () => {
       { url, requestHeaders: {}, identity: "identity-a" },
       Response.json(issueFixture),
     );
-    await cache.invalidate(url);
+    await cache.invalidate(url, "identity-a");
     await write;
     expect(store.stats().entries).toBe(0);
 

@@ -112,25 +112,10 @@ function spyCaptureException(): {
   restore: () => void;
 } {
   const captureSpy = vi.spyOn(Sentry, "captureException");
-  const withScopeSpy = vi.spyOn(Sentry, "withScope");
-  withScopeSpy.mockImplementation((fn: (scope: unknown) => void) => {
-    fn({
-      setTag() {
-        /* noop */
-      },
-      setContext() {
-        /* noop */
-      },
-      setFingerprint() {
-        /* noop */
-      },
-    });
-  });
   return {
     captureSpy,
     restore() {
       captureSpy.mockRestore();
-      withScopeSpy.mockRestore();
     },
   };
 }
