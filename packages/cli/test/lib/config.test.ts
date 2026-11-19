@@ -53,12 +53,12 @@ const getConfigDir = useTestConfigDir("test-config-");
 
 let savedAuthToken: string | undefined;
 beforeEach(() => {
-  savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-  delete process.env.SENTRY_AUTH_TOKEN;
+  savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+  delete process.env["SENTRY_AUTH_TOKEN"];
 });
 afterEach(() => {
   if (savedAuthToken !== undefined) {
-    process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
   }
 });
 
@@ -174,7 +174,8 @@ describe("refreshToken error handling", () => {
     setAuthToken("still-valid-token", -1, "my-refresh-token"); // Expired
 
     // Set required env var for OAuth
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    // Set required env var for OAuth
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
 
     // Mock fetch to simulate network error
     const originalFetch = globalThis.fetch;
@@ -203,7 +204,7 @@ describe("refreshToken error handling", () => {
     // Set up a token that needs refresh
     setAuthToken("revoked-token", -1, "invalid-refresh-token"); // Expired
 
-    process.env.SENTRY_CLIENT_ID = "test-client-id";
+    process.env["SENTRY_CLIENT_ID"] = "test-client-id";
 
     // Mock fetch to simulate server rejecting refresh token
     const originalFetch = globalThis.fetch;
@@ -330,7 +331,7 @@ describe("project aliases", () => {
     expect(aliases).toEqual({
       new: { orgSlug: "org2", projectSlug: "project2" },
     });
-    expect(aliases?.old).toBeUndefined();
+    expect(aliases?.["old"]).toBeUndefined();
   });
 });
 

@@ -53,8 +53,6 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * its PR merges; a test below fails until you do.
  */
 const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
-  get_issue_details:
-    "pending: outputSchema is experimental-only until it graduates",
   search_attributes: "pending: experimental-only, no outputSchema PR yet",
 };
 
@@ -233,8 +231,12 @@ describe("outputSchema skip lists", () => {
 
   it("name listed tools without an outputSchema", () => {
     const problems = [
-      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
-      ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
+      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map(
+        (name) => ["EXEMPT", name] as const,
+      ),
+      ...Object.keys(OUTPUT_SCHEMA_PENDING).map(
+        (name) => ["PENDING", name] as const,
+      ),
     ].flatMap(([list, name]) => {
       const tools = listings(name);
       if (tools.length === 0) {

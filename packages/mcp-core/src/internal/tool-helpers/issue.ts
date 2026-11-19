@@ -19,7 +19,7 @@ export function assertIssueWithinProjectConstraint({
   resourceLabel = "Issue",
 }: {
   issue: Pick<Issue, "project">;
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
   resourceLabel?: string;
 }): void {
   assertScopedProjectSlug({
@@ -39,7 +39,7 @@ export async function ensureIssueWithinProjectConstraint({
   apiService: SentryApiService;
   organizationSlug: string;
   issueId: string;
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
   resourceLabel?: string;
 }): Promise<void> {
   if (!projectSlug) {

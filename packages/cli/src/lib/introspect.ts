@@ -10,7 +10,7 @@
  * for introspection and documentation generation.
  */
 
-import generatedCommandApi from "../generated/command-api.json";
+import generatedCommandApi from "../generated/command-api.json" with { type: "json" };
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   CHOICE_TARGET,
@@ -122,7 +122,7 @@ export type FlagDef = {
 export type CommandInfo = {
   path: string;
   brief: string;
-  fullDescription?: string;
+  fullDescription?: string | undefined;
   flags: FlagInfo[];
   positional: string;
   /** Structured positional parameter metadata for documentation generation */
@@ -130,7 +130,7 @@ export type CommandInfo = {
   aliases: Record<string, string>;
   examples: string[];
   /** JSON output field metadata extracted from `OutputConfig.schema` */
-  jsonFields?: SchemaFieldInfo[];
+  jsonFields?: SchemaFieldInfo[] | undefined;
   /** Present (and `true`) when the command is destructive or irreversible */
   destructive?: true;
 };
@@ -228,12 +228,8 @@ export function getPositionalString(params?: PositionalParams): string {
       .join(" ");
   }
 
-  if (params.kind === "array") {
-    const placeholder = params.parameter.placeholder ?? "args";
-    return `<${placeholder}...>`;
-  }
-
-  return "";
+  const placeholder = params.parameter.placeholder ?? "args";
+  return `<${placeholder}...>`;
 }
 
 /**
@@ -262,18 +258,14 @@ export function extractPositionals(
     }));
   }
 
-  if (params.kind === "array") {
-    return [
-      {
-        placeholder: params.parameter.placeholder ?? "args",
-        brief: params.parameter.brief ?? "",
-        optional: false,
-        variadic: true,
-      },
-    ];
-  }
-
-  return [];
+  return [
+    {
+      placeholder: params.parameter.placeholder ?? "args",
+      brief: params.parameter.brief ?? "",
+      optional: false,
+      variadic: true,
+    },
+  ];
 }
 
 /**
@@ -457,7 +449,7 @@ export type CommandCompletions = Record<string, CommandCompletion>;
 function argumentCompletion(
   parse: unknown,
   enumValues?: readonly string[],
-): { kind: CompletionTarget | null; values?: readonly string[] } {
+): { kind: CompletionTarget | null; values?: readonly string[] | undefined } {
   return enumValues
     ? { kind: CHOICE_TARGET, values: enumValues }
     : {

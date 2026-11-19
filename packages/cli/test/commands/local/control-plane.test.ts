@@ -6,6 +6,7 @@ import {
   createLocalSessionStore,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
+import { at } from "../../helpers.js";
 
 const CONTROL_TOKEN = "control-token";
 
@@ -89,7 +90,7 @@ describe("Local control plane", () => {
     try {
       const chunk = new TextDecoder().decode((await reader.read()).value);
       expect(chunk).toContain("event: sentry.local.directory");
-      const data = JSON.parse(chunk.match(/data: (.+)/)![1]);
+      const data = JSON.parse(at(chunk.match(/data: (.+)/)!, 1));
       expect(new URL(data.directoryUrl).pathname).toBe(
         "/_local/v1/ui/sessions",
       );
@@ -446,7 +447,7 @@ describe("Local control plane", () => {
   test("reports ambiguous session names with ID guidance across control routes", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
     const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
-    plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const two = plane.sessionStore.create({ label: "My App", cwd: "/two" });
     for (const [method, suffix] of [
       ["GET", ""],
       ["GET", "/events"],
@@ -455,7 +456,7 @@ describe("Local control plane", () => {
       ["GET", "/envelopes/id"],
       ["POST", "/close"],
       ["POST", "/reset"],
-    ]) {
+    ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },
@@ -463,6 +464,9 @@ describe("Local control plane", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toEqual({
         error: 'Local session name "My App" is ambiguous; use its session ID.',
+        code: "ambiguous_session",
+        reference: "My App",
+        sessionIds: [one.id, two.id],
       });
     }
     expect(
@@ -551,6 +555,46 @@ describe("Local control plane", () => {
       { method: "POST", body: envelope },
     );
     expect(rejected.status).toBe(401);
+  });
+
+  test("accepts Spotlight /stream and DSN envelope posts under the ingest capability", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "php", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const ingest = `/_local/v1/sessions/${session.id}/ingest`;
+    const envelope =
+      '{"sdk":{"name":"sentry.php"}}\n{"type":"event"}\n{"message":"hi"}';
+    const post = (path: string, headers: Record<string, string> = {}) =>
+      plane.app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-sentry-envelope",
+          ...headers,
+        },
+        body: envelope,
+      });
+
+    // PHP posts to `<SENTRY_SPOTLIGHT>/stream`; Go, Rust, PHP and Ruby build
+    // `<dsn path>/api/<project>/envelope/` from a DSN.
+    for (const suffix of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      expect((await post(`${ingest}/${caps.ingest}${suffix}`)).status).toBe(
+        204,
+      );
+      expect((await post(`${ingest}/wrong${suffix}`)).status).toBe(401);
+      expect((await post(`${ingest}/${caps.stream}${suffix}`)).status).toBe(
+        401,
+      );
+      expect(
+        (
+          await post(`${ingest}/${caps.ingest}${suffix}`, {
+            Origin: "https://example.com",
+          })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(3);
   });
 
   test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
@@ -687,6 +731,258 @@ describe("Local control plane", () => {
       { headers: controlHeaders() },
     );
     expect(viewed.status).toBe(200);
+  });
+
+  test("gives each replay segment its own event ID", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const replayId = "5c3b1e7a9d2f4e6a8b0c1d2e3f4a5b6c";
+    // @sentry/browser sends every replay segment with the replay ID as the
+    // envelope event_id.
+    for (const segmentId of [0, 1]) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: [
+            { event_id: replayId, sent_at: "2026-11-17T20:25:06.000Z" },
+            { type: "replay_event" },
+            {
+              type: "replay_event",
+              replay_id: replayId,
+              event_id: replayId,
+              segment_id: segmentId,
+              timestamp: 1_794_947_106 + segmentId,
+            },
+            { type: "replay_recording", length: 2 },
+            "[]",
+          ]
+            .map((line) =>
+              typeof line === "string" ? line : JSON.stringify(line),
+            )
+            .join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+    }
+
+    const listed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events`,
+      { headers: controlHeaders() },
+    );
+    const { events } = (await listed.json()) as {
+      events: { eventId: string; envelopeId: string }[];
+    };
+    expect(events).toHaveLength(2);
+    const ids = events.map((event) => event.eventId);
+    expect(new Set(ids).size).toBe(2);
+    for (const event of events) {
+      const viewed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events/${encodeURIComponent(event.eventId)}`,
+        { headers: controlHeaders() },
+      );
+      expect(viewed.status).toBe(200);
+      await expect(viewed.json()).resolves.toMatchObject({
+        envelopeId: event.envelopeId,
+      });
+    }
+  });
+
+  test("summarizes each listed event so agents can skip per-event views", async () => {
+    const traceId = "4c79f60c11214eb38604f4ae0781bfb2";
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "sdk", cwd: "/sdk" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const send = async (...lines: unknown[]) => {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: lines.map((line) => JSON.stringify(line)).join("\n"),
+        },
+      );
+      expect(response.status).toBe(204);
+    };
+    const before = Date.now();
+
+    // sentry-python: logging.error("Payment failed for order %s", 42)
+    await send(
+      { event_id: "9ec79c33ec9942ab8353589fcb2e04dc" },
+      { type: "event" },
+      {
+        level: "error",
+        logger: "shop.payments",
+        logentry: {
+          message: "Payment failed for order %s",
+          params: [42],
+          formatted: "Payment failed for order 42",
+        },
+        platform: "python",
+        timestamp: "2026-11-17T10:00:00.100000Z",
+        contexts: { trace: { trace_id: traceId, span_id: "a7e1f3b5c9d2e4f6" } },
+      },
+    );
+    // JavaScript SDK 11: captureMessage with a synthetic stack, no exception type
+    await send(
+      {
+        event_id: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        trace: { trace_id: traceId },
+      },
+      { type: "event" },
+      {
+        level: "warning",
+        message: "Hello from captureMessage",
+        exception: {
+          values: [
+            {
+              value: "Hello from captureMessage",
+              mechanism: { type: "generic", synthetic: true },
+            },
+          ],
+        },
+        platform: "javascript",
+        timestamp: 1_794_045_602.5,
+      },
+    );
+    // An exception thrown in a Node.js route handler
+    await send(
+      { event_id: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a" },
+      { type: "event" },
+      {
+        level: "error",
+        exception: {
+          values: [{ type: "TypeError", value: "x is not a function" }],
+        },
+        platform: "node",
+        timestamp: 1_794_045_603,
+        contexts: { trace: { trace_id: traceId, span_id: "d4e5f6a7b8c9d0e1" } },
+      },
+    );
+    await send(
+      { event_id: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c" },
+      { type: "transaction" },
+      {
+        transaction: "GET /api/users",
+        start_timestamp: 1_794_045_603,
+        timestamp: 1_794_045_604,
+        contexts: { trace: { trace_id: traceId, span_id: "e5f6a7b8c9d0e1f2" } },
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.python.flask" } },
+      { type: "log", item_count: 2 },
+      {
+        items: [
+          {
+            timestamp: 1_794_045_605,
+            trace_id: traceId,
+            level: "info",
+            body: '"GET /boom HTTP/1.1" 500 -',
+          },
+          { timestamp: 1_794_045_605.1, level: "error", body: "boom" },
+        ],
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.javascript.node" } },
+      { type: "session" },
+      {
+        sid: "7c0ab2b2a4b74bb9b9b5e5c6b1d2e3f4",
+        status: "exited",
+        started: "2026-11-17T10:00:00.000Z",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    );
+
+    const received = Date.now();
+    const list = async () => {
+      const listed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events`,
+        { headers: controlHeaders() },
+      );
+      return ((await listed.json()) as { events: Record<string, unknown>[] })
+        .events;
+    };
+    const events = await list();
+    expect(events.map(({ receivedAt: _, ...event }) => event)).toEqual([
+      {
+        envelopeId: expect.any(String),
+        eventId: "9ec79c33ec9942ab8353589fcb2e04dc",
+        itemTypes: ["event"],
+        type: "message",
+        level: "error",
+        title: "Payment failed for order 42",
+        timestamp: "2026-11-17T10:00:00.100Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        itemTypes: ["event"],
+        type: "message",
+        level: "warning",
+        title: "Hello from captureMessage",
+        timestamp: "2026-11-07T10:00:02.500Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a",
+        itemTypes: ["event"],
+        type: "error",
+        level: "error",
+        title: "TypeError: x is not a function",
+        timestamp: "2026-11-07T10:00:03.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c",
+        itemTypes: ["transaction"],
+        type: "transaction",
+        title: "GET /api/users",
+        timestamp: "2026-11-07T10:00:04.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["log"],
+        type: "log",
+        level: "error",
+        title: "boom",
+        timestamp: "2026-11-07T10:00:05.100Z",
+        traceId,
+        count: 2,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["session"],
+        type: "session",
+        title: "exited",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    ]);
+    for (const event of events) {
+      const receivedAt = Date.parse(String(event["receivedAt"]));
+      expect(receivedAt).toBeGreaterThanOrEqual(before);
+      expect(receivedAt).toBeLessThanOrEqual(received);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await list()).toEqual(events);
+
+    const viewed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events/d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a`,
+      { headers: controlHeaders() },
+    );
+    await expect(viewed.json()).resolves.toMatchObject({
+      type: "error",
+      title: "TypeError: x is not a function",
+      receivedAt: expect.any(String),
+      envelope: expect.any(Array),
+    });
   });
 
   test.each([

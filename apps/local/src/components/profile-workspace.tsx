@@ -13,6 +13,10 @@ import {
   type ProfileNode,
 } from "@/lib/profiles.ts";
 import { record, text } from "@/lib/inspection.ts";
+import {
+  mergeProfileChunks,
+  profileSessionItems,
+} from "@/lib/profile-session.ts";
 import { ResizableWorkspace } from "./resizable-workspace.tsx";
 import { InspectorTabs } from "./span-detail.tsx";
 import { Button } from "./ui/button.tsx";
@@ -41,8 +45,11 @@ function boxes(
       depth: 0,
     },
   ];
-  while (pending.length && result.length < 2500) {
-    const box = pending.pop()!;
+  for (
+    let box = pending.pop();
+    box && result.length < 2500;
+    box = pending.pop()
+  ) {
     result.push(box);
     if (box.depth >= 32 || box.node.samples === 0) continue;
     let offset = 0;
@@ -131,6 +138,7 @@ function ProfileChart({
   return (
     <div ref={container} className="overflow-auto">
       <svg
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no semantic grouping element
         role="group"
         aria-label={`${type} profile visualization`}
         viewBox={`0 0 ${width} ${height}`}
@@ -145,6 +153,7 @@ function ProfileChart({
           .map((box) => (
             <g
               key={box.node.id}
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG shapes can't be HTML buttons
               role="button"
               tabIndex={0}
               aria-label={`Zoom to ${box.node.name}, ${box.node.samples} samples`}
@@ -213,20 +222,42 @@ function ProfileChart({
 }
 function ProfileInspector({
   item,
+  items,
   traces,
   onSelectTrace,
 }: {
   item: LocalFeedItem;
+  items: readonly LocalFeedItem[];
   traces: readonly TraceGroup[];
   onSelectTrace: (id: string) => void;
 }) {
   const [thread, setThread] = useState<string>();
   const [type, setType] = useState<"flame" | "treemap" | "sunburst">("flame");
-  const [focus, setFocus] = useState<ProfileNode>();
+  const [focused, setFocused] = useState<{
+    source: LocalFeedItem;
+    thread?: string;
+    node: ProfileNode;
+  }>();
   const [sort, setSort] = useState<"selfMs" | "totalMs" | "samples">("totalMs");
   const [filter, setFilter] = useState("");
-  const profile = useMemo(() => parseProfile(item, thread), [item, thread]);
-  const linked = traces.filter((trace) => profileMatchesTrace(item, trace));
+  const [scope, setScope] = useState("session");
+  const chunks = useMemo(() => profileSessionItems(item, items), [item, items]);
+  const source = useMemo(
+    () => (scope === "chunk" ? item : mergeProfileChunks(item, items)),
+    [item, items, scope],
+  );
+  const profile = useMemo(() => parseProfile(source, thread), [source, thread]);
+  const focus =
+    focused?.source === source && focused.thread === thread
+      ? focused.node
+      : undefined;
+  const setFocus = (node?: ProfileNode) =>
+    setFocused(
+      node
+        ? { source, ...(thread !== undefined && { thread }), node }
+        : undefined,
+    );
+  const linked = traces.filter((trace) => profileMatchesTrace(source, trace));
   const functions = profile.functions
     .filter((fn) =>
       `${fn.name} ${fn.location}`.toLowerCase().includes(filter.toLowerCase()),
@@ -242,7 +273,9 @@ function ProfileInspector({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold">
               {item.type === "profile_chunk"
-                ? "Continuous profile chunk"
+                ? scope === "session" && chunks.length > 1
+                  ? "Continuous profile session"
+                  : "Continuous profile chunk"
                 : "Profile"}
             </h2>
             <label className="text-xs">
@@ -263,13 +296,34 @@ function ProfileInspector({
               </select>
             </label>
           </div>
+          {chunks.length > 1 ? (
+            <label className="text-xs">
+              Profile scope{" "}
+              <select
+                aria-label="Profile scope"
+                className="ml-2 rounded border bg-background p-1"
+                value={scope}
+                onChange={(event) => setScope(event.target.value)}
+              >
+                <option value="session">Profiler session</option>
+                <option value="chunk">This chunk</option>
+              </select>
+            </label>
+          ) : null}
+          {scope === "session" && chunks.length > 1 ? (
+            <p className="text-xs text-muted-foreground">
+              Overview combines {chunks.length} retained chunks. JSON contains
+              the selected chunk.
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {profile.sampleCount.toLocaleString()} samples ·{" "}
             {profile.durationMs === undefined
               ? "Timing not captured"
               : `${profile.durationMs.toFixed(2)} ms observed`}
-            . Time uses adjacent samples on the selected thread; the final
-            sample has no inferred duration. Stacks are limited to 256 frames.
+            . Time uses adjacent samples on the selected thread. Gaps between
+            chunks and final sample tails have no inferred duration. Stacks are
+            limited to 256 frames.
           </p>
           {linked.length ? (
             <div className="flex flex-wrap gap-2">
@@ -394,10 +448,10 @@ function ProfileInspector({
               </div>
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">
+            <output className="block text-sm text-muted-foreground">
               No usable stack samples were captured. Inspect JSON for the
               original profile payload.
-            </p>
+            </output>
           )}
         </>
       }
@@ -415,7 +469,7 @@ export function ProfileWorkspace({
   items: readonly LocalFeedItem[];
   traces: readonly TraceGroup[];
   query: string;
-  selectedId?: string;
+  selectedId?: string | undefined;
   onSelect: (id: string) => void;
   onSelectTrace: (id: string) => void;
 }) {
@@ -426,11 +480,11 @@ export function ProfileWorkspace({
     profiles.find((item) => item.id === selectedId) ?? profiles[0];
   if (!selected)
     return (
-      <p role="status" className="p-6 text-sm text-muted-foreground">
+      <output className="block p-6 text-sm text-muted-foreground">
         {query
           ? "No profiles match this filter."
           : "No profiles captured. Enable profiling in your SDK and send its envelopes to this receiver."}
-      </p>
+      </output>
     );
   return (
     <ResizableWorkspace
@@ -442,28 +496,27 @@ export function ProfileWorkspace({
             Profiles · {profiles.length}
           </h1>
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {profiles.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  aria-label={`View ${item.type} event`}
-                  aria-current={selected.id === item.id ? "true" : undefined}
-                  className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span className="block">
-                    {item.type === "profile_chunk" ? "Chunk" : "Profile"}{" "}
-                    {index + 1} ·{" "}
-                    {text(record(item.payload).platform) ?? "Unknown platform"}
-                  </span>
-                  <code className="block break-all text-xs text-muted-foreground">
-                    {text(record(item.payload).event_id) ??
-                      text(record(item.payload).chunk_id) ??
-                      item.id}
-                  </code>
-                </button>
-              </li>
-            ))}
+            {profiles.map((item, index) => {
+              const label = `${item.type === "profile_chunk" ? "Chunk" : "Profile"} ${index + 1} · ${text(record(item.payload)["platform"]) ?? "Unknown platform"}`;
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-label={`View ${item.type.replaceAll("_", " ")}: ${label}`}
+                    aria-current={selected.id === item.id ? "true" : undefined}
+                    className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span className="block">{label}</span>
+                    <code className="block break-all text-xs text-muted-foreground">
+                      {text(record(item.payload)["event_id"]) ??
+                        text(record(item.payload)["chunk_id"]) ??
+                        item.id}
+                    </code>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </section>
       }
@@ -471,6 +524,7 @@ export function ProfileWorkspace({
       <ProfileInspector
         key={selected.id}
         item={selected}
+        items={items}
         traces={traces}
         onSelectTrace={onSelectTrace}
       />

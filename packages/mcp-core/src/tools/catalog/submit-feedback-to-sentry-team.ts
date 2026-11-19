@@ -56,25 +56,8 @@ export const submitFeedbackToSentryTeamOutputSchema = z.object({
 export default defineTool({
   name: "submit_feedback_to_sentry_team",
   title: "Submit Feedback to Sentry Team",
-  description: [
-    "Report friction with the Sentry MCP server to its maintainers.",
-    "",
-    "Use this tool when you need to:",
-    "- Report that no Sentry MCP tool could do a Sentry task the user asked for",
-    "- Report a Sentry MCP tool that failed, returned wrong data, or was confusing",
-    "- Suggest an improvement to the Sentry MCP tools",
-    "",
-    "<examples>",
-    "submit_feedback_to_sentry_team(task='find slow endpoints', kind='missing', impact='blocked', description='No tool returns p95 latency per endpoint.')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Call it only when a Sentry MCP tool was missing, failed, or got in the way, at most once per task.",
-    "- Skip it if the task went fine, was skipped, or did not need Sentry. Do not use it to log progress or to test it.",
-    "- Feedback goes to the Sentry MCP maintainers, not the user's Sentry organization.",
-    "- Do not include secrets, credentials, or personal data.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Report friction with the Sentry MCP server to its maintainers (not the user's Sentry organization): a missing tool, a tool that failed or returned wrong data, a confusing tool, or an idea. Call it at most once per task, only when a Sentry MCP tool was missing, failed, or got in the way. Skip it if the task went fine or did not need Sentry; never use it to log progress or to test it. Do not include secrets or personal data.",
   inputSchema: {
     task: z
       .string()

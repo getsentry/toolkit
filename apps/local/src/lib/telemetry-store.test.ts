@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
-import type { LocalFeedItem } from "./spotlight.ts";
+import { sessionsAggregateEnvelope } from "../test-fixtures/sentry-python.ts";
+import { decodeEnvelope, type LocalFeedItem } from "./spotlight.ts";
+import { workspaceForItem } from "./workspace.ts";
 import { createLocalTelemetryStore } from "./telemetry-store.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
@@ -104,5 +106,13 @@ describe("LocalTelemetryStore", () => {
 
     expect(store.getSnapshot().items).toEqual([]);
     expect(store.getSnapshot().envelopes).toEqual([envelope]);
+  });
+
+  test("lists server SDK sessions aggregates as SDK reports", () => {
+    const store = createLocalTelemetryStore();
+    const decoded = decodeEnvelope(sessionsAggregateEnvelope, "sessions");
+    store.recordEnvelope(item({ id: "sessions", type: "envelope" }), decoded);
+    expect(store.getSnapshot().sdks).toEqual(decoded);
+    expect(workspaceForItem(decoded[0]!)).toBe("sdks");
   });
 });

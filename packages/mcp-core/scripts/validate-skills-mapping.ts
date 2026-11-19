@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Validation script for skills-to-scopes mapping
  *
@@ -10,7 +9,6 @@
  */
 
 import { SKILLS, getScopesForSkills, type Skill } from "../src/skills.js";
-import type { Scope } from "../src/permissions.js";
 import tools from "../src/tools/index.js";
 import {
   isCatalogInfrastructureToolName,
@@ -31,7 +29,7 @@ const colors = {
 interface ValidationResult {
   skill: Skill;
   enabledTools: string[];
-  requiredScopes: Set<Scope>;
+  requiredScopes: Set<string>;
 }
 
 /**

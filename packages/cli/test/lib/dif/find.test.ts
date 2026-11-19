@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { findDebugFiles, idHint } from "../../../src/lib/dif/find.js";
 import { computeProguardUuid } from "../../../src/lib/proguard.js";
+import { at } from "../../helpers.js";
 
 const FIXTURES = join(process.cwd(), "test/fixtures/dif");
 // The committed PE fixture's embedded debug id (see check output).
@@ -46,7 +47,7 @@ describe("findDebugFiles", () => {
     expect(result.missing).toEqual([]);
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0]).toMatchObject({ type: "pe", id: PE_ID });
-    expect(result.matches[0].path).toContain("embedded-ppdb.dll");
+    expect(at(result.matches, 0).path).toContain("embedded-ppdb.dll");
   });
 
   test("reports an unmatched id as missing with a hint", async () => {

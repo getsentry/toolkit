@@ -19,19 +19,20 @@ import type {
   SentryLog,
   TraceItemAttribute,
 } from "../../../src/types/index.js";
+import { at } from "../../helpers.js";
 
 /** Force rendered (TTY) mode for a describe block */
 function useRenderedMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -40,14 +41,14 @@ function useRenderedMode() {
 function usePlainMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -627,7 +628,7 @@ describe("buildLogRowCells", () => {
   test("first cell contains full log ID", () => {
     const log = createTestLog();
     const cells = buildLogRowCells(log);
-    expect(stripAnsi(cells[0])).toContain("test-id-123");
+    expect(stripAnsi(at(cells, 0))).toContain("test-id-123");
   });
 
   test("appends extra field cells when provided", () => {

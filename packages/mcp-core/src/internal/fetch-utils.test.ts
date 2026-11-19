@@ -228,5 +228,36 @@ describe("fetch-utils", () => {
       const result = await promise;
       expect(result).toBe("success");
     });
+
+    it("stops retrying when the signal aborts during the backoff", async () => {
+      const controller = new AbortController();
+      const fn = vi.fn().mockRejectedValue(new Error("Temporary failure"));
+
+      const promise = retryWithBackoff(fn, {
+        maxRetries: 3,
+        initialDelay: 1000,
+        signal: controller.signal,
+      });
+      const outcome = expect(promise).rejects.toBe("client cancelled");
+      await vi.advanceTimersByTimeAsync(500);
+      controller.abort("client cancelled");
+      await vi.advanceTimersByTimeAsync(10000);
+
+      await outcome;
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not retry once the signal has aborted", async () => {
+      const controller = new AbortController();
+      const fn = vi.fn().mockImplementation(async () => {
+        controller.abort("client cancelled");
+        throw new Error("Unable to connect");
+      });
+
+      await expect(
+        retryWithBackoff(fn, { signal: controller.signal }),
+      ).rejects.toBe("client cancelled");
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
   });
 });

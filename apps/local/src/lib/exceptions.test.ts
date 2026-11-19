@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { getEventExceptions } from "./exceptions.ts";
+import { goPanicEvent } from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
 import { sdkException } from "../test-fixtures/sdk-exception.ts";
 
 describe("getEventExceptions", () => {
@@ -11,6 +12,18 @@ describe("getEventExceptions", () => {
     { exception: { values: [null, false, [], {}, { type: 42, value: [] }] } },
   ])("ignores malformed exception data: %j", (payload) => {
     expect(getEventExceptions(payload)).toEqual([]);
+  });
+
+  test("reads a sentry-go exception list", () => {
+    const [exception] = getEventExceptions(goPanicEvent);
+    expect(exception).toMatchObject({
+      type: "*errors.errorString",
+      value: "order 7 not found",
+    });
+    expect(exception?.frames.map((frame) => frame.filename)).toEqual([
+      "/app/main.go",
+      "/usr/local/go/src/runtime/proc.go",
+    ]);
   });
 
   test("reads SDK ordering without mutating exceptions or frames", () => {

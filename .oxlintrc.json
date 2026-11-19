@@ -53,13 +53,64 @@
     "typescript/no-unnecessary-type-parameters": "error",
     "typescript/no-useless-default-assignment": "error",
     "jsx-a11y/interactive-supports-focus": "off",
-    "unicorn/prefer-spread": "error"
+    "unicorn/prefer-spread": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true
+      }
+    ],
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": [
+      "error",
+      { "allowThrowingUnknown": true }
+    ],
+    "typescript/no-base-to-string": "error",
+    "typescript/no-unsafe-enum-comparison": "error"
   },
   "overrides": [
+    {
+      "files": [
+        "apps/{docs-mcp,games-api,local}/**/*.{ts,tsx}",
+        "packages/{codemod-cli3to4,logger,mcp-cloudflare,mcp-core,mcp-server,mcp-server-evals,mcp-server-mocks,mcp-test-client,smoke-tests,toolkit-core}/**/*.{ts,tsx}"
+      ],
+      "excludeFiles": [
+        "**/*.test.{ts,tsx}",
+        "**/test/**",
+        "**/tests/**",
+        "**/test-utils/**",
+        "**/test-setup.ts",
+        "**/test-fixtures/**",
+        "**/test-fixtures.ts",
+        "**/*.config.{ts,mts}"
+      ],
+      "rules": {
+        "typescript/no-explicit-any": "error",
+        "typescript/no-non-null-assertion": "error",
+        "typescript/no-unnecessary-condition": "error",
+        "typescript/no-unsafe-assignment": "error",
+        "typescript/no-unsafe-argument": "error",
+        "typescript/no-unsafe-call": "error",
+        "typescript/no-unsafe-member-access": "error",
+        "typescript/no-unsafe-return": "error"
+      }
+    },
     {
       "files": ["**/*.test.{ts,tsx,mjs}", "**/test/**/*.{ts,tsx}"],
       "rules": {
         "typescript/unbound-method": "off"
+      }
+    },
+    {
+      "files": ["apps/local/**/*.{ts,tsx,js,mjs,cjs}"],
+      "plugins": ["react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/only-export-components": [
+          "warn",
+          { "allowConstantExport": true }
+        ]
       }
     },
     {
@@ -92,10 +143,19 @@
       }
     },
     {
-      "files": [
-        "packages/cli/src/**/*.{ts,tsx}",
-        "packages/cli/test/**/*.{ts,tsx}"
-      ],
+      "files": ["packages/mcp-core/src/**/*.ts"],
+      "rules": {
+        "sentry-cli/no-manual-pagination": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/test/**/*.ts"],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.ts", "packages/cli/test/**/*.ts"],
       "rules": {
         "sentry-cli/no-silent-catch": "error",
         "sentry-cli/no-raw-capture-exception": "error",
@@ -114,12 +174,14 @@
         "sentry-cli/no-generic-is-record": "error",
         "sentry-cli/prefer-paginate-helper": "error",
         "sentry-cli/no-manual-pagination": "error",
+        "sentry-cli/no-manual-api-request": "error",
         "sentry-cli/no-namespace-import": "error",
         "sentry-cli/no-examples-in-full-description": "error",
         "sentry-cli/no-regex-markdown-parsing": "error",
         "sentry-cli/json-transform-uses-fields": "error",
         "sentry-cli/no-runtime-output-schema-imports": "error",
         "sentry-cli/no-hardcoded-sentry-command": "error",
+        "sentry-cli/no-inline-date-format": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -147,13 +209,20 @@
       }
     },
     {
-      "files": ["packages/cli/script/**/*.ts"],
+      "files": ["packages/cli/**/*.{ts,tsx,js,mjs,cjs}"],
       "rules": {
-        "sentry-cli/no-regex-markdown-parsing": "error"
+        "typescript/no-unnecessary-condition": "error"
       }
     },
     {
-      "files": ["packages/cli/src/**/*.{ts,tsx}"],
+      "files": ["packages/cli/script/**/*.ts"],
+      "rules": {
+        "sentry-cli/no-regex-markdown-parsing": "error",
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.ts"],
       "rules": {
         "typescript/no-explicit-any": "error",
         "typescript/no-non-null-assertion": "error"
@@ -170,7 +239,7 @@
       }
     },
     {
-      "files": ["packages/cli/src/commands/**/*.{ts,tsx}"],
+      "files": ["packages/cli/src/commands/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",

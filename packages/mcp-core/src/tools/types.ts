@@ -44,7 +44,7 @@ export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
  * Markdown, strings, and raw MCP content are only allowed without a schema.
  * Tools without a schema may still pass through another tool's structured
  * result (`execute_sentry_tool`, `get_sentry_resource`). The type distributes
- * over a union so `ToolConfig<any>` registries accept every tool.
+ * over a union so `ToolConfig` registries accept every tool.
  */
 export type ToolOutputFor<TOutputSchema extends ToolOutputSchema | undefined> =
   TOutputSchema extends ToolOutputSchema
@@ -71,8 +71,8 @@ export type ToolHandler<
  */
 export interface DescriptionContext {
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -84,10 +84,17 @@ export type ToolDescription =
   | ((context: DescriptionContext) => string);
 
 /**
- * Longest allowed tool description, in characters. VS Code (via OpenAI)
- * limits descriptions to 1,024; this cap limits the damage until that rises.
+ * Longest allowed tool description, in characters. Half of OpenAI's hard
+ * 1,024-character limit on a function description, which VS Code enforces.
+ * See docs/contributing/adding-tools.md#descriptions-and-params.
  */
-export const MAX_TOOL_DESCRIPTION_LENGTH = 2_048;
+export const MAX_TOOL_DESCRIPTION_LENGTH = 512;
+
+/**
+ * Longest allowed param description, in characters. No provider limits it;
+ * one or two sentences fit.
+ */
+export const MAX_PARAM_DESCRIPTION_LENGTH = 256;
 
 /**
  * Resolves a tool description to a string.

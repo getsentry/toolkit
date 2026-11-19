@@ -67,35 +67,35 @@ describe("detectOsTimezone", () => {
 });
 
 describe("initTimezone", () => {
-  const originalTz = process.env.TZ;
+  const originalTz = process.env["TZ"];
 
   afterEach(() => {
     vi.restoreAllMocks();
     if (originalTz === undefined) {
-      delete process.env.TZ;
+      delete process.env["TZ"];
     } else {
-      process.env.TZ = originalTz;
+      process.env["TZ"] = originalTz;
     }
   });
 
   test("respects an already-set TZ and makes no change", () => {
-    process.env.TZ = "America/New_York";
+    process.env["TZ"] = "America/New_York";
     expect(initTimezone()).toBeNull();
-    expect(process.env.TZ).toBe("America/New_York");
+    expect(process.env["TZ"]).toBe("America/New_York");
   });
 
   test("does nothing when the runtime already resolved a real zone", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "America/Los_Angeles" }),
     } as unknown as Intl.DateTimeFormat);
 
     expect(initTimezone()).toBeNull();
-    expect(process.env.TZ).toBeUndefined();
+    expect(process.env["TZ"]).toBeUndefined();
   });
 
   test("leaves genuine UTC machines untouched", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "UTC" }),
     } as unknown as Intl.DateTimeFormat);
@@ -103,11 +103,11 @@ describe("initTimezone", () => {
     vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
 
     expect(initTimezone()).toBeNull();
-    expect(process.env.TZ).toBeUndefined();
+    expect(process.env["TZ"]).toBeUndefined();
   });
 
   test("repairs the UTC fallback using the OS offset", () => {
-    delete process.env.TZ;
+    delete process.env["TZ"];
     // Runtime fell back to UTC ...
     vi.spyOn(Intl, "DateTimeFormat").mockReturnValue({
       resolvedOptions: () => ({ timeZone: "UTC" }),
@@ -117,8 +117,8 @@ describe("initTimezone", () => {
 
     const applied = initTimezone();
     expect(applied).not.toBeNull();
-    expect(process.env.TZ).toBe(applied ?? "");
+    expect(process.env["TZ"]).toBe(applied ?? "");
     // Either a detected IANA name or the fixed-offset fallback.
-    expect(process.env.TZ?.length).toBeGreaterThan(0);
+    expect(process.env["TZ"]?.length).toBeGreaterThan(0);
   });
 });

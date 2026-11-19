@@ -10,16 +10,16 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -w",
-    "start": "tsx src/bin/start-mock-stdio.ts",
+    "start": "node --experimental-strip-types --import ../../scripts/strip-types-resolve.mjs src/bin/start-mock-stdio.ts",
     "eval": "vitest --config=vitest.config.ts",
-    "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml"
+    "eval:ci": "vitest run --reporter=vitest-evals/reporter --reporter=junit --reporter=json --outputFile.json=eval-results.json --outputFile.junit=eval.junit.xml",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
   },
   "dependencies": {
     "@ai-sdk/mcp": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "@sentry/mcp-core": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
     "ai": "catalog:",
     "dotenv": "catalog:",
     "msw": "catalog:",

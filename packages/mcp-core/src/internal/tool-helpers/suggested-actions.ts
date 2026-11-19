@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { isTopLevelToolName } from "../../tools/surfaces";
-import { isToolAvailableInSession } from "./tool-call-formatting";
+import { getToolCallRoute } from "./tool-call-formatting";
 
 /** See docs/contributing/tool-responses.md#suggested-actions. */
 export const MAX_SUGGESTED_ACTIONS = 3;
@@ -44,34 +43,24 @@ export function buildSuggestedToolAction({
   arguments: Record<string, SuggestedActionValue>;
   reason: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): SuggestedToolAction | null {
-  if (!isToolAvailableInSession(toolName, availableToolNames)) {
-    return null;
-  }
-
-  const targetIsDirect = directToolNames
-    ? directToolNames.has(toolName)
-    : isTopLevelToolName(toolName, experimentalMode);
-  if (targetIsDirect) {
+  const route = getToolCallRoute(toolName, {
+    experimentalMode,
+    availableToolNames,
+    directToolNames,
+  });
+  if (route === "direct") {
     return { type: "tool_call", toolName, arguments: targetArguments, reason };
   }
-
-  const executeToolIsDirect = directToolNames
-    ? directToolNames.has("execute_sentry_tool")
-    : isTopLevelToolName("execute_sentry_tool", experimentalMode);
-  if (
-    !executeToolIsDirect ||
-    !isToolAvailableInSession("execute_sentry_tool", availableToolNames)
-  ) {
-    return null;
+  if (route === "execute_sentry_tool") {
+    return {
+      type: "tool_call",
+      toolName: "execute_sentry_tool",
+      arguments: { name: toolName, arguments: targetArguments },
+      reason,
+    };
   }
-
-  return {
-    type: "tool_call",
-    toolName: "execute_sentry_tool",
-    arguments: { name: toolName, arguments: targetArguments },
-    reason,
-  };
+  return null;
 }

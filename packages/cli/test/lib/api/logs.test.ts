@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getLogs, listLogs } from "../../../src/lib/api/logs.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 useTestConfigDir("logs-api-test-");
 
@@ -83,7 +83,7 @@ describe("listLogs", () => {
 
     const logs = await listLogs("test-org", "test-project");
     expect(logs).toHaveLength(1);
-    expect(logs[0]["sentry.item_id"]).toBe("log-001");
+    expect(at(logs, 0)["sentry.item_id"]).toBe("log-001");
   });
 
   test("throws ApiError when API returns a string instead of object", async () => {
@@ -218,7 +218,7 @@ describe("listLogs", () => {
     let call = 0;
     globalThis.fetch = mockFetch(async (input: RequestInfo | URL) => {
       urls.push(typeof input === "string" ? input : (input as Request).url);
-      const resp = responses[call];
+      const resp = at(responses, call);
       call += 1;
       return new Response(JSON.stringify(resp.body), {
         status: 200,
@@ -297,7 +297,7 @@ describe("getLogs", () => {
       );
       expect(url.searchParams.get("project")).toBeNull();
       expect(url.searchParams.getAll("field")).toEqual(
-        requests[0].searchParams.getAll("field"),
+        at(requests, 0).searchParams.getAll("field"),
       );
     }
   });
@@ -332,7 +332,8 @@ describe("getLogs", () => {
 
     expect(logs).toEqual([found, missing]);
     expect(requests).toHaveLength(2);
-    const [initial, retry] = requests;
+    const initial = at(requests, 0);
+    const retry = at(requests, 1);
     expect(initial.searchParams.get("sampling")).toBe("NORMAL");
     expect(initial.searchParams.get("start")).toBe("2026-10-08T11:55:00.000Z");
     expect(initial.searchParams.get("end")).toBe("2026-10-09T12:05:00.000Z");
@@ -376,7 +377,7 @@ describe("getLogs", () => {
     expect(await getLogs("test-org", "test-project", [id, id])).toEqual(data);
 
     expect(requests).toHaveLength(1);
-    expect(requests[0].searchParams.get("sampling")).toBe("NORMAL");
+    expect(at(requests, 0).searchParams.get("sampling")).toBe("NORMAL");
   });
 
   test("stops after one accuracy retry even if the scan remains partial", async () => {
@@ -537,7 +538,7 @@ describe("getLogs", () => {
 
     const logs = await getLogs("test-org", "test-project", ["log-001"]);
     expect(logs).toHaveLength(1);
-    expect(logs[0]["sentry.item_id"]).toBe("log-001");
+    expect(at(logs, 0)["sentry.item_id"]).toBe("log-001");
   });
 
   test("throws ApiError when API returns a string instead of object", async () => {

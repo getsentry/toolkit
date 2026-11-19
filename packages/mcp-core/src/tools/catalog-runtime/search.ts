@@ -17,7 +17,7 @@ export interface ToolSearchResult {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  annotations: ToolConfig<any>["annotations"];
+  annotations: ToolConfig["annotations"];
 }
 
 function tokenize(value: string): string[] {

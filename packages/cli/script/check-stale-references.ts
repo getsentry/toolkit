@@ -1,5 +1,3 @@
-#!/usr/bin/env tsx
-
 /**
  * Check for Stale Toolchain References
  *
@@ -14,7 +12,7 @@
  * check flag every `pnpm run` / `pnpm add` reference in dev docs.
  *
  * Usage:
- *   tsx script/check-stale-references.ts
+ *   pnpm ts script/check-stale-references.ts
  *
  * Exit codes:
  *   0 - No stale references found
@@ -129,8 +127,7 @@ for (const filePath of FILES_TO_SCAN) {
   const scannable = isMarkdown ? blankCodeBlocks(content) : content;
 
   const lines = scannable.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const [i, line] of lines.entries()) {
     for (const { pattern, reason } of PATTERNS) {
       if (pattern.test(line)) {
         findings.push({

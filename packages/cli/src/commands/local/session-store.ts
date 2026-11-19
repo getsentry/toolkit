@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import type { ReceiverBuffer } from "./receiver-ingest.js";
 import {
   createLocalRetentionBuffer,
   type LocalRetentionBuffer,
@@ -23,7 +23,7 @@ export type LocalSessionState = "open" | "retained";
 
 /** Public session metadata, excluding telemetry buffers and secret capabilities. */
 export type LocalSession = {
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   readonly id: string;
   readonly label: string;
   readonly cwd: string;
@@ -35,7 +35,7 @@ export type LocalSession = {
 };
 
 type StoredSession = LocalSession & {
-  buffer: ReturnType<typeof createSpotlightBuffer>;
+  buffer: ReceiverBuffer;
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
@@ -43,26 +43,35 @@ type StoredSession = LocalSession & {
 
 /** Session label, working directory, and optional retry idempotency key. */
 export type CreateLocalSessionInput = {
-  readonly clientId?: string;
+  readonly clientId?: string | undefined;
   readonly label: string;
   readonly cwd: string;
-  readonly maxEnvelopes?: number;
+  readonly maxEnvelopes?: number | undefined;
 };
+
+/** `code` of the control plane's 409 body for an ambiguous session name. */
+export const AMBIGUOUS_SESSION_CODE = "ambiguous_session";
 
 /** A label matches multiple sessions; callers must select an explicit ID. */
 export class AmbiguousLocalSessionError extends Error {
-  constructor(reference: string) {
+  readonly reference: string;
+  /** IDs of the sessions that share the label. */
+  readonly sessionIds: string[];
+
+  constructor(reference: string, sessionIds: string[]) {
     super(
       `Local session name "${reference}" is ambiguous; use its session ID.`,
     );
     this.name = "AmbiguousLocalSessionError";
+    this.reference = reference;
+    this.sessionIds = sessionIds;
   }
 }
 
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
-  setMaxEnvelopes: (reference: string, value: number) => LocalSession;
+  setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
   reset: (reference: string) => void;
@@ -74,7 +83,7 @@ export type LocalSessionStore = {
     ingest: string;
     stream: string;
   };
-  getBuffer: (reference: string) => ReturnType<typeof createSpotlightBuffer>;
+  getBuffer: (reference: string) => ReceiverBuffer;
   list: () => LocalSession[];
   pruneExpired: () => string[];
   recordActivity: (reference: string) => LocalSession;
@@ -130,7 +139,10 @@ export function createLocalSessionStore({
       throw new Error(`Local session "${reference}" was not found.`);
     }
     if (matches.length > 1) {
-      throw new AmbiguousLocalSessionError(reference);
+      throw new AmbiguousLocalSessionError(
+        reference,
+        matches.map((session) => session.id),
+      );
     }
     const [match] = matches;
     if (!match) {
@@ -183,10 +195,12 @@ export function createLocalSessionStore({
     getRetention(reference) {
       return resolveStored(reference).retention;
     },
-    setMaxEnvelopes(reference, value) {
+    async setMaxEnvelopes(reference, value) {
       const session = resolveStored(reference);
-      session.retention.resize(value);
-      return toPublicSession(update(session, { maxEnvelopes: value }));
+      await session.retention.resize(value);
+      return toPublicSession(
+        update(resolveStored(session.id), { maxEnvelopes: value }),
+      );
     },
     close(reference) {
       const session = resolveStored(reference);

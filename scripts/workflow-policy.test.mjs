@@ -11,7 +11,7 @@ const PULL_REQUEST_WORKFLOWS = new Map([
   ["eval.yml", "Runs AI evaluations against model providers."],
   [
     "install-scripts.yml",
-    "Installs the latest published CLI release on macOS and Windows.",
+    "Installs the latest published CLI release on macOS, Windows, and Linux containers.",
   ],
   ["local.yml", "Runs Sentry Local E2E tests on Linux, macOS, and Windows."],
   ["pr-risk-jev.yml", "Labels pull requests by risk."],

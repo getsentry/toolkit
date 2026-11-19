@@ -7,7 +7,17 @@
 
 import { randomBytes } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { pushToSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+import {
+  drainReceiver,
+  ingestReceiverEnvelope,
+  onOversizedEnvelope,
+  readReceiverBody,
+  receiverEnvelopeId,
+  receiverEnvelopeReceivedAt,
+  reportIngestStatus,
+  trackReceiverRequest,
+  type ReceiverEnvelope,
+} from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -15,6 +25,9 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { AMBIGUOUS_EVENT_CODE, matchEventIds } from "./event-lookup.js";
+import { summarizeEnvelope } from "./event-summary.js";
+import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
 import {
   buildSSEHandler,
@@ -23,6 +36,7 @@ import {
 } from "./server.js";
 import { logger } from "../../lib/logger.js";
 import {
+  AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
   AmbiguousLocalSessionError,
   type LocalSessionStore,
@@ -31,6 +45,7 @@ import {
 import {
   isHostedUiOrigin,
   LOCAL_DIRECTORY_EVENT,
+  LOCAL_OVERSIZED_EVENT,
   LOCAL_SESSION_EVENT,
   type LocalSessionEvent,
 } from "./viewer-protocol.js";
@@ -45,7 +60,20 @@ const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
-const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
+const SESSION_INGEST_RE =
+  /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+(?:\/stream|\/api\/[^/]+\/envelope\/?)?$/;
+/**
+ * Paths that write to a session; each carries the ingest capability. SDKs
+ * post to the ingest URL itself (Node, Python), add `/stream` to it (PHP's
+ * Spotlight transport), or build `<path>/api/<project>/envelope/` from a DSN
+ * under it (Go, Rust, PHP, Ruby).
+ */
+const SESSION_INGEST_PATHS = [
+  "",
+  "/stream",
+  "/api/:projectId/envelope",
+  "/api/:projectId/envelope/",
+].map((suffix) => `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap${suffix}`);
 const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
@@ -82,10 +110,43 @@ function eventIdFrom(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const id = (value as Record<string, unknown>).event_id;
+  const id = (value as Record<string, unknown>)["event_id"];
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
+/**
+ * The segment number of a replay envelope. Replay SDKs send every segment of
+ * a replay with the replay ID as the envelope `event_id`, so the segment is
+ * what tells them apart.
+ */
+function replaySegmentId(items: unknown[]): number | undefined {
+  for (const item of items) {
+    if (!Array.isArray(item)) {
+      continue;
+    }
+    const [itemHeader, payload] = item as [unknown, unknown];
+    const segmentId =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>)["segment_id"]
+        : undefined;
+    if (
+      typeof itemHeader === "object" &&
+      itemHeader !== null &&
+      (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
+      typeof segmentId === "number" &&
+      Number.isInteger(segmentId)
+    ) {
+      return segmentId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Identity of a retained envelope. `eventId` is the Sentry event ID, or
+ * `<replay_id>:<segment_id>` for a replay segment, or the envelope ID when
+ * the envelope has no event ID.
+ */
 function eventSummary(parsed: {
   envelope: [Record<string, unknown>, unknown[]];
 }): { envelopeId: string; eventId: string; itemTypes: string[] } {
@@ -98,21 +159,47 @@ function eventSummary(parsed: {
     ) {
       return [];
     }
-    const type = (item[0] as Record<string, unknown>).type;
+    const type = (item[0] as Record<string, unknown>)["type"];
     if (type !== "event" && type !== "transaction") {
       return [];
     }
     const id = eventIdFrom(item[0]) ?? eventIdFrom(item[1]);
     return id ? [id] : [];
   })[0];
+  const envelopeId = spotlightEnvelopeId(header);
+  const eventId = eventIdFrom(header) ?? itemEventId;
+  const segmentId = replaySegmentId(items);
   return {
-    envelopeId: spotlightEnvelopeId(header),
-    eventId: eventIdFrom(header) ?? itemEventId ?? spotlightEnvelopeId(header),
+    envelopeId,
+    eventId:
+      eventId === undefined
+        ? envelopeId
+        : segmentId === undefined
+          ? eventId
+          : `${eventId}:${segmentId}`,
     itemTypes: items.map((item) =>
       Array.isArray(item) && typeof item[0] === "object" && item[0]
         ? stringifyUnknown((item[0] as { type?: unknown }).type ?? "unknown")
         : "unknown",
     ),
+  };
+}
+
+/**
+ * List and view entry for a retained envelope: its identity plus a decoded
+ * summary and the time the receiver accepted it.
+ */
+function describeEvent(
+  container: ReceiverEnvelope,
+  parsed: ParsedReceiverEnvelope,
+) {
+  const receivedAt = receiverEnvelopeReceivedAt(container);
+  return {
+    ...eventSummary(parsed),
+    ...summarizeEnvelope(parsed),
+    ...(receivedAt === undefined
+      ? {}
+      : { receivedAt: new Date(receivedAt).toISOString() }),
   };
 }
 
@@ -138,7 +225,15 @@ export function createLocalControlPlane({
     } catch (error) {
       if (error instanceof AmbiguousLocalSessionError) {
         throw new HTTPException(409, {
-          res: Response.json({ error: error.message }, { status: 409 }),
+          res: Response.json(
+            {
+              error: error.message,
+              code: AMBIGUOUS_SESSION_CODE,
+              reference: error.reference,
+              sessionIds: error.sessionIds,
+            },
+            { status: 409 },
+          ),
         });
       }
       logger.debug("Local session was not found", error);
@@ -157,6 +252,7 @@ export function createLocalControlPlane({
     )
       return c.body(null, 403);
     await next();
+    return;
   });
 
   app.get("/health", (c) => {
@@ -179,6 +275,7 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     await next();
+    return;
   });
   const loopbackCors = cors({
     allowHeaders: [
@@ -190,15 +287,13 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "POST", "OPTIONS"],
     origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
   });
-  app.use(
-    `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`,
-    async (c, next) => {
+  for (const path of SESSION_INGEST_PATHS)
+    app.use(path, async (c, next) => {
       if (!isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
       return await loopbackCors(c, next);
-    },
-  );
+    });
   const hostedCors = cors({
     allowHeaders: ["Last-Event-ID"],
     allowMethods: ["GET", "OPTIONS"],
@@ -399,43 +494,46 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
 
-    if (Number(c.req.header("content-length") ?? 0) > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const arrayBuffer = await c.req.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_BODY_BYTES) {
-      return c.body(null, 413);
-    }
-    const body = Buffer.from(arrayBuffer);
-    const rawEncoding = c.req.header("content-encoding");
-    const encoding =
-      rawEncoding === "gzip" ||
-      rawEncoding === "deflate" ||
-      rawEncoding === "br"
-        ? rawEncoding
-        : undefined;
-    const browserBeacon =
-      c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
-      c.req.header("origin");
-    // Close can occur while the body is being read. Check at the commit boundary.
-    if (sessionStore.resolve(reference).state === "retained")
-      return c.json(
+    const isClosed = () => sessionStore.resolve(reference).state === "retained";
+    const closed = () =>
+      c.json(
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
-    pushToSpotlightBuffer({
-      spotlightBuffer: sessionStore.getBuffer(reference),
-      body,
-      contentType: browserBeacon
-        ? SENTRY_CONTENT_TYPE
-        : (c.req.header("content-type") ?? ""),
-      encoding,
-      userAgent: c.req.header("user-agent"),
+    if (isClosed()) return closed();
+    const buffer = sessionStore.getBuffer(reference);
+    const browserBeacon =
+      c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
+      c.req.header("origin");
+    // Close can occur while the body is being read or decoded. Tracking the
+    // request lets close drain it, so a 413 reaches readers before the closing
+    // frame. Retention still stops at the close.
+    const status = await trackReceiverRequest(buffer, async () => {
+      const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+      const result =
+        typeof body === "number"
+          ? body
+          : await ingestReceiverEnvelope(buffer, {
+              body,
+              contentType: browserBeacon
+                ? SENTRY_CONTENT_TYPE
+                : (c.req.header("content-type") ?? ""),
+              encoding: c.req.header("content-encoding"),
+              receiverUrl: c.req.url,
+              userAgent: c.req.header("user-agent"),
+              // Bodies that arrived before close are kept, even if close
+              // lands while they wait in the queue or decode.
+              closed: isClosed(),
+            });
+      reportIngestStatus(buffer, result);
+      return result;
     });
-    sessionStore.recordActivity(reference);
-    return c.body(null, 204);
+    if (status === 410) return closed();
+    if (status === 503) c.header("Retry-After", "1");
+    if (status === 204) sessionStore.recordActivity(reference);
+    return c.body(null, status);
   };
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`, ingest);
+  for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, (c) => {
@@ -485,15 +583,22 @@ export function createLocalControlPlane({
         buildSSEHandler(writer, c.req.query("base64") !== undefined),
         c.req.header("Last-Event-ID"),
       );
+      const unsubscribeOversized = onOversizedEnvelope(buffer, () => {
+        void writer.writeSSE({ event: LOCAL_OVERSIZED_EVENT, data: "{}" });
+      });
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => {
         finish = resolve;
       });
       const unsubscribeSession = sessionStore.subscribe(reference, (event) => {
         if (event.state === "retained" && event.action !== "reset") {
-          buffer.stream(readerId);
-          buffer.unsubscribe(readerId);
-          void sendSession(event).finally(finish);
+          void drainReceiver(buffer)
+            .then(async () => {
+              buffer.stream(readerId);
+              buffer.unsubscribe(readerId);
+              await sendSession(event);
+            })
+            .finally(finish);
         } else {
           void sendSession(event);
         }
@@ -502,6 +607,7 @@ export function createLocalControlPlane({
       try {
         const { state, expiresAt } = sessionStore.resolve(reference);
         if (state === "retained") {
+          await drainReceiver(buffer);
           buffer.stream(readerId);
           await sendSession({ state, expiresAt });
         } else {
@@ -512,6 +618,7 @@ export function createLocalControlPlane({
       } finally {
         buffer.unsubscribe(readerId);
         unsubscribeSettings();
+        unsubscribeOversized();
         unsubscribeSession();
       }
     });
@@ -525,7 +632,7 @@ export function createLocalControlPlane({
         : undefined;
     try {
       validateMaxEnvelopes(value);
-      sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
+      await sessionStore.setMaxEnvelopes(c.req.param("id") ?? "", value);
       return c.json(
         sessionStore.getRetention(c.req.param("id") ?? "").getSettings(),
       );
@@ -540,9 +647,12 @@ export function createLocalControlPlane({
       ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
       : c.body(null, 404),
   );
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
-    sessionExists(c.req.param("id")) ? updateRetention(c) : c.body(null, 404),
-  );
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, async (c) => {
+    if (!sessionExists(c.req.param("id"))) {
+      return c.body(null, 404);
+    }
+    return await updateRetention(c);
+  });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
     if (!sessionExists(c.req.param("id"))) {
@@ -587,11 +697,11 @@ export function createLocalControlPlane({
       .map((container) => {
         const parsed = container.getParsedEnvelope();
         return {
-          id: spotlightEnvelopeId(parsed?.envelope[0] ?? {}),
+          id: receiverEnvelopeId(container),
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]
-              .map((item) =>
+              .map((item: unknown) =>
                 Array.isArray(item) && typeof item[0] === "object" && item[0]
                   ? stringifyUnknown(
                       (item[0] as { type?: unknown }).type ?? "unknown",
@@ -617,11 +727,7 @@ export function createLocalControlPlane({
         if (!parsed) {
           return [];
         }
-        return [
-          {
-            ...eventSummary(parsed),
-          },
-        ];
+        return [describeEvent(container, parsed)];
       })
       .reverse();
     return c.json({ events });
@@ -631,22 +737,39 @@ export function createLocalControlPlane({
     if (!sessionExists(c.req.param("id"))) {
       return c.body(null, 404);
     }
-    const container = sessionStore
+    const reference = c.req.param("eventId");
+    const events = sessionStore
       .getBuffer(c.req.param("id"))
       .read({ all: true })
-      .find((candidate) => {
-        const parsed = candidate.getParsedEnvelope();
-        return (
-          parsed && eventSummary(parsed).eventId === c.req.param("eventId")
-        );
+      .flatMap((container) => {
+        const parsed = container.getParsedEnvelope();
+        return parsed
+          ? [{ container, parsed, eventId: eventSummary(parsed).eventId }]
+          : [];
       });
-    const parsed = container?.getParsedEnvelope();
-    if (!parsed) {
+    const eventIds = matchEventIds(
+      events.map(({ eventId }) => eventId),
+      reference,
+    );
+    if (eventIds.length > 1) {
+      return c.json(
+        {
+          error: `Local event ID "${reference}" matches more than one event.`,
+          code: AMBIGUOUS_EVENT_CODE,
+          session: c.req.param("id"),
+          reference,
+          eventIds,
+        },
+        409,
+      );
+    }
+    const match = events.find(({ eventId }) => eventId === eventIds[0]);
+    if (!match) {
       return c.body(null, 404);
     }
     return c.json({
-      ...eventSummary(parsed),
-      envelope: parsed.envelope,
+      ...describeEvent(match.container, match.parsed),
+      envelope: match.parsed.envelope,
     });
   });
 

@@ -26,6 +26,9 @@ const CATALOG_PATH = "Products/Applications/DemoApp.app/Assets.car";
 const PARSED_PATH = "ParsedAssets/Products/Applications/DemoApp.app";
 const state = { directory: "", helper: "", universalArchive: "" };
 const CATALOG_IDIOMS = ["phone", "universal"] as const;
+// actool usually finishes in about 20 seconds on the macOS runner, but some
+// runs have needed more than 60 seconds.
+const ACTOOL_TIMEOUT_MS = 180_000;
 type CatalogIdiom = (typeof CATALOG_IDIOMS)[number];
 
 /** Compile an explicitly universal image so the zero-idiom regression has known input. */
@@ -53,22 +56,40 @@ async function compileUniversalCatalog(directory: string): Promise<string> {
       "base64",
     ),
   );
-  await run(
-    "xcrun",
-    [
-      "actool",
-      xcassets,
-      "--compile",
-      compiled,
-      "--platform",
-      "iphoneos",
-      "--minimum-deployment-target",
-      "15.0",
-      "--output-format",
-      "human-readable-text",
-    ],
-    { timeout: 60_000 },
-  );
+  try {
+    await run(
+      "xcrun",
+      [
+        "actool",
+        xcassets,
+        "--compile",
+        compiled,
+        "--platform",
+        "iphoneos",
+        "--minimum-deployment-target",
+        "15.0",
+        "--output-format",
+        "human-readable-text",
+      ],
+      { timeout: ACTOOL_TIMEOUT_MS },
+    );
+  } catch (error) {
+    // actool prints its diagnostics to stdout, which execFile leaves out of
+    // the error message, and a timeout kill prints nothing at all.
+    const { killed, signal, stdout, stderr } = error as {
+      killed?: boolean;
+      signal?: string | null;
+      stdout?: string;
+      stderr?: string;
+    };
+    const reason = killed
+      ? `killed by ${signal ?? "a signal"} after ${ACTOOL_TIMEOUT_MS}ms`
+      : "failed";
+    throw new Error(
+      `actool ${reason}\nstdout:\n${stdout ?? ""}\nstderr:\n${stderr ?? ""}`,
+      { cause: error },
+    );
+  }
   return archive;
 }
 
@@ -133,7 +154,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
       state.directory = await mkdtemp(join(tmpdir(), "car-integration-"));
       state.helper = buildCarExtract();
       state.universalArchive = await compileUniversalCatalog(state.directory);
-    }, 120_000);
+    }, ACTOOL_TIMEOUT_MS + 60_000);
     afterAll(async () => {
       if (state.directory) {
         await rm(state.directory, { recursive: true, force: true });
@@ -229,11 +250,11 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
     }, 30_000);
 
     test
-      .runIf(Boolean(process.env.SENTRY_CAR_TEST_BINARY))
+      .runIf(Boolean(process.env["SENTRY_CAR_TEST_BINARY"]))
       .each(CATALOG_IDIOMS)(
       "uploads %s images through the helper embedded in the standalone binary",
       async (idiom) => {
-        const binary = process.env.SENTRY_CAR_TEST_BINARY;
+        const binary = process.env["SENTRY_CAR_TEST_BINARY"];
         if (!binary) {
           throw new Error("Missing native test binary");
         }
@@ -249,6 +270,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
         const uploaded: Uint8Array[] = [];
         const unexpected: string[] = [];
         const fixtureState = { origin: "", errors: 0 };
+        // oxlint-disable-next-line typescript/no-misused-promises -- node:http ignores the handler's promise; the handler catches its own errors
         const server = createServer(async (request, response) => {
           response.setHeader("Content-Type", "application/json");
           response.setHeader("Connection", "close");
@@ -349,7 +371,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
             {
               timeout: 120_000,
               env: {
-                PATH: process.env.PATH,
+                PATH: process.env["PATH"],
                 HOME: home,
                 XDG_CONFIG_HOME: join(home, "config"),
                 SENTRY_CONFIG_DIR: join(home, "sentry"),

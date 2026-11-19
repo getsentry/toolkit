@@ -304,7 +304,7 @@ async function* grepFilesInternal(
 }
 
 function shouldUseWorkers(): boolean {
-  if (process.env.SENTRY_SCAN_DISABLE_WORKERS === "1") {
+  if (process.env["SENTRY_SCAN_DISABLE_WORKERS"] === "1") {
     return false;
   }
   return isWorkerSupported();
@@ -360,7 +360,7 @@ async function* grepViaWorkers(
   // fires before the consumer is waiting, so the consumer picks it
   // up on the next loop iteration instead of missing the wakeup.
   let pendingNotify: (() => void) | null = null;
-  let notifyPending = false;
+  let notifyPending = false as boolean;
   const wakeConsumer = () => {
     if (pendingNotify) {
       const fn = pendingNotify;
@@ -371,8 +371,8 @@ async function* grepViaWorkers(
     }
   };
 
-  let earlyExit = false;
-  let walkerDone = false;
+  let earlyExit = false as boolean;
+  let walkerDone = false as boolean;
   let inflightCount = 0;
 
   // Track dispatch outcomes so the consumer's `finally` can detect
@@ -528,7 +528,7 @@ async function* grepViaWorkers(
       await Promise.allSettled(dispatchPromises);
     }
     if (producerError !== null) {
-      // oxlint-disable-next-line no-unsafe-finally -- re-raising walker error (e.g. AbortError) so callers see it
+      // oxlint-disable-next-line no-unsafe-finally, typescript/only-throw-error -- re-raising the caught walker error (e.g. AbortError) unchanged so callers see it
       throw producerError;
     }
     // If every dispatched batch failed, the "no matches" result is

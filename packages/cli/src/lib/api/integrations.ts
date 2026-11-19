@@ -15,6 +15,7 @@ import {
 
 import type { SentryIntegration } from "../../types/index.js";
 import { ApiError } from "../errors.js";
+import { useAccountForOrg } from "../region.js";
 import {
   getOrgSdkConfig,
   type PaginatedResponse,
@@ -35,6 +36,17 @@ const LIST_QUERY = {
 } satisfies ListOrganizationIntegrationsData["query"];
 
 /**
+ * SDK config for the integration endpoints. Sentry serves them from the
+ * control silo, so they go to the configured base URL rather than the org's
+ * region, and nothing looks the org up on the way. Switch to the account
+ * that knows the org first, so that base URL is its server.
+ */
+function getIntegrationSdkConfig(orgSlug: string) {
+  useAccountForOrg(orgSlug);
+  return getOrgSdkConfig();
+}
+
+/**
  * List one page of integrations installed on an organization.
  *
  * Includes integrations that are disabled or pending deletion.
@@ -46,9 +58,9 @@ const LIST_QUERY = {
  */
 export async function listIntegrationsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number } = {},
+  options: { cursor?: string | undefined; perPage?: number | undefined } = {},
 ): Promise<PaginatedResponse<SentryIntegration[]>> {
-  const config = getOrgSdkConfig();
+  const config = getIntegrationSdkConfig(orgSlug);
 
   const result = await listOrganizationIntegrations({
     ...config,
@@ -57,7 +69,7 @@ export async function listIntegrationsPaginated(
       ...LIST_QUERY,
       cursor: options.cursor,
       per_page: options.perPage ?? 25,
-    } as ListOrganizationIntegrationsData["query"],
+    } as NonNullable<ListOrganizationIntegrationsData["query"]>,
   });
 
   const paginated = unwrapPaginatedResult<SentryIntegration[]>(
@@ -100,7 +112,7 @@ export async function getIntegration(
   orgSlug: string,
   integrationId: string,
 ): Promise<SentryIntegration> {
-  const config = getOrgSdkConfig();
+  const config = getIntegrationSdkConfig(orgSlug);
 
   const result = await getOrganizationIntegration({
     ...config,
@@ -127,7 +139,7 @@ export async function deleteIntegration(
   orgSlug: string,
   integrationId: string,
 ): Promise<void> {
-  const config = getOrgSdkConfig();
+  const config = getIntegrationSdkConfig(orgSlug);
 
   const result = await deleteOrganizationIntegration({
     ...config,

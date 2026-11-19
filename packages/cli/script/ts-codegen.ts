@@ -7,7 +7,7 @@
  * containing a quote cannot produce a broken file.
  */
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /** Shorthand for the compiler's node factory. */
 export const f = ts.factory;
@@ -18,9 +18,20 @@ const COMMENT_CLOSE_RE = /\*\//g;
 /** Line breaks inside comment text; each continuation line needs a leading `*`. */
 const NEWLINE_RE = /\r?\n/g;
 
+/**
+ * ECMAScript IdentifierName, as `ts.isIdentifierText` checks it. That helper
+ * is internal: TypeScript 6's public declarations no longer export it.
+ */
+const IDENTIFIER_NAME_RE = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
+
+/** Whether `name` can be written as a bare identifier (keywords included). */
+function isIdentifierText(name: string): boolean {
+  return IDENTIFIER_NAME_RE.test(name);
+}
+
 /** A property key: a bare identifier when valid, otherwise a quoted string literal. */
 export function propertyName(name: string): ts.PropertyName {
-  return ts.isIdentifierText(name, ts.ScriptTarget.ESNext)
+  return isIdentifierText(name)
     ? f.createIdentifier(name)
     : f.createStringLiteral(name);
 }
@@ -29,7 +40,7 @@ export function propertyName(name: string): ts.PropertyName {
 export function optionalAccess(object: string, name: string): ts.Expression {
   const target = f.createIdentifier(object);
   const questionDot = f.createToken(ts.SyntaxKind.QuestionDotToken);
-  return ts.isIdentifierText(name, ts.ScriptTarget.ESNext)
+  return isIdentifierText(name)
     ? f.createPropertyAccessChain(target, questionDot, name)
     : f.createElementAccessChain(
         target,
@@ -41,7 +52,7 @@ export function optionalAccess(object: string, name: string): ts.Expression {
 /** `object.name`, or `object["name"]` when `name` is not a valid identifier. */
 export function access(object: string, name: string): ts.Expression {
   const target = f.createIdentifier(object);
-  return ts.isIdentifierText(name, ts.ScriptTarget.ESNext)
+  return isIdentifierText(name)
     ? f.createPropertyAccessExpression(target, name)
     : f.createElementAccessExpression(target, f.createStringLiteral(name));
 }

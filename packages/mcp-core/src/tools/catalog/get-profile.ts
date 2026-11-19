@@ -24,10 +24,28 @@ import {
   getProfileOutputSchema,
 } from "../support/profile/flamegraph-output";
 
+/** Explain a missing analysis or comparison; omitted when every period has data. */
+function emptyProfileGuidance(periods: {
+  current: { period: string; hasData: boolean };
+  baseline?: { period: string; hasData: boolean };
+}): string | undefined {
+  const { current, baseline } = periods;
+  if (!current.hasData && (!baseline || !baseline.hasData)) {
+    return "No profiles were found for this transaction. Check the exact, case-sensitive transaction name with search_traces, try a longer period such as 30d, or confirm that profiling is enabled for the project.";
+  }
+  if (baseline && !baseline.hasData) {
+    return `The baseline period (${baseline.period}) has no profiles, so there is no comparison. Choose a different baseline, or analyze ${current.period} alone.`;
+  }
+  if (baseline && !current.hasData) {
+    return `The current period (${current.period}) has no profiles, so there is no comparison. Choose a longer current period, or analyze ${baseline.period} alone.`;
+  }
+  return undefined;
+}
+
 interface ResolvedProfileParams {
   organizationSlug: string;
-  projectSlugOrId?: string | number;
-  transactionName?: string;
+  projectSlugOrId?: string | number | undefined;
+  transactionName?: string | undefined;
 }
 
 /**
@@ -35,10 +53,10 @@ interface ResolvedProfileParams {
  * URL takes precedence if provided and valid.
  */
 function resolveProfileParams(params: {
-  profileUrl?: string | null;
-  organizationSlug?: string | null;
-  projectSlugOrId?: string | number | null;
-  transactionName?: string | null;
+  profileUrl?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  projectSlugOrId?: string | number | null | undefined;
+  transactionName?: string | null | undefined;
 }): ResolvedProfileParams {
   // URL-based resolution
   if (params.profileUrl) {
@@ -87,63 +105,8 @@ export default defineTool({
   requiredCapabilities: ["profiles"],
   hideInExperimentalMode: true, // Replaced by get_sentry_resource in experimental mode
 
-  description: [
-    "Analyze aggregated CPU profiling data (flamegraph) for a transaction to identify performance bottlenecks and detect regressions.",
-    "For one specific profile by ID or URL, use get_profile_details.",
-    "",
-    "USE THIS TOOL WHEN:",
-    "- User asks why a specific endpoint/transaction is slow",
-    "- User wants to understand where CPU time is spent",
-    "- User asks about performance bottlenecks",
-    "- User wants to compare performance between time periods",
-    "- User shares a Sentry profile URL",
-    "",
-    "RETURNS:",
-    "- Hot paths (call stacks consuming the most CPU time); the last frame of each stack is the primary bottleneck",
-    "- Performance percentiles (p75, p95, p99) for each function",
-    "- User code vs library code breakdown",
-    "- Regression analysis when comparing periods",
-    "",
-    "<examples>",
-    "### Analyze from URL (with transaction name)",
-    "```",
-    "get_profile(",
-    "  profileUrl='https://my-org.sentry.io/explore/profiling/profile/backend/flamegraph/?profilerId=abc123',",
-    "  transactionName='/api/users'",
-    ")",
-    "```",
-    "",
-    "### Analyze by transaction name",
-    "```",
-    "get_profile(",
-    "  organizationSlug='my-org',",
-    "  transactionName='/api/users',",
-    "  projectSlugOrId='backend'",
-    ")",
-    "```",
-    "",
-    "### Compare performance between periods",
-    "```",
-    "get_profile(",
-    "  organizationSlug='my-org',",
-    "  transactionName='/api/users',",
-    "  projectSlugOrId='backend',",
-    "  period='7d',",
-    "  compareAgainstPeriod='14d'",
-    ")",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use `focusOnUserCode: true` (default) to filter out library code",
-    "- High p99 relative to p75 indicates inconsistent performance",
-    "- Use compareAgainstPeriod to detect regressions over time",
-    "- Transaction names are case-sensitive",
-    "- Start optimizing at the bottleneck of the top hot path; look for caching opportunities and N+1 or inefficient data access",
-    "- For a major regression, investigate recent changes to that function",
-    "- Without profile data, verify the exact transaction name with search_traces, try a longer period (e.g. '30d'), or check that profiling is enabled for the project. If only one comparison period has data, adjust that period or drop compareAgainstPeriod",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Analyze aggregated CPU profiles (flamegraph) for one Sentry transaction: hot paths, per-function p75/p95/p99, user versus library code, and regressions against a baseline period. For one profile by ID or URL, use get_profile_details.",
 
   inputSchema: {
     // URL-based input (preferred)
@@ -152,7 +115,7 @@ export default defineTool({
       .url()
       .optional()
       .describe(
-        "Sentry profile URL. If provided, organization and project are extracted from URL. transactionName is still required.",
+        "Sentry profile URL; the organization and project come from it. transactionName is still required.",
       ),
 
     // Explicit params (fallback)
@@ -161,37 +124,37 @@ export default defineTool({
     projectSlugOrId: z
       .union([z.string().trim().superRefine(validateSlugOrId), z.number()])
       .optional()
-      .describe("Project slug or numeric ID"),
+      .describe(
+        "Project slug or numeric ID; required unless profileUrl has it.",
+      ),
     transactionName: z
       .string()
       .trim()
       .optional()
-      .describe("Transaction name (e.g., '/api/users', 'POST /graphql')"),
+      .describe(
+        "Exact, case-sensitive transaction name, such as /api/users or POST /graphql. Required; find names with search_traces.",
+      ),
 
     // Time params
-    period: ParamPeriod.default("7d").describe(
-      "Profiling time window (default: '7d'). Use '1h' for very recent profiling data.",
-    ),
+    period: ParamPeriod.default("7d"),
 
     // Comparison mode
     compareAgainstPeriod: ParamPeriod.optional().describe(
-      "Compare against this baseline profiling time window. Enables regression detection.",
+      "Baseline time window to compare against, for regression detection.",
     ),
 
     // Analysis options
     focusOnUserCode: z
       .boolean()
       .default(true)
-      .describe(
-        "Show only user code (is_application: true). Set to false to include library code.",
-      ),
+      .describe("Show only application code; false includes library code."),
     maxHotPaths: z
       .number()
       .int()
       .min(1)
       .max(20)
       .default(10)
-      .describe("Number of hot paths to display (1-20, default: 10)"),
+      .describe("Number of hot paths to show."),
   },
 
   outputSchema: getProfileOutputSchema,
@@ -290,6 +253,13 @@ export default defineTool({
 
       const hasBaselineData = hasProfileData(baselineFlamegraph);
       const hasCurrentData = hasProfileData(currentFlamegraph);
+      const guidance = emptyProfileGuidance({
+        current: { period: params.period, hasData: hasCurrentData },
+        baseline: {
+          period: params.compareAgainstPeriod,
+          hasData: hasBaselineData,
+        },
+      });
 
       return structuredResult({
         ...baseOutput,
@@ -302,6 +272,7 @@ export default defineTool({
                 focusOnUserCode: params.focusOnUserCode,
               })
             : null,
+        ...(guidance ? { guidance } : {}),
       });
     }
 
@@ -313,6 +284,9 @@ export default defineTool({
       statsPeriod: params.period,
     });
     const hasCurrentData = hasProfileData(flamegraph);
+    const guidance = emptyProfileGuidance({
+      current: { period: params.period, hasData: hasCurrentData },
+    });
 
     return structuredResult({
       ...baseOutput,
@@ -325,6 +299,7 @@ export default defineTool({
           })
         : null,
       comparison: null,
+      ...(guidance ? { guidance } : {}),
     });
   },
 });

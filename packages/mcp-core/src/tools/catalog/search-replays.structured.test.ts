@@ -166,7 +166,7 @@ describe("search_replays structured output", () => {
             "type": "tool_call",
           },
         ],
-        "url": "https://test-org.sentry.io/explore/replays/?query=count_errors%3A%3E0&environment=production&sort=-count_errors&statsPeriod=24h",
+        "url": "https://test-org.sentry.io/explore/replays/?project=-1&query=count_errors%3A%3E0&environment=production&sort=-count_errors&statsPeriod=24h",
       }
     `);
   });
@@ -184,12 +184,12 @@ describe("search_replays structured output", () => {
     const structuredContent = await runSearch({ query: "count_errors:>0" });
     const [replay] = structuredContent.replays;
 
-    expect(replay.urls).toHaveLength(3);
-    expect(replay.urlCount).toBe(8);
-    expect(replay.traceIds).toHaveLength(3);
-    expect(replay.traceCount).toBe(7);
-    expect(replay.releases).toHaveLength(3);
-    expect(replay.releaseCount).toBe(5);
+    expect(replay?.urls).toHaveLength(3);
+    expect(replay?.urlCount).toBe(8);
+    expect(replay?.traceIds).toHaveLength(3);
+    expect(replay?.traceCount).toBe(7);
+    expect(replay?.releases).toHaveLength(3);
+    expect(replay?.releaseCount).toBe(5);
   });
 
   it("omits the placeholder user on archived replays", async () => {
@@ -204,8 +204,8 @@ describe("search_replays structured output", () => {
     const structuredContent = await runSearch({ query: "count_errors:>0" });
     const [replay] = structuredContent.replays;
 
-    expect(replay.isArchived).toBe(true);
-    expect(replay.user).toBeNull();
+    expect(replay?.isArchived).toBe(true);
+    expect(replay?.user).toBeNull();
   });
 
   it("keeps the unknown-environment warning in notes", async () => {

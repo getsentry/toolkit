@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check for Runtime Dependencies
  *
@@ -8,7 +7,7 @@
  * package at zero install-time dependencies.
  *
  * Usage:
- *   tsx script/check-no-deps.ts
+ *   pnpm ts script/check-no-deps.ts
  *
  * Exit codes:
  *   0 - No runtime dependencies found

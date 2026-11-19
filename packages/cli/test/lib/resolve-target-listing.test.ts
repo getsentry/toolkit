@@ -6,17 +6,21 @@
  * Uses spyOn to mock dependencies without real HTTP calls.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 vi.mock("../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -26,12 +30,8 @@ import { DEFAULT_SENTRY_URL } from "../../src/lib/constants.js";
 vi.mock("../../src/lib/db/defaults.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/db/defaults.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -40,12 +40,8 @@ import * as defaults from "../../src/lib/db/defaults.js";
 vi.mock("../../src/lib/db/auth.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/db/auth.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -56,12 +52,8 @@ import { ContextError, ResolutionError } from "../../src/lib/errors.js";
 vi.mock("../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -81,8 +73,10 @@ import {
 const CWD = "/tmp/test-project";
 
 describe("classifyProjectSearchTarget", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -105,8 +99,8 @@ describe("classifyProjectSearchTarget", () => {
         },
       ],
       orgs: [
-        { slug: "acme", name: "Acme Org" },
-        { slug: "other-org", name: "Other Org" },
+        { id: "1", slug: "acme", name: "Acme Org" },
+        { id: "2", slug: "other-org", name: "Other Org" },
       ],
     });
 
@@ -121,7 +115,7 @@ describe("classifyProjectSearchTarget", () => {
   test("returns an exact organization only after the project search misses", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme", name: "Acme Org" }],
+      orgs: [{ id: "3", slug: "acme", name: "Acme Org" }],
     });
 
     const result = await classifyProjectSearchTarget({
@@ -135,7 +129,7 @@ describe("classifyProjectSearchTarget", () => {
   test("recovers one fuzzy project after exact project and org misses", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme", name: "Acme Org" }],
+      orgs: [{ id: "4", slug: "acme", name: "Acme Org" }],
     });
     listProjectsSpy.mockResolvedValue([
       { id: "1", slug: "app-frontend", name: "App Frontend" },
@@ -156,7 +150,7 @@ describe("classifyProjectSearchTarget", () => {
   test("returns not-found after project, organization, and fuzzy misses", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme", name: "Acme Org" }],
+      orgs: [{ id: "5", slug: "acme", name: "Acme Org" }],
     });
     listProjectsSpy.mockResolvedValue([]);
 
@@ -211,8 +205,12 @@ describe("projectSearchNotFoundSuggestions", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgsForListing", () => {
-  let getDefaultOrganizationSpy: ReturnType<typeof spyOn>;
-  let resolveAllTargetsSpy: ReturnType<typeof spyOn>;
+  let getDefaultOrganizationSpy: MockInstance<
+    (typeof defaults)["getDefaultOrganization"]
+  >;
+  let resolveAllTargetsSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveAllTargets"]
+  >;
 
   beforeEach(() => {
     getDefaultOrganizationSpy = vi.spyOn(defaults, "getDefaultOrganization");
@@ -248,9 +246,24 @@ describe("resolveOrgsForListing", () => {
   test.skip("returns unique orgs from DSN detection when no default", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [
-        { org: "org-a", project: "proj-1" },
-        { org: "org-a", project: "proj-2" }, // same org, different project
-        { org: "org-b", project: "proj-3" },
+        {
+          orgDisplay: "org-a",
+          projectDisplay: "proj-1",
+          org: "org-a",
+          project: "proj-1",
+        },
+        {
+          orgDisplay: "org-a",
+          projectDisplay: "proj-2",
+          org: "org-a",
+          project: "proj-2",
+        }, // same org, different project
+        {
+          orgDisplay: "org-b",
+          projectDisplay: "proj-3",
+          org: "org-b",
+          project: "proj-3",
+        },
       ],
     });
 
@@ -270,8 +283,18 @@ describe("resolveOrgsForListing", () => {
   test.skip("propagates footer from DSN detection", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
       targets: [
-        { org: "org-a", project: "proj-1" },
-        { org: "org-b", project: "proj-2" },
+        {
+          orgDisplay: "org-a",
+          projectDisplay: "proj-1",
+          org: "org-a",
+          project: "proj-1",
+        },
+        {
+          orgDisplay: "org-b",
+          projectDisplay: "proj-2",
+          org: "org-b",
+          project: "proj-2",
+        },
       ],
       footer: "Found 2 projects",
     });
@@ -283,7 +306,14 @@ describe("resolveOrgsForListing", () => {
   // oxlint-disable-next-line sentry-cli/no-skipped-tests -- vitest can't intercept same-file internal calls
   test.skip("propagates skippedSelfHosted from DSN detection", async () => {
     resolveAllTargetsSpy.mockResolvedValue({
-      targets: [{ org: "org-a", project: "proj-1" }],
+      targets: [
+        {
+          orgDisplay: "org-a",
+          projectDisplay: "proj-1",
+          org: "org-a",
+          project: "proj-1",
+        },
+      ],
       skippedSelfHosted: 2,
     });
 
@@ -309,9 +339,15 @@ describe("resolveOrgsForListing", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundTarget", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
-  let listOrganizationsSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveOrgAndProject"]
+  >;
+  let listOrganizationsSpy: MockInstance<
+    (typeof apiClient)["listOrganizations"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -356,7 +392,9 @@ describe("resolveProjectBoundTarget", () => {
 
   test("resolves project-search when single match found", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ orgSlug: "found-org", slug: "my-proj", name: "My Project" }],
+      projects: [
+        { id: "6", orgSlug: "found-org", slug: "my-proj", name: "My Project" },
+      ],
       orgs: [],
     });
 
@@ -383,8 +421,8 @@ describe("resolveProjectBoundTarget", () => {
   test("throws ResolutionError for project-search when multiple matches", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [
-        { orgSlug: "org-a", slug: "my-proj", name: "My Project" },
-        { orgSlug: "org-b", slug: "my-proj", name: "My Project" },
+        { id: "7", orgSlug: "org-a", slug: "my-proj", name: "My Project" },
+        { id: "8", orgSlug: "org-b", slug: "my-proj", name: "My Project" },
       ],
       orgs: [],
     });
@@ -439,7 +477,7 @@ describe("resolveProjectBoundTarget", () => {
     // Lines 1017-1023: slug matches an org but no project → org-as-project error
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "9", slug: "acme-corp", name: "Acme Corp" }],
     });
 
     const parsed = {
@@ -465,8 +503,12 @@ describe("resolveProjectBoundTarget", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundFromArg", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
-  let resolveOrgAndProjectSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
+  let resolveOrgAndProjectSpy: MockInstance<
+    (typeof resolveTargetModule)["resolveOrgAndProject"]
+  >;
 
   beforeEach(async () => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -493,7 +535,9 @@ describe("resolveProjectBoundFromArg", () => {
 
   test("resolves bare project slug string via project-search", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
-      projects: [{ orgSlug: "found-org", slug: "my-proj", name: "My Project" }],
+      projects: [
+        { id: "10", orgSlug: "found-org", slug: "my-proj", name: "My Project" },
+      ],
       orgs: [],
     });
 
@@ -532,9 +576,11 @@ describe("resolveProjectBoundFromArg", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveProjectBoundTargets", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   const OPTS = { cwd: CWD, usageHint: "sentry issue list <org>/<project>" };
 
@@ -557,7 +603,11 @@ describe("resolveProjectBoundTargets", () => {
   });
 
   test("explicit: resolves DSN-style org id to the real slug", async () => {
-    getProjectSpy.mockResolvedValue({ id: "42", slug: "my-proj" });
+    getProjectSpy.mockResolvedValue({
+      id: "42",
+      slug: "my-proj",
+      name: "My Proj",
+    });
 
     const result = await resolveProjectBoundTargets(
       { type: "explicit", org: "o1081365", project: "my-proj" },
@@ -598,12 +648,12 @@ describe("resolveProjectBoundTargets", () => {
     // the org-a match — never leak org-b.
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [
-        { orgSlug: "org-b", slug: "my-proj", name: "My Project" },
-        { orgSlug: "my-org", slug: "my-proj", name: "My Project" },
+        { id: "11", orgSlug: "org-b", slug: "my-proj", name: "My Project" },
+        { id: "12", orgSlug: "my-org", slug: "my-proj", name: "My Project" },
       ],
       orgs: [
-        { slug: "org-b", name: "Org B" },
-        { slug: "my-org", name: "My Org" },
+        { id: "13", slug: "org-b", name: "Org B" },
+        { id: "14", slug: "my-org", name: "My Org" },
       ],
     });
 
@@ -640,11 +690,17 @@ describe("resolveProjectBoundTargets", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveOrgProjectOrGuide", () => {
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let listOrganizationsSpy: ReturnType<typeof spyOn>;
-  let listProjectsSpy: ReturnType<typeof spyOn>;
-  let getDefaultOrgSpy: ReturnType<typeof spyOn>;
-  let getDefaultProjectSpy: ReturnType<typeof spyOn>;
+  let isAuthenticatedSpy: MockInstance<(typeof auth)["isAuthenticated"]>;
+  let listOrganizationsSpy: MockInstance<
+    (typeof apiClient)["listOrganizations"]
+  >;
+  let listProjectsSpy: MockInstance<(typeof apiClient)["listProjects"]>;
+  let getDefaultOrgSpy: MockInstance<
+    (typeof defaults)["getDefaultOrganization"]
+  >;
+  let getDefaultProjectSpy: MockInstance<
+    (typeof defaults)["getDefaultProject"]
+  >;
 
   beforeEach(() => {
     isAuthenticatedSpy = vi.spyOn(auth, "isAuthenticated");
@@ -671,7 +727,7 @@ describe("resolveOrgProjectOrGuide", () => {
   test("auto-selects the sole org/project for a single-org account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     listOrganizationsSpy.mockResolvedValue([
-      { slug: "solo", name: "Solo Inc" },
+      { id: "15", slug: "solo", name: "Solo Inc" },
     ]);
     listProjectsSpy.mockResolvedValue([
       { id: "42", slug: "only-proj", name: "Only Project" },
@@ -689,8 +745,8 @@ describe("resolveOrgProjectOrGuide", () => {
   test("throws a ContextError listing accessible orgs for a multi-org account", async () => {
     isAuthenticatedSpy.mockReturnValue(true);
     listOrganizationsSpy.mockResolvedValue([
-      { slug: "org-a", name: "Org A" },
-      { slug: "org-b", name: "Org B" },
+      { id: "16", slug: "org-a", name: "Org A" },
+      { id: "17", slug: "org-b", name: "Org B" },
     ]);
 
     try {
@@ -723,7 +779,9 @@ describe("resolveOrgProjectOrGuide", () => {
 });
 
 describe("resolveOrgOptionalTarget bare org slug", () => {
-  let findProjectsBySlugSpy: ReturnType<typeof spyOn>;
+  let findProjectsBySlugSpy: MockInstance<
+    (typeof apiClient)["findProjectsBySlug"]
+  >;
 
   beforeEach(() => {
     findProjectsBySlugSpy = vi.spyOn(apiClient, "findProjectsBySlug");
@@ -736,7 +794,7 @@ describe("resolveOrgOptionalTarget bare org slug", () => {
   test("uses the organization when no project has that slug", async () => {
     findProjectsBySlugSpy.mockResolvedValue({
       projects: [],
-      orgs: [{ slug: "acme-corp", name: "Acme Corp" }],
+      orgs: [{ id: "18", slug: "acme-corp", name: "Acme Corp" }],
     });
 
     const result = await resolveOrgOptionalTarget(

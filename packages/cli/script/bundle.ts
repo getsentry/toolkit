@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 import { existsSync } from "node:fs";
 import {
   chmod,
@@ -11,7 +10,7 @@ import {
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { type BuildOptions, build, type Plugin } from "esbuild";
-import pkg from "../package.json";
+import pkg from "../package.json" with { type: "json" };
 import {
   buildMainScript,
   chunkBuild,
@@ -32,7 +31,7 @@ import { logger } from "../src/lib/logger.js";
 
 const VERSION = pkg.version;
 /** Optional OAuth client ID override; unset uses the default in src/lib/oauth.ts. */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
+const SENTRY_CLIENT_ID = process.env["SENTRY_CLIENT_ID"];
 
 logger.start(`Bundling sentry v${VERSION} for npm`);
 
@@ -109,7 +108,7 @@ const plugins: Plugin[] = [
   requireAliasPlugin,
 ];
 
-if (process.env.SENTRY_AUTH_TOKEN) {
+if (process.env["SENTRY_AUTH_TOKEN"]) {
   logger.info("Sentry auth token found, source maps will be uploaded");
 } else {
   logger.info(
@@ -132,25 +131,10 @@ const commonBuildOptions = {
   // Older Node.js uses the bundled WASM SQLite driver (node-sqlite3-wasm);
   // 22.15+ uses the native node:sqlite. Downlevels newer syntax accordingly.
   target: "node18",
-  // Externalize Node.js built-ins, plus Ink + React + companions.
-  // These packages are NOT bundled into the main output because they use
-  // top-level await (esbuild can't emit that in CJS). Instead, the Ink UI
-  // lives in a separate self-contained ESM sidecar (`dist/ink-app.js`) that
-  // the text-import-plugin pre-bundles with all deps inlined. The main bundle
-  // references the sidecar via a path string and loads it lazily via dynamic
-  // `import()` at runtime. The external list here prevents esbuild from trying
-  // to resolve these packages in the main bundle graph.
   external: [
     "node:*",
     // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
     "@sentry/symbolic/symbolic_bg.wasm",
-    "ink",
-    "react",
-    "react/*",
-    "react-reconciler",
-    "react-reconciler/*",
-    "react-devtools-core",
-    "yoga-layout",
   ],
   plugins,
 } satisfies BuildOptions;
@@ -241,7 +225,7 @@ const jsFiles = [...cjsFiles, ...esm.files];
 // Always inject debug IDs (even without auth token); upload needs a token.
 const injected = await injectDebugIds(jsFiles);
 logger.log(`  Debug IDs injected into ${injected.length} files`);
-if (process.env.SENTRY_AUTH_TOKEN && injected.length > 0) {
+if (process.env["SENTRY_AUTH_TOKEN"] && injected.length > 0) {
   // Only delete .map files after a successful upload — preserving them on
   // failure allows retrying without a full rebuild.
   if (
@@ -290,11 +274,6 @@ await writeFile("./dist/index.d.mts", TYPE_DECLARATIONS);
 
 logger.log("  -> dist/bin.cjs (CLI main script)");
 logger.log("  -> dist/index.d.cts + dist/index.d.mts (type declarations)");
-
-// The `ink-app.js` sidecar (pre-bundled by text-import-plugin) ships
-// with the npm package so the organization and project pickers can load
-// the Ink UI on Node via dynamic import(). The sidecar is self-contained
-// ESM with all deps inlined — no runtime dependencies needed.
 
 // Ship the DIF parser WASM as a sibling of the bundle. The runtime loads it
 // (non-SEA path) via new URL("./vendor/symbolic_bg.wasm", import.meta.url),

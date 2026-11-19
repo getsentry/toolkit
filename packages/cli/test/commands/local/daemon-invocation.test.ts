@@ -33,11 +33,12 @@ describe("Local daemon invocation", () => {
     vi.stubGlobal("process", {
       ...process,
       argv: ["/node", "/cli/bin.cjs", "local"],
-      execArgv: ["--import", "tsx"],
+      execArgv: ["--experimental-strip-types", "--import", "./shim.mjs"],
     });
     expect(buildLocalDaemonArgs("localhost", 9000)).toEqual([
+      "--experimental-strip-types",
       "--import",
-      "tsx",
+      "./shim.mjs",
       "/cli/bin.cjs",
       "local",
       "daemon",

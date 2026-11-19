@@ -1,5 +1,3 @@
-#!/usr/bin/env tsx
-
 /**
  * Build script for Sentry CLI
  *
@@ -69,7 +67,7 @@ const NODE_VERSION = "lts";
  * Optional OAuth client ID override baked into the binary. When unset, the
  * binary uses the committed sentry.io default in src/lib/oauth.ts.
  */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
+const SENTRY_CLIENT_ID = process.env["SENTRY_CLIENT_ID"];
 
 /** Build targets configuration */
 type BuildTarget = {
@@ -138,17 +136,7 @@ const BUNDLE_OPTIONS = {
   // supported in CJS). Node SEA runs embedded JS as CJS.
   target: "node24",
   treeShaking: true,
-  // Externalize the Ink + React stack from the esbuild bundling
-  // step. The main bundle never calls `import("ink")` at runtime —
-  // the sidecar is pre-bundled by text-import-plugin as a
-  // self-contained JS file with ink/react inlined. Keeping these
-  // external avoids pulling CJS React wrappers into the bundle.
   external: [
-    "ink",
-    "react",
-    "react/*",
-    "react-reconciler",
-    "react-reconciler/*",
     // The DIF loader resolves this .wasm at runtime (dev only); never bundle it.
     "@sentry/symbolic/symbolic_bg.wasm",
     // WASM SQLite fallback for Node.js < 22.15. The SEA binary always
@@ -279,7 +267,7 @@ async function uploadSourcemapsToSentry(
   if (injected.length === 0) {
     return;
   }
-  if (!process.env.SENTRY_AUTH_TOKEN) {
+  if (!process.env["SENTRY_AUTH_TOKEN"]) {
     logger.info("No SENTRY_AUTH_TOKEN, skipping sourcemap upload");
     return;
   }
@@ -303,14 +291,6 @@ async function compileAllTargets(
   // The SEA main script (SEA_MAIN_JS) reads the chunks back with
   // node:sea.getAsset() under the same keys.
   const assets = [...bundle.files];
-
-  // text-import-plugin pre-bundles the Ink picker sidecar into BUILD_DIR.
-  // Pass it to fossilize as a SEA asset; `ink-ui.ts` reads it back with
-  // node:sea.getAsset("dist-build/ink-app.js").
-  const INK_SIDECAR = `${BUILD_DIR}/ink-app.js`;
-  if (existsSync(INK_SIDECAR)) {
-    assets.push(INK_SIDECAR);
-  }
 
   // Embed the DIF parser WASM (from @sentry/symbolic) as a SEA asset. The
   // runtime loads it via node:sea.getRawAsset(DIF_WASM_ASSET_KEY) — the asset
@@ -377,9 +357,9 @@ async function compileAllTargets(
         assets,
         outDir: "dist-bin",
         outputName: "sentry",
-        cacheDir: process.env.FOSSILIZE_CACHE_DIR ?? ".node-cache",
+        cacheDir: process.env["FOSSILIZE_CACHE_DIR"] ?? ".node-cache",
         concurrencyLimit: Number(
-          process.env.FOSSILIZE_CONCURRENCY_LIMIT ?? "3",
+          process.env["FOSSILIZE_CONCURRENCY_LIMIT"] ?? "3",
         ),
         noBundle: true,
         holePunch: true,
@@ -390,7 +370,7 @@ async function compileAllTargets(
         // writes. process.env is untouched, so child processes still
         // inherit the user's NODE_OPTIONS.
         ignoreNodeOptions: true,
-        sign: envFlag(process.env.FOSSILIZE_SIGN),
+        sign: envFlag(process.env["FOSSILIZE_SIGN"]),
       },
       SEA_MAIN_JS,
     );
@@ -443,7 +423,7 @@ async function postProcessTarget(target: BuildTarget): Promise<void> {
 
   // On main and release branches (RELEASE_BUILD=1), create gzip-compressed
   // copies for release downloads / GHCR nightly (~70% smaller with hole-punch).
-  if (process.env.RELEASE_BUILD) {
+  if (process.env["RELEASE_BUILD"]) {
     const binary = await readFile(outfile);
     const compressed = await gzipAsync(Buffer.from(binary), { level: 6 });
     await writeFile(`${outfile}.gz`, compressed);

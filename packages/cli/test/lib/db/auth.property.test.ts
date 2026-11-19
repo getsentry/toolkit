@@ -52,8 +52,8 @@ describe("property: env var priority", () => {
     fcAssert(
       property(tokenArb, tokenArb, (authToken, sentryToken) => {
         resetAuthCaches();
-        process.env.SENTRY_AUTH_TOKEN = authToken;
-        process.env.SENTRY_TOKEN = sentryToken;
+        process.env["SENTRY_AUTH_TOKEN"] = authToken;
+        process.env["SENTRY_TOKEN"] = sentryToken;
 
         expect(getAuthToken()).toBe(authToken.trim());
         expect(getAuthConfig()?.source).toBe(
@@ -69,7 +69,7 @@ describe("property: env var priority", () => {
       property(tokenArb, storedTokenArb, (envToken, storedToken) => {
         resetAuthCaches();
         setAuthToken(storedToken);
-        process.env.SENTRY_AUTH_TOKEN = envToken;
+        process.env["SENTRY_AUTH_TOKEN"] = envToken;
 
         // Stored OAuth takes priority — env token is for build tooling
         expect(getAuthToken()).toBe(storedToken);
@@ -85,16 +85,16 @@ describe("property: env var priority", () => {
       property(tokenArb, storedTokenArb, (envToken, storedToken) => {
         resetAuthCaches();
         setAuthToken(storedToken);
-        process.env.SENTRY_AUTH_TOKEN = envToken;
+        process.env["SENTRY_AUTH_TOKEN"] = envToken;
         try {
-          process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+          process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
           resetAuthCaches();
           expect(getAuthToken()).toBe(envToken.trim());
           expect(getAuthConfig()?.source).toBe(
             "env:SENTRY_AUTH_TOKEN" satisfies AuthSource,
           );
         } finally {
-          delete process.env.SENTRY_FORCE_ENV_TOKEN;
+          delete process.env["SENTRY_FORCE_ENV_TOKEN"];
           resetAuthCaches();
         }
       }),
@@ -121,7 +121,7 @@ describe("property: env tokens never trigger refresh", () => {
     await fcAssert(
       asyncProperty(tokenArb, async (envToken) => {
         resetAuthCaches();
-        process.env.SENTRY_AUTH_TOKEN = envToken;
+        process.env["SENTRY_AUTH_TOKEN"] = envToken;
 
         const result = await refreshToken();
         expect(result.token).toBe(envToken.trim());
@@ -137,7 +137,7 @@ describe("property: env tokens never trigger refresh", () => {
     await fcAssert(
       asyncProperty(tokenArb, async (envToken) => {
         resetAuthCaches();
-        process.env.SENTRY_AUTH_TOKEN = envToken;
+        process.env["SENTRY_AUTH_TOKEN"] = envToken;
 
         const result = await refreshToken({ force: true });
         expect(result.token).toBe(envToken.trim());
@@ -154,8 +154,8 @@ describe("property: isEnvTokenActive consistency", () => {
       property(option(storedTokenArb), (storedTokenOpt) => {
         resetAuthCaches();
         // Clean slate — no env tokens
-        delete process.env.SENTRY_AUTH_TOKEN;
-        delete process.env.SENTRY_TOKEN;
+        delete process.env["SENTRY_AUTH_TOKEN"];
+        delete process.env["SENTRY_TOKEN"];
 
         if (storedTokenOpt !== null) {
           setAuthToken(storedTokenOpt);
@@ -179,7 +179,7 @@ describe("property: source round-trip", () => {
     fcAssert(
       property(tokenArb, (token) => {
         resetAuthCaches();
-        process.env.SENTRY_AUTH_TOKEN = token;
+        process.env["SENTRY_AUTH_TOKEN"] = token;
         const config = getAuthConfig();
         expect(config?.source).toBe("env:SENTRY_AUTH_TOKEN");
         // Verify we can extract the env var name
@@ -193,7 +193,7 @@ describe("property: source round-trip", () => {
     fcAssert(
       property(tokenArb, (token) => {
         resetAuthCaches();
-        process.env.SENTRY_TOKEN = token;
+        process.env["SENTRY_TOKEN"] = token;
         const config = getAuthConfig();
         expect(config?.source).toBe("env:SENTRY_TOKEN");
         expect(config?.source.slice(4)).toBe("SENTRY_TOKEN");

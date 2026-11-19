@@ -1,4 +1,4 @@
-import { HttpResponse, http } from "msw";
+import { type HttpHandler, HttpResponse, http } from "msw";
 /**
  * MSW-based Mock Server for Sentry MCP Development and Testing.
  *
@@ -22,7 +22,7 @@ import { HttpResponse, http } from "msw";
  * // Now all Sentry API calls will be intercepted
  * ```
  */
-import { setupServer } from "msw/node";
+import { type SetupServer, setupServer } from "msw/node";
 
 import autofixStateFixture from "./fixtures/autofix-state.json" with { type: "json" };
 import autofixStateExplorerFixture from "./fixtures/autofix-state-explorer.json" with { type: "json" };
@@ -46,6 +46,7 @@ import issueNullCulpritFixture from "./fixtures/issue-null-culprit.json" with { 
 import issueTagValuesFixture from "./fixtures/issue-tag-values.json" with { type: "json" };
 import issueTagsFixture from "./fixtures/issue-tags.json" with { type: "json" };
 import issueUserReportsFixture from "./fixtures/issue-user-reports.json" with { type: "json" };
+import relatedIssuesFixture from "./fixtures/related-issues.json" with { type: "json" };
 import monitorFixture from "./fixtures/monitor.json" with { type: "json" };
 import monitorCheckInsFixture from "./fixtures/monitor-checkins.json" with { type: "json" };
 import monitorStatsFixture from "./fixtures/monitor-stats.json" with { type: "json" };
@@ -58,6 +59,7 @@ import releaseCommitsFixture from "./fixtures/release-commits.json" with { type:
 import releaseDeploysFixture from "./fixtures/release-deploys.json" with { type: "json" };
 import replayDetailsFixture from "./fixtures/replay-details.json" with { type: "json" };
 import replayRecordingSegmentsFixture from "./fixtures/replay-recording-segments.json" with { type: "json" };
+import sourceMapDebugFixture from "./fixtures/source-map-debug.json" with { type: "json" };
 import tagsFixture from "./fixtures/tags.json" with { type: "json" };
 import teamFixture from "./fixtures/team.json" with { type: "json" };
 import traceFixture from "./fixtures/trace.json" with { type: "json" };
@@ -119,8 +121,8 @@ function buildHandlers(
     fetch: Parameters<(typeof http)[keyof typeof http]>[1];
     controlOnly?: boolean;
   }[],
-) {
-  const result = [];
+): HttpHandler[] {
+  const result: HttpHandler[] = [];
 
   for (const handler of handlers) {
     // Always add handler for main host (sentry.io)
@@ -219,7 +221,7 @@ function buildMockIgnoredStatusDetails(
 }
 
 function buildUpdatedIssueResponse(
-  baseIssue: typeof issueFixture,
+  baseIssue: typeof issueFixture | typeof issueFixture2,
   body: IssueUpdateBody,
 ) {
   const hasIgnoreConditions =
@@ -273,7 +275,7 @@ function buildUpdatedIssueResponse(
  * Covers all endpoints used by the MCP server with realistic responses,
  * parameter validation, and error scenarios.
  */
-export const restHandlers = buildHandlers([
+export const restHandlers: HttpHandler[] = buildHandlers([
   // User data endpoints - controlOnly: true (only available on sentry.io)
   {
     method: "get",
@@ -396,7 +398,7 @@ export const restHandlers = buildHandlers([
           ? {
               Link: '<https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/?cursor=dashboard-cursor>; rel="next"; results="true"; cursor="dashboard-cursor"',
             }
-          : undefined,
+          : {},
       });
     },
   },
@@ -454,12 +456,12 @@ export const restHandlers = buildHandlers([
     path: "/api/0/teams/sentry-mcp-evals/the-goats/projects/",
     fetch: async ({ request }) => {
       // TODO: validate payload (only accept 'cloudflare-mcp' for project name)
-      const body = (await request.json()) as any;
+      const body = await readJsonBody(request);
       return HttpResponse.json({
         ...projectFixture,
-        name: body?.name || "cloudflare-mcp",
-        slug: body?.slug || "cloudflare-mcp",
-        platform: body?.platform || "node",
+        name: stringField(body, "name") || "cloudflare-mcp",
+        slug: stringField(body, "slug") || "cloudflare-mcp",
+        platform: stringField(body, "platform") || "node",
       });
     },
   },
@@ -474,7 +476,7 @@ export const restHandlers = buildHandlers([
     method: "get",
     path: "/api/0/projects/:organizationSlug/:projectSlugOrId/",
     fetch: ({ params }) => {
-      const projectSlugOrId = String(params.projectSlugOrId);
+      const projectSlugOrId = String(params["projectSlugOrId"]);
       const numericProjectId = Number(projectSlugOrId);
 
       return HttpResponse.json({
@@ -495,12 +497,12 @@ export const restHandlers = buildHandlers([
     method: "put",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/",
     fetch: async ({ request }) => {
-      const body = (await request.json()) as any;
+      const body = await readJsonBody(request);
       return HttpResponse.json({
         ...projectFixture,
-        slug: body?.slug || "cloudflare-mcp",
-        name: body?.name || "cloudflare-mcp",
-        platform: body?.platform || "node",
+        slug: stringField(body, "slug") || "cloudflare-mcp",
+        name: stringField(body, "name") || "cloudflare-mcp",
+        platform: stringField(body, "platform") || "node",
       });
     },
   },
@@ -544,7 +546,7 @@ export const restHandlers = buildHandlers([
           : null;
       return HttpResponse.json({
         ...clientKeyFixture,
-        id: params.keyId,
+        id: params["keyId"],
         name: body.name ?? clientKeyFixture.name,
         isActive:
           body.isActive !== undefined
@@ -613,7 +615,7 @@ export const restHandlers = buildHandlers([
         }
 
         // TODO: this is not correct, but itll fix test flakiness for now
-        const sortedQuery = query ? query?.split(" ").sort().join(" ") : null;
+        const sortedQuery = query ? query.split(" ").sort().join(" ") : null;
         if (
           ![
             null,
@@ -653,7 +655,7 @@ export const restHandlers = buildHandlers([
           return HttpResponse.json(eventsTraceMetricsAggregateFixture);
         }
 
-        const sortedQuery = query ? query?.split(" ").sort().join(" ") : null;
+        const sortedQuery = query ? query.split(" ").sort().join(" ") : null;
         if (
           ![
             null,
@@ -700,7 +702,7 @@ export const restHandlers = buildHandlers([
 
       const query = url.searchParams.get("query");
       const queryTokens = query?.split(" ").sort() ?? [];
-      const sortedQuery = queryTokens ? queryTokens.join(" ") : null;
+      const sortedQuery = queryTokens.join(" ");
       if (
         ![
           null,
@@ -750,7 +752,7 @@ export const restHandlers = buildHandlers([
 
       const query = url.searchParams.get("query");
       const queryTokens = query?.split(" ").sort() ?? [];
-      const sortedQuery = queryTokens ? queryTokens.join(" ") : null;
+      const sortedQuery = queryTokens.join(" ");
       if (query === "7ca573c0f4814912aaa9bdc77d1a7d51") {
         return HttpResponse.json([issueFixture]);
       }
@@ -905,6 +907,12 @@ export const restHandlers = buildHandlers([
     path: "/api/0/organizations/sentry-mcp-evals/issues/6507376926/events/latest/",
     fetch: () => HttpResponse.json(eventsFixture),
   },
+  // Sentry's source map check for the event above: no release and no debug IDs
+  {
+    method: "get",
+    path: "/api/0/projects/sentry-mcp-evals/:project/events/7ca573c0f4814912aaa9bdc77d1a7d51/source-map-debug/",
+    fetch: () => HttpResponse.json(sourceMapDebugFixture),
+  },
   {
     method: "get",
     path: "/api/0/projects/sentry-mcp-evals/CLOUDFLARE-MCP/stacktrace-link/",
@@ -1005,16 +1013,16 @@ export const restHandlers = buildHandlers([
           ...body,
           id: "4509100000001002",
           projectSlug: "cloudflare-mcp",
-          status: body.status ?? "active",
+          status: body["status"] ?? "active",
           uptimeStatus: 1,
-          method: body.method ?? "GET",
-          headers: body.headers ?? [],
-          body: body.body ?? null,
-          assertion: body.assertion ?? null,
-          recoveryThreshold: body.recoveryThreshold ?? 1,
-          downtimeThreshold: body.downtimeThreshold ?? 3,
-          traceSampling: body.traceSampling ?? false,
-          responseCaptureEnabled: body.responseCaptureEnabled ?? true,
+          method: body["method"] ?? "GET",
+          headers: body["headers"] ?? [],
+          body: body["body"] ?? null,
+          assertion: body["assertion"] ?? null,
+          recoveryThreshold: body["recoveryThreshold"] ?? 1,
+          downtimeThreshold: body["downtimeThreshold"] ?? 3,
+          traceSampling: body["traceSampling"] ?? false,
+          responseCaptureEnabled: body["responseCaptureEnabled"] ?? true,
         },
         { status: 201 },
       );
@@ -1436,6 +1444,12 @@ export const restHandlers = buildHandlers([
     path: "/api/0/organizations/:org/issues/:issueId/user-reports/",
     fetch: () => HttpResponse.json(issueUserReportsFixture),
   },
+  // Related issues endpoint
+  {
+    method: "get",
+    path: "/api/0/organizations/:org/issues/:issueId/related/",
+    fetch: () => HttpResponse.json(relatedIssuesFixture),
+  },
   // Issue tag keys and tag values endpoints
   {
     method: "get",
@@ -1446,7 +1460,7 @@ export const restHandlers = buildHandlers([
     method: "get",
     path: "/api/0/organizations/:org/issues/:issueId/tags/:tagKey/",
     fetch: ({ params }) => {
-      const tagKey = params.tagKey as string;
+      const tagKey = params["tagKey"] as string;
       // Sentry answers a key the issue does not have with a generic 404.
       if (!issueTagsFixture.some((tag) => tag.key === tagKey)) {
         return HttpResponse.json(
@@ -1476,7 +1490,7 @@ export const restHandlers = buildHandlers([
     method: "post",
     path: "/api/0/projects/sentry-mcp-evals/cloudflare-mcp/teams/:teamSlug/",
     fetch: async ({ params }) => {
-      const teamSlug = params.teamSlug as string;
+      const teamSlug = params["teamSlug"] as string;
       return HttpResponse.json({
         ...teamFixture,
         id: "4509109078196224",
@@ -1584,7 +1598,7 @@ export const restHandlers = buildHandlers([
     method: "get",
     path: "/api/0/projects/:organizationSlug/:projectSlugOrId/profiling/profiles/:profileId/",
     fetch: ({ params }) => {
-      const profileId = String(params.profileId);
+      const profileId = String(params["profileId"]);
       return HttpResponse.json({
         ...transactionProfileV1Fixture,
         event_id: profileId,
@@ -1793,13 +1807,13 @@ export const restHandlers = buildHandlers([
 ]);
 
 // Add handlers for mcp.sentry.dev and localhost
-export const searchHandlers = [
+export const searchHandlers: HttpHandler[] = [
   // Presigned target for the oversized-attachment redirect (999).
   http.get("https://objectstore.example.test/attachments/999/blob", () =>
     HttpResponse.text("presigned blob bytes"),
   ),
   http.post("https://mcp.sentry.dev/api/search", async ({ request }) => {
-    const body = (await request.json()) as any;
+    const body = await readJsonBody(request);
 
     // Mock different results based on guide
     let results = [
@@ -1820,8 +1834,8 @@ export const searchHandlers = [
     ];
 
     // If guide is specified, return platform-specific results
-    if (body?.guide) {
-      const guide = body.guide;
+    const guide = stringField(body, "guide");
+    if (guide) {
       if (guide.includes("/")) {
         const [platformName, guideName] = guide.split("/");
         results = [
@@ -1846,14 +1860,14 @@ export const searchHandlers = [
 
     // Return mock search results
     return HttpResponse.json({
-      query: body?.query || "",
+      query: stringField(body, "query") || "",
       results,
     });
   }),
 ];
 
 // Mock handlers for documentation fetching
-export const docsHandlers = [
+export const docsHandlers: HttpHandler[] = [
   http.get("https://docs.sentry.io/product/rate-limiting.md", () => {
     return new HttpResponse(
       `# Project Rate Limits and Quotas
@@ -2054,6 +2068,20 @@ The page \`/ai/mcp\` does not exist.
       },
     );
   }),
+  // Moved pages answer with a relative redirect to the new .md path.
+  http.get("https://docs.sentry.io/product/rate-limits.md", () => {
+    return new HttpResponse(null, {
+      status: 308,
+      headers: { Location: "/product/rate-limiting.md#quotas" },
+    });
+  }),
+  // A redirect off the docs hosts, like develop.sentry.io's login redirect.
+  http.get("https://docs.sentry.io/product/offsite.md", () => {
+    return new HttpResponse(null, {
+      status: 302,
+      headers: { Location: "https://sentry.io/auth/login/" },
+    });
+  }),
   // Catch-all for other doc paths - return 404
   http.get("https://docs.sentry.io/*.md", () => {
     return new HttpResponse(null, { status: 404 });
@@ -2098,7 +2126,7 @@ The page \`/ai/mcp\` does not exist.
  * This matches the real Sentry API behavior where user data must always be queried
  * from the main API server.
  */
-export const mswServer = setupServer(
+export const mswServer: SetupServer = setupServer(
   ...restHandlers,
   ...searchHandlers,
   ...docsHandlers,
@@ -2117,6 +2145,22 @@ export {
   createUnknownEvent,
   createUnsupportedIssue,
 } from "./fixtures";
+
+/** Reads a mocked request's JSON body, or an empty object when it has none. */
+async function readJsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  const body: unknown = await request.json();
+  return typeof body === "object" && body !== null ? { ...body } : {};
+}
+
+function stringField(
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = body[key];
+  return typeof value === "string" ? value : undefined;
+}
 // Export utilities for creating mock servers
 export { setupMockServer, startMockServer } from "./utils";
 // Export fixtures for use in tests
@@ -2140,9 +2184,11 @@ export {
   performanceEventFixture,
   profileChunkFixture,
   projectFixture,
+  relatedIssuesFixture,
   releaseFixture,
   replayDetailsFixture,
   replayRecordingSegmentsFixture,
+  sourceMapDebugFixture,
   tagsFixture,
   teamFixture,
   traceEventFixture,

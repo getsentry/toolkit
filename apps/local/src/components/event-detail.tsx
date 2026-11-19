@@ -2,7 +2,13 @@ import { envelopeAttachments, eventAttachments } from "@/lib/attachments.ts";
 import { EventContext, FeedbackInspector } from "./event-context.tsx";
 import { AiInspector } from "./ai-inspector.tsx";
 import { AttachmentDetail, AttachmentList } from "./attachment-detail.tsx";
-import { errorMarkdown, inspectAi, hasEventContext } from "@/lib/inspection.ts";
+import {
+  errorMarkdown,
+  eventKind,
+  eventSummaryFields,
+  inspectAi,
+  hasEventContext,
+} from "@/lib/inspection.ts";
 import { Button } from "./ui/button.tsx";
 import { useCopyToClipboard } from "@uidotdev/usehooks";
 import { useId, useState, useMemo } from "react";
@@ -12,7 +18,8 @@ import {
   type DetailField,
 } from "./inspector-data.ts";
 import type { LocalFeedItem } from "@/lib/spotlight.ts";
-import { getEventMetadata } from "@/lib/spotlight.ts";
+import { getEventMetadata, itemTime } from "@/lib/spotlight.ts";
+import { formatTimestamp } from "@/lib/presentation.ts";
 import { getEventExceptions } from "@/lib/exceptions.ts";
 import type { TraceGroup } from "@/lib/trace-model.ts";
 import { Badge } from "./ui/badge.tsx";
@@ -27,22 +34,10 @@ import {
 type EventDetailProps = {
   item: LocalFeedItem;
   relatedItems?: readonly LocalFeedItem[];
-  trace?: TraceGroup;
+  trace?: TraceGroup | undefined;
   onSelectSpan?: (traceId: string, spanId: string) => void;
   onSelectRelatedItem?: (item: LocalFeedItem) => void;
 };
-
-function formatTimestamp(timestamp: LocalFeedItem["timestamp"]) {
-  if (timestamp === undefined) return "unknown time";
-  const date = new Date(
-    typeof timestamp === "number" && timestamp < 1_000_000_000_000
-      ? timestamp * 1_000
-      : timestamp,
-  );
-  return Number.isNaN(date.getTime())
-    ? String(timestamp)
-    : date.toLocaleTimeString();
-}
 
 function CompactSummary({
   label,
@@ -83,13 +78,9 @@ function CompactSummary({
         ))}
       </dl>
       {copiedField ? (
-        <span
-          role="status"
-          aria-label={`${copiedField} copied`}
-          className="sr-only"
-        >
+        <output aria-label={`${copiedField} copied`} className="sr-only">
           {copiedField} copied
-        </span>
+        </output>
       ) : null}
     </>
   );
@@ -122,6 +113,7 @@ export function EventDetail({
   const payload = detailRecord(item.payload);
   const exceptions =
     item.type === "event" ? getEventExceptions(item.payload) : [];
+  const kind = item.type === "event" ? eventKind(item.payload) : undefined;
   const hasOverview =
     [
       "event",
@@ -137,8 +129,8 @@ export function EventDetail({
   const message =
     metadata.message ??
     (item.type === "log"
-      ? typeof payload.body === "string"
-        ? payload.body
+      ? typeof payload["body"] === "string"
+        ? payload["body"]
         : metadata.title
       : undefined);
   const fields: DetailField[] = [
@@ -146,6 +138,7 @@ export function EventDetail({
     ...(item.type === "log" && metadata.level
       ? [{ label: "Level", value: metadata.level }]
       : []),
+    ...(item.type === "event" ? eventSummaryFields(item.payload) : []),
     ...(metadata.statusCode === undefined
       ? []
       : [{ label: "Status", value: String(metadata.statusCode) }]),
@@ -162,17 +155,17 @@ export function EventDetail({
       : []),
   ];
   const isRequestOrSpan = item.type === "transaction" || item.type === "span";
-  const request = detailRecord(payload.request);
+  const request = detailRecord(payload["request"]);
   const traceData = detailRecord(
-    detailRecord(detailRecord(payload.contexts).trace).data,
+    detailRecord(detailRecord(payload["contexts"])["trace"])["data"],
   );
-  const data = detailRecord(payload.data);
-  const urlAttribute = detailRecord(payload.attributes)["url.full"];
+  const data = detailRecord(payload["data"]);
+  const urlAttribute = detailRecord(payload["attributes"])["url.full"];
   const capturedURL = [
-    request.url,
+    request["url"],
     traceData["http.url"],
     data["http.url"],
-    detailRecord(urlAttribute).value,
+    detailRecord(urlAttribute)["value"],
     urlAttribute,
   ].find(
     (value): value is string => typeof value === "string" && value.length > 0,
@@ -185,7 +178,7 @@ export function EventDetail({
   const detailFields = isRequestOrSpan
     ? fields.filter((field) => field.label === "Message")
     : fields;
-  const attributes = attributeFields(payload.attributes);
+  const attributes = attributeFields(payload["attributes"]);
   return (
     <section
       data-testid="event-detail"
@@ -199,7 +192,9 @@ export function EventDetail({
           <Badge>
             {item.type === "envelope"
               ? "Envelope"
-              : (metadata.operation ?? item.type)}
+              : item.type === "event"
+                ? kind
+                : (metadata.operation ?? item.type)}
           </Badge>
           <h2 className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium">
             {item.type === "envelope" ? "Raw envelope" : metadata.title}
@@ -218,7 +213,7 @@ export function EventDetail({
           </Button>
         ) : null}
         <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-          {formatTimestamp(item.timestamp)}
+          {formatTimestamp(itemTime(item))}
         </time>
       </header>
       <InspectorTabs
@@ -253,7 +248,10 @@ export function EventDetail({
               />
             ) : null}
             {exceptions.length ? (
-              <ExceptionOverview exceptions={exceptions} />
+              <ExceptionOverview
+                exceptions={exceptions}
+                label={kind === "Message" ? "Message" : "Exception"}
+              />
             ) : null}
             {isRequestOrSpan ? (
               <CompactSummary

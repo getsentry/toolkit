@@ -2,7 +2,7 @@
  * Unified URL parsing utilities for Sentry resources.
  *
  * Parses Sentry URLs to identify resource types and extract relevant identifiers.
- * Supports issue, trace, profile, event, replay, monitor, and dashboard URLs across different
+ * Supports issue, trace, profile, event, replay, monitor, metric alert, and dashboard URLs across different
  * Sentry URL formats (subdomain, path-based organization, self-hosted).
  */
 
@@ -22,6 +22,7 @@ export type SentryResourceType =
   | "release"
   | "snapshot"
   | "dashboard"
+  | "metric_alert"
   | "unknown";
 
 /**
@@ -40,19 +41,19 @@ export interface ParsedSentryUrl {
   /** AI conversation ID (for Explore conversation URLs) */
   conversationId?: string;
   /** Span ID (for trace URLs with span focus, from query param) */
-  spanId?: string;
+  spanId?: string | undefined;
   /** Event ID (for event URLs) */
   eventId?: string;
   /** Project slug or numeric ID (for profile, monitor, and AI conversation URLs) */
-  projectSlugOrId?: string;
+  projectSlugOrId?: string | undefined;
   /** Transaction profile ID from profile flamegraph URLs */
-  profileId?: string;
+  profileId?: string | undefined;
   /** Profiler ID (for profile URLs, from query param) */
-  profilerId?: string;
+  profilerId?: string | undefined;
   /** Start timestamp (for profile URLs, from query param) */
-  start?: string;
+  start?: string | undefined;
   /** End timestamp (for profile URLs, from query param) */
-  end?: string;
+  end?: string | undefined;
   /** Replay ID/slug (for replay URLs) */
   replayId?: string;
   /** Monitor slug (for cron monitor URLs) */
@@ -64,9 +65,11 @@ export interface ParsedSentryUrl {
   /** Snapshot ID (for preprod snapshot URLs) */
   snapshotId?: string;
   /** Selected snapshot image name (from ?selectedSnapshot= query param) */
-  selectedSnapshot?: string;
+  selectedSnapshot?: string | undefined;
   /** Dashboard numeric ID (for dashboard URLs) */
   dashboardId?: string;
+  /** Legacy metric alert rule ID (for metric alert rule URLs) */
+  alertRuleId?: string;
 }
 
 /**
@@ -82,6 +85,7 @@ export interface ParsedSentryUrl {
  * - Replay: `/explore/replays/{replayId}/` or `/replays/{replayId}/`
  * - Monitor: `/crons/{monitorSlug}/` or `/monitors/{monitorSlug}/`
  * - Release: `/releases/{version}/`
+ * - Metric alert: `/alerts/rules/details/{alertRuleId}/`
  * - Dashboard: `/dashboard/{dashboardId}/`
  *
  * Organization slug is extracted from:
@@ -174,12 +178,14 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
     "insights",
     "preprod",
   ];
+  const [firstPart, secondPart] = pathParts;
   if (
-    pathParts.length > 1 &&
-    !knownSegments.includes(pathParts[0]) &&
-    knownSegments.includes(pathParts[1])
+    firstPart !== undefined &&
+    secondPart !== undefined &&
+    !knownSegments.includes(firstPart) &&
+    knownSegments.includes(secondPart)
   ) {
-    return pathParts[0];
+    return firstPart;
   }
 
   // Check for subdomain (e.g., my-org.sentry.io)
@@ -188,8 +194,13 @@ function extractOrganizationSlug(parsedUrl: URL, pathParts: string[]): string {
   const regionPrefixes = ["us", "eu", "de", "www"];
 
   // Non-region subdomain (e.g., my-org.sentry.io or sentry.mycompany.com)
-  if (hostParts.length >= 2 && !regionPrefixes.includes(hostParts[0])) {
-    return hostParts[0];
+  const [subdomain] = hostParts;
+  if (
+    hostParts.length >= 2 &&
+    subdomain !== undefined &&
+    !regionPrefixes.includes(subdomain)
+  ) {
+    return subdomain;
   }
 
   // If we reach here with region-prefixed URL, we couldn't determine the org
@@ -417,6 +428,24 @@ function identifyResource(
         type: "event",
         organizationSlug,
         eventId,
+      };
+    }
+  }
+
+  // Metric alert URL: /alerts/rules/details/{alertRuleId}/
+  // Metric alert notifications link here, usually with ?alert={incidentId}.
+  const alertsIndex = pathParts.indexOf("alerts");
+  if (
+    alertsIndex !== -1 &&
+    pathParts[alertsIndex + 1] === "rules" &&
+    pathParts[alertsIndex + 2] === "details"
+  ) {
+    const alertRuleId = pathParts[alertsIndex + 3];
+    if (alertRuleId && /^\d+$/.test(alertRuleId)) {
+      return {
+        type: "metric_alert",
+        organizationSlug,
+        alertRuleId,
       };
     }
   }

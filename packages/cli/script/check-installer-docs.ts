@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Installer documentation coverage.
  *
@@ -14,7 +13,7 @@
  * is generated from ENV_VAR_REGISTRY; check-env-coverage.ts enforces that.
  *
  * Usage:
- *   tsx script/check-installer-docs.ts
+ *   pnpm ts script/check-installer-docs.ts
  *
  * Exit codes:
  *   0 - Installer options are documented
@@ -51,7 +50,7 @@ type Installer = {
 };
 
 function matchAll(re: RegExp, text: string): Set<string> {
-  return new Set([...text.matchAll(re)].map((m) => m[1] ?? ""));
+  return new Set([...text.matchAll(re)].map((m) => m.at(1) ?? ""));
 }
 
 async function loadBash(): Promise<Installer> {

@@ -1,6 +1,12 @@
 import type { LocalFeedItem } from "./spotlight.ts";
 import type { TraceGroup } from "./trace-model.ts";
 import { record, finite, text } from "./inspection.ts";
+import {
+  mergeProfileChunks,
+  profileSampleEndMs,
+  profileSampleTimeMs,
+  profileThreadId,
+} from "./profile-session.ts";
 export type ProfileNode = {
   id: string;
   name: string;
@@ -40,48 +46,48 @@ function node(
   };
 }
 function sampleTime(sample: Record<string, unknown>): number | undefined {
-  const ns = sample.elapsed_since_start_ns;
-  if (typeof ns === "string" && ns.trim() && Number.isFinite(Number(ns)))
-    return Number(ns) / 1e6;
-  if (finite(ns) !== undefined) return Number(ns) / 1e6;
-  const seconds = finite(sample.timestamp);
-  return seconds === undefined ? undefined : seconds * 1000;
+  return profileSampleTimeMs(sample);
 }
 function sampleThread(value: unknown): string {
-  const number = finite(value);
-  return text(value) ?? (number === undefined ? "main" : String(number));
+  return profileThreadId(value) ?? "main";
 }
 /** SDK stacks are leaf-first; sample intervals are calculated independently per thread. */
 export function parseProfile(
   item: LocalFeedItem,
   selectedThread?: string,
+  retainedItems?: readonly LocalFeedItem[],
 ): ParsedProfile {
+  if (retainedItems) item = mergeProfileChunks(item, retainedItems);
   const payload = record(item.payload),
-    profile = Object.keys(record(payload.profile)).length
-      ? record(payload.profile)
+    profile = Object.keys(record(payload["profile"])).length
+      ? record(payload["profile"])
       : payload;
-  const samples = (Array.isArray(profile.samples) ? profile.samples : []).map(
-    record,
-  );
-  const frames = Array.isArray(profile.frames) ? profile.frames : [];
-  const stacks = Array.isArray(profile.stacks) ? profile.stacks : [];
-  const metadata = record(profile.thread_metadata);
+  const samples = (
+    Array.isArray(profile["samples"]) ? profile["samples"] : []
+  ).map(record);
+  const frames = Array.isArray(profile["frames"]) ? profile["frames"] : [];
+  const stacks = Array.isArray(profile["stacks"]) ? profile["stacks"] : [];
+  const metadata = record(profile["thread_metadata"]);
   const threads = [
-    ...new Set(samples.map((sample) => sampleThread(sample.thread_id))),
-  ].map((id) => ({ id, name: text(record(metadata[id]).name) ?? id }));
-  const threadId = threads.some((thread) => thread.id === selectedThread)
-    ? selectedThread
+    ...new Set(samples.map((sample) => sampleThread(sample["thread_id"]))),
+  ].map((id) => ({ id, name: text(record(metadata[id])["name"]) ?? id }));
+  const transaction = record(payload["transaction"]);
+  const preferredThread =
+    selectedThread ??
+    profileThreadId(profile["active_thread_id"]) ??
+    profileThreadId(transaction["active_thread_id"]);
+  const threadId = threads.some((thread) => thread.id === preferredThread)
+    ? preferredThread
     : threads[0]?.id;
   const selected = samples
-    .filter((sample) => sampleThread(sample.thread_id) === threadId)
+    .filter((sample) => sampleThread(sample["thread_id"]) === threadId)
     .sort((a, b) => (sampleTime(a) ?? Infinity) - (sampleTime(b) ?? Infinity));
   const root = node("root", "All samples"),
     functions = new Map<string, ProfileFunction>();
   const children = new Map<ProfileNode, Map<number, ProfileNode>>();
   let hasTiming = false;
-  for (let index = 0; index < selected.length; index++) {
-    const sample = selected[index]!,
-      stackId = finite(sample.stack_id),
+  for (const [index, sample] of selected.entries()) {
+    const stackId = finite(sample["stack_id"]),
       rawStack: unknown = stackId === undefined ? undefined : stacks[stackId];
     const stack = Array.isArray(rawStack)
       ? rawStack
@@ -92,10 +98,23 @@ export function parseProfile(
           .toReversed()
       : [];
     const time = sampleTime(sample),
-      next = selected[index + 1] ? sampleTime(selected[index + 1]!) : undefined;
+      following = selected[index + 1],
+      next = following ? sampleTime(following) : undefined;
+    const capturedEnd = profileSampleEndMs(sample);
+    const end =
+      capturedEnd === undefined
+        ? next
+        : next === undefined
+          ? capturedEnd
+          : Math.min(next, capturedEnd);
     const weight =
-      time !== undefined && next !== undefined ? Math.max(0, next - time) : 0;
-    if (time !== undefined && next !== undefined) hasTiming = true;
+      time !== undefined && end !== undefined ? Math.max(0, end - time) : 0;
+    if (
+      time !== undefined &&
+      end !== undefined &&
+      (weight > 0 || (capturedEnd === undefined && next !== undefined))
+    )
+      hasTiming = true;
     root.samples++;
     root.totalMs += weight;
     let parent = root;
@@ -105,13 +124,13 @@ export function parseProfile(
       if (!frames[frameId] || typeof frames[frameId] !== "object") continue;
       const frame = record(frames[frameId]);
       const name =
-        text(frame.function) ??
-        text(frame.module) ??
-        text(frame.instruction_addr) ??
+        text(frame["function"]) ??
+        text(frame["module"]) ??
+        text(frame["instruction_addr"]) ??
         "Anonymous";
       const location = [
-        text(frame.abs_path) ?? text(frame.filename),
-        finite(frame.lineno),
+        text(frame["abs_path"]) ?? text(frame["filename"]),
+        finite(frame["lineno"]),
       ]
         .filter((value) => value !== undefined)
         .join(":");
@@ -123,7 +142,7 @@ export function parseProfile(
           `${parent.id}/${frameId}`,
           name,
           location,
-          frame.in_app === true,
+          frame["in_app"] === true,
         );
         childMap.set(frameId, child);
         parent.children.push(child);
@@ -133,7 +152,7 @@ export function parseProfile(
       parent = child;
       const key = `${name}:${location}`;
       const fn = functions.get(key) ?? {
-        ...node(key, name, location, frame.in_app === true),
+        ...node(key, name, location, frame["in_app"] === true),
       };
       if (!seenFunctions.has(key)) {
         fn.samples++;
@@ -158,9 +177,9 @@ export function parseProfile(
       (a, b) => b.totalMs - a.totalMs || b.samples - a.samples,
     ),
     sampleCount: selected.length,
-    durationMs: hasTiming ? root.totalMs : undefined,
+    ...(hasTiming && { durationMs: root.totalMs }),
     threads,
-    threadId,
+    ...(threadId !== undefined && { threadId }),
   };
 }
 type ProfileBounds = { start: number; end: number };
@@ -171,12 +190,12 @@ function profileBounds(item: LocalFeedItem): ProfileBounds | null {
   const cached = profileBoundsCache.get(item);
   if (cached !== undefined) return cached;
   const payload = record(item.payload);
-  const samples = record(payload.profile).samples ?? payload.samples;
+  const samples = record(payload["profile"])["samples"] ?? payload["samples"];
   let start = Infinity,
     end = -Infinity;
   if (Array.isArray(samples)) {
     for (const sample of samples) {
-      const timestamp = finite(record(sample).timestamp);
+      const timestamp = finite(record(sample)["timestamp"]);
       if (timestamp === undefined) continue;
       start = Math.min(start, timestamp);
       end = Math.max(end, timestamp);
@@ -191,31 +210,33 @@ export function profileMatchesTrace(
   trace: TraceGroup,
 ): boolean {
   const p = record(item.payload);
-  const transactions = Array.isArray(p.transactions)
-    ? p.transactions.map(record)
-    : [record(p.transaction)];
+  const transactions = Array.isArray(p["transactions"])
+    ? p["transactions"].map(record)
+    : [record(p["transaction"])];
   if (
     transactions.some((transaction) => {
-      const traceId = text(transaction.trace_id);
-      const eventId = text(transaction.id);
+      const traceId = text(transaction["trace_id"]);
+      const eventId = text(transaction["id"]);
       return (
         (traceId !== undefined && traceId === trace.id) ||
         (eventId !== undefined &&
           trace.items.some(
-            (entry) => text(record(entry.payload).event_id) === eventId,
+            (entry) => text(record(entry.payload)["event_id"]) === eventId,
           ))
       );
     })
   )
     return true;
-  const profileId = text(p.event_id);
-  const profilerId = text(p.profiler_id);
+  const profileId = text(p["event_id"]);
+  const profilerId = text(p["profiler_id"]);
   return trace.items.some((entry) => {
-    const captured = record(record(record(entry.payload).contexts).profile);
-    if (profileId !== undefined && captured.profile_id === profileId)
+    const captured = record(
+      record(record(entry.payload)["contexts"])["profile"],
+    );
+    if (profileId !== undefined && captured["profile_id"] === profileId)
       return true;
     // Most traces have no matching profiler. Reject them before touching samples.
-    if (profilerId === undefined || captured.profiler_id !== profilerId)
+    if (profilerId === undefined || captured["profiler_id"] !== profilerId)
       return false;
     if (trace.startTimestamp === undefined || trace.endTimestamp === undefined)
       return true;

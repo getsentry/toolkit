@@ -61,7 +61,11 @@ export async function listMonitors(orgSlug: string): Promise<SentryMonitor[]> {
  */
 export async function listMonitorsPaginated(
   orgSlug: string,
-  options: { cursor?: string; perPage?: number; query?: string } = {},
+  options: {
+    cursor?: string | undefined;
+    perPage?: number | undefined;
+    query?: string | undefined;
+  } = {},
 ): Promise<PaginatedResponse<SentryMonitor[]>> {
   const config = getOrgSdkConfig();
 

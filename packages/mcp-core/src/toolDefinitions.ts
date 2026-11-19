@@ -1,4 +1,4 @@
-import toolDefinitionsData from "./toolDefinitions.json";
+import toolDefinitionsData from "./toolDefinitions.json" with { type: "json" };
 import type { Scope } from "./permissions";
 import type { Skill } from "./skills";
 

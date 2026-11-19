@@ -3,6 +3,7 @@
  * and Sentry Apps. These operations leave the Sentry issue's status unchanged.
  */
 
+import { API_BASE_PATH } from "@sentry/api/client";
 import {
   type AppIssueLink,
   findAppIssueLink,
@@ -32,15 +33,15 @@ export type ExternalIssueLinkOptions = {
   /** Numeric Sentry issue ID. */
   issueId: string;
   /** Project context required by some Sentry App searches. */
-  projectId?: string;
+  projectId?: string | undefined;
   /** URL of an existing external issue. */
   url: string;
   /** Native integration ID, when multiple installations match. */
-  integrationId?: string;
+  integrationId?: string | undefined;
   /** Sentry App slug; Linear URLs select the Linear app automatically. */
-  appSlug?: string;
+  appSlug?: string | undefined;
   /** Additional fields required by a Sentry App's link form. */
-  fields?: Record<string, string>;
+  fields?: Record<string, string> | undefined;
   /** Inspect the operation without submitting a mutation. */
   dryRun?: boolean;
 };
@@ -58,17 +59,17 @@ export type ExternalIssueLinkResult = {
   /** Whether this invocation changed an association. */
   changed: boolean;
   /** True when no mutation was submitted. */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
   /** Canonical external issue identity when available. */
   externalIssue: {
     /** Sentry's internal external-issue record ID, not the tracker key. */
-    id?: string;
+    id?: string | undefined;
     /** Tracker key or display name. */
-    identifier?: string;
+    identifier?: string | undefined;
     /** External issue URL. */
     url: string;
     /** Native provider key or Sentry App slug. */
-    provider?: string;
+    provider?: string | undefined;
   };
 };
 
@@ -228,7 +229,7 @@ async function invalidateIssueLinks(
 ): Promise<void> {
   const regionUrl = await resolveOrgRegion(options.orgSlug);
   const base = getApiBaseUrl();
-  const issuePath = `/api/0/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(options.issueId)}/`;
+  const issuePath = `${API_BASE_PATH}/organizations/${encodeURIComponent(options.orgSlug)}/issues/${encodeURIComponent(options.issueId)}/`;
   await Promise.all([
     invalidateCachedResponsesMatching(new URL(issuePath, regionUrl).href),
     invalidateCachedResponsesMatching(new URL(issuePath, base).href),

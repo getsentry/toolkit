@@ -5,26 +5,38 @@
  * feedSSELine, and parsePort.
  */
 
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import {
   buildApp,
   consumeSSE,
   configureExistingRetention,
   feedSSELine,
   isServerRunning,
+  MAX_BODY_BYTES,
   parsePort,
   SERVER_IDENTIFIER,
   serverCommand,
   tryListen,
 } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
+import { at } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -174,6 +186,64 @@ test.each([
   },
 );
 
+test.each([
+  {
+    gone: "refuses connections",
+    reconnect: () =>
+      Promise.reject(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        }),
+      ),
+  },
+  {
+    gone: "no longer knows the session",
+    reconnect: () => Promise.resolve(new Response(null, { status: 404 })),
+  },
+])(
+  "stops a scoped tail with one warning when the daemon $gone",
+  async ({ reconnect }) => {
+    const savedFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = () => {
+      requests += 1;
+      // The first stream opens, then ends when the daemon stops.
+      return requests === 1
+        ? Promise.resolve(
+            new Response("", {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+          )
+        : reconnect();
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const signal = AbortSignal.timeout(6000);
+    try {
+      await consumeSSE({
+        url: "http://127.0.0.1:8969",
+        streamUrl:
+          "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+        activeFilters: new Set(),
+        signal,
+      });
+      expect(signal.aborted).toBe(false);
+      expect(requests).toBe(2);
+      expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([
+        expect.stringContaining(
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
+        ),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  },
+);
+
 test("keeps reading after a retained reset notification until Close", async () => {
   const savedFetch = globalThis.fetch;
   const envelope = [{}, [[{ type: "event" }, { message: "after reset" }]]];
@@ -235,7 +305,7 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
-  let info: ReturnType<typeof vi.spyOn>;
+  let info: MockInstance<(typeof logger)["info"]>;
   beforeEach(() => {
     info = vi.spyOn(logger, "info").mockImplementation(() => {});
   });
@@ -263,7 +333,7 @@ describe("sentry local serve --open", () => {
   test("scoped serve opens the viewer with explicit session discovery", async () => {
     const daemon = await import("../../../src/commands/local/daemon.js");
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(5)),
+      buildApp(createLocalRetentionBuffer(5).buffer),
       0,
       "127.0.0.1",
     );
@@ -295,7 +365,7 @@ describe("sentry local serve --open", () => {
       signal.trigger();
       await command;
       expectViewerHint();
-      const url = new URL(opener.mock.calls[0][0]);
+      const url = new URL(at(opener.mock.calls, 0)[0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
       );
@@ -346,7 +416,7 @@ describe("sentry local serve --open", () => {
     }
     globalThis.fetch = realFetch;
     const { server, port } = await tryListen(
-      buildApp(createSpotlightBuffer(10)),
+      buildApp(createLocalRetentionBuffer(10).buffer),
       0,
       "127.0.0.1",
     );
@@ -486,7 +556,7 @@ const TEST_ENVELOPE =
  * otherwise the subscriber misses it and the read hangs.
  */
 async function readFirstSSEEvent(streamPath: string): Promise<string> {
-  const buffer = createSpotlightBuffer(10);
+  const buffer = createLocalRetentionBuffer(10).buffer;
   const app = buildApp(buffer);
 
   const res = await app.request(streamPath, {
@@ -651,7 +721,7 @@ describe("buildApp", () => {
   });
 
   test("health endpoint returns OK", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -660,7 +730,9 @@ describe("buildApp", () => {
   });
 
   test("advertises session-only UI capabilities", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
 
     const res = await app.request("/capabilities");
 
@@ -672,7 +744,7 @@ describe("buildApp", () => {
   });
 
   test("clears buffered envelopes and exposes a retained raw envelope", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer, { uiActions: true });
     await app.request("/stream", {
       method: "POST",
@@ -694,7 +766,7 @@ describe("buildApp", () => {
   });
 
   test("ingest endpoint accepts envelopes and returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const envelope =
@@ -708,7 +780,7 @@ describe("buildApp", () => {
   });
 
   test("ingest via /api/:projectId/envelope/ returns 204", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const envelope =
@@ -722,7 +794,7 @@ describe("buildApp", () => {
   });
 
   test("ingest rejects oversized payloads with 413", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -737,7 +809,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -749,7 +821,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the hosted local UI to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -764,7 +836,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows the configured Sentry Local preview to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
@@ -779,7 +851,7 @@ describe("buildApp", () => {
   });
 
   test("CORS allows HTTPS Sentry Local preview branches to read the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
     const origin = "https://sentry-local-git-feature-branch.sentry.dev";
 
@@ -794,7 +866,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks unrelated Sentry-hosted origins from reading the event stream", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -808,7 +880,7 @@ describe("buildApp", () => {
   });
 
   test("CORS permits the SSE resume header from the hosted local UI", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -832,7 +904,7 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin writes to the local receiver", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -848,7 +920,9 @@ describe("buildApp", () => {
   });
 
   test("rejects hosted-origin receiver controls", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
 
     const res = await app.request("/capabilities", {
       headers: { Origin: "https://local.sentry.dev" },
@@ -858,7 +932,7 @@ describe("buildApp", () => {
   });
 
   test("does not expose receiver controls without loopback authorization", async () => {
-    const app = buildApp(createSpotlightBuffer(10));
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
 
     expect((await app.request("/capabilities")).status).toBe(403);
     expect((await app.request("/clear", { method: "DELETE" })).status).toBe(
@@ -867,7 +941,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks lookalike hosted UI origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -877,7 +951,7 @@ describe("buildApp", () => {
   });
 
   test("CORS requires HTTPS for hosted Sentry preview origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -893,7 +967,9 @@ describe("buildApp", () => {
   });
 
   test("limits the configured Sentry Local preview to stream reads", async () => {
-    const app = buildApp(createSpotlightBuffer(10), { uiActions: true });
+    const app = buildApp(createLocalRetentionBuffer(10).buffer, {
+      uiActions: true,
+    });
     const origin =
       "https://sentry-local-git-codex-featlocal-observability-workspace.sentry.dev";
 
@@ -914,7 +990,7 @@ describe("buildApp", () => {
   });
 
   test("CORS blocks non-localhost origins", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health", {
@@ -924,7 +1000,7 @@ describe("buildApp", () => {
   });
 
   test("SSE stream endpoint returns event-stream content type", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -939,7 +1015,7 @@ describe("buildApp", () => {
   });
 
   test("advertises itself as a Spotlight sidecar via X-Powered-By", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/health");
@@ -950,7 +1026,7 @@ describe("buildApp", () => {
   });
 
   test("sets X-Powered-By on ingest responses too", async () => {
-    const buffer = createSpotlightBuffer(10);
+    const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
 
     const res = await app.request("/stream", {
@@ -976,7 +1052,7 @@ describe("isServerRunning", () => {
   test("returns true when /health answers with an error status", async () => {
     // Spotlight's sidecar can 5xx on /health while still holding the port and
     // ingesting envelopes. Reporting "no server" made the CLI try to bind the
-    // port anyway and abort with "Port 8969 is in use after 3 retries".
+    // port anyway and abort with "Port 8969 is already in use".
     const unhealthy = new Hono();
     unhealthy.get("/health", (c) => c.text("Internal Server Error", 500));
     const { server, port } = await tryListen(unhealthy, 0, "127.0.0.1");
@@ -998,10 +1074,173 @@ describe("isServerRunning", () => {
     }
   });
 
+  test("rejects a port that a Sentry Local daemon holds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("OK", { headers: { "X-Sentry-Local-Mode": "daemon" } }),
+      ),
+    );
+    try {
+      await expect(
+        isServerRunning("http://127.0.0.1:8969"),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_HELD_BY_DAEMON_FIELD,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("returns false when no server is running", async () => {
     // isServerRunning uses global fetch which is mocked in tests.
     // Verify the function handles connection errors gracefully.
     const result = await isServerRunning("http://127.0.0.1:19999");
     expect(result).toBe(false);
+  });
+});
+
+describe("oversized envelopes", () => {
+  /** One byte over the encoded ingest limit; SDKs ignore the 413 and drop it. */
+  const OVERSIZED_BODY = "x".repeat(MAX_BODY_BYTES + 1);
+  const OVERSIZED_WARNING = /over the .*ingest limit/;
+
+  function postOversized(app: Hono, url: string): Promise<Response> {
+    return Promise.resolve(
+      app.request(url, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: OVERSIZED_BODY,
+      }),
+    );
+  }
+
+  test("a plain receiver warns once per burst, then counts the rest", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const oversizedWarnings = () =>
+      warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+    try {
+      const app = buildApp(createLocalRetentionBuffer(10).buffer);
+      for (let i = 0; i < 3; i++) {
+        const response = await postOversized(
+          app,
+          "http://localhost:8969/stream",
+        );
+        expect(response.status).toBe(413);
+      }
+      expect(oversizedWarnings()).toHaveLength(1);
+      // The two held back print when the interval ends, without a new drop.
+      vi.advanceTimersByTime(5000);
+      expect(oversizedWarnings()).toHaveLength(2);
+      expect(oversizedWarnings()[1]).toMatch(/^Dropped 2 more envelopes over/);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test("a plain receiver prints held-back drops when it shuts down early", async () => {
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) {
+      throw new Error("Expected the test preload to retain the native fetch");
+    }
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const { server, port } = await tryListen(app, 0, "127.0.0.1");
+    try {
+      for (let i = 0; i < 3; i++) {
+        const response = await realFetch(`http://127.0.0.1:${port}/stream`, {
+          method: "POST",
+          headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+          body: OVERSIZED_BODY,
+        });
+        expect(response.status).toBe(413);
+      }
+      // `local run` and `local serve` close the server and exit well inside
+      // the five-second interval, so closing must print the count.
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 2 more envelopes over/),
+      ]);
+    } finally {
+      server.closeAllConnections();
+      warn.mockRestore();
+    }
+  });
+
+  test("a plain receiver tells stream consumers about a rejected envelope", async () => {
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2000);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const response = await app.request("http://localhost:8969/stream", {
+        signal: controller.signal,
+      });
+      const reader = response.body!.getReader();
+      await postOversized(app, "http://localhost:8969/stream");
+      const decoder = new TextDecoder();
+      let text = "";
+      while (!text.includes("\n\n")) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      expect(text).toContain("event: sentry.local.oversized");
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      warn.mockRestore();
+    }
+  });
+
+  test("a session tail warns when the daemon rejects an oversized envelope", async () => {
+    const plane = createLocalControlPlane({ controlToken: "oversize-test" });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest, stream } = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://localhost:8969/_local/v1/sessions/${session.id}`;
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      const response = await plane.app.request(url, init);
+      setTimeout(() => {
+        void (async () => {
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          plane.sessionStore.close(session.id);
+        })();
+      }, 50);
+      return response;
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await consumeSSE({
+        url: "http://localhost:8969",
+        streamUrl: `${base}/stream?cap=${stream}`,
+        activeFilters: new Set(),
+        signal: AbortSignal.timeout(3000),
+      });
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      // The second drop is held back, then printed when the tail ends.
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 1 more envelope over/),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+    }
   });
 });

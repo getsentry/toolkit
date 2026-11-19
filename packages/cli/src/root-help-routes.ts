@@ -19,7 +19,7 @@ import { buildCommand, type Command } from "@stricli/core";
 import { buildSentryRoutes, type SentryRoutes } from "./app-root.js";
 import { COMMAND_MANIFEST } from "./command-manifest.js";
 import type { SentryContext } from "./context.js";
-import generatedTopLevelRoutes from "./generated/top-level-routes.json";
+import generatedTopLevelRoutes from "./generated/top-level-routes.json" with { type: "json" };
 import type { CliRoutes } from "./lib/route-registry.js";
 import { buildRouteMap } from "./lib/route-map.js";
 import { TOP_LEVEL_BRIEFS } from "./top-level-briefs.js";
@@ -79,7 +79,8 @@ function buildStandIn(name: string): SentryRoutes[string] {
     formatUsageLine: (args) => [...args.prefix, route.usage].join(" "),
   };
   // Read by the branded help, like the `__primaryUsage` `buildCommand` keeps
-  (standIn as unknown as Record<string, unknown>).__primaryUsage =
+  // Read by the branded help, like the `__primaryUsage` `buildCommand` keeps
+  (standIn as unknown as Record<string, unknown>)["__primaryUsage"] =
     route.placeholder;
   return standIn;
 }

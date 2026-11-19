@@ -56,10 +56,11 @@ function mockEventsValidation() {
 
 async function runSearch(
   params: Partial<SearchErrorsParams> & { query: string },
+  context = getServerContext(),
 ) {
   const result = await searchErrors.handler(
     { ...baseParams, ...params },
-    getServerContext(),
+    context,
   );
   assertStructuredOnlyResult(result);
   const structuredContent =
@@ -161,9 +162,43 @@ describe("search_errors structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&field=issue&field=title&field=project&field=timestamp&field=level&field=message&field=error.type&field=culprit&field=user.email&field=user.id&sort=-timestamp&statsPeriod=24h&yAxis=count%28%29",
+        "url": "https://test-org.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=issue&field=title&field=project&field=timestamp&field=level&field=message&field=error.type&field=culprit&field=user.email&field=user.id&sort=-timestamp&statsPeriod=24h&yAxis=count%28%29",
       }
     `);
+  });
+
+  it("searches every accessible project when projectSlug is omitted", async () => {
+    // Without `project`, Sentry only searches the user's team projects and
+    // rejects the search when the user is on no team.
+    const projectParams: (string | null)[] = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        ({ request }) => {
+          projectParams.push(new URL(request.url).searchParams.get("project"));
+          return HttpResponse.json({
+            valid: true,
+            projects: [],
+            dataset: [],
+            environment: [],
+            field: [],
+            query: { valid: true, error: null, fields: [] },
+            orderby: [],
+          });
+        },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          projectParams.push(new URL(request.url).searchParams.get("project"));
+          return HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    await runSearch({ query: "level:error" });
+
+    expect(projectParams).toEqual(["-1", "-1"]);
   });
 
   it("returns aggregate rows without a follow-up when no issue is grouped", async () => {
@@ -213,6 +248,41 @@ describe("search_errors structured output", () => {
       "No results found. Try being more specific or using different terms in your search.",
     ]);
     expect(structuredContent.suggestedActions).toEqual([]);
+  });
+
+  it("suggests feedback when a translated query stays empty", async () => {
+    vi.mocked(translateWithSeer).mockResolvedValue({
+      query: "level:fatal transaction:checkout",
+      fields: ["title", "timestamp"],
+      sort: "-timestamp",
+      timeParams: { statsPeriod: "24h" },
+      timeSeries: null,
+      crossEventQueries: undefined,
+      suggestedProjectIds: [],
+      explanation: "Fatal checkout errors",
+      runId: "run-1",
+      mode: "samples",
+      organizationFeatures: [],
+    } as unknown as Awaited<ReturnType<typeof translateWithSeer>>);
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/test-org/events/", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
+
+    const structuredContent = await runSearch(
+      { query: "fatal errors in checkout" },
+      getServerContext({
+        availableToolNames: new Set(["submit_feedback_to_sentry_team"]),
+      }),
+    );
+
+    expect(structuredContent.notes).toMatchInlineSnapshot(`
+      [
+        "If this stays empty after you broaden the query and you expected matching data, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
+        "No results found. Try being more specific or using different terms in your search.",
+      ]
+    `);
   });
 
   it("returns a time series with totals, peak, and bucket states", async () => {

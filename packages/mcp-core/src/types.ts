@@ -119,4 +119,9 @@ export type ServerContext = {
    * default credential's token.
    */
   credentialRouter?: CredentialRouter;
+  /**
+   * Aborts when the MCP client cancels the tool call. Set only on a per-call
+   * copy of the context (see `withCallSignal`), never on the session context.
+   */
+  signal?: AbortSignal;
 };

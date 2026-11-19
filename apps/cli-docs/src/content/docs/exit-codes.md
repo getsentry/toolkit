@@ -39,7 +39,8 @@ react to failure categories without parsing stderr.
 | 40 | Seer Not Enabled | Seer is not enabled for the organization |
 | 41 | Seer No Budget | Seer requires a paid plan |
 | 42 | AI Disabled | AI features disabled by organization admin |
-| 43 | Seer Out Of Credits | Organization is out of Seer credits |
+| 43 | Seer Out Of Credits | Organization is out of Seer credits or hit its daily Seer spend limit |
+| 44 | Seer Setup Required | Seer needs a GitHub or GitLab integration, or repositories connected to the project |
 | 50 | Upgrade Error | CLI upgrade operation failed |
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
@@ -98,6 +99,9 @@ Run the command with `--help` to see the arguments it accepts.
 ## Notes
 
 - Exit codes below 128 are safe from collision with Unix signal exits (128+N).
+- `sentry local run` exits with your app's own exit code. If a signal kills
+  the app, it exits 128+N, like a shell: 130 for SIGINT, 143 for SIGTERM. When
+  you stop it with Ctrl-C or SIGTERM, it prints no error.
 - The `sentry api` command renders API error responses to stdout and exits
   with code 60 (Output Error), not 30 (API Error). This matches the `gh api`
   convention — the error response body is useful output. Parse the HTTP status

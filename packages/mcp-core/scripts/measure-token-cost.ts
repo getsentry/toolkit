@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Measure token cost of MCP tool definitions.
  *
@@ -6,13 +5,14 @@
  * in the tool definitions that would be sent to LLM clients.
  *
  * Usage:
- *   tsx measure-token-cost.ts              # Display table
- *   tsx measure-token-cost.ts -o stats.json # Write JSON to file
+ *   pnpm run measure-tokens                    # Display table
+ *   pnpm run measure-tokens -- -o stats.json   # Write JSON to file
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type Tiktoken, encoding_for_model } from "tiktoken";
 import { type ZodTypeAny, z } from "zod";
+import type { ToolDescription } from "../src/tools/types.ts";
 
 // Lazy imports to avoid type bleed
 const toolsModule = await import("../src/tools/index.ts");
@@ -29,22 +29,22 @@ function parseArgs() {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--output" || arg === "-o") {
-      outputFile = args[i + 1];
+      outputFile = args[i + 1] ?? null;
       if (!outputFile) {
         throw new Error("--output requires a file path");
       }
       i++; // Skip next arg
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
-Usage: tsx measure-token-cost.ts [options]
+Usage: pnpm run measure-tokens -- [options]
 
 Options:
   -o, --output <file>  Write JSON output to file
   -h, --help          Show this help message
 
 Examples:
-  tsx measure-token-cost.ts              # Display table
-  tsx measure-token-cost.ts -o stats.json # Write JSON to file
+  pnpm run measure-tokens                    # Display table
+  pnpm run measure-tokens -- -o stats.json   # Write JSON to file
 `);
       process.exit(0);
     }
@@ -56,9 +56,9 @@ Examples:
 type ToolDefinition = {
   name: string;
   title: string;
-  description: string | ((context: { experimentalMode: boolean }) => string);
+  description: ToolDescription;
   inputSchema: Record<string, ZodTypeAny>;
-  outputSchema?: ZodTypeAny;
+  outputSchema?: ZodTypeAny | undefined;
   experimental?: boolean;
   hideInExperimentalMode?: boolean;
   deprecated?: { replacedBy: readonly string[] };
@@ -183,12 +183,13 @@ async function main() {
     const toolsPayload = { tools: mcpTools };
 
     // Initialize tiktoken with GPT-4 encoding (cl100k_base)
-    encoder = encoding_for_model("gpt-4");
+    const activeEncoder = encoding_for_model("gpt-4");
+    encoder = activeEncoder;
 
     // Also calculate per-tool breakdown for reporting
     const toolStats = mcpTools.map((tool) => {
       const toolJson = JSON.stringify(tool);
-      const tokens = countTokens(toolJson, encoder!);
+      const tokens = countTokens(toolJson, activeEncoder);
 
       return {
         name: tool.name,
@@ -199,7 +200,7 @@ async function main() {
 
     // Calculate totals - use the complete payload with tools array wrapper
     const payloadJson = JSON.stringify(toolsPayload);
-    const totalTokens = countTokens(payloadJson, encoder);
+    const totalTokens = countTokens(payloadJson, activeEncoder);
     const toolCount = toolStats.length;
     const avgTokensPerTool = Math.round(totalTokens / toolCount);
 

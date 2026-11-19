@@ -142,12 +142,17 @@ sentry local run --open -- npm run dev
 # Watch only AI/agent (gen_ai, mcp) spans while iterating on an agent.
 sentry local -f ai
 
-# Server-side SDKs read SENTRY_SPOTLIGHT automatically. The CLI also injects
-# the URL under every framework client prefix (NEXT_PUBLIC_, VITE_, PUBLIC_,
-# NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_). Until the browser SDK reads
-# these automatically (getsentry/sentry-javascript#18198), reference the var
-# matching your framework in the client config:
-# Sentry.init({ spotlight: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT ?? false })
+# Node.js, Python, and Ruby SDKs read SENTRY_SPOTLIGHT on their own. PHP needs
+# 'spotlight' => getenv('SENTRY_SPOTLIGHT'). Go and Rust have no Spotlight
+# support: set SENTRY_DSN=http://key@localhost:8970/0 and pin --port 8970.
+# The CLI also injects the URL under framework client prefixes (NEXT_PUBLIC_,
+# VITE_, PUBLIC_, NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_), but browser
+# SDKs ignore them. Pass the var to the integration in the client config:
+# integrations: [Sentry.spotlightBrowserIntegration({ sidecarUrl: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT })]
+# Cloudflare Workers capture nothing until withSentry() sets
+# tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).
+# Replays and browser-to-server trace links need a DSN too. Next.js edge code
+# sends only errors (through the Node.js server). See `sentry help local run`.
 ```
 
 ### Query Sentry Documentation
@@ -189,10 +194,10 @@ sentry schema "GET /api/0/organizations/{organization_id_or_slug}/issues/"
 # Create a release — version must match Sentry.init({ release }) exactly
 sentry release create my-org/1.0.0 --project my-project
 
-# Associate commits via repository integration (needs local git checkout)
+# Associate commits via repository integration (works without a checkout in CI)
 sentry release set-commits my-org/1.0.0 --auto
 
-# Or read commits from local git history (no integration needed)
+# Or read commits from local git history (needs a git checkout, no integration)
 sentry release set-commits my-org/1.0.0 --local
 
 # Mark the release as finalized
@@ -205,23 +210,42 @@ sentry release deploy my-org/1.0.0 production
 **Key details:**
 - The positional is `<org-slug>/<version>`. In `sentry release create sentry/1.0.0`, `sentry` is the org and `1.0.0` is the version — the slash separates org from version, it is not part of the version string.
 - The **version** must match the `release` value in `Sentry.init()`. If your SDK uses `"1.0.0"`, the command must use `org/1.0.0`.
-- `--auto` requires a Sentry repository integration (GitHub/GitLab/Bitbucket) **and** a local git checkout. It matches your `origin` remote against Sentry's repo list. Without a checkout, use `--local`.
-- With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure.
+- `--auto` requires a Sentry repository integration (GitHub/GitLab/Bitbucket). It matches your `origin` remote against Sentry's repo list. Without a git checkout, it uses the repository and commit from CI variables such as `GITHUB_REPOSITORY`/`GITHUB_SHA`, `CI_PROJECT_PATH`/`CI_COMMIT_SHA`, or `VERCEL_GIT_*` (Vercel production builds), so it works in builds without `.git`.
+- `--local` reads local git history, so it needs a git checkout. It does not need a repository integration.
+- Without a checkout or CI variables, pass the commit explicitly: `--commit owner/repo@<sha>`.
+- With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure. Without a git checkout there is nothing to fall back to, so the `--auto` error is reported.
 
-### View Agent Conversations
+### Investigate AI Agents
+
+Start with aggregates to find what stands out, then read the conversations behind it.
+Agent spans carry `gen_ai.operation.type`: `ai_client` for model calls, `tool` for
+tool calls, and `agent` for agent runs. Filter on one type, group by the attribute you
+care about, and pick an aggregate:
+
+- Group by `gen_ai.tool.name`, `gen_ai.request.model`, or `gen_ai.agent.name`.
+- Usage is `count()`, failures are `failure_rate()`, latency is `p95(span.duration)`,
+  tokens are `sum(gen_ai.usage.total_tokens)`, cost in USD is
+  `sum(gen_ai.cost.total_tokens)`, and conversations are
+  `count_unique(gen_ai.conversation.id)`.
+- To rank by number of failures, sort by `equation|failure_rate() * count()`.
+  `failure_rate()` alone puts rarely used items first.
+- `--time-series` cannot group, so chart one item at a time by adding it to `--query`.
 
 ```bash
-# List recent agent conversations (org auto-detected)
-sentry agent-conversation list
+# 1. Which tools are used most, and how often do they fail?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" \
+  -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d
 
-# Explicit org, last 24 hours
-sentry agent-conversation list my-org/ --period 24h
+# 2. Which models cost the most?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.request.model -F "count()" \
+  -F "sum(gen_ai.usage.total_tokens)" -F "sum(gen_ai.cost.total_tokens)" \
+  -q "gen_ai.operation.type:ai_client" --sort "-sum(gen_ai.cost.total_tokens)" --period 7d
 
-# View a conversation transcript
-sentry agent-conversation view my-org/conv-123
+# 3. Find conversations behind a result, such as ones that used a tool
+sentry agent-conversation list my-org/my-agent -q "gen_ai.tool.name:search_issues" --period 7d
 
-# JSON output for programmatic access
-sentry agent-conversation view conv-123 --json
+# 4. Read one conversation's transcript
+sentry agent-conversation view my-org/conv-123 --json
 ```
 
 ### Process WebAssembly Modules
@@ -340,5 +364,5 @@ When querying the Events API (directly or via `sentry api`), valid dataset value
 - **Fetching API schemas instead of using the CLI**: Prefer `sentry schema` to browse the API and `sentry api` to make requests — the CLI handles authentication and endpoint resolution, so there's rarely a need to download OpenAPI specs separately.
 - **Fetching Sentry docs externally**: Use `sentry docs "your question"` to query Sentry's documentation from the CLI — this returns concise answers with source links, without needing to fetch or parse documentation pages.
 - **Release version mismatch**: The `org/version` positional is `<org-slug>/<version>`, where `org/` is the org, not part of the version. `sentry release create sentry/1.0.0` creates version `1.0.0` in org `sentry`. If your `Sentry.init()` uses `release: "1.0.0"`, this is correct. Don't double-prefix like `sentry/myapp/1.0.0`.
-- **Running `set-commits --auto` without a git checkout**: `--auto` needs a local git repo to discover the origin remote URL and HEAD commit. In CI, ensure `actions/checkout` with `fetch-depth: 0` runs before `set-commits --auto`.
+- **Falling back to `--local` when there is no git checkout**: `--local` is the mode that needs a checkout, because it reads local git history. Without one, use `--auto`, which reads the repository and commit from CI variables (such as `GITHUB_REPOSITORY`), or pass `--commit owner/repo@<sha>`. Use `--local` only in a checkout with enough history (in GitHub Actions, `actions/checkout` with `fetch-depth: 0`).
 - **Using `sentry api` when CLI commands suffice**: `sentry issue list --json` and `sentry issue view --json` already include `shortId`, `title`, `count`, `userCount`, `priority`, `level`, `status`, `permalink`, and other fields at the top level. When using `--fields` to select specific fields like `count` or `userCount`, the CLI automatically ensures these fields are present in the API response. Use `--fields` to select specific fields and `--help` to see all available fields. Only fall back to `sentry api` for data the CLI doesn't expose.

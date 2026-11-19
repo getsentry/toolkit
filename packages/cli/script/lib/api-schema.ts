@@ -1,9 +1,13 @@
 /** Project SDK operation metadata into the CLI's bundled discovery index. */
 
+import { API_BASE_PATH } from "@sentry/api/client";
 import type { ApiOperation } from "@sentry/api/operations";
 import type { ApiEndpoint } from "../../src/lib/api-schema.js";
 
-/** Keep CLI grouping, output names and legacy deprecation detection local. */
+/**
+ * Keep CLI grouping, output names and legacy deprecation detection local.
+ * Paths are full request paths, as users type and see them.
+ */
 export function projectApiOperations(
   operations: readonly ApiOperation[],
 ): ApiEndpoint[] {
@@ -11,7 +15,7 @@ export function projectApiOperations(
     .map((operation) => ({
       fn: operation.functionName,
       method: operation.method,
-      path: operation.path,
+      path: `${API_BASE_PATH}${operation.path}`,
       summary: operation.summary,
       description: operation.description,
       tags: operation.tags ? [...operation.tags] : undefined,
@@ -39,6 +43,5 @@ function deriveResource(url: string): string {
   const segments = url
     .split("/")
     .filter((s) => s.length > 0 && !s.startsWith("{"));
-  const meaningful = segments.filter((s) => s !== "api" && s !== "0");
-  return meaningful.at(-1) ?? "unknown";
+  return segments.at(-1) ?? "unknown";
 }

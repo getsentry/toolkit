@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-local
-version: 0.50.0-dev.0
+version: 0.51.0-dev.0
 description: Sentry for local development
 requires:
   bins: ["sentry"]
@@ -70,7 +70,7 @@ View a decoded Local event
 
 | Argument | Description |
 |----------|-------------|
-| `<session event...>` | Session and event ID |
+| `<session event...>` | Session and event ID, or its first 8+ characters |
 
 ### `sentry local serve`
 
@@ -82,7 +82,7 @@ Start the local dev server and tail events
 - `-q, --quiet - Suppress per-envelope tail output`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
-- `-a, --attributes - Show a grouped attribute table (user vs SDK) under each transaction`
+- `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`
@@ -189,13 +189,13 @@ Run a command with the local dev server enabled
 | `<command...>` | Command to run |
 
 **Flags:**
-- `-p, --port <value> - Port for the local server - (default: "8969")`
+- `-p, --port <value> - Port for the local server (default: 8969)`
 - `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-V, --verify - Verify SDK sends events, then exit`
 - `-t, --timeout <value> - Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode) - (default: "0")`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
-- `-a, --attributes - Include selected event attributes in output`
+- `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`

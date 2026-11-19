@@ -2,20 +2,27 @@ import { sentry } from "../../lib/app-identity.js";
 import { isLoopbackHost, normalizeLocalHostname } from "./loopback.js";
 import { openBrowser } from "../../lib/browser.js";
 import { getCliEnvironment } from "../../lib/constants.js";
-import { ValidationError } from "../../lib/errors.js";
+import { HOST_NOT_LOOPBACK_FIELD, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 
 const DEVELOPMENT_UI_URL = "http://localhost:5173";
 const PRODUCTION_UI_URL = "https://local.sentry.dev";
+/** A daemon session's scoped stream path; its segment is the session ID. */
+const SESSION_STREAM_PATH = /^\/_local\/v1\/sessions\/([^/]+)\/stream$/;
 
 export { isLoopbackHost } from "./loopback.js";
 
-/** Reject a host that the browser-only UI cannot safely reach. */
-export function assertLoopbackHostForUi(host: string): void {
+/**
+ * Reject a host that the browser-only UI cannot safely reach.
+ *
+ * @param field - `HOST_NOT_LOOPBACK_FIELD` when the host is the user's
+ *   `--host`; the default marks a URL the CLI built itself
+ */
+export function assertLoopbackHostForUi(host: string, field = "host"): void {
   if (!isLoopbackHost(host)) {
     throw new ValidationError(
       "--open requires a loopback --host (localhost, 127.0.0.1, or ::1).",
-      "host",
+      field,
     );
   }
 }
@@ -23,7 +30,7 @@ export function assertLoopbackHostForUi(host: string): void {
 /** Validate an --open host before the caller creates or attaches a receiver. */
 export function validateOpenHost(requested: boolean, host: string): void {
   if (requested) {
-    assertLoopbackHostForUi(host);
+    assertLoopbackHostForUi(host, HOST_NOT_LOOPBACK_FIELD);
   }
 }
 
@@ -66,7 +73,7 @@ export function buildLocalUiUrl(
     ) {
       throw new ValidationError(
         "Session discovery must use the same loopback receiver.",
-        "directory",
+        "session.receiver_mismatch",
       );
     }
     fragment.set("directory", directory.toString());
@@ -99,6 +106,18 @@ export function getLocalUiConnectionUrl(
   }
 }
 
+/** The session ID in a session stream path, or undefined if there is none. */
+function sessionIdFromStreamPath(pathname: string): string | undefined {
+  const encoded = SESSION_STREAM_PATH.exec(pathname)?.[1];
+  if (!encoded) return;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    logger.debug("Session stream path has a malformed session ID.");
+    return;
+  }
+}
+
 /** Open the independently served local UI without affecting capture on failure. */
 export async function openLocalUi(
   receiverUrl: string,
@@ -117,8 +136,9 @@ export async function openLocalUi(
   }
   const streamUrl = new URL(receiverUrl);
   if (streamUrl.searchParams.has("cap") || directoryUrl) {
+    const session = sessionIdFromStreamPath(streamUrl.pathname) ?? "<session>";
     logger.warn(
-      `Could not open browser. Use ${sentry`local session view <session> --json`} to retrieve its stream URL.`,
+      `Could not open browser. Use ${sentry`local session view ${session} --json`} to retrieve its stream URL.`,
     );
     return;
   }

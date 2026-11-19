@@ -13,11 +13,11 @@
  *
  * Zero manual config — all commands are auto-discovered.
  *
- * Run: tsx script/generate.ts sdk
+ * Run: pnpm ts script/generate.ts sdk
  */
 
 import { writeFile } from "node:fs/promises";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { routes } from "../src/app.js";
 import type { SchemaFieldInfo } from "../src/lib/formatters/output.js";
 import {
@@ -81,7 +81,7 @@ type SdkFlagInfo = {
   kind: "boolean" | "parsed" | "enum";
   type: ts.TypeNode;
   optional: boolean;
-  brief?: string;
+  brief?: string | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ function inferFlagType(def: FlagDef): {
 
 /** Extract SDK-relevant flag info from a Stricli Command's parameters. */
 function extractSdkFlags(command: Command): SdkFlagInfo[] {
-  const flagDefs = command.parameters?.flags;
+  const flagDefs = command.parameters.flags;
   if (!flagDefs) {
     return [];
   }
@@ -203,7 +203,7 @@ function extractSdkFlags(command: Command): SdkFlagInfo[] {
  * - Variadic (e.g., "<args...>") → { name, variadic: true }
  */
 /** One entry of a tuple positional, mapped to its own SDK param. */
-type PositionalEntry = { name: string; brief?: string };
+type PositionalEntry = { name: string; brief?: string | undefined };
 
 type PositionalInfo =
   | null
@@ -211,7 +211,7 @@ type PositionalInfo =
   | { name: string; variadic: true };
 
 function derivePositional(command: Command): PositionalInfo {
-  const params = command.parameters?.positional;
+  const params = command.parameters.positional;
   if (!params) {
     return null;
   }
@@ -222,7 +222,7 @@ function derivePositional(command: Command): PositionalInfo {
     return { name, variadic: true };
   }
 
-  if (params.kind === "tuple" && params.parameters.length > 0) {
+  if (params.parameters.length > 0) {
     // One param per tuple entry. A compound placeholder is a single entry whose own parser
     // splits it ("org/version" → orgVersion), but separate entries are separate argv tokens:
     // joining them into one param made every multi-positional command unusable, because the
@@ -406,11 +406,11 @@ type SdkMethod = {
   /** Flags that switch the command into streaming mode (`AsyncIterable` result). */
   streamingFlags: SdkFlagInfo[];
   /** Name of the params type, when the command has named params. */
-  paramsTypeName?: string;
+  paramsTypeName?: string | undefined;
   /** Whether a required flag makes the params object mandatory. */
   paramsRequired: boolean;
   /** Name of the schema-derived result type, or `unknown` when there is none. */
-  resultTypeName?: string;
+  resultTypeName?: string | undefined;
 };
 
 /** The method's result type (`FooResult`, or `unknown`). */

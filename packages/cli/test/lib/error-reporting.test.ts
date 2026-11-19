@@ -11,8 +11,20 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as Sentry from "@sentry/node";
 import { ArgumentParseError, FlagNotFoundError } from "@stricli/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { formatAuthHeader } from "../../src/lib/auth-header.js";
+import {
+  buildLocalUiUrl,
+  validateOpenHost,
+} from "../../src/commands/local/ui.js";
 import {
   classifySilenced,
   enrichEventWithGroupingTags,
@@ -26,15 +38,20 @@ import {
   ApiError,
   AuthError,
   CliError,
+  COMMAND_NOT_FOUND_FIELD,
   ConfigError,
   ContextError,
   HostScopeError,
   MalformedAuthTokenError,
   OutputError,
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
   ResolutionError,
   SeerError,
   ValidationError,
+  VerifyFailedError,
 } from "../../src/lib/errors.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // extractResourceKind
@@ -157,62 +174,55 @@ describe("extractMessagePrefix", () => {
 // ---------------------------------------------------------------------------
 
 describe("normalizeEndpoint", () => {
-  test("parameterizes org slug in organizations path", () => {
-    expect(normalizeEndpoint("/api/0/organizations/my-org/issues/")).toBe(
-      "/api/0/organizations/{org}/issues/",
-    );
-  });
-
-  test("parameterizes org and project in projects path", () => {
-    expect(
-      normalizeEndpoint("/api/0/projects/my-org/my-project/events/abc123/"),
-    ).toBe("/api/0/projects/{org}/{project}/events/{id}/");
-  });
-
-  test("parameterizes issue, event, group, release IDs", () => {
-    expect(normalizeEndpoint("/api/0/issues/12345/")).toBe(
-      "/api/0/issues/{id}/",
-    );
-    expect(normalizeEndpoint("/api/0/groups/99/events/abc/")).toBe(
-      "/api/0/groups/{id}/events/{id}/",
-    );
-    expect(normalizeEndpoint("/api/0/releases/1.0.0/")).toBe(
-      "/api/0/releases/{version}/",
-    );
-  });
-
-  test("parameterizes teams path", () => {
-    expect(normalizeEndpoint("/api/0/teams/my-org/backend/")).toBe(
-      "/api/0/teams/{org}/{team}/",
-    );
-  });
-
-  test("parameterizes dashboards path", () => {
-    expect(normalizeEndpoint("/api/0/dashboards/42/")).toBe(
-      "/api/0/dashboards/{id}/",
-    );
-  });
-
-  test("parameterizes customers path", () => {
-    expect(normalizeEndpoint("/api/0/customers/my-org/")).toBe(
-      "/api/0/customers/{org}/",
-    );
-  });
-
-  test("parameterizes bare numeric segments", () => {
-    expect(normalizeEndpoint("/api/0/some/123/thing/456")).toBe(
-      "/api/0/some/{id}/thing/{id}",
-    );
-  });
-
-  test("leaves paths without variable segments unchanged", () => {
-    expect(normalizeEndpoint("/api/0/auth/")).toBe("/api/0/auth/");
+  test.each([
+    [
+      "/api/0/projects/my-org/my-project/events/abc123/",
+      undefined,
+      "/api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/events/{event_id}/",
+    ],
+    [
+      "organizations/my-org/releases/?per_page=1",
+      undefined,
+      "/api/0/organizations/{organization_id_or_slug}/releases/",
+    ],
+    [
+      "/api/0/organizations/my-org/issues/123/",
+      "PUT",
+      "/api/0/organizations/{organization_id_or_slug}/issues/{issue_id}/",
+    ],
+    [
+      "https://sentry.example.com/sentry/api/0/organizations/my-org/issues/",
+      undefined,
+      "https://sentry.example.com/sentry/api/0/organizations/{organization_id_or_slug}/issues/",
+    ],
+    [
+      "organizations/my-org/not-an-endpoint/my-thing/",
+      undefined,
+      "/api/0/organizations/{organization_id_or_slug}/{id}/{id}/",
+    ],
+    [
+      "https://github.com/getsentry/sentry/pull/1",
+      undefined,
+      "https://github.com/getsentry/sentry/pull/1",
+    ],
+  ])("templates %s", (endpoint, method, expected) => {
+    expect(normalizeEndpoint(endpoint, method)).toBe(expected);
   });
 });
 
 // ---------------------------------------------------------------------------
 // classifySilenced
 // ---------------------------------------------------------------------------
+
+/** The value that `fn` throws, or undefined when it returns. */
+function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
 
 describe("classifySilenced", () => {
   test("silences OutputError", () => {
@@ -396,6 +406,73 @@ describe("classifySilenced", () => {
     },
   );
 
+  test("silences --open with a non-loopback --host (CLI-3XY)", () => {
+    const error = thrownBy(() => validateOpenHost(true, "0.0.0.0"));
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBe("user_input_error");
+  });
+
+  test.each([
+    // The CLI built these UI URLs itself, so a failure is a CLI bug.
+    [
+      "a non-loopback receiver",
+      () => buildLocalUiUrl("http://10.1.2.3:8969/stream"),
+    ],
+    [
+      "a discovery URL on another receiver",
+      () =>
+        buildLocalUiUrl(
+          "http://localhost:8969/stream",
+          "http://localhost:9999/_local/v1/ui/sessions?cap=x",
+        ),
+    ],
+  ])("does NOT silence a Local UI URL with %s", (_label, build) => {
+    const error = thrownBy(build);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(classifySilenced(error)).toBeNull();
+  });
+
+  test.each([
+    new VerifyFailedError("Process exited before sending any events"),
+    new VerifyFailedError("Process crashed with code 3", 3),
+    new VerifyFailedError("Verification timed out after 30s"),
+  ])(
+    "silences a sentry local run --verify outcome: $message (CLI-34S, CLI-293, CLI-46T)",
+    (error) => {
+      expect(classifySilenced(error)).toBe("verify_failed");
+    },
+  );
+
+  test("silences a command-not-found ValidationError (CLI-3NK)", () => {
+    // `sentry local run -- <cmd>` where <cmd> is not installed is the user's
+    // environment, not a CLI bug.
+    expect(
+      classifySilenced(
+        new ValidationError("Command not found: npm", COMMAND_NOT_FOUND_FIELD),
+      ),
+    ).toBe("user_validation");
+  });
+
+  test("silences a port-in-use ValidationError (CLI-4R9, CLI-23H)", () => {
+    // Another process, such as a foreground `local serve`, holds the port.
+    expect(
+      classifySilenced(
+        new ValidationError("Port 8969 is already in use.", PORT_IN_USE_FIELD),
+      ),
+    ).toBe("user_validation");
+  });
+
+  test("keeps reporting a port that a Sentry Local daemon holds", () => {
+    expect(
+      classifySilenced(
+        new ValidationError(
+          "A Sentry Local daemon is using this port.",
+          PORT_HELD_BY_DAEMON_FIELD,
+        ),
+      ),
+    ).toBeNull();
+  });
+
   test("silences ResolutionError (user provided a value that wasn't found)", () => {
     expect(
       classifySilenced(
@@ -408,6 +485,22 @@ describe("classifySilenced", () => {
     [
       "ValidationError (other field)",
       new ValidationError("Invalid trace ID", "trace_id"),
+    ],
+    // An omitted value stays captured, like ContextError (CLI-3B).
+    [
+      "ValidationError (field 'command.missing', CLI-1YT)",
+      new ValidationError("No command provided", "command.missing"),
+    ],
+    [
+      "ValidationError (field 'session.id_missing', CLI-4GP)",
+      new ValidationError(
+        "Provide a Local session or envelope ID.",
+        "session.id_missing",
+      ),
+    ],
+    [
+      "CliError with a verify message",
+      new CliError("Process crashed with code 3", 3),
     ],
     ["SeerError", new SeerError("not_enabled")],
     ["ConfigError", new ConfigError("bad")],
@@ -467,20 +560,20 @@ describe("classifySilenced", () => {
  * `SENTRY_HOST` is cleared for the duration since it takes precedence.
  */
 function withSentryUrl(url: string, fn: () => void): void {
-  const savedUrl = process.env.SENTRY_URL;
-  const savedHost = process.env.SENTRY_HOST;
-  process.env.SENTRY_URL = url;
-  delete process.env.SENTRY_HOST;
+  const savedUrl = process.env["SENTRY_URL"];
+  const savedHost = process.env["SENTRY_HOST"];
+  process.env["SENTRY_URL"] = url;
+  delete process.env["SENTRY_HOST"];
   try {
     fn();
   } finally {
     if (savedUrl === undefined) {
-      delete process.env.SENTRY_URL;
+      delete process.env["SENTRY_URL"];
     } else {
-      process.env.SENTRY_URL = savedUrl;
+      process.env["SENTRY_URL"] = savedUrl;
     }
     if (savedHost !== undefined) {
-      process.env.SENTRY_HOST = savedHost;
+      process.env["SENTRY_HOST"] = savedHost;
     }
   }
 }
@@ -531,7 +624,7 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind from exception value", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0].value =
+    at(event.exception!.values!, 0).value =
       "Cannot read properties of undefined (reading 'replaceAll')";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Cannot read properties of");
@@ -539,17 +632,17 @@ describe("enrichEventWithGroupingTags", () => {
 
   test("sets cli_error.kind for fetch failed TypeError", () => {
     const event = makeEvent("TypeError");
-    event.exception!.values![0].value = "fetch failed";
+    at(event.exception!.values!, 0).value = "fetch failed";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("fetch failed");
   });
 
   test("sets cli_error.kind for Error with variable project count", () => {
     const event1 = makeEvent("Error");
-    event1.exception!.values![0].value =
+    at(event1.exception!.values!, 0).value =
       "Failed to fetch issues from 3 project(s): Failed to list issues: 400 Bad Request";
     const event2 = makeEvent("Error");
-    event2.exception!.values![0].value =
+    at(event2.exception!.values!, 0).value =
       "Failed to fetch issues from 1 project(s): Failed to list issues: 400 Bad Request";
     const result1 = enrichEventWithGroupingTags(event1);
     const result2 = enrichEventWithGroupingTags(event2);
@@ -572,7 +665,7 @@ describe("enrichEventWithGroupingTags", () => {
       "cli_error.class": "ContextError",
       "cli_error.kind": "Organization",
     });
-    event.exception!.values![0].value = "some different message";
+    at(event.exception!.values!, 0).value = "some different message";
     const result = enrichEventWithGroupingTags(event);
     expect(result.tags?.["cli_error.kind"]).toBe("Organization");
   });
@@ -583,46 +676,33 @@ describe("enrichEventWithGroupingTags", () => {
 // ---------------------------------------------------------------------------
 
 describe("reportCliError integration", () => {
-  let captureSpy: ReturnType<typeof spyOn>;
-  let metricSpy: ReturnType<typeof spyOn>;
-  let withScopeSpy: ReturnType<typeof spyOn>;
+  let captureSpy: MockInstance<(typeof Sentry)["captureException"]>;
+  let metricSpy: MockInstance<(typeof Sentry.metrics)["distribution"]>;
 
   beforeEach(() => {
     captureSpy = vi.spyOn(Sentry, "captureException");
     metricSpy = vi.spyOn(Sentry.metrics, "distribution");
-    withScopeSpy = vi.spyOn(Sentry, "withScope");
   });
 
   afterEach(() => {
     captureSpy.mockRestore();
     metricSpy.mockRestore();
-    withScopeSpy.mockRestore();
   });
 
   /**
-   * Capture the tags that `reportCliError` would set on the scope.
-   * Intercepts `Sentry.withScope` and runs the callback with a fake scope
-   * that records `setTag`/`setContext` calls.
+   * Capture the tags and contexts that `reportCliError` sets on its scope.
+   * `captureException` runs inside that scope, so read the current scope's
+   * data when it is called.
    */
   function capturedScopeTags(error: unknown): {
-    tags: Record<string, string>;
+    tags: Record<string, unknown>;
     contexts: Record<string, unknown>;
   } {
-    const tags: Record<string, string> = {};
-    const contexts: Record<string, unknown> = {};
-    const fakeScope = {
-      setTag(k: string, v: string) {
-        tags[k] = v;
-      },
-      setContext(k: string, v: unknown) {
-        contexts[k] = v;
-      },
-      setFingerprint() {
-        /* noop */
-      },
-    };
-    withScopeSpy.mockImplementation((fn: (s: unknown) => void) => {
-      fn(fakeScope);
+    let tags: Record<string, unknown> = {};
+    let contexts: Record<string, unknown> = {};
+    captureSpy.mockImplementation(() => {
+      ({ tags, contexts } = Sentry.getCurrentScope().getScopeData());
+      return "";
     });
     reportCliError(error);
     return { tags, contexts };
@@ -716,6 +796,23 @@ describe("reportCliError integration", () => {
           error_class: "ValidationError",
           reason: "user_validation",
           validation_field: "repository",
+        }),
+      }),
+    );
+  });
+
+  test("silences a --verify outcome and keeps it in the metric", () => {
+    reportCliError(
+      new VerifyFailedError("Process exited before sending any events"),
+    );
+    expect(captureSpy).not.toHaveBeenCalled();
+    expect(metricSpy).toHaveBeenCalledWith(
+      "cli.error.silenced",
+      1,
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          error_class: "VerifyFailedError",
+          reason: "verify_failed",
         }),
       }),
     );
@@ -849,7 +946,7 @@ describe("reportCliError integration", () => {
     expect(tags["cli_error.api_status"]).toBe("400");
     expect(tags["cli_error.kind"]).toBe("400");
     expect(tags["cli_error.api_endpoint"]).toBe(
-      "/api/0/organizations/{org}/issues/",
+      "/api/0/organizations/{organization_id_or_slug}/issues/",
     );
   });
 
@@ -970,7 +1067,8 @@ describe("reportArgumentError", () => {
 
   test("captures one info message with the parser's error class", () => {
     const error = new ArgumentParseError(
-      "period",
+      // Stricli brands flag names; it builds them from the command's flags.
+      "period" as ConstructorParameters<typeof ArgumentParseError>[0],
       "bogus",
       new ValidationError("Invalid period 'bogus'", "period"),
     );

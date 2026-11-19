@@ -20,7 +20,7 @@ import type {
   SentryApiService,
   ThreadEntrySchema,
 } from "../api-client";
-import { ThreadsEntrySchema } from "../api-client";
+import { StacktraceSchema, ThreadsEntrySchema } from "../api-client";
 import type {
   AutofixRunState,
   CommitterList,
@@ -28,11 +28,14 @@ import type {
   ExternalIssueList,
   GenericEvent,
   Issue,
+  SourceMapDebug,
   Trace,
   TraceSpan,
 } from "../api-client/types";
 import { logIssue } from "../telem/logging";
+import { buildIssueSideQuests, hasReadableStack } from "./issue-side-quests";
 import { selectEventPackages } from "./event-packages";
+import { formatSideQuests } from "./side-quests";
 import { formatUnknown } from "./unknown-formatting";
 import {
   type CodeLocation,
@@ -194,8 +197,8 @@ export function formatFrameHeader(
  * misnames the error text.
  */
 export function isPerformanceIssueType(issue: {
-  issueType?: string | null;
-  issueCategory?: string | null;
+  issueType?: string | null | undefined;
+  issueCategory?: string | null | undefined;
 }): boolean {
   return (
     issue.issueType?.startsWith("performance_") === true ||
@@ -225,14 +228,14 @@ export function isSupportedEventType(event: { type?: unknown }): boolean {
 export function formatEventOutput(
   event: Event,
   options?: {
-    performanceTrace?: Trace;
+    performanceTrace?: Trace | undefined;
     replaySummary?: {
       apiService: SentryApiService;
       organizationSlug: string;
-      relatedReplayIds?: string[];
+      relatedReplayIds?: string[] | undefined;
       experimentalMode?: boolean;
-      availableToolNames?: ReadonlySet<string>;
-      directToolNames?: ReadonlySet<string>;
+      availableToolNames?: ReadonlySet<string> | undefined;
+      directToolNames?: ReadonlySet<string> | undefined;
     };
   },
 ) {
@@ -264,6 +267,7 @@ export function formatEventOutput(
   const threadsData = threadsEntry
     ? parseThreadsEntryData(threadsEntry.data)
     : undefined;
+  const eventStacktrace = findEventStacktrace(eventToRender);
   const requestEntry = eventToRender.entries.find((e) => e.type === "request");
   const spansEntry = eventToRender.entries.find((e) => e.type === "spans");
   const cspEntry = eventToRender.entries.find((e) => e.type === "csp");
@@ -271,7 +275,6 @@ export function formatEventOutput(
   // Error message (if present)
   if (messageEntry) {
     output += formatMessageInterfaceOutput(
-      eventToRender,
       messageEntry.data as z.infer<typeof MessageEntrySchema>,
     );
   }
@@ -286,6 +289,10 @@ export function formatEventOutput(
     output += formatThreadsInterfaceOutput(eventToRender, threadsData);
   }
 
+  if (!exceptionEntry && eventStacktrace) {
+    output += formatEventStacktraceOutput(eventToRender, eventStacktrace);
+  }
+
   if (threadsData?.values && threadsData.values.length > 1) {
     output += formatThreadList(threadsData.values);
     output += "\n";
@@ -294,14 +301,13 @@ export function formatEventOutput(
   // Request info (if HTTP error)
   if (requestEntry) {
     output += formatRequestInterfaceOutput(
-      eventToRender,
       requestEntry.data as z.infer<typeof RequestEntrySchema>,
     );
   }
 
   // CSP violation details
   if (cspEntry) {
-    output += formatCspInterfaceOutput(eventToRender, cspEntry.data);
+    output += formatCspInterfaceOutput(cspEntry.data);
   }
 
   // Performance issue details (N+1 queries, etc.)
@@ -511,8 +517,8 @@ function getExceptionChainMessage(
   }
 }
 
-function formatCspInterfaceOutput(event: Event, data: any) {
-  if (!data) {
+function formatCspInterfaceOutput(data: unknown) {
+  if (!isPlainObject(data)) {
     return "";
   }
 
@@ -520,37 +526,50 @@ function formatCspInterfaceOutput(event: Event, data: any) {
   parts.push("### CSP Violation");
   parts.push("");
 
-  if (data.blocked_uri) {
-    parts.push(`**Blocked URI**: ${data.blocked_uri}`);
+  const field = (key: string): string | undefined => {
+    const value = data[key];
+    return value ? formatPrimitive(value) : undefined;
+  };
+
+  const blockedUri = field("blocked_uri");
+  if (blockedUri) {
+    parts.push(`**Blocked URI**: ${blockedUri}`);
   }
 
-  if (data.violated_directive) {
-    parts.push(`**Violated Directive**: ${data.violated_directive}`);
+  const violatedDirective = field("violated_directive");
+  if (violatedDirective) {
+    parts.push(`**Violated Directive**: ${violatedDirective}`);
   }
 
-  if (data.effective_directive) {
-    parts.push(`**Effective Directive**: ${data.effective_directive}`);
+  const effectiveDirective = field("effective_directive");
+  if (effectiveDirective) {
+    parts.push(`**Effective Directive**: ${effectiveDirective}`);
   }
 
-  if (data.document_uri) {
-    parts.push(`**Document URI**: ${data.document_uri}`);
+  const documentUri = field("document_uri");
+  if (documentUri) {
+    parts.push(`**Document URI**: ${documentUri}`);
   }
 
-  if (data.source_file) {
-    parts.push(`**Source File**: ${data.source_file}`);
-    if (data.line_number) {
-      parts.push(`**Line Number**: ${data.line_number}`);
+  const sourceFile = field("source_file");
+  if (sourceFile) {
+    parts.push(`**Source File**: ${sourceFile}`);
+    const lineNumber = field("line_number");
+    if (lineNumber) {
+      parts.push(`**Line Number**: ${lineNumber}`);
     }
   }
 
-  if (data.disposition) {
-    parts.push(`**Disposition**: ${data.disposition}`);
+  const disposition = field("disposition");
+  if (disposition) {
+    parts.push(`**Disposition**: ${disposition}`);
   }
 
-  if (data.original_policy) {
+  const originalPolicy = field("original_policy");
+  if (originalPolicy) {
     parts.push("");
     parts.push("**Original Policy:**");
-    parts.push(codeBlock(data.original_policy));
+    parts.push(codeBlock(originalPolicy));
   }
 
   parts.push("");
@@ -560,7 +579,6 @@ function formatCspInterfaceOutput(event: Event, data: any) {
 }
 
 function formatRequestInterfaceOutput(
-  event: Event,
   data: z.infer<typeof RequestEntrySchema>,
 ) {
   if (!data.method || !data.url) {
@@ -570,7 +588,6 @@ function formatRequestInterfaceOutput(
 }
 
 function formatMessageInterfaceOutput(
-  event: Event,
   data: z.infer<typeof MessageEntrySchema>,
 ) {
   if (!data.formatted && !data.message) {
@@ -603,9 +620,35 @@ function formatThreadsInterfaceOutput(
     parts.push("");
   }
 
-  const frames = crashedThread.stacktrace.frames;
+  parts.push(...formatStackFrames(event, crashedThread.stacktrace.frames));
+  parts.push("");
 
-  // Find and format the most relevant in-app frame with enhanced view
+  return parts.join("\n");
+}
+
+/**
+ * Renders the event-level `stacktrace` entry. Sentry keeps it outside
+ * exceptions and threads, for example on a message captured with
+ * `attach_stacktrace`.
+ */
+function formatEventStacktraceOutput(
+  event: Event,
+  stacktrace: z.infer<typeof StacktraceSchema>,
+) {
+  return [
+    "### Stacktrace",
+    "",
+    ...formatStackFrames(event, stacktrace.frames),
+    "",
+  ].join("\n");
+}
+
+/** The most relevant in-app frame in full, then every frame. */
+function formatStackFrames(
+  event: Event,
+  frames: z.infer<typeof FrameInterface>[],
+): string[] {
+  const parts: string[] = [];
   const relevantFrame = findMostRelevantInAppFrame(frames);
   if (relevantFrame && (relevantFrame.context?.length || relevantFrame.vars)) {
     parts.push(renderEnhancedFrame(relevantFrame, event));
@@ -627,9 +670,7 @@ function formatThreadsInterfaceOutput(
         .join("\n"),
     ),
   );
-  parts.push("");
-
-  return parts.join("\n");
+  return parts;
 }
 
 function getThreadDisplayValue(
@@ -683,6 +724,17 @@ export function parseThreadsEntryData(
 ): z.infer<typeof ThreadsEntrySchema> | undefined {
   const result = ThreadsEntrySchema.safeParse(data);
   return result.success ? result.data : undefined;
+}
+
+/** The event-level `stacktrace` entry, when it has frames. */
+export function findEventStacktrace(
+  event: Event,
+): z.infer<typeof StacktraceSchema> | undefined {
+  const entry = event.entries.find((e) => e.type === "stacktrace");
+  const result = StacktraceSchema.safeParse(entry?.data);
+  return result.success && result.data.frames.length > 0
+    ? result.data
+    : undefined;
 }
 
 /**
@@ -963,7 +1015,7 @@ function selectTraceSpanRoots(
   function indexSpan(span: TraceSpan): void {
     // Try to get span_id from additional_attributes, fall back to event_id
     const spanId =
-      normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+      normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
     if (spanId && spanId.length > 0) {
       spanMap.set(spanId, span);
     }
@@ -1094,7 +1146,7 @@ function convertTraceSpanToPerformanceSpan(
 
   // Get span ID from additional_attributes or fall back to event_id
   const spanId =
-    normalizeSpanId(span.additional_attributes?.span_id) || span.event_id;
+    normalizeSpanId(span.additional_attributes?.["span_id"]) || span.event_id;
 
   const performanceSpan: PerformanceSpan = {
     span_id: spanId,
@@ -1226,16 +1278,14 @@ function renderPerformanceSpanTree(spans: PerformanceSpan[]): string[] {
     lines.push(line);
 
     // Render children
-    for (let i = 0; i < span.children.length; i++) {
-      const child = span.children[i];
+    for (const [i, child] of span.children.entries()) {
       const isLastChild = i === span.children.length - 1;
       const childPrefix = prefix + (isLast ? "   " : "│  ");
       renderSpan(child, childPrefix, isLastChild);
     }
   }
 
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const [i, span] of spans.entries()) {
     const isLastRoot = i === spans.length - 1;
     renderSpan(span, "", isLastRoot);
   }
@@ -1417,8 +1467,9 @@ function formatN1QueryEvidence(
     }
 
     // Show the query pattern - if single line, render as SQL block; if multiple, as list
-    if (repeatingLines.length === 1) {
-      parts.push(codeBlock(repeatingLines[0], "sql"));
+    const [onlyRepeatingLine] = repeatingLines;
+    if (repeatingLines.length === 1 && onlyRepeatingLine !== undefined) {
+      parts.push(codeBlock(onlyRepeatingLine, "sql"));
       parts.push("");
     } else {
       parts.push("**Repeated operations:**");
@@ -1526,26 +1577,36 @@ function formatPerformanceIssueOutput(
   event: Event,
   spansData: unknown,
   options?: {
-    performanceTrace?: Trace;
+    performanceTrace?: Trace | undefined;
   },
 ): string {
   const parts: string[] = [];
 
-  // Check if we have occurrence data
-  const occurrence = (event as any).occurrence;
-  if (!occurrence) {
+  // Check if we have occurrence data. Only transaction and generic events
+  // model it, and its evidence fields vary by issue type, so read it as
+  // untrusted data.
+  const occurrence: unknown =
+    "occurrence" in event ? event.occurrence : undefined;
+  if (!isPlainObject(occurrence)) {
     return "";
   }
 
   // Get issue type - occurrence.type is numeric, issueType may be a string
+  const occurrenceType = occurrence["type"];
   let issueType: string | undefined;
-  if (typeof occurrence.type === "number") {
-    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence.type];
+  if (typeof occurrenceType === "number") {
+    issueType = OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrenceType];
   } else {
-    issueType = occurrence.issueType || occurrence.type;
+    const rawIssueType = occurrence["issueType"];
+    issueType =
+      (typeof rawIssueType === "string" && rawIssueType) ||
+      (typeof occurrenceType === "string" ? occurrenceType : undefined);
   }
 
-  const evidenceData = occurrence.evidenceData;
+  const rawEvidenceData = occurrence["evidenceData"];
+  const evidenceData = isPlainObject(rawEvidenceData)
+    ? rawEvidenceData
+    : undefined;
 
   // Process evidence data based on known performance issue types
   if (evidenceData) {
@@ -1583,18 +1644,24 @@ function formatPerformanceIssueOutput(
   }
 
   // Show transaction name if available for any performance issue (generic field)
-  if (evidenceData?.transactionName) {
+  const transactionName = evidenceData?.["transactionName"];
+  const formattedTransactionName = transactionName
+    ? formatPrimitive(transactionName)
+    : undefined;
+  if (formattedTransactionName) {
     parts.push("**Transaction:**");
-    parts.push(`${evidenceData.transactionName}`);
+    parts.push(formattedTransactionName);
     parts.push("");
   }
 
   // Always show evidence display if available (this is generic and doesn't require type knowledge)
-  if (occurrence.evidenceDisplay?.length > 0) {
-    for (const display of occurrence.evidenceDisplay) {
-      if (display.important) {
-        parts.push(`**${display.name}:**`);
-        parts.push(`${display.value}`);
+  const evidenceDisplay = occurrence["evidenceDisplay"];
+  if (Array.isArray(evidenceDisplay)) {
+    const displays: unknown[] = evidenceDisplay;
+    for (const display of displays) {
+      if (isPlainObject(display) && display["important"]) {
+        parts.push(`**${String(display["name"])}:**`);
+        parts.push(String(display["value"]));
         parts.push("");
       }
     }
@@ -1638,19 +1705,19 @@ function asUnverified<T>(value: unknown): Unverified<T> | undefined {
 }
 
 type MetricAlertQuery = {
-  dataset?: string;
-  aggregate?: string;
-  query?: string;
-  timeWindowSeconds?: number;
-  environment?: string;
+  dataset?: string | undefined;
+  aggregate?: string | undefined;
+  query?: string | undefined;
+  timeWindowSeconds?: number | undefined;
+  environment?: string | undefined;
   eventTypes: string[];
 };
 
 export type MetricAlertContext = {
   evidenceData: Unverified<MetricIssueEvidenceData>;
-  query?: MetricAlertQuery;
-  monitorId?: string;
-  alertRuleId?: string;
+  query?: MetricAlertQuery | undefined;
+  monitorId?: string | undefined;
+  alertRuleId?: string | undefined;
 };
 
 /**
@@ -1815,7 +1882,7 @@ export function formatMetricAlertValue(value: unknown): string | undefined {
   }
 
   if (isPlainObject(value)) {
-    return formatPrimitive(value.value);
+    return formatPrimitive(value["value"]);
   }
 
   return undefined;
@@ -1967,8 +2034,8 @@ function buildMetricAlertResponseNotes({
   event: Event;
   context: MetricAlertContext;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const calls = getMetricAlertFollowUpCalls({
@@ -2281,25 +2348,27 @@ export function formatIssueOutput({
   aiConversations,
   codeLocation,
   committers,
+  sourceMapDebug,
   experimentalMode,
   availableToolNames,
   directToolNames,
 }: {
-  packageNames?: string[];
+  packageNames?: string[] | undefined;
   organizationSlug: string;
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  autofixState?: AutofixRunState;
-  performanceTrace?: Trace;
-  externalIssues?: ExternalIssueList;
-  relatedReplayIds?: string[];
+  autofixState?: AutofixRunState | undefined;
+  performanceTrace?: Trace | undefined;
+  externalIssues?: ExternalIssueList | undefined;
+  relatedReplayIds?: string[] | undefined;
   aiConversations?: AIConversationReference[];
-  codeLocation?: CodeLocation;
-  committers?: CommitterList;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  codeLocation?: CodeLocation | undefined;
+  committers?: CommitterList | undefined;
+  sourceMapDebug?: SourceMapDebug | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }) {
   let output = `# Issue ${issue.shortId} in **${organizationSlug}**\n\n`;
 
@@ -2368,6 +2437,15 @@ export function formatIssueOutput({
   output += `**URL**: ${apiService.getIssueUrl(organizationSlug, issue.shortId)}\n`;
   output += "\n";
 
+  const sideQuests = buildIssueSideQuests(
+    { event, sourceMapDebug },
+    {
+      experimentalMode: experimentalMode ?? false,
+      availableToolNames,
+      directToolNames,
+    },
+  );
+
   if (codeLocation) {
     output += formatCodeLocation(codeLocation);
   }
@@ -2411,6 +2489,9 @@ export function formatIssueOutput({
       output += ` and Sentry Event ID **${sentryEventId}**`;
     }
     output += " to help us add support for this event type.\n";
+    if (sideQuests) {
+      output += `\n${formatSideQuests(sideQuests)}`;
+    }
 
     if (aiConversations && aiConversations.length > 0) {
       output += "\n## Response Notes\n\n";
@@ -2488,6 +2569,8 @@ export function formatIssueOutput({
     output += "\n";
   }
 
+  output += formatSideQuests(sideQuests);
+
   output += "## Response Notes\n\n";
   for (const note of buildIssueResponseNotes({
     organizationSlug,
@@ -2518,16 +2601,16 @@ export function buildIssueResponseNotes({
   issue: Issue;
   event: Event;
   apiService: SentryApiService;
-  aiConversations?: AIConversationReference[];
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  aiConversations?: AIConversationReference[] | undefined;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const notes: string[] = [];
   const traceId =
-    typeof event.contexts?.trace?.trace_id === "string" &&
-    event.contexts.trace.trace_id.length > 0
-      ? event.contexts.trace.trace_id
+    typeof event.contexts?.["trace"]?.["trace_id"] === "string" &&
+    event.contexts["trace"]["trace_id"].length > 0
+      ? event.contexts["trace"]["trace_id"]
       : undefined;
 
   const commitIssueReference = /^\d+$/.test(issue.shortId)
@@ -2551,7 +2634,7 @@ export function buildIssueResponseNotes({
         directToolNames,
       }),
     );
-  } else {
+  } else if (hasReadableStack(event)) {
     notes.push(
       "The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.",
     );
@@ -2680,8 +2763,8 @@ function buildAIConversationResponseNotes({
   aiConversations: AIConversationReference[];
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const instructions = formatAIConversationActionInstructions({
     organizationSlug,
@@ -2691,8 +2774,8 @@ function buildAIConversationResponseNotes({
     directToolNames,
   });
 
-  if (aiConversations.length === 1) {
-    const [conversation] = aiConversations;
+  const [conversation] = aiConversations;
+  if (aiConversations.length === 1 && conversation) {
     const spanSuffix = conversation.spanId
       ? ` Matching span: \`${conversation.spanId}\`.`
       : "";
@@ -2725,10 +2808,10 @@ function formatIssueReplayOutput({
   apiService: SentryApiService;
   organizationSlug: string;
   event: Event;
-  relatedReplayIds?: string[];
+  relatedReplayIds?: string[] | undefined;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string {
   const attachedReplayId = getReplayIdFromEvent(event);
   const normalizedRelatedReplayIds = dedupeReplayIds(relatedReplayIds ?? []);
@@ -2803,10 +2886,10 @@ function formatIssueReplayOutput({
 }
 
 export function getReplayIdFromEvent(event: Event): string | null {
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
   const replayContextId =
-    typeof replayContext?.replay_id === "string"
-      ? replayContext.replay_id
+    typeof replayContext?.["replay_id"] === "string"
+      ? replayContext["replay_id"]
       : null;
   const replayTagId =
     event.tags?.find((tag) => tag.key === "replayId" || tag.key === "replay.id")
@@ -2848,7 +2931,7 @@ export function stripReplayMetadata(event: Event): Event {
   const tags = event.tags?.filter(
     (tag) => tag.key !== "replay.id" && tag.key !== "replayId",
   );
-  const replayContext = event.contexts?.replay;
+  const replayContext = event.contexts?.["replay"];
 
   if (!replayContext) {
     return { ...event, tags };

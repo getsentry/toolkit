@@ -11,7 +11,7 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 ## Constraints
 
 - **MCP tool count**: `EXPOSE_ALL_TOOLS` lists every tool and relies on harness tool search. The gateway surface it falls back to (`TOP_LEVEL_TOOL_NAMES`) targets ≤20, hard limit 25.
-- **Quality gate**: `pnpm run tsc && pnpm run lint && pnpm run test` must pass before committing.
+- **Quality gate**: `pnpm run typecheck && pnpm run lint && pnpm run test` must pass before committing.
 - **Dependency direction**: `sentry` (cli) → `@sentry/mcp-core` → `@sentry/toolkit-core`, and `@sentry/mcp-cloudflare` → `@sentry/mcp-core`; never the reverse. mcp-core and toolkit-core never import the CLI. Inject CLI-only capabilities (SQLite cache, local-file DSN detection, file uploads) through interfaces defined in mcp-core or toolkit-core. `pnpm run lint` enforces this; see docs/architecture/overview.md#package-dependency-direction.
 - **Lint rules**: Write new lint rules for Oxlint: a built-in rule in `.oxlintrc.json`, or a custom rule in `packages/cli/lint-rules/cli-oxlint-plugin.js`. Do not add ast-grep rules. See docs/contributing/coding-guidelines.md#formatting-and-linting.
 - **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
@@ -41,6 +41,7 @@ toolkit/
 
 ## Documentation Map
 
+- design/README.md — Design docs: each system's goals and rules. Read the owning file before changing a system.
 - docs/README.md — Toolkit documentation index
 - docs/cli/README.md — CLI guides and the published CLI site
 - docs/mcp/README.md — MCP guides across its packages
@@ -50,7 +51,7 @@ toolkit/
 **Read before MCP tool changes:**
 
 - docs/contributing/adding-tools.md — Tool implementation guide
-- docs/contributing/tool-responses.md — Tool output policy and QA review checklist
+- docs/contributing/tool-responses.md — Conventions every tool result follows (goals and rules: design/mcp-tool-responses.md)
 - docs/testing/overview.md — Testing requirements and snapshot policy
 - docs/contributing/common-patterns.md — Error handling, Zod schemas, shared formatting patterns
 - docs/contributing/error-handling.md — Error types and propagation
@@ -96,13 +97,6 @@ toolkit/
 - docs/integrations/claude-code-plugin.md — Plugin structure and agent prompts
 - docs/integrations/ide-instructions-refactor.md — IDE instruction refactor notes
 
-**MCP specs:**
-
-- docs/specs/README.md — Specs index
-- docs/specs/embedded-agent-openai-routing.md — Embedded agent OpenAI routing spec
-- docs/specs/search-events.md — Search Events spec
-- docs/specs/subpath-constraints.md — Subpath constraints spec
-
 **MCP releases:**
 
 - docs/releases/stdio.md — `@sentry/mcp-server` release and the MCP registry
@@ -121,7 +115,7 @@ pnpm -w run cli --transport stdio "q"      # Test MCP tools
 pnpm -w run cli --transport stdio --access-token=TOKEN "q"
 
 # Quality (run before committing)
-pnpm run tsc && pnpm run lint && pnpm run test
+pnpm run typecheck && pnpm run lint && pnpm run test
 
 # Token overhead
 pnpm run measure-tokens                   # Check tool definition size
@@ -134,7 +128,9 @@ pnpm run --filter @sentry/mcp-core generate-definitions
 
 For MCP tool QA, use the `mcp-qa` skill at `.agents/skills/mcp-qa/SKILL.md`:
 stdio-first local CLI and real agent clients; Cloudflare HTTP or `/mcp` only
-for transport, OAuth, routing, or hosted-server compatibility.
+for transport, OAuth, routing, or hosted-server compatibility. To prove MCP or
+CLI behavior offline, with no Sentry account, use the `verify-toolkit` skill at
+`.agents/skills/verify-toolkit/SKILL.md` and its claim map.
 
 ## Task Management
 
