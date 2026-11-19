@@ -1525,6 +1525,37 @@ function transactionHasAiActivity(payload: Record<string, unknown>): boolean {
   return false;
 }
 
+/** Item types an SDK sends as telemetry, unlike `session` or `client_report`. */
+const TELEMETRY_ITEM_TYPES = new Set([
+  ...ERROR_TYPES,
+  "transaction",
+  "span",
+  "log",
+  "replay_event",
+  "replay_recording",
+  "replay_video",
+]);
+
+/**
+ * Whether an envelope shows the app is set up: it holds an item the active
+ * filters let through, or, with no filters, any telemetry item.
+ */
+export function envelopeHasTelemetry(
+  container: {
+    getParsedEnvelope: () => {
+      envelope: [Record<string, unknown>, [{ type?: string }, unknown][]];
+    } | null;
+  },
+  activeFilters: ReadonlySet<FilterValue>,
+): boolean {
+  const items = container.getParsedEnvelope()?.envelope[1] ?? [];
+  return items.some(([{ type }, payload]) =>
+    activeFilters.size > 0
+      ? isItemIncluded(type, activeFilters, payload as Record<string, unknown>)
+      : TELEMETRY_ITEM_TYPES.has(type ?? ""),
+  );
+}
+
 /**
  * Format a freshly received envelope as NDJSON lines.
  *

@@ -51,6 +51,7 @@ import {
   type FilterValue,
   FORMAT_VALUES,
   createReplayTracker,
+  envelopeHasTelemetry,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   type FormatValue,
@@ -585,7 +586,8 @@ export const runCommand = buildCommand({
       },
       verify: {
         kind: "boolean",
-        brief: "Verify SDK sends events, then exit",
+        brief:
+          "Wait for the app's first event (of the --filter types, if set), then exit",
         default: false,
       },
       timeout: {
@@ -1040,10 +1042,15 @@ async function* runWithVerify(
 
   const spotlightUrl = `${url}/stream`;
 
+  // Only telemetry the active filters show counts: an SDK sends sessions and
+  // client reports even when nothing else reaches Sentry Local.
+  const activeFilters = new Set(flags.filter);
   let subscriptionId: string | undefined;
   const envelopeReceived = new Promise<void>((resolveEnvelope) => {
-    subscriptionId = buffer.subscribe(() => {
-      resolveEnvelope();
+    subscriptionId = buffer.subscribe((container) => {
+      if (envelopeHasTelemetry(container, activeFilters)) {
+        resolveEnvelope();
+      }
     });
   });
 

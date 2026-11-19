@@ -1233,6 +1233,16 @@ const SEND_ONE_EVENT = [
   ].join(" "),
 ];
 
+/** Node `-e` args for an app that posts one envelope per item type, in order. */
+function sendItems(...types: string[]): string[] {
+  return [
+    "-e",
+    `const id = "b".repeat(32);
+const send = (type) => fetch(process.env.SENTRY_SPOTLIGHT, { method: "POST", headers: { "content-type": "application/x-sentry-envelope" }, body: [JSON.stringify({ event_id: id }), JSON.stringify({ type }), JSON.stringify({ event_id: id, type, message: "verify me" })].join(String.fromCharCode(10)) });
+(async () => { for (const type of ${JSON.stringify(types)}) await send(type); setTimeout(() => {}, 30000); })();`,
+  ];
+}
+
 /** Hold `port` on `host`; resolves undefined when something already holds it. */
 async function holdPort(
   port: number,
@@ -1306,6 +1316,51 @@ describe("sentry local run --verify receiver", () => {
       info.mockRestore();
     }
   });
+
+  test.each([
+    { sent: ["session", "client_report"], filter: [] },
+    { sent: ["transaction", "log"], filter: ["error" as const] },
+  ])(
+    "times out when only $sent arrive (filter: $filter)",
+    async ({ sent, filter }) => {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 2, filter },
+          process.execPath,
+          ...sendItems(...sent),
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      expect((error as CliError).message).toContain("Verification timed out");
+      expect((error as CliError).exitCode).toBe(64);
+    },
+  );
+
+  test.each([
+    { sent: ["session", "log"], filter: [] },
+    { sent: ["transaction", "event"], filter: ["error" as const] },
+  ])(
+    "verifies once $sent arrive (filter: $filter)",
+    async ({ sent, filter }) => {
+      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      try {
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        await func.call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 20, filter },
+          process.execPath,
+          ...sendItems(...sent),
+        );
+        expect(info.mock.calls.map((c) => String(c[0]))).toContain(
+          "Setup verified — your app is sending events to Sentry Local",
+        );
+      } finally {
+        info.mockRestore();
+      }
+    },
+  );
 
   test("verifies on a free port when the default port is busy", async () => {
     const busy = makeDefaultPortBusy();
