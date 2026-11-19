@@ -1,9 +1,6 @@
 /** Tail formatters for the local dev server. */
 
-import {
-  classifyEvent,
-  readMessageText,
-} from "../../commands/local/event-kind.js";
+import { describeEvent } from "../../commands/local/event-kind.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -382,15 +379,7 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
     | { values?: ExceptionValue[] }
     | undefined;
   // values is ordered oldest→newest; the last one is what was thrown.
-  const last = exception?.values?.at(-1);
-  const errorType =
-    typeof last?.type === "string" && last.type ? last.type : undefined;
-  const exceptionText =
-    last?.value === undefined || last.value === ""
-      ? undefined
-      : stringifyUnknown(last.value);
-  const messageText =
-    readMessageText(event["logentry"]) ?? readMessageText(event["message"]);
+  const frames = exception?.values?.at(-1)?.stacktrace?.frames;
   const level =
     typeof event["level"] === "string" && event["level"]
       ? event["level"]
@@ -399,17 +388,15 @@ export function summarizeEvent(event: Record<string, unknown>): EventSummary {
     typeof event["logger"] === "string" && event["logger"]
       ? event["logger"]
       : undefined;
-  const frames = last?.stacktrace?.frames;
-
-  const text = errorType ? exceptionText : (messageText ?? exceptionText);
-  if (classifyEvent(event) === "message" && text) {
+  const { kind, errorType, text } = describeEvent(event);
+  if (kind === "message" && text) {
     return { kind: "message", level, text, frames, logger };
   }
   return {
     kind: "error",
     level,
     errorType: errorType ?? "Error",
-    text: text ?? messageText ?? "Unknown error",
+    text: text ?? "Unknown error",
     frames,
     logger,
   };
