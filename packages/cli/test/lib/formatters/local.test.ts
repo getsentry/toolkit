@@ -9,6 +9,7 @@
 import { describe, expect, test } from "vitest";
 import type { FilterValue } from "../../../src/lib/formatters/local.js";
 import {
+  envelopeHasTelemetry,
   extractTraceId,
   formatAttributeTable,
   formatErrorItem,
@@ -1495,5 +1496,70 @@ describe("sentry-python ISO 8601 timestamps", () => {
       Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.497_301,
       6,
     );
+  });
+});
+
+describe("envelopeHasTelemetry", () => {
+  const envelope = (...items: [string, unknown][]) => ({
+    getParsedEnvelope: () => ({
+      envelope: [{}, items.map(([type, payload]) => [{ type }, payload])] as [
+        Record<string, unknown>,
+        [{ type?: string }, unknown][],
+      ],
+    }),
+  });
+  const emptyLogBatch: [string, unknown] = ["log", { items: [] }];
+
+  test.each<{
+    items: [string, unknown][];
+    filters: FilterValue[];
+    counts: boolean;
+  }>([
+    { items: [["session", {}]], filters: [], counts: false },
+    { items: [["sessions", {}]], filters: [], counts: false },
+    { items: [["client_report", {}]], filters: [], counts: false },
+    {
+      items: [
+        ["session", {}],
+        ["client_report", {}],
+      ],
+      filters: [],
+      counts: false,
+    },
+    { items: [["event", {}]], filters: [], counts: true },
+    { items: [["check_in", {}]], filters: [], counts: true },
+    { items: [["feedback", {}]], filters: [], counts: true },
+    { items: [["trace_metric", {}]], filters: [], counts: true },
+    { items: [["profile_chunk", {}]], filters: [], counts: true },
+    {
+      items: [
+        ["session", {}],
+        ["transaction", {}],
+      ],
+      filters: [],
+      counts: true,
+    },
+    { items: [emptyLogBatch], filters: [], counts: true },
+    { items: [emptyLogBatch], filters: ["log"], counts: true },
+    { items: [emptyLogBatch], filters: ["error"], counts: false },
+    { items: [["transaction", {}]], filters: ["error"], counts: false },
+    { items: [["session", {}]], filters: ["error"], counts: false },
+    { items: [["event", {}]], filters: ["error"], counts: true },
+    { items: [["check_in", {}]], filters: ["transaction"], counts: false },
+    { items: [["span", {}]], filters: ["transaction"], counts: true },
+    { items: [["transaction", {}]], filters: ["ai"], counts: false },
+  ])(
+    "$items with filters $filters counts: $counts",
+    ({ items, filters, counts }) => {
+      expect(envelopeHasTelemetry(envelope(...items), new Set(filters))).toBe(
+        counts,
+      );
+    },
+  );
+
+  test("an unparseable envelope does not count", () => {
+    expect(
+      envelopeHasTelemetry({ getParsedEnvelope: () => null }, new Set()),
+    ).toBe(false);
   });
 });
