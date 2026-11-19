@@ -857,6 +857,19 @@ export const restHandlers: HttpHandler[] = buildHandlers([
     path: "/api/0/organizations/sentry-mcp-evals/trace/a4d1aae7216b47ff8117cf4e09ce9d0a/",
     fetch: () => HttpResponse.json(traceFixture),
   },
+  // Span details: recorded attributes, which the trace endpoint omits
+  {
+    method: "get",
+    path: "/api/0/projects/:org/:project/trace-items/:itemId/",
+    fetch: ({ params }) =>
+      HttpResponse.json({
+        itemId: params.itemId,
+        timestamp: "2025-04-22T16:51:03.608875Z",
+        attributes: [],
+        meta: {},
+        links: null,
+      }),
+  },
 
   {
     method: "get",

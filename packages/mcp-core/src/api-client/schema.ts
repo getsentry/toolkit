@@ -1901,6 +1901,32 @@ export const TraceSchema = z.array(
   z.union([TraceSpanSchema, TraceIssueSchema]),
 );
 
+/**
+ * Schema for one trace item from the trace-items details endpoint.
+ *
+ * The trace endpoint only returns a fixed set of span columns, so this is
+ * where a span's recorded attributes come from. Names are the ones search
+ * accepts, such as `http.request.method` or `tags[retry_count,number]`.
+ * Values stay loose: Sentry sends int64 values as strings.
+ *
+ * Upstream source of truth in getsentry/sentry:
+ * - `src/sentry/api/endpoints/project_trace_item_details.py`
+ */
+export const TraceItemDetailsSchema = z
+  .object({
+    itemId: z.string(),
+    attributes: z.array(
+      z
+        .object({
+          name: z.string(),
+          type: z.string(),
+          value: z.unknown(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
 const NullableStringOrNumberSchema = z
   .union([z.string(), z.number()])
   .nullable()

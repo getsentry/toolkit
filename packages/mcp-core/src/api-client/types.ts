@@ -129,6 +129,7 @@ import type {
   TeamListSchema,
   TeamSchema,
   TraceIssueSchema,
+  TraceItemDetailsSchema,
   TraceMetaSchema,
   TraceSchema,
   TraceSpanSchema,
@@ -305,6 +306,7 @@ export type TraceMeta = z.infer<typeof TraceMetaSchema>;
 export type TraceSpan = z.infer<typeof TraceSpanSchema>;
 export type TraceIssue = z.infer<typeof TraceIssueSchema>;
 export type Trace = z.infer<typeof TraceSchema>;
+export type TraceItemDetails = z.infer<typeof TraceItemDetailsSchema>;
 export type AIConversationSpan = z.infer<typeof AIConversationSpanSchema>;
 export type AIConversationSpanList = z.infer<
   typeof AIConversationSpanListSchema

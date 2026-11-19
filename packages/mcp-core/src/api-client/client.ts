@@ -190,6 +190,7 @@ import {
   TagListSchema,
   TeamListSchema,
   TeamSchema,
+  TraceItemDetailsSchema,
   TraceMetaSchema,
   TraceSchema,
   TransactionProfileResponseSchema,
@@ -268,6 +269,7 @@ import type {
   Team,
   TeamList,
   Trace,
+  TraceItemDetails,
   TraceMeta,
   TransactionProfile,
   LegacySpeedscopeProfile,
@@ -4995,6 +4997,36 @@ export class SentryApiService {
     opts?: RequestOptions,
   ): Promise<Trace> {
     return await getTrace(this.target(opts?.host), params, TraceSchema);
+  }
+
+  /**
+   * Retrieves every recorded attribute of one span from the trace-items
+   * details endpoint. The trace endpoint does not return them.
+   */
+  async getSpanAttributes(
+    {
+      organizationSlug,
+      projectSlug,
+      traceId,
+      spanId,
+    }: {
+      organizationSlug: string;
+      projectSlug: string;
+      traceId: string;
+      spanId: string;
+    },
+    opts?: RequestOptions,
+  ): Promise<TraceItemDetails> {
+    const query = new URLSearchParams({
+      trace_id: traceId,
+      item_type: "spans",
+    });
+    const body = await this.requestJSON(
+      `${apiPath`/projects/${organizationSlug}/${projectSlug}/trace-items/${spanId}/`}?${query}`,
+      undefined,
+      opts,
+    );
+    return TraceItemDetailsSchema.parse(body);
   }
 
   /**
