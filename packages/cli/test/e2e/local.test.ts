@@ -93,7 +93,7 @@ async function ingest(session: Session, eventId: string, message: string) {
     headers: { "Content-Type": "application/x-sentry-envelope" },
     body: `${JSON.stringify({ event_id: eventId })}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, message })}`,
   });
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 afterEach(async () => {
@@ -698,7 +698,7 @@ describe("Local daemon E2E", () => {
           .map((value) => JSON.stringify(value))
           .join("\n"),
       });
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
     }
     const listed = await cli("event", "list", session.id);
     expect(listed.exitCode, listed.stderr).toBe(0);
@@ -752,7 +752,7 @@ describe("Local daemon E2E", () => {
       if (url !== process.env.VITE_SENTRY_SPOTLIGHT) process.exit(2);
       fetch(url, {method:'POST', headers:{'Content-Type':'application/x-sentry-envelope'},
       body:'{"event_id":"${"c".repeat(32)}"}\\n{"type":"event"}\\n{"message":"wrapped app"}'})
-      .then(r => {if (r.status !== 204) process.exitCode=3; console.error('app completed');})
+      .then(async r => {const b = await r.json(); if (r.status !== 200 || b.id !== '${"c".repeat(32)}') process.exitCode=3; console.error('app completed');})
       .catch(() => {process.exitCode=4;});`,
     );
     const result = await runCli(

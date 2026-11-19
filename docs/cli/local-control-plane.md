@@ -385,9 +385,11 @@ segments, like the tail's `[N spans]`: the transaction or segment span itself an
 sampled function rows are not counted.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
-Invalid compression returns 400, and so does a body that is empty or whose first
-line is not a JSON object; like Relay, the receiver keeps nothing for those.
-Oversized bodies get 413, unsupported media or
+Accepted envelopes get 200 with `{"id":"<event_id>"}`, or `{}` when the header
+has no event ID, as Relay answers; sentry-elixir retries anything else.
+A body that is empty, whose first line is not a JSON object, or that fails to
+decompress gets 400 with an `{"error":"…"}` reason, and the receiver keeps
+nothing for it. Oversized bodies get 413, unsupported media or
 encoding 415, and temporary admission overload 503. SDKs drop an envelope that
 gets 413 without retrying, so `local run` and `local serve` print a warning in
 their tail when that happens, at most one line every five seconds. Drops in
