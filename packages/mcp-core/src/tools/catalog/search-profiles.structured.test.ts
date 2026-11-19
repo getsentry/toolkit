@@ -179,7 +179,7 @@ describe("search_profiles structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/profiling/?query=transaction%3A%2Fapi%2Fusers&sort=-timestamp&field=project&field=profile.id&field=profiler.id&field=thread.id&field=timestamp&field=transaction&field=transaction.duration&field=release&field=environment&field=trace&field=precise.start_ts&field=precise.finish_ts&statsPeriod=24h",
+        "url": "https://test-org.sentry.io/explore/profiling/?query=transaction%3A%2Fapi%2Fusers&project=-1&sort=-timestamp&field=project&field=profile.id&field=profiler.id&field=thread.id&field=timestamp&field=transaction&field=transaction.duration&field=release&field=environment&field=trace&field=precise.start_ts&field=precise.finish_ts&statsPeriod=24h",
       }
     `);
   });
