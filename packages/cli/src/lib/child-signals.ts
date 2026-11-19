@@ -1,9 +1,9 @@
 /**
- * Tell whether a Ctrl-C in the terminal already reached a child process, so
- * a command that wraps it (`sentry local run`) does not send it again.
+ * Signal the app that a command such as `sentry local run` wraps, and tell
+ * whether a Ctrl-C in the terminal already reached it, so it is not sent twice.
  */
 
-import { execFileSync } from "node:child_process";
+import { type ChildProcess, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { logger } from "./logger.js";
 
@@ -66,5 +66,56 @@ export function terminalSignalsProcess(
   } catch (error) {
     log.debug(`Could not read the process group of ${pid}`, error);
     return false;
+  }
+}
+
+/**
+ * Whether to start the wrapped app in its own process group.
+ *
+ * Outside a terminal's foreground group (agents, CI, `--verify` under a tool)
+ * nothing signals the app's helpers for us, and a wrapper such as `go run`
+ * ignores SIGINT, so signalling only the wrapper leaves the real app running.
+ * Its own group lets the CLI signal the whole tree it started. In a terminal
+ * the app stays in the foreground group, so Ctrl-C still reaches it once.
+ * Windows has no process groups.
+ */
+export function startsOwnProcessGroup(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform !== "win32" && !terminalSignalsProcess(process.pid, platform);
+}
+
+/**
+ * Send `signal` to the app: to its whole process group when it has its own
+ * (the group id is the app's pid), otherwise to the app process only.
+ */
+export function signalApp(
+  child: ChildProcess,
+  signal: NodeJS.Signals,
+  ownGroup: boolean,
+): void {
+  const pid = child.pid;
+  if (!ownGroup || pid === undefined || pid <= 1) {
+    child.kill(signal);
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    log.debug(`Could not send ${signal} to process group ${pid}`, error);
+  }
+}
+
+/** Whether any process is left in the app's own process group `pid`. */
+export function appIsRunning(pid: number): boolean {
+  if (pid <= 1) {
+    return false;
+  }
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the group exists but belongs to someone else.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
