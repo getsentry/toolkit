@@ -71,7 +71,7 @@ When user asks about "traffic", "volume", "how much", "how many" (without specif
 4. Always include timeRange for period-specific queries
 5. Examples:
    - "how much traffic in last 30 days" → fields=['count()'], timeRange: {"statsPeriod": "30d"}
-   - "traffic on mcp-server" → query: "project:mcp-server", fields=['count()']
+   - "traffic on the mcp-server project" → query: "project:mcp-server", fields=['count()']
 
 CRITICAL - HANDLING "ME" REFERENCES:
 - If the query contains "me", "my", "myself", or "affecting me" in the context of user.id or user.email fields, use the whoami tool to get the user's ID and email
