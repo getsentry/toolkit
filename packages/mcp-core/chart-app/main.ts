@@ -100,6 +100,17 @@ function stat(label: string, value: string): HTMLElement {
   return item;
 }
 
+// Self-hosted Sentry can serve plain http, including localhost.
+function isWebUrl(url: string | undefined): url is string {
+  if (!url) return false;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function render(): void {
   const chart = view.kind === "waiting" ? null : view.chart;
   const busy = pendingRange !== null;
@@ -112,7 +123,7 @@ function render(): void {
       String((pendingRange ?? chart?.timeRange.statsPeriod) === range),
     );
   }
-  openButton.disabled = !chart?.url.startsWith("https://");
+  openButton.disabled = !isWebUrl(chart?.url);
 
   if (view.kind === "error") {
     state.hidden = false;
@@ -265,7 +276,7 @@ function applyHostContext(context: McpUiHostContext | undefined): void {
 
 openButton.addEventListener("click", () => {
   const chart = view.kind === "waiting" ? null : view.chart;
-  if (chart?.url.startsWith("https://")) void app.openLink({ url: chart.url });
+  if (chart && isWebUrl(chart.url)) void app.openLink({ url: chart.url });
 });
 
 app.ontoolinput = (params) => {
@@ -279,8 +290,9 @@ app.ontoolcancelled = () => {
   view = {
     kind: "error",
     message: "The chart request was cancelled.",
-    chart: null,
+    chart: view.kind === "waiting" ? null : view.chart,
   };
+  pendingRange = null;
   render();
 };
 app.onhostcontextchanged = applyHostContext;

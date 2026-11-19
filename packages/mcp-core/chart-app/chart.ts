@@ -122,7 +122,8 @@ export function drawChart(
   const step = max > 0 ? niceStep(max, 4) : 1;
   const top = Math.max(step, Math.ceil(max / step) * step);
   const x = (time: number) =>
-    MARGIN.left + (times.length > 1 ? ((time - first) / span) * plotWidth : 0);
+    MARGIN.left +
+    (times.length > 1 ? ((time - first) / span) * plotWidth : plotWidth / 2);
   const y = (value: number) =>
     MARGIN.top + plotHeight - (value / top) * plotHeight;
 
@@ -237,6 +238,10 @@ export function drawChart(
       { d: path(settled), fill: "none", stroke: color, "stroke-width": 2 },
       root,
     );
+    if (points.length === 1) {
+      const [px, py] = points[0] ?? [0, 0];
+      svg("circle", { cx: px, cy: py, r: 4, fill: color }, root);
+    }
     if (filling.length > 1) {
       svg(
         "path",
