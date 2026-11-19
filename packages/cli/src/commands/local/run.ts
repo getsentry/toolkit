@@ -742,10 +742,19 @@ export const runCommand = buildCommand({
       interruptState.interrupted = true;
       signalApp(child, "SIGTERM", ownGroup);
     };
+    const onSighup = () => {
+      interruptState.interrupted = true;
+      signalApp(child, "SIGHUP", ownGroup);
+    };
     // `on`, not `once`: a second signal must reach the app too, not kill the
     // CLI and leave the app running.
     process.on("SIGINT", onSigint);
     process.on("SIGTERM", onSigterm);
+    // In its own group the app no longer gets the hangup sent to the CLI's
+    // group or session, so pass it on.
+    if (ownGroup) {
+      process.on("SIGHUP", onSighup);
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
@@ -788,6 +797,7 @@ export const runCommand = buildCommand({
       interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
@@ -1068,8 +1078,17 @@ async function* runWithVerify(
     signalState.current = "SIGTERM";
     signalApp(child, "SIGTERM", ownGroup);
   };
+  const onSighup = () => {
+    signalState.current = "SIGHUP";
+    signalApp(child, "SIGHUP", ownGroup);
+  };
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
+  // In its own group the app no longer gets the hangup sent to the CLI's
+  // group or session, so pass it on.
+  if (ownGroup) {
+    process.on("SIGHUP", onSighup);
+  }
 
   // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
   // a negative errno code, which is not a real exit code of the app.
@@ -1131,6 +1150,7 @@ async function* runWithVerify(
     interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
     await shutdownServer(server);
   }
 

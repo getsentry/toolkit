@@ -532,14 +532,14 @@ setInterval(() => {}, 1000);
       const spy = vi
         .spyOn(process, "on")
         .mockImplementation((event, listener) => {
-          if (event === "SIGINT" || event === "SIGTERM") {
+          if (event === "SIGINT" || event === "SIGTERM" || event === "SIGHUP") {
             handlers.set(event, listener as () => void);
             return process;
           }
           return on(event, listener);
         });
       return {
-        send(signal: "SIGINT" | "SIGTERM") {
+        send(signal: "SIGINT" | "SIGTERM" | "SIGHUP") {
           const handler = handlers.get(signal);
           if (!handler) {
             throw new Error(`run installed no ${signal} handler`);
@@ -794,6 +794,57 @@ app.on("exit", (code, signal) => process.exit(signal ? 1 : (code ?? 1)));
         },
         30_000,
       );
+
+      test("passes a hangup on to the app's group", async () => {
+        // Without a terminal, a supervisor's hangup to the CLI's group no
+        // longer reaches the app in its own group.
+        const { wrapper, appPidFile } = await wrappedApp();
+        const ctx = { ...makeContext(), process: { exitCode: undefined } };
+        const func = (await runCommand.loader()) as unknown as RunFunc;
+        const run = func.call(
+          ctx,
+          { port: 0, host: "127.0.0.1", verify: false, timeout: 0 },
+          process.execPath,
+          wrapper,
+        );
+        const pid = await appPid(appPidFile);
+        signals.send("SIGHUP");
+        await expect(run).resolves.toBeUndefined();
+        expect(isRunning(pid)).toBe(false);
+      }, 30_000);
+
+      test("--verify passes a hangup on to the app's group, then exits from it", async () => {
+        const { wrapper, appPidFile } = await wrappedApp();
+        // --verify re-raises the signal on itself once the app is gone; keep
+        // that one from reaching the test worker.
+        const kill = process.kill.bind(process);
+        const selfSignals: (string | number | undefined)[] = [];
+        const killSpy = vi
+          .spyOn(process, "kill")
+          .mockImplementation((target, signal) => {
+            if (target === process.pid) {
+              selfSignals.push(signal);
+              return true;
+            }
+            return kill(target, signal);
+          });
+        try {
+          const func = (await runCommand.loader()) as unknown as RunFunc;
+          const run = func.call(
+            makeContext(),
+            { port: 0, host: "127.0.0.1", verify: true, timeout: 20 },
+            process.execPath,
+            wrapper,
+          );
+          const pid = await appPid(appPidFile);
+          signals.send("SIGHUP");
+          await expect(run).resolves.toBeUndefined();
+          expect(isRunning(pid)).toBe(false);
+          expect(selfSignals).toEqual(["SIGHUP"]);
+        } finally {
+          killSpy.mockRestore();
+        }
+      }, 30_000);
 
       test("keeps its signal handlers until the leftover app is stopped", async () => {
         // A wrapper that exits on SIGINT, and an app that ignores SIGINT and
