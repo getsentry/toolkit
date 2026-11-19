@@ -39,7 +39,7 @@ export interface ReplayTimelineEvent {
   /** Present on dead, rage, and slow clicks and on failed requests. */
   problem?: "dead click" | "rage click" | "slow click" | "failed request";
   /** Identifies the clicked node, for deduplication. */
-  nodeId?: number;
+  nodeId?: number | undefined;
   /** Set on `navigation` breadcrumbs, which can duplicate navigation spans. */
   fromBreadcrumb?: boolean;
 }
@@ -111,23 +111,23 @@ export class ReplayTimelineBuilder {
 
 function parseRecordingEvent(rawEvent: unknown): ReplayTimelineEvent | null {
   const event = asRecord(rawEvent);
-  const data = asRecord(event?.data);
-  const payload = asRecord(data?.payload);
+  const data = asRecord(event?.["data"]);
+  const payload = asRecord(data?.["payload"]);
   if (!event || !data || !payload) {
     return null;
   }
 
-  const eventTimestampMs = asNumber(event.timestamp);
-  if (data.tag === "breadcrumb") {
+  const eventTimestampMs = asNumber(event["timestamp"]);
+  if (data["tag"] === "breadcrumb") {
     return parseBreadcrumb(
       payload,
-      secondsToMs(asNumber(payload.timestamp)) ?? eventTimestampMs,
+      secondsToMs(asNumber(payload["timestamp"])) ?? eventTimestampMs,
     );
   }
-  if (data.tag === "performanceSpan") {
+  if (data["tag"] === "performanceSpan") {
     return parseSpan(
       payload,
-      secondsToMs(asNumber(payload.startTimestamp)) ?? eventTimestampMs,
+      secondsToMs(asNumber(payload["startTimestamp"])) ?? eventTimestampMs,
     );
   }
   return null;
@@ -137,7 +137,7 @@ function parseBreadcrumb(
   payload: UnknownRecord,
   timestampMs: number | null,
 ): ReplayTimelineEvent | null {
-  const category = asString(payload.category);
+  const category = asString(payload["category"]);
   if (timestampMs === null || !category) {
     return null;
   }
@@ -150,8 +150,8 @@ function parseBreadcrumb(
     return null;
   }
 
-  const data = asRecord(payload.data);
-  const message = truncate(asString(payload.message));
+  const data = asRecord(payload["data"]);
+  const message = truncate(asString(payload["message"]));
   const base = { timestampMs, details: [] as ReplayTimelineDetail[] };
 
   switch (category) {
@@ -164,12 +164,12 @@ function parseBreadcrumb(
         target: message,
         details: nodeTextDetails(data),
         notable: true,
-        nodeId: asNumber(data?.nodeId) ?? undefined,
+        nodeId: asNumber(data?.["nodeId"]) ?? undefined,
       };
     case "ui.slowClickDetected":
       return parseSlowClick(base, message, data);
     case "ui.multiClick": {
-      const clickCount = asNumber(data?.clickCount) ?? 0;
+      const clickCount = asNumber(data?.["clickCount"]) ?? 0;
       if (clickCount < RAGE_CLICK_COUNT) {
         return null;
       }
@@ -209,7 +209,7 @@ function parseBreadcrumb(
       };
     }
     case "navigation": {
-      const to = truncate(asString(data?.to));
+      const to = truncate(asString(data?.["to"]));
       if (!to) {
         return null;
       }
@@ -223,10 +223,10 @@ function parseBreadcrumb(
       };
     }
     case "console": {
-      if (data?.logger === "replay" || message === null) {
+      if (data?.["logger"] === "replay" || message === null) {
         return null;
       }
-      const level = asString(payload.level) ?? "log";
+      const level = asString(payload["level"]) ?? "log";
       return {
         ...base,
         category: "console",
@@ -240,7 +240,7 @@ function parseBreadcrumb(
         ...base,
         category: "other",
         label: "user feedback",
-        target: asString(data?.feedbackId),
+        target: asString(data?.["feedbackId"]),
         notable: true,
       };
     case "replay.hydrate-error":
@@ -248,11 +248,11 @@ function parseBreadcrumb(
         ...base,
         category: "other",
         label: "hydration error",
-        target: truncate(asString(data?.url)),
+        target: truncate(asString(data?.["url"])),
         notable: true,
       };
     case "replay.mutations": {
-      const count = asNumber(data?.count);
+      const count = asNumber(data?.["count"]);
       return {
         ...base,
         category: "other",
@@ -284,11 +284,11 @@ function parseSlowClick(
   message: string | null,
   data: UnknownRecord | null,
 ): ReplayTimelineEvent {
-  const node = asRecord(data?.node);
-  const tagName = asString(node?.tagName)?.toLowerCase() ?? "";
-  const endReason = asString(data?.endReason);
-  const timeAfterClickMs = asNumber(data?.timeAfterClickMs);
-  const clickCount = asNumber(data?.clickCount);
+  const node = asRecord(data?.["node"]);
+  const tagName = asString(node?.["tagName"])?.toLowerCase() ?? "";
+  const endReason = asString(data?.["endReason"]);
+  const timeAfterClickMs = asNumber(data?.["timeAfterClickMs"]);
+  const clickCount = asNumber(data?.["clickCount"]);
   // Same rule as isDeadClick in Sentry: an interactive element that produced
   // no DOM change before the SDK gave up waiting.
   const isDead = DEAD_CLICK_TAGS.has(tagName) && endReason === "timeout";
@@ -317,7 +317,7 @@ function parseSlowClick(
     details,
     notable: true,
     problem: label,
-    nodeId: asNumber(data?.nodeId) ?? undefined,
+    nodeId: asNumber(data?.["nodeId"]) ?? undefined,
   };
 }
 
@@ -325,12 +325,12 @@ function parseSpan(
   payload: UnknownRecord,
   timestampMs: number | null,
 ): ReplayTimelineEvent | null {
-  const op = asString(payload.op);
+  const op = asString(payload["op"]);
   if (timestampMs === null || !op) {
     return null;
   }
 
-  const description = truncate(asString(payload.description));
+  const description = truncate(asString(payload["description"]));
   const navigationLabel = NAVIGATION_SPAN_LABELS[op];
   if (navigationLabel) {
     return {
@@ -347,10 +347,10 @@ function parseSpan(
     return null;
   }
 
-  const data = asRecord(payload.data);
-  const method = asString(data?.method);
-  const statusCode = asNumber(data?.statusCode);
-  const endTimestampMs = secondsToMs(asNumber(payload.endTimestamp));
+  const data = asRecord(payload["data"]);
+  const method = asString(data?.["method"]);
+  const statusCode = asNumber(data?.["statusCode"]);
+  const endTimestampMs = secondsToMs(asNumber(payload["endTimestamp"]));
   const details: ReplayTimelineDetail[] = [];
   if (statusCode !== null) {
     details.push({ label: "status", value: String(statusCode) });
@@ -416,21 +416,21 @@ function removeDuplicateNavigations(
 }
 
 function nodeTextDetails(data: UnknownRecord | null): ReplayTimelineDetail[] {
-  const node = asRecord(data?.node);
-  const textContent = truncate(asString(node?.textContent));
+  const node = asRecord(data?.["node"]);
+  const textContent = truncate(asString(node?.["textContent"]));
   return textContent ? [{ label: "text", value: textContent }] : [];
 }
 
 function formatKey(data: UnknownRecord | null): string | null {
-  const key = data?.key === " " ? "Space" : asString(data?.key);
+  const key = data?.["key"] === " " ? "Space" : asString(data?.["key"]);
   if (!key) {
     return null;
   }
   const modifiers = [
-    { pressed: data?.ctrlKey, key: "Control", label: "Ctrl" },
-    { pressed: data?.metaKey, key: "Meta", label: "Meta" },
-    { pressed: data?.altKey, key: "Alt", label: "Alt" },
-    { pressed: data?.shiftKey, key: "Shift", label: "Shift" },
+    { pressed: data?.["ctrlKey"], key: "Control", label: "Ctrl" },
+    { pressed: data?.["metaKey"], key: "Meta", label: "Meta" },
+    { pressed: data?.["altKey"], key: "Alt", label: "Alt" },
+    { pressed: data?.["shiftKey"], key: "Shift", label: "Shift" },
   ]
     // A modifier pressed on its own reports itself as both key and modifier.
     .filter((modifier) => modifier.pressed === true && modifier.key !== key)

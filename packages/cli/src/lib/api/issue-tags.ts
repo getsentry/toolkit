@@ -7,6 +7,7 @@ import {
   getOrganizationIssueTag,
 } from "@sentry/api";
 import { getOrgSdkConfig, unwrapResult } from "./infrastructure.js";
+import { omitUndefined } from "../omit-undefined.js";
 
 /**
  * Retrieve a tag's aggregate counts and top values for one issue.
@@ -30,9 +31,9 @@ export async function getIssueTag(
       issue_id: issueId,
       key,
     },
-    query: {
+    query: omitUndefined({
       environment: environment === undefined ? undefined : [environment],
-    },
+    }),
   });
 
   return unwrapResult<GetOrganizationIssueTagResponse>(

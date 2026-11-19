@@ -1,11 +1,28 @@
 import { describe, expect, test } from "vitest";
 import { summarizeEnvelope } from "../../../src/commands/local/event-summary.js";
+import { goPanicEvent } from "../../fixtures/local-sdk-events.js";
 
 describe("summarizeEnvelope", () => {
+  test("summarizes a sentry-go event with a plain exception list", () => {
+    expect(
+      summarizeEnvelope({
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope", sdk: goPanicEvent.sdk },
+          [[{ type: "event" }, goPanicEvent]],
+        ],
+      }),
+    ).toMatchObject({
+      title: "*errors.errorString: order 7 not found",
+    });
+  });
+
   test("cuts a long title so list entries stay small", () => {
     const body = `SELECT ${"column, ".repeat(100)}id FROM orders`;
     const { title } = summarizeEnvelope({
-      envelope: [{}, [[{ type: "log" }, { items: [{ level: "info", body }] }]]],
+      envelope: [
+        { __spotlight_envelope_id: "test-envelope" },
+        [[{ type: "log" }, { items: [{ level: "info", body }] }]],
+      ],
     });
     expect(title).toHaveLength(200);
     expect(title?.endsWith("…")).toBe(true);
@@ -17,7 +34,7 @@ describe("summarizeEnvelope", () => {
     expect(
       summarizeEnvelope({
         envelope: [
-          {},
+          { __spotlight_envelope_id: "test-envelope" },
           [[{ type: "log" }, { items: [{ level: "info", body }] }]],
         ],
       }).title,
@@ -28,7 +45,10 @@ describe("summarizeEnvelope", () => {
     const message = "x".repeat(200);
     expect(
       summarizeEnvelope({
-        envelope: [{}, [[{ type: "event" }, { message }]]],
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope" },
+          [[{ type: "event" }, { message }]],
+        ],
       }).title,
     ).toBe(message);
   });
@@ -37,7 +57,7 @@ describe("summarizeEnvelope", () => {
     expect(
       summarizeEnvelope({
         envelope: [
-          {},
+          { __spotlight_envelope_id: "test-envelope" },
           [
             [
               { type: "span" },
@@ -65,7 +85,7 @@ describe("summarizeEnvelope", () => {
     expect(
       summarizeEnvelope({
         envelope: [
-          {},
+          { __spotlight_envelope_id: "test-envelope" },
           [
             [
               { type: "span" },
@@ -84,7 +104,12 @@ describe("summarizeEnvelope", () => {
 
   /** Summary of one envelope whose only item has this type and payload. */
   const summarize = (type: string, payload: Record<string, unknown>) =>
-    summarizeEnvelope({ envelope: [{}, [[{ type }, payload]]] });
+    summarizeEnvelope({
+      envelope: [
+        { __spotlight_envelope_id: "test-envelope" },
+        [[{ type }, payload]],
+      ],
+    });
 
   test("titles an Express span batch from its segment root, not a middleware span", () => {
     // @sentry/node with span streaming: the middleware spans end, and are
@@ -162,6 +187,17 @@ describe("summarizeEnvelope", () => {
     });
   });
 
+  test("ranks warn and warning logs the same", () => {
+    expect(
+      summarize("log", {
+        items: [
+          { level: "warn", body: "Retrying", timestamp: 1_794_947_106 },
+          { level: "warning", body: "Disk low", timestamp: 1_794_947_107 },
+        ],
+      }).title,
+    ).toBe("Retrying");
+  });
+
   test("titles session aggregates like the viewer", () => {
     expect(
       summarize("sessions", {
@@ -177,7 +213,10 @@ describe("summarizeEnvelope", () => {
   test("reads timestamps the way the tail does", () => {
     const timestampOf = (timestamp: unknown) =>
       summarizeEnvelope({
-        envelope: [{}, [[{ type: "event" }, { message: "hi", timestamp }]]],
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope" },
+          [[{ type: "event" }, { message: "hi", timestamp }]],
+        ],
       }).timestamp;
     // Numeric strings are epoch seconds.
     expect(timestampOf("1794947106.425134")).toBe("2026-11-17T20:25:06.425Z");
@@ -193,7 +232,12 @@ describe("summarizeEnvelope", () => {
 
   test("labels events like the tail", () => {
     const summaryOf = (payload: Record<string, unknown>) =>
-      summarizeEnvelope({ envelope: [{}, [[{ type: "event" }, payload]]] });
+      summarizeEnvelope({
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope" },
+          [[{ type: "event" }, payload]],
+        ],
+      });
     expect(
       summaryOf({
         exception: {

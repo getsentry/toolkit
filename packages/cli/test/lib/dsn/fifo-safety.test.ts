@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { isRegularFile } from "../../../src/lib/dsn/fs-utils.js";
+import type { DetectedDsn } from "../../../src/lib/dsn/types.js";
 import { useTestConfigDir } from "../../helpers.js";
 
 /** Create a FIFO (named pipe) at the given path using mkfifo(1). */
@@ -30,6 +31,14 @@ function createFifo(path: string): void {
 }
 
 const getConfigDir = useTestConfigDir("fifo-safety-");
+
+/** Narrow a raced detection result to the DSN it found. */
+function detected(result: DetectedDsn | null | "timeout"): DetectedDsn {
+  if (result === null || result === "timeout") {
+    throw new Error(`Expected a detected DSN, got ${String(result)}`);
+  }
+  return result;
+}
 
 describe("isRegularFile", () => {
   let testDir: string;
@@ -106,7 +115,7 @@ describe("FIFO: env file detection", () => {
   });
 
   afterEach(() => {
-    delete process.env.SENTRY_DSN;
+    delete process.env["SENTRY_DSN"];
     try {
       rmSync(testDir, { recursive: true, force: true });
     } catch {
@@ -175,7 +184,7 @@ describe("FIFO: env file detection", () => {
 
     expect(result).not.toBe("timeout");
     expect(result).not.toBeNull();
-    expect(result!.raw).toBe("https://key@o1.ingest.sentry.io/111");
+    expect(detected(result).raw).toBe("https://key@o1.ingest.sentry.io/111");
   });
 
   test("findProjectRoot walk-up skips FIFO .env without hanging", async () => {
@@ -223,8 +232,10 @@ describe("FIFO: env file detection", () => {
 
     expect(result).not.toBe("timeout");
     expect(result).not.toBeNull();
-    expect(result!.raw).toBe("https://fallback@o1.ingest.sentry.io/222");
-    expect(result!.source).toBe("env_file");
+    expect(detected(result).raw).toBe(
+      "https://fallback@o1.ingest.sentry.io/222",
+    );
+    expect(detected(result).source).toBe("env_file");
   });
 
   test("detectDsn cache verification skips source file after it becomes a symlinked FIFO", async () => {
@@ -245,7 +256,7 @@ describe("FIFO: env file detection", () => {
     const fifoPath = join(testDir, ".env.fifo");
     createFifo(fifoPath);
     symlinkSync(fifoPath, envPath);
-    process.env.SENTRY_DSN = fallbackDsn;
+    process.env["SENTRY_DSN"] = fallbackDsn;
 
     const result = await Promise.race([
       detectDsn(testDir),
@@ -256,7 +267,7 @@ describe("FIFO: env file detection", () => {
 
     expect(result).not.toBe("timeout");
     expect(result).not.toBeNull();
-    expect(result!.raw).toBe(fallbackDsn);
-    expect(result!.source).toBe("env");
+    expect(detected(result).raw).toBe(fallbackDsn);
+    expect(detected(result).source).toBe("env");
   });
 });

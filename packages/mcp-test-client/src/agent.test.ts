@@ -105,34 +105,34 @@ function captureStdout() {
 }
 
 describe("runAgent", () => {
-  const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-  const originalOpenRouterModel = process.env.OPENROUTER_MODEL;
-  const originalMcpModel = process.env.MCP_MODEL;
+  const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+  const originalOpenRouterModel = process.env["OPENROUTER_MODEL"];
+  const originalMcpModel = process.env["MCP_MODEL"];
 
   beforeEach(() => {
     spanStatuses.length = 0;
-    process.env.OPENROUTER_API_KEY = "sk-or-test";
-    delete process.env.OPENROUTER_MODEL;
-    delete process.env.MCP_MODEL;
+    process.env["OPENROUTER_API_KEY"] = "sk-or-test";
+    delete process.env["OPENROUTER_MODEL"];
+    delete process.env["MCP_MODEL"];
   });
 
   afterEach(() => {
     if (originalOpenRouterApiKey === undefined) {
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env["OPENROUTER_API_KEY"];
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalOpenRouterModel === undefined) {
-      delete process.env.OPENROUTER_MODEL;
+      delete process.env["OPENROUTER_MODEL"];
     } else {
-      process.env.OPENROUTER_MODEL = originalOpenRouterModel;
+      process.env["OPENROUTER_MODEL"] = originalOpenRouterModel;
     }
 
     if (originalMcpModel === undefined) {
-      delete process.env.MCP_MODEL;
+      delete process.env["MCP_MODEL"];
     } else {
-      process.env.MCP_MODEL = originalMcpModel;
+      process.env["MCP_MODEL"] = originalMcpModel;
     }
 
     vi.unstubAllGlobals();

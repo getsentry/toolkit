@@ -1,16 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 
 const seaModule = vi.hoisted(() => ({
-  load: () => {
+  load: (_id: string): unknown => {
     throw new Error("node:sea unavailable");
   },
 }));
 
 vi.mock("node:module", () => ({
-  createRequire:
-    () =>
-    (...args: unknown[]) =>
-      seaModule.load(...args),
+  createRequire: () => (id: string) => seaModule.load(id),
 }));
 
 const { getSeaRawAsset } = await import("../../src/lib/sea-assets.js");

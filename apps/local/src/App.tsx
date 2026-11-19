@@ -84,11 +84,14 @@ import {
   getConnectionPresentation,
   getWorkspaceEmptyState,
   type ConnectionState,
+  pluralize,
 } from "@/lib/presentation.ts";
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
   getStreamUrlFromHash,
+  itemTime,
+  readConnectionLink,
   parseStreamEndpoint,
   isLoopbackHost,
   REMOTE_STREAM_STORAGE_KEY,
@@ -100,7 +103,10 @@ import {
 } from "@/lib/spotlight.ts";
 import { createLocalTelemetryStore } from "@/lib/telemetry-store.ts";
 import { buildTraceGroups, traceIdForItem } from "@/lib/trace-model.ts";
-import { workspaceNavigation } from "@/lib/workspace-navigation.ts";
+import {
+  workspaceNavigation,
+  workspaceNavigationFor,
+} from "@/lib/workspace-navigation.ts";
 import {
   eventListLabel,
   isErrorEvent,
@@ -258,7 +264,7 @@ function EventEntry({
         ) : null}
         {columns.includes("time") ? (
           <time className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-            {formatTimestamp(item.timestamp)}
+            {formatTimestamp(itemTime(item))}
           </time>
         ) : null}
       </button>
@@ -406,9 +412,7 @@ export default function App() {
     workspaceView,
   );
 
-  const activeWorkspace = workspaceNavigation.find(
-    (entry) => entry.id === workspaceView,
-  )!;
+  const activeWorkspace = workspaceNavigationFor(workspaceView);
   const workspaceItems = activeWorkspace.getItems(telemetry);
   const hasRetainedItems = items.length > 0 || telemetry.envelopes.length > 0;
   const retainedItemCount = items.length + telemetry.envelopes.length;
@@ -461,9 +465,7 @@ export default function App() {
   const newItemCount = newItems.length;
 
   const markItemsSeen = (view = workspaceView) => {
-    const viewedItems = workspaceNavigation
-      .find((entry) => entry.id === view)!
-      .getItems(telemetry);
+    const viewedItems = workspaceNavigationFor(view).getItems(telemetry);
     setLastViewedItemIds((itemIds) => ({
       ...itemIds,
       [view]: viewedItems.at(-1)?.id,
@@ -711,18 +713,22 @@ export default function App() {
   });
   useEffect(() => {
     const onHashChange = () => {
+      const link = readConnectionLink(window.location.hash);
+      if (!link.present) return;
       const linkedStreamUrl = getStreamUrlFromHash(window.location.hash);
-      if (!linkedStreamUrl) return;
-      const directory = parseSessionDirectoryUrl(
-        new URLSearchParams(window.location.hash.slice(1)).get("directory"),
-        linkedStreamUrl,
-      );
-      connectToEndpointRef.current(linkedStreamUrl);
-      if (directory) {
-        saveSessionDirectory(directory);
-        setDirectoryUrl(directory);
+      if (linkedStreamUrl) {
+        connectToEndpointRef.current(linkedStreamUrl);
+        const directory = parseSessionDirectoryUrl(
+          link.directory,
+          linkedStreamUrl,
+        );
+        if (directory) {
+          saveSessionDirectory(directory);
+          setDirectoryUrl(directory);
+        }
       }
-      // The link carries capabilities; keep them out of the address bar.
+      // The link carries capabilities, even a refused one; keep them out of
+      // the address bar.
       void navigate(
         { pathname: window.location.pathname, search: window.location.search },
         { replace: true },
@@ -930,17 +936,13 @@ export default function App() {
         // Undecodable envelopes stay inspectable as raw text.
       }
       // Replayed history must keep its receive time, not the time it loaded.
-      const sentAt = items?.[0]?.envelopeHeader?.sent_at;
+      const sentAt = items?.[0]?.envelopeHeader?.["sent_at"];
       const sentAtMs = typeof sentAt === "string" ? Date.parse(sentAt) : NaN;
       const receivedAt =
         envelopeReceivedAt(eventId) ??
         (Number.isNaN(sentAtMs) ? Date.now() : sentAtMs);
       // Items with no SDK time, such as replay recordings, show when they arrived.
-      items = items?.map((item) =>
-        item.timestamp === undefined
-          ? { ...item, timestamp: receivedAt / 1000 }
-          : item,
-      );
+      items = items?.map((item) => ({ ...item, receivedAt }));
       const itemTypes = [...new Set(items?.map((item) => item.type))];
       setLatestEventTime((latest) =>
         latest === undefined ? receivedAt : Math.max(latest, receivedAt),
@@ -1089,6 +1091,7 @@ export default function App() {
           <DialogFooter>
             <Button
               variant="outline"
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- focus Cancel when the destructive confirmation dialog opens.
               autoFocus
               onClick={() => setIsDeleteConfirmationOpen(false)}
             >
@@ -1337,7 +1340,8 @@ export default function App() {
                     new URL(currentEndpoint.url).pathname === "/stream",
                   )}
                   sessionPicker={
-                    activeDirectoryUrl && !isDisconnected ? (
+                    // showConnectionLanding is false here, so the receiver is connected.
+                    activeDirectoryUrl ? (
                       <SessionSwitcher
                         key={activeDirectoryUrl}
                         refreshKey={closedSessionUrl}
@@ -1504,9 +1508,10 @@ export default function App() {
                               {activeWorkspace.label}
                             </h1>
                             <span className="text-xs tabular-nums text-muted-foreground">
-                              {searchedItems.length}{" "}
-                              {activeWorkspace.singularLabel}
-                              {searchedItems.length === 1 ? "" : "s"}
+                              {pluralize(
+                                searchedItems.length,
+                                activeWorkspace.singularLabel,
+                              )}
                             </span>
                           </div>
                           {newItemCount > 0 ? (
@@ -1520,9 +1525,11 @@ export default function App() {
                                 }
                               }}
                             >
-                              View {newItemCount} new{" "}
-                              {activeWorkspace.singularLabel}
-                              {newItemCount === 1 ? "" : "s"}
+                              View{" "}
+                              {pluralize(
+                                newItemCount,
+                                `new ${activeWorkspace.singularLabel}`,
+                              )}
                             </button>
                           ) : null}
                         </div>

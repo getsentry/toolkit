@@ -76,7 +76,8 @@ const FIXABILITY_TAGS: Record<FixabilityTier, Parameters<typeof colorTag>[0]> =
 
 // Status Formatting
 
-const STATUS_ICONS: Record<IssueStatus, string> = {
+const STATUS_ICONS: Partial<Record<string, string>> &
+  Record<IssueStatus, string> = {
   resolved: colorTag("green", "✓"),
   resolvedInNextRelease: colorTag("green", "✓"),
   unresolved: colorTag("yellow", "●"),
@@ -84,7 +85,8 @@ const STATUS_ICONS: Record<IssueStatus, string> = {
   muted: colorTag("muted", "−"),
 };
 
-const STATUS_LABELS: Record<IssueStatus, string> = {
+const STATUS_LABELS: Partial<Record<string, string>> &
+  Record<IssueStatus, string> = {
   resolved: `${colorTag("green", "✓")} Resolved`,
   resolvedInNextRelease: `${colorTag("green", "✓")} Resolved in Next Release`,
   unresolved: `${colorTag("yellow", "●")} Unresolved`,
@@ -215,16 +217,14 @@ function formatFeaturesMarkdown(features: string[] | undefined): string {
  * Get status icon for an issue status
  */
 export function formatStatusIcon(status: string | undefined): string {
-  return STATUS_ICONS[status as IssueStatus] ?? colorTag("yellow", "●");
+  return STATUS_ICONS[status ?? ""] ?? colorTag("yellow", "●");
 }
 
 /**
  * Get full status label for an issue status
  */
 export function formatStatusLabel(status: string | undefined): string {
-  return (
-    STATUS_LABELS[status as IssueStatus] ?? `${colorTag("yellow", "●")} Unknown`
-  );
+  return STATUS_LABELS[status ?? ""] ?? `${colorTag("yellow", "●")} Unknown`;
 }
 
 // Issue Formatting
@@ -270,9 +270,9 @@ function abbreviateCount(raw: string): string {
  */
 export type FormatShortIdOptions = {
   /** Project slug to determine the prefix for suffix highlighting */
-  projectSlug?: string;
+  projectSlug?: string | undefined;
   /** Project alias (e.g., "e", "w", "o1:d") for multi-project display */
-  projectAlias?: string;
+  projectAlias?: string | undefined;
   /** Whether in multi-project mode (highlights alias chars in short ID) */
   isMultiProject?: boolean;
 };
@@ -830,7 +830,7 @@ function releaseVersion(
 export function formatIssueDetails(issue: SentryIssue): string {
   const lines: string[] = [];
 
-  lines.push(`## ${issue.shortId}: ${text(issue.title ?? "")}`);
+  lines.push(`## ${issue.shortId}: ${text(issue.title)}`);
   lines.push("");
 
   // Key-value details as a table
@@ -869,7 +869,7 @@ export function formatIssueDetails(issue: SentryIssue): string {
   if (issue.project) {
     kvRows.push([
       "Project",
-      `${text(issue.project.name ?? "(unknown)")} (${inlineCode(issue.project.slug ?? "")})`,
+      `${text(issue.project.name)} (${inlineCode(issue.project.slug)})`,
     ]);
   }
 
@@ -1177,15 +1177,15 @@ function buildBreadcrumbsMarkdown(breadcrumbsEntry: BreadcrumbsEntry): string {
     let message = breadcrumb.message ?? "";
     if (!message && breadcrumb.data) {
       const data = breadcrumb.data;
-      if (data.url && data.method) {
-        const status = data.status_code
-          ? ` → ${stringifyUnknown(data.status_code)}`
+      if (data["url"] && data["method"]) {
+        const status = data["status_code"]
+          ? ` → ${stringifyUnknown(data["status_code"])}`
           : "";
-        message = `${stringifyUnknown(data.method)} ${stringifyUnknown(data.url)}${status}`;
-      } else if (data.from && data.to) {
-        message = `${stringifyUnknown(data.from)} → ${stringifyUnknown(data.to)}`;
-      } else if (data.arguments && Array.isArray(data.arguments)) {
-        message = String(data.arguments[0] || "").slice(0, 60);
+        message = `${stringifyUnknown(data["method"])} ${stringifyUnknown(data["url"])}${status}`;
+      } else if (data["from"] && data["to"]) {
+        message = `${stringifyUnknown(data["from"])} → ${stringifyUnknown(data["to"])}`;
+      } else if (data["arguments"] && Array.isArray(data["arguments"])) {
+        message = String(data["arguments"][0] || "").slice(0, 60);
       }
     }
 
@@ -1279,7 +1279,7 @@ function formatSpanSimple(span: TraceSpan, opts: FormatSpanOptions): void {
     line += `  ${plainSafeMuted(`(${prettyMs(durationMs)})`)}`;
   }
 
-  line += `  ${plainSafeMuted(span.span_id ?? "")}`;
+  line += `  ${plainSafeMuted(span.span_id)}`;
 
   lines.push(line);
 
@@ -1473,14 +1473,14 @@ function buildUserMarkdown(event: SentryEvent): string {
   if (user.geo) {
     const geo = user.geo;
     const parts: string[] = [];
-    if (geo.city) {
-      parts.push(geo.city);
+    if (geo["city"]) {
+      parts.push(geo["city"]);
     }
-    if (geo.region && geo.region !== geo.city) {
-      parts.push(geo.region);
+    if (geo["region"] && geo["region"] !== geo["city"]) {
+      parts.push(geo["region"]);
     }
-    if (geo.country_code) {
-      parts.push(`(${geo.country_code})`);
+    if (geo["country_code"]) {
+      parts.push(`(${geo["country_code"]})`);
     }
     if (parts.length > 0) {
       kvRows.push(["Location", parts.join(", ")]);
@@ -1667,7 +1667,7 @@ export function formatOrgDetails(org: SentryOrganization): string {
   kvRows.push(["2FA", org.require2FA ? "Required" : "Not required"]);
   kvRows.push(["Early Adopter", org.isEarlyAdopter ? "Yes" : "No"]);
   // orgRole is returned by the detail API but not yet typed in the SDK
-  const orgRole = (org as Record<string, unknown>).orgRole as
+  const orgRole = (org as Record<string, unknown>)["orgRole"] as
     | string
     | undefined;
   if (orgRole) {
@@ -1749,13 +1749,13 @@ export function formatProjectDetails(
  */
 type UserIdentityInput = {
   /** User ID (from token response) */
-  id?: string;
+  id?: string | undefined;
   /** User ID (from stored UserInfo) */
   userId?: string;
-  email?: string;
-  username?: string;
+  email?: string | undefined;
+  username?: string | undefined;
   /** Display name (different from username) */
-  name?: string;
+  name?: string | undefined;
 };
 
 /**
@@ -1786,9 +1786,9 @@ export function formatUserIdentity(user: UserIdentityInput): string {
 /** Data shape yielded by `whoami` for `sntrys_` org auth tokens. */
 export type OrgTokenIdentity = {
   type: "org-auth-token";
-  organization?: string;
+  organization?: string | undefined;
   url: string;
-  regionUrl?: string;
+  regionUrl?: string | undefined;
 };
 
 /**
@@ -2269,7 +2269,7 @@ export type ProjectDeleteResult = {
   /** Sentry web URL for the project */
   url: string;
   /** When true, nothing was actually deleted — output uses tentative wording */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
 };
 
 /**
@@ -2572,8 +2572,8 @@ export function formatUpgradeResult(data: UpgradeResult): string {
     }
     default: {
       // Exhaustive check — all action types should be handled above
-      const _: never = data.action;
-      lines.push(ACTION_DESCRIPTIONS[_ as UpgradeResult["action"]] ?? "Done");
+      data.action satisfies never;
+      lines.push("Done");
     }
   }
 

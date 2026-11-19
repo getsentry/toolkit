@@ -9,7 +9,6 @@
  * - SENTRY_TEST_REGISTRY_BODY: path to a registry response template; every
  *   `__VERSION__` is replaced by the requested version (or
  *   SENTRY_TEST_LATEST_VERSION for `latest`)
- * - SENTRY_TEST_RELEASES_PAGE_<n>: path to GitHub releases page n (else `[]`)
  * - SENTRY_TEST_GZ_MISSING=1: gzip asset downloads fail
  * - SENTRY_TEST_GZ_FILE / SENTRY_TEST_RAW_FILE: bytes served for downloads
  * Every requested URL is recorded, in order, for `requests` assertions.
@@ -21,8 +20,6 @@ import { join } from "node:path";
 
 export const LATEST_VERSION = "0.47.0";
 const REGISTRY = "https://release-registry.services.sentry.io/apps/sentry";
-const RELEASES_PAGE =
-  "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=";
 
 export function toolkitDownload(version: string, asset: string): string {
   return `https://github.com/getsentry/toolkit/releases/download/cli@${version}/${asset}`;
@@ -54,8 +51,6 @@ export interface InstallScenario {
   /** Value of SENTRY_VERSION, if any. */
   version?: string;
   registry: RegistryResponse;
-  /** GitHub releases pages served during a registry outage. */
-  releases?: { tag_name: string; prerelease: boolean }[][];
   gzMissing?: boolean;
   ok: boolean;
   /** Every URL the installer requests, in order. */
@@ -111,31 +106,30 @@ export function applyScenario(
   const rawFile = join(dir, "served-asset");
   writeFileSync(gzFile, served.gz);
   writeFileSync(rawFile, served.raw);
-  env.SENTRY_TEST_GZ_FILE = gzFile;
-  env.SENTRY_TEST_RAW_FILE = rawFile;
-  env.SENTRY_TEST_LATEST_VERSION = LATEST_VERSION;
-  env.SENTRY_TEST_REGISTRY_STATUS = String(scenario.registry.status);
+  env["SENTRY_TEST_GZ_FILE"] = gzFile;
+  env["SENTRY_TEST_RAW_FILE"] = rawFile;
+  env["SENTRY_TEST_LATEST_VERSION"] = LATEST_VERSION;
+  env["SENTRY_TEST_REGISTRY_STATUS"] = String(scenario.registry.status);
   const body = join(dir, "registry.json");
   writeFileSync(
     body,
     scenario.registry.status === 200
       ? registryTemplate(served, {
-          tamper: scenario.registry.tamper,
-          missing: scenario.registry.missingAsset,
+          ...(scenario.registry.tamper !== undefined && {
+            tamper: scenario.registry.tamper,
+          }),
+          ...(scenario.registry.missingAsset !== undefined && {
+            missing: scenario.registry.missingAsset,
+          }),
         })
       : "",
   );
-  env.SENTRY_TEST_REGISTRY_BODY = body;
-  for (const [index, page] of (scenario.releases ?? []).entries()) {
-    const file = join(dir, `releases-${index + 1}.json`);
-    writeFileSync(file, JSON.stringify(page, null, 2));
-    env[`SENTRY_TEST_RELEASES_PAGE_${index + 1}`] = file;
-  }
+  env["SENTRY_TEST_REGISTRY_BODY"] = body;
   if (scenario.gzMissing) {
-    env.SENTRY_TEST_GZ_MISSING = "1";
+    env["SENTRY_TEST_GZ_MISSING"] = "1";
   }
   if (scenario.version !== undefined) {
-    env.SENTRY_VERSION = scenario.version;
+    env["SENTRY_VERSION"] = scenario.version;
   }
 }
 
@@ -206,25 +200,6 @@ export const INSTALL_SCENARIOS: InstallScenario[] = [
     requests: () => [],
   },
   {
-    name: "falls back to the newest stable Toolkit CLI release when the registry is down",
-    registry: { status: 503 },
-    releases: [
-      [
-        { tag_name: "mcp@1.2.3", prerelease: false },
-        { tag_name: "cli@0.48.0", prerelease: true },
-      ],
-      [{ tag_name: "cli@0.46.0", prerelease: false }],
-    ],
-    ok: true,
-    output: ["Trying GitHub", "not checksum-verified"],
-    requests: (asset) => [
-      `${REGISTRY}/latest`,
-      `${RELEASES_PAGE}1`,
-      `${RELEASES_PAGE}2`,
-      toolkitDownload("0.46.0", `${asset}.gz`),
-    ],
-  },
-  {
     name: "uses the pinned Toolkit release when the registry is down",
     version: "0.46.0",
     registry: { status: 503 },
@@ -236,10 +211,10 @@ export const INSTALL_SCENARIOS: InstallScenario[] = [
     ],
   },
   {
-    name: "stops when neither the registry nor GitHub has a stable release",
+    name: "stops when the registry is down and no version is pinned",
     registry: { status: 503 },
     ok: false,
     output: ["Failed to fetch latest stable version"],
-    requests: () => [`${REGISTRY}/latest`, `${RELEASES_PAGE}1`],
+    requests: () => [`${REGISTRY}/latest`],
   },
 ];

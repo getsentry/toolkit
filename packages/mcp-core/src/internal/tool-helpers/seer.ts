@@ -158,12 +158,12 @@ function lookupKnownKey<K extends string, V>(
 export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
   if (
     !isPlainObject(responseBody) ||
-    !lookupKnownKey(SEER_OUT_OF_CREDITS_CODES, responseBody.code)
+    !lookupKnownKey(SEER_OUT_OF_CREDITS_CODES, responseBody["code"])
   ) {
     return SEER_NO_QUOTA_MESSAGE;
   }
   return (
-    lookupKnownKey(SEER_DENIAL_MESSAGES, responseBody.denialReason) ??
+    lookupKnownKey(SEER_DENIAL_MESSAGES, responseBody["denialReason"]) ??
     SEER_START_OUT_OF_CREDITS_MESSAGE
   );
 }
@@ -177,13 +177,13 @@ export function getSeerSetupRequiredMessage(
 ): string | null {
   if (
     !isPlainObject(responseBody) ||
-    !lookupKnownKey(SEER_SETUP_REQUIRED_CODES, responseBody.code) ||
-    typeof responseBody.detail !== "string"
+    !lookupKnownKey(SEER_SETUP_REQUIRED_CODES, responseBody["code"]) ||
+    typeof responseBody["detail"] !== "string"
   ) {
     return null;
   }
   return [
-    responseBody.detail,
+    responseBody["detail"],
     "",
     "Retrying won't help until someone sets this up in Sentry. Investigate without Seer by reading the issue and its events.",
   ].join("\n");
@@ -334,7 +334,7 @@ export function getOutputForAutofixRun(
   const artifacts = getAutofixArtifacts(autofix);
   let output = "";
 
-  const rootCause = formatRootCauseArtifact(artifacts.root_cause);
+  const rootCause = formatRootCauseArtifact(artifacts["root_cause"]);
   if (rootCause) {
     output += wrapSeerAnalysisOutput({
       output: `## Root Cause Analysis\n\n${rootCause}`,
@@ -345,7 +345,7 @@ export function getOutputForAutofixRun(
     output += "\n";
   }
 
-  const solution = formatSolutionArtifact(artifacts.solution);
+  const solution = formatSolutionArtifact(artifacts["solution"]);
   if (solution) {
     output += wrapSeerAnalysisOutput({
       output: `## Proposed Solution\n\n${solution}`,
@@ -375,8 +375,10 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
   solution: string | null;
 } {
   const artifacts = getAutofixArtifacts(autofix);
-  const rootCause = RootCauseArtifactDataSchema.safeParse(artifacts.root_cause);
-  const solution = SolutionArtifactDataSchema.safeParse(artifacts.solution);
+  const rootCause = RootCauseArtifactDataSchema.safeParse(
+    artifacts["root_cause"],
+  );
+  const solution = SolutionArtifactDataSchema.safeParse(artifacts["solution"]);
   return {
     rootCause:
       (rootCause.success &&
@@ -392,7 +394,7 @@ export function getAutofixArtifactSummaries(autofix: AutofixRun): {
  */
 export function getActiveAutofixTodo(autofix: AutofixRun): string | null {
   for (let i = autofix.blocks.length - 1; i >= 0; i--) {
-    const todos = autofix.blocks[i].todos;
+    const todos = autofix.blocks[i]?.todos;
     if (!todos?.length) {
       continue;
     }

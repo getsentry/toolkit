@@ -314,14 +314,14 @@ test("returning from a sampled function keeps its row shown and focused", () => 
     screen.getByRole("button", { name: /^Show \d+ sampled function/ }),
   );
   const sampled = screen.getAllByRole("button", { name: "Inspect span work" });
-  const id = sampled[0]!.dataset.spanId;
+  const id = sampled[0]!.dataset["spanId"];
   fireEvent.click(sampled[0]!);
   fireEvent.click(screen.getByRole("button", { name: "Back to trace" }));
-  expect((document.activeElement as HTMLElement | null)?.dataset.spanId).toBe(
-    id,
-  );
+  expect(
+    (document.activeElement as HTMLElement | null)?.dataset["spanId"],
+  ).toBe(id);
   fireEvent.click(
-    screen.getByRole("button", { name: "Hide sampled functions" }),
+    screen.getByRole("button", { name: /^Hide sampled functions/ }),
   );
   expect(
     screen.queryAllByRole("button", { name: "Inspect span work" }),

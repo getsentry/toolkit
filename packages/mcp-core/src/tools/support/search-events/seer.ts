@@ -9,6 +9,7 @@ import {
   type SearchAgentQuerySchema,
 } from "../../../api-client/index";
 import { sleep } from "../../../internal/fetch-utils";
+import { omitUndefined } from "../../../internal/type-guards";
 import { logWarn } from "../../../telem/logging";
 import {
   type EventsApiDataset,
@@ -58,7 +59,7 @@ export interface SeerSearchTranslation {
   suggestedProjectIds: number[];
   explanation: string;
   // Correctness warnings must be shown even when explanations are disabled.
-  warning?: string;
+  warning?: string | undefined;
   // Identifies the run in the assisted query outcome metric.
   runId: string;
   mode: ExploreMode;
@@ -209,11 +210,11 @@ function toSearchTranslation(
   }
 
   // Filters on other events in the same trace, only returned for spans.
-  const crossEventQueries: CrossEventQueries = {
+  const crossEventQueries: CrossEventQueries = omitUndefined({
     spanQuery: result.span_query || undefined,
     logQuery: result.log_query || undefined,
     metricQuery: result.metric_query || undefined,
-  };
+  });
   const crossEventFilters = [
     ["spans", crossEventQueries.spanQuery],
     ["logs", crossEventQueries.logQuery],
@@ -276,7 +277,7 @@ async function runSearchAgent({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
   strategy: SearchAgentStrategy;
   query: string;
   // A strategy-specific flag that Sentry also checks before starting the run.
@@ -359,7 +360,7 @@ export async function translateWithSeer({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
   dataset: SeerSearchDataset;
   query: string;
 }): Promise<SeerSearchTranslation | null> {
@@ -406,7 +407,7 @@ export async function translateIssuesWithSeer({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
   query: string;
 }): Promise<SeerIssueSearchTranslation | null> {
   const run = await runSearchAgent({

@@ -85,9 +85,9 @@ const honoRequestSpans = [
 ];
 
 function tailLines(items: unknown[], showAttributes = false): string[] {
-  return formatItem("span", { items }, honoHeader, "span", showAttributes).map(
-    (line) => stripAnsi(line),
-  );
+  return formatItem("span", { items }, honoHeader, "span", {
+    showAttributes,
+  }).map((line) => stripAnsi(line));
 }
 
 describe("streamed span batches", () => {

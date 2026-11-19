@@ -365,13 +365,14 @@ test("logging events show their message and key event fields in Overview", () =>
     screen.getByTestId("event-detail").querySelector("header")?.textContent,
   ).toContain("Message");
   const details = screen.getByRole("table", { name: "Event details" });
-  for (const [label, value] of [
+  const rows: [string, string][] = [
     ["Message", "Database query failed for orders"],
     ["Level", "error"],
     ["Environment", "production"],
     ["Release", "shop@1.4.2"],
     ["Server", "web-1"],
-  ])
+  ];
+  for (const [label, value] of rows)
     expect(
       within(details).getByRole("rowheader", { name: label }).nextSibling
         ?.textContent,

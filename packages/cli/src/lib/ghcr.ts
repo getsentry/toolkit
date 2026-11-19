@@ -81,13 +81,13 @@ function rethrowExternalAbort(
   externalSignal?: AbortSignal,
 ): void {
   if (externalSignal?.aborted) {
-    throw externalSignal?.reason;
+    throw externalSignal.reason;
   }
 }
 
 type RetryOptions = {
   timeout?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 };
 
 /**
@@ -372,7 +372,7 @@ export async function fetchNightlyManifest(
  * @throws {UpgradeError} When the version annotation is missing
  */
 export function getNightlyVersion(manifest: OciManifest): string {
-  const version = manifest.annotations?.version;
+  const version = manifest.annotations?.["version"];
   if (!version) {
     throw new UpgradeError(
       "network_error",
@@ -489,7 +489,7 @@ export async function downloadNightlyBlob(
     try {
       redirectResponse = await customFetch(redirectUrl, {
         headers: { "User-Agent": getUserAgent() },
-        signal,
+        ...(signal && { signal }),
       });
     } catch (error) {
       rethrowExternalAbort(error, signal);

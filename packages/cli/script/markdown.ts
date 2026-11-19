@@ -14,7 +14,7 @@ export type MarkdownHeading = { depth: number; text: string };
 export function markdownHeadings(md: string): MarkdownHeading[] {
   return marked
     .lexer(md)
-    .filter((token) => token.type === "heading")
+    .filter((token): token is Tokens.Heading => token.type === "heading")
     .map((token) => ({ depth: token.depth, text: token.text }));
 }
 
@@ -64,7 +64,7 @@ export type MarkdownCodeBlock = { code: string; lang: string };
 export function markdownCodeBlocks(md: string): MarkdownCodeBlock[] {
   return marked
     .lexer(md)
-    .filter((token) => token.type === "code")
+    .filter((token): token is Tokens.Code => token.type === "code")
     .map((token) => ({
       code: token.text.trim(),
       lang: (token.lang ?? "").split(" ")[0] ?? "",

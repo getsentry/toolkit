@@ -56,6 +56,7 @@ import {
   validateImageSizes,
 } from "../../lib/snapshots/images.js";
 import { sentry } from "../../lib/app-identity.js";
+import { omitUndefined } from "../../lib/omit-undefined.js";
 
 const log = logger.withTag("snapshots.upload");
 
@@ -182,7 +183,7 @@ function collectVcs(
 async function resolveSelective(
   flags: UploadFlags,
   images: CollectedImage[],
-): Promise<{ selective: boolean; allImageNames?: string[] }> {
+): Promise<{ selective: boolean; allImageNames?: string[] | undefined }> {
   const allImageNames = await resolveAllImageNames(flags);
   const selective = Boolean(flags.selective) || allImageNames !== undefined;
   if (allImageNames) {
@@ -236,7 +237,7 @@ async function uploadImages(
   images: CollectedImage[],
 ): Promise<UploadImagesResult> {
   const { objectstore } = await fetchSnapshotsUploadOptions(org, project);
-  const config: ObjectstoreConfig = objectstore;
+  const config: ObjectstoreConfig = omitUndefined(objectstore);
 
   const findScope = (name: string): string | undefined =>
     config.scopes.find(([key]) => key === name)?.[1];
@@ -288,9 +289,9 @@ async function uploadImages(
 type ManifestOptions = {
   appId: string;
   entries: ManifestImages;
-  diffThreshold?: number;
+  diffThreshold?: number | undefined;
   selective: boolean;
-  allImageNames?: string[];
+  allImageNames?: string[] | undefined;
   vcs: VcsInfo;
 };
 

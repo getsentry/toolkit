@@ -54,12 +54,14 @@ const DOCS_PATH_OVERRIDES: Record<string, string> = {
 interface DocTreeNode {
   path: string;
   slug: string;
-  frontmatter?: {
-    title?: string;
-    fallbackGuide?: string;
-    sidebar_hidden?: boolean;
-  };
-  children?: DocTreeNode[];
+  frontmatter?:
+    | {
+        title?: string | undefined;
+        fallbackGuide?: string | undefined;
+        sidebar_hidden?: boolean | undefined;
+      }
+    | undefined;
+  children?: DocTreeNode[] | undefined;
 }
 
 const DocTreeNodeSchema: z.ZodType<DocTreeNode> = z.lazy(() =>

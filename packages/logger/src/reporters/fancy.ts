@@ -114,31 +114,35 @@ function isEnabled(value: string | undefined): boolean {
  * `[type] [tag] message` lines instead, as they did with consola.
  */
 function useFancyLayout(env: LogEnv): boolean {
-  return !(isEnabled(env.CI) || env.NODE_ENV === "test" || isEnabled(env.TEST));
+  return !(
+    isEnabled(env["CI"]) ||
+    env["NODE_ENV"] === "test" ||
+    isEnabled(env["TEST"])
+  );
 }
 
 /** Whether to write ANSI colors: `NO_COLOR`, then `FORCE_COLOR`, then TTY detection. */
 function useColor(env: LogEnv, stream: LogStream): boolean {
-  if (env.NO_COLOR) {
+  if (env["NO_COLOR"]) {
     return false;
   }
-  if (env.FORCE_COLOR) {
-    return env.FORCE_COLOR !== "0";
+  if (env["FORCE_COLOR"]) {
+    return env["FORCE_COLOR"] !== "0";
   }
-  return Boolean(stream.isTTY) && env.TERM !== "dumb";
+  return Boolean(stream.isTTY) && env["TERM"] !== "dumb";
 }
 
 /** Whether the terminal can draw the Unicode icons. */
 function supportsUnicode(env: LogEnv): boolean {
   if (process.platform !== "win32") {
-    return env.TERM !== "linux";
+    return env["TERM"] !== "linux";
   }
   return (
-    Boolean(env.WT_SESSION) ||
-    env.TERM_PROGRAM === "vscode" ||
-    env.TERM === "xterm-256color" ||
-    env.TERM === "alacritty" ||
-    env.TERMINAL_EMULATOR === "JetBrains-JediTerm"
+    Boolean(env["WT_SESSION"]) ||
+    env["TERM_PROGRAM"] === "vscode" ||
+    env["TERM"] === "xterm-256color" ||
+    env["TERM"] === "alacritty" ||
+    env["TERMINAL_EMULATOR"] === "JetBrains-JediTerm"
   );
 }
 

@@ -131,8 +131,8 @@ describe("search_events", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse("errors"));
     mockValidEventsValidation();
   });
@@ -1742,7 +1742,7 @@ describe("search_events", () => {
       - Time range: Last 14d
 
       **View these results in Sentry**:
-      https://test-org.sentry.io/explore/metrics/?statsPeriod=14d&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22yAxes%22%3A%5B%22count%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22groupBy%22%3A%22transaction%22%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22aggregate%22%7D
+      https://test-org.sentry.io/explore/metrics/?project=-1&statsPeriod=14d&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22yAxes%22%3A%5B%22count%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22groupBy%22%3A%22transaction%22%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22aggregate%22%7D
       Please tell the user this dashboard link is available if they want to open the results in Sentry.
 
       Found 1 aggregate result:
@@ -3219,9 +3219,9 @@ describe("search_events", () => {
   });
 
   it("should search events with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -3555,7 +3555,7 @@ describe("search_events", () => {
       );
 
       expect(requests).toHaveLength(1);
-      return requests[0];
+      return requests[0]!;
     };
 
     it("searches the agent's absolute window inside the period", async () => {
@@ -4059,9 +4059,9 @@ describe("search_events", () => {
   });
 
   it("rejects search immediately when validation fails without an agent provider", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -4149,7 +4149,7 @@ describe("search_events", () => {
     };
 
     beforeEach(() => {
-      process.env.OPENAI_API_KEY = "";
+      process.env["OPENAI_API_KEY"] = "";
     });
 
     it("explains a rejected log timestamp aggregate", async () => {
@@ -4921,9 +4921,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/environments/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json([]);
           },
           { once: true },
@@ -4931,9 +4929,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/events/validate/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json(validEventsValidationResponse);
           },
           { once: true },
@@ -4941,9 +4937,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/events/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json({ data: [] });
           },
           { once: true },
@@ -5022,9 +5016,9 @@ describe("search_events", () => {
         "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
 
       beforeEach(() => {
-        process.env.OPENAI_API_KEY = "";
-        process.env.ANTHROPIC_API_KEY = "";
-        process.env.OPENROUTER_API_KEY = "";
+        process.env["OPENAI_API_KEY"] = "";
+        process.env["ANTHROPIC_API_KEY"] = "";
+        process.env["OPENROUTER_API_KEY"] = "";
         mswServer.use(
           mockOrganization(["mcp-search-events-seer-translate"]),
           http.get(

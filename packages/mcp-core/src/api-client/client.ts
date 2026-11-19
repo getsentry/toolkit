@@ -89,6 +89,7 @@ import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
 import { ConfigurationError } from "../errors";
 import { isFreshRead } from "../internal/fresh-reads";
+import { omitUndefined } from "../internal/type-guards";
 import { logIssue, logWarn } from "../telem/logging";
 import type { ResponseCache, SentryProtocol } from "../types";
 import {
@@ -294,19 +295,19 @@ export type CrossEventQueries = {
 };
 
 type ExplorerAggregateParams = {
-  fields?: string[];
-  aggregateFunctions?: string[];
-  groupByFields?: string[];
+  fields?: string[] | undefined;
+  aggregateFunctions?: string[] | undefined;
+  groupByFields?: string[] | undefined;
 };
 
 type ExplorerUrlParams = ExplorerAggregateParams & {
   organizationSlug: string;
   query: string;
-  projectId?: string;
-  sort?: string;
-  statsPeriod?: string;
-  start?: string;
-  end?: string;
+  projectId?: string | undefined;
+  sort?: string | undefined;
+  statsPeriod?: string | undefined;
+  start?: string | undefined;
+  end?: string | undefined;
 };
 
 function formatWorkflowNameQuery(query: string): string {
@@ -333,7 +334,7 @@ function formatWorkflowNameQuery(query: string): string {
  */
 
 type RequestOptions = {
-  host?: string;
+  host?: string | undefined;
   allowStatuses?: number[];
 };
 
@@ -402,19 +403,13 @@ export type TraceItemType = "spans" | "logs" | "tracemetrics";
 export type TraceItemAttributeType = "string" | "number" | "boolean" | "array";
 export type TraceItemAttributeSourceType = "sentry" | "user";
 
-export type TraceItemAttributeSource = {
-  source_type: TraceItemAttributeSourceType;
-  is_transformed_alias?: boolean;
-};
+export type TraceItemAttributeSource = z.infer<
+  typeof TraceItemAttributeSourceSchema
+>;
 
-export type TraceItemAttributeContext = {
-  isConvention?: boolean;
-  brief?: string;
-  isDeprecated?: boolean;
-  details?: string[];
-  examples?: Array<string | boolean | number>;
-  replacementAttribute?: string;
-};
+export type TraceItemAttributeContext = z.infer<
+  typeof TraceItemAttributeContextSchema
+>;
 
 export type TraceItemAttribute = {
   key: string;
@@ -579,7 +574,7 @@ const TraceItemAttributeSchema = z
       type: attributeType,
       attributeSource,
       ...(secondaryAliases && { secondaryAliases }),
-      context,
+      ...(context && { context }),
     }),
   );
 
@@ -639,7 +634,7 @@ export class SentryApiService {
   protected protocol: SentryProtocol;
   protected apiPrefix: string;
   /** Cancels every request this service sends, such as a tool call's signal. */
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   private readonly core: ApiClientCore;
 
   /**
@@ -669,14 +664,14 @@ export class SentryApiService {
     signal,
   }: {
     accessToken?: string | null;
-    host?: string;
-    protocol?: SentryProtocol;
-    clientId?: string | null;
-    clientName?: string | null;
-    clientFamily?: string | null;
-    utmSource?: string | null;
-    responseCache?: ResponseCache | null;
-    signal?: AbortSignal;
+    host?: string | undefined;
+    protocol?: SentryProtocol | undefined;
+    clientId?: string | null | undefined;
+    clientName?: string | null | undefined;
+    clientFamily?: string | null | undefined;
+    utmSource?: string | null | undefined;
+    responseCache?: ResponseCache | null | undefined;
+    signal?: AbortSignal | undefined;
   }) {
     this.accessToken = accessToken;
     this.clientId = clientId;
@@ -763,7 +758,7 @@ export class SentryApiService {
       if (authorization === null) {
         throw new ConfigurationError("Malformed authentication token");
       }
-      headers.Authorization = authorization;
+      headers["Authorization"] = authorization;
     }
     if (this.clientId) {
       headers["X-Sentry-MCP-Client-Id"] = this.clientId;
@@ -806,11 +801,17 @@ export class SentryApiService {
   private async request(
     path: string,
     options: RequestInit = {},
-    { host, allowStatuses }: { host?: string; allowStatuses?: number[] } = {},
-  ): Promise<Response> {
-    return await this.core.request(this.origin(host), path, options, {
+    {
+      host,
       allowStatuses,
-    });
+    }: { host?: string | undefined; allowStatuses?: number[] } = {},
+  ): Promise<Response> {
+    return await this.core.request(
+      this.origin(host),
+      path,
+      options,
+      omitUndefined({ allowStatuses }),
+    );
   }
 
   /**
@@ -827,7 +828,7 @@ export class SentryApiService {
   private async requestJSON(
     path: string,
     options: RequestInit = {},
-    requestOptions?: { host?: string },
+    requestOptions?: { host?: string | undefined },
   ): Promise<unknown> {
     return await this.core.requestJson(
       this.origin(requestOptions?.host),
@@ -917,12 +918,12 @@ export class SentryApiService {
   getAIConversationsUrl(
     organizationSlug: string,
     options?: {
-      query?: string;
-      project?: string[];
-      environment?: string | string[];
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      query?: string | undefined;
+      project?: string[] | undefined;
+      environment?: string | string[] | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
     },
   ): string {
     return getAIConversationsUrlUtil(
@@ -1072,14 +1073,14 @@ export class SentryApiService {
   private buildDiscoverUrl(params: {
     organizationSlug: string;
     query: string;
-    projectId?: string;
-    fields?: string[];
-    sort?: string;
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
-    aggregateFunctions?: string[];
-    groupByFields?: string[];
+    projectId?: string | undefined;
+    fields?: string[] | undefined;
+    sort?: string | undefined;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
+    aggregateFunctions?: string[] | undefined;
+    groupByFields?: string[] | undefined;
   }): string {
     const {
       organizationSlug,
@@ -1132,8 +1133,9 @@ export class SentryApiService {
     if (isAggregate) {
       urlParams.set("mode", "aggregate");
       // For aggregate queries in Discover, set yAxis to the first aggregate function
-      if (aggregateFunctions && aggregateFunctions.length > 0) {
-        urlParams.set("yAxis", aggregateFunctions[0]);
+      const [firstAggregate] = aggregateFunctions ?? [];
+      if (firstAggregate !== undefined) {
+        urlParams.set("yAxis", firstAggregate);
       }
     } else {
       urlParams.set("yAxis", "count()");
@@ -1205,7 +1207,11 @@ export class SentryApiService {
 
   private appendExplorerTimeParams(
     urlParams: URLSearchParams,
-    params: { statsPeriod?: string; start?: string; end?: string },
+    params: {
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
+    },
   ): void {
     if (params.start && params.end) {
       urlParams.set("start", params.start);
@@ -1463,15 +1469,15 @@ export class SentryApiService {
    * ```
    */
   async listOrganizations(params?: {
-    query?: string;
+    query?: string | undefined;
     limit?: number;
-    cursor?: string | null;
+    cursor?: string | null | undefined;
   }): Promise<{ organizations: OrganizationList; nextCursor: string | null }> {
     // Public SaaS lists across regions on sentry.io; single-tenant instances
     // keep organization discovery on their configured host.
     const { items, nextCursor } = await listOrganizations(
       this.target(this.isPublicSaas() ? "sentry.io" : this.host),
-      params ?? {},
+      omitUndefined(params ?? {}),
       OrganizationListSchema,
     );
     return {
@@ -1515,12 +1521,16 @@ export class SentryApiService {
    */
   async listTeams(
     organizationSlug: string,
-    params?: { query?: string; limit?: number; cursor?: string | null },
+    params?: {
+      query?: string | undefined;
+      limit?: number;
+      cursor?: string | null | undefined;
+    },
     opts?: RequestOptions,
   ): Promise<{ teams: TeamList; nextCursor: string | null }> {
     const { items, nextCursor } = await listTeams(
       this.target(opts?.host),
-      { organizationSlug, ...params },
+      omitUndefined({ organizationSlug, ...params }),
       TeamListSchema,
     );
     return {
@@ -1569,12 +1579,16 @@ export class SentryApiService {
    */
   async listProjects(
     organizationSlug: string,
-    params?: { query?: string; limit?: number; cursor?: string | null },
+    params?: {
+      query?: string | undefined;
+      limit?: number;
+      cursor?: string | null | undefined;
+    },
     opts?: RequestOptions,
   ): Promise<{ projects: ProjectList; nextCursor: string | null }> {
     const { items, nextCursor } = await listProjects(
       this.target(opts?.host),
-      { organizationSlug, ...params },
+      omitUndefined({ organizationSlug, ...params }),
       ProjectListSchema,
     );
     return {
@@ -1592,16 +1606,16 @@ export class SentryApiService {
       cursor,
     }: {
       organizationSlug: string;
-      query?: string | null;
+      query?: string | null | undefined;
       sortBy?: "title" | "-title" | "dateCreated" | "-dateCreated";
       limit?: number;
-      cursor?: string | null;
+      cursor?: string | null | undefined;
     },
     opts?: RequestOptions,
   ): Promise<{ dashboards: DashboardListItem[]; nextCursor: string | null }> {
     const { items, nextCursor } = await listDashboards(
       this.target(opts?.host),
-      { organizationSlug, query, sortBy, limit, cursor },
+      omitUndefined({ organizationSlug, query, sortBy, limit, cursor }),
       DashboardListSchema,
     );
     return { dashboards: items, nextCursor };
@@ -1648,7 +1662,7 @@ export class SentryApiService {
   ): Promise<Project> {
     return await getProject(
       this.target(opts?.host),
-      { organizationSlug, projectSlugOrId, collapse },
+      omitUndefined({ organizationSlug, projectSlugOrId, collapse }),
       ProjectSchema,
     );
   }
@@ -1683,7 +1697,7 @@ export class SentryApiService {
   ): Promise<Project> {
     return await createProject(
       this.target(opts?.host),
-      { organizationSlug, teamSlug, name, slug, platform },
+      omitUndefined({ organizationSlug, teamSlug, name, slug, platform }),
       ProjectSchema,
     );
   }
@@ -1735,7 +1749,7 @@ export class SentryApiService {
   ): Promise<Project> {
     return await updateProject(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, name, slug, platform },
+      omitUndefined({ organizationSlug, projectSlug, name, slug, platform }),
       ProjectSchema,
     );
   }
@@ -1752,7 +1766,7 @@ export class SentryApiService {
   ) {
     return await listRepositories(
       this.target(opts?.host),
-      { organizationSlug, query },
+      omitUndefined({ organizationSlug, query }),
       RepositoryListSchema,
     );
   }
@@ -1773,7 +1787,7 @@ export class SentryApiService {
   ) {
     return await linkProjectRepository(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, repository, provider },
+      omitUndefined({ organizationSlug, projectSlug, repository, provider }),
       ProjectRepositoryMappingSchema,
     );
   }
@@ -1801,9 +1815,9 @@ export class SentryApiService {
       limit,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
-      query?: string;
-      cursor?: string;
+      projectSlug?: string | undefined;
+      query?: string | undefined;
+      cursor?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
@@ -1845,7 +1859,7 @@ export class SentryApiService {
       ruleId,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
       ruleId: string | number;
     },
     opts?: RequestOptions,
@@ -2001,11 +2015,11 @@ export class SentryApiService {
       limit = 25,
     }: {
       organizationSlug: string;
-      projectId?: string;
-      types?: string[];
-      query?: string;
-      cursor?: string;
-      limit?: number;
+      projectId?: string | undefined;
+      types?: string[] | undefined;
+      query?: string | undefined;
+      cursor?: string | undefined;
+      limit?: number | undefined;
     },
     opts?: RequestOptions,
   ): Promise<{ detectors: Detector[]; nextCursor: string | null }> {
@@ -2039,8 +2053,8 @@ export class SentryApiService {
       limit = 25,
     }: {
       organizationSlug: string;
-      types?: string[];
-      cursor?: string;
+      types?: string[] | undefined;
+      cursor?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
@@ -2072,7 +2086,7 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       group: "workflow_trigger" | "action_filter";
-      cursor?: string;
+      cursor?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
@@ -2269,9 +2283,9 @@ export class SentryApiService {
       organizationSlug: string;
       name: string;
       alertType: "alert_rule";
-      projectId?: string | number;
-      cursor?: string;
-      limit?: number;
+      projectId?: string | number | undefined;
+      cursor?: string | undefined;
+      limit?: number | undefined;
     },
     opts?: RequestOptions,
   ): Promise<{ data: unknown; nextCursor: string | null }> {
@@ -2418,7 +2432,7 @@ export class SentryApiService {
   ): Promise<ClientKey> {
     return await createClientKey(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, name },
+      omitUndefined({ organizationSlug, projectSlug, name }),
       ClientKeySchema,
     );
   }
@@ -2507,15 +2521,15 @@ export class SentryApiService {
       limit,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
-      query?: string;
+      projectSlug?: string | undefined;
+      query?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<ReleaseList> {
     return await listReleases(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, query, limit },
+      omitUndefined({ organizationSlug, projectSlug, query, limit }),
       ReleaseListSchema,
     );
   }
@@ -2529,14 +2543,19 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       releaseVersion: string;
-      projectSlugOrId?: string;
+      projectSlugOrId?: string | undefined;
       includeHealth?: boolean;
     },
     opts?: RequestOptions,
   ): Promise<ReleaseDetails> {
     return await getRelease(
       this.target(opts?.host),
-      { organizationSlug, releaseVersion, projectSlugOrId, includeHealth },
+      omitUndefined({
+        organizationSlug,
+        releaseVersion,
+        projectSlugOrId,
+        includeHealth,
+      }),
       ReleaseDetailsSchema,
     );
   }
@@ -2550,14 +2569,19 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       releaseVersion: string;
-      projectSlugOrId?: string;
+      projectSlugOrId?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<DeployList> {
     return await listReleaseDeploys(
       this.target(opts?.host),
-      { organizationSlug, releaseVersion, projectSlugOrId, limit },
+      omitUndefined({
+        organizationSlug,
+        releaseVersion,
+        projectSlugOrId,
+        limit,
+      }),
       DeployListSchema,
     );
   }
@@ -2571,14 +2595,19 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       releaseVersion: string;
-      projectSlugOrId?: string;
+      projectSlugOrId?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<CommitList> {
     return await listReleaseCommits(
       this.target(opts?.host),
-      { organizationSlug, releaseVersion, projectSlugOrId, limit },
+      omitUndefined({
+        organizationSlug,
+        releaseVersion,
+        projectSlugOrId,
+        limit,
+      }),
       CommitListSchema,
     );
   }
@@ -2618,17 +2647,24 @@ export class SentryApiService {
       limit,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
-      environment?: string;
-      owner?: string;
-      query?: string;
+      projectSlug?: string | undefined;
+      environment?: string | undefined;
+      owner?: string | undefined;
+      query?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<MonitorList> {
     return await listMonitors(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, environment, owner, query, limit },
+      omitUndefined({
+        organizationSlug,
+        projectSlug,
+        environment,
+        owner,
+        query,
+        limit,
+      }),
       MonitorListSchema,
     );
   }
@@ -2641,15 +2677,20 @@ export class SentryApiService {
       environment,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
       monitorSlug: string;
-      environment?: string;
+      environment?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<Monitor> {
     return await getMonitor(
       this.target(opts?.host),
-      { organizationSlug, projectSlug, monitorSlug, environment },
+      omitUndefined({
+        organizationSlug,
+        projectSlug,
+        monitorSlug,
+        environment,
+      }),
       MonitorSchema,
     );
   }
@@ -2680,10 +2721,10 @@ export class SentryApiService {
       organizationSlug: string;
       projectSlug: string;
       name: string;
-      slug?: string;
-      status?: "active" | "disabled";
-      owner?: string;
-      workflowIds?: string[];
+      slug?: string | undefined;
+      status?: "active" | "disabled" | undefined;
+      owner?: string | undefined;
+      workflowIds?: string[] | undefined;
       config: {
         schedule_type: "crontab" | "interval";
         schedule: string | [number, string];
@@ -2721,7 +2762,7 @@ export class SentryApiService {
     const detector = DetectorSchema.parse(response);
     return {
       detector,
-      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.queryObj),
+      monitor: MonitorSchema.parse(detector.dataSources?.[0]?.["queryObj"]),
     };
   }
 
@@ -2763,19 +2804,19 @@ export class SentryApiService {
       limit,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
       monitorSlug: string;
-      environment?: string;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      environment?: string | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<MonitorCheckInList> {
     return await listMonitorCheckIns(
       this.target(opts?.host),
-      {
+      omitUndefined({
         organizationSlug,
         projectSlug,
         monitorSlug,
@@ -2784,7 +2825,7 @@ export class SentryApiService {
         start,
         end,
         limit,
-      },
+      }),
       MonitorCheckInListSchema,
     );
   }
@@ -2801,19 +2842,19 @@ export class SentryApiService {
       rollup,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
       monitorSlug: string;
-      environment?: string;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
-      rollup?: number;
+      environment?: string | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
+      rollup?: number | undefined;
     },
     opts?: RequestOptions,
   ): Promise<MonitorStats> {
     return await getMonitorStats(
       this.target(opts?.host),
-      {
+      omitUndefined({
         organizationSlug,
         projectSlug,
         monitorSlug,
@@ -2822,7 +2863,7 @@ export class SentryApiService {
         start,
         end,
         rollup,
-      },
+      }),
       MonitorStatsSchema,
     );
   }
@@ -2841,10 +2882,10 @@ export class SentryApiService {
       limit,
     }: {
       organizationSlug: string;
-      projectSlug?: string;
-      environment?: string;
-      owner?: string;
-      query?: string;
+      projectSlug?: string | undefined;
+      environment?: string | undefined;
+      owner?: string | undefined;
+      query?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
@@ -2861,7 +2902,14 @@ export class SentryApiService {
       : undefined;
     return await listUptimeMonitors(
       this.target(opts?.host),
-      { organizationSlug, projectId, environment, owner, query, limit },
+      omitUndefined({
+        organizationSlug,
+        projectId,
+        environment,
+        owner,
+        query,
+        limit,
+      }),
       UptimeMonitorListSchema,
     );
   }
@@ -2887,16 +2935,16 @@ export class SentryApiService {
       organizationSlug: string;
       projectSlug: string;
       uptimeMonitorId: string;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
       limit?: number;
     },
     opts?: RequestOptions,
   ): Promise<UptimeCheckList> {
     return await listUptimeMonitorChecks(
       this.target(opts?.host),
-      params,
+      omitUndefined(params),
       UptimeCheckListSchema,
     );
   }
@@ -2990,10 +3038,10 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       dataset?: "events" | "errors" | "replays" | "search_issues";
-      project?: string;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      project?: string | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
       useCache?: boolean;
       useFlagsBackend?: boolean;
     },
@@ -3030,9 +3078,9 @@ export class SentryApiService {
       organizationSlug: string;
       query?: string;
       limit?: number;
-      projectId?: string;
+      projectId?: string | undefined;
       sort?: string;
-      environment?: string | string[];
+      environment?: string | string[] | undefined;
       statsPeriod?: string;
       start?: string;
       end?: string;
@@ -3042,7 +3090,7 @@ export class SentryApiService {
   ): Promise<ReplayList> {
     const response = await searchReplays(
       this.target(opts?.host),
-      params,
+      omitUndefined(params),
       ReplayListResponseSchema,
     );
     return response.data;
@@ -3078,14 +3126,14 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       itemType?: TraceItemType;
-      project?: string;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
-      attributeTypes?: TraceItemAttributeType[];
-      substringMatch?: string;
-      query?: string;
-      context?: boolean;
+      project?: string | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
+      attributeTypes?: TraceItemAttributeType[] | undefined;
+      substringMatch?: string | undefined;
+      query?: string | undefined;
+      context?: boolean | undefined;
     },
     opts?: RequestOptions,
   ): Promise<TraceItemAttribute[]> {
@@ -3128,11 +3176,11 @@ export class SentryApiService {
       fields?: string[];
       query?: string;
       orderby?: string[];
-      project?: string;
-      environment?: string | string[];
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      project?: string | undefined;
+      environment?: string | string[] | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<EventsValidationResult> {
@@ -3208,7 +3256,7 @@ export class SentryApiService {
       projectId,
     }: {
       organizationSlug: string;
-      projectId?: string;
+      projectId?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<OrganizationEnvironmentList> {
@@ -3304,7 +3352,7 @@ export class SentryApiService {
       statsPeriod = DEFAULT_SEARCH_ISSUES_PERIOD,
     }: {
       organizationSlug: string;
-      projectId?: string;
+      projectId?: string | undefined;
       query?: string | null;
       sortBy?: "user" | "freq" | "date" | "new" | "recommended";
       limit?: number;
@@ -3324,7 +3372,7 @@ export class SentryApiService {
         opts?.host,
       ),
       path: { organization_id_or_slug: organizationSlug },
-      query: {
+      query: omitUndefined({
         limit,
         sort: sortBy,
         statsPeriod,
@@ -3332,8 +3380,8 @@ export class SentryApiService {
         // only when the parameter is missing.
         query: query ?? "",
         project: projectId ? [projectId] : undefined,
-        collapse: ["unhandled"],
-      },
+        collapse: ["unhandled" as const],
+      }),
       throwOnError: true,
     });
     return IssueListSchema.parse(data);
@@ -3385,9 +3433,9 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       issueId: string;
-      types?: readonly RelatedIssueType[];
-      limit?: number;
-      eventId?: string;
+      types?: readonly RelatedIssueType[] | undefined;
+      limit?: number | undefined;
+      eventId?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<RelatedIssues> {
@@ -3530,7 +3578,7 @@ export class SentryApiService {
             organization_id_or_slug: organizationSlug,
             issue_id: issueId,
           },
-          query: { cursor },
+          query: omitUndefined({ cursor }),
           throwOnError: true,
         }),
       ExternalIssueListSchema,
@@ -3593,7 +3641,7 @@ export class SentryApiService {
             organization_id_or_slug: organizationSlug,
             issue_id: issueId,
           },
-          query: { per_page: 100, cursor },
+          query: omitUndefined({ per_page: 100, cursor }),
           throwOnError: true,
         }),
       IssueIntegrationListSchema,
@@ -3689,9 +3737,9 @@ export class SentryApiService {
     }: {
       installationUuid: string;
       uri: string;
-      query?: string;
-      projectId?: string;
-      dependentData?: Record<string, string | number>;
+      query?: string | undefined;
+      projectId?: string | undefined;
+      dependentData?: Record<string, string | number> | undefined;
     },
     opts?: RequestOptions,
   ): Promise<SentryAppExternalRequestOptions> {
@@ -3880,21 +3928,23 @@ export class SentryApiService {
     // The API response doesn't match our expected structure at all
     const bodyObj = body as Record<string, unknown>;
     const eventType =
-      typeof bodyObj.type === "string" ? bodyObj.type : String(bodyObj.type);
+      typeof bodyObj["type"] === "string"
+        ? bodyObj["type"]
+        : String(bodyObj["type"]);
 
     logIssue(`Event failed schema validation: ${eventType}`, {
       extra: {
         eventType,
-        eventId: bodyObj.id,
+        eventId: bodyObj["id"],
         validationError: parseResult.error.message,
         validationIssues: parseResult.error.issues,
         // Log the container type, not user-provided extra data.
         contextType:
-          bodyObj.context === null
+          bodyObj["context"] === null
             ? "null"
-            : Array.isArray(bodyObj.context)
+            : Array.isArray(bodyObj["context"])
               ? "array"
-              : typeof bodyObj.context,
+              : typeof bodyObj["context"],
       },
     });
 
@@ -3949,14 +3999,14 @@ export class SentryApiService {
       organizationSlug: string;
       projectSlug: string;
       file: string;
-      platform?: string;
+      platform?: string | undefined;
       lineNo?: number;
-      absPath?: string;
-      module?: string;
-      package?: string;
-      commitId?: string;
-      groupId?: string;
-      sdkName?: string;
+      absPath?: string | undefined;
+      module?: string | undefined;
+      package?: string | undefined;
+      commitId?: string | undefined;
+      groupId?: string | undefined;
+      sdkName?: string | undefined;
       signal?: AbortSignal;
     },
     opts?: RequestOptions,
@@ -3974,7 +4024,7 @@ export class SentryApiService {
     const body = await this.requestJSON(
       apiPath`/projects/${organizationSlug}/${projectSlug}/stacktrace-link/` +
         `?${query.toString()}`,
-      { signal },
+      omitUndefined({ signal }),
       opts,
     );
     return StacktraceLinkSchema.parse(body);
@@ -4002,7 +4052,7 @@ export class SentryApiService {
   ): Promise<SourceMapDebug> {
     const body = await this.requestJSON(
       apiPath`/projects/${organizationSlug}/${projectSlug}/events/${eventId}/source-map-debug/`,
-      { signal },
+      omitUndefined({ signal }),
       opts,
     );
     return SourceMapDebugSchema.parse(body);
@@ -4043,12 +4093,12 @@ export class SentryApiService {
         opts?.host,
       ),
       path: { organization_id_or_slug: organizationSlug, issue_id: issueId },
-      query: {
+      query: omitUndefined({
         query: query || undefined,
         per_page: limit,
         ...(statsPeriod ? { statsPeriod } : start && end ? { start, end } : {}),
         full: full || undefined,
-      },
+      }),
       throwOnError: true,
     });
     return data;
@@ -4161,7 +4211,7 @@ export class SentryApiService {
     // the two share the same DB source but the download header reflects any
     // server-side correction (getsentry/sentry#115977) applied at request time.
     const contentType =
-      downloadResponse.headers.get("content-type")?.split(";")[0].trim() ||
+      downloadResponse.headers.get("content-type")?.split(";")[0]?.trim() ||
       attachment.mimetype ||
       "application/octet-stream";
 
@@ -4281,16 +4331,16 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       issueId: string;
-      status?: string;
-      assignedTo?: string | null;
-      priority?: string;
-      substatus?: string;
-      ignoreDuration?: number;
-      ignoreCount?: number;
-      ignoreWindow?: number;
-      ignoreUserCount?: number;
-      ignoreUserWindow?: number;
-      statusDetails?: IssueResolutionDetails;
+      status?: string | undefined;
+      assignedTo?: string | null | undefined;
+      priority?: string | undefined;
+      substatus?: string | undefined;
+      ignoreDuration?: number | undefined;
+      ignoreCount?: number | undefined;
+      ignoreWindow?: number | undefined;
+      ignoreUserCount?: number | undefined;
+      ignoreUserWindow?: number | undefined;
+      statusDetails?: IssueResolutionDetails | undefined;
     },
     opts?: RequestOptions,
   ): Promise<Issue> {
@@ -4543,11 +4593,11 @@ export class SentryApiService {
     query: string;
     fields: string[];
     limit: number;
-    projectId?: string;
+    projectId?: string | undefined;
     dataset?: "errors" | "tracemetrics" | "profiles";
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
     sort: string;
   }): URLSearchParams {
     const queryParams = new URLSearchParams();
@@ -4584,13 +4634,13 @@ export class SentryApiService {
     query: string;
     fields: string[];
     limit: number;
-    projectId?: string;
+    projectId?: string | undefined;
     dataset: "spans" | "logs";
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
     sort: string;
-    crossEventQueries?: CrossEventQueries;
+    crossEventQueries?: CrossEventQueries | undefined;
   }): URLSearchParams {
     const queryParams = new URLSearchParams();
 
@@ -4653,13 +4703,13 @@ export class SentryApiService {
       query: string;
       fields: string[];
       limit?: number;
-      projectId?: string;
+      projectId?: string | undefined;
       dataset?: EventsDataset;
       statsPeriod?: string;
       start?: string;
       end?: string;
       sort?: string;
-      crossEventQueries?: CrossEventQueries;
+      crossEventQueries?: CrossEventQueries | undefined;
     },
     opts?: RequestOptions,
   ) {
@@ -4729,8 +4779,8 @@ export class SentryApiService {
       organizationSlug: string;
       query: string;
       yAxis: string;
-      interval?: string;
-      projectId?: string;
+      interval?: string | undefined;
+      projectId?: string | undefined;
       dataset?: EventsDataset;
       statsPeriod?: string;
       start?: string;
@@ -4772,14 +4822,14 @@ export class SentryApiService {
       reason,
     }: {
       organizationSlug: string;
-      interval?: string;
-      projectId?: string;
+      interval?: string | undefined;
+      projectId?: string | undefined;
       dataset?: EventsDataset;
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
-      outcome?: string;
-      reason?: string;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
+      outcome?: string | undefined;
+      reason?: string | undefined;
     },
     opts?: RequestOptions,
   ) {
@@ -4816,7 +4866,7 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       issueId: string;
-      instruction?: string;
+      instruction?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<AutofixRun> {
@@ -4993,8 +5043,8 @@ export class SentryApiService {
       conversationId: string;
       project?: string | string[];
       statsPeriod?: string;
-      start?: string;
-      end?: string;
+      start?: string | undefined;
+      end?: string | undefined;
       perPage?: number;
       maxPages?: number;
     },
@@ -5063,14 +5113,14 @@ export class SentryApiService {
       cursor,
     }: {
       organizationSlug: string;
-      query?: string;
-      project?: string | string[];
-      environment?: string | string[];
-      statsPeriod?: string;
-      start?: string;
-      end?: string;
+      query?: string | undefined;
+      project?: string | string[] | undefined;
+      environment?: string | string[] | undefined;
+      statsPeriod?: string | undefined;
+      start?: string | undefined;
+      end?: string | undefined;
       limit?: number;
-      cursor?: string;
+      cursor?: string | undefined;
     },
     opts?: RequestOptions,
   ): Promise<{
@@ -5231,7 +5281,8 @@ export class SentryApiService {
       ProfileChunkResponseSchema,
     );
     // Normalize the Sentry {chunk: ...} wrapper to the internal chunks array.
-    if (response.chunks.length === 0) {
+    const [chunk] = response.chunks;
+    if (!chunk) {
       throw new ApiNotFoundError(
         `No profile chunk found for profiler_id ${params.profilerId}`,
         undefined,
@@ -5240,10 +5291,10 @@ export class SentryApiService {
     }
 
     return {
-      ...response.chunks[0],
+      ...chunk,
       // Sentry's frontend does the same query-param backfill for continuous
       // profile chunks because profiling-service may omit profiler_id.
-      profiler_id: response.chunks[0].profiler_id ?? params.profilerId,
+      profiler_id: chunk.profiler_id ?? params.profilerId,
     };
   }
 
@@ -5276,7 +5327,7 @@ export class SentryApiService {
     imageUrl: string,
   ): Promise<{ blob: Blob; contentType: string }> {
     const response = imageUrl.startsWith("https://")
-      ? await fetch(imageUrl, { signal: this.signal })
+      ? await fetch(imageUrl, this.signal ? { signal: this.signal } : {})
       : await this.request(
           imageUrl.startsWith(API_BASE_PATH)
             ? imageUrl.slice(API_BASE_PATH.length)
@@ -5299,11 +5350,11 @@ export class SentryApiService {
   async getLatestBaseSnapshot(params: {
     organizationSlug: string;
     appId: string;
-    branch?: string;
-    project?: string;
-    projectSlug?: string;
+    branch?: string | undefined;
+    project?: string | undefined;
+    projectSlug?: string | undefined;
     compactMetadata?: boolean;
   }): Promise<unknown> {
-    return await getLatestBaseSnapshot(this.target(), params);
+    return await getLatestBaseSnapshot(this.target(), omitUndefined(params));
   }
 }

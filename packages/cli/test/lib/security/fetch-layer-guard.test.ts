@@ -43,8 +43,12 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     // Even if something bypasses applySentryUrlContext and arrives at
     // applyCustomHeaders with a mismatched URL, the header attach must
     // refuse.
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: sensitive-iap-value";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    // Reproduce the share-URL attack directly at the header layer.
+    // Even if something bypasses applySentryUrlContext and arrives at
+    // applyCustomHeaders with a mismatched URL, the header attach must
+    // refuse.
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: sensitive-iap-value";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     const headers = new Headers();
     applyCustomHeaders(
@@ -58,8 +62,8 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
   });
 
   test("applyCustomHeaders: IAP token attaches to trusted URL", () => {
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: sensitive-iap-value";
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: sensitive-iap-value";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
 
     const headers = new Headers();
     applyCustomHeaders(
@@ -76,8 +80,13 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     // SENTRY_CUSTOM_HEADERS is an IAP/proxy feature that only applies to
     // self-hosted instances (getCustomHeaders short-circuits on SaaS),
     // so we set SENTRY_HOST to enable it for this test.
-    process.env.SENTRY_CUSTOM_HEADERS = "X-Custom: value";
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    // Critical: sentry.io.evil.com is NOT a sentry.io subdomain, so even
+    // a SaaS-scoped token shouldn't grant trust to it.
+    // SENTRY_CUSTOM_HEADERS is an IAP/proxy feature that only applies to
+    // self-hosted instances (getCustomHeaders short-circuits on SaaS),
+    // so we set SENTRY_HOST to enable it for this test.
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-Custom: value";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
 
     const headers = new Headers();
     applyCustomHeaders(headers, "https://sentry.acme.com.evil.com/api/0/");
@@ -89,8 +98,11 @@ describe("CVE defense-in-depth: fetch layer refuses mismatched hosts", () => {
     // Token scoped to sentry.acme.com must not authorize sub.sentry.acme.com
     // when it's actually an attacker-controlled subdomain takeover.
     // (Non-SaaS trust class requires EXACT origin match.)
-    process.env.SENTRY_CUSTOM_HEADERS = "X-IAP-Token: secret";
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    // Token scoped to sentry.acme.com must not authorize sub.sentry.acme.com
+    // when it's actually an attacker-controlled subdomain takeover.
+    // (Non-SaaS trust class requires EXACT origin match.)
+    process.env["SENTRY_CUSTOM_HEADERS"] = "X-IAP-Token: secret";
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
 
     const headers = new Headers();
     applyCustomHeaders(headers, "https://attacker.sentry.acme.com/api/0/");

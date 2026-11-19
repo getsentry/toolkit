@@ -11,6 +11,7 @@
  */
 
 import { logger } from "../logger.js";
+import { httpTargetAttribute } from "../../commands/local/http-target.js";
 
 const log = logger.withTag("semantic-display");
 
@@ -117,8 +118,11 @@ export function formatSemanticSpanDisplay(
   attrs: AttributeSource,
   fallbackLabel: string,
 ): SemanticSpanDisplay {
+  const source = isCustomSpan(attrs, fallbackLabel)
+    ? withoutTargets(attrs)
+    : attrs;
   for (const formatter of SEMANTIC_SPAN_FORMATTERS) {
-    const result = formatter(attrs, fallbackLabel);
+    const result = formatter(source, fallbackLabel);
     if (result) {
       return {
         label: truncate(result.label, SPAN_LABEL_MAX_LENGTH) || "unnamed",
@@ -253,7 +257,8 @@ function formatHttpSpanDisplay(
   const target = getHttpTarget(attrs, {
     includeServerTarget: Boolean(method || statusCode),
     // The browser SDK puts the page URL on every segment span, so a custom
-    // `ui.action` or `pageload` span is not a request to that URL.
+    // `ui.action` or `pageload` span is not a request to that URL. Op-less
+    // custom spans lose their targets earlier (see isCustomSpan).
     includeFullUrl: Boolean(
       method || statusCode || !op || /^(?:http|resource)\./.test(op),
     ),
@@ -270,6 +275,72 @@ function formatHttpSpanDisplay(
     label: label || fallbackLabel,
     metadata: compactStrings([statusCode, errorType]),
   };
+}
+
+/** Label for a span that has no name. */
+export const UNNAMED_SPAN = "unnamed span";
+
+/** Whether a fallback label is a placeholder for a span with no name. */
+function isUnnamed(label: string): boolean {
+  return label === "unnamed" || label === UNNAMED_SPAN;
+}
+
+/**
+ * An HTTP method as SDKs write it in span names. Case-sensitive, so a custom
+ * span named `trace` or `delete` keeps its name.
+ */
+const HTTP_METHOD_RE =
+  /^(?:GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS|CONNECT|TRACE)$/;
+
+/**
+ * Whether a span name says more than its URL: not empty, not
+ * {@link UNNAMED_SPAN}, and not just an HTTP method, the URL, or both.
+ */
+function hasOwnName(name: string, url: string | undefined): boolean {
+  const words = name.trim().split(/\s+/);
+  if (words[0] && HTTP_METHOD_RE.test(words[0])) {
+    words.shift();
+  }
+  const rest = words.join(" ");
+  if (!rest || isUnnamed(name)) {
+    return false;
+  }
+  return !url || formatHttpTarget(rest) !== formatHttpTarget(url);
+}
+
+/** Attributes that point at a request target: a route, path, URL, or server. */
+const TARGET_KEYS = [
+  "http.route",
+  "url.template",
+  "url.full",
+  "url.path",
+  "server.address",
+  "server.port",
+];
+
+/**
+ * Whether a span is a custom one: no op, no HTTP method or status, no other
+ * semantic domain, and a name of its own. The browser SDK puts the page's
+ * URL and path on every segment span, so for these spans those attributes
+ * say where the span ran, not what it did, and its name is the better label.
+ */
+function isCustomSpan(attrs: AttributeSource, name: string): boolean {
+  return (
+    !getAttr(attrs, [
+      "sentry.op",
+      "http.request.method",
+      "http.response.status_code",
+    ]) &&
+    inferSemanticOp(attrs) === undefined &&
+    hasOwnName(name, getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH))
+  );
+}
+
+/** A copy of `attrs` without {@link TARGET_KEYS}. */
+function withoutTargets(attrs: AttributeSource): AttributeSource {
+  return Object.fromEntries(
+    Object.entries(attrs).filter(([key]) => !TARGET_KEYS.includes(key)),
+  );
 }
 
 function formatDatabaseSpanDisplay(
@@ -584,17 +655,16 @@ function formatExceptionSpanDisplay(
     return null;
   }
 
-  const label =
-    fallbackLabel === "unnamed"
-      ? exceptionType || exceptionMessage || fallbackLabel
-      : fallbackLabel;
-  const metadata =
-    fallbackLabel === "unnamed"
-      ? []
-      : compactStrings([
-          exceptionType,
-          exceptionType ? undefined : exceptionMessage,
-        ]);
+  const unnamed = isUnnamed(fallbackLabel);
+  const label = unnamed
+    ? exceptionType || exceptionMessage || fallbackLabel
+    : fallbackLabel;
+  const metadata = unnamed
+    ? []
+    : compactStrings([
+        exceptionType,
+        exceptionType ? undefined : exceptionMessage,
+      ]);
 
   return { label, metadata };
 }
@@ -637,24 +707,15 @@ function getHttpTarget(
     includeFullUrl = true,
   }: { includeServerTarget?: boolean; includeFullUrl?: boolean } = {},
 ): string | undefined {
-  const route = getAttr(
-    attrs,
-    ["http.route", "url.template"],
-    SPAN_ATTRIBUTE_MAX_LENGTH,
+  const target = httpTargetAttribute((key) =>
+    key === "url.full" && !includeFullUrl
+      ? undefined
+      : getAttr(attrs, [key], SPAN_ATTRIBUTE_MAX_LENGTH),
   );
-  const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
-  const path = getAttr(attrs, ["url.path"], SPAN_ATTRIBUTE_MAX_LENGTH);
+  if (target) {
+    return formatHttpTarget(target.value);
+  }
   const serverTarget = getServerTarget(attrs);
-
-  if (route) {
-    return formatHttpTarget(route);
-  }
-  if (fullUrl && includeFullUrl) {
-    return formatHttpTarget(fullUrl);
-  }
-  if (path) {
-    return formatHttpTarget(path);
-  }
   if (includeServerTarget && serverTarget) {
     return formatHttpTarget(serverTarget);
   }
@@ -678,8 +739,8 @@ function formatHttpLabel({
   target,
   fallbackLabel,
 }: {
-  method?: string;
-  target?: string;
+  method?: string | undefined;
+  target?: string | undefined;
   fallbackLabel: string;
 }): string {
   if (method && target) {
@@ -690,7 +751,7 @@ function formatHttpLabel({
   }
 
   const normalized = fallbackLabel.toUpperCase();
-  if (method && normalized !== method && fallbackLabel !== "unnamed") {
+  if (method && normalized !== method && !isUnnamed(fallbackLabel)) {
     return normalized.startsWith(`${method} `)
       ? fallbackLabel
       : joinParts([method, fallbackLabel]);
@@ -816,9 +877,9 @@ function dedupeMetadata(values: string[]): string[] {
 export function mergeTransactionAttributes(
   event: Record<string, unknown>,
 ): AttributeSource {
-  const contexts = event.contexts as Record<string, unknown> | undefined;
-  const trace = contexts?.trace as Record<string, unknown> | undefined;
-  const data = trace?.data as Record<string, unknown> | undefined;
+  const contexts = event["contexts"] as Record<string, unknown> | undefined;
+  const trace = contexts?.["trace"] as Record<string, unknown> | undefined;
+  const data = trace?.["data"] as Record<string, unknown> | undefined;
   return data ?? {};
 }
 
@@ -834,13 +895,13 @@ export function mergeTransactionAttributes(
 export function collectSpanAttributes(
   event: Record<string, unknown>,
 ): AttributeSource[] {
-  const spans = event.spans;
+  const spans = event["spans"];
   if (!Array.isArray(spans)) {
     return [];
   }
   const result: AttributeSource[] = [];
   for (const span of spans) {
-    const data = (span as Record<string, unknown> | null)?.data;
+    const data = (span as Record<string, unknown> | null)?.["data"];
     if (data && typeof data === "object") {
       result.push(data as AttributeSource);
     }

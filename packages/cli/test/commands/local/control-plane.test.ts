@@ -6,6 +6,7 @@ import {
   createLocalSessionStore,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
+import { at } from "../../helpers.js";
 
 const CONTROL_TOKEN = "control-token";
 
@@ -89,7 +90,7 @@ describe("Local control plane", () => {
     try {
       const chunk = new TextDecoder().decode((await reader.read()).value);
       expect(chunk).toContain("event: sentry.local.directory");
-      const data = JSON.parse(chunk.match(/data: (.+)/)![1]);
+      const data = JSON.parse(at(chunk.match(/data: (.+)/)!, 1));
       expect(new URL(data.directoryUrl).pathname).toBe(
         "/_local/v1/ui/sessions",
       );
@@ -455,7 +456,7 @@ describe("Local control plane", () => {
       ["GET", "/envelopes/id"],
       ["POST", "/close"],
       ["POST", "/reset"],
-    ]) {
+    ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },
@@ -554,6 +555,46 @@ describe("Local control plane", () => {
       { method: "POST", body: envelope },
     );
     expect(rejected.status).toBe(401);
+  });
+
+  test("accepts Spotlight /stream and DSN envelope posts under the ingest capability", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "php", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const ingest = `/_local/v1/sessions/${session.id}/ingest`;
+    const envelope =
+      '{"sdk":{"name":"sentry.php"}}\n{"type":"event"}\n{"message":"hi"}';
+    const post = (path: string, headers: Record<string, string> = {}) =>
+      plane.app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-sentry-envelope",
+          ...headers,
+        },
+        body: envelope,
+      });
+
+    // PHP posts to `<SENTRY_SPOTLIGHT>/stream`; Go, Rust, PHP and Ruby build
+    // `<dsn path>/api/<project>/envelope/` from a DSN.
+    for (const suffix of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      expect((await post(`${ingest}/${caps.ingest}${suffix}`)).status).toBe(
+        204,
+      );
+      expect((await post(`${ingest}/wrong${suffix}`)).status).toBe(401);
+      expect((await post(`${ingest}/${caps.stream}${suffix}`)).status).toBe(
+        401,
+      );
+      expect(
+        (
+          await post(`${ingest}/${caps.ingest}${suffix}`, {
+            Origin: "https://example.com",
+          })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(3);
   });
 
   test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
@@ -925,7 +966,7 @@ describe("Local control plane", () => {
       },
     ]);
     for (const event of events) {
-      const receivedAt = Date.parse(String(event.receivedAt));
+      const receivedAt = Date.parse(String(event["receivedAt"]));
       expect(receivedAt).toBeGreaterThanOrEqual(before);
       expect(receivedAt).toBeLessThanOrEqual(received);
     }

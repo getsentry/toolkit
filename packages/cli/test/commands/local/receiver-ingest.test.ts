@@ -10,6 +10,8 @@ import {
   drainReceiver,
   createReceiverEnvelope,
 } from "../../../src/commands/local/receiver-ingest.js";
+import { at } from "../../helpers.js";
+import { goPanicEvent } from "../../fixtures/local-sdk-events.js";
 
 const envelope = '{}\n{"type":"event"}\n{"message":"received"}';
 
@@ -22,7 +24,7 @@ test.each([1, 2])(
     );
     expect(
       await ingestReceiverEnvelope(retention.buffer, {
-        body: Buffer.from(bodies[0]),
+        body: Buffer.from(at(bodies, 0)),
       }),
     ).toBe(204);
     const frames: { id?: string; data: string }[] = [];
@@ -68,7 +70,7 @@ test("raw delivery IDs stay stable across streaming and filename lookup", () => 
       ),
     }),
   );
-  const container = buffer.read({ all: true })[0];
+  const container = at(buffer.read({ all: true }), 0);
   const originalId = container
     .getParsedEnvelope()!
     .envelope[0].__spotlight_envelope_id.toString();
@@ -85,9 +87,22 @@ test("raw delivery IDs stay stable across streaming and filename lookup", () => 
       .getParsedEnvelope()!
       .envelope[0].__spotlight_envelope_id.toString(),
   ).toBe(originalId);
-  expect(frames[0].id).toBe(originalId);
+  expect(at(frames, 0).id).toBe(originalId);
   expect(buffer.read({ filename: "app.ts" })).toEqual([container]);
   expect(buffer.read({ envelopeId: originalId })).toEqual([container]);
+});
+
+test("filename lookup matches sentry-go frames by abs_path", () => {
+  const buffer = createLocalRetentionBuffer(3).buffer;
+  buffer.put(
+    createReceiverEnvelope({
+      contentType: "application/x-sentry-envelope",
+      body: Buffer.from(
+        `{}\n{"type":"event"}\n${JSON.stringify(goPanicEvent)}`,
+      ),
+    }),
+  );
+  expect(buffer.read({ filename: "main.go" })).toHaveLength(1);
 });
 
 test("raw ingress assigns identity independently of an untrusted envelope header", async () => {
@@ -99,7 +114,7 @@ test("raw ingress assigns identity independently of an untrusted envelope header
   expect(await ingestReceiverEnvelope(retention.buffer, { body: raw })).toBe(
     204,
   );
-  const container = retention.buffer.read({ all: true })[0];
+  const container = at(retention.buffer.read({ all: true }), 0);
   const id = receiverEnvelopeId(container);
   expect(id).not.toBe(forgedId);
   expect(
@@ -164,7 +179,7 @@ describe.each([false, true])("bounded receiver (scoped: %s)", (scoped) => {
       });
       expect(response.status).toBe(204);
       expect(fixture.buffer.read({ all: true })).toHaveLength(1);
-      expect(fixture.buffer.read({ all: true })[0].getContentType()).toBe(
+      expect(at(fixture.buffer.read({ all: true }), 0).getContentType()).toBe(
         "application/x-sentry-envelope",
       );
     },
@@ -259,12 +274,14 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
     fixture: ReturnType<typeof receiver>,
     body: string,
   ): Promise<Response> =>
-    fixture.app.request(
-      new Request(`${receiverOrigin}${fixture.path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-sentry-envelope" },
-        body,
-      }),
+    Promise.resolve(
+      fixture.app.request(
+        new Request(`${receiverOrigin}${fixture.path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-sentry-envelope" },
+          body,
+        }),
+      ),
     );
 
   test("does not retain an envelope holding only its own ingest span", async () => {
@@ -305,12 +322,15 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       ]),
     );
     expect(response.status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     const [, items] = container.getParsedEnvelope()!.envelope;
     expect(items).toHaveLength(1);
-    expect(items[0][0]).toMatchObject({ type: "span", item_count: 2 });
+    const [itemHeader, itemPayload] = at(items, 0);
+    expect(itemHeader).toMatchObject({ type: "span", item_count: 2 });
     expect(
-      (items[0][1].items as { span_id: string }[]).map((span) => span.span_id),
+      (itemPayload["items"] as { span_id: string }[]).map(
+        (span) => span.span_id,
+      ),
     ).toEqual(["3333333333333333", "4444444444444444"]);
   });
 
@@ -318,7 +338,7 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
     const fixture = receiver(scoped);
     const body = `{}\n{"type":"span"}\n{"name":"POST ${receiverOrigin}${fixture.path}"`;
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).toBe(body);
   });
 
@@ -348,9 +368,11 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       event,
     ].join("\n");
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).not.toContain(self);
-    expect(container.getParsedEnvelope()!.envelope[1][0][1]).toMatchObject({
+    const parsedItems = container.getParsedEnvelope()!.envelope[1];
+    const parsedPayload = at(parsedItems, 0)[1];
+    expect(parsedPayload).toMatchObject({
       exception: { values: [{ value: "Checkout failed" }] },
       breadcrumbs: [{ data: { url: "http://localhost:5173/api/orders" } }],
     });
@@ -413,13 +435,14 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
       transaction,
     ].join("\n");
     expect((await post(fixture, body)).status).toBe(204);
-    const [container] = fixture.buffer.read({ all: true });
+    const container = at(fixture.buffer.read({ all: true }), 0);
     expect(container.getData().toString()).not.toContain(self);
-    const payload = container.getParsedEnvelope()!.envelope[1][0][1];
-    expect(payload.spans).toEqual([
+    const parsedItems2 = container.getParsedEnvelope()!.envelope[1];
+    const payload = at(parsedItems2, 0)[1];
+    expect(payload["spans"]).toEqual([
       expect.objectContaining({ span_id: "3333333333333333" }),
     ]);
-    expect(payload.breadcrumbs).toEqual({
+    expect(payload["breadcrumbs"]).toEqual({
       values: [expect.objectContaining({ category: "query" })],
     });
   });
@@ -451,9 +474,9 @@ test.each([
       envelopes: { id: string }[];
     };
     expect(envelopes).toHaveLength(1);
-    expect(envelopes[0].id).toMatch(/^[a-f\d-]{36}$/);
+    expect(at(envelopes, 0).id).toMatch(/^[a-f\d-]{36}$/);
     const raw = await plane.app.request(
-      `${base}/envelopes/${envelopes[0].id}`,
+      `${base}/envelopes/${at(envelopes, 0).id}`,
       { headers },
     );
     expect(raw.status).toBe(200);
@@ -544,7 +567,7 @@ test("retention changes include preceding compressed admissions and preserve cur
   await expect(retention.resize(1)).rejects.toThrow(/2 retained envelopes/);
   expect(await Promise.all(writes)).toEqual([204, 204]);
   const history = retention.buffer.read({ all: true });
-  const cursor = receiverEnvelopeId(history[1]);
+  const cursor = receiverEnvelopeId(at(history, 1));
   const seen: string[] = [];
   const reader = retention.buffer.subscribe(
     (item) => seen.push(item.getData().toString()),
@@ -591,12 +614,12 @@ test("raw attachments remain byte exact and malformed SSE remains inspectable wi
     attachment,
   ]);
   expect(await ingestReceiverEnvelope(retention.buffer, { body })).toBe(204);
-  expect(retention.buffer.read({ all: true })[0].getData()).toEqual(body);
+  expect(at(retention.buffer.read({ all: true }), 0).getData()).toEqual(body);
   const malformed = Buffer.from("not-an-envelope");
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: malformed }),
   ).toBe(204);
-  const latest = retention.buffer.read({ all: true })[0];
+  const latest = at(retention.buffer.read({ all: true }), 0);
   const frames: { id?: string; data: string }[] = [];
   const handler = buildSSEHandler({
     writeSSE: async (frame) => {
@@ -624,7 +647,7 @@ test("malformed exception metadata cannot break raw filename queries", async () 
   );
   expect(await ingestReceiverEnvelope(retention.buffer, { body })).toBe(204);
   expect(retention.buffer.read({ filename: "app.ts" })).toEqual([]);
-  expect(retention.buffer.read({ all: true })[0].getData()).toEqual(body);
+  expect(at(retention.buffer.read({ all: true }), 0).getData()).toEqual(body);
 });
 
 test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize", async () => {
@@ -643,7 +666,7 @@ test("SSE falls back to raw data if deeply nested decoded JSON cannot serialize"
     writeSSE: async (frame) => {
       frames.push(frame);
     },
-  })(retention.buffer.read({ all: true })[0]);
+  })(at(retention.buffer.read({ all: true }), 0));
   expect(frames).toHaveLength(1);
-  expect(frames[0].data).toBe(raw);
+  expect(at(frames, 0).data).toBe(raw);
 });

@@ -52,6 +52,8 @@ export const STOPPING_POINTS = [
 
 export type StoppingPoint = (typeof STOPPING_POINTS)[number];
 
+const SINGLE_RUN_FEATURE_ID = "autofix_single_run";
+
 // Progress Message
 
 export const ProgressMessageSchema = object({
@@ -189,6 +191,7 @@ export const AutofixStateSchema = looseObject({
   run_id: optional(number()),
   /** Null for legacy runs predating this field. */
   sentry_run_id: optional(nullable(string())),
+  feature_id: optional(string()),
   status: string(),
   /**
    * Why a failed run stopped, e.g. `out_of_credits`. Null when the run didn't
@@ -264,6 +267,10 @@ export function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.includes(status as AutofixStatus);
 }
 
+export function isSingleRun(state: AutofixState): boolean {
+  return state.feature_id === SINGLE_RUN_FEATURE_ID;
+}
+
 // At least one of sentry_run_id/run_id is always present on a non-null
 // autofix state, so a missing run ID means a malformed response.
 export function requireAutofixRunId(state: AutofixState): string | number {
@@ -309,6 +316,7 @@ type AgentRootCauseData = {
   five_whys?: string[];
   reproduction_steps?: string[];
   relevant_repo?: string | null;
+  relevant_repos?: string[];
 };
 
 /**
@@ -337,9 +345,9 @@ function searchBlocksForAgentRootCause(
           id: 0,
           description,
           cause: agentData.cause,
-          relevant_repos: agentData.relevant_repo
-            ? [agentData.relevant_repo]
-            : undefined,
+          relevant_repos:
+            agentData.relevant_repos ??
+            (agentData.relevant_repo ? [agentData.relevant_repo] : undefined),
         };
         return [cause];
       }
@@ -635,6 +643,78 @@ function findNoSolutionReasonInContainers(
     return stepLevel;
   }
   return searchContainersForNoSolutionReason(containers);
+}
+
+export type CodeChange = {
+  repo: string;
+  path: string;
+  type: string;
+  added: number;
+  removed: number;
+};
+
+export type SingleRunStop = { reason: string; suggestion: string };
+
+type MergedFilePatch = {
+  repo_name: string;
+  patch: { path: string; type: string; added: number; removed: number };
+};
+
+type SingleRunBlock = WithArtifacts & {
+  merged_file_patches?: MergedFilePatch[];
+};
+
+function singleRunBlocks(state: AutofixState): SingleRunBlock[] {
+  return (state as { blocks?: SingleRunBlock[] }).blocks ?? [];
+}
+
+export function extractCodeChanges(state: AutofixState): CodeChange[] {
+  const byFile = new Map<string, CodeChange>();
+  for (const block of singleRunBlocks(state)) {
+    for (const { repo_name, patch } of block.merged_file_patches ?? []) {
+      byFile.set(`${repo_name}:${patch.path}`, {
+        repo: repo_name,
+        path: patch.path,
+        type: patch.type,
+        added: patch.added,
+        removed: patch.removed,
+      });
+    }
+  }
+  return [...byFile.values()];
+}
+
+export type PullRequestLink = {
+  repo: string | undefined;
+  url: string;
+  number: number | undefined;
+};
+
+export function extractPullRequests(state: AutofixState): PullRequestLink[] {
+  const prStates =
+    (state as { repo_pr_states?: Record<string, unknown> }).repo_pr_states ??
+    {};
+  return Object.values(prStates).flatMap((prState) => {
+    const result = safeParse(PullRequestInfoSchema, prState);
+    if (!(result.success && result.output.pr_url)) {
+      return [];
+    }
+    const { repo_name, pr_url, pr_number } = result.output;
+    return [{ repo: repo_name, url: pr_url, number: pr_number }];
+  });
+}
+
+export function extractSingleRunStop(
+  state: AutofixState,
+): SingleRunStop | undefined {
+  const stops = singleRunBlocks(state)
+    .flatMap((block) => block.artifacts ?? [])
+    .filter((artifact) => artifact.key === "stop");
+  const data = stops.at(-1)?.data as Partial<SingleRunStop> | undefined;
+  if (typeof data?.reason === "string" && typeof data.suggestion === "string") {
+    return { reason: data.reason, suggestion: data.suggestion };
+  }
+  return;
 }
 
 /**

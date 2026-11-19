@@ -15,6 +15,7 @@ import {
   receiverEnvelopeId,
   receiverEnvelopeReceivedAt,
   reportIngestStatus,
+  trackReceiverRequest,
   type ReceiverEnvelope,
 } from "./receiver-ingest.js";
 import { type Context, Hono } from "hono";
@@ -59,7 +60,20 @@ const LOOPBACK_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const SESSION_UI_ACTION_RE =
   /^\/_local\/v1\/sessions\/[^/]+\/ui\/(reset|close|retention)$/;
-const SESSION_INGEST_RE = /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+$/;
+const SESSION_INGEST_RE =
+  /^\/_local\/v1\/sessions\/[^/]+\/ingest\/[^/]+(?:\/stream|\/api\/[^/]+\/envelope\/?)?$/;
+/**
+ * Paths that write to a session; each carries the ingest capability. SDKs
+ * post to the ingest URL itself (Node, Python), add `/stream` to it (PHP's
+ * Spotlight transport), or build `<path>/api/<project>/envelope/` from a DSN
+ * under it (Go, Rust, PHP, Ruby).
+ */
+const SESSION_INGEST_PATHS = [
+  "",
+  "/stream",
+  "/api/:projectId/envelope",
+  "/api/:projectId/envelope/",
+].map((suffix) => `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap${suffix}`);
 const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
 
@@ -96,7 +110,7 @@ function eventIdFrom(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const id = (value as Record<string, unknown>).event_id;
+  const id = (value as Record<string, unknown>)["event_id"];
   return typeof id === "string" && id.length > 0 ? id : undefined;
 }
 
@@ -113,12 +127,12 @@ function replaySegmentId(items: unknown[]): number | undefined {
     const [itemHeader, payload] = item as [unknown, unknown];
     const segmentId =
       typeof payload === "object" && payload !== null
-        ? (payload as Record<string, unknown>).segment_id
+        ? (payload as Record<string, unknown>)["segment_id"]
         : undefined;
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
-      (itemHeader as Record<string, unknown>).type === "replay_event" &&
+      (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
       typeof segmentId === "number" &&
       Number.isInteger(segmentId)
     ) {
@@ -145,7 +159,7 @@ function eventSummary(parsed: {
     ) {
       return [];
     }
-    const type = (item[0] as Record<string, unknown>).type;
+    const type = (item[0] as Record<string, unknown>)["type"];
     if (type !== "event" && type !== "transaction") {
       return [];
     }
@@ -238,6 +252,7 @@ export function createLocalControlPlane({
     )
       return c.body(null, 403);
     await next();
+    return;
   });
 
   app.get("/health", (c) => {
@@ -260,6 +275,7 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
     await next();
+    return;
   });
   const loopbackCors = cors({
     allowHeaders: [
@@ -271,15 +287,13 @@ export function createLocalControlPlane({
     allowMethods: ["GET", "POST", "OPTIONS"],
     origin: (origin) => (LOOPBACK_ORIGIN_RE.test(origin) ? origin : null),
   });
-  app.use(
-    `${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`,
-    async (c, next) => {
+  for (const path of SESSION_INGEST_PATHS)
+    app.use(path, async (c, next) => {
       if (!isLoopbackBrowserRequest(c.req.raw)) {
         return c.body(null, 403);
       }
       return await loopbackCors(c, next);
-    },
-  );
+    });
   const hostedCors = cors({
     allowHeaders: ["Last-Event-ID"],
     allowMethods: ["GET", "OPTIONS"],
@@ -480,37 +494,46 @@ export function createLocalControlPlane({
       return c.body(null, 401);
     }
 
-    const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
-    if (typeof body === "number") {
-      reportIngestStatus(sessionStore.getBuffer(reference), body);
-      return c.body(null, body);
-    }
-    const encoding = c.req.header("content-encoding");
-    const browserBeacon =
-      c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
-      c.req.header("origin");
-    // Close can occur while the body is being read. Check at the commit boundary.
-    if (sessionStore.resolve(reference).state === "retained")
-      return c.json(
+    const isClosed = () => sessionStore.resolve(reference).state === "retained";
+    const closed = () =>
+      c.json(
         { error: "Session is closed; create a new session to capture events." },
         410,
       );
+    if (isClosed()) return closed();
     const buffer = sessionStore.getBuffer(reference);
-    const status = await ingestReceiverEnvelope(buffer, {
-      body,
-      contentType: browserBeacon
-        ? SENTRY_CONTENT_TYPE
-        : (c.req.header("content-type") ?? ""),
-      encoding,
-      receiverUrl: c.req.url,
-      userAgent: c.req.header("user-agent"),
+    const browserBeacon =
+      c.req.query("sentry_client")?.startsWith("sentry.javascript.browser") &&
+      c.req.header("origin");
+    // Close can occur while the body is being read or decoded. Tracking the
+    // request lets close drain it, so a 413 reaches readers before the closing
+    // frame. Retention still stops at the close.
+    const status = await trackReceiverRequest(buffer, async () => {
+      const body = await readReceiverBody(c.req.raw, MAX_BODY_BYTES);
+      const result =
+        typeof body === "number"
+          ? body
+          : await ingestReceiverEnvelope(buffer, {
+              body,
+              contentType: browserBeacon
+                ? SENTRY_CONTENT_TYPE
+                : (c.req.header("content-type") ?? ""),
+              encoding: c.req.header("content-encoding"),
+              receiverUrl: c.req.url,
+              userAgent: c.req.header("user-agent"),
+              // Bodies that arrived before close are kept, even if close
+              // lands while they wait in the queue or decode.
+              closed: isClosed(),
+            });
+      reportIngestStatus(buffer, result);
+      return result;
     });
-    reportIngestStatus(buffer, status);
+    if (status === 410) return closed();
     if (status === 503) c.header("Retry-After", "1");
     if (status === 204) sessionStore.recordActivity(reference);
     return c.body(null, status);
   };
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/ingest/:cap`, ingest);
+  for (const path of SESSION_INGEST_PATHS) app.post(path, ingest);
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, ingest);
 
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id/stream`, (c) => {
@@ -624,9 +647,12 @@ export function createLocalControlPlane({
       ? c.json(sessionStore.getRetention(c.req.param("id")).getSettings())
       : c.body(null, 404),
   );
-  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, (c) =>
-    sessionExists(c.req.param("id")) ? updateRetention(c) : c.body(null, 404),
-  );
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/retention`, async (c) => {
+    if (!sessionExists(c.req.param("id"))) {
+      return c.body(null, 404);
+    }
+    return await updateRetention(c);
+  });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/reset`, (c) => {
     if (!sessionExists(c.req.param("id"))) {
@@ -675,7 +701,7 @@ export function createLocalControlPlane({
           contentType: container.getContentType(),
           itemTypes:
             parsed?.envelope[1]
-              .map((item) =>
+              .map((item: unknown) =>
                 Array.isArray(item) && typeof item[0] === "object" && item[0]
                   ? stringifyUnknown(
                       (item[0] as { type?: unknown }).type ?? "unknown",

@@ -8,7 +8,15 @@
  * to control the answer.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 // Mock isatty so deleteCommand's non-interactive guard passes.
 // Bun's ESM wrapper for CJS built-ins exposes `default` + `ReadStream` +
@@ -87,12 +95,8 @@ const { deleteCommand } =
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -102,17 +106,15 @@ import { ApiError, ContextError } from "../../../src/lib/errors.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryProject } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleProject: SentryProject = {
   id: "999",
@@ -126,8 +128,8 @@ const sampleProject: SentryProject = {
 const defaultFlags = { yes: true, force: false, "dry-run": false };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -141,10 +143,12 @@ function createMockContext() {
 }
 
 describe("project delete", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let deleteProjectSpy: ReturnType<typeof spyOn>;
-  let getOrganizationSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundTargetSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let deleteProjectSpy: MockInstance<(typeof apiClient)["deleteProject"]>;
+  let getOrganizationSpy: MockInstance<(typeof apiClient)["getOrganization"]>;
+  let resolveProjectBoundTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
 
   beforeEach(() => {
     getProjectSpy = vi.spyOn(apiClient, "getProject");
@@ -178,7 +182,7 @@ describe("project delete", () => {
 
   test("deletes project with explicit org/project and --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "acme-corp/my-app");
 
     expect(getProjectSpy).toHaveBeenCalledWith("acme-corp", "my-app");
@@ -192,7 +196,7 @@ describe("project delete", () => {
 
   test("delegates to resolveProjectBoundTarget for resolution", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "acme-corp/my-app");
 
     expect(resolveProjectBoundTargetSpy).toHaveBeenCalledWith(
@@ -208,7 +212,7 @@ describe("project delete", () => {
 
   test("resolves bare slug via resolveProjectBoundTarget", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "my-app");
 
     expect(resolveProjectBoundTargetSpy).toHaveBeenCalledWith(
@@ -224,7 +228,7 @@ describe("project delete", () => {
 
   test("errors in non-interactive mode without --yes", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     // isatty(0) returns false in test environments (non-TTY)
     await expect(
@@ -240,7 +244,7 @@ describe("project delete", () => {
     );
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(
       func.call(context, defaultFlags, "acme-corp/my-app"),
@@ -261,7 +265,7 @@ describe("project delete", () => {
     });
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "acme-corp/my-app");
@@ -288,7 +292,7 @@ describe("project delete", () => {
     });
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "acme-corp/my-app");
@@ -310,7 +314,7 @@ describe("project delete", () => {
     getOrganizationSpy.mockRejectedValue(new Error("network error"));
 
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     try {
       await func.call(context, defaultFlags, "acme-corp/my-app");
@@ -327,7 +331,7 @@ describe("project delete", () => {
 
   test("verifies project exists before attempting delete", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, defaultFlags, "acme-corp/my-app");
 
     // getProject must be called before deleteProject
@@ -340,7 +344,7 @@ describe("project delete", () => {
 
   test("dry-run shows what would be deleted without calling deleteProject", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true },
@@ -358,7 +362,7 @@ describe("project delete", () => {
 
   test("dry-run outputs JSON when --json is also set", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, "dry-run": true, json: true },
@@ -378,7 +382,7 @@ describe("project delete", () => {
 
   test("JSON output for actual deletion", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, json: true },
@@ -396,7 +400,7 @@ describe("project delete", () => {
 
   test("--fields filters the JSON output", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { ...defaultFlags, json: true, fields: ["project"] },
@@ -409,7 +413,7 @@ describe("project delete", () => {
 
   test("rejects auto-detect target", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     // Empty string triggers auto-detect in parseOrgProjectArg
     await expect(func.call(context, defaultFlags, "")).rejects.toThrow(
@@ -428,16 +432,18 @@ describe("project delete", () => {
  * returns a controllable value).
  */
 describe("project delete — interactive confirmation", () => {
-  let getProjectSpy: ReturnType<typeof spyOn>;
-  let deleteProjectSpy: ReturnType<typeof spyOn>;
-  let resolveProjectBoundTargetSpy: ReturnType<typeof spyOn>;
+  let getProjectSpy: MockInstance<(typeof apiClient)["getProject"]>;
+  let deleteProjectSpy: MockInstance<(typeof apiClient)["deleteProject"]>;
+  let resolveProjectBoundTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveProjectBoundTarget"]
+  >;
 
   function createPromptMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
         commandPrefix: ["sentry", "project", "delete"],
       },
@@ -476,7 +482,7 @@ describe("project delete — interactive confirmation", () => {
     mockPrompt.mockResolvedValue("acme-corp/my-app");
 
     const { context, stdoutWrite } = createPromptMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { yes: false, "dry-run": false },
@@ -492,7 +498,7 @@ describe("project delete — interactive confirmation", () => {
     mockPrompt.mockResolvedValue("wrong-org/wrong-project");
 
     const { context } = createPromptMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { yes: false, "dry-run": false },
@@ -508,7 +514,7 @@ describe("project delete — interactive confirmation", () => {
     mockPrompt.mockResolvedValue(Symbol("clack:cancel"));
 
     const { context } = createPromptMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { yes: false, "dry-run": false },
@@ -523,7 +529,7 @@ describe("project delete — interactive confirmation", () => {
     mockPrompt.mockResolvedValue("");
 
     const { context } = createPromptMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { yes: false, "dry-run": false },
@@ -537,7 +543,7 @@ describe("project delete — interactive confirmation", () => {
     mockPrompt.mockResolvedValue("acme-corp/my-app");
 
     const { context } = createPromptMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { yes: false, "dry-run": false },

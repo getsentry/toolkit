@@ -51,11 +51,16 @@ import {
 } from "../../lib/errors.js";
 import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { bold } from "../../lib/formatters/colors.js";
-import type { FilterValue, FormatValue } from "../../lib/formatters/local.js";
+import type {
+  FilterValue,
+  FormatValue,
+  ReplayTracker,
+} from "../../lib/formatters/local.js";
 import {
   FILTER_VALUES,
   FORMAT_VALUES,
   printLocalViewerHint,
+  createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   formatItem,
@@ -151,7 +156,7 @@ function createOversizedEnvelopeWarning(): OversizedEnvelopeWarning {
       if (timer === undefined) {
         timer = setTimeout(flush, quietUntil - now);
         // A pending count must never keep the CLI alive.
-        timer.unref?.();
+        timer.unref();
       }
       return;
     }
@@ -235,7 +240,7 @@ export { isLoopbackHost } from "./loopback.js";
  * own `toString()`.
  */
 export function spotlightEnvelopeId(header: Record<string, unknown>): string {
-  const id = header.__spotlight_envelope_id as
+  const id = header["__spotlight_envelope_id"] as
     | { toString(): string }
     | null
     | undefined;
@@ -311,7 +316,7 @@ export function buildSSEHandler(
       }
       stream
         .writeSSE({
-          id: envelopeId || undefined,
+          ...(envelopeId ? { id: envelopeId } : {}),
           event: `${container.getContentType()}${base64Indicator}`,
           data,
         })
@@ -669,7 +674,7 @@ export function tryListen(
         const boundPort = typeof addr === "object" && addr ? addr.port : port;
         resolve({ server, port: boundPort });
       });
-      server.once("error", async (err: NodeJS.ErrnoException) => {
+      server.once("error", (err: NodeJS.ErrnoException) => {
         server.close();
         if (err.code === "EADDRINUSE") {
           attempts += 1;
@@ -680,8 +685,7 @@ export function tryListen(
           logger.warn(
             `Port ${port} is in use, retrying in ${PORT_RETRY_DELAY_MS / 1000}s (attempt ${attempts}/${retries})...`,
           );
-          await sleep(PORT_RETRY_DELAY_MS);
-          resolve(attempt());
+          resolve(sleep(PORT_RETRY_DELAY_MS).then(attempt));
           return;
         }
         reject(err);
@@ -835,7 +839,7 @@ const SSE_MAX_RETRY_MS = 30_000;
 export type ConsumeSSEOptions = {
   url: string;
   /** A full scoped stream URL, when consuming a daemon-owned session. */
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet?: boolean;
@@ -906,6 +910,8 @@ async function consumeSSEWithWarning(
   let retries = 0;
   let retryDelay = SSE_INITIAL_RETRY_MS;
   let hasConnectedBefore = false;
+  // Reconnects resume the same tail, so a replay already shown stays shown.
+  const replays = createReplayTracker();
 
   while (!signal.aborted) {
     const result = await attemptSSEConnection({
@@ -916,6 +922,7 @@ async function consumeSSEWithWarning(
       quiet,
       useJson,
       showAttributes,
+      replays,
       lastEventId,
       onId: (id) => {
         lastEventId = id;
@@ -923,6 +930,7 @@ async function consumeSSEWithWarning(
       onOversized: warnOversized,
     });
 
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the signal can abort during the await; TS keeps the loop condition's narrowing
     if (signal.aborted || result === "retained") {
       return;
     }
@@ -984,11 +992,11 @@ async function attemptSSEConnection(
 ): Promise<
   "no-connection" | "connected-then-lost" | "retained" | "session-gone"
 > {
-  let wasConnected = false;
+  const conn = { wasConnected: false };
   const augmented = {
     ...opts,
     onConnected: () => {
-      wasConnected = true;
+      conn.wasConnected = true;
     },
   };
   try {
@@ -1003,24 +1011,26 @@ async function attemptSSEConnection(
     logger.debug(
       `SSE error: ${err instanceof Error ? err.message : String(err)}`,
     );
-    if (opts.streamUrl && !wasConnected && isConnectionRefused(err)) {
+    if (opts.streamUrl && !conn.wasConnected && isConnectionRefused(err)) {
       return "session-gone";
     }
     // If we got a 200 response before the error, the connection existed
     // and is worth retrying. Otherwise, the server is unreachable.
-    return wasConnected ? "connected-then-lost" : "no-connection";
+    return conn.wasConnected ? "connected-then-lost" : "no-connection";
   }
 }
 
 /** Options for a single SSE connection attempt. */
 type ConsumeSSEOnceOptions = {
   url: string;
-  streamUrl?: string;
+  streamUrl?: string | undefined;
   activeFilters: ReadonlySet<FilterValue>;
   signal: AbortSignal;
   quiet: boolean;
   useJson: boolean;
   showAttributes: boolean;
+  /** The replays this tail has printed, kept across reconnects. */
+  replays: ReplayTracker;
   lastEventId: string | undefined;
   onId: (id: string) => void;
   /** Called when the receiver rejects an envelope as too large. */
@@ -1046,6 +1056,7 @@ async function consumeSSEOnce(
     quiet,
     useJson,
     showAttributes,
+    replays,
     lastEventId,
     onId,
     onOversized,
@@ -1077,7 +1088,7 @@ async function consumeSSEOnce(
 
   const decoder = new TextDecoder();
   const state: SSEParserState = { eventType: "", dataLines: [], id: "" };
-  let retained = false;
+  let retained = false as boolean;
   const onEvent = (type: string, data: string, id: string) => {
     if (id) {
       onId(id);
@@ -1099,7 +1110,7 @@ async function consumeSSEOnce(
     } else if (type === LOCAL_OVERSIZED_EVENT) {
       onOversized();
     } else if (!quiet && type === SENTRY_CONTENT_TYPE) {
-      processSSEEvent(data, activeFilters, useJson, showAttributes);
+      processSSEEvent(data, activeFilters, useJson, showAttributes, replays);
     }
   };
 
@@ -1124,8 +1135,9 @@ async function consumeSSEOnce(
 function processSSEEvent(
   data: string,
   activeFilters: ReadonlySet<FilterValue>,
-  useJson = false,
-  showAttributes = false,
+  useJson: boolean,
+  showAttributes: boolean,
+  replays: ReplayTracker,
 ): void {
   try {
     const envelope = JSON.parse(data) as [
@@ -1145,7 +1157,7 @@ function processSSEEvent(
             payload,
             header,
             itemHeader.type ?? "envelope",
-            showAttributes,
+            { showAttributes, replays },
           );
       for (const line of lines) {
         printLocalEventLine(line, useJson);
@@ -1246,7 +1258,7 @@ export const serverCommand = buildCommand({
       attributes: {
         kind: "boolean",
         brief:
-          "Also show SDK attributes, under each transaction and log or in JSON",
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -1364,14 +1376,22 @@ export const serverCommand = buildCommand({
     const useJson = flags.format === "json";
 
     if (!flags.quiet) {
-      const formatFn = useJson ? formatEnvelopeLinesJson : formatEnvelopeLines;
+      const replays = createReplayTracker();
       buffer.subscribe((container) => {
         try {
-          for (const line of formatFn(
-            container,
-            activeFilters,
-            flags.attributes,
-          )) {
+          const lines = useJson
+            ? formatEnvelopeLinesJson(
+                container,
+                activeFilters,
+                flags.attributes,
+              )
+            : formatEnvelopeLines(
+                container,
+                activeFilters,
+                flags.attributes,
+                replays,
+              );
+          for (const line of lines) {
             printLocalEventLine(line, useJson);
           }
         } catch (err) {

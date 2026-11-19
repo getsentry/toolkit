@@ -38,7 +38,7 @@ export type PollOptions<T> = {
   /** Suppress progress output (JSON mode) */
   json?: boolean;
   /** Poll interval in ms (default: 1000) */
-  pollIntervalMs?: number;
+  pollIntervalMs?: number | undefined;
   /** Timeout in ms (default: 360000 / 6 min) */
   timeoutMs?: number;
   /** Custom timeout message */
@@ -164,7 +164,7 @@ export type WithProgressOptions = {
   message: string;
   /** Suppress progress output (JSON mode). When true, the operation runs
    *  without a spinner — matching the behaviour of {@link poll}. */
-  json?: boolean;
+  json?: boolean | undefined;
   /**
    * Suppress progress when stdout is not a terminal, even if rich output is
    * explicitly forced. Use for terminal-only feedback that must not enter a

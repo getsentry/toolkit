@@ -1,6 +1,6 @@
 /** Auto-detect the project's development server command from filesystem markers. */
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sentry } from "./app-identity.js";
@@ -41,13 +41,17 @@ export type DetectOptions = {
  * Detect the project's dev command by inspecting filesystem markers in priority order.
  *
  * Detection priority:
- * 1. package.json scripts (dev > develop > serve > start)
- * 2. manage.py (Django)
- * 3. app.py, then main.py (FastAPI, Flask, or a plain Python script)
- * 4. wsgi.py (Flask, or a script with a `__main__` guard)
- * 5. FLASK_APP env var, in a project with a Python marker (Flask)
- * 6. go.mod (Go)
- * 7. docker-compose.yml / compose.yml (Docker Compose)
+ * 1. artisan (Laravel) and Gemfile with bin/rails (Rails), ahead of the
+ *    package.json `dev` script that only starts their asset server
+ * 2. package.json scripts (dev > develop > serve > start)
+ * 3. manage.py (Django)
+ * 4. app.py, then main.py (FastAPI, Flask, or a plain Python script)
+ * 5. wsgi.py (Flask, or a script with a `__main__` guard)
+ * 6. FLASK_APP env var, in a project with a Python marker (Flask)
+ * 7. Gemfile with config.ru (Rack)
+ * 8. Cargo.toml with a binary target (Rust)
+ * 9. go.mod (Go)
+ * 10. docker-compose.yml / compose.yml (Docker Compose)
  *
  * Python commands run the project's virtualenv interpreter when one exists,
  * even if it is not activated (see `findPython`).
@@ -65,12 +69,16 @@ export async function detectDevCommand(
   // Looked up on first use: the PATH lookup spawns a process.
   const python = () => (found ??= findPython(cwd, env, platform));
   const result =
+    (await tryLaravel(cwd)) ??
+    (await tryRails(cwd, platform)) ??
     (await tryPackageJson(cwd, platform)) ??
     tryDjango(cwd, python) ??
     (await tryPythonApp(cwd, "app.py", python, true)) ??
     (await tryPythonApp(cwd, "main.py", python, true)) ??
     (await tryPythonApp(cwd, "wsgi.py", python, false)) ??
     tryFlaskAppEnv(cwd, env, python) ??
+    tryRack(cwd) ??
+    (await tryCargo(cwd)) ??
     (await tryGoMod(cwd)) ??
     (await tryDockerCompose(cwd));
   return result;
@@ -138,7 +146,11 @@ function findPython(
 ): string {
   const [binDir, exe] =
     platform === "win32" ? ["Scripts", ".exe"] : ["bin", ""];
-  for (const root of [env.VIRTUAL_ENV, join(cwd, ".venv"), join(cwd, "venv")]) {
+  for (const root of [
+    env["VIRTUAL_ENV"],
+    join(cwd, ".venv"),
+    join(cwd, "venv"),
+  ]) {
     if (!root) {
       continue;
     }
@@ -181,7 +193,7 @@ function tryFlaskAppEnv(
   python: PythonLookup,
 ): DetectedCommand | null {
   if (
-    !env.FLASK_APP ||
+    !env["FLASK_APP"] ||
     !PYTHON_MARKERS.some((file) => existsSync(join(cwd, file)))
   ) {
     return null;
@@ -202,14 +214,14 @@ const ASSIGNMENT_RE = /^(\w+)\s*(?::[^=]+)?=(?!=)\s*(.*)$/;
 const FRAMEWORK_CALL_RE =
   /(?<![\w.])(?:(?:fastapi\.)?(FastAPI)|(?:flask\.)?(Flask))\(/;
 
-/** Names of app factory functions, as in `def create_app():` or `app = create_app()`. */
-const FACTORY_NAME = "(?:create|make)_app";
+/** Captures the function a value calls, as `myapp.get_application` in `myapp.get_application()`. */
+const CALL_RE = /^([A-Za-z_][\w.]*)\s*\(/;
 
-/** Matches a call to an app factory, as `create_app(` or `myapp.create_app(`. */
-const FACTORY_CALL_RE = new RegExp(`^(?:[\\w.]+\\.)?${FACTORY_NAME}\\(`);
-
-/** Captures the name of a top-level app factory, as `create_app` in `def create_app():`. */
-const FACTORY_DEF_RE = new RegExp(`^def\\s+(${FACTORY_NAME})\\s*\\(`);
+/**
+ * Captures a top-level `def create_app` or `def make_app`: whether it is
+ * `async`, its name, and the `(` or `[` that follows the name.
+ */
+const FACTORY_DEF_RE = /^(async\s+)?def\s+((?:create|make)_app)\s*([([])/;
 
 /** Captures the framework a top-level import names, as `fastapi` in `from fastapi import FastAPI`. */
 const FRAMEWORK_IMPORT_RE = /^(?:from|import)\s+(fastapi|flask)\b/;
@@ -234,6 +246,7 @@ function pythonLines(source: string): PythonLine[] {
   const lines: PythonLine[] = [];
   let quote: string | null = null;
   for (const text of source.split(/\r?\n/)) {
+    // Known gap: a column-0 line inside an open bracket also counts as top level.
     const topLevel = quote === null && /^[^\s#]/.test(text);
     let code = "";
     let i = 0;
@@ -307,7 +320,8 @@ async function tryPythonApp(
   if (topLevel.some((line) => MAIN_GUARD_RE.test(line.text))) {
     return script;
   }
-  const app = await findPythonApp(cwd, lines);
+  const factory = localFactory(lines);
+  const app = await findPythonApp(cwd, lines, factory);
   const module = filename.slice(0, -".py".length);
   if (!app) {
     if (!runAsScript) {
@@ -316,7 +330,9 @@ async function tryPythonApp(
     const imported = topLevel
       .map((line) => FRAMEWORK_IMPORT_RE.exec(line.code)?.[1])
       .find(Boolean);
-    if (imported) {
+    if (factory && !factory.servable) {
+      script.hint = `${filename} defines ${factory.name}, but local run can only serve a factory that is a plain \`def\` it can call with no arguments, so ${filename} runs as a script and may exit right away. To serve it, pass the command after --.`;
+    } else if (imported) {
       const serve =
         imported === "fastapi"
           ? `${script.args[0]} -m uvicorn ${module}:app --reload`
@@ -357,17 +373,19 @@ function matchedFramework(match: RegExpExecArray): PythonFramework {
 /**
  * Find the FastAPI or Flask app that `lines` define at top level, in order:
  * 1. a top-level assignment whose value is a `FastAPI(` or `Flask(` call;
- * 2. a top-level `app` or `application` built by `create_app()` or
- *    `make_app()`, with the framework that the factory's body builds when it
- *    is defined in the file, or else the one the project declares;
- * 3. a top-level `def create_app():` or `def make_app():`, with the
- *    framework its body builds, or else the one the project declares.
+ * 2. a top-level `app` or `application` built by a call, such as
+ *    `create_app()` or `myapp.get_application()`, with the framework that
+ *    `factory` builds when the call is to it, or else the one the project
+ *    declares;
+ * 3. `factory`, when uvicorn or Flask can call it, with the framework its
+ *    body builds, or else the one the project declares.
  */
 async function findPythonApp(
   cwd: string,
   lines: PythonLine[],
+  factory: PythonFactory | null,
 ): Promise<PythonApp | null> {
-  let factoryCall: { name: string; value: string } | undefined;
+  let factoryCall: { name: string; callee: string } | undefined;
   for (const line of lines) {
     const assignment = line.topLevel ? ASSIGNMENT_RE.exec(line.code) : null;
     if (!assignment) {
@@ -378,45 +396,48 @@ async function findPythonApp(
     if (call?.index === 0) {
       return { framework: matchedFramework(call), name, factory: false };
     }
-    if (
-      (name === "app" || name === "application") &&
-      FACTORY_CALL_RE.test(value)
-    ) {
-      factoryCall ??= { name, value };
+    const callee = CALL_RE.exec(value)?.[1];
+    if ((name === "app" || name === "application") && callee) {
+      factoryCall ??= { name, callee };
     }
   }
-  const factory = localFactory(lines);
   if (factoryCall) {
-    const built = factoryCall.value.startsWith(`${factory?.name}(`)
-      ? factory?.framework
-      : null;
+    const built =
+      factoryCall.callee === factory?.name ? factory.framework : null;
     const framework = built ?? (await declaredFramework(cwd));
     return framework
       ? { framework, name: factoryCall.name, factory: false }
       : null;
   }
-  if (!factory) {
+  if (!factory?.servable) {
     return null;
   }
   const framework = factory.framework ?? (await declaredFramework(cwd));
   return framework ? { framework, name: factory.name, factory: true } : null;
 }
 
-/**
- * The first top-level `def create_app():` or `def make_app():` in `lines`,
- * with the framework its body builds, or null for `framework` when the body
- * builds none.
- */
-function localFactory(
-  lines: PythonLine[],
-): { name: string; framework: PythonFramework | null } | null {
+/** A top-level `create_app` or `make_app` function, found by `localFactory`. */
+type PythonFactory = {
+  name: string;
+  /** Framework its body builds, or null when it builds neither. */
+  framework: PythonFramework | null;
+  /**
+   * Whether uvicorn `--factory` and `flask --app` can call it: a plain,
+   * non-generic `def` whose parameters are all optional.
+   */
+  servable: boolean;
+};
+
+/** The first top-level `def create_app` or `def make_app` in `lines`. */
+function localFactory(lines: PythonLine[]): PythonFactory | null {
   const start = lines.findIndex(
     (line) => line.topLevel && FACTORY_DEF_RE.test(line.code),
   );
   if (start === -1) {
     return null;
   }
-  const name = FACTORY_DEF_RE.exec(lines[start]?.code ?? "")?.[1] ?? "";
+  const [, isAsync, name = "", bracket] =
+    FACTORY_DEF_RE.exec(lines[start]?.code ?? "") ?? [];
   // The body runs to the next top-level statement. A `)` at column 0 still
   // belongs to a signature that spans lines.
   const end = lines.findIndex(
@@ -426,7 +447,54 @@ function localFactory(
   const call = body
     .map((line) => FRAMEWORK_CALL_RE.exec(line.code))
     .find(Boolean);
-  return { name, framework: call ? matchedFramework(call) : null };
+  const code = body.map((line) => line.code).join("\n");
+  const params = code.slice(code.indexOf("(", code.indexOf(name)) + 1);
+  return {
+    name,
+    framework: call ? matchedFramework(call) : null,
+    servable: !isAsync && bracket === "(" && allParamsOptional(params),
+  };
+}
+
+/**
+ * Whether every parameter in `params`, the text after a signature's `(`,
+ * has a default or is `*args`, `**kwargs`, or a bare `*` or `/`. Only a
+ * comma or `=` outside brackets counts, so `Annotated[int, Field(gt=0)]` is
+ * still a required parameter. Strings are already blanked.
+ */
+function allParamsOptional(params: string): boolean {
+  let depth = 0;
+  let param = "";
+  let hasDefault = false;
+  for (const char of params) {
+    if (depth === 0 && (char === "," || char === ")")) {
+      const trimmed = param.trim();
+      if (
+        trimmed &&
+        !trimmed.startsWith("*") &&
+        trimmed !== "/" &&
+        !hasDefault
+      ) {
+        return false;
+      }
+      if (char === ")") {
+        return true;
+      }
+      param = "";
+      hasDefault = false;
+      continue;
+    }
+    if (depth === 0 && char === "=") {
+      hasDefault = true;
+    }
+    if ("([{".includes(char)) {
+      depth += 1;
+    } else if (")]}".includes(char)) {
+      depth -= 1;
+    }
+    param += char;
+  }
+  return false;
 }
 
 /**
@@ -549,6 +617,136 @@ function pyprojectDependencies(contents: string): string[] {
     }
   }
   return names;
+}
+
+/**
+ * Check for an `artisan` file (Laravel). Runs `composer run dev` when
+ * composer.json has a `dev` script, which the Laravel skeleton uses to start
+ * the server, queue, logs, and Vite together, or else `php artisan serve`.
+ */
+async function tryLaravel(cwd: string): Promise<DetectedCommand | null> {
+  if (!isFile(join(cwd, "artisan"))) {
+    return null;
+  }
+  const composer = await readFile(join(cwd, "composer.json"), "utf-8").catch(
+    () => null,
+  );
+  if (composer !== null && hasComposerDevScript(composer)) {
+    return {
+      args: ["composer", "run", "dev"],
+      source: "composer.json dev (Laravel)",
+    };
+  }
+  return { args: ["php", "artisan", "serve"], source: "artisan (Laravel)" };
+}
+
+/** Whether composer.json source declares `scripts.dev`. */
+function hasComposerDevScript(source: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(source);
+    const scripts =
+      typeof parsed === "object" && parsed !== null && "scripts" in parsed
+        ? parsed.scripts
+        : null;
+    return typeof scripts === "object" && scripts !== null && "dev" in scripts;
+  } catch (error) {
+    logger.debug(
+      "Failed to parse composer.json for dev script detection",
+      error,
+    );
+    return false;
+  }
+}
+
+/**
+ * Check for a Gemfile with `bin/rails` (Rails). Prefers `bin/dev`, which
+ * newer Rails apps use to start the server with their asset watchers.
+ * Scripts run through their interpreter, so a lost exec bit or Windows,
+ * which cannot run extensionless scripts, still works. A shell `bin/dev`
+ * (foreman) is skipped on Windows.
+ */
+async function tryRails(
+  cwd: string,
+  platform: NodeJS.Platform,
+): Promise<DetectedCommand | null> {
+  if (
+    !(existsSync(join(cwd, "Gemfile")) && isFile(join(cwd, "bin", "rails")))
+  ) {
+    return null;
+  }
+  const dev = await readFile(join(cwd, "bin", "dev"), "utf-8").catch(
+    () => null,
+  );
+  if (dev !== null) {
+    const shell = shebangShell(dev);
+    if (!shell) {
+      return { args: ["ruby", "bin/dev"], source: "bin/dev (Rails)" };
+    }
+    if (platform !== "win32") {
+      return { args: [shell, "bin/dev"], source: "bin/dev (Rails)" };
+    }
+  }
+  return { args: ["ruby", "bin/rails", "server"], source: "bin/rails (Rails)" };
+}
+
+/**
+ * The shell, `sh` or `bash`, that a script's shebang names, as in
+ * `#!/usr/bin/env sh` or `#!/bin/bash`, or undefined for any other script.
+ */
+function shebangShell(script: string): "sh" | "bash" | undefined {
+  if (!script.startsWith("#!")) {
+    return;
+  }
+  const [program = "", arg = ""] = (script.split("\n", 1)[0] ?? "")
+    .slice(2)
+    .trim()
+    .split(WHITESPACE_RE);
+  const name = (program.endsWith("/env") ? arg : program).split("/").pop();
+  return name === "sh" || name === "bash" ? name : undefined;
+}
+
+/**
+ * Check for a Gemfile with config.ru and return `bundle exec rackup`.
+ * Rack 3 and Sinatra 4 moved `rackup` into the `rackup` gem, which the
+ * Gemfile must then list.
+ */
+function tryRack(cwd: string): DetectedCommand | null {
+  if (
+    !(existsSync(join(cwd, "Gemfile")) && existsSync(join(cwd, "config.ru")))
+  ) {
+    return null;
+  }
+  return { args: ["bundle", "exec", "rackup"], source: "config.ru (Rack)" };
+}
+
+/**
+ * Check for a Cargo.toml package with a binary target and return
+ * `cargo run`. A virtual workspace (no `[package]`) or a library-only crate
+ * has nothing for `cargo run` to start.
+ */
+async function tryCargo(cwd: string): Promise<DetectedCommand | null> {
+  const manifest = await readFile(join(cwd, "Cargo.toml"), "utf-8").catch(
+    () => null,
+  );
+  if (manifest === null || !CARGO_PACKAGE_RE.test(manifest)) {
+    return null;
+  }
+  const hasBinary =
+    CARGO_BINARY_RE.test(manifest) ||
+    existsSync(join(cwd, "src", "main.rs")) ||
+    existsSync(join(cwd, "src", "bin"));
+  return hasBinary ? { args: ["cargo", "run"], source: "Cargo.toml" } : null;
+}
+
+/** Matches the `[package]` table header of a Cargo.toml. */
+const CARGO_PACKAGE_RE = /^\s*\[package\]/m;
+
+/** Matches a Cargo.toml `default-run` key or `[[bin]]` target. */
+const CARGO_BINARY_RE = /^\s*(?:default-run\s*=|\[\[bin\]\])/m;
+
+/** Whether `path` exists and is a regular file. */
+function isFile(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
 }
 
 /** Check for go.mod and return `go run .` */

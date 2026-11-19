@@ -24,11 +24,11 @@ import {
   resolveDescription,
 } from "../types";
 
-export type ToolRegistry = Record<string, ToolConfig<any>>;
+export type ToolRegistry = Record<string, ToolConfig>;
 
 export interface ToolWithContext {
   key: string;
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   isCatalogTool: boolean;
   isTopLevel: boolean;
 }
@@ -46,7 +46,7 @@ function getToolPlacement({
   useDefaultSurfacePolicy,
 }: {
   key: string;
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   experimentalMode: boolean;
   useDefaultSurfacePolicy: boolean;
 }): {
@@ -69,7 +69,7 @@ function hasRequiredCapabilities({
   tool,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   context: ServerContext;
 }): boolean {
   if (
@@ -90,7 +90,7 @@ function isAllowedBySkills({
   tool,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   context: ServerContext;
 }): boolean {
   const grantedSkills: Set<Skill> | undefined = context.grantedSkills
@@ -132,7 +132,7 @@ function isMissingFeedbackDsn(key: string): boolean {
  * {@link applyDefaultOrganization} fills it, or explains which one to pass.
  */
 export function getFilteredInputSchema(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   context: ServerContext,
 ): Record<string, z.ZodType> {
   const constraintKeysToFilter = new Set(
@@ -146,16 +146,16 @@ export function getFilteredInputSchema(
   ) as Record<string, z.ZodType>;
   if (
     "organizationSlug" in schema &&
-    isOrganizationSlugRequired(schema.organizationSlug)
+    isOrganizationSlugRequired(schema["organizationSlug"])
   ) {
-    schema.organizationSlug = schema.organizationSlug.optional();
+    schema["organizationSlug"] = schema["organizationSlug"].optional();
   }
   return schema;
 }
 
 export function injectConstraintParams(
   params: Record<string, unknown>,
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   context: ServerContext,
 ): Record<string, unknown> {
   return {
@@ -263,7 +263,7 @@ export async function executeToolHandler({
   params,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   params: Record<string, unknown>;
   context: ServerContext;
 }) {
@@ -286,7 +286,7 @@ export function prepareToolParams({
   params,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   params: Record<string, unknown>;
   context: ServerContext;
 }): Record<string, unknown> {
@@ -313,7 +313,7 @@ export async function prepareToolCallParams({
   params,
   context,
 }: {
-  tool: ToolConfig<any>;
+  tool: ToolConfig;
   params: Record<string, unknown>;
   context: ServerContext;
 }): Promise<Record<string, unknown>> {
@@ -326,7 +326,7 @@ export async function prepareToolCallParams({
 }
 
 export function resolveToolDescription(
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   context: DescriptionContext,
 ): string {
   return resolveDescription(tool.description, context);

@@ -403,6 +403,18 @@ describe("resolveResourceParams", () => {
       });
     });
 
+    it("parses metric alert URL", () => {
+      expect(
+        resolveResourceParams({
+          url: "https://my-org.sentry.io/alerts/rules/details/281012/?alert=10606471897",
+        }),
+      ).toEqual<ResolvedResourceParams>({
+        type: "metric_alert",
+        organizationSlug: "my-org",
+        alertRuleId: "281012",
+      });
+    });
+
     it("parses release URL", () => {
       expect(
         resolveResourceParams({
@@ -436,7 +448,7 @@ describe("resolveResourceParams", () => {
         "Use `search_issues` to list issues",
       ],
       [
-        "https://my-org.sentry.io/alerts/rules/details/123/",
+        "https://my-org.sentry.io/alerts/rules/backend/123/details/",
         "Use `find_alert_rules` to list alert rules",
       ],
       [
