@@ -194,9 +194,9 @@ describe("mapStructuredStacktrace", () => {
     });
 
     const vars = stacktrace?.frames[0]?.vars;
-    expect(vars?.count).toBe(50);
-    expect(vars?.label).toBe("export");
-    expect(vars?.rows).toBe(`${JSON.stringify(rows).slice(0, 200)}…`);
+    expect(vars?.["count"]).toBe(50);
+    expect(vars?.["label"]).toBe("export");
+    expect(vars?.["rows"]).toBe(`${JSON.stringify(rows).slice(0, 200)}…`);
   });
 
   it("keeps vars on a detail frame that has no line number", () => {

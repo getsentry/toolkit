@@ -84,7 +84,7 @@ function normalizeHost(
 }
 
 function captureClaimHost(token: string | undefined): {
-  host?: string;
+  host?: string | undefined;
   error?: ConfigError;
 } {
   if (!token?.startsWith("sntrys_")) {
@@ -129,8 +129,8 @@ export function captureEnvTokenHost(): void {
   }
   const configuredHost =
     normalizeHost(
-      env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim(),
-      env.SENTRY_HOST?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
+      env["SENTRY_HOST"]?.trim() || env["SENTRY_URL"]?.trim(),
+      env["SENTRY_HOST"]?.trim() ? "SENTRY_HOST" : "SENTRY_URL",
     ) ?? null;
   snapshotState.byEnv.set(env, snapshotEnvToken(configuredHost));
 }

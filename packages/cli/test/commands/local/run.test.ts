@@ -52,6 +52,7 @@ import {
 } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
 import { useTestConfigDir } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 /**
  * Records the env passed to the most recent `spawn` call so tests can assert
@@ -61,8 +62,8 @@ import { useTestConfigDir } from "../../helpers.js";
  */
 const spawnCapture: {
   args?: readonly string[];
-  child?: ChildProcess;
-  env?: NodeJS.ProcessEnv;
+  child?: ChildProcess | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
   stdio?: Parameters<typeof import("node:child_process").spawn>[2]["stdio"];
 } = {};
 
@@ -76,10 +77,15 @@ vi.mock("node:child_process", async (importOriginal) => {
       options?: Parameters<typeof actual.spawn>[2],
     ) => {
       spawnCapture.args = args;
-      spawnCapture.env = options?.env;
+      if (options?.env === undefined) {
+        delete spawnCapture.env;
+      } else {
+        spawnCapture.env = options.env;
+      }
       spawnCapture.stdio = options?.stdio;
-      spawnCapture.child = actual.spawn(cmd, args as string[], options);
-      return spawnCapture.child;
+      const child = actual.spawn(cmd, [...args], options ?? {});
+      spawnCapture.child = child;
+      return child;
     },
   };
 });
@@ -120,16 +126,16 @@ afterEach(async () => {
 
 function makeContext(cwd?: string) {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: cwd ?? tmpDir,
   };
 }
 
 describe("sentry local run", () => {
   beforeEach(() => {
-    spawnCapture.args = undefined;
-    spawnCapture.env = undefined;
+    delete spawnCapture.args;
+    delete spawnCapture.env;
     spawnCapture.stdio = undefined;
     spawnCapture.child = undefined;
   });
@@ -432,8 +438,8 @@ describe("sentry local run", () => {
   });
 
   test("preserves existing SENTRY_TRACES_SAMPLE_RATE", async () => {
-    const originalRate = process.env.SENTRY_TRACES_SAMPLE_RATE;
-    process.env.SENTRY_TRACES_SAMPLE_RATE = "0.5";
+    const originalRate = process.env["SENTRY_TRACES_SAMPLE_RATE"];
+    process.env["SENTRY_TRACES_SAMPLE_RATE"] = "0.5";
     try {
       const func = (await runCommand.loader()) as unknown as RunFunc;
       const ctx = makeContext();
@@ -447,9 +453,9 @@ describe("sentry local run", () => {
       );
     } finally {
       if (originalRate === undefined) {
-        delete process.env.SENTRY_TRACES_SAMPLE_RATE;
+        delete process.env["SENTRY_TRACES_SAMPLE_RATE"];
       } else {
-        process.env.SENTRY_TRACES_SAMPLE_RATE = originalRate;
+        process.env["SENTRY_TRACES_SAMPLE_RATE"] = originalRate;
       }
     }
   });
@@ -973,7 +979,7 @@ setInterval(() => {}, 1000);
     const capturedEnv = spawnCapture.env;
     expect(capturedEnv).toBeDefined();
     // Base name read by server-side SDKs.
-    expect(capturedEnv?.SENTRY_SPOTLIGHT).toBe(expectedUrl);
+    expect(capturedEnv?.["SENTRY_SPOTLIGHT"]).toBe(expectedUrl);
     // Every framework client variant points at the same URL.
     for (const prefix of CLIENT_SPOTLIGHT_PREFIXES) {
       expect(capturedEnv?.[`${prefix}SENTRY_SPOTLIGHT`]).toBe(expectedUrl);
@@ -1089,12 +1095,12 @@ describe("sentry local run --verify receiver", () => {
         context,
       );
       expect(context.process.exitCode ?? 0).toBe(0);
-      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
       expect(receiver.pathname).toBe("/stream");
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       // Client-side variants get the fallback port too, not the default.
-      expect(spawnCapture.env?.NEXT_PUBLIC_SENTRY_SPOTLIGHT).toBe(
+      expect(spawnCapture.env?.["NEXT_PUBLIC_SENTRY_SPOTLIGHT"]).toBe(
         receiver.href,
       );
       expect(warn).not.toHaveBeenCalledWith(
@@ -1109,6 +1115,7 @@ describe("sentry local run --verify receiver", () => {
 
   test("says which port it used when verify on a fallback port times out", async () => {
     const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const context = makeParsedRunContext();
     try {
@@ -1130,11 +1137,13 @@ describe("sentry local run --verify receiver", () => {
         context,
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
-      const port = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "").port;
-      expect(warn).toHaveBeenCalledWith(
-        `Verify used port ${port} because ${DEFAULT_PORT} was busy. Make sure your SDK reads SENTRY_SPOTLIGHT instead of a hard-coded port.`,
-      );
+      const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
+      const notice = `Port ${DEFAULT_PORT} is in use, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+      // Once when it binds, and again when nothing arrived.
+      expect(info).toHaveBeenCalledWith(notice);
+      expect(warn).toHaveBeenCalledWith(notice);
     } finally {
+      info.mockRestore();
       warn.mockRestore();
       busy.mockRestore();
     }
@@ -1213,11 +1222,11 @@ describe("sentry local run messages", () => {
         context,
       );
       expect(context.process.exitCode ?? 0).toBe(0);
-      const receiver = new URL(spawnCapture.env?.SENTRY_SPOTLIGHT ?? "");
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
       expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
       expect(Number(receiver.port)).toBeGreaterThan(0);
       expect(info).toHaveBeenCalledWith(
-        `The Local daemon is using port ${DEFAULT_PORT}, so this run captures on a free port. Add --session <name> to capture into the daemon instead.`,
+        `Port ${DEFAULT_PORT} is held by the Local daemon, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT. Add --session <name> to capture into the daemon instead.`,
       );
     } finally {
       info.mockRestore();

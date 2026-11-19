@@ -1,5 +1,5 @@
 export const LIB_VERSION =
-  (typeof process !== "undefined" && process.env.npm_package_version) ||
+  (typeof process !== "undefined" && process.env["npm_package_version"]) ||
   "0.0.0";
 
 let hostVersion: string | undefined;

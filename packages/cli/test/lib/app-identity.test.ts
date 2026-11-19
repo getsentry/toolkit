@@ -39,10 +39,10 @@ describe("app identity", () => {
 
   test("hints go through npx when npx launched the process", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
-    process.env.npm_command = "exec";
+    process.env["npm_command"] = "exec";
     expect(getLoginCommand()).toBe("npx -y @sentry/mcp-server auth login");
 
-    delete process.env.npm_command;
+    delete process.env["npm_command"];
     process.argv[1] = "/home/u/.npm/_npx/abc/node_modules/.bin/sentry-mcp";
     expect(getLoginCommand()).toBe("npx -y @sentry/mcp-server auth login");
   });
@@ -54,7 +54,7 @@ describe("app identity", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
     expect(sentry`issue list ${org}/`).toBe("sentry-mcp issue list acme/");
 
-    process.env.npm_command = "exec";
+    process.env["npm_command"] = "exec";
     expect(sentry`issue list ${org}/`).toBe(
       "npx -y @sentry/mcp-server issue list acme/",
     );
@@ -81,14 +81,14 @@ describe("app identity", () => {
     setAppIdentity({ name: "sentry-mcp", packageName: "@sentry/mcp-server" });
     expect(usageHint()).toBe("sentry-mcp org list");
 
-    process.env.npm_command = "exec";
+    process.env["npm_command"] = "exec";
     const context = new ContextError("Organization", usageHint());
     expect(context.command).toBe("npx -y @sentry/mcp-server org list");
     expect(context.message).toContain("npx -y @sentry/mcp-server org list");
   });
 
   test("error usage lines are shown as given", () => {
-    process.env.npm_command = "exec";
+    process.env["npm_command"] = "exec";
     const resolution = new ResolutionError(
       "Project 'web'",
       "not found",

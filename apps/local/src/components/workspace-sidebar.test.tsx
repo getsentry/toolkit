@@ -79,7 +79,6 @@ test("shares capture actions and capability-gated deletion with the mobile contr
   expect(props.onChangeReceiver).toHaveBeenCalledWith(switchReceiver);
   const settings = screen.getByRole("button", {
     name: "Settings",
-    exact: true,
   });
   fireEvent.click(settings);
   expect(props.onOpenSettings).toHaveBeenCalledWith(settings);

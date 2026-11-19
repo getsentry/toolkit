@@ -17,10 +17,10 @@ import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
-const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
-const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+const originalOpenAIApiKey = process.env["OPENAI_API_KEY"];
+const originalAnthropicApiKey = process.env["ANTHROPIC_API_KEY"];
+const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+const originalEmbeddedAgentProvider = process.env["EMBEDDED_AGENT_PROVIDER"];
 
 function expectReplayWithDeadClick(result: unknown) {
   const payload = getReplayDetailsOutputSchema.parse(
@@ -42,9 +42,7 @@ function expectReplayWithDeadClick(result: unknown) {
 }
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -155,25 +153,25 @@ describe("get_sentry_resource", () => {
     if (originalOpenAIApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     } else {
-      process.env.OPENAI_API_KEY = originalOpenAIApiKey;
+      process.env["OPENAI_API_KEY"] = originalOpenAIApiKey;
     }
 
     if (originalAnthropicApiKey === undefined) {
       Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     } else {
-      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+      process.env["ANTHROPIC_API_KEY"] = originalAnthropicApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalEmbeddedAgentProvider === undefined) {
       Reflect.deleteProperty(process.env, "EMBEDDED_AGENT_PROVIDER");
     } else {
-      process.env.EMBEDDED_AGENT_PROVIDER = originalEmbeddedAgentProvider;
+      process.env["EMBEDDED_AGENT_PROVIDER"] = originalEmbeddedAgentProvider;
     }
   });
 
@@ -422,7 +420,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/daily-backup/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "daily-backup",
         url: "https://my-org.sentry.io/crons/backend/daily-backup/",
       });
@@ -440,7 +438,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
@@ -469,7 +467,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -549,7 +547,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -613,7 +611,7 @@ describe("get_sentry_resource", () => {
           sentryProtocol: "http",
         },
       );
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         url: "http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/",
       });
     });
@@ -644,7 +642,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -656,7 +654,7 @@ describe("get_sentry_resource", () => {
         resourceId: "101",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -668,7 +666,7 @@ describe("get_sentry_resource", () => {
         resourceId: "Errors Overview",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -1219,6 +1217,7 @@ describe("event package selection", () => {
               "performance": null,
               "platform": "python",
               "request": null,
+              "stacktrace": null,
               "tags": [
                 {
                   "key": "level",

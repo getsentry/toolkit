@@ -55,8 +55,29 @@ test("editor and staged files use Oxc for root, MCP, and CLI", () => {
     "explicit",
   );
   assert.ok(!formatter.ignorePatterns.includes("packages/cli/**"));
-  assert.deepEqual(extensions.recommendations, ["oxc.oxc-vscode"]);
+  assert.deepEqual(extensions.recommendations, [
+    "oxc.oxc-vscode",
+    "TypeScriptTeam.native-preview",
+  ]);
   assert.deepEqual(Object.keys(packageJson["lint-staged"]), ["*"]);
+});
+
+test("editors use the workspace TypeScript 7 compiler", () => {
+  // TypeScript 7 ships no tsserver, so the legacy `typescript.tsdk` setting
+  // cannot load it; the TypeScript 7 extension reads these settings instead.
+  for (const path of [
+    ".vscode/settings.json",
+    "packages/cli/.vscode/settings.json",
+  ]) {
+    const settings = readRootJson(path);
+    assert.equal(settings["js/ts.experimental.useTsgo"], true, path);
+    assert.equal(
+      settings["js/ts.tsdk.path"],
+      "./node_modules/typescript",
+      path,
+    );
+    assert.equal(settings["typescript.tsdk"], undefined, path);
+  }
 });
 
 test("CI lint checks formatting for commits that skip the pre-commit hook", () => {

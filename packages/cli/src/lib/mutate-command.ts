@@ -320,20 +320,20 @@ export function buildDeleteCommand<
 
   // Auto-inject common flags and aliases into parameters
   const params = builderArgs.parameters ?? {};
-  const existingFlags = (params.flags ?? {}) as Record<string, unknown>;
-  const existingAliases = (params.aliases ?? {}) as Record<string, string>;
+  const existingFlags = (params["flags"] ?? {}) as Record<string, unknown>;
+  const existingAliases = (params["aliases"] ?? {}) as Record<string, string>;
 
   const mergedFlags = { ...existingFlags };
   const mergedAliases = { ...existingAliases };
 
   // Always inject --yes unless the command already defines it
   if (!("yes" in mergedFlags)) {
-    mergedFlags.yes = YES_FLAG;
+    mergedFlags["yes"] = YES_FLAG;
   }
 
   // Inject --force unless opted out or already defined
   if (!(options?.noForceFlag || "force" in mergedFlags)) {
-    mergedFlags.force = FORCE_FLAG;
+    mergedFlags["force"] = FORCE_FLAG;
   }
 
   // Inject --dry-run unless opted out or already defined
@@ -343,17 +343,17 @@ export function buildDeleteCommand<
 
   // Inject -y alias unless already defined
   if (!("y" in mergedAliases)) {
-    mergedAliases.y = "yes";
+    mergedAliases["y"] = "yes";
   }
 
   // Inject -f alias unless force is opted out or already defined
   if (!(options?.noForceFlag || "f" in mergedAliases)) {
-    mergedAliases.f = "force";
+    mergedAliases["f"] = "force";
   }
 
   // Inject -n alias unless dry-run is opted out or already defined
   if (!(options?.noDryRunFlag || "n" in mergedAliases)) {
-    mergedAliases.n = "dry-run";
+    mergedAliases["n"] = "dry-run";
   }
 
   const mergedParams = {

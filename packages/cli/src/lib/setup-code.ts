@@ -69,7 +69,7 @@ export async function bootstrapAuthentication(
     clientId?: string;
   } = {},
 ): Promise<BootstrapResult> {
-  const code = (options.code ?? getEnv().SENTRY_SETUP_CODE)?.trim();
+  const code = (options.code ?? getEnv()["SENTRY_SETUP_CODE"])?.trim();
 
   if (!code) {
     throw new ValidationError(

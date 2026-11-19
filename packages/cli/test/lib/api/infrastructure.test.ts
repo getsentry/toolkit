@@ -26,8 +26,8 @@ describe("SDK error compatibility", () => {
   ]);
 
   beforeEach(() => {
-    process.env.SENTRY_AUTH_TOKEN = "example-token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "example-token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
   });
 
   test.each([
@@ -109,6 +109,7 @@ describe("SDK error compatibility", () => {
         baseUrl: "https://sentry.example",
         path: { organization_id_or_slug: "example-org" },
         fetch: async () => {
+          // oxlint-disable-next-line typescript/only-throw-error -- the test checks that a non-Error fetch failure is preserved
           throw cause;
         },
       });
@@ -199,11 +200,10 @@ describe("throwApiError", () => {
       } catch (thrown) {
         return (thrown as ApiError).detail ?? "";
       }
-      throw new Error("expected throwApiError to throw");
     }
 
     test("self-hosted ECONNREFUSED names the URL, errno, and next step", () => {
-      process.env.SENTRY_URL = "https://sentry.example.com";
+      process.env["SENTRY_URL"] = "https://sentry.example.com";
       const detail = detailFor(
         fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
       );
@@ -217,8 +217,8 @@ describe("throwApiError", () => {
     });
 
     test("names SENTRY_HOST as the override when it is the one set", () => {
-      process.env.SENTRY_HOST = "https://sentry.example.com";
-      process.env.SENTRY_URL = "https://other.example.com";
+      process.env["SENTRY_HOST"] = "https://sentry.example.com";
+      process.env["SENTRY_URL"] = "https://other.example.com";
       const detail = detailFor(
         fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
       );
@@ -244,8 +244,8 @@ describe("throwApiError", () => {
     });
 
     test("a proxy variable does not replace the errno hint (fetch ignores it)", () => {
-      process.env.SENTRY_URL = "https://sentry.example.com";
-      process.env.HTTPS_PROXY = "http://user:secret@proxy.internal:3128";
+      process.env["SENTRY_URL"] = "https://sentry.example.com";
+      process.env["HTTPS_PROXY"] = "http://user:secret@proxy.internal:3128";
       const detail = detailFor(
         fetchFailed("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.1:443"),
       );
@@ -255,7 +255,7 @@ describe("throwApiError", () => {
     });
 
     test("a cause without an errno still replaces 'fetch failed'", () => {
-      process.env.SENTRY_URL = "https://sentry.example.com:9";
+      process.env["SENTRY_URL"] = "https://sentry.example.com:9";
       const detail = detailFor(
         new TypeError("fetch failed", { cause: new Error("bad port") }),
       );
@@ -551,22 +551,22 @@ describe("throwApiError", () => {
       let savedToken: string | undefined;
 
       beforeEach(() => {
-        savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-        savedToken = process.env.SENTRY_TOKEN;
-        delete process.env.SENTRY_AUTH_TOKEN;
-        delete process.env.SENTRY_TOKEN;
+        savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+        savedToken = process.env["SENTRY_TOKEN"];
+        delete process.env["SENTRY_AUTH_TOKEN"];
+        delete process.env["SENTRY_TOKEN"];
       });
 
       afterEach(() => {
         if (savedAuthToken !== undefined) {
-          process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+          process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
         } else {
-          delete process.env.SENTRY_AUTH_TOKEN;
+          delete process.env["SENTRY_AUTH_TOKEN"];
         }
         if (savedToken !== undefined) {
-          process.env.SENTRY_TOKEN = savedToken;
+          process.env["SENTRY_TOKEN"] = savedToken;
         } else {
-          delete process.env.SENTRY_TOKEN;
+          delete process.env["SENTRY_TOKEN"];
         }
       });
 
@@ -657,7 +657,7 @@ describe("throwApiError", () => {
     // A personal env token: the preload's `sntrys_` token gets org advice.
     useEnvSandbox(["SENTRY_AUTH_TOKEN"]);
     beforeEach(() => {
-      process.env.SENTRY_AUTH_TOKEN = "sntryu_test-token-for-unit-tests";
+      process.env["SENTRY_AUTH_TOKEN"] = "sntryu_test-token-for-unit-tests";
     });
 
     test("uses 'not recognized or has been revoked' for invalid token", () => {
@@ -772,22 +772,22 @@ describe("throwApiError", () => {
       let savedToken: string | undefined;
 
       beforeEach(() => {
-        savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-        savedToken = process.env.SENTRY_TOKEN;
-        delete process.env.SENTRY_AUTH_TOKEN;
-        delete process.env.SENTRY_TOKEN;
+        savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+        savedToken = process.env["SENTRY_TOKEN"];
+        delete process.env["SENTRY_AUTH_TOKEN"];
+        delete process.env["SENTRY_TOKEN"];
       });
 
       afterEach(() => {
         if (savedAuthToken !== undefined) {
-          process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+          process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
         } else {
-          delete process.env.SENTRY_AUTH_TOKEN;
+          delete process.env["SENTRY_AUTH_TOKEN"];
         }
         if (savedToken !== undefined) {
-          process.env.SENTRY_TOKEN = savedToken;
+          process.env["SENTRY_TOKEN"] = savedToken;
         } else {
-          delete process.env.SENTRY_TOKEN;
+          delete process.env["SENTRY_TOKEN"];
         }
       });
 
@@ -838,8 +838,8 @@ describe("org auth token org mismatch", () => {
     const claim = Buffer.from(
       JSON.stringify({ iat: 1, url: "https://sentry.io", org: tokenOrg }),
     ).toString("base64");
-    process.env.SENTRY_AUTH_TOKEN = `sntrys_${claim}_secret`;
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = `sntrys_${claim}_secret`;
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     resetAuthTokenCache();
     const body = { detail };
     const response = Response.json(body, { status });
@@ -852,7 +852,6 @@ describe("org auth token org mismatch", () => {
     } catch (error) {
       return (error as ApiError).detail;
     }
-    throw new Error("expected throwApiError to throw");
   }
 
   test.each([
@@ -892,9 +891,9 @@ describe("403 scope challenge guidance", () => {
     if (credential === "login") {
       setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
     } else {
-      process.env.SENTRY_AUTH_TOKEN =
+      process.env["SENTRY_AUTH_TOKEN"] =
         credential === "org" ? ORG_TOKEN : "sntryu_example";
-      process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+      process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     }
     resetAuthTokenCache();
     const body = { detail: "Denied" };
@@ -909,7 +908,6 @@ describe("403 scope challenge guidance", () => {
     } catch (error) {
       return (error as ApiError).detail;
     }
-    throw new Error("expected throwApiError to throw");
   }
 
   test.each([
@@ -950,7 +948,7 @@ describe("401 guidance", () => {
   ])(
     "%s, stored login %s: %s gets %j",
     (envToken, storedLogin, detail, advice) => {
-      process.env.SENTRY_AUTH_TOKEN = envToken;
+      process.env["SENTRY_AUTH_TOKEN"] = envToken;
       if (storedLogin) {
         setAuthToken("oauth-access-token", 3600, "oauth-refresh-token");
       }

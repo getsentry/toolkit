@@ -11,6 +11,7 @@
  */
 
 import { logger } from "../logger.js";
+import { httpTargetAttribute } from "../../commands/local/http-target.js";
 
 const log = logger.withTag("semantic-display");
 
@@ -637,24 +638,15 @@ function getHttpTarget(
     includeFullUrl = true,
   }: { includeServerTarget?: boolean; includeFullUrl?: boolean } = {},
 ): string | undefined {
-  const route = getAttr(
-    attrs,
-    ["http.route", "url.template"],
-    SPAN_ATTRIBUTE_MAX_LENGTH,
+  const target = httpTargetAttribute((key) =>
+    key === "url.full" && !includeFullUrl
+      ? undefined
+      : getAttr(attrs, [key], SPAN_ATTRIBUTE_MAX_LENGTH),
   );
-  const fullUrl = getAttr(attrs, ["url.full"], SPAN_ATTRIBUTE_MAX_LENGTH);
-  const path = getAttr(attrs, ["url.path"], SPAN_ATTRIBUTE_MAX_LENGTH);
+  if (target) {
+    return formatHttpTarget(target.value);
+  }
   const serverTarget = getServerTarget(attrs);
-
-  if (route) {
-    return formatHttpTarget(route);
-  }
-  if (fullUrl && includeFullUrl) {
-    return formatHttpTarget(fullUrl);
-  }
-  if (path) {
-    return formatHttpTarget(path);
-  }
   if (includeServerTarget && serverTarget) {
     return formatHttpTarget(serverTarget);
   }
@@ -678,8 +670,8 @@ function formatHttpLabel({
   target,
   fallbackLabel,
 }: {
-  method?: string;
-  target?: string;
+  method?: string | undefined;
+  target?: string | undefined;
   fallbackLabel: string;
 }): string {
   if (method && target) {
@@ -816,9 +808,9 @@ function dedupeMetadata(values: string[]): string[] {
 export function mergeTransactionAttributes(
   event: Record<string, unknown>,
 ): AttributeSource {
-  const contexts = event.contexts as Record<string, unknown> | undefined;
-  const trace = contexts?.trace as Record<string, unknown> | undefined;
-  const data = trace?.data as Record<string, unknown> | undefined;
+  const contexts = event["contexts"] as Record<string, unknown> | undefined;
+  const trace = contexts?.["trace"] as Record<string, unknown> | undefined;
+  const data = trace?.["data"] as Record<string, unknown> | undefined;
   return data ?? {};
 }
 
@@ -834,13 +826,13 @@ export function mergeTransactionAttributes(
 export function collectSpanAttributes(
   event: Record<string, unknown>,
 ): AttributeSource[] {
-  const spans = event.spans;
+  const spans = event["spans"];
   if (!Array.isArray(spans)) {
     return [];
   }
   const result: AttributeSource[] = [];
   for (const span of spans) {
-    const data = (span as Record<string, unknown> | null)?.data;
+    const data = (span as Record<string, unknown> | null)?.["data"];
     if (data && typeof data === "object") {
       result.push(data as AttributeSource);
     }

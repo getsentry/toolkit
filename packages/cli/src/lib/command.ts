@@ -186,7 +186,7 @@ type LocalCommandBuilderArguments<
    * })
    * ```
    */
-  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
+  readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED> | undefined;
   /**
    * Whether the command requires authentication. Defaults to `true`.
    *
@@ -378,11 +378,11 @@ export function applyOrgProjectFlags(
   const projectTrimmed = commandOwnsProject ? undefined : project?.trim();
   if (orgTrimmed) {
     orgProjectLog.debug(`--org flag → SENTRY_ORG=${orgTrimmed}`);
-    env.SENTRY_ORG = orgTrimmed;
+    env["SENTRY_ORG"] = orgTrimmed;
   }
   if (projectTrimmed) {
     orgProjectLog.debug(`--project flag → SENTRY_PROJECT=${projectTrimmed}`);
-    env.SENTRY_PROJECT = projectTrimmed;
+    env["SENTRY_PROJECT"] = projectTrimmed;
   }
 }
 
@@ -538,9 +538,9 @@ function mergeGlobalFlags(
   // Inject --json and --fields when output config is set
   if (outputConfig) {
     if (!commandOwnsJson) {
-      mergedFlags.json = JSON_FLAG;
+      mergedFlags["json"] = JSON_FLAG;
     }
-    mergedFlags.fields = buildFieldsFlag(outputConfig);
+    mergedFlags["fields"] = buildFieldsFlag(outputConfig);
   }
 
   return {
@@ -579,7 +579,10 @@ export function buildCommand<
 
   // Merge global flags into the command's flag definitions.
   const existingParams = builderArgs.parameters ?? {};
-  const existingFlags = (existingParams.flags ?? {}) as Record<string, unknown>;
+  const existingFlags = (existingParams["flags"] ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   const { mergedFlags, commandOwnsOrg, commandOwnsProject, stripKeys } =
     mergeGlobalFlags(existingFlags, outputConfig);
@@ -592,7 +595,7 @@ export function buildCommand<
   // Inject short aliases for global flags (e.g., -v → --verbose).
   // Derived from the shared GLOBAL_FLAGS definition so adding a new
   // global flag with a short alias automatically propagates here.
-  const existingAliases = (existingParams.aliases ?? {}) as Record<
+  const existingAliases = (existingParams["aliases"] ?? {}) as Record<
     string,
     unknown
   >;
@@ -625,7 +628,7 @@ export function buildCommand<
   ): void {
     // ClearScreen token: defer until next render to avoid flash
     if (value instanceof ClearScreen) {
-      if (!(isPlainOutput() || flags.json)) {
+      if (!(isPlainOutput() || flags["json"])) {
         pendingClear = true;
       }
       return;
@@ -636,8 +639,8 @@ export function buildCommand<
     }
 
     renderCommandOutput(stdout, value.data, outputConfig, renderer, {
-      json: Boolean(flags.json),
-      fields: flags.fields as string[] | undefined,
+      json: Boolean(flags["json"]),
+      fields: flags["fields"] as string[] | undefined,
       clearPrefix: pendingClear ? "\x1b[H\x1b[J" : undefined,
     });
     pendingClear = false;
@@ -659,8 +662,8 @@ export function buildCommand<
       }
       clean[key] = value;
     }
-    if (outputConfig && typeof clean.fields === "string") {
-      clean.fields = parseFieldsList(clean.fields);
+    if (outputConfig && typeof clean["fields"] === "string") {
+      clean["fields"] = parseFieldsList(clean["fields"]);
     }
     return clean;
   }
@@ -765,7 +768,7 @@ export function buildCommand<
     try {
       args = applyBoundPositionals(
         positionalArgs,
-        existingParams.positional,
+        existingParams["positional"],
         this,
       );
     } catch (error) {
@@ -784,14 +787,14 @@ export function buildCommand<
 
     applyLoggingFlags(
       flags[LOG_LEVEL_KEY] as LogLevelName | undefined,
-      flags.verbose as boolean,
+      flags["verbose"] as boolean,
     );
 
     // Map --org / --project compat flags to env vars before anything
     // else reads them (auth guard, org/project resolution, etc.)
     applyOrgProjectFlags(
-      flags.org as string | undefined,
-      flags.project as string | undefined,
+      flags["org"] as string | undefined,
+      flags["project"] as string | undefined,
       commandOwnsOrg,
       commandOwnsProject,
     );
@@ -803,10 +806,10 @@ export function buildCommand<
     }
 
     // Environment-based JSON mode (used by library entry point)
-    if (outputConfig && !cleanFlags.json) {
+    if (outputConfig && !cleanFlags["json"]) {
       const env = (this as unknown as { env?: NodeJS.ProcessEnv }).env;
-      if (env?.SENTRY_OUTPUT_FORMAT === "json") {
-        cleanFlags.json = true;
+      if (env?.["SENTRY_OUTPUT_FORMAT"] === "json") {
+        cleanFlags["json"] = true;
       }
     }
 
@@ -815,8 +818,8 @@ export function buildCommand<
     // such as list command `-n` (limit) with `sentry api`'s `-n` (dry-run).
     setInteractivePromptsAllowed(
       !(
-        cleanFlags.json === true ||
-        cleanFlags.yes === true ||
+        cleanFlags["json"] === true ||
+        cleanFlags["yes"] === true ||
         cleanFlags["dry-run"] === true
       ),
     );
@@ -916,13 +919,13 @@ export function buildCommand<
         ? appendCacheHint(applyTipsPreference(returned.hint))
         : undefined;
       await withTracing("render", "cli.command.render", () => {
-        writeFinalization(stdout, finalHint, cleanFlags.json, renderer);
+        writeFinalization(stdout, finalHint, cleanFlags["json"], renderer);
       });
     } catch (err) {
       // Finalize before error handling to close streaming state
       // (e.g., table footer). No hint since the generator didn't
       // complete. Only in human mode — JSON must not be corrupted.
-      if (!cleanFlags.json) {
+      if (!cleanFlags["json"]) {
         writeFinalization(stdout, undefined, false, renderer);
       }
 
@@ -962,29 +965,32 @@ export function buildCommand<
   // built command. Preserve its primary line for introspection consumers.
   const primaryUsage = enrichedDocs.customUsage?.[0];
   if (primaryUsage) {
-    (cmd as unknown as Record<string, unknown>).__primaryUsage =
+    (cmd as unknown as Record<string, unknown>)["__primaryUsage"] =
       typeof primaryUsage === "string" ? primaryUsage : primaryUsage.input;
   }
   if (builderArgs.docs.examples?.length) {
-    (cmd as unknown as Record<string, unknown>).__examples =
+    (cmd as unknown as Record<string, unknown>)["__examples"] =
       builderArgs.docs.examples;
   }
   if (builderArgs.destructive) {
-    (cmd as unknown as Record<string, unknown>).__destructive = true;
+    (cmd as unknown as Record<string, unknown>)["__destructive"] = true;
   }
 
   // Attach the JSON fields to the built command as a non-standard property.
   // introspect.ts reads this to populate CommandInfo.jsonFields for help
   // output and SKILL.md generation.
   if (outputConfig?.schema) {
-    (cmd as unknown as Record<string, unknown>).__jsonFields =
+    (cmd as unknown as Record<string, unknown>)["__jsonFields"] =
       outputConfig.schema.fields;
   }
 
   // Expose the unwrapped generator for internal dispatchers (e.g. bare
   // `sentry auth`) that must run a subcommand without re-entering the
   // telemetry / auth-guard / rc-trust / output pipeline.
-  (cmd as unknown as Record<string, unknown>).__rawFunc = originalFunc;
+  // Expose the unwrapped generator for internal dispatchers (e.g. bare
+  // `sentry auth`) that must run a subcommand without re-entering the
+  // telemetry / auth-guard / rc-trust / output pipeline.
+  (cmd as unknown as Record<string, unknown>)["__rawFunc"] = originalFunc;
 
   return cmd;
 }

@@ -18,7 +18,7 @@ import {
   projectFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
@@ -36,7 +36,7 @@ import {
 } from "./test-utils/structured-content";
 import type { GetIssueDetailsPayload } from "./tools/catalog/get-issue-details";
 import { createExecuteTool } from "./tools/special/execute-tool";
-import type { ToolConfig } from "./tools/types";
+import type { DescriptionContext, ToolConfig } from "./tools/types";
 import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
@@ -311,12 +311,12 @@ describe("buildServer", () => {
           "https://sentry.io/api/0/organizations/:org/",
           ({ params, request }) => {
             seen.push({
-              org: String(params.org),
+              org: String(params["org"]),
               authorization: request.headers.get("authorization"),
             });
             return HttpResponse.json({
               id: "1",
-              slug: params.org,
+              slug: params["org"],
               name: "Org",
             });
           },
@@ -327,7 +327,7 @@ describe("buildServer", () => {
         tools: {
           org_tool: orgTool(async (params, context) => {
             const org = await apiServiceFromContext(context).getOrganization(
-              String(params.organizationSlug),
+              String(params["organizationSlug"]),
             );
             return org.slug;
           }),
@@ -426,7 +426,7 @@ describe("buildServer", () => {
           return "ok";
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: { ...baseContext, credentialRouter: router },
         tools: registry,
@@ -652,7 +652,7 @@ describe("buildServer", () => {
       await callRegisteredTool(server, "boom_tool", {});
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
 
     it("invokes onError when a tool fails via execute_sentry_tool", async () => {
@@ -665,7 +665,7 @@ describe("buildServer", () => {
           },
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({ context: baseContext, tools: registry });
 
       await callRegisteredTool(server, "execute_sentry_tool", {
@@ -674,7 +674,7 @@ describe("buildServer", () => {
       });
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
   });
 
@@ -701,9 +701,9 @@ describe("buildServer", () => {
       }
     )._registeredTools;
 
-    expect(registeredTools.v2_tool).toBeDefined();
+    expect(registeredTools["v2_tool"]).toBeDefined();
     await expect(
-      registeredTools.v2_tool.handler({ value: "ok" }),
+      registeredTools["v2_tool"]?.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -957,7 +957,9 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool.handler({}, {});
+      const exampleTool = registeredTools["example_tool"];
+      assert(exampleTool, "example_tool was not registered");
+      await exampleTool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
@@ -980,7 +982,7 @@ describe("buildServer", () => {
 
     it("advertises the schema to experimental sessions", async () => {
       const [tool] = await listRegisteredTools(createServer(true));
-      expect(tool.outputSchema).toMatchObject({
+      expect(tool?.outputSchema).toMatchObject({
         type: "object",
         properties: { status: { type: "string" } },
       });
@@ -988,7 +990,7 @@ describe("buildServer", () => {
 
     it("keeps it from stable sessions, which still get markdown", async () => {
       const [tool] = await listRegisteredTools(createServer(false));
-      expect(tool.outputSchema).toBeUndefined();
+      expect(tool?.outputSchema).toBeUndefined();
     });
   });
 
@@ -1291,15 +1293,10 @@ describe("buildServer", () => {
 
   describe("dynamic descriptions", () => {
     it("resolves function descriptions with context", () => {
-      const dynamicDescription = vi.fn(
-        (ctx: {
-          experimentalMode: boolean;
-          availableToolNames?: ReadonlySet<string>;
-          directToolNames?: ReadonlySet<string>;
-        }) =>
-          ctx.experimentalMode
-            ? "Experimental description"
-            : "Normal description",
+      const dynamicDescription = vi.fn((ctx: DescriptionContext) =>
+        ctx.experimentalMode
+          ? "Experimental description"
+          : "Normal description",
       );
 
       buildServer({
@@ -1321,12 +1318,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0][0].directToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1742,7 +1739,8 @@ describe("buildServer", () => {
           } & Record<string, unknown>
         >;
       }>(result);
-      const firstResult = payload.results[0];
+      const [firstResult] = payload.results;
+      assert(firstResult, "Expected at least one tool search result");
 
       expect(payload.query).toBe("replay");
       expect(getTextContent(result)).toBe(
@@ -2277,7 +2275,7 @@ describe("buildServer", () => {
           http.post(
             "*/api/0/organizations/:org/issues/:issueId/notes/",
             ({ params }) => {
-              expect(params.org).toBe("sentry-mcp-evals");
+              expect(params["org"]).toBe("sentry-mcp-evals");
               return HttpResponse.json({
                 id: "activity-1",
                 commentId: "comment-1",
@@ -3190,7 +3188,7 @@ describe("buildServer", () => {
         return `${parsed.organizationSlug}:${parsed.filter}:${parsed.nested.limit}`;
       });
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           organizationSlug: z.string(),
           filter: z.string(),
@@ -3198,7 +3196,7 @@ describe("buildServer", () => {
         },
         handler,
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: {
           ...baseContext,
@@ -3247,12 +3245,12 @@ describe("buildServer", () => {
 
     it("marks the catalog tool span as errored when execute_sentry_tool validation fails", async () => {
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           requiredValue: z.string(),
         },
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: baseContext,
         tools: registry,
@@ -3276,17 +3274,17 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span.recordException).not.toHaveBeenCalled();
+      expect(span?.recordException).not.toHaveBeenCalled();
     });
 
     it("records each call's fingerprint on the span of the tool that ran", async () => {
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: { value: z.string() },
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const activeSpan = { ...createMockSpan(), setAttributes: vi.fn() };
       vi.mocked(getActiveSpan).mockReturnValue(activeSpan as unknown as Span);
       const server = buildServer({ context: baseContext, tools: registry });
@@ -3298,7 +3296,7 @@ describe("buildServer", () => {
         name: "fake_catalog_tool",
         arguments: { value: "a" },
       });
-      expect(startedSpans[0].setAttribute).toHaveBeenCalledWith(
+      expect(startedSpans[0]?.setAttribute).toHaveBeenCalledWith(
         "app.tool_call.fingerprint",
         fingerprint,
       );
@@ -3396,9 +3394,9 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool.name).toBe("get_replay_details");
+      expect(replayTool?.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",

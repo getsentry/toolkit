@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  formatAttributeTable,
   formatItem,
   formatItemJson,
 } from "../../../src/lib/formatters/local.js";
@@ -373,20 +374,20 @@ describe("frame hint", () => {
   test("points at the throwing function in a Hono route, not dispatch", () => {
     const line = tail(honoWorkerError, honoHeader);
     expect(line).toContain("[/index.js:1190:9] [deepFunction]");
-    expect(json(honoWorkerError, honoHeader).function).toBe("deepFunction");
+    expect(json(honoWorkerError, honoHeader)["function"]).toBe("deepFunction");
   });
 
   test("skips library frames newer than the app frame", () => {
     const line = tail(nextjsServerError, nextjsHeader);
     expect(line).toContain("[GET]");
-    expect(json(nextjsServerError, nextjsHeader).function).toBe("GET");
+    expect(json(nextjsServerError, nextjsHeader)["function"]).toBe("GET");
   });
 });
 
 describe("source tag", () => {
   test("a Hono app on Cloudflare Workers is a server", () => {
     expect(tail(honoWorkerError, honoHeader)).toContain("[SERVER]");
-    expect(json(honoWorkerError, honoHeader).source).toBe("server");
+    expect(json(honoWorkerError, honoHeader)["source"]).toBe("server");
   });
 
   test.each([
@@ -412,10 +413,10 @@ describe("source tag", () => {
 
   test("a Next.js browser event is a browser, a server event is a server", () => {
     expect(tail(nextjsBrowserError, nextjsHeader)).toContain("[BROWSER]");
-    expect(json(nextjsBrowserError, nextjsHeader).source).toBe("browser");
+    expect(json(nextjsBrowserError, nextjsHeader)["source"]).toBe("browser");
 
     expect(tail(nextjsServerError, nextjsHeader)).toContain("[SERVER]");
-    expect(json(nextjsServerError, nextjsHeader).source).toBe("server");
+    expect(json(nextjsServerError, nextjsHeader)["source"]).toBe("server");
   });
 
   test("a Next.js edge runtime event is a server", () => {
@@ -540,11 +541,11 @@ describe("log attributes", () => {
   }
 
   test("JSON log records keep only custom attributes without --attributes", () => {
-    expect(logJson(false).attributes).toEqual({ request_id: "req-7f3a" });
+    expect(logJson(false)["attributes"]).toEqual({ request_id: "req-7f3a" });
   });
 
   test("JSON log records add SDK attributes with --attributes", () => {
-    const attributes = logJson(true).attributes as Record<string, unknown>;
+    const attributes = logJson(true)["attributes"] as Record<string, unknown>;
     expect(attributes).toMatchObject({
       request_id: "req-7f3a",
       "logger.name": "werkzeug",
@@ -554,6 +555,132 @@ describe("log attributes", () => {
     expect(Object.keys(attributes).some((k) => k.startsWith("sentry."))).toBe(
       false,
     );
+  });
+});
+
+describe("SDK log attributes stay log-only", () => {
+  /** One log item from the given SDK with the given attributes. */
+  function sdkLog(
+    sdkName: string,
+    attributes: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      items: [
+        {
+          timestamp: 1_794_045_606.1,
+          level: "info",
+          body: "Checkout done",
+          attributes: Object.fromEntries(
+            Object.entries({ "sentry.sdk.name": sdkName, ...attributes }).map(
+              ([key, value]) => [key, { value }],
+            ),
+          ),
+        },
+      ],
+    };
+  }
+
+  /** The tail line for one log item, without colors. */
+  function logLine(sdkName: string, attributes: Record<string, unknown>) {
+    const header = { sdk: { name: sdkName, version: "1.0.0" } };
+    const lines = formatItem("log", sdkLog(sdkName, attributes), header, "log");
+    return stripAnsi(lines[0] ?? "");
+  }
+
+  test("custom user.* attributes stay on the line", () => {
+    const line = logLine("sentry.python.flask", {
+      "user.id": "42",
+      "user.plan": "pro",
+    });
+    expect(line).toContain("[user.plan=pro]");
+    expect(line).not.toContain("user.id");
+  });
+
+  test("a bare request is hidden only when it is an SDK repr", () => {
+    expect(
+      logLine("sentry.javascript.node", { request: "checkout" }),
+    ).toContain("[request=checkout]");
+    expect(
+      logLine("sentry.javascript.node", {
+        request: "<WSGIRequest: GET '/boom'>",
+      }),
+    ).not.toContain("request=");
+  });
+
+  test("Rust log attributes are hidden without --attributes", () => {
+    const attributes = {
+      "os.name": "macos",
+      "os.version": "15.1",
+      parent_span_id: "b0e6f15b45c36b12",
+      order_id: "o-1",
+    };
+    const line = logLine("sentry.rust", attributes);
+    expect(line).toContain("[order_id=o-1]");
+    for (const key of ["os.name", "os.version", "parent_span_id"]) {
+      expect(line).not.toContain(key);
+    }
+    // Other SDKs keep the same keys as custom attributes.
+    expect(logLine("sentry.javascript.node", attributes)).toContain(
+      "[os.name=macos]",
+    );
+
+    const header = { sdk: { name: "sentry.rust", version: "0.40.0" } };
+    const table = formatItem(
+      "log",
+      sdkLog("sentry.rust", attributes),
+      header,
+      "log",
+      true,
+    )
+      .map(stripAnsi)
+      .slice(1)
+      .join("\n");
+    expect(table).toContain("os.name");
+    expect(table).toContain("parent_span_id");
+  });
+
+  test("Ruby's parameters attribute is hidden without --attributes", () => {
+    const line = logLine("sentry.ruby.rails", {
+      parameters: '["jane"]',
+      "sentry.message.parameter.0": "jane",
+      order_id: "o-1",
+    });
+    expect(line).toContain("[order_id=o-1]");
+    expect(line).not.toContain("parameters");
+  });
+
+  test("transactions keep log-only keys as custom attributes", () => {
+    const data = {
+      asctime: "2026-11-17 10:00:06,101",
+      "logger.name": "app",
+      request: "checkout",
+      server_time: "10:00:06",
+      "user.email": "jane@example.com",
+      "http.method": "GET",
+    };
+    const event = {
+      timestamp: 1_794_045_606.2,
+      start_timestamp: 1_794_045_606.1,
+      contexts: { trace: { op: "http.server", data } },
+    };
+    const header = { sdk: { name: "sentry.python.flask", version: "2.42.0" } };
+    const [line] = formatItemJson("transaction", event, header, true);
+    const record = JSON.parse(line ?? "{}") as {
+      attributes: Record<string, Record<string, string>>;
+    };
+    expect(Object.keys(record.attributes["user"] ?? {}).sort()).toEqual([
+      "asctime",
+      "logger.name",
+      "request",
+      "server_time",
+      "user.email",
+    ]);
+    expect(record.attributes["sdk"]).toEqual({ "http.method": "GET" });
+
+    const table = formatAttributeTable(event).map(stripAnsi).join("\n");
+    const userGroup = table.slice(0, table.indexOf("sdk attributes"));
+    expect(userGroup).toContain("user.email");
+    expect(userGroup).toContain("asctime");
   });
 });
 
@@ -582,8 +709,8 @@ describe("colored log text", () => {
     const [line] = formatItemJson("log", uvicornLog, header);
     expect(line).not.toContain("\\u001b");
     const record = JSON.parse(line ?? "{}") as Record<string, unknown>;
-    expect(record.message).toBe("GET /boom HTTP/1.1 500");
-    expect(record.attributes).toEqual({
+    expect(record["message"]).toBe("GET /boom HTTP/1.1 500");
+    expect(record["attributes"]).toEqual({
       color_message: '%s - "%s %s HTTP/%s" %d',
     });
   });
@@ -593,6 +720,6 @@ describe("colored log text", () => {
       { message: "\u001b[33mdisk almost full\u001b[0m", level: "warning" },
       pythonHeader,
     );
-    expect(record.message).toBe("disk almost full");
+    expect(record["message"]).toBe("disk almost full");
   });
 });

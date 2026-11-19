@@ -1,11 +1,29 @@
+import { getActiveSpan } from "@sentry/core";
 import { relatedIssuesFixture } from "@sentry/mcp-server-mocks";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RelatedIssuesResponseSchema } from "../api-client/schema";
 import {
   RELATED_ISSUES_LIMIT,
+  RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE,
+  RELATED_ISSUES_OPEN_IDS_ATTRIBUTE,
   UPDATE_ISSUE_SIDE_QUEST_IDS,
   buildUpdateIssueSideQuests,
 } from "./update-issue-side-quests";
+
+vi.mock("@sentry/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/core")>();
+  return { ...actual, getActiveSpan: vi.fn() };
+});
+
+/** Captures the attributes set on the active span. */
+function captureSpanAttributes() {
+  const attributes: Record<string, unknown> = {};
+  vi.mocked(getActiveSpan).mockReturnValue({
+    setAttributes: (values: Record<string, unknown>) =>
+      Object.assign(attributes, values),
+  } as unknown as ReturnType<typeof getActiveSpan>);
+  return attributes;
+}
 
 const session = { experimentalMode: false };
 const organizationSlug = "sentry-mcp-evals";
@@ -59,9 +77,31 @@ describe("buildUpdateIssueSideQuests", () => {
     `);
   });
 
-  it("returns nothing when every related issue is resolved or ignored", () => {
+  it("records the listed issues' short IDs and the open count on the span", () => {
+    const attributes = captureSpanAttributes();
     const related = relatedIssues();
-    related.data[1].issue.status = "ignored";
+    const [, open] = related.data;
+    related.data = Array.from({ length: 4 }, (_, index) => ({
+      ...open,
+      issue: { ...open.issue, shortId: `WEB-${index + 1}` },
+    }));
+
+    buildUpdateIssueSideQuests(
+      { organizationSlug, relatedIssues: related },
+      session,
+    );
+
+    // only the issues the quest lists, not every open one
+    expect(attributes[RELATED_ISSUES_OPEN_IDS_ATTRIBUTE]).toBe(
+      "WEB-1,WEB-2,WEB-3",
+    );
+    expect(attributes[RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE]).toBe(4);
+  });
+
+  it("returns nothing when every related issue is resolved or ignored", () => {
+    const attributes = captureSpanAttributes();
+    const related = relatedIssues();
+    related.data[1]!.issue.status = "ignored";
 
     expect(
       buildUpdateIssueSideQuests(
@@ -69,6 +109,8 @@ describe("buildUpdateIssueSideQuests", () => {
         session,
       ),
     ).toBeUndefined();
+    expect(attributes).not.toHaveProperty(RELATED_ISSUES_OPEN_IDS_ATTRIBUTE);
+    expect(attributes).not.toHaveProperty(RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE);
   });
 
   it("leaves out issues outside a project-scoped session's project", () => {
@@ -96,7 +138,7 @@ describe("buildUpdateIssueSideQuests", () => {
 
   it("says the count is a lower bound when a relation type fills its page", () => {
     const related = relatedIssues();
-    const [, open] = related.data;
+    const open = related.data[1]!;
     related.data = Array.from({ length: RELATED_ISSUES_LIMIT }, (_, index) => ({
       ...open,
       issue: { ...open.issue, shortId: `WEB-${index + 1}` },
@@ -108,12 +150,12 @@ describe("buildUpdateIssueSideQuests", () => {
         session,
       ) ?? [];
 
-    expect(quest.tip).toBe(
+    expect(quest!.tip).toBe(
       "At least 5 issues related to this one are still open. Check whether this change covers them too.",
     );
     // capped by the side-quest framework
-    expect(quest.details).toHaveLength(3);
-    expect(quest.next?.map(({ args }) => args.resourceId)).toEqual([
+    expect(quest!.details).toHaveLength(3);
+    expect(quest!.next?.map(({ args }) => args["resourceId"])).toEqual([
       "WEB-1",
       "WEB-2",
     ]);

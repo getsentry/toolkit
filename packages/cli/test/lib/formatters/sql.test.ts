@@ -22,20 +22,20 @@ let originalPlainOutput: string | undefined;
 let originalNoColor: string | undefined;
 
 beforeEach(() => {
-  originalPlainOutput = process.env.SENTRY_PLAIN_OUTPUT;
-  originalNoColor = process.env.NO_COLOR;
+  originalPlainOutput = process.env["SENTRY_PLAIN_OUTPUT"];
+  originalNoColor = process.env["NO_COLOR"];
 });
 
 afterEach(() => {
   if (originalPlainOutput !== undefined) {
-    process.env.SENTRY_PLAIN_OUTPUT = originalPlainOutput;
+    process.env["SENTRY_PLAIN_OUTPUT"] = originalPlainOutput;
   } else {
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   }
   if (originalNoColor !== undefined) {
-    process.env.NO_COLOR = originalNoColor;
+    process.env["NO_COLOR"] = originalNoColor;
   } else {
-    delete process.env.NO_COLOR;
+    delete process.env["NO_COLOR"];
   }
 });
 
@@ -79,13 +79,13 @@ describe("isDbSpanOp", () => {
 
 describe("colorizeSql", () => {
   test("returns original text in plain mode", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     const sql = "SELECT id, name FROM users WHERE id = %s";
     expect(colorizeSql(sql)).toBe(sql);
   });
 
   test("returns string with ANSI codes in TTY mode for SQL with keywords", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const sql = "SELECT id FROM users";
     const result = colorizeSql(sql);
     // Should contain ANSI escape codes
@@ -95,7 +95,7 @@ describe("colorizeSql", () => {
   });
 
   test("colorizes SQL keywords", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const result = colorizeSql("SELECT * FROM users");
     // Keywords should be colored (different from plain text)
     expect(result).not.toBe("SELECT * FROM users");
@@ -103,20 +103,20 @@ describe("colorizeSql", () => {
   });
 
   test("colorizes parameters", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const result = colorizeSql("SELECT * FROM users WHERE id = %s");
     expect(result).toContain("\x1b[");
     expect(stripAnsi(result)).toBe("SELECT * FROM users WHERE id = %s");
   });
 
   test("handles empty string", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const result = colorizeSql("");
     expect(result).toBe("");
   });
 
   test("handles non-SQL content gracefully", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const input = "GET /api/users/123";
     const result = colorizeSql(input);
     // Should not crash; stripped output should contain original text
@@ -126,7 +126,7 @@ describe("colorizeSql", () => {
 
 describe("formatSqlBlock", () => {
   test("returns compact single-line with header in plain mode", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     const sql = "SELECT id, name FROM users WHERE id = %s";
     const result = formatSqlBlock(sql);
     expect(result).toContain("─── Query ───");
@@ -136,7 +136,7 @@ describe("formatSqlBlock", () => {
   });
 
   test("returns multi-line formatted SQL with header in TTY mode", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const sql = "SELECT id, name FROM users WHERE id = %s";
     const result = formatSqlBlock(sql);
     expect(result).toContain("─── Query ───");
@@ -151,7 +151,7 @@ describe("formatSqlBlock", () => {
   });
 
   test("does not reformat SQL in plain mode", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
     const sql = "SELECT id FROM users WHERE active = true";
     const result = formatSqlBlock(sql);
     // The raw SQL should appear exactly as-is (not reformatted)
@@ -159,7 +159,7 @@ describe("formatSqlBlock", () => {
   });
 
   test("handles simple queries", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const sql = "SELECT 1";
     const result = formatSqlBlock(sql);
     expect(stripAnsi(result)).toContain("SELECT");

@@ -49,6 +49,6 @@ test("applies the .sentryclirc env shim when the project-root cache write fails"
     await import("../../src/lib/project-context.js");
   await preloadProjectContext(dir);
 
-  expect(process.env.SENTRY_AUTH_TOKEN).toBe("rc-token");
-  expect(process.env.SENTRY_URL).toBe("https://sentry.example.com");
+  expect(process.env["SENTRY_AUTH_TOKEN"]).toBe("rc-token");
+  expect(process.env["SENTRY_URL"]).toBe("https://sentry.example.com");
 });

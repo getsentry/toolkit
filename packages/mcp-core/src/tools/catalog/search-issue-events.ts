@@ -23,9 +23,9 @@ import {
 import { parseIssueParams } from "../support/search-issue-events/utils";
 
 function buildIssueEventSearchRepairPrompt(params: {
-  query?: string;
-  sort?: string;
-  statsPeriod?: string;
+  query?: string | undefined;
+  sort?: string | undefined;
+  statsPeriod?: string | undefined;
 }): string {
   return [
     "Fix this Sentry issue event search request.",

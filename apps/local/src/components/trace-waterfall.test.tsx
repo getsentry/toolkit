@@ -255,11 +255,59 @@ test("sampled profile rows stay folded under their span until shown", () => {
     screen.getAllByRole("button", { name: "Inspect span work" }).length,
   ).toBeGreaterThan(0);
   fireEvent.click(
-    screen.getByRole("button", { name: "Hide sampled functions" }),
+    screen.getByRole("button", { name: /^Hide sampled functions/ }),
   );
   expect(
     screen.queryAllByRole("button", { name: "Inspect span work" }),
   ).toEqual([]);
+});
+
+test("each sampled-functions toggle names its span", () => {
+  const trace = buildTraceGroups(profiledRequest())[0]!;
+  render(<TraceWaterfall trace={trace} onSelectSpan={() => undefined} />);
+  const toggle = screen.getByRole("button", {
+    name: /^Show \d+ sampled functions? under GET \/slow$/,
+  });
+  fireEvent.click(toggle);
+  expect(
+    screen.getByRole("button", {
+      name: "Hide sampled functions under GET /slow",
+    }),
+  ).toBeDefined();
+});
+
+test("search unfolds sampled rows only when a sampled row matches", () => {
+  const trace = buildTraceGroups(profiledRequest())[0]!;
+  render(<TraceWaterfall trace={trace} onSelectSpan={() => undefined} />);
+  const search = screen.getByLabelText("Search in trace");
+  fireEvent.change(search, { target: { value: "SELECT" } });
+  expect(
+    screen.queryAllByRole("button", { name: "Inspect span work" }),
+  ).toEqual([]);
+  fireEvent.change(search, { target: { value: "work" } });
+  expect(
+    screen.getAllByRole("button", { name: "Inspect span work" }).length,
+  ).toBeGreaterThan(0);
+});
+
+test("selecting a sampled row after mount shows its folded siblings", () => {
+  const trace = buildTraceGroups(profiledRequest())[0]!;
+  const sampled = trace.spans.find((span) => span.sampled)!;
+  const { rerender } = render(
+    <TraceWaterfall trace={trace} onSelectSpan={() => undefined} />,
+  );
+  rerender(
+    <TraceWaterfall
+      trace={trace}
+      selectedSpanId={sampled.id}
+      onSelectSpan={() => undefined}
+    />,
+  );
+  expect(
+    screen
+      .getAllByRole("button", { name: "Inspect span work" })
+      .some((button) => button.getAttribute("aria-pressed") === "true"),
+  ).toBe(true);
 });
 
 test("a selected sampled row stays visible when returning to the trace", () => {

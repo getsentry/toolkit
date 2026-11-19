@@ -61,9 +61,9 @@ type IgnoreUpdate = {
     | "archived_until_condition_met";
   ignoreDuration?: number;
   ignoreCount?: number;
-  ignoreWindow?: number;
+  ignoreWindow?: number | undefined;
   ignoreUserCount?: number;
-  ignoreUserWindow?: number;
+  ignoreUserWindow?: number | undefined;
   behavior: string;
   message: string;
 };
@@ -86,13 +86,13 @@ type IssueStatusDisplay =
   | (string & {});
 
 type IgnoreParams = {
-  status?: string;
-  ignoreMode?: IgnoreMode;
-  ignoreDurationMinutes?: number;
-  ignoreCount?: number;
-  ignoreWindowMinutes?: number;
-  ignoreUserCount?: number;
-  ignoreUserWindowMinutes?: number;
+  status?: string | undefined;
+  ignoreMode?: IgnoreMode | undefined;
+  ignoreDurationMinutes?: number | undefined;
+  ignoreCount?: number | undefined;
+  ignoreWindowMinutes?: number | undefined;
+  ignoreUserCount?: number | undefined;
+  ignoreUserWindowMinutes?: number | undefined;
 };
 
 function pluralize(value: number, noun: string): string {
@@ -137,7 +137,7 @@ function inferIgnoreMode(params: IgnoreParams): IgnoreMode {
 }
 
 function getIssueStatusDetails(issue: Issue): Record<string, unknown> {
-  const statusDetails = issue.statusDetails;
+  const statusDetails = issue["statusDetails"];
 
   if (
     statusDetails &&
@@ -183,7 +183,7 @@ function getResolvedCommitId(
 ): string | undefined {
   const commit = statusDetails[key];
   if (commit && typeof commit === "object" && !Array.isArray(commit)) {
-    const id = (commit as Record<string, unknown>).id;
+    const id = (commit as Record<string, unknown>)["id"];
     if (typeof id === "string" && id.length > 0) {
       return id;
     }
@@ -205,7 +205,7 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
   const statusDetails = getIssueStatusDetails(issue);
 
   if (issue.status === "resolved") {
-    if (statusDetails.inNextRelease === true) {
+    if (statusDetails["inNextRelease"] === true) {
       return "resolvedInNextRelease";
     }
     if (getStatusDetailString(statusDetails, "inRelease")) {
@@ -220,10 +220,10 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
 }
 
 type ResolutionParams = {
-  status?: string;
-  inRelease?: string;
-  inCommit?: string;
-  inCommitRepository?: string;
+  status?: string | undefined;
+  inRelease?: string | undefined;
+  inCommit?: string | undefined;
+  inCommitRepository?: string | undefined;
 };
 
 function buildResolution(
@@ -260,13 +260,17 @@ function buildResolution(
     return { inRelease: params.inRelease };
   }
 
-  if (params.inCommitRepository === undefined) {
+  // With `inRelease` unset, the checks above guarantee `inCommit` is set.
+  if (
+    params.inCommit === undefined ||
+    params.inCommitRepository === undefined
+  ) {
     throw new UserInputError("`inCommit` requires `inCommitRepository`");
   }
 
   return {
     inCommit: {
-      commit: params.inCommit!,
+      commit: params.inCommit,
       repository: params.inCommitRepository,
     },
   };
@@ -447,7 +451,7 @@ function getIgnoreState(
 
   if (
     issue.substatus === "archived_until_escalating" ||
-    statusDetails.ignoreUntilEscalating === true
+    statusDetails["ignoreUntilEscalating"] === true
   ) {
     return {
       family: "untilEscalating",
@@ -815,9 +819,9 @@ function buildIgnoreUpdate(
             ? `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "more user")}`
             : `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "user")} in ${pluralize(params.ignoreUserWindowMinutes, "minute")}`,
       };
+    default:
+      throw new UserInputError("Unsupported ignore mode");
   }
-
-  throw new UserInputError("Unsupported ignore mode");
 }
 
 type ReasonCommentResult =
