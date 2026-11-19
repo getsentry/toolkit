@@ -173,15 +173,20 @@ export async function createIssueCommentWithVideos(
  * Download one attached video to `destPath`, streaming so large recordings
  * never sit in memory.
  *
- * @param path API path from the comment link, starting with `/api/0/`.
+ * The URL is rebuilt from the issue and the numeric attachment ID instead of
+ * the link in the comment, which anyone in the organization can write.
  */
 export async function downloadIssueCommentAttachment(
   orgSlug: string,
-  path: string,
+  issueId: string,
+  attachmentId: string,
   destPath: string,
 ): Promise<void> {
+  if (!/^\d+$/.test(attachmentId)) {
+    throw new ValidationError(`Invalid attachment ID: ${attachmentId}`);
+  }
   const regionUrl = await resolveOrgRegion(orgSlug);
-  const url = `${regionUrl.replace(/\/$/, "")}${path}`;
+  const url = `${regionUrl.replace(/\/$/, "")}/api/0/organizations/${encodeURIComponent(orgSlug)}/issues/${encodeURIComponent(issueId)}/comment-attachments/${attachmentId}/`;
   const response = await getSdkConfig(regionUrl).fetch(url, {
     method: "GET",
   });

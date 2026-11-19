@@ -87,7 +87,8 @@ export type LocalFile = {
 /**
  * Reads a local file the user named in a tool call. Only hosts that run on the
  * user's machine (the CLI's stdio server) provide one; the hosted server has
- * no local files.
+ * no local files. Paths come from the model, so a host should confine reads
+ * to a directory the user chose (the CLI uses its working directory).
  */
 export type LocalFileReader = (path: string) => Promise<LocalFile>;
 

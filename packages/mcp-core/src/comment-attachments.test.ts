@@ -50,6 +50,15 @@ describe("parseCommentAttachments", () => {
     ]);
   });
 
+  it.each([
+    "[x](/api/0/organizations/../issues/1/comment-attachments/5/)",
+    "[x](/api/0/organizations/my-org/issues/..%2F..%2Fusers/comment-attachments/5/)",
+    "[x](/api/0/organizations/my-org/issues/1/comment-attachments/5/../../)",
+    "[x](https://evil.example/api/0/organizations/o/issues/1/comment-attachments/5/)",
+  ])("ignores a link that is not a plain attachment path: %s", (text) => {
+    expect(parseCommentAttachments(text)).toEqual([]);
+  });
+
   it("returns nothing for empty text", () => {
     expect(parseCommentAttachments(null)).toEqual([]);
     expect(parseCommentAttachments("")).toEqual([]);

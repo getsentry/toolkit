@@ -83,8 +83,11 @@ export type CommentAttachmentLink = {
   path: string;
 };
 
+// Org and issue segments are slugs, numeric IDs or short IDs, so `.`/`..`
+// segments and encoded characters never match: a link written by anyone in
+// the org cannot point a download at another API route.
 const ATTACHMENT_LINK =
-  /\[((?:\\.|[^\]\\])*)\]\((\/api\/0\/organizations\/[^/\s)]+\/issues\/[^/\s)]+\/comment-attachments\/(\d+)\/)\)/g;
+  /\[((?:\\.|[^\]\\])*)\]\((\/api\/0\/organizations\/[\w-]+\/issues\/[\w-]+\/comment-attachments\/(\d+)\/)\)/g;
 
 /** Markdown link for an uploaded video, with link-text brackets escaped. */
 export function commentAttachmentMarkdown(attachment: {

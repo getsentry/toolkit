@@ -120,7 +120,7 @@ export default defineTool({
       .max(MAX_ATTACHMENTS)
       .optional()
       .describe(
-        "Local paths of videos to attach (MP4, MOV, WebM or Ogg), such as a screen recording of the bug. Only works when the MCP server runs on the user's machine (`sentry mcp`). Only attach files the user asked for.",
+        "Local paths of videos to attach (MP4, MOV, WebM or Ogg), such as a screen recording of the bug. Only works when the MCP server runs on the user's machine (`sentry mcp`), and only for files in the directory it was started in. Only attach files the user asked for.",
       ),
   },
   annotations: {

@@ -41,6 +41,7 @@ let requests: Request[];
 let uploads: Array<{ name: string; type: string; size: number }>;
 let postedText: string | undefined;
 let uploadStatus: number;
+let commentsBody: unknown[] | undefined;
 
 beforeEach(() => {
   originalFetch = globalThis.fetch;
@@ -48,6 +49,7 @@ beforeEach(() => {
   uploads = [];
   postedText = undefined;
   uploadStatus = 201;
+  commentsBody = undefined;
   setAuthToken("test-token");
   setOrgRegion("test-org", REGION_URL);
   globalThis.fetch = mockFetch(async (input, init) => {
@@ -88,6 +90,9 @@ beforeEach(() => {
         user: { name: "Jane Developer" },
         data: { text: postedText },
       });
+    }
+    if (pathname === `${ISSUE_PATH}comments/` && commentsBody) {
+      return Response.json(commentsBody);
     }
     if (pathname === `${ISSUE_PATH}comments/`) {
       return Response.json([
@@ -308,6 +313,36 @@ describe("issue comment", () => {
 });
 
 describe("issue comments", () => {
+  test("--download builds the URL from the issue, not the comment link", async () => {
+    const dir = join(getConfigDir(), "videos");
+    commentsBody = [
+      {
+        id: "902",
+        dateCreated: "2026-10-21T12:00:00Z",
+        user: { name: "Mallory" },
+        data: {
+          text: "[a.mp4](/api/0/organizations/other-org/issues/999/comment-attachments/7/)\n[b.mp4](/api/0/organizations/../issues/1/comment-attachments/8/)",
+        },
+      },
+    ];
+
+    const result = await runCli([
+      "issue",
+      "comments",
+      "test-org/12345",
+      "--download",
+      dir,
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const downloads = requests
+      .filter((request) => request.url.includes("comment-attachments"))
+      .map((request) => new URL(request.url).pathname);
+    expect(downloads).toEqual([VIDEO_PATH]);
+    expect(JSON.parse(result.stdout)[0].attachments).toHaveLength(1);
+  });
+
   test("lists comments with their videos", async () => {
     const result = await runCli([
       "issue",

@@ -224,19 +224,19 @@ export const commentsCommand = buildCommand({
       await mkdir(dir, { recursive: true });
       for (const comment of output) {
         for (const attachment of comment.attachments) {
-          const link = parseCommentAttachments(comment.text).find(
-            (item) => item.id === attachment.id,
-          );
-          if (!link) {
-            continue;
-          }
           const destPath = join(
             dir,
             `${attachment.id}-${basename(attachment.name)}`,
           );
           await withProgress(
             { message: `Downloading ${attachment.name}...`, json: flags.json },
-            () => downloadIssueCommentAttachment(org, link.path, destPath),
+            () =>
+              downloadIssueCommentAttachment(
+                org,
+                issue.id,
+                attachment.id,
+                destPath,
+              ),
           );
           attachment.savedTo = destPath;
         }
