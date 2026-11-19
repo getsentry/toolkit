@@ -211,7 +211,10 @@ The **Capture actions** menu labels each action by its scope:
   This action is available only to a loopback-served viewer with existing receiver
   permissions. If deletion fails, the view stays paused and offers Reconnect.
 - **Stop capture** stops scoped-session ingestion immediately: later ingestion
-  receives HTTP 410, including requests whose bodies finish after Stop. Saved
+  receives HTTP 410, including requests whose bodies finish after Stop. A
+  request that was still being read at Stop and turns out too large gets 413,
+  and its `sentry.local.oversized` event reaches stream readers before the
+  closing session event. Saved
   events remain readable for three hours from the first stop; retries and
   attempted ingestion do not extend that deadline. Reloading the archive does
   not resume capture. Duplicate stop requests are guarded and requests time out
