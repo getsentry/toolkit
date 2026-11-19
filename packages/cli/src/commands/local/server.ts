@@ -697,27 +697,34 @@ export function tryListen(
 }
 
 /**
- * Ask `${url}/health` who holds the port: `none` for a transport failure
- * (connection refused, timeout), `daemon` for a Sentry Local daemon,
- * `receiver` for a Local or Spotlight receiver, which sends the
- * {@link SERVER_IDENTIFIER} header even on an error status, and `foreign` for
- * any other HTTP server.
+ * Ask `${url}/health` who holds the port:
+ * - `none`: the connection was refused, so nothing listens there.
+ * - `daemon`: a Sentry Local daemon.
+ * - `receiver`: a Local or Spotlight receiver, which sends the
+ *   {@link SERVER_IDENTIFIER} header even on an error status.
+ * - `foreign`: any other HTTP server, including one whose `/health`
+ *   redirects, since the probe does not follow redirects.
+ * - `unresponsive`: something accepted the connection but gave no HTTP
+ *   answer in time: a silent or slow listener, a non-HTTP or TLS server.
  */
 export async function probeLocalHealth(
   url: string,
   timeoutMs: number,
-): Promise<"none" | "daemon" | "receiver" | "foreign"> {
+): Promise<"none" | "daemon" | "receiver" | "foreign" | "unresponsive"> {
   let res: Response;
   try {
     res = await fetch(`${url}/health`, {
+      redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    logger.debug(
-      `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return "none";
+    const message = err instanceof Error ? err.message : String(err);
+    if (isConnectionRefused(err) || !isTransportFailure(err)) {
+      logger.debug(`No existing server at ${url}`, message);
+      return "none";
+    }
+    logger.debug(`Server at ${url} gave no HTTP answer to /health`, message);
+    return "unresponsive";
   }
   await res.body?.cancel();
   if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
@@ -742,9 +749,9 @@ export async function probeLocalHealth(
  * 2xx: Spotlight's own sidecar can answer `/health` with a 5xx while still
  * holding the port and ingesting envelopes, and attaching to it is right.
  *
- * Only a transport-level failure (connection refused, timeout) counts as
- * "no server". Any other HTTP server, such as `python -m http.server`, throws
- * a port-in-use error: attaching to it would lose every event.
+ * Only a refused connection counts as "no server". Any other holder, such as
+ * `python -m http.server` or a listener that never answers `/health`, throws a
+ * port-in-use error: attaching to it would lose every event.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
   const holder = await probeLocalHealth(url, 2000);
@@ -754,7 +761,7 @@ export async function isServerRunning(url: string): Promise<boolean> {
       PORT_HELD_BY_DAEMON_FIELD,
     );
   }
-  if (holder === "foreign") {
+  if (holder === "foreign" || holder === "unresponsive") {
     throw portInUseError(Number(new URL(url).port || 80));
   }
   return holder === "receiver";
@@ -861,6 +868,18 @@ function isAbortError(err: unknown): boolean {
   return (
     (err instanceof DOMException && err.name === "AbortError") ||
     (err instanceof Error && err.name === "AbortError")
+  );
+}
+
+/**
+ * Whether a failed `fetch` failed on the wire: it timed out, or Node's fetch
+ * rejected it with a socket or parser cause, such as a reset or a reply that
+ * is not HTTP. Any other error says nothing about what holds the port.
+ */
+function isTransportFailure(err: unknown): boolean {
+  return (
+    (err instanceof Error && err.name === "TimeoutError") ||
+    (err instanceof TypeError && err.cause !== undefined)
   );
 }
 

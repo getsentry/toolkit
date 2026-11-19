@@ -11,6 +11,12 @@ import { logger } from "../../../src/lib/logger.js";
 import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import {
+  createServer as createNetServer,
+  type Server as NetServer,
+  type Socket,
+} from "node:net";
+import { createServer as createTlsServer } from "node:tls";
+import {
   afterEach,
   beforeEach,
   describe,
@@ -1192,6 +1198,107 @@ describe("isServerRunning", () => {
     } finally {
       globalThis.fetch = savedFetch;
       await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  /** Expect `isServerRunning` to reject `port` as held by another process. */
+  async function expectHeldByAnotherProcess(port: number): Promise<void> {
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  }
+
+  /** Listen on a free loopback port with a raw TCP or TLS server. */
+  async function listenRaw(
+    server: NetServer,
+  ): Promise<{ server: NetServer; port: number }> {
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP address");
+    }
+    return { server, port: address.port };
+  }
+
+  function closeRaw(server: NetServer, sockets: Set<Socket>): Promise<void> {
+    for (const socket of sockets) socket.destroy();
+    return new Promise<void>((done) => server.close(() => done()));
+  }
+
+  test("rejects a port whose listener never answers /health", async () => {
+    // A silent listener, or one slower than the probe: binding the port
+    // would fail, and attaching would lose every event.
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => sockets.add(socket)),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  }, 10_000);
+
+  test("rejects a port whose listener does not speak HTTP", async () => {
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => {
+        sockets.add(socket);
+        socket.write("SSH-2.0-OpenSSH_9.6\r\n");
+      }),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose listener speaks TLS", async () => {
+    const sockets = new Set<Socket>();
+    const tls = createTlsServer({});
+    tls.on("connection", (socket: Socket) => sockets.add(socket));
+    tls.on("tlsClientError", () => {});
+    const { server, port } = await listenRaw(tls);
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose /health redirects to a receiver", async () => {
+    const receiver = await tryListen(
+      buildApp(createLocalRetentionBuffer(10).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const redirect = new Hono();
+    redirect.get("/health", (c) =>
+      c.redirect(`http://127.0.0.1:${receiver.port}/health`, 302),
+    );
+    const { server, port } = await tryListen(redirect, 0, "127.0.0.1");
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+      await new Promise<void>((done) => receiver.server.close(() => done()));
     }
   });
 
