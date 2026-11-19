@@ -2,6 +2,10 @@
 
 import { describeEvent } from "../../commands/local/event-kind.js";
 import {
+  exceptionValues,
+  frameFile,
+} from "../../commands/local/exception-values.js";
+import {
   groupSpansBySegment,
   type SpanSegment,
 } from "../../commands/local/span-segments.js";
@@ -306,6 +310,8 @@ export function inferSource(
 /** Shape of a single stack frame in the exception value. */
 export type StackFrame = {
   filename?: string;
+  /** Full path; sentry-go sends only this. */
+  abs_path?: string;
   lineno?: number;
   colno?: number;
   function?: string;
@@ -322,7 +328,7 @@ export type StackFrame = {
  */
 function pickFrame(frames: StackFrame[] | undefined): StackFrame | undefined {
   return (
-    frames?.findLast((f) => f.in_app && f.filename && f.lineno) ??
+    frames?.findLast((f) => f.in_app && frameFile(f) && f.lineno) ??
     frames?.findLast((f) => f.in_app) ??
     frames?.at(-1)
   );
@@ -343,11 +349,12 @@ export function formatFrameHint(frames: StackFrame[]): string {
     return "";
   }
   let hint = "";
-  if (frame.filename && frame.lineno) {
+  const file = frameFile(frame);
+  if (file && frame.lineno) {
     const loc = sanitize(
       frame.colno
-        ? `${frame.filename}:${frame.lineno}:${frame.colno}`
-        : `${frame.filename}:${frame.lineno}`,
+        ? `${file}:${frame.lineno}:${frame.colno}`
+        : `${file}:${frame.lineno}`,
     );
     hint += ` ${muted(`[${loc}]`)}`;
   }
@@ -358,7 +365,7 @@ export function formatFrameHint(frames: StackFrame[]): string {
   return hint;
 }
 
-/** Shape of one exception value in an event's `exception.values`. */
+/** Shape of one exception value in an event's `exception`. */
 type ExceptionValue = {
   type?: unknown;
   value?: unknown;
@@ -389,11 +396,11 @@ type EventSummary = (
 
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
-  const exception = event["exception"] as
-    | { values?: ExceptionValue[] }
+  // Exceptions are ordered oldest→newest; the last one is what was thrown.
+  const last = exceptionValues(event["exception"]).at(-1) as
+    | ExceptionValue
     | undefined;
-  // values is ordered oldest→newest; the last one is what was thrown.
-  const frames = exception?.values?.at(-1)?.stacktrace?.frames;
+  const frames = last?.stacktrace?.frames;
   const level =
     typeof event["level"] === "string" && event["level"]
       ? event["level"]
@@ -1205,7 +1212,7 @@ function formatErrorJson(
       error_type: summary.kind === "error" ? summary.errorType : undefined,
       message: summary.text,
       logger: summary.logger,
-      filename: jsonSafe(frame?.filename),
+      filename: jsonSafe(frame && frameFile(frame)),
       lineno: frame?.lineno,
       colno: frame?.colno,
       function: jsonSafe(frameFunction(frame)),

@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { goPanicEvent } from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
 import { eventKind, inspectAi } from "./inspection.ts";
 
 const messages = [
@@ -86,6 +87,7 @@ test("meaningful standard content keeps precedence over populated aliases", () =
 
 test.each([
   [{ message: null }, "Event"],
+  [goPanicEvent, "Exception"],
   [{ exception: { values: [{ value: null }] } }, "Exception"],
   [{ exception: { values: [{ value: 42 }] } }, "Exception"],
   [{ message: "" }, "Event"],
