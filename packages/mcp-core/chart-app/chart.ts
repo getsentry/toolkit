@@ -67,9 +67,9 @@ function svg<K extends keyof SVGElementTagNameMap>(
   return el;
 }
 
-/** Round step for about `count` gridlines between 0 and `max`. */
-function niceStep(max: number, count: number): number {
-  const raw = max / count;
+/** Round step for about `count` gridlines across `range`. */
+function niceStep(range: number, count: number): number {
+  const raw = range / count;
   const magnitude = 10 ** Math.floor(Math.log10(raw));
   const factor = [1, 2, 2.5, 5, 10].find((f) => f * magnitude >= raw) ?? 10;
   return factor * magnitude;
@@ -101,6 +101,32 @@ export function formatTooltipTime(time: number, format: TimeFormat): string {
   }).format(time);
 }
 
+export interface ValueScale {
+  bottom: number;
+  top: number;
+  step: number;
+}
+
+/**
+ * The y domain for `values`: round gridline steps from `bottom` to `top`,
+ * always including 0 so the baseline is on the chart, whether the values
+ * are positive, negative, or both.
+ */
+export function valueScale(values: readonly number[]): ValueScale {
+  const min = Math.min(0, ...values);
+  const max = Math.max(0, ...values);
+  const step = max > min ? niceStep(max - min, 4) : 1;
+  // `|| 0` turns -0 into 0, so the bottom label never reads "-0".
+  const bottom = Math.floor(min / step) * step || 0;
+  const top = Math.max(bottom + step, Math.ceil(max / step) * step);
+  return { bottom, top, step };
+}
+
+/** Where `value` sits in `scale`: 0 at the bottom of the plot, 1 at the top. */
+export function scaleFraction(scale: ValueScale, value: number): number {
+  return (value - scale.bottom) / (scale.top - scale.bottom);
+}
+
 /** Renders the chart into `container`, replacing what was there. */
 export function drawChart(
   container: HTMLElement,
@@ -115,17 +141,15 @@ export function drawChart(
   const first = times[0] ?? 0;
   const last = times.at(-1) ?? first;
   const span = Math.max(last - first, 1);
-  const max = Math.max(
-    0,
-    ...chart.series.flatMap((s) => s.buckets.map((b) => b.value)),
+  const scale = valueScale(
+    chart.series.flatMap((s) => s.buckets.map((b) => b.value)),
   );
-  const step = max > 0 ? niceStep(max, 4) : 1;
-  const top = Math.max(step, Math.ceil(max / step) * step);
+  const { bottom, top, step } = scale;
   const x = (time: number) =>
     MARGIN.left +
     (times.length > 1 ? ((time - first) / span) * plotWidth : plotWidth / 2);
   const y = (value: number) =>
-    MARGIN.top + plotHeight - (value / top) * plotHeight;
+    MARGIN.top + plotHeight - scaleFraction(scale, value) * plotHeight;
 
   const root = svg("svg", {
     viewBox: `0 0 ${width} ${HEIGHT}`,
@@ -148,7 +172,9 @@ export function drawChart(
   svg("line", { x1: 0, y1: 0, x2: 0, y2: 6, "stroke-width": 2 }, hatch);
 
   const grid = svg("g", { class: "grid axis" }, root);
-  for (let value = 0; value <= top + step / 2; value += step) {
+  const gridlines = Math.round((top - bottom) / step);
+  for (let i = 0; i <= gridlines; i++) {
+    const value = bottom + i * step;
     svg(
       "line",
       { x1: MARGIN.left, x2: width - MARGIN.right, y1: y(value), y2: y(value) },
@@ -259,7 +285,12 @@ export function drawChart(
 
   const crosshair = svg(
     "line",
-    { class: "crosshair", y1: MARGIN.top, y2: y(0), visibility: "hidden" },
+    {
+      class: "crosshair",
+      y1: MARGIN.top,
+      y2: MARGIN.top + plotHeight,
+      visibility: "hidden",
+    },
     root,
   );
   const markers = chart.series.map((_, index) =>
