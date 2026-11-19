@@ -385,13 +385,16 @@ segments, like the tail's `[N spans]`: the transaction or segment span itself an
 sampled function rows are not counted.
 
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
-Invalid compression returns 400, oversized bodies 413, unsupported media or
+Invalid compression returns 400, and so does a body that is empty or whose first
+line is not a JSON object; like Relay, the receiver keeps nothing for those.
+Oversized bodies get 413, unsupported media or
 encoding 415, and temporary admission overload 503. SDKs drop an envelope that
 gets 413 without retrying, so `local run` and `local serve` print a warning in
 their tail when that happens, at most one line every five seconds. Drops in
 between are counted and printed as one line when the five seconds end. Session tails
-get the notice from the daemon as a `sentry.local.oversized` stream event. Malformed envelopes remain
-available for raw inspection and byte-exact download through their receiver IDs.
+get the notice from the daemon as a `sentry.local.oversized` stream event. Envelopes whose items
+are malformed remain available for raw inspection and byte-exact download through
+their receiver IDs. An event item that is not JSON shows as `invalid`, not as an error.
 Receivers drop `http.client` spans and breadcrumbs for requests to their own
 loopback `/_local/` and `/stream` routes on the same port, which SDKs record for
 their own deliveries, and do not retain an envelope that has nothing else left.

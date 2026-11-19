@@ -230,6 +230,26 @@ describe("Local control plane", () => {
     );
   });
 
+  test("session ingest rejects bodies without an envelope header", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "malformed", cwd: "/malformed" }),
+    });
+    const { id, ingestUrl } = await created.json();
+    for (const body of ["", '{not json\n{"type":"event"}\n{}']) {
+      const response = await plane.app.request(ingestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: expect.any(String) });
+    }
+    expect(plane.sessionStore.getBuffer(id).read({ all: true })).toEqual([]);
+  });
+
   test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
     let now = 1000;
     const sessionStore = createLocalSessionStore({ now: () => now });

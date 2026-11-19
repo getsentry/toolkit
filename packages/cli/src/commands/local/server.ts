@@ -525,6 +525,7 @@ export function buildApp(
     });
 
     reportIngestStatus(buffer, status);
+    if (typeof status === "object") return c.json(status, 400);
     if (status === 503) c.header("Retry-After", "1");
     return c.body(null, status);
   };

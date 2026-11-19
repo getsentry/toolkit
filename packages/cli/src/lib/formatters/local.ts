@@ -377,12 +377,14 @@ type ExceptionValue = {
  *
  * `kind` is `message` for events with no typed exception: `captureMessage`,
  * Python `logging` records, and JavaScript messages that carry only a
- * synthetic stack. It is `error` otherwise, with the exception type in
- * `errorType` (`Error` when the event names none).
+ * synthetic stack. It is `invalid`, with level `invalid`, when the payload is
+ * not JSON, and `error` otherwise, with the exception type in `errorType`
+ * (`Error` when the event names none).
  */
 type EventSummary = (
   | { kind: "message" }
   | { kind: "error"; errorType: string }
+  | { kind: "invalid" }
 ) & {
   /** Event level (`fatal`, `error`, `warning`, `info`, `debug`); `error` when unset. */
   level: string;
@@ -396,6 +398,15 @@ type EventSummary = (
 
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
+  // The receiver keeps an item that is not JSON as `{ data }`, without the
+  // `type` it adds to every decoded item. Relay drops such events.
+  if (!("type" in event) && typeof event["data"] === "string") {
+    return {
+      kind: "invalid",
+      level: "invalid",
+      text: "Event payload is not JSON",
+    };
+  }
   // Exceptions are ordered oldest→newest; the last one is what was thrown.
   const last = exceptionValues(event["exception"]).at(-1) as
     | ExceptionValue

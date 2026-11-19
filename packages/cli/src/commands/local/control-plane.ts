@@ -530,6 +530,7 @@ export function createLocalControlPlane({
       reportIngestStatus(buffer, result);
       return result;
     });
+    if (typeof status === "object") return c.json(status, 400);
     if (status === 410) return closed();
     if (status === 503) c.header("Retry-After", "1");
     if (status === 204) sessionStore.recordActivity(reference);

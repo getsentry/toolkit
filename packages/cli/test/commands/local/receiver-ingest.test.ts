@@ -449,9 +449,9 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
 });
 
 test.each([
-  "not-json",
-  '1\n{"type":"event"}\n{}',
-  '[]\n{"type":"event"}\n{}',
+  "{}\nnot-an-item-header\n{}",
+  '{}\n{"type":"event","length":99}\n{}',
+  "{}\n[]\n{}",
   '{}\n{"type":"event"}\nfalse',
 ])(
   "retains malformed raw delivery %j with a downloadable stable ID",
@@ -615,7 +615,7 @@ test("raw attachments remain byte exact and malformed SSE remains inspectable wi
   ]);
   expect(await ingestReceiverEnvelope(retention.buffer, { body })).toBe(204);
   expect(at(retention.buffer.read({ all: true }), 0).getData()).toEqual(body);
-  const malformed = Buffer.from("not-an-envelope");
+  const malformed = Buffer.from("{}\nnot-an-item-header\n");
   expect(
     await ingestReceiverEnvelope(retention.buffer, { body: malformed }),
   ).toBe(204);

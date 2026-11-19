@@ -3,6 +3,7 @@ import { brotliDecompress, gunzip, inflate } from "node:zlib";
 import { logger } from "../../lib/logger.js";
 import {
   createReceiverEnvelope,
+  hasEnvelopeHeader,
   type ReceiverBuffer,
   withoutDsnHeader,
   withoutOwnDeliveries,
@@ -25,6 +26,8 @@ type ReceiverState = {
   /** Requests still reading their body or reporting their status. */
   requests: Set<Promise<unknown>>;
 };
+/** A body that is not an envelope: HTTP 400 with this JSON, as Relay answers. */
+type ReceiverRejected = { error: string };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
 const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
 
@@ -45,9 +48,9 @@ export function onOversizedEnvelope(
 /** Tell this receiver's listeners when a delivery got HTTP 413. */
 export function reportIngestStatus(
   buffer: ReceiverBuffer,
-  status: number,
+  result: number | ReceiverRejected,
 ): void {
-  if (status !== 413) return;
+  if (result !== 413) return;
   for (const listener of oversizedListeners.get(buffer) ?? []) listener();
 }
 
@@ -158,7 +161,7 @@ export function ingestReceiverEnvelope(
      */
     closed?: boolean;
   },
-): Promise<204 | 400 | 410 | 413 | 415 | 503> {
+): Promise<204 | 400 | 410 | 413 | 415 | 503 | ReceiverRejected> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
   if (
     contentType &&
@@ -173,7 +176,7 @@ export function ingestReceiverEnvelope(
   if (state.pending.size >= MAX_PENDING) return Promise.resolve(503);
   const generation = state.generation;
   const operation = state.queue.then(
-    async (): Promise<204 | 400 | 410 | 413 | 503> => {
+    async (): Promise<204 | 400 | 410 | 413 | 503 | ReceiverRejected> => {
       if (generation !== state.generation) return 503;
       let body = input.body;
       if (encoding && encoding !== "identity") {
@@ -200,6 +203,10 @@ export function ingestReceiverEnvelope(
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
       if (input.closed) return 410;
+      // Like Relay, reject bodies that are not envelopes and retain nothing.
+      if (!body.length) return { error: "The envelope is empty." };
+      if (!hasEnvelopeHeader(body))
+        return { error: "The envelope header is not a JSON object." };
       if (input.dropDsnHeader) body = withoutDsnHeader(body);
       const delivery = input.receiverUrl
         ? withoutOwnDeliveries(body, input.receiverUrl)

@@ -8,6 +8,7 @@
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
+import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
 import {
   afterEach,
@@ -763,6 +764,41 @@ describe("buildApp", () => {
     const cleared = await app.request("/clear", { method: "DELETE" });
     expect(cleared.status).toBe(204);
     expect(buffer.read({ all: true })).toEqual([]);
+  });
+
+  test("ingest rejects bodies without an envelope header and keeps nothing", async () => {
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const app = buildApp(buffer);
+    const post = (
+      body: string | ReturnType<typeof gzipSync>,
+      encoding?: string,
+    ) =>
+      app.request("/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": SENTRY_CONTENT_TYPE,
+          ...(encoding ? { "Content-Encoding": encoding } : {}),
+        },
+        body,
+      });
+    for (const body of [
+      "",
+      '{not json\n{"type":"event"}\n{}',
+      '[]\n{"type":"event"}\n{}',
+      "not-an-envelope",
+    ]) {
+      const res = await post(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.any(String) });
+    }
+    expect((await post(gzipSync("{not json\n"), "gzip")).status).toBe(400);
+    expect(buffer.read({ all: true })).toEqual([]);
+    // Like Relay, unknown item types and items without `length` are fine.
+    const valid = await post(
+      '{}\n{"type":"future_item"}\n{"x":1}\n{"type":"event"}\n{"message":"ok"}',
+    );
+    expect(valid.ok).toBe(true);
+    expect(buffer.read({ all: true })).toHaveLength(1);
   });
 
   test("ingest endpoint accepts envelopes and returns 204", async () => {

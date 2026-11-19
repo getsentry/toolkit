@@ -11,6 +11,8 @@ import type { FilterValue } from "../../../src/lib/formatters/local.js";
 import {
   extractTraceId,
   formatAttributeTable,
+  formatEnvelopeLines,
+  formatEnvelopeLinesJson,
   formatErrorItem,
   formatItem,
   formatItemJson,
@@ -23,6 +25,8 @@ import {
   isItemIncluded,
   itemTypeToFilterCategory,
 } from "../../../src/lib/formatters/local.js";
+import { createReceiverEnvelope } from "../../../src/commands/local/envelope.js";
+import { summarizeEnvelope } from "../../../src/commands/local/event-summary.js";
 import { parseEventTimestamp } from "../../../src/commands/local/timestamp.js";
 import { stripAnsi } from "../../../src/lib/formatters/plain-detect.js";
 import { at } from "../../helpers.js";
@@ -1496,4 +1500,18 @@ describe("sentry-python ISO 8601 timestamps", () => {
       6,
     );
   });
+});
+
+test("an event item that is not JSON never shows as an error", () => {
+  const container = createReceiverEnvelope({
+    body: Buffer.from('{}\n{"type":"event"}\nnot-json\n'),
+  });
+  const parsed = container.getParsedEnvelope();
+  if (!parsed) throw new Error("expected the envelope to decode");
+  const [line] = formatEnvelopeLines(container, new Set());
+  expect(stripAnsi(line ?? "")).not.toMatch(/ERROR|Unknown error/);
+  expect(stripAnsi(line ?? "")).toContain("[INVALID]");
+  const [json] = formatEnvelopeLinesJson(container, new Set());
+  expect(JSON.parse(json ?? "{}")).toMatchObject({ type: "invalid" });
+  expect(summarizeEnvelope(parsed)).toMatchObject({ type: "invalid" });
 });

@@ -419,8 +419,27 @@ export function withoutOwnDeliveries(
  * the read capability, so drop the key. Only the header line is rewritten.
  */
 export function withoutDsnHeader(body: Buffer): Buffer {
-  // Only the first line is needed, so skip frame(): it would parse every item
-  // and reject envelopes that still have a usable header.
+  const parsed = readEnvelopeHeader(body);
+  if (!parsed || !("dsn" in parsed.header)) return body;
+  delete parsed.header["dsn"];
+  return Buffer.concat([
+    Buffer.from(JSON.stringify(parsed.header)),
+    body.subarray(parsed.end),
+  ]);
+}
+
+/** Whether the first line is a JSON object, which Relay requires of an envelope. */
+export function hasEnvelopeHeader(body: Buffer): boolean {
+  return readEnvelopeHeader(body) !== undefined;
+}
+
+/**
+ * Parse only the first line, without frame(): it would parse every item and
+ * reject envelopes that still have a usable header.
+ */
+function readEnvelopeHeader(
+  body: Buffer,
+): { header: Record<string, unknown>; end: number } | undefined {
   const newline = body.indexOf(10);
   const end = newline < 0 ? body.length : newline;
   let header: unknown;
@@ -432,16 +451,10 @@ export function withoutDsnHeader(body: Buffer): Buffer {
         .replace(/^\uFEFF/, ""),
     );
   } catch {
-    // Malformed envelopes stay byte-exact for raw inspection.
-    logger.debug("Local receiver kept an undecodable envelope header.");
-    return body;
+    logger.debug("Local receiver could not parse an envelope header.");
+    return;
   }
-  if (!isEnvelopeObject(header) || !("dsn" in header)) return body;
-  delete header["dsn"];
-  return Buffer.concat([
-    Buffer.from(JSON.stringify(header)),
-    body.subarray(end),
-  ]);
+  return isEnvelopeObject(header) ? { header, end } : undefined;
 }
 
 /** Retain raw bytes synchronously; decode lazily without allowing parse errors out. */
