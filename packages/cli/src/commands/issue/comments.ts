@@ -89,7 +89,7 @@ export const commentCommand = buildCommand({
       "Post a comment to an issue's activity feed, visible to the whole team.\n\n" +
       "Use --attach to upload screen recordings with the comment. Accepted\n" +
       "formats are MP4, MOV, WebM and Ogg; the server's size limit applies\n" +
-      "(100 MB by default). Each video is linked after the comment text and\n" +
+      "(95 MB by default). Each video is linked after the comment text and\n" +
       "plays inline in Sentry.\n\n" +
       "Use --dry-run to check the files without uploading or posting anything.",
     examples: [
