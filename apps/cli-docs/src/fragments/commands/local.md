@@ -207,6 +207,9 @@ Events with an exception type are `"type":"error"` records. Events without one,
 such as `captureMessage` calls and Python `logging` records, are
 `"type":"message"`. `-f error` returns both, so a script that keeps errors with
 `jq 'select(.type=="error")'` should also keep `"message"` if it wants them.
+An event whose payload is not JSON is a `"type":"invalid"` record with
+`"level":"invalid"`, in this stream and in `event list`. `-f error` still shows
+it, but `--verify` does not count it as an event from your app.
 
 In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe

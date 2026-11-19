@@ -26,7 +26,7 @@ type ReceiverState = {
   /** Requests still reading their body or reporting their status. */
   requests: Set<Promise<unknown>>;
 };
-/** A body that is not an envelope: HTTP 400 with this JSON, as Relay answers. */
+/** A body that is not an envelope: HTTP 400 with this JSON, shaped like the 410 body. */
 type ReceiverRejected = { error: string };
 const receivers = new WeakMap<ReceiverBuffer, ReceiverState>();
 const oversizedListeners = new WeakMap<ReceiverBuffer, Set<() => void>>();
@@ -161,7 +161,7 @@ export function ingestReceiverEnvelope(
      */
     closed?: boolean;
   },
-): Promise<204 | 400 | 410 | 413 | 415 | 503 | ReceiverRejected> {
+): Promise<204 | 410 | 413 | 415 | 503 | ReceiverRejected> {
   const contentType = input.contentType?.split(";")[0]?.trim().toLowerCase();
   if (
     contentType &&
@@ -176,7 +176,7 @@ export function ingestReceiverEnvelope(
   if (state.pending.size >= MAX_PENDING) return Promise.resolve(503);
   const generation = state.generation;
   const operation = state.queue.then(
-    async (): Promise<204 | 400 | 410 | 413 | 503 | ReceiverRejected> => {
+    async (): Promise<204 | 410 | 413 | 503 | ReceiverRejected> => {
       if (generation !== state.generation) return 503;
       let body = input.body;
       if (encoding && encoding !== "identity") {
@@ -197,13 +197,13 @@ export function ingestReceiverEnvelope(
             "code" in error &&
             error.code === "ERR_BUFFER_TOO_LARGE"
             ? 413
-            : 400;
+            : { error: "The body could not be decompressed." };
         }
       }
       if (generation !== state.generation) return 503;
       if (body.length > MAX_DECODED_BYTES) return 413;
       if (input.closed) return 410;
-      // Like Relay, reject bodies that are not envelopes and retain nothing.
+      // Reject bodies that are not envelopes, as Relay does, and retain nothing.
       if (!body.length) return { error: "The envelope is empty." };
       if (!hasEnvelopeHeader(body))
         return { error: "The envelope header is not a JSON object." };

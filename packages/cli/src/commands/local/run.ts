@@ -53,6 +53,7 @@ import {
   createReplayTracker,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
+  hasOnlyInvalidEvents,
   type FormatValue,
   printLocalViewerHint,
 } from "../../lib/formatters/local.js";
@@ -1042,8 +1043,10 @@ async function* runWithVerify(
 
   let subscriptionId: string | undefined;
   const envelopeReceived = new Promise<void>((resolveEnvelope) => {
-    subscriptionId = buffer.subscribe(() => {
-      resolveEnvelope();
+    subscriptionId = buffer.subscribe((container) => {
+      if (!hasOnlyInvalidEvents(container)) {
+        resolveEnvelope();
+      }
     });
   });
 

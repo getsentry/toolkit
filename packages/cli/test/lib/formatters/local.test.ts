@@ -1514,4 +1514,6 @@ test("an event item that is not JSON never shows as an error", () => {
   const [json] = formatEnvelopeLinesJson(container, new Set());
   expect(JSON.parse(json ?? "{}")).toMatchObject({ type: "invalid" });
   expect(summarizeEnvelope(parsed)).toMatchObject({ type: "invalid" });
+  // The tail keeps it under -f error.
+  expect(formatEnvelopeLines(container, new Set(["error"]))).toHaveLength(1);
 });

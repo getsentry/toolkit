@@ -1,6 +1,9 @@
 /** Tail formatters for the local dev server. */
 
-import { describeEvent } from "../../commands/local/event-kind.js";
+import {
+  describeEvent,
+  isUndecodedEvent,
+} from "../../commands/local/event-kind.js";
 import {
   exceptionValues,
   frameFile,
@@ -398,9 +401,7 @@ type EventSummary = (
 
 /** Summarize an `event` item for its tail line, JSON record, or `event list` entry. */
 export function summarizeEvent(event: Record<string, unknown>): EventSummary {
-  // The receiver keeps an item that is not JSON as `{ data }`, without the
-  // `type` it adds to every decoded item. Relay drops such events.
-  if (!("type" in event) && typeof event["data"] === "string") {
+  if (isUndecodedEvent(event)) {
     return {
       kind: "invalid",
       level: "invalid",
@@ -1206,7 +1207,8 @@ function formatJsonObservation(
 /**
  * Format an `event` item as a JSON object, including the best stack frame.
  * Exceptions get `type: "error"` and an `error_type`; messages get
- * `type: "message"` and no `error_type`.
+ * `type: "message"` and no `error_type`. An item that is not JSON gets
+ * `type: "invalid"` and `level: "invalid"`.
  */
 function formatErrorJson(
   payload: Record<string, unknown>,
@@ -1479,6 +1481,26 @@ export function formatItem(
     return [];
   }
   return [formatFallbackLine(fallbackLabel)];
+}
+
+/**
+ * Whether every item in an envelope is an `event` that is not JSON. The tail
+ * still shows those under `-f error`, but they prove nothing about the SDK,
+ * so `--verify` does not count them.
+ */
+export function hasOnlyInvalidEvents(container: {
+  getParsedEnvelope: () => {
+    envelope: [unknown, [{ type?: string }, Record<string, unknown>][]];
+  } | null;
+}): boolean {
+  const items = container.getParsedEnvelope()?.envelope[1] ?? [];
+  return (
+    items.length > 0 &&
+    items.every(
+      ([{ type }, payload]) =>
+        ERROR_TYPES.has(type ?? "") && isUndecodedEvent(payload),
+    )
+  );
 }
 
 /**

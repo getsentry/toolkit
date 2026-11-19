@@ -1307,6 +1307,32 @@ describe("sentry local run --verify receiver", () => {
     }
   });
 
+  test("does not verify on an event that is not JSON", async () => {
+    const sendInvalidEvent = [
+      "-e",
+      [
+        "const body = ['{}', JSON.stringify({ type: 'event' }), 'not-json'].join(String.fromCharCode(10));",
+        "fetch(process.env.SENTRY_SPOTLIGHT, { method: 'POST', body }).then(() => setTimeout(() => {}, 30000));",
+      ].join(" "),
+    ];
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const error = await func
+        .call(
+          makeContext(),
+          { port: 0, host: "127.0.0.1", verify: true, timeout: 2 },
+          process.execPath,
+          ...sendInvalidEvent,
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(VerifyFailedError);
+      expect((error as Error).message).toContain("Verification timed out");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("verifies on a free port when the default port is busy", async () => {
     const busy = makeDefaultPortBusy();
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
