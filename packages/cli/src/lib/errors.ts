@@ -105,6 +105,9 @@ export const EXIT = {
   OUTPUT_ERROR: 60,
   /** `sentry local run --verify` received no events from the SDK */
   VERIFY_FAILED: 64,
+
+  /** `sentry local run --timeout` stopped the app, as GNU `timeout` exits */
+  RUN_TIMEOUT: 124,
 } as const;
 
 /**

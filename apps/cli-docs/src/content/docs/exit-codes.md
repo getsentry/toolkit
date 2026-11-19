@@ -45,6 +45,7 @@ react to failure categories without parsing stderr.
 | 51 | Device Flow Error | OAuth device authorization flow failed |
 | 60 | Output Error | Command produced output but the operation failed |
 | 64 | Verify Failed | `sentry local run --verify` received no events from the SDK |
+| 124 | Run Timeout | `sentry local run --timeout` stopped the app (the GNU `timeout` convention) |
 | 252 | Invalid Argument | An argument could not be parsed — see [Argument errors](#argument-errors) |
 
 ## Scripting Examples
