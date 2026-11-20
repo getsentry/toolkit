@@ -380,7 +380,20 @@ describe("search_errors structured output", () => {
         "query": "errors per hour",
         "resultType": "timeSeries",
         "results": [],
-        "suggestedActions": [],
+        "suggestedActions": [
+          {
+            "arguments": {
+              "dataset": "errors",
+              "organizationSlug": "test-org",
+              "period": "24h",
+              "query": "level:error",
+              "yAxis": "count()",
+            },
+            "reason": "Chart every bucket of this series.",
+            "toolName": "render_sentry_chart",
+            "type": "tool_call",
+          },
+        ],
         "timeSeries": {
           "bucketCount": 4,
           "buckets": [

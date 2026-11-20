@@ -63,6 +63,7 @@ allowedTools:
   - link_issue
   - onboarding_status_update
   - remove_team_from_project
+  - render_sentry_chart
   - search_agent_conversations
   - search_attributes
   - search_docs

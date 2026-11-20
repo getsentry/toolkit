@@ -13,6 +13,7 @@
     "**/worker-configuration.d.ts",
     "**/tsconfig*.json",
     "packages/mcp-server-mocks/src/fixtures/**",
+    "packages/mcp-core/src/ui/chart-app.generated.ts",
     "packages/codemod-cli3to4/tests/**"
   ],
   "rules": {
@@ -130,12 +131,20 @@
               {
                 "name": "sentry",
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "name": "@modelcontextprotocol/ext-apps",
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               }
             ],
             "patterns": [
               {
                 "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "group": ["@modelcontextprotocol/ext-apps/**"],
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               }
             ]
           }
@@ -397,6 +406,10 @@
               {
                 "group": ["sentry/**", "**/cli/src/**", "**/packages/cli/**"],
                 "message": "mcp-core and toolkit-core must not import the Sentry CLI. Inject CLI-only capabilities through interfaces defined in mcp-core or toolkit-core (see docs/architecture/overview.md#package-dependency-direction)."
+              },
+              {
+                "group": ["@modelcontextprotocol/ext-apps/**"],
+                "message": "mcp-core and its MCP Apps views speak MCP Apps directly (src/ui-resources.ts, chart-app/bridge.ts), so the server bundle and the views stay small. ext-apps is a dev dependency for the verify-toolkit host only (see design/mcp-apps.md)."
               },
               {
                 "group": ["node:*"],

@@ -59,6 +59,7 @@ import tools from "./tools/index";
 import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
+import { registerUiResources } from "./ui-resources";
 import { getServerVersion } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
@@ -340,6 +341,10 @@ export function buildServer({
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
   }
+  registerUiResources(
+    server,
+    registrations.map(({ config }) => config),
+  );
   // Registration enables this by default, but each server's tool catalog is fixed.
   if (registrations.length > 0) {
     server.server.registerCapabilities({ tools: { listChanged: false } });
@@ -409,6 +414,7 @@ function configureServer({
         tool.outputSchema ??
         (experimentalMode ? tool.experimentalOutputSchema : undefined),
       annotations: tool.annotations,
+      ...(tool._meta && { _meta: tool._meta }),
     };
     const handleToolCall = async (
       params: unknown,

@@ -85,6 +85,7 @@ import uptimeChecksFixture from "./fixtures/uptime-checks.json" with { type: "js
 import uptimeMonitorFixture from "./fixtures/uptime-monitor.json" with { type: "json" };
 import userFixture from "./fixtures/user.json" with { type: "json" };
 import { issueFixture2 } from "./payloads";
+import { eventsTimeSeriesResponse } from "./events-timeseries";
 
 /**
  * Builds MSW handlers for both SaaS and self-hosted Sentry instances.
@@ -562,6 +563,11 @@ export const restHandlers: HttpHandler[] = buildHandlers([
         },
       });
     },
+  },
+  {
+    method: "get",
+    path: "/api/0/organizations/sentry-mcp-evals/events-timeseries/",
+    fetch: ({ request }) => eventsTimeSeriesResponse(request),
   },
   {
     method: "get",

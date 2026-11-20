@@ -989,7 +989,7 @@ function formatIngestionStatus(ingestion: IngestionMeta): string {
   return `- **Ingestion**: ${ingestion.status}${detail}`;
 }
 
-interface TimeSeriesPoint {
+export interface TimeSeriesPoint {
   timestamp: number;
   time: string;
   /** Sort key: the number, or parsed time for date-typed strings. */
@@ -1001,62 +1001,61 @@ interface TimeSeriesPoint {
   outsideRetention: boolean;
 }
 
-interface TimeSeriesSummary {
+/** One series of an events-timeseries result, with every bucket. */
+export interface SeriesSummary {
   /** Every bucket, oldest first. */
-  bucketCount: number;
-  /** The most recent `MAX_TIME_SERIES_ROWS` buckets. */
-  shown: TimeSeriesPoint[];
+  points: TimeSeriesPoint[];
   total: number | null;
   hasFilling: boolean;
   peak: TimeSeriesPoint | undefined;
+}
+
+interface TimeSeriesSummary extends Omit<SeriesSummary, "points"> {
+  bucketCount: number;
+  /** The most recent `MAX_TIME_SERIES_ROWS` buckets. */
+  shown: TimeSeriesPoint[];
   ingestion: IngestionMeta | undefined;
 }
 
 const MAX_TIME_SERIES_ROWS = 48;
 
 /**
- * Summarize an events-timeseries result: a metric bucketed over time.
+ * Summarize one series: a metric bucketed over time.
  * Buckets flagged `incomplete` by Sentry are still receiving data and are
  * excluded from the peak; those that start before the retention window are
  * permanently partial and will not change.
  */
-export function summarizeTimeSeries(
-  series: EventsTimeSeriesResponse,
+export function summarizeSeries(
+  series: EventsTimeSeriesResponse["timeSeries"][number] | undefined,
   yAxis: string,
-): TimeSeriesSummary {
+): SeriesSummary {
   // String aggregates can return identifiers, even when their values look numeric.
-  const isStringSeries = series.timeSeries[0]?.meta.valueType === "string";
-  const points = (series.timeSeries[0]?.values ?? []).map(
-    (bucket): TimeSeriesPoint => {
-      // OUTSIDE_RETENTION buckets start before the retention window: their data
-      // is permanently partial. Every other reason means data is still arriving.
-      const outsideRetention =
-        bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
-      const raw = bucket.value ?? 0;
-      // Date-typed aggregates such as max(timestamp) return ISO datetime
-      // strings. Number() rejects those whole (parseFloat would keep the year),
-      // so order them by parsed time and display the raw string.
-      const numeric = typeof raw === "number" ? raw : Number(raw);
-      const isNumeric = !Number.isNaN(numeric);
-      const keepsNumber = !isStringSeries && isNumeric;
-      return {
-        timestamp: bucket.timestamp,
-        time: formatBucketTime(bucket.timestamp),
-        value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
-        rawValue: keepsNumber ? numeric : String(raw),
-        display: keepsNumber ? numeric.toLocaleString() : String(raw),
-        filling: bucket.incomplete && !outsideRetention,
-        outsideRetention,
-      };
-    },
-  );
+  const isStringSeries = series?.meta.valueType === "string";
+  const points = (series?.values ?? []).map((bucket): TimeSeriesPoint => {
+    // OUTSIDE_RETENTION buckets start before the retention window: their data
+    // is permanently partial. Every other reason means data is still arriving.
+    const outsideRetention =
+      bucket.incomplete && bucket.incompleteReason === "OUTSIDE_RETENTION";
+    const raw = bucket.value ?? 0;
+    // Date-typed aggregates such as max(timestamp) return ISO datetime
+    // strings. Number() rejects those whole (parseFloat would keep the year),
+    // so order them by parsed time and display the raw string.
+    const numeric = typeof raw === "number" ? raw : Number(raw);
+    const isNumeric = !Number.isNaN(numeric);
+    const keepsNumber = !isStringSeries && isNumeric;
+    return {
+      timestamp: bucket.timestamp,
+      time: formatBucketTime(bucket.timestamp),
+      value: isNumeric ? numeric : Date.parse(String(raw)) || 0,
+      rawValue: keepsNumber ? numeric : String(raw),
+      display: keepsNumber ? numeric.toLocaleString() : String(raw),
+      filling: bucket.incomplete && !outsideRetention,
+      outsideRetention,
+    };
+  });
 
   return {
-    bucketCount: points.length,
-    shown:
-      points.length > MAX_TIME_SERIES_ROWS
-        ? points.slice(-MAX_TIME_SERIES_ROWS)
-        : points,
+    points,
     // Total is only meaningful for additive aggregates; summing count_unique /
     // avg / percentile buckets would be wrong, so omit it for those.
     total:
@@ -1072,6 +1071,22 @@ export function summarizeTimeSeries(
         (max, p) => (max === undefined || p.value > max.value ? p : max),
         undefined,
       ),
+  };
+}
+
+/** Summarize an ungrouped events-timeseries result, keeping recent buckets. */
+export function summarizeTimeSeries(
+  series: EventsTimeSeriesResponse,
+  yAxis: string,
+): TimeSeriesSummary {
+  const { points, ...summary } = summarizeSeries(series.timeSeries[0], yAxis);
+  return {
+    ...summary,
+    bucketCount: points.length,
+    shown:
+      points.length > MAX_TIME_SERIES_ROWS
+        ? points.slice(-MAX_TIME_SERIES_ROWS)
+        : points,
     ingestion: series.meta?.ingestion,
   };
 }

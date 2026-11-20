@@ -264,6 +264,10 @@ particular:
 See [common-patterns.md](common-patterns.md#response-formatting) for shared
 formatting patterns and examples.
 
+To render a result inline in MCP Apps hosts, see
+[tool-responses.md](tool-responses.md#mcp-apps-views). A view is optional:
+the tool still answers in full for every other client.
+
 ## Step 3: Add Tests
 
 Follow comprehensive testing patterns from [../testing/overview.md](../testing/overview.md) for unit, integration, and evaluation tests.

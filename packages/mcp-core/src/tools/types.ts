@@ -170,6 +170,12 @@ export interface ToolConfig<
     idempotentHint?: boolean;
     openWorldHint: boolean;
   };
+  /**
+   * MCP `_meta` sent with the tool in tools/list, for keys that hosts read,
+   * such as `ui.resourceUri` (MCP Apps). Every key must be listed in
+   * `ALLOWED_TOOL_META` in server.metadata.test.ts.
+   */
+  _meta?: Record<string, unknown>;
   handler: ToolHandler<TSchema, ToolOutputFor<TOutputSchema>>;
   /**
    * Optional hook invoked when the handler throws, for tool-specific failure

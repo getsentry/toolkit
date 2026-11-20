@@ -232,6 +232,34 @@ experimental sessions first stays pending until it graduates. The PR that
 makes an entry stale also deletes it. To add a `_meta` key, add it to `ALLOWED_TOOL_META`
 with a comment that says which client reads it.
 
+## MCP Apps Views
+
+A tool can name an inline view for hosts that support
+[MCP Apps](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+The rules a view follows are in
+[design/mcp-apps.md](../../design/mcp-apps.md). `render_sentry_chart` is the
+example:
+
+- The view is a `UiResource` in `packages/mcp-core/src/ui-resources.ts`: a
+  versioned `ui://` URI, the `htmlSha256` of its HTML, and a `loadHtml()` that
+  imports the generated module on the first `resources/read`.
+- The tool sets `_meta: uiToolMeta(resource)`, which writes
+  `_meta.ui.resourceUri` for MCP Apps hosts and `openai/outputTemplate` for
+  ChatGPT. Add both keys to `ALLOWED_TOOL_META`.
+- The view source lives in `packages/mcp-core/chart-app/`. `bridge.ts` is the
+  MCP Apps protocol over `postMessage`, and `parse.ts` parses
+  `structuredContent` into the chart type (`parse.test.ts` keeps it in step
+  with the tool's output schema). Do not import `@modelcontextprotocol/ext-apps`
+  or zod there; Oxlint rejects the first, and the budget rejects the second.
+- Run `pnpm --filter @sentry/mcp-core generate-chart-app` after changing the
+  view. It and `ci:policy` fail when the view is over its budget or loads
+  anything from the network, and `ci:policy` fails when the generated file is
+  stale. `src/ui-resources.test.ts` then fails until you bump the URI version
+  and set the new `htmlSha256` it prints.
+- Prove a view with `.agents/skills/verify-toolkit/map/mcp-apps.md`, which
+  mounts it through the ext-apps `AppBridge` in headless Chromium. That run is
+  also the conformance check for `bridge.ts`.
+
 ## Suggested Actions
 
 Use `suggestedActions` when a tool result reveals a concrete follow-up tool call
