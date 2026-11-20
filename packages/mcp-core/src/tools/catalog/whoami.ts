@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ApiClientError } from "../../api-client";
+import { UserInputError } from "../../errors";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import {
@@ -40,6 +42,24 @@ function toUser(user: {
   return { id: String(user.id), name: user.name ?? null, email: user.email };
 }
 
+async function getUser(
+  context: ServerContext,
+): Promise<z.infer<typeof userSchema>> {
+  try {
+    return toUser(await apiServiceFromContext(context).getAuthenticatedUser());
+  } catch (error) {
+    // Sentry answers a bare 400 when no user stands behind the token, as with
+    // org auth tokens (sentry src/sentry/api/endpoints/auth_index.py).
+    if (error instanceof ApiClientError && error.status === 400) {
+      throw new UserInputError(
+        "This Sentry token is not tied to a user, so Sentry cannot say who it belongs to. Org auth tokens (`sntrys_...`) work this way, and they only carry the `org:ci` scope, which cannot read organizations, projects, or issues. Connect with a personal auth token or Sentry OAuth instead.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 export default defineTool({
   name: "whoami",
   title: "Who Am I",
@@ -61,13 +81,11 @@ export default defineTool({
     const users =
       accounts && accounts.length > 1
         ? (
-            await mapCredentialContexts(accounts, async ({ context }) =>
-              toUser(
-                await apiServiceFromContext(context).getAuthenticatedUser(),
-              ),
+            await mapCredentialContexts(accounts, ({ context }) =>
+              getUser(context),
             )
           ).map(({ value }) => value)
-        : [toUser(await apiServiceFromContext(context).getAuthenticatedUser())];
+        : [await getUser(context)];
     const [user] = users;
     if (!user) {
       throw new Error("Expected at least one authenticated user.");
