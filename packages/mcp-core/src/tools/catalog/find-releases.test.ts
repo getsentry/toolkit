@@ -111,6 +111,41 @@ describe("find_releases", () => {
     });
   });
 
+  it("lists organization releases when projectSlug is all", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/releases/",
+        ({ request }) => {
+          expect(new URL(request.url).searchParams.get("query")).toBe("8ce8");
+          return HttpResponse.json([releaseFixture]);
+        },
+      ),
+      http.get(
+        "https://sentry.io/api/0/projects/sentry-mcp-evals/all/releases/",
+        () =>
+          HttpResponse.json(
+            { detail: "The requested resource does not exist" },
+            { status: 404 },
+          ),
+      ),
+    );
+
+    const result = await findReleases.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        projectSlug: "all",
+        regionUrl: null,
+        query: "8ce8",
+      },
+      getServerContext(),
+    );
+
+    expect(
+      getStructuredContent<{ releases: Array<{ version: string }> }>(result)
+        .releases[0]?.version,
+    ).toBe("8ce89484-0fec-4913-a2cd-e8e2d41dee36");
+  });
+
   it("maps commit and deploy summaries without leaking upstream fields", async () => {
     mswServer.use(
       http.get(
