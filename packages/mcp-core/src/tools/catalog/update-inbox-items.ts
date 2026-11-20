@@ -48,6 +48,8 @@ export default defineTool({
   name: "update_inbox_items",
   title: "Update Inbox Items",
   // Inbox is behind the organizations:universal-inbox feature flag.
+  // The Inbox is personal to the user, so project-scoped sessions do not
+  // narrow it, as with find_teams.
   experimental: true,
   includeInSkillDefinitions: false,
   skills: ["triage"],

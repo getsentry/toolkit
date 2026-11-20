@@ -30,6 +30,8 @@ export default defineTool({
   name: "get_inbox",
   title: "Get Inbox",
   // Inbox is behind the organizations:universal-inbox feature flag.
+  // The Inbox is personal to the user, so project-scoped sessions do not
+  // narrow it, as with find_teams.
   experimental: true,
   includeInSkillDefinitions: false,
   skills: ["inspect"],
