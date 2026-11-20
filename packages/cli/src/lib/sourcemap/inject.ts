@@ -19,6 +19,7 @@ import {
   injectDebugId,
   injectInlineDebugId,
   readJsDebugId,
+  readRegisteredDebugId,
   readSourcemapDebugId,
 } from "./debug-id.js";
 import {
@@ -179,16 +180,21 @@ export async function injectDirectory(
       // Match the real run's ID precedence and runtime registration check.
       const jsBytes = await readFile(jsPath);
       const js = jsBytes.toString("utf-8");
+      const binary = isLikelyBinary(jsBytes);
       const existing = readJsDebugId(js) ?? (await readMapDebugId(map));
+      // An ID the bundle only registers at runtime is reused; the file still
+      // changes, since the comment and the map ID are written.
+      const registered =
+        existing || binary ? undefined : readRegisteredDebugId(js);
       results.push({
         jsPath,
         map,
         mapPath,
         injected: !(
           existing &&
-          (isLikelyBinary(jsBytes) || hasDebugIdRegistration(js, existing))
+          (binary || hasDebugIdRegistration(js, existing))
         ),
-        debugId: existing ?? "(pending)",
+        debugId: existing ?? registered ?? "(pending)",
       });
       continue;
     }
