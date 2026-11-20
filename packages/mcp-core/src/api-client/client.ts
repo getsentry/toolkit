@@ -348,12 +348,12 @@ type RequestOptions = {
  * `src/sentry/inbox/filters.py` accepts them. Omitted filters match all items.
  */
 export type InboxFilters = {
-  subjectTypes?: readonly string[];
+  subjectTypes?: readonly string[] | undefined;
   /** Requires exactly one subject type. */
-  subjectId?: string;
-  eventTypes?: readonly string[];
-  recipients?: readonly ("user" | "team")[];
-  isRead?: boolean;
+  subjectId?: string | undefined;
+  eventTypes?: readonly string[] | undefined;
+  recipients?: readonly ("user" | "team")[] | undefined;
+  isRead?: boolean | undefined;
 };
 
 function inboxFilterSearchParams(filters: InboxFilters): URLSearchParams {
