@@ -205,8 +205,8 @@ catalogs:
       specifier: ^1.2.3
       version: 1.2.3
     '@sentry/api':
-      specifier: 2.15.0
-      version: 2.15.0
+      specifier: 2.16.0
+      version: 2.16.0
     '@sentry/cloudflare':
       specifier: 11.12.0
       version: 11.12.0
@@ -689,7 +689,7 @@ importers:
         version: 2.1.7(hono@4.13.18)
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 2.16.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1026,7 +1026,7 @@ importers:
         version: 2.4.0
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 2.16.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
@@ -1195,7 +1195,7 @@ importers:
     dependencies:
       '@sentry/api':
         specifier: 'catalog:'
-        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+        version: 2.16.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -4374,8 +4374,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@sentry/api@2.15.0':
-    resolution: {integrity: sha512-y/i2vNAYCFELvHC0n+c8BmCG3nId2UKWEA0w0VDc6iXJZCFDRu2eZ6M5a0/shUVOEvMo6ktan1wXrnJLZTcS8A==}
+  '@sentry/api@2.16.0':
+    resolution: {integrity: sha512-GfpMIHqtyc4O9s9H+jOPDRuMGOgBYtlAFY5NZHxcYs8uxq9Rkj6uzUVXzc19aqPvZOpbBaMtcO409qVW6mfYRA==}
     engines: {node: '>=22'}
     peerDependencies:
       valibot: '*'
@@ -11402,9 +11402,9 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
-  '@sentry/api@2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
+  '@sentry/api@2.16.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)':
     dependencies:
-      http-cache-semantics: 4.3.0
+      http-cache-semantics: 4.2.0
       p-limit: 7.3.3
       typescript: '@typescript/typescript6@6.0.2'
     optionalDependencies:
