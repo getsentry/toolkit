@@ -262,3 +262,47 @@ export async function withProgress<T>(
     process.stdout.write("\r\x1b[K");
   }
 }
+
+/**
+ * Parse a poll-interval flag value: a whole number of seconds, at least `min`.
+ * Shared by the commands that stream until Ctrl+C (`log tail --interval`,
+ * `dashboard view --refresh`).
+ *
+ * @param flag - Flag spelling for the error message, e.g. `"--interval"`
+ * @throws Error when the value is not a whole number of seconds `>= min`
+ */
+export function parsePollInterval(
+  value: string,
+  options: { flag: string; min?: number },
+): number {
+  const min = options.min ?? 1;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < min) {
+    throw new Error(
+      `${options.flag} must be a whole number of seconds, at least ${min}`,
+    );
+  }
+  return seconds;
+}
+
+/**
+ * Sleep that resolves early when an AbortSignal fires.
+ * Resolves (not rejects) on abort for clean generator shutdown.
+ */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}

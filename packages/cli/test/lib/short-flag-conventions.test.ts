@@ -14,16 +14,28 @@ import {
   extractAllRoutes,
   type RouteMap,
 } from "../../src/lib/introspect.js";
-import {
-  STREAMING_COMMANDS,
-  STREAMING_FLAGS,
-} from "../../src/lib/streaming-commands.js";
+import { STREAMING_COMMANDS } from "../../src/lib/streaming-commands.js";
 
 /**
  * Commands that still stream through a mode flag. Each entry is a known gap
  * listed in `design/sentry-cli.md`; do not add to it.
  */
 const STREAMING_FLAG_COMMANDS = ["dashboard view"];
+
+/**
+ * Flag names that usually mean "keep running and stream". A command that adds
+ * one must be a listed gap, which forces the change through review here and
+ * in `STREAMING_COMMANDS`.
+ */
+const STREAM_LIKE_FLAG_NAMES = new Set([
+  "follow",
+  "live",
+  "poll",
+  "refresh",
+  "stream",
+  "tail",
+  "watch",
+]);
 
 const commands: CommandInfo[] = extractAllRoutes(
   routes as unknown as RouteMap,
@@ -51,14 +63,19 @@ describe("-f means --fresh", () => {
 
 describe("live output is its own command", () => {
   test("only the listed gaps switch to streaming with a flag", () => {
-    const withStreamingFlag = commands
+    const withStreamLikeFlag = commands
       .filter((cmd) =>
         cmd.flags.some(
-          (flag) => !flag.hidden && STREAMING_FLAGS.has(flag.name),
+          (flag) => !flag.hidden && STREAM_LIKE_FLAG_NAMES.has(flag.name),
         ),
       )
       .map(routePath);
-    expect(withStreamingFlag).toEqual(STREAMING_FLAG_COMMANDS);
+    expect(withStreamLikeFlag).toEqual(STREAMING_FLAG_COMMANDS);
+
+    const flagModeCommands = Object.entries(STREAMING_COMMANDS)
+      .filter(([, mode]) => mode.kind === "flag")
+      .map(([path]) => path);
+    expect(flagModeCommands).toEqual(STREAMING_FLAG_COMMANDS);
   });
 
   test("no command has a visible --follow flag", () => {
@@ -72,7 +89,7 @@ describe("live output is its own command", () => {
 
   test("every streaming command is registered", () => {
     const registered = new Set(commands.map(routePath));
-    for (const path of STREAMING_COMMANDS) {
+    for (const path of Object.keys(STREAMING_COMMANDS)) {
       expect(registered.has(path), path).toBe(true);
     }
   });

@@ -24,6 +24,7 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
+import { abortableSleep, parsePollInterval } from "../../lib/polling.js";
 import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import { getUpdateNotification } from "../../lib/version-check.js";
@@ -34,6 +35,7 @@ import {
   jsonTransformLogOutput,
   type LogLike,
   type LogListArguments,
+  type LogListResult,
   type LogOutput,
   logTargetArguments,
 } from "./shared.js";
@@ -49,44 +51,27 @@ type TailFlags = {
 /** Default poll interval in seconds */
 const DEFAULT_POLL_INTERVAL = 2;
 
+/**
+ * Window of the first fetch: the logs of the last minute, so the stream
+ * opens with recent context instead of a blank screen.
+ */
+const BACKFILL_PERIOD = "1m";
+
+/**
+ * Window of each poll. `afterTimestamp` already filters to logs newer than
+ * the last one shown, so this only bounds the scan. It is wider than any poll
+ * interval so logs that arrive late from ingestion still show up.
+ */
+const POLL_PERIOD = "10m";
+
 /** Parse --limit, delegating range validation to the shared utility. */
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
 }
 
-/**
- * Parse the --interval flag: a poll interval in whole seconds.
- *
- * @throws Error if value is not a positive integer
- */
+/** Parse --interval: whole seconds, at least 1. */
 function parseInterval(value: string): number {
-  const num = Number(value);
-  if (!Number.isInteger(num) || num < 1) {
-    throw new Error("--interval must be a positive integer (seconds)");
-  }
-  return num;
-}
-
-/**
- * Sleep that resolves early when an AbortSignal fires.
- * Resolves (not rejects) on abort for clean generator shutdown.
- */
-function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
+  return parsePollInterval(value, { flag: "--interval" });
 }
 
 /**
@@ -105,7 +90,8 @@ type FollowGeneratorConfig<T extends LogLike> = {
   onDiagnostic: (message: string) => void;
   /**
    * Fetch logs with the given time window.
-   * @param statsPeriod - Time window (e.g., "1m" for initial, "10m" for polls)
+   * @param statsPeriod - Time window: {@link BACKFILL_PERIOD} for the first
+   *   fetch, {@link POLL_PERIOD} for polls
    * @param afterTimestamp - Only return logs newer than this (nanoseconds).
    *   Standard mode passes this for server-side dedup; trace mode ignores it.
    */
@@ -150,7 +136,7 @@ async function fetchPoll<T extends LogLike>(
   lastTimestamp: number,
 ): Promise<T[] | undefined> {
   try {
-    const rawLogs = await config.fetch("10m", lastTimestamp);
+    const rawLogs = await config.fetch(POLL_PERIOD, lastTimestamp);
     return config.extractNew(rawLogs, lastTimestamp);
   } catch (error) {
     if (error instanceof AuthError) {
@@ -202,8 +188,7 @@ async function* generateFollowLogs<T extends LogLike>(
   }
 
   try {
-    // Initial fetch
-    const initialLogs = await config.fetch("1m");
+    const initialLogs = await config.fetch(BACKFILL_PERIOD);
     if (initialLogs.length > 0) {
       yield [...initialLogs].reverse();
     }
@@ -229,54 +214,21 @@ async function* generateFollowLogs<T extends LogLike>(
 }
 
 /**
- * Consume a project-scoped polling generator, yielding items individually.
+ * Consume a polling generator, yielding log items individually for JSONL
+ * streaming.
  *
- * When `extraFields` is provided, the first non-empty batch is yielded as a
- * {@link LogListResult} so the human renderer can discover the extra columns
- * and create a table with the right headers. Subsequent items are yielded
- * bare for proper JSONL streaming.
+ * When the renderer needs context, the first non-empty batch is yielded as a
+ * {@link LogListResult} instead: `traceId` hides the trace column, and
+ * `extraFields` adds the `--fields` columns to the table header.
  */
-async function* yieldFollowItems<T extends LogLike>(
+async function* yieldLogItems<T extends LogLike>(
   generator: AsyncGenerator<T[], void, undefined>,
-  extraFields?: string[],
+  context: Pick<LogListResult, "traceId" | "extraFields">,
 ): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
-  let contextSent = !extraFields?.length;
+  let contextSent = !(context.traceId || context.extraFields?.length);
   for await (const batch of generator) {
     if (!contextSent && batch.length > 0) {
-      yield new CommandOutput({
-        logs: batch,
-        hasMore: false,
-        extraFields,
-      });
-      contextSent = true;
-    } else {
-      for (const item of batch) {
-        yield new CommandOutput(item);
-      }
-    }
-  }
-}
-
-/**
- * Consume a trace polling generator, yielding items individually.
- *
- * The first non-empty batch is yielded as a {@link LogListResult} so
- * the human renderer can detect `traceId` and hide the trace column.
- * Subsequent items are yielded bare for proper JSONL streaming.
- */
-async function* yieldTraceFollowItems<T extends LogLike>(
-  generator: AsyncGenerator<T[], void, undefined>,
-  traceId: string,
-): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
-  let contextSent = false;
-  for await (const batch of generator) {
-    if (!contextSent && batch.length > 0) {
-      // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput({
-        logs: batch,
-        traceId,
-        hasMore: false,
-      });
+      yield new CommandOutput({ ...context, logs: batch, hasMore: false });
       contextSent = true;
     } else {
       for (const item of batch) {
@@ -436,7 +388,7 @@ export const tailCommand = buildCommand({
         },
       });
 
-      yield* yieldTraceFollowItems(generator, traceId);
+      yield* yieldLogItems(generator, { traceId });
       return;
     }
 
@@ -467,6 +419,6 @@ export const tailCommand = buildCommand({
       extractNew: (logs) => logs,
     });
 
-    yield* yieldFollowItems(generator, flags.fields);
+    yield* yieldLogItems(generator, { extraFields: flags.fields });
   },
 });

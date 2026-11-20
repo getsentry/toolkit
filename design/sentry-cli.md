@@ -36,6 +36,8 @@ a terminal, with as little setup as the current project allows.
   and a cached result's footer names the flag that refreshes that command.
 - Live output is its own command, such as `sentry log tail`, not a mode flag
   on a list or view command. List and view commands return once.
+- The library SDK returns an `AsyncIterable` for exactly the invocations that
+  stream, in its typed methods and in `sdk.run()` alike.
 
 ## Gaps
 
