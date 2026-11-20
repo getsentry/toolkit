@@ -8,11 +8,6 @@ import { assertScopedProjectSlug } from "../url-scope";
 
 export { parseIssueParams } from "../../internal/issue-helpers";
 
-/**
- * Re-export of issue formatting utilities for tool modules.
- */
-export { formatIssueOutput } from "../../internal/formatting";
-
 export function assertIssueWithinProjectConstraint({
   issue,
   projectSlug,

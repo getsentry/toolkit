@@ -410,9 +410,7 @@ function configureServer({
       title: tool.title,
       description: resolvedDescription,
       inputSchema: filteredInputSchema,
-      outputSchema:
-        tool.outputSchema ??
-        (experimentalMode ? tool.experimentalOutputSchema : undefined),
+      outputSchema: tool.outputSchema,
       annotations: tool.annotations,
       ...(tool._meta && { _meta: tool._meta }),
     };
