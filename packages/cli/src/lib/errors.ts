@@ -33,6 +33,7 @@ import { redactCredentialText } from "./credential-redaction.js";
 import {
   buildBillingUrl,
   buildOrgSettingsUrl,
+  buildSeerAutoReloadUrl,
   buildSeerSettingsUrl,
   buildSourceCodeIntegrationsUrl,
 } from "./sentry-urls.js";
@@ -932,8 +933,8 @@ export class SeerError extends CliError {
         // out_of_credits orgs already have Seer, so a trial is not the fix.
         // Sentry doesn't say whether auto-reload is off or has run through its
         // top-ups, so the advice covers both.
-        out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
-        daily_cap_exceeded: `Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n  ${buildBillingUrl(this.orgSlug, "seer")}`,
+        out_of_credits: `Someone with billing access can adjust Seer spend and auto-reload in Sentry:\n  ${buildSeerAutoReloadUrl(this.orgSlug)}`,
+        daily_cap_exceeded: `Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n  ${buildSeerAutoReloadUrl(this.orgSlug, "daily_cap_exceeded")}`,
         // Setup gaps are fixed in Sentry settings, not with a trial.
         scm_integration_required: `Connect GitHub or GitLab to Sentry:\n  ${buildSourceCodeIntegrationsUrl(this.orgSlug)}`,
         repos_not_linked: `Connect the project's repositories in Seer settings:\n  ${buildSeerSettingsUrl(this.orgSlug)}`,
