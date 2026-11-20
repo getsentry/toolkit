@@ -14,7 +14,9 @@ If nothing is listening on the port, a server is started in the background and s
 
 The Local daemon behind `--session` is the exception: it only takes session traffic. When it holds port 8969, a plain `local run` captures on a free port and says so. An SDK that hard-codes 8969 won't reach that port, so make sure it reads `SENTRY_SPOTLIGHT`. Add `--session <name>` to capture into the daemon instead. With an explicit `--port` that the daemon holds, the command stops with an error.
 
-The same goes for a port held by another process that isn't a Local or Spotlight server, such as `python -m http.server 8969`: a plain `local run` captures on a free port and says so, and with an explicit `--port`, or with `local serve`, the command stops with an error that names the port.
+The same goes for a port held by another process that isn't a Local or Spotlight server, such as `python -m http.server 8969` or a listener that doesn't answer HTTP: a plain `local run` captures on a free port and says so, and with an explicit `--port`, or with `local serve`, the command stops with an error that names the port.
+
+A `local serve` from Sentry CLI 0.35 to 0.40 doesn't identify itself as a Local server, so newer versions treat it as another process. Upgrade it to attach to it.
 
 With no command, `local run` picks one from the project, in this order:
 

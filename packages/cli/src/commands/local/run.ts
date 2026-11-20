@@ -307,7 +307,7 @@ async function startBackgroundServer({
  * daemon drops traffic that isn't for a session without a word, so the
  * notice says to use SENTRY_SPOTLIGHT.
  *
- * @param reason - Why the default port is taken, e.g. "is in use"
+ * @param reason - Why the default port is taken, e.g. "is held by another process"
  */
 function freePortNotice(
   defaultPort: number,
@@ -320,9 +320,10 @@ function freePortNotice(
 /**
  * Get a live event tail on `host:port`, whichever way is available.
  *
- * Prefers attaching to whatever already holds the port so we never compete
- * with it, and falls back to attaching if the bind loses a race. `run` wraps
- * the user's dev command, so a busy port must never be fatal here.
+ * Prefers attaching to a receiver that already holds the port so we never
+ * compete with it, and probes again if the bind loses a race. Anything else on
+ * the port fails with a port-in-use error, unless `freePortIfHeld` lets this
+ * run capture on a free port instead.
  */
 async function openEventTail({
   port,
@@ -335,42 +336,52 @@ async function openEventTail({
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
-  let running = false;
-  // Why this run captures on a free port instead of `port`, if it does.
-  let heldNotice: ((boundPort: number) => string) | undefined;
-  try {
-    running = await isServerRunning(url);
-  } catch (err) {
-    if (!(freePortIfHeld && err instanceof ValidationError)) throw err;
-    if (err.field === PORT_HELD_BY_DAEMON_FIELD) {
-      // The daemon's receiver only takes session traffic, and it stays up
-      // while it retains sessions, so a plain run gets its own receiver.
-      heldNotice = (bound) =>
-        `${freePortNotice(port, bound, "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`;
-    } else if (err.field === PORT_IN_USE_FIELD) {
-      // A server that is not a receiver would drop every event.
-      heldNotice = (bound) =>
-        freePortNotice(port, bound, "is held by another process");
-    } else {
+  /**
+   * Whether a receiver to attach to holds `port`, or, when `freePortIfHeld`
+   * lets this run move off a held port, why it captures on a free one instead.
+   */
+  const probe = async (): Promise<{
+    running: boolean;
+    heldNotice?: (boundPort: number) => string;
+  }> => {
+    try {
+      return { running: await isServerRunning(url) };
+    } catch (err) {
+      if (!(freePortIfHeld && err instanceof ValidationError)) throw err;
+      if (err.field === PORT_HELD_BY_DAEMON_FIELD) {
+        // The daemon's receiver only takes session traffic, and it stays up
+        // while it retains sessions, so a plain run gets its own receiver.
+        return {
+          running: false,
+          heldNotice: (bound) =>
+            `${freePortNotice(port, bound, "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
+        };
+      }
+      if (err.field === PORT_IN_USE_FIELD) {
+        // A server that is not a receiver would drop every event.
+        return {
+          running: false,
+          heldNotice: (bound) =>
+            freePortNotice(port, bound, "is held by another process"),
+        };
+      }
       throw err;
     }
-  }
+  };
 
-  if (running) {
+  const attach = async (): Promise<EventTail> => {
     await configureExistingRetention(url, maxEnvelopes);
-    logger.info(`Connected to existing server at ${bold(url)}`);
     return attachToExistingServer({
       activeFilters,
       showAttributes,
       url,
       useJson,
     });
-  }
+  };
 
-  if (!heldNotice) {
-    logger.info("No server detected, starting one in the background...");
-  }
-  try {
+  const start = async (
+    heldNotice: ((boundPort: number) => string) | undefined,
+  ): Promise<EventTail> => {
     const bg = await startBackgroundServer({
       maxEnvelopes,
       port: heldNotice ? 0 : port,
@@ -384,19 +395,31 @@ async function openEventTail({
     }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
+  };
+
+  const first = await probe();
+  if (first.running) {
+    logger.info(`Connected to existing server at ${bold(url)}`);
+    return await attach();
+  }
+  if (!first.heldNotice) {
+    logger.info("No server detected, starting one in the background...");
+  }
+  try {
+    return await start(first.heldNotice);
   } catch (err) {
     if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
       throw err;
     }
-    await configureExistingRetention(url, maxEnvelopes);
-    // Something grabbed the port between the probe and the bind.
-    logger.warn(`Port ${port} is in use; attaching to it instead`);
-    return attachToExistingServer({
-      activeFilters,
-      showAttributes,
-      url,
-      useJson,
-    });
+    // Something grabbed the port between the probe and the bind. Attach only
+    // if it is a receiver; anything else would drop every event.
+    const second = await probe();
+    if (second.running) {
+      logger.warn(`Port ${port} is in use; attaching to it instead`);
+      return await attach();
+    }
+    if (!second.heldNotice) throw err;
+    return await start(second.heldNotice);
   }
 }
 
@@ -1023,7 +1046,9 @@ async function listenForVerify(
       );
     }
     const bound = await tryListen(app, 0, host, { retries: 0 });
-    logger.info(freePortNotice(DEFAULT_PORT, bound.port, "is in use"));
+    logger.info(
+      freePortNotice(DEFAULT_PORT, bound.port, "is held by another process"),
+    );
     return { ...bound, fellBack: true };
   }
 }
@@ -1238,7 +1263,9 @@ async function* runWithVerify(
       if (fellBack) {
         // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
         // port, so it reaches whatever holds that port instead of this receiver.
-        logger.warn(freePortNotice(DEFAULT_PORT, boundPort, "is in use"));
+        logger.warn(
+          freePortNotice(DEFAULT_PORT, boundPort, "is held by another process"),
+        );
       }
       throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,

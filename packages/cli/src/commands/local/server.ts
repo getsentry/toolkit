@@ -27,6 +27,7 @@ import { isLoopbackHost } from "./loopback.js";
  */
 
 import type { Server } from "node:http";
+import { connect } from "node:net";
 import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
@@ -697,27 +698,46 @@ export function tryListen(
 }
 
 /**
- * Ask `${url}/health` who holds the port: `none` for a transport failure
- * (connection refused, timeout), `daemon` for a Sentry Local daemon,
- * `receiver` for a Local or Spotlight receiver, which sends the
- * {@link SERVER_IDENTIFIER} header even on an error status, and `foreign` for
- * any other HTTP server.
+ * Ask `${url}/health` who holds the port:
+ * - `none`: the connection was refused, so nothing listens there, or the
+ *   address cannot be reached at all, which the bind then reports itself.
+ * - `daemon`: a Sentry Local daemon.
+ * - `receiver`: a Local or Spotlight receiver, which sends the
+ *   {@link SERVER_IDENTIFIER} header even on an error status.
+ * - `foreign`: any other HTTP server, including one whose `/health`
+ *   redirects, since the probe does not follow redirects.
+ * - `unresponsive`: something accepted the connection but gave no HTTP
+ *   answer in time: a silent or slow listener, a non-HTTP or TLS server.
+ *
+ * Port 0 asks the OS for a free port, so nothing holds it and it is not
+ * probed. When fetch fails some other way, such as a port that fetch refuses
+ * to dial ("bad port"), a plain TCP connect decides whether anything listens.
  */
 export async function probeLocalHealth(
   url: string,
   timeoutMs: number,
-): Promise<"none" | "daemon" | "receiver" | "foreign"> {
+): Promise<"none" | "daemon" | "receiver" | "foreign" | "unresponsive"> {
+  const { hostname, port } = new URL(url);
+  if (port === "0") return "none";
   let res: Response;
   try {
     res = await fetch(`${url}/health`, {
+      redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    logger.debug(
-      `No existing server at ${url}`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return "none";
+    const message = err instanceof Error ? err.message : String(err);
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    if (
+      NO_HOLDER_CODES.has(fetchCauseCode(err)) ||
+      (!timedOut &&
+        !(await acceptsTcpConnection(hostname, Number(port || 80), timeoutMs)))
+    ) {
+      logger.debug(`No existing server at ${url}`, message);
+      return "none";
+    }
+    logger.debug(`Server at ${url} gave no HTTP answer to /health`, message);
+    return "unresponsive";
   }
   await res.body?.cancel();
   if (res.headers.get("X-Sentry-Local-Mode") === "daemon") return "daemon";
@@ -742,9 +762,9 @@ export async function probeLocalHealth(
  * 2xx: Spotlight's own sidecar can answer `/health` with a 5xx while still
  * holding the port and ingesting envelopes, and attaching to it is right.
  *
- * Only a transport-level failure (connection refused, timeout) counts as
- * "no server". Any other HTTP server, such as `python -m http.server`, throws
- * a port-in-use error: attaching to it would lose every event.
+ * Only a refused connection counts as "no server". Any other holder, such as
+ * `python -m http.server` or a listener that never answers `/health`, throws a
+ * port-in-use error: attaching to it would lose every event.
  */
 export async function isServerRunning(url: string): Promise<boolean> {
   const holder = await probeLocalHealth(url, 2000);
@@ -754,7 +774,7 @@ export async function isServerRunning(url: string): Promise<boolean> {
       PORT_HELD_BY_DAEMON_FIELD,
     );
   }
-  if (holder === "foreign") {
+  if (holder === "foreign" || holder === "unresponsive") {
     throw portInUseError(Number(new URL(url).port || 80));
   }
   return holder === "receiver";
@@ -864,12 +884,55 @@ function isAbortError(err: unknown): boolean {
   );
 }
 
+/**
+ * Connect failures that mean nothing can hold the port: it was refused, the
+ * host does not resolve, or the address is unreachable or not local. The
+ * bind gives the accurate error for a bad --host, not "port in use".
+ */
+const NO_HOLDER_CODES = new Set<string | undefined>([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EADDRNOTAVAIL",
+]);
+
+/** Whether anything accepts a TCP connection at `hostname`:`port`. */
+function acceptsTcpConnection(
+  hostname: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({
+      host: hostname.replace(/^\[(.*)\]$/, "$1"),
+      port,
+      timeout: timeoutMs,
+    });
+    const done = (accepted: boolean) => {
+      socket.destroy();
+      resolve(accepted);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.once("timeout", () => done(false));
+  });
+}
+
+/** The `code` of a failed `fetch`'s cause, such as `ECONNREFUSED`. */
+function fetchCauseCode(err: unknown): string | undefined {
+  const cause = err instanceof Error ? err.cause : undefined;
+  return cause instanceof Error &&
+    "code" in cause &&
+    typeof cause.code === "string"
+    ? cause.code
+    : undefined;
+}
+
 /** Whether a failed `fetch` found nothing listening at the address. */
 export function isConnectionRefused(err: unknown): boolean {
-  const cause = err instanceof Error ? err.cause : undefined;
-  return (
-    cause instanceof Error && "code" in cause && cause.code === "ECONNREFUSED"
-  );
+  return fetchCauseCode(err) === "ECONNREFUSED";
 }
 
 /** Sleep with abort support, suppressing abort errors. */

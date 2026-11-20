@@ -51,7 +51,7 @@ import {
   wranglerSetupHint,
 } from "../../../src/lib/wrangler.js";
 import { TEST_TMP_DIR } from "../../constants.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { refuseLocalHealthProbes, useTestConfigDir } from "../../helpers.js";
 import type { Writer } from "../../../src/types/index.js";
 
 /**
@@ -113,6 +113,8 @@ type RunFunc = (
 ) => Promise<void>;
 
 let tmpDir: string;
+
+refuseLocalHealthProbes();
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(TEST_TMP_DIR, "run-test-"));
@@ -1151,6 +1153,56 @@ setInterval(() => {}, 1000);
     expect(output).not.toContain("Could not attach to the event stream");
   });
 
+  test("attaches to a Spotlight sidecar whose /health answers with a 5xx", async () => {
+    // Spotlight's sidecar sets X-Powered-By in middleware, so even an
+    // unhealthy /health identifies it as a receiver to attach to.
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const sidecar = new Hono();
+    sidecar.get("/health", (c) => {
+      c.header("X-Powered-By", serverModule.SERVER_IDENTIFIER);
+      return c.text("Internal Server Error", 500);
+    });
+    sidecar.route("/", buildApp(buffer));
+    const { server, port } = await tryListen(sidecar, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    const writes: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        writes.push(chunk.toString());
+        return true;
+      });
+
+    try {
+      await fetch(`http://127.0.0.1:${port}/stream`, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: '{"sdk":{"name":"sentry.javascript.node"}}\n{"type":"log","item_count":1,"content_type":"application/vnd.sentry.items.log+json"}\n{"items":[{"timestamp":1750000000,"level":"info","body":"Hello from the sidecar!","attributes":{}}]}',
+      });
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      await func.call(
+        makeContext(),
+        { port, host: "127.0.0.1", verify: false, timeout: 0 },
+        "sleep",
+        "1",
+      );
+    } finally {
+      spy.mockRestore();
+      globalThis.fetch = savedFetch;
+      await shutdownServer(server);
+    }
+
+    const output = writes.join("");
+    expect(output).toContain("Connected to existing server");
+    expect(output).toContain("Hello from the sidecar!");
+    expect(output).not.toContain("Could not attach to the event stream");
+  });
+
   test("writes normalized NDJSON to stdout when following an existing server", async () => {
     // A one-command agent workflow uses `local run --format json`, including
     // when another process already owns the local receiver.
@@ -1626,7 +1678,7 @@ describe("sentry local run --verify receiver", () => {
       );
       expect(context.process.exitCode).toBe(EXIT.VERIFY_FAILED);
       const port = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "").port;
-      const notice = `Port ${DEFAULT_PORT} is in use, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+      const notice = `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
       // Once when it binds, and again when nothing arrived.
       expect(info).toHaveBeenCalledWith(notice);
       expect(warn).toHaveBeenCalledWith(notice);
@@ -1805,6 +1857,59 @@ describe("sentry local run messages", () => {
       await closeServer(holder);
     }
   });
+
+  test("plain run probes again when another process takes the port before the bind", async () => {
+    // Nothing answered the first probe, but by the bind something that is not
+    // a receiver holds the port; attaching to it would lose every event.
+    const realIsServerRunning = serverModule.isServerRunning;
+    let defaultPortProbes = 0;
+    const probe = vi
+      .spyOn(serverModule, "isServerRunning")
+      .mockImplementation((url) => {
+        if (new URL(url).port !== String(DEFAULT_PORT)) {
+          return realIsServerRunning(url);
+        }
+        defaultPortProbes += 1;
+        return defaultPortProbes === 1
+          ? Promise.resolve(false)
+          : Promise.reject(serverModule.portInUseError(DEFAULT_PORT));
+      });
+    const busy = makeDefaultPortBusy();
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const context = makeParsedRunContext();
+    try {
+      await run(
+        app,
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--",
+          process.execPath,
+          "-e",
+          "",
+        ],
+        context,
+      );
+      expect(context.process.exitCode ?? 0).toBe(0);
+      expect(defaultPortProbes).toBe(2);
+      const receiver = new URL(spawnCapture.env?.["SENTRY_SPOTLIGHT"] ?? "");
+      expect(Number(receiver.port)).not.toBe(DEFAULT_PORT);
+      expect(info).toHaveBeenCalledWith(
+        `Port ${DEFAULT_PORT} is held by another process, so this run listens on port ${receiver.port} instead. SDKs that hard-code ${DEFAULT_PORT} won't reach it; make sure they read SENTRY_SPOTLIGHT.`,
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("attaching to it instead"),
+      );
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+      busy.mockRestore();
+      probe.mockRestore();
+    }
+  }, 30_000);
 
   test("plain run still fails when the daemon holds an explicit --port", async () => {
     const daemonPort = makeDaemonHoldPort(45_678);
