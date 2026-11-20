@@ -924,12 +924,13 @@ export class SeerError extends CliError {
       ? `\n\nStart a free trial:\n  ${sentry`trial start seer ${this.orgSlug}`}`
       : `\n\nYou may be eligible for a free trial:\n  ${sentry`trial list`}`;
 
-    // Billing only exists on SaaS, so credit errors link to it only there.
-    const isCreditReason =
-      this.reason === "out_of_credits" || this.reason === "daily_cap_exceeded";
+    const isSelfHostedCreditError =
+      (this.reason === "out_of_credits" ||
+        this.reason === "daily_cap_exceeded") &&
+      !isSaaS();
 
     // When org slug is known, provide direct URLs to settings
-    if (this.orgSlug && (!isCreditReason || isSaaS())) {
+    if (this.orgSlug && !isSelfHostedCreditError) {
       const suggestions: Record<SeerErrorReason, string> = {
         not_enabled: `To enable Seer:\n  ${buildSeerSettingsUrl(this.orgSlug)}${trialHint}`,
         no_budget: `To use Seer features, upgrade your plan:\n  ${buildBillingUrl(this.orgSlug, "seer")}${trialHint}`,
