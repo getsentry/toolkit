@@ -4,9 +4,7 @@
     // Runs in an MCP Apps host's sandboxed iframe, not in Node.
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": [],
-    "noEmit": true,
-    // skipLibCheck exception: @modelcontextprotocol/client declarations, which @modelcontextprotocol/ext-apps imports, use Node's Buffer (TS2591) and this browser view has no Node types. Remove when they check cleanly without @types/node.
-    "skipLibCheck": true
+    "noEmit": true
   },
   "include": ["*.ts"]
 }

@@ -8,8 +8,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build, transform } from "esbuild";
-// Shared with the CLI and @sentry/mcp-server bundles.
-import { zodEnglishLocalesPlugin } from "../../cli/script/lib/zod-locales-plugin.ts";
 
 const appDir = fileURLToPath(new URL("../chart-app/", import.meta.url));
 const outFile = fileURLToPath(
@@ -25,7 +23,6 @@ const bundle = await build({
   target: "es2022",
   legalComments: "none",
   charset: "utf8",
-  plugins: [zodEnglishLocalesPlugin],
   write: false,
 });
 const script = bundle.outputFiles[0]?.text;

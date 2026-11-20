@@ -3,16 +3,13 @@
  * result; the range picker calls the tool again through the host and redraws
  * in place.
  */
+import type { ChartResult } from "../src/tools/support/chart/schema";
 import {
-  App,
-  applyDocumentTheme,
-  applyHostStyleVariables,
-  type McpUiHostContext,
-} from "@modelcontextprotocol/ext-apps";
-import {
-  type ChartResult,
-  renderSentryChartOutputSchema,
-} from "../src/tools/support/chart/schema";
+  type CallToolResult,
+  connect,
+  type Host,
+  type HostContext,
+} from "./bridge";
 import {
   drawChart,
   formatTooltipTime,
@@ -20,8 +17,7 @@ import {
   SERIES_COLORS,
   type TimeFormat,
 } from "./chart";
-
-type CallToolResult = Awaited<ReturnType<App["callServerTool"]>>;
+import { parseChartResult } from "./parse";
 
 const TOOL_NAME = "render_sentry_chart";
 const RANGES = ["1h", "24h", "7d", "14d"] as const;
@@ -205,8 +201,8 @@ function render(): void {
 }
 
 function errorText(result: CallToolResult): string {
-  const text = result.content.find((block) => block.type === "text");
-  return text && "text" in text ? text.text : "The chart could not load.";
+  const text = result.content.find((block) => block.type === "text")?.text;
+  return text ?? "The chart could not load.";
 }
 
 function showResult(result: CallToolResult): void {
@@ -215,11 +211,9 @@ function showResult(result: CallToolResult): void {
     view = { kind: "error", message: errorText(result), chart: previous };
     return;
   }
-  const parsed = renderSentryChartOutputSchema.safeParse(
-    result.structuredContent,
-  );
-  view = parsed.success
-    ? { kind: "ready", chart: parsed.data }
+  const chart = parseChartResult(result.structuredContent);
+  view = chart
+    ? { kind: "ready", chart }
     : {
         kind: "error",
         message: "The chart data was not in the expected shape.",
@@ -227,7 +221,7 @@ function showResult(result: CallToolResult): void {
       };
 }
 
-const app = new App({ name: "Sentry chart", version: "1.0.0" });
+let host: Host | null = null;
 
 async function changeRange(range: string): Promise<void> {
   const args: Record<string, unknown> = {
@@ -238,13 +232,11 @@ async function changeRange(range: string): Promise<void> {
   };
   // A fixed bucket size may not fit the new range, so let Sentry pick.
   delete args["interval"];
+  if (!host) return;
   pendingRange = range;
   render();
   try {
-    const result = await app.callServerTool({
-      name: TOOL_NAME,
-      arguments: args,
-    });
+    const result = await host.callTool(TOOL_NAME, args);
     if (!result.isError) toolArgs = args;
     showResult(result);
   } catch (error) {
@@ -259,11 +251,16 @@ async function changeRange(range: string): Promise<void> {
   }
 }
 
-function applyHostContext(context: McpUiHostContext | undefined): void {
-  if (!context) return;
-  if (context.theme) applyDocumentTheme(context.theme);
-  if (context.styles?.variables) {
-    applyHostStyleVariables(context.styles.variables);
+function applyHostContext(context: HostContext): void {
+  const root = document.documentElement;
+  if (context.theme === "light" || context.theme === "dark") {
+    root.dataset["theme"] = context.theme;
+    root.style.colorScheme = context.theme;
+  }
+  for (const [name, value] of Object.entries(context.styles?.variables ?? {})) {
+    if (name.startsWith("--") && typeof value === "string") {
+      root.style.setProperty(name, value);
+    }
   }
   if (context.locale || context.timeZone) {
     format = {
@@ -276,26 +273,8 @@ function applyHostContext(context: McpUiHostContext | undefined): void {
 
 openButton.addEventListener("click", () => {
   const chart = view.kind === "waiting" ? null : view.chart;
-  if (chart && isWebUrl(chart.url)) void app.openLink({ url: chart.url });
+  if (chart && isWebUrl(chart.url)) void host?.openLink(chart.url);
 });
-
-app.ontoolinput = (params) => {
-  toolArgs = { ...params.arguments };
-};
-app.ontoolresult = (result) => {
-  showResult(result);
-  render();
-};
-app.ontoolcancelled = () => {
-  view = {
-    kind: "error",
-    message: "The chart request was cancelled.",
-    chart: view.kind === "waiting" ? null : view.chart,
-  };
-  pendingRange = null;
-  render();
-};
-app.onhostcontextchanged = applyHostContext;
 
 let lastWidth = 0;
 new ResizeObserver(([entry]) => {
@@ -307,4 +286,27 @@ new ResizeObserver(([entry]) => {
 }).observe(main);
 
 render();
-void app.connect().then(() => applyHostContext(app.getHostContext()));
+void connect(
+  { name: "Sentry chart", version: "1.0.0" },
+  {
+    toolInput: (args) => {
+      toolArgs = { ...args };
+    },
+    toolResult: (result) => {
+      showResult(result);
+      render();
+    },
+    toolCancelled: () => {
+      view = {
+        kind: "error",
+        message: "The chart request was cancelled.",
+        chart: view.kind === "waiting" ? null : view.chart,
+      };
+      pendingRange = null;
+      render();
+    },
+    hostContext: applyHostContext,
+  },
+).then((connected) => {
+  host = connected;
+});
