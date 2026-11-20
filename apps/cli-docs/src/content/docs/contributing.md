@@ -64,7 +64,7 @@ toolkit/
 │       │   │   ├── code-mappings/# upload
 │       │   │   ├── dart-symbol-map/# upload
 │       │   │   ├── dashboard/   # add, create, delete, edit, list, restore, revisions, view
-│       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload
+│       │   │   ├── debug-files/ # bundle-jvm, bundle-sources, check, find, print-sources, upload, wasm-upload
 │       │   │   ├── docs/        # list, query
 │       │   │   ├── dsn/         # list
 │       │   │   ├── event/       # analytics, list, send, view

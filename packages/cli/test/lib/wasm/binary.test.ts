@@ -208,6 +208,26 @@ describe("decodeBuildId", () => {
   ])("returns null for %s", (_label, hex) => {
     expect(decodeBuildId(fromHex(hex))).toBeNull();
   });
+
+  test("strips the length prefix", () => {
+    const id = "90f5be01270255a18255e7c3e501bc25";
+    expect(
+      Buffer.from(decodeBuildId(fromHex(`10${id}`)) ?? []).toString("hex"),
+    ).toBe(id);
+  });
+
+  test.each([
+    ["a legacy UUID", "90f5be01270255a18255e7c3e501bc25"],
+    // Would otherwise decode as a 15-byte vector; symbolic reads it raw.
+    [
+      "a legacy UUID that starts with a valid length",
+      "0ff5be01270255a18255e7c3e501bc25",
+    ],
+  ])("reads a bare 16-byte body as %s", (_label, hex) => {
+    expect(Buffer.from(decodeBuildId(fromHex(hex)) ?? []).toString("hex")).toBe(
+      hex,
+    );
+  });
 });
 
 describe("section predicates", () => {
