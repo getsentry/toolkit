@@ -124,18 +124,18 @@ function toChart(
     };
   });
 
-  // The peak describes the first series, which has the most events, so a
-  // sparse group's outlier bucket never headlines the chart.
+  // Only a single-series chart has a peak. Across groups, any one bucket
+  // would headline a single group, which reads as the chart's peak.
   let peak: ChartResult["peak"] = null;
-  const first = series[0];
-  for (const [index, value] of (first?.values ?? []).entries()) {
+  const only = series.length === 1 ? series[0] : undefined;
+  for (const [index, value] of (only?.values ?? []).entries()) {
     const bucket = buckets[index];
-    if (!first || value === null || !bucket || incomplete.includes(index)) {
+    if (!only || value === null || !bucket || incomplete.includes(index)) {
       continue;
     }
     if (!peak || value > peak.value) {
       peak = {
-        series: first.label,
+        series: only.label,
         time: new Date(bucket.timestamp).toISOString(),
         value,
       };

@@ -155,11 +155,7 @@ describe("render_sentry_chart", () => {
       { label: "2.4.1", count: 40, total: null, values: [120, null] },
       { label: "(none)", count: 39, total: null, values: [119, null] },
     ]);
-    expect(chart.peak).toEqual({
-      series: "2.4.1",
-      time: "2025-09-10T23:00:00.000Z",
-      value: 120,
-    });
+    expect(chart.peak).toBeNull();
   });
 
   // The busy releases have steady traffic; the sparse ones have 1 to 57
@@ -196,8 +192,7 @@ describe("render_sentry_chart", () => {
     }
     const sparse = chart.series[4]?.values ?? [];
     expect(sparse.filter((value) => value === null)).toHaveLength(164);
-    expect(chart.peak?.series).toBe(chart.series[0]?.label);
-    expect(chart.peak?.value).toBeLessThan(30_000);
+    expect(chart.peak).toBeNull();
     // 5 series of 168 buckets is about 12 KB; one object per bucket, as
     // before, came to about 200 KB.
     expect(JSON.stringify(chart).length).toBeLessThan(16 * 1024);

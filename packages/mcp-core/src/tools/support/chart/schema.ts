@@ -62,7 +62,7 @@ export const renderSentryChartOutputSchema = z.object({
     .object({ series: z.string(), time: z.string(), value: z.number() })
     .nullable()
     .describe(
-      "Highest bucket of the first series that is no longer receiving data.",
+      "Highest bucket that is no longer receiving data; null for grouped charts.",
     ),
   ingestion: ingestionSchema,
 });

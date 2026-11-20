@@ -162,7 +162,7 @@ function render(): void {
     items.push(
       stat(
         "Peak",
-        `${formatValue(chart.peak.value, chart)}${single ? "" : ` (${shortLabel(chart.peak.series)})`} at ${formatTooltipTime(Date.parse(chart.peak.time), format)}`,
+        `${formatValue(chart.peak.value, chart)} at ${formatTooltipTime(Date.parse(chart.peak.time), format)}`,
       ),
     );
   }

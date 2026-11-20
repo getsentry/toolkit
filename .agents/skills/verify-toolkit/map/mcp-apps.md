@@ -15,7 +15,7 @@ the host theme, and calls the tool again through the host. The goals are in
 - `view-theme` The view follows the host's light or dark theme. Proof: `drive`.
 - `range-roundtrip` The range picker calls `render_sentry_chart` through the host with the new period and redraws without remounting. Proof: `drive`.
 - `open-link` "Open in Sentry" asks the host to open the result's Sentry URL with `ui/open-link`. Proof: `drive`.
-- `grouped` A `groupBy` result draws one series per top group, with a legend that shows each group's short label and event count. Proof: `drive`.
+- `grouped` A `groupBy` result draws one series per top group, with a legend that shows each group's short label and event count, and no peak, since one group's bucket would read as the chart's peak. Proof: `drive`.
 - `top-by-volume` A grouped chart of a non-additive aggregate, such as p95 by release, plots the groups with the most events, not the sparse groups with the highest values. Proof: `drive`.
 - `null-gaps` A bucket with no data is null in the result, not 0, and the view draws it as a gap; a bucket with no data on either side is a dot, and its tooltip row reads "no data". Proof: `drive`.
 - `compact-result` The result for 5 series of 168 buckets (7 days at 1h) stays under 16 KiB, and its text content is the same JSON. Proof: `drive`.

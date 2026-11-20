@@ -305,11 +305,14 @@ try {
 
   await mount("dark", GROUPED_CHART, groupedResult);
   const legend = await frame.locator(".legend").innerText();
+  const groupedStats = await frame.locator(".stats").innerText();
   const grouped = await shot("chart-grouped-dark.png");
   check(
     "grouped",
-    legend.split("\n").filter(Boolean).length === 5,
-    `top groups "${legend.replace(/\n/g, " | ")}" -> ${grouped}`,
+    legend.split("\n").filter(Boolean).length === 5 &&
+      groupedChart.peak === null &&
+      !groupedStats.includes("Peak"),
+    `top groups "${legend.replace(/\n/g, " | ")}", stats "${groupedStats.replace(/\n/g, " ")}", peak ${groupedChart.peak} -> ${grouped}`,
   );
 
   // The sparsest charted release has data in 4 of 168 buckets. Its empty
