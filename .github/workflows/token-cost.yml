@@ -14,6 +14,11 @@ on:
       - "packages/mcp-core/src/internal/tool-helpers/tool-call-formatting.ts"
       - "packages/mcp-core/scripts/measure-token-cost.ts"
       - "packages/mcp-core/scripts/generate-definitions.ts"
+      - "packages/mcp-core/chart-app/**"
+      - "packages/mcp-core/src/ui/**"
+      - "packages/mcp-core/src/ui-resources.ts"
+      - "packages/mcp-core/scripts/generate-chart-app.ts"
+      - "packages/mcp-core/scripts/measure-ui-views.ts"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -29,6 +34,11 @@ on:
       - "packages/mcp-core/src/internal/tool-helpers/tool-call-formatting.ts"
       - "packages/mcp-core/scripts/measure-token-cost.ts"
       - "packages/mcp-core/scripts/generate-definitions.ts"
+      - "packages/mcp-core/chart-app/**"
+      - "packages/mcp-core/src/ui/**"
+      - "packages/mcp-core/src/ui-resources.ts"
+      - "packages/mcp-core/scripts/generate-chart-app.ts"
+      - "packages/mcp-core/scripts/measure-ui-views.ts"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
@@ -125,6 +135,10 @@ jobs:
 
           # Save for summary
           cat token-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Measure MCP Apps views
+        working-directory: packages/mcp-core
+        run: pnpm run measure-ui -- -o ui-stats.json --markdown token-report.md --markdown "$GITHUB_STEP_SUMMARY"
 
       - name: Download main branch token stats
         if: github.event_name == 'pull_request'
@@ -246,10 +260,11 @@ jobs:
               details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             });
 
-      - name: Comment on PR if token count changed
+      - name: Comment on PR
         uses: actions/github-script@v7
-        # Skip for fork PRs (no write permissions)
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && steps.compare.outputs.has_comparison == 'true' && steps.compare.outputs.delta != '0'
+        # Skip for fork PRs (no write permissions). Posts on every run, since
+        # a view can change while the tool token count stays the same.
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true # Don't fail workflow if comment creation fails
         with:
           script: |
@@ -290,5 +305,7 @@ jobs:
         if: always()
         with:
           name: token-stats-${{ github.sha }}
-          path: packages/mcp-core/token-stats.json
+          path: |
+            packages/mcp-core/token-stats.json
+            packages/mcp-core/ui-stats.json
           retention-days: 90
