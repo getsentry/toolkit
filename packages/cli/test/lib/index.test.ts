@@ -164,10 +164,12 @@ describe("createSentrySDK() library API", () => {
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
   });
 
-  test("sdk.run returns AsyncIterable for streaming flag --refresh", () => {
+  test("sdk.run returns AsyncIterable for dashboard view's streaming flag", () => {
     const sdk = createSentrySDK();
-    const result = sdk.run("issue", "list", "--refresh");
-    expect(Symbol.asyncIterator in (result as object)).toBe(true);
+    for (const flag of ["--refresh", "-r"]) {
+      const result = sdk.run("dashboard", "view", "1", flag);
+      expect(Symbol.asyncIterator in (result as object), flag).toBe(true);
+    }
   });
 });
 
