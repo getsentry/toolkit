@@ -27,7 +27,7 @@ question, in Sentry's own terms, without reading upstream API payloads.
   a pagination cursor or source maps that failed to apply.
 - Feedback suggestions that point at `submit_feedback_to_sentry_team`.
 - MCP Apps views, which render a tool's structured content inline in hosts
-  that support them.
+  that support them. They follow [MCP Apps views](./mcp-apps.md).
 
 ## Rules
 
@@ -44,10 +44,6 @@ question, in Sentry's own terms, without reading upstream API payloads.
 - A failed call is a tool error (`isError`), not a success-shaped result. An
   empty result is a success. A missing resource is an input error that points
   at the tool that can find it.
-- A view renders the structured content of the call and treats it as
-  untrusted. The result is never shaped for the view alone, and a tool with a
-  view fetches its own data from its input, so values do not pass through the
-  model.
 - Optional details, such as a suspect commit, never stop the main result from
   loading when they fail.
 - Long lists and long text are capped, and the result says how much it left

@@ -32,8 +32,7 @@ harness the user already works in, such as Claude Code, Codex, or Cursor.
   that are not stable yet.
 - `search_sentry_tools` and `execute_sentry_tool`, only on the fallback
   gateway surface.
-- MCP Apps views: a host that supports MCP Apps reads a tool's
-  `_meta.ui.resourceUri` and renders that `ui://` resource inline.
+- MCP Apps views, which follow [MCP Apps views](./mcp-apps.md).
   `render_sentry_chart` is the one tool with a view.
 
 ## Rules
@@ -47,11 +46,6 @@ harness the user already works in, such as Claude Code, Codex, or Cursor.
 - Server instructions stay under 1,500 characters, and name a tool only when
   the session has it.
 - The fallback gateway surface lists about 20 tools, and never more than 25.
-- A tool with a view is listed for every client and stays complete without
-  it: a host with no MCP Apps support gets the same result. A session lists a
-  view only when it lists a tool that names it.
-- A view is one self-contained HTML document that loads nothing from the
-  network, and its `ui://` URI carries a version, because hosts cache by URI.
 - Tools are not a raw proxy for the Sentry API. A tool exists for a question
   or task a user brings, and its result follows
   [MCP tool responses](./mcp-tool-responses.md).
