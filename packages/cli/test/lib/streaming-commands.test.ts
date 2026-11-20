@@ -27,6 +27,16 @@ describe("isStreamingInvocation", () => {
     expect(isStreamingInvocation(["issue", "list", "-f"])).toBe(false);
   });
 
+  test("global flags before or between route segments are skipped", () => {
+    expect(isStreamingInvocation(["--json", "log", "tail"])).toBe(true);
+    expect(isStreamingInvocation(["log", "--json", "tail"])).toBe(true);
+    expect(isStreamingInvocation(["--log-level", "debug", "log", "tail"])).toBe(
+      true,
+    );
+    expect(isStreamingInvocation(["log", "--org=acme", "tail"])).toBe(true);
+    expect(isStreamingInvocation(["--json", "log", "list"])).toBe(false);
+  });
+
   test("the command path must lead the arguments", () => {
     expect(isStreamingInvocation(["log", "list", "tail"])).toBe(false);
     expect(isStreamingInvocation(["log"])).toBe(false);

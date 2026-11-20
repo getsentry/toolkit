@@ -13,6 +13,8 @@
  * @module
  */
 
+import { buildTopLevelFlags } from "./global-flags.js";
+
 /** Flag names that switch a command into streaming mode. */
 export const STREAMING_FLAGS: ReadonlySet<string> = new Set(["refresh"]);
 
@@ -20,15 +22,44 @@ export const STREAMING_FLAGS: ReadonlySet<string> = new Set(["refresh"]);
 export const STREAMING_COMMANDS: ReadonlySet<string> = new Set(["log tail"]);
 
 /**
+ * The leading route segments of raw CLI arguments, skipping global flags the
+ * way the route scanner does (`sentry --json log tail`, `sentry log
+ * --log-level debug tail`). Stops at the first other flag.
+ */
+function routeSegments(args: readonly string[], depth: number): string[] {
+  const { booleanFlags, valueFlags } = buildTopLevelFlags();
+  const segments: string[] = [];
+  for (let i = 0; i < args.length && segments.length < depth; i++) {
+    const arg = args[i] ?? "";
+    if (booleanFlags.has(arg)) {
+      continue;
+    }
+    if (valueFlags.has(arg)) {
+      i++; // the flag's value
+      continue;
+    }
+    if (valueFlags.has(arg.split("=")[0] ?? "")) {
+      continue;
+    }
+    if (arg.startsWith("-")) {
+      break;
+    }
+    segments.push(arg);
+  }
+  return segments;
+}
+
+/**
  * Whether raw CLI arguments run a streaming command or pass a streaming flag.
  *
- * Matches the route path against the leading arguments, so `log tail ...`
+ * Matches the route path against the leading route segments, so `log tail ...`
  * streams while `log list ...` does not.
  */
 export function isStreamingInvocation(args: readonly string[]): boolean {
   for (const path of STREAMING_COMMANDS) {
-    const segments = path.split(" ");
-    if (segments.every((segment, index) => args[index] === segment)) {
+    const expected = path.split(" ");
+    const actual = routeSegments(args, expected.length);
+    if (expected.every((segment, index) => actual[index] === segment)) {
       return true;
     }
   }
