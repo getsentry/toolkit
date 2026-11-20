@@ -862,7 +862,7 @@ export class SentryApiService {
     return getTraceUrlUtil(this.host, organizationSlug, traceId, this.protocol);
   }
 
-  getSeerAutoReloadUrl(organizationSlug: string): string | null {
+  getSeerAutoReloadUrl(organizationSlug: string): string {
     return getSeerAutoReloadUrlUtil(this.host, organizationSlug, this.protocol);
   }
 

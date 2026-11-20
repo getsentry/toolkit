@@ -202,19 +202,6 @@ describe("seer-utils", () => {
       },
     );
 
-    it("leaves out the link when there is no billing page", () => {
-      expect(
-        getSeerPaymentRequiredMessage(
-          {
-            detail: "Out of credits",
-            code: "seer_out_of_credits",
-            denialReason: "daily_cap_exceeded",
-          },
-          null,
-        ),
-      ).not.toContain("Configure auto-reload");
-    });
-
     it("treats a 402 without a known code as out of quota", () => {
       expect(
         getSeerPaymentRequiredMessage("No budget", autoReloadUrl),

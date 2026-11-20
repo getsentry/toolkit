@@ -157,7 +157,7 @@ function lookupKnownKey<K extends string, V>(
  */
 export function getSeerPaymentRequiredMessage(
   responseBody: unknown,
-  autoReloadUrl: string | null,
+  autoReloadUrl: string,
 ): string {
   if (
     !isPlainObject(responseBody) ||
@@ -168,12 +168,12 @@ export function getSeerPaymentRequiredMessage(
   const denialReason = responseBody["denialReason"];
   const message = lookupKnownKey(SEER_DENIAL_MESSAGES, denialReason);
   return message
-    ? `${message}${formatAutoReloadLink(autoReloadUrl && `${autoReloadUrl}:${denialReason as string}`)}`
+    ? `${message}${formatAutoReloadLink(`${autoReloadUrl}:${denialReason as string}`)}`
     : `${SEER_START_OUT_OF_CREDITS_MESSAGE}${formatAutoReloadLink(autoReloadUrl)}`;
 }
 
-function formatAutoReloadLink(url: string | null): string {
-  return url ? `\n\nConfigure auto-reload: ${url}` : "";
+function formatAutoReloadLink(url: string): string {
+  return `\n\nConfigure auto-reload: ${url}`;
 }
 
 /**
@@ -202,7 +202,7 @@ export function getSeerSetupRequiredMessage(
  */
 export function getFailureReasonGuidance(
   failureReason: string | null | undefined,
-  autoReloadUrl: string | null,
+  autoReloadUrl: string,
 ): string {
   if (failureReason === "out_of_credits") {
     return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}${formatAutoReloadLink(autoReloadUrl)}\n`;

@@ -177,12 +177,11 @@ describe("url-utils", () => {
       );
     });
 
-    it.each(["sentry.example.com", "acme.my.sentry.io"])(
-      "returns null for %s, which has no billing page",
-      (host) => {
-        expect(getSeerAutoReloadUrl(host, "myorg")).toBeNull();
-      },
-    );
+    it("links the billing settings path on other hosts", () => {
+      expect(getSeerAutoReloadUrl("sentry.example.com", "myorg")).toBe(
+        "https://sentry.example.com/settings/myorg/billing/overview/#open-seer-auto-reload-modal",
+      );
+    });
   });
 
   describe("getReleaseUrl", () => {
