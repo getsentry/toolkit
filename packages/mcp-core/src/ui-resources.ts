@@ -6,13 +6,30 @@
  *
  * Spec: https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
  */
-import type {
-  McpUiResourceMeta,
-  McpUiToolMeta,
-} from "@modelcontextprotocol/ext-apps";
-import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { CHART_APP_HTML } from "./ui/chart-app.generated";
+
+/** The MIME type of an MCP Apps view. */
+export const UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
+
+/** `_meta.ui` on a tool: the view that renders its results. */
+export interface UiToolMeta {
+  resourceUri: string;
+}
+
+/**
+ * `_meta.ui` on a view resource. Each `csp` list names origins that the host
+ * may allow; an empty `csp` means the view loads nothing from the network.
+ */
+export interface UiResourceMeta {
+  csp: {
+    connectDomains?: string[];
+    resourceDomains?: string[];
+    frameDomains?: string[];
+    baseUriDomains?: string[];
+  };
+  prefersBorder?: boolean;
+}
 
 export interface UiResource {
   /** Hosts cache a view by its URI, so bump the version when the HTML changes. */
@@ -22,7 +39,7 @@ export interface UiResource {
   description: string;
   /** A self-contained HTML5 document: inline scripts and styles only. */
   html: string;
-  meta: McpUiResourceMeta;
+  meta: UiResourceMeta;
 }
 
 /** The render_sentry_chart view. Built from chart-app/ by generate-chart-app. */
@@ -44,7 +61,7 @@ export const UI_RESOURCES: readonly UiResource[] = [CHART_UI_RESOURCE];
  * `openai/outputTemplate`; MCP Apps hosts read `ui.resourceUri`.
  */
 export function uiToolMeta(resource: UiResource): {
-  ui: McpUiToolMeta;
+  ui: UiToolMeta;
   "openai/outputTemplate": string;
 } {
   return {
@@ -77,7 +94,7 @@ export function registerUiResources(
   for (const resource of resources) {
     const content = {
       uri: resource.uri,
-      mimeType: RESOURCE_MIME_TYPE,
+      mimeType: UI_RESOURCE_MIME_TYPE,
       text: resource.html,
       _meta: { ui: resource.meta },
     };
@@ -87,7 +104,7 @@ export function registerUiResources(
       {
         title: resource.title,
         description: resource.description,
-        mimeType: RESOURCE_MIME_TYPE,
+        mimeType: UI_RESOURCE_MIME_TYPE,
         _meta: { ui: resource.meta },
       },
       () => ({ contents: [content] }),

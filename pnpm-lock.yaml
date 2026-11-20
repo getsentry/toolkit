@@ -1033,9 +1033,6 @@ importers:
       '@logtape/sentry':
         specifier: ^1.1.1
         version: 1.1.1(@logtape/logtape@1.1.1)
-      '@modelcontextprotocol/ext-apps':
-        specifier: 'catalog:'
-        version: 2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.4.0
@@ -1079,6 +1076,9 @@ importers:
       '@modelcontextprotocol/core':
         specifier: 'catalog:'
         version: 2.4.0
+      '@modelcontextprotocol/ext-apps':
+        specifier: 'catalog:'
+        version: 2.0.4(@modelcontextprotocol/client@2.4.0)(@modelcontextprotocol/core@2.4.0)(@modelcontextprotocol/server@2.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.7)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(@cfworker/json-schema@4.1.1)(supports-color@10.1.0)(zod@4.6.7)
