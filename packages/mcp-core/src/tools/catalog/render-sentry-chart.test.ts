@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { UserInputError } from "../../errors";
 import {
   assertStructuredOnlyResult,
@@ -34,6 +34,8 @@ const baseParams = {
 };
 
 describe("render_sentry_chart", () => {
+  afterEach(() => mswServer.resetHandlers());
+
   it("returns every bucket of the series", async () => {
     const result = await renderSentryChart.handler(baseParams, context);
 
@@ -42,8 +44,12 @@ describe("render_sentry_chart", () => {
       {
         "dataset": "errors",
         "groupBy": null,
+        "incomplete": [
+          3,
+        ],
         "ingestion": null,
         "interval": "15m",
+        "outsideRetention": [],
         "peak": {
           "series": "count()",
           "time": "2025-09-10T23:30:00.000Z",
@@ -52,34 +58,15 @@ describe("render_sentry_chart", () => {
         "query": "level:error",
         "series": [
           {
-            "buckets": [
-              {
-                "incomplete": false,
-                "outsideRetention": false,
-                "time": "2025-09-10T23:00:00.000Z",
-                "value": 56,
-              },
-              {
-                "incomplete": false,
-                "outsideRetention": false,
-                "time": "2025-09-10T23:15:00.000Z",
-                "value": 56,
-              },
-              {
-                "incomplete": false,
-                "outsideRetention": false,
-                "time": "2025-09-10T23:30:00.000Z",
-                "value": 140,
-              },
-              {
-                "incomplete": true,
-                "outsideRetention": false,
-                "time": "2025-09-10T23:45:00.000Z",
-                "value": 56,
-              },
-            ],
+            "count": 308,
             "label": "count()",
             "total": 308,
+            "values": [
+              56,
+              56,
+              140,
+              56,
+            ],
           },
         ],
         "timeRange": {
@@ -87,6 +74,12 @@ describe("render_sentry_chart", () => {
           "start": null,
           "statsPeriod": "1h",
         },
+        "times": [
+          "2025-09-10T23:00:00.000Z",
+          "2025-09-10T23:15:00.000Z",
+          "2025-09-10T23:30:00.000Z",
+          "2025-09-10T23:45:00.000Z",
+        ],
         "title": "count()",
         "url": "https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=count%28%29&sort=-count%28%29&statsPeriod=1h&mode=aggregate&yAxis=count%28%29",
         "valueType": "integer",
@@ -96,30 +89,33 @@ describe("render_sentry_chart", () => {
     `);
   });
 
-  it("asks Sentry for the top 5 groups and labels each series by its value", async () => {
+  it("asks Sentry for the 5 groups with the most events, with each group's count", async () => {
     let captured: URLSearchParams | undefined;
     mswServer.use(
       http.get(TIMESERIES_URL, ({ request }) => {
         captured = new URL(request.url).searchParams;
         return HttpResponse.json({
-          timeSeries: ["2.4.1", null].map((release, index) => ({
-            yAxis: "p95(span.duration)",
-            groupBy: [{ key: "release", value: release }],
-            values: [
-              {
-                timestamp: 1757545200000,
-                value: 120 - index,
+          timeSeries: ["2.4.1", null].flatMap((release, index) =>
+            [
+              ["p95(span.duration)", [120 - index, null]],
+              ["count()", [40 - index, 0]],
+            ].map(([yAxis, values]) => ({
+              yAxis,
+              groupBy: [{ key: "release", value: release }],
+              values: (values as (number | null)[]).map((value, bucket) => ({
+                timestamp: 1757545200000 + bucket * 3600000,
+                value,
                 incomplete: false,
+              })),
+              meta: {
+                interval: 3600000,
+                valueType: yAxis === "count()" ? "integer" : "duration",
+                valueUnit: yAxis === "count()" ? null : "millisecond",
+                order: index,
+                isOther: false,
               },
-            ],
-            meta: {
-              interval: 3600000,
-              valueType: "duration",
-              valueUnit: "millisecond",
-              order: index,
-              isOther: false,
-            },
-          })),
+            })),
+          ),
         });
       }),
     );
@@ -136,27 +132,100 @@ describe("render_sentry_chart", () => {
       context,
     );
 
+    expect(captured?.getAll("yAxis")).toEqual([
+      "p95(span.duration)",
+      "count()",
+    ]);
     expect(Object.fromEntries(captured ?? [])).toMatchObject({
       dataset: "spans",
-      yAxis: "p95(span.duration)",
       topEvents: "5",
       groupBy: "release",
-      sort: "-p95(span.duration)",
+      sort: "-count()",
       excludeOther: "1",
       statsPeriod: "24h",
     });
     const chart = getStructuredContent<ChartResult>(result);
     expect(chart.title).toBe("p95(span.duration) by release");
     expect(chart.valueUnit).toBe("millisecond");
-    expect(chart.series.map(({ label, total }) => ({ label, total }))).toEqual([
-      { label: "2.4.1", total: null },
-      { label: "(none)", total: null },
+    expect(chart.times).toEqual([
+      "2025-09-10T23:00:00.000Z",
+      "2025-09-11T00:00:00.000Z",
+    ]);
+    expect(chart.series).toEqual([
+      { label: "2.4.1", count: 40, total: null, values: [120, null] },
+      { label: "(none)", count: 39, total: null, values: [119, null] },
     ]);
     expect(chart.peak).toEqual({
       series: "2.4.1",
       time: "2025-09-10T23:00:00.000Z",
       value: 120,
     });
+  });
+
+  // The busy releases have steady traffic; the sparse ones have 1 to 57
+  // events, all at the 30s pageload cap, so ranking by p95 would pick them.
+  it("charts the busiest releases, keeps empty buckets null, and stays small for 7d at 1h", async () => {
+    const chart = getStructuredContent<ChartResult>(
+      await renderSentryChart.handler(
+        {
+          ...baseParams,
+          dataset: "spans",
+          query: "is_transaction:true",
+          yAxis: "p95(span.duration)",
+          groupBy: "release",
+          period: "7d",
+          interval: "1h",
+        },
+        context,
+      ),
+    );
+
+    expect(chart.times).toHaveLength(168);
+    expect(
+      chart.series.map(({ label, count }) => [label.slice(0, 8), count]),
+    ).toEqual([
+      ["3f9c2e1a", 20160],
+      ["8b41d07c", 10080],
+      ["c05e9a3f", 3360],
+      ["1d7f4b2e", 57],
+      ["e2a86c91", 23],
+    ]);
+    for (const series of chart.series) {
+      expect(series.values).toHaveLength(168);
+      expect(series.values).not.toContain(0);
+    }
+    const sparse = chart.series[4]?.values ?? [];
+    expect(sparse.filter((value) => value === null)).toHaveLength(164);
+    expect(chart.peak?.series).toBe(chart.series[0]?.label);
+    expect(chart.peak?.value).toBeLessThan(30_000);
+    // 5 series of 168 buckets is about 12 KB; one object per bucket, as
+    // before, came to about 200 KB.
+    expect(JSON.stringify(chart).length).toBeLessThan(16 * 1024);
+  });
+
+  it.each([
+    [
+      "the metric's own count for a trace metric",
+      "p95(value,http.request.duration,distribution,millisecond)",
+      "count(value,http.request.duration,distribution,millisecond)",
+    ],
+    ["the aggregate when it names no metric", "p95(value)", "p95(value)"],
+  ])("ranks metrics groups by %s", async (_, yAxis, rankBy) => {
+    let captured: URLSearchParams | undefined;
+    mswServer.use(
+      http.get(TIMESERIES_URL, ({ request }) => {
+        captured = new URL(request.url).searchParams;
+        return HttpResponse.json({ timeSeries: [] });
+      }),
+    );
+
+    await renderSentryChart.handler(
+      { ...baseParams, dataset: "metrics", yAxis, groupBy: "release" },
+      context,
+    );
+
+    expect(captured?.getAll("yAxis")).toEqual([...new Set([yAxis, rankBy])]);
+    expect(captured?.get("sort")).toBe(`-${rankBy}`);
   });
 
   it.each([

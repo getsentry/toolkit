@@ -12,9 +12,11 @@ import {
 } from "./bridge";
 import {
   drawChart,
+  formatCount,
   formatTooltipTime,
   formatValue,
   SERIES_COLORS,
+  shortLabel,
   type TimeFormat,
 } from "./chart";
 import { parseChartResult } from "./parse";
@@ -142,7 +144,9 @@ function render(): void {
     ` · ${rangeLabel(chart)}`,
   );
 
-  const hasData = chart.series.some((series) => series.buckets.length > 0);
+  const hasData = chart.series.some((series) =>
+    series.values.some((value) => value !== null),
+  );
   if (view.kind === "ready") {
     state.className = "state";
     state.hidden = hasData;
@@ -158,7 +162,7 @@ function render(): void {
     items.push(
       stat(
         "Peak",
-        `${formatValue(chart.peak.value, chart)}${single ? "" : ` (${chart.peak.series})`} at ${formatTooltipTime(Date.parse(chart.peak.time), format)}`,
+        `${formatValue(chart.peak.value, chart)}${single ? "" : ` (${shortLabel(chart.peak.series)})`} at ${formatTooltipTime(Date.parse(chart.peak.time), format)}`,
       ),
     );
   }
@@ -173,18 +177,18 @@ function render(): void {
           const swatch = el("span", "swatch");
           swatch.style.background =
             SERIES_COLORS[index % SERIES_COLORS.length] ?? "";
-          const total =
-            series.total === null
+          // The event count shows when a series rests on a handful of events.
+          const count =
+            series.count === null
               ? ""
-              : ` · ${formatValue(series.total, chart)}`;
-          item.append(swatch, `${series.label}${total}`);
+              : ` · ${formatCount(series.count)} ${series.count === 1 ? "event" : "events"}`;
+          item.title = series.label;
+          item.append(swatch, `${shortLabel(series.label)}${count}`);
           return item;
         })),
   );
 
-  const filling = chart.series.some((series) =>
-    series.buckets.some((bucket) => bucket.incomplete),
-  );
+  const filling = chart.incomplete.length > 0;
   const ingestion =
     chart.ingestion && chart.ingestion.status !== "healthy"
       ? ` Ingestion is ${chart.ingestion.status}.`

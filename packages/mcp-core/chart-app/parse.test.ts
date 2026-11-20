@@ -13,20 +13,12 @@ const chart = {
   interval: "1h",
   timeRange: { statsPeriod: "24h", start: null, end: null },
   url: "https://sentry-mcp-evals.sentry.io/explore/discover/homepage/",
+  times: ["2025-09-10T23:00:00.000Z", "2025-09-11T00:00:00.000Z"],
+  incomplete: [1],
+  outsideRetention: [],
   series: [
-    {
-      label: "1.0.0",
-      total: 12,
-      buckets: [
-        {
-          time: "2025-09-10T23:00:00.000Z",
-          value: 12,
-          incomplete: false,
-          outsideRetention: false,
-        },
-      ],
-    },
-    { label: "1.0.1", total: null, buckets: [] },
+    { label: "1.0.0", count: 12, total: 12, values: [12, 0] },
+    { label: "1.0.1", count: null, total: null, values: [null, null] },
   ],
   peak: { series: "1.0.0", time: "2025-09-10T23:00:00.000Z", value: 12 },
   ingestion: {
@@ -46,24 +38,16 @@ const invalid: Mutation[] = [
   ["an undefined groupBy", (c) => ({ ...c, groupBy: undefined })],
   ["no timeRange", (c) => ({ ...c, timeRange: null })],
   ["a series object", (c) => ({ ...c, series: {} })],
+  ["no times", ({ times: _, ...rest }) => rest],
   [
-    "a string bucket value",
-    (c) => ({
-      ...c,
-      series: [
-        {
-          ...c.series[0],
-          buckets: [{ ...c.series[0]?.buckets[0], value: "12" }],
-        },
-      ],
-    }),
+    "a string value",
+    (c) => ({ ...c, series: [{ ...c.series[0], values: ["12"] }] }),
   ],
+  ["a fractional bucket index", (c) => ({ ...c, incomplete: [0.5] })],
+  ["a negative bucket index", (c) => ({ ...c, outsideRetention: [-1] })],
   [
-    "a bucket without incomplete",
-    (c) => ({
-      ...c,
-      series: [{ ...c.series[0], buckets: [{ time: "t", value: 1 }] }],
-    }),
+    "a series without count",
+    (c) => ({ ...c, series: [{ label: "a", total: null, values: [] }] }),
   ],
   ["a peak without time", (c) => ({ ...c, peak: { series: "a", value: 1 } })],
   ["no ingestion", ({ ingestion: _, ...rest }) => rest],

@@ -2667,9 +2667,9 @@ export const EventsTimeSeriesValueSchema = z
   .passthrough();
 
 /**
- * Response from the events-timeseries endpoint. The MCP always requests a
- * single yAxis, so `timeSeries` holds one series, or one per group with
- * `topEvents`, each naming its group in `groupBy`.
+ * Response from the events-timeseries endpoint. `timeSeries` holds one series
+ * per yAxis, or with `topEvents` one per group and yAxis, each naming its
+ * group in `groupBy` and its aggregate in `yAxis`.
  */
 export const EventsTimeSeriesResponseSchema = z
   .object({

@@ -3,8 +3,11 @@
 // stdio server, call the tool, read its `ui://` view, and mount the view in a
 // headless browser through the ext-apps AppBridge, the way Claude or VS Code
 // does. Screenshots the chart in light and dark, after the range picker calls
-// the tool again through the host, and split by an attribute. Writes evidence
-// and one PASS or FAIL line per check to checks.txt in --out. See ../SKILL.md.
+// the tool again through the host, and split by an attribute. The grouped
+// chart is p95 by release over 7 days at 1h, where the mock has busy releases
+// and sparse ones whose p95 is higher, as in getsentry/toolkit#2451. Writes
+// evidence and one PASS or FAIL line per check to checks.txt in --out. See
+// ../SKILL.md.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -54,7 +57,11 @@ const GROUPED_CHART = {
   yAxis: "p95(span.duration)",
   groupBy: "release",
   period: "7d",
+  interval: "1h",
 };
+// Largest structured result for GROUPED_CHART: 5 series of 168 buckets. The
+// compact result is about 12 KB; one object per bucket was about 200 KB.
+const GROUPED_BUDGET_BYTES = 16 * 1024;
 // The spec's default view CSP: no network, no eval.
 const DEFAULT_CSP =
   "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:; connect-src 'none'";
@@ -263,7 +270,7 @@ try {
     rangeCall?.params?.name === TOOL &&
       rangeCall.params.arguments.period === "7d" &&
       rangeResult?.result?.structuredContent?.timeRange?.statsPeriod === "7d",
-    `"${before}" -> view called ${TOOL} period=7d through the host, got ${rangeResult?.result?.structuredContent?.series?.[0]?.buckets?.length} buckets -> ${range}`,
+    `"${before}" -> view called ${TOOL} period=7d through the host, got ${rangeResult?.result?.structuredContent?.times?.length} buckets -> ${range}`,
   );
 
   await frame.getByRole("button", { name: "Open in Sentry" }).click();
@@ -279,13 +286,57 @@ try {
     `ui/open-link ${openLink?.params?.url}`,
   );
 
+  const groupedChart = groupedResult.structuredContent;
+  const groupedBytes = JSON.stringify(groupedChart).length;
+  check(
+    "compact-result",
+    groupedBytes < GROUPED_BUDGET_BYTES &&
+      groupedResult.content[0]?.text?.length === groupedBytes,
+    `${groupedChart.series.length} series x ${groupedChart.times.length} buckets: structuredContent ${groupedBytes} bytes, text ${groupedResult.content[0]?.text?.length} bytes (budget ${GROUPED_BUDGET_BYTES})`,
+  );
+  const counts = groupedChart.series.map((s) => s.count);
+  check(
+    "top-by-volume",
+    counts.length === 5 &&
+      counts.slice(0, 3).every((count) => count > 1000) &&
+      counts.every((count, i) => i === 0 || count <= counts[i - 1]),
+    `p95 by release picks the releases with the most events: ${groupedChart.series.map((s) => `${s.label.slice(0, 7)}=${s.count}`).join(", ")}`,
+  );
+
   await mount("dark", GROUPED_CHART, groupedResult);
   const legend = await frame.locator(".legend").innerText();
   const grouped = await shot("chart-grouped-dark.png");
   check(
     "grouped",
-    legend.split("\n").filter(Boolean).length === 3,
+    legend.split("\n").filter(Boolean).length === 5,
     `top groups "${legend.replace(/\n/g, " | ")}" -> ${grouped}`,
+  );
+
+  // The sparsest charted release has data in 4 of 168 buckets. Its empty
+  // buckets are null in the result and draw as gaps: 4 dots, no line to 0.
+  const sparse = groupedChart.series.at(-1);
+  const sparseColor = "#2ba1db";
+  const dots = await frame
+    .locator(`svg circle[fill="${sparseColor}"][r="2.5"]`)
+    .count();
+  const lines = await frame
+    .locator(`svg path[stroke="${sparseColor}"]`)
+    .count();
+  const groupedBox = await frame.locator("svg").boundingBox();
+  // The left edge of the plot, where the sparse release has no data.
+  await page.mouse.move(
+    groupedBox.x + 50,
+    groupedBox.y + groupedBox.height / 2,
+  );
+  const gapTooltip = await frame.locator(".tooltip").innerText();
+  const withData = sparse.values.filter((v) => v !== null).length;
+  check(
+    "null-gaps",
+    !sparse.values.includes(0) &&
+      dots === withData &&
+      lines === 0 &&
+      gapTooltip.includes("no data"),
+    `${sparse.label.slice(0, 7)} has ${withData} of ${sparse.values.length} buckets with data and no 0s; drawn as ${dots} dots and ${lines} lines; tooltip at the left edge "${gapTooltip.replace(/\s+/g, " ")}"`,
   );
 
   // The rest of the lifecycle: a theme change, a cancelled call, teardown.
