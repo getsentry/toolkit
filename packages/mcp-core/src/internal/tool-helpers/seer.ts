@@ -155,17 +155,25 @@ function lookupKnownKey<K extends string, V>(
  * Sentry versions send the out-of-quota 402 as a bare string with no code, so
  * anything that isn't out of credits is treated as out of quota.
  */
-export function getSeerPaymentRequiredMessage(responseBody: unknown): string {
+export function getSeerPaymentRequiredMessage(
+  responseBody: unknown,
+  autoReloadUrl: string | null,
+): string {
   if (
     !isPlainObject(responseBody) ||
     !lookupKnownKey(SEER_OUT_OF_CREDITS_CODES, responseBody["code"])
   ) {
     return SEER_NO_QUOTA_MESSAGE;
   }
-  return (
-    lookupKnownKey(SEER_DENIAL_MESSAGES, responseBody["denialReason"]) ??
-    SEER_START_OUT_OF_CREDITS_MESSAGE
-  );
+  const denialReason = responseBody["denialReason"];
+  const message = lookupKnownKey(SEER_DENIAL_MESSAGES, denialReason);
+  return message
+    ? `${message}${formatAutoReloadLink(autoReloadUrl && `${autoReloadUrl}:${denialReason as string}`)}`
+    : `${SEER_START_OUT_OF_CREDITS_MESSAGE}${formatAutoReloadLink(autoReloadUrl)}`;
+}
+
+function formatAutoReloadLink(url: string | null): string {
+  return url ? `\n\nConfigure auto-reload: ${url}` : "";
 }
 
 /**
@@ -194,9 +202,10 @@ export function getSeerSetupRequiredMessage(
  */
 export function getFailureReasonGuidance(
   failureReason: string | null | undefined,
+  autoReloadUrl: string | null,
 ): string {
   if (failureReason === "out_of_credits") {
-    return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}\n`;
+    return `\n${SEER_CONTINUE_OUT_OF_CREDITS_MESSAGE}${formatAutoReloadLink(autoReloadUrl)}\n`;
   }
   return "";
 }

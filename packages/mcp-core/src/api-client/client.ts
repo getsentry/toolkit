@@ -113,6 +113,7 @@ import {
   getReleaseUrl as getReleaseUrlUtil,
   getReplaysSearchUrl as getReplaysSearchUrlUtil,
   getReplayUrl as getReplayUrlUtil,
+  getSeerAutoReloadUrl as getSeerAutoReloadUrlUtil,
   getTraceMetricsExploreUrl,
   getTraceUrl as getTraceUrlUtil,
   getUptimeMonitorUrl as getUptimeMonitorUrlUtil,
@@ -859,6 +860,10 @@ export class SentryApiService {
    */
   getTraceUrl(organizationSlug: string, traceId: string): string {
     return getTraceUrlUtil(this.host, organizationSlug, traceId, this.protocol);
+  }
+
+  getSeerAutoReloadUrl(organizationSlug: string): string | null {
+    return getSeerAutoReloadUrlUtil(this.host, organizationSlug, this.protocol);
   }
 
   getLogUrl(organizationSlug: string, logId: string): string {

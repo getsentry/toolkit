@@ -118,7 +118,7 @@ export default defineTool({
         // Sentry answers 402 before starting a run when the org is out of
         // Seer credits or quota.
         if (error instanceof ApiError && error.status === 402) {
-          output += `## Analysis Not Started\n\n${getSeerPaymentRequiredMessage(error.responseBody)}\n`;
+          output += `## Analysis Not Started\n\n${getSeerPaymentRequiredMessage(error.responseBody, apiService.getSeerAutoReloadUrl(orgSlug))}\n`;
           // The failed run may already hold paid-for analysis, e.g. a root
           // cause found before the org ran out of credits.
           const previousOutput = previousRun
@@ -213,6 +213,7 @@ export default defineTool({
           output += `\n**Status**: ${status}\n`;
           output += getFailureReasonGuidance(
             autofixState.autofix.failure_reason,
+            apiService.getSeerAutoReloadUrl(orgSlug),
           );
           output += getHumanInterventionGuidance(status);
         }

@@ -150,45 +150,80 @@ describe("seer-utils", () => {
   });
 
   describe("getSeerPaymentRequiredMessage", () => {
+    const autoReloadUrl = "https://my-org.sentry.io/billing#modal";
+
     it("explains each 402 code from the API schema", () => {
       expect(
-        getSeerPaymentRequiredMessage({
-          detail: "Out of credits",
-          code: "seer_out_of_credits",
-        }),
-      ).toBe(SEER_START_OUT_OF_CREDITS_MESSAGE);
+        getSeerPaymentRequiredMessage(
+          {
+            detail: "Out of credits",
+            code: "seer_out_of_credits",
+          },
+          autoReloadUrl,
+        ),
+      ).toBe(
+        `${SEER_START_OUT_OF_CREDITS_MESSAGE}\n\nConfigure auto-reload: https://my-org.sentry.io/billing#modal`,
+      );
       expect(
-        getSeerPaymentRequiredMessage({
-          detail: "No quota",
-          code: "seer_out_of_quota",
-        }),
+        getSeerPaymentRequiredMessage(
+          {
+            detail: "No quota",
+            code: "seer_out_of_quota",
+          },
+          autoReloadUrl,
+        ),
       ).toContain("not have enough Seer quota");
     });
 
     it.each([
-      ["daily_cap_exceeded", "daily Seer spend limit"],
-      ["not_enough_credits", SEER_START_OUT_OF_CREDITS_MESSAGE],
-      [null, SEER_START_OUT_OF_CREDITS_MESSAGE],
-      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE],
+      ["daily_cap_exceeded", "daily Seer spend limit", ":daily_cap_exceeded"],
+      [
+        "not_enough_credits",
+        SEER_START_OUT_OF_CREDITS_MESSAGE,
+        ":not_enough_credits",
+      ],
+      [null, SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
+      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
     ])(
       "explains an out-of-credits 402 with denial reason %s",
-      (denialReason, message) => {
-        expect(
-          getSeerPaymentRequiredMessage({
+      (denialReason, message, link) => {
+        const result = getSeerPaymentRequiredMessage(
+          {
             detail: "Out of credits",
             code: "seer_out_of_credits",
             denialReason,
-          }),
-        ).toContain(message);
+          },
+          autoReloadUrl,
+        );
+        expect(result).toContain(message);
+        expect(result).toContain(
+          `Configure auto-reload: https://my-org.sentry.io/billing#modal${link}`,
+        );
       },
     );
 
-    it("treats a 402 without a known code as out of quota", () => {
-      expect(getSeerPaymentRequiredMessage("No budget")).toContain(
-        "not have enough Seer quota",
-      );
+    it("leaves out the link when there is no billing page", () => {
       expect(
-        getSeerPaymentRequiredMessage({ detail: "x", code: "constructor" }),
+        getSeerPaymentRequiredMessage(
+          {
+            detail: "Out of credits",
+            code: "seer_out_of_credits",
+            denialReason: "daily_cap_exceeded",
+          },
+          null,
+        ),
+      ).not.toContain("Configure auto-reload");
+    });
+
+    it("treats a 402 without a known code as out of quota", () => {
+      expect(
+        getSeerPaymentRequiredMessage("No budget", autoReloadUrl),
+      ).toContain("not have enough Seer quota");
+      expect(
+        getSeerPaymentRequiredMessage(
+          { detail: "x", code: "constructor" },
+          autoReloadUrl,
+        ),
       ).toContain("not have enough Seer quota");
     });
   });
