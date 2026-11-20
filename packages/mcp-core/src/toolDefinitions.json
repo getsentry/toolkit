@@ -35,7 +35,16 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "description": "The comment text, posted as is."
+          "description": "The comment text, posted as is. Links to attached videos are added after it."
+        },
+        "attachmentPaths": {
+          "description": "Local paths of videos to attach (MP4, MOV, WebM or Ogg), such as a screen recording of the bug. Only works when the MCP server runs on the user's machine (`sentry mcp`), and only for files in the directory it was started in. Only attach files the user asked for.",
+          "maxItems": 5,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "required": ["text"]
@@ -69,9 +78,36 @@
             },
             "text": {
               "type": ["string", "null"]
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "name", "url"],
+                "additionalProperties": false
+              },
+              "description": "Videos uploaded with the note and linked from its text."
             }
           },
-          "required": ["id", "type", "author", "dateCreated", "text"],
+          "required": [
+            "id",
+            "type",
+            "author",
+            "dateCreated",
+            "text",
+            "attachments"
+          ],
           "additionalProperties": false
         }
       },
@@ -6603,7 +6639,7 @@
   {
     "name": "get_issue_activity",
     "title": "Get Issue Activity",
-    "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
+    "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when, plus any videos attached to comments.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6683,6 +6719,27 @@
               },
               "text": {
                 "type": ["string", "null"]
+              },
+              "attachments": {
+                "description": "Videos attached to a comment. Download one with `sentry issue comments <issue> --download <dir>`.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "API URL that streams the video."
+                    }
+                  },
+                  "required": ["id", "name", "url"],
+                  "additionalProperties": false
+                }
               },
               "assignee": {
                 "type": "object",
@@ -6936,6 +6993,27 @@
                   },
                   "text": {
                     "type": ["string", "null"]
+                  },
+                  "attachments": {
+                    "description": "Videos attached to a comment. Download one with `sentry issue comments <issue> --download <dir>`.",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "API URL that streams the video."
+                        }
+                      },
+                      "required": ["id", "name", "url"],
+                      "additionalProperties": false
+                    }
                   },
                   "assignee": {
                     "type": "object",

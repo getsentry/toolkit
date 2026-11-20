@@ -464,6 +464,8 @@ Manage Sentry issues
 - `sentry issue list [<org/project>]` — List issues in a project
 - `sentry issue events <issue>` — List events for a specific issue
 - `sentry issue tags <issue> <key>` — Show the top values of an issue tag
+- `sentry issue comment <issue> <text>` — Comment on an issue, optionally attaching videos
+- `sentry issue comments <issue>` — List an issue's comments and their videos
 - `sentry issue explain <issue...>` — Analyze one or more issues using Seer AI
 - `sentry issue plan <issue>` — Generate a solution plan using Seer AI
 - `sentry issue view <issue...>` — View details of one or more issues

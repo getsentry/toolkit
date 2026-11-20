@@ -86,6 +86,7 @@ import type {
   IssueAlertRuleListSchema,
   IssueAlertRuleSchema,
   IssueCommentListSchema,
+  IssueCommentAttachmentSchema,
   IssueCommentSchema,
   IssueIntegrationListSchema,
   IssueIntegrationSchema,
@@ -218,6 +219,9 @@ export type Commit = z.infer<typeof CommitSchema>;
 export type Issue = z.infer<typeof IssueSchema>;
 export type IssueActivity = z.infer<typeof IssueActivitySchema>;
 export type IssueComment = z.infer<typeof IssueCommentSchema>;
+export type IssueCommentAttachment = z.infer<
+  typeof IssueCommentAttachmentSchema
+>;
 
 type IssueUpdateStatusDetails = NonNullable<
   NonNullable<UpdateOrganizationIssueData["body"]>["statusDetails"]

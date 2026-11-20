@@ -99,7 +99,7 @@
       },
       {
         "name": "get_issue_activity",
-        "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
+        "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when, plus any videos attached to comments.",
         "requiredScopes": ["event:read"]
       },
       {
@@ -450,7 +450,7 @@
       },
       {
         "name": "get_issue_activity",
-        "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
+        "description": "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when, plus any videos attached to comments.",
         "requiredScopes": ["event:read"]
       },
       {

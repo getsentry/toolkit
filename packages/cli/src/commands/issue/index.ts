@@ -1,6 +1,7 @@
 import { buildRouteMap } from "../../lib/route-map.js";
 import { topLevelBrief } from "../../top-level-briefs.js";
 import { archiveCommand } from "./archive.js";
+import { commentCommand, commentsCommand } from "./comments.js";
 import { eventsCommand } from "./events.js";
 import { explainCommand } from "./explain.js";
 import { linkCommand } from "./link.js";
@@ -18,6 +19,8 @@ export const issueRoute = buildRouteMap({
     list: listCommand,
     events: eventsCommand,
     tags: tagsCommand,
+    comment: commentCommand,
+    comments: commentsCommand,
     explain: explainCommand,
     plan: planCommand,
     view: viewCommand,
@@ -39,6 +42,8 @@ export const issueRoute = buildRouteMap({
       "  list       List issues in a project\n" +
       "  events     List events for a specific issue\n" +
       "  tags       Show the top values of an issue tag\n" +
+      "  comment    Comment on an issue, optionally attaching videos\n" +
+      "  comments   List an issue's comments and their videos\n" +
       "  view       View details of one or more issues\n" +
       "  explain    Analyze one or more issues using Seer AI\n" +
       "  plan       Generate a solution plan using Seer AI\n" +
