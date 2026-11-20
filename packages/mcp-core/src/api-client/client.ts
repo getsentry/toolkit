@@ -354,6 +354,8 @@ export type InboxFilters = {
   eventTypes?: readonly string[];
   recipients?: readonly ("user" | "team")[];
   isRead?: boolean;
+  /** Only these item IDs. */
+  ids?: readonly string[];
 };
 
 function inboxFilterSearchParams(filters: InboxFilters): URLSearchParams {
@@ -372,6 +374,9 @@ function inboxFilterSearchParams(filters: InboxFilters): URLSearchParams {
   }
   if (filters.isRead !== undefined) {
     search.set("is_read", String(filters.isRead));
+  }
+  for (const id of filters.ids ?? []) {
+    search.append("id", id);
   }
   return search;
 }

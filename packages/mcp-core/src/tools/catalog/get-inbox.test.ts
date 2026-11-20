@@ -359,6 +359,65 @@ describe("get_inbox", () => {
     `);
   });
 
+  describe("in a project-scoped session", () => {
+    const scopedContext = {
+      ...context,
+      constraints: { organizationSlug: null, projectSlug: "cloudflare-mcp" },
+    };
+    const otherProjectItem = {
+      ...issueItem,
+      id: "103",
+      subject: {
+        ...issueItem.subject,
+        id: "6507376926",
+        metadata: {
+          shortId: "OTHER-1",
+          project: { id: "1", slug: "other-project" },
+        },
+      },
+    };
+
+    it("drops other projects' issue items and keeps the cursor", async () => {
+      mswServer.use(
+        http.get(INBOX_URL, () =>
+          HttpResponse.json([issueItem, otherProjectItem, notebookItem], {
+            headers: {
+              Link: `<${INBOX_URL}?cursor=1731664800000000_102:0:0>; rel="next"; results="true"; cursor="1731664800000000_102:0:0"`,
+            },
+          }),
+        ),
+      );
+
+      const content = parse(await getInbox.handler(baseParams, scopedContext));
+
+      expect(content.items?.map((item) => item.id)).toEqual(["101", "102"]);
+      expect(content.nextCursor).toBe("1731664800000000_102:0:0");
+    });
+
+    it("refuses another project's item events before reading them", async () => {
+      const requests: string[] = [];
+      mswServer.use(
+        http.get(INBOX_URL, ({ request }) => {
+          requests.push(new URL(request.url).search);
+          return HttpResponse.json([otherProjectItem]);
+        }),
+        http.get(`${INBOX_URL}103/events/`, () => {
+          requests.push("events");
+          return HttpResponse.json([]);
+        }),
+      );
+
+      await expect(
+        getInbox.handler({ ...baseParams, itemId: "103" }, scopedContext),
+      ).rejects.toThrow(
+        new UserInputError(
+          'Inbox item 103 is outside the active project constraint. Expected project "cloudflare-mcp".',
+        ),
+      );
+      expect(requests).toEqual(["?id=103&per_page=1"]);
+    });
+  });
+
   it("rejects list filters combined with an item ID before calling Sentry", async () => {
     await expect(
       getInbox.handler(

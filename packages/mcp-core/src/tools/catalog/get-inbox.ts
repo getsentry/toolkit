@@ -15,6 +15,8 @@ import {
   formatInboxItem,
   inboxEventOutputSchema,
   inboxItemOutputSchema,
+  assertInboxItemsWithinProject,
+  isInboxItemInProject,
   ParamInboxItemId,
   withInboxNotFoundHint,
 } from "../support/inbox";
@@ -103,6 +105,7 @@ export default defineTool({
       regionUrl: params.regionUrl ?? undefined,
     });
     const organizationSlug = params.organizationSlug;
+    const scopedProjectSlug = context.constraints.projectSlug;
     setTargetTagsAndAttributes({ organizationSlug });
 
     if (params.itemId) {
@@ -122,13 +125,20 @@ export default defineTool({
       const itemId = params.itemId;
       const { events, nextCursor } = await withInboxNotFoundHint(
         { organizationSlug, itemId },
-        () =>
-          apiService.listInboxItemEvents({
+        async () => {
+          await assertInboxItemsWithinProject({
+            apiService,
+            organizationSlug,
+            itemIds: [itemId],
+            scopedProjectSlug,
+          });
+          return await apiService.listInboxItemEvents({
             organizationSlug,
             itemId,
             cursor: params.cursor,
             limit: params.limit,
-          }),
+          });
+        },
       );
       return structuredResult({
         itemId,
@@ -159,8 +169,14 @@ export default defineTool({
           limit: params.limit,
         }),
     );
+    // Sentry cannot filter the inbox by project, so a project-scoped session
+    // drops other projects' issue items from each page. A page can come back
+    // short, or empty with a cursor, but the cursor never skips items.
+    const visibleItems = scopedProjectSlug
+      ? items.filter((item) => isInboxItemInProject(item, scopedProjectSlug))
+      : items;
     return structuredResult({
-      items: items.map(formatInboxItem),
+      items: visibleItems.map(formatInboxItem),
       nextCursor,
     });
   },

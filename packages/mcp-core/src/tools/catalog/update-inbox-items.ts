@@ -7,7 +7,11 @@ import { structuredResult } from "../../internal/tool-helpers/results";
 import { ParamOrganizationSlug, ParamRegionUrl } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { ParamInboxItemId, withInboxNotFoundHint } from "../support/inbox";
+import {
+  assertInboxItemsWithinProject,
+  ParamInboxItemId,
+  withInboxNotFoundHint,
+} from "../support/inbox";
 
 const INBOX_ACTIONS = ["mark_read", "mark_unread", "remove"] as const;
 
@@ -96,6 +100,13 @@ export default defineTool({
       );
     }
     const selection = params.all ? ("all" as const) : itemIds;
+    const scopedProjectSlug = context.constraints.projectSlug;
+    // Sentry cannot limit an inbox mutation to one project.
+    if (selection === "all" && scopedProjectSlug) {
+      throw new UserInputError(
+        `all: true would change Inbox items outside project "${scopedProjectSlug}". Select item IDs from get_inbox instead.`,
+      );
+    }
 
     const apiService = apiServiceFromContext(context, {
       regionUrl: params.regionUrl ?? undefined,
@@ -103,8 +114,24 @@ export default defineTool({
     const organizationSlug = params.organizationSlug;
     setTargetTagsAndAttributes({ organizationSlug });
 
-    const matchedCount = await withInboxNotFoundHint({ organizationSlug }, () =>
-      applyInboxAction(apiService, organizationSlug, selection, params.action),
+    const matchedCount = await withInboxNotFoundHint(
+      { organizationSlug },
+      async () => {
+        if (selection !== "all") {
+          await assertInboxItemsWithinProject({
+            apiService,
+            organizationSlug,
+            itemIds: selection,
+            scopedProjectSlug,
+          });
+        }
+        return await applyInboxAction(
+          apiService,
+          organizationSlug,
+          selection,
+          params.action,
+        );
+      },
     );
 
     return structuredResult({
