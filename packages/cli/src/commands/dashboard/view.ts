@@ -138,6 +138,7 @@ function resolveViewTimeRange(
 }
 
 export const viewCommand = buildCommand({
+  streams: { flag: "refresh" },
   docs: {
     brief: "View a dashboard",
     fullDescription:

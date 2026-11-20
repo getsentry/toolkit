@@ -226,6 +226,17 @@ type LocalCommandBuilderArguments<
    * `issue merge`, `trial start`).
    */
   readonly destructive?: boolean;
+  /**
+   * Mark the command as streaming until stopped: `true` when every run
+   * streams (`log tail`), or `{ flag }` when passing that flag switches it
+   * into streaming (`dashboard view --refresh`).
+   *
+   * The library SDK returns an `AsyncIterable` for streaming invocations.
+   * The SDK generator and `sdk.run()` both derive that from this marker
+   * through `streaming-commands.ts`, so nothing else lists streaming
+   * commands.
+   */
+  readonly streams?: true | { readonly flag: string };
 };
 
 // ---------------------------------------------------------------------------
@@ -978,6 +989,10 @@ export function buildCommand<
   }
   if (builderArgs.destructive) {
     (cmd as unknown as Record<string, unknown>)["__destructive"] = true;
+  }
+  if (builderArgs.streams) {
+    (cmd as unknown as Record<string, unknown>)["__streams"] =
+      builderArgs.streams;
   }
 
   // Attach the JSON fields to the built command as a non-standard property.

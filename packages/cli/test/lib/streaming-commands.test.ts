@@ -1,14 +1,18 @@
 /**
  * Tests for which raw `sdk.run()` arguments stream.
  *
- * The route-tree section checks every flag and alias of every registered
- * command, so a short alias that collides with a streaming flag (the `-f`
- * bug: `-f` was `--follow` in `sdk.run()` but `--fresh` in `issue list`)
- * fails here instead of hanging an SDK caller.
+ * Commands declare streaming with `streams` in `buildCommand`, and
+ * `sdk.run()` reads the generated `streaming-commands.json`. The route-tree
+ * section runs every flag and alias of every registered command through the
+ * generated table and compares the answer with the command's own marker, so
+ * a short alias that collides with a streaming flag (the `-f` bug: `-f` was
+ * `--follow` in `sdk.run()` but `--fresh` in `issue list`) or a stale
+ * generated file fails here instead of hanging an SDK caller.
  */
 
 import { describe, expect, test } from "vitest";
 import { routes } from "../../src/app.js";
+import generated from "../../src/generated/streaming-commands.json" with { type: "json" };
 import {
   isCommand,
   isRouteMap,
@@ -16,9 +20,18 @@ import {
   type RouteMap,
 } from "../../src/lib/introspect.js";
 import {
+  collectStreamingCommands,
   isStreamingInvocation,
-  STREAMING_COMMANDS,
+  type StreamingCommands,
+  streamingModeOf,
 } from "../../src/lib/streaming-commands.js";
+
+const STREAMING_COMMANDS: StreamingCommands = generated;
+
+/** What `sdk.run()` decides for these raw arguments. */
+function streams(args: readonly string[]): boolean {
+  return isStreamingInvocation(args, STREAMING_COMMANDS);
+}
 
 type RegisteredCommand = { path: string[]; command: Command };
 
@@ -36,29 +49,39 @@ function allCommands(
   });
 }
 
-const registered = allCommands(routes as unknown as RouteMap);
+const routeMap = routes as unknown as RouteMap;
+const registered = allCommands(routeMap);
 
-describe("STREAMING_COMMANDS matches the route tree", () => {
-  test("every entry is a registered command whose flag and alias match", () => {
-    for (const [path, mode] of Object.entries(STREAMING_COMMANDS)) {
-      const found = registered.find((cmd) => cmd.path.join(" ") === path);
-      expect(found, path).toBeDefined();
-      if (mode.kind !== "flag" || !found) {
-        continue;
+describe("streaming comes from the commands' streams markers", () => {
+  test("log tail always streams, dashboard view streams on -r/--refresh", () => {
+    expect(STREAMING_COMMANDS["log tail"]).toEqual({});
+    expect(STREAMING_COMMANDS["dashboard view"]).toEqual({
+      flag: "refresh",
+      alias: "r",
+    });
+  });
+
+  test("the generated table is current", () => {
+    expect(STREAMING_COMMANDS).toEqual(collectStreamingCommands(routeMap));
+  });
+
+  test("a declared streaming flag exists on its command", () => {
+    for (const { path, command } of registered) {
+      const flag = streamingModeOf(command)?.flag;
+      if (flag !== undefined) {
+        expect(
+          Object.keys(command.parameters.flags ?? {}),
+          path.join(" "),
+        ).toContain(flag);
       }
-      const { flags = {}, aliases = {} } = found.command.parameters;
-      expect(Object.keys(flags), path).toContain(mode.flag);
-      const commandAlias = Object.entries(aliases).find(
-        ([, target]) => target === mode.flag,
-      )?.[0];
-      expect(mode.alias, `${path}: alias of --${mode.flag}`).toBe(commandAlias);
     }
   });
 
-  test("a flag or alias streams only where the table says so", () => {
+  test("a flag or alias streams in sdk.run() only where its command says so", () => {
     const wrong: string[] = [];
     for (const { path, command } of registered) {
-      const mode = STREAMING_COMMANDS[path.join(" ")];
+      const mode = streamingModeOf(command);
+      const always = mode !== undefined && mode.flag === undefined;
       const { flags = {}, aliases = {} } = command.parameters;
       const tokens: [string, string][] = [
         ...Object.keys(flags).map((name): [string, string] => [
@@ -71,15 +94,13 @@ describe("STREAMING_COMMANDS matches the route tree", () => {
         ]),
       ];
       for (const [token, flagName] of tokens) {
-        const expected =
-          mode?.kind === "always" ||
-          (mode?.kind === "flag" && mode.flag === flagName);
-        if (isStreamingInvocation([...path, token]) !== expected) {
+        const expected = always || mode?.flag === flagName;
+        if (streams([...path, token]) !== expected) {
           wrong.push(`${path.join(" ")} ${token}: expected ${expected}`);
         }
       }
-      if (isStreamingInvocation(path) !== (mode?.kind === "always")) {
-        wrong.push(`${path.join(" ")}: expected ${mode?.kind === "always"}`);
+      if (streams(path) !== always) {
+        wrong.push(`${path.join(" ")}: expected ${always}`);
       }
     }
     expect(wrong).toEqual([]);
@@ -88,44 +109,36 @@ describe("STREAMING_COMMANDS matches the route tree", () => {
 
 describe("isStreamingInvocation", () => {
   test("a streaming command streams with any arguments", () => {
-    expect(isStreamingInvocation(["log", "tail"])).toBe(true);
-    expect(isStreamingInvocation(["log", "tail", "acme/api", "-i", "5"])).toBe(
-      true,
-    );
+    expect(streams(["log", "tail"])).toBe(true);
+    expect(streams(["log", "tail", "acme/api", "-i", "5"])).toBe(true);
   });
 
   test("a streaming flag streams in long, --flag=value, or alias form", () => {
-    expect(isStreamingInvocation(["dashboard", "view", "1", "-r"])).toBe(true);
-    expect(isStreamingInvocation(["dashboard", "view", "1", "--refresh"])).toBe(
-      true,
-    );
-    expect(
-      isStreamingInvocation(["dashboard", "view", "1", "--refresh=30"]),
-    ).toBe(true);
+    expect(streams(["dashboard", "view", "1", "-r"])).toBe(true);
+    expect(streams(["dashboard", "view", "1", "--refresh"])).toBe(true);
+    expect(streams(["dashboard", "view", "1", "--refresh=30"])).toBe(true);
   });
 
   test("-f is --fresh, not a stream", () => {
-    expect(isStreamingInvocation(["log", "list", "-f"])).toBe(false);
-    expect(isStreamingInvocation(["issue", "list", "-f"])).toBe(false);
+    expect(streams(["log", "list", "-f"])).toBe(false);
+    expect(streams(["issue", "list", "-f"])).toBe(false);
   });
 
   test("a streaming flag streams only in its own command", () => {
-    expect(isStreamingInvocation(["issue", "list", "--refresh"])).toBe(false);
-    expect(isStreamingInvocation(["log", "list", "-r"])).toBe(false);
+    expect(streams(["issue", "list", "--refresh"])).toBe(false);
+    expect(streams(["log", "list", "-r"])).toBe(false);
   });
 
   test("global flags before or between route segments are skipped", () => {
-    expect(isStreamingInvocation(["--json", "log", "tail"])).toBe(true);
-    expect(isStreamingInvocation(["log", "--json", "tail"])).toBe(true);
-    expect(isStreamingInvocation(["--log-level", "debug", "log", "tail"])).toBe(
-      true,
-    );
-    expect(isStreamingInvocation(["log", "--org=acme", "tail"])).toBe(true);
-    expect(isStreamingInvocation(["--json", "log", "list"])).toBe(false);
+    expect(streams(["--json", "log", "tail"])).toBe(true);
+    expect(streams(["log", "--json", "tail"])).toBe(true);
+    expect(streams(["--log-level", "debug", "log", "tail"])).toBe(true);
+    expect(streams(["log", "--org=acme", "tail"])).toBe(true);
+    expect(streams(["--json", "log", "list"])).toBe(false);
   });
 
   test("the command path must lead the arguments", () => {
-    expect(isStreamingInvocation(["log", "list", "tail"])).toBe(false);
-    expect(isStreamingInvocation(["log"])).toBe(false);
+    expect(streams(["log", "list", "tail"])).toBe(false);
+    expect(streams(["log"])).toBe(false);
   });
 });

@@ -259,6 +259,7 @@ function writeFollowBanner(
 }
 
 export const tailCommand = buildCommand({
+  streams: true,
   docs: {
     brief: "Stream new logs from a project or trace",
     fullDescription:

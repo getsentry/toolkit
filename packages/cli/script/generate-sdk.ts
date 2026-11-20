@@ -38,7 +38,7 @@ import {
   withJsDoc,
 } from "./ts-codegen.js";
 import { logger } from "../src/lib/logger.js";
-import { STREAMING_COMMANDS } from "../src/lib/streaming-commands.js";
+import { streamingModeOf } from "../src/lib/streaming-commands.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -806,7 +806,7 @@ export async function emit(): Promise<void> {
 
   for (const { path, command } of allCommands) {
     const flags = extractSdkFlags(command);
-    const streaming = STREAMING_COMMANDS[path.join(" ")];
+    const streaming = streamingModeOf(command);
     const positional = derivePositional(command);
 
     const returnType = buildReturnType(command, `${buildTypeName(path)}Result`);
@@ -829,9 +829,9 @@ export async function emit(): Promise<void> {
       positional,
       flags,
       streamingFlags: flags.filter(
-        (flag) => streaming?.kind === "flag" && flag.name === streaming.flag,
+        (flag) => streaming?.flag !== undefined && flag.name === streaming.flag,
       ),
-      alwaysStreams: streaming?.kind === "always",
+      alwaysStreams: streaming !== undefined && streaming.flag === undefined,
       paramsTypeName: params?.name.text,
       paramsRequired: flags.some((flag) => !flag.optional),
       resultTypeName: returnType?.name.text,

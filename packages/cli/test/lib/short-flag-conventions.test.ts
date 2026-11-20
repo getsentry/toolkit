@@ -14,7 +14,7 @@ import {
   extractAllRoutes,
   type RouteMap,
 } from "../../src/lib/introspect.js";
-import { STREAMING_COMMANDS } from "../../src/lib/streaming-commands.js";
+import { collectStreamingCommands } from "../../src/lib/streaming-commands.js";
 
 /**
  * Commands that still stream through a mode flag. Each entry is a known gap
@@ -24,8 +24,7 @@ const STREAMING_FLAG_COMMANDS = ["dashboard view"];
 
 /**
  * Flag names that usually mean "keep running and stream". A command that adds
- * one must be a listed gap, which forces the change through review here and
- * in `STREAMING_COMMANDS`.
+ * one must be a listed gap and declare it with `streams` in `buildCommand`.
  */
 const STREAM_LIKE_FLAG_NAMES = new Set([
   "follow",
@@ -40,6 +39,10 @@ const STREAM_LIKE_FLAG_NAMES = new Set([
 const commands: CommandInfo[] = extractAllRoutes(
   routes as unknown as RouteMap,
 ).flatMap((route) => route.commands);
+
+const streamingCommands = collectStreamingCommands(
+  routes as unknown as RouteMap,
+);
 
 /** `sentry log list` → `log list` */
 function routePath(command: CommandInfo): string {
@@ -72,8 +75,8 @@ describe("live output is its own command", () => {
       .map(routePath);
     expect(withStreamLikeFlag).toEqual(STREAMING_FLAG_COMMANDS);
 
-    const flagModeCommands = Object.entries(STREAMING_COMMANDS)
-      .filter(([, mode]) => mode.kind === "flag")
+    const flagModeCommands = Object.entries(streamingCommands)
+      .filter(([, mode]) => mode.flag !== undefined)
       .map(([path]) => path);
     expect(flagModeCommands).toEqual(STREAMING_FLAG_COMMANDS);
   });
@@ -85,12 +88,5 @@ describe("live output is its own command", () => {
       )
       .map(routePath);
     expect(withFollow).toEqual([]);
-  });
-
-  test("every streaming command is registered", () => {
-    const registered = new Set(commands.map(routePath));
-    for (const path of Object.keys(STREAMING_COMMANDS)) {
-      expect(registered.has(path), path).toBe(true);
-    }
   });
 });

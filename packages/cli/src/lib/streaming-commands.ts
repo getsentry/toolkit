@@ -2,40 +2,77 @@
  * Which commands stream output until stopped, for the library SDK.
  *
  * A streaming command returns an `AsyncIterable` from the SDK instead of a
- * `Promise`. `script/generate-sdk.ts` reads this module to type the generated
- * methods, and `sdk.run()` reads it to pick the same return shape at runtime,
- * so the two cannot disagree.
+ * `Promise`. Commands declare it with `streams` in `buildCommand`. The SDK
+ * generator reads that marker through {@link streamingModeOf}, and
+ * `script/generate-streaming-commands.ts` writes
+ * {@link collectStreamingCommands} to `src/generated/streaming-commands.json`
+ * for `sdk.run()`, which must pick a return shape before it loads any
+ * command. Both come from the command definitions, so there is no list to
+ * keep in sync.
  *
- * Live output gets its own command (`log tail`), not a mode flag on a list
- * command; see `design/sentry-cli.md`. `--refresh` on `dashboard view` is the
- * one flag that still switches a command into streaming.
- *
- * Streaming is per command: a flag or alias streams only in the command
- * listed with it, so `-r` on `dashboard view` streams and `-f` never does.
+ * Streaming is per command: a flag or alias streams only in the command that
+ * declares it, so `-r` on `dashboard view` streams and `-f` never does.
  *
  * @module
  */
 
 import { buildTopLevelFlags } from "./global-flags.js";
+import type { Command, RouteMap } from "./introspect.js";
 
 /**
- * How a command streams: on every run, or only when one of its flags is
- * passed. `alias` is that flag's short alias in the command, if any.
+ * How a command streams. Without `flag`, every run streams. With `flag`, only
+ * runs that pass `--<flag>` or its short `alias` do.
  */
-export type StreamingMode =
-  | { readonly kind: "always" }
-  | { readonly kind: "flag"; readonly flag: string; readonly alias?: string };
-
-/**
- * Every command that can stream, keyed by space-separated route path.
- * `test/lib/streaming-commands.test.ts` checks this table against the real
- * route tree: each flag and alias here must match the command's own
- * definition, and no other flag or alias of any command may stream.
- */
-export const STREAMING_COMMANDS: Readonly<Record<string, StreamingMode>> = {
-  "log tail": { kind: "always" },
-  "dashboard view": { kind: "flag", flag: "refresh", alias: "r" },
+export type StreamingMode = {
+  readonly flag?: string;
+  readonly alias?: string;
 };
+
+/** Streaming commands keyed by space-separated route path. */
+export type StreamingCommands = Readonly<Record<string, StreamingMode>>;
+
+/**
+ * The streaming mode a command declares with `streams` in `buildCommand`,
+ * with the flag's short alias read from the command's own aliases.
+ * `undefined` for commands that never stream.
+ */
+export function streamingModeOf(command: Command): StreamingMode | undefined {
+  const streams = (command as { __streams?: true | { flag: string } })
+    .__streams;
+  if (!streams) {
+    return;
+  }
+  if (streams === true) {
+    return {};
+  }
+  const alias = Object.entries(command.parameters.aliases ?? {}).find(
+    ([, target]) => target === streams.flag,
+  )?.[0];
+  return alias ? { flag: streams.flag, alias } : { flag: streams.flag };
+}
+
+/**
+ * Every streaming command in a route tree, hidden alias routes included,
+ * keyed by route path.
+ */
+export function collectStreamingCommands(
+  map: RouteMap,
+  prefix: readonly string[] = [],
+): Record<string, StreamingMode> {
+  const found: Record<string, StreamingMode> = {};
+  for (const entry of map.getAllEntries()) {
+    const path = [...prefix, entry.name.original];
+    if ("getAllEntries" in entry.target) {
+      Object.assign(found, collectStreamingCommands(entry.target, path));
+      continue;
+    }
+    const mode = streamingModeOf(entry.target);
+    if (mode) {
+      found[path.join(" ")] = mode;
+    }
+  }
+  return found;
+}
 
 /**
  * The leading route segments of raw CLI arguments, skipping global flags the
@@ -66,10 +103,7 @@ function routeSegments(args: readonly string[], depth: number): string[] {
 }
 
 /** Whether `arg` passes the streaming flag of `mode`. */
-function passesStreamingFlag(
-  arg: string,
-  mode: Extract<StreamingMode, { kind: "flag" }>,
-): boolean {
+function passesStreamingFlag(arg: string, mode: StreamingMode): boolean {
   return (
     arg === `--${mode.flag}` ||
     arg.startsWith(`--${mode.flag}=`) ||
@@ -82,15 +116,18 @@ function passesStreamingFlag(
  * flag of the command they run. Matches route paths against the leading route
  * segments, so `log tail ...` streams while `log list ...` does not.
  */
-export function isStreamingInvocation(args: readonly string[]): boolean {
-  for (const [path, mode] of Object.entries(STREAMING_COMMANDS)) {
+export function isStreamingInvocation(
+  args: readonly string[],
+  commands: StreamingCommands,
+): boolean {
+  for (const [path, mode] of Object.entries(commands)) {
     const expected = path.split(" ");
     const actual = routeSegments(args, expected.length);
     if (!expected.every((segment, index) => actual[index] === segment)) {
       continue;
     }
     return (
-      mode.kind === "always" ||
+      mode.flag === undefined ||
       args.some((arg) => passesStreamingFlag(arg, mode))
     );
   }

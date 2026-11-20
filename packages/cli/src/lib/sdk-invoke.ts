@@ -21,7 +21,14 @@ import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
-import { isStreamingInvocation } from "./streaming-commands.js";
+import generatedStreamingCommands from "../generated/streaming-commands.json" with { type: "json" };
+import {
+  isStreamingInvocation,
+  type StreamingCommands,
+} from "./streaming-commands.js";
+
+/** Streaming commands, generated from the commands' `streams` markers. */
+const STREAMING_COMMANDS: StreamingCommands = generatedStreamingCommands;
 
 /**
  * Build an isolated env from options, starting from `options.env` or the
@@ -614,7 +621,7 @@ export function buildRunner(options?: SentryOptions) {
   return function run(
     ...args: string[]
   ): Promise<unknown> | AsyncIterable<unknown> {
-    if (isStreamingInvocation(args)) {
+    if (isStreamingInvocation(args, STREAMING_COMMANDS)) {
       return executeWithStream<unknown>(options, async (ctx, span) => {
         const { run: stricliRun } = await import("@stricli/core");
         const { loadSdkApp } = await import("../sdk-app.js");
