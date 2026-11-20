@@ -18,8 +18,8 @@ import { operations } from "@sentry/api/operations";
 import {
   API_BASE_PATH,
   ApiNotFoundError,
-  apiPath,
   type ApiClientCore,
+  apiPath,
   type ApiTarget,
   ApiValidationError,
   applyTimeParams,
@@ -91,7 +91,7 @@ import { ConfigurationError } from "../errors";
 import { isFreshRead } from "../internal/fresh-reads";
 import { omitUndefined } from "../internal/type-guards";
 import { logIssue, logWarn } from "../telem/logging";
-import type { SentryProtocol } from "../types";
+import type { ResponseCache, SentryProtocol } from "../types";
 import {
   type EventsDataset,
   isMetricsDataset,
@@ -355,6 +355,10 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxTotalDelayMs: 3000,
 };
 
+const isIdempotent = createIdempotentOperationMatcher(() =>
+  selectIdempotentWrites(operations),
+);
+
 /**
  * Every request goes through the shared transport. `SentryApiService` sets its
  * own headers, including Authorization, so the transport only retries; as
@@ -364,10 +368,27 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
 const transport = createApiTransport({
   retry: REQUEST_RETRY_POLICY,
   fresh: isFreshRead,
-  isIdempotent: createIdempotentOperationMatcher(() =>
-    selectIdempotentWrites(operations),
-  ),
+  isIdempotent,
 });
+
+/**
+ * A transport that also serves and invalidates GETs through `responseCache`.
+ * The transport caches only for a credential, so it gets `accessToken` under
+ * the cache's identity; the Authorization it sets matches the one
+ * `SentryApiService` already sends.
+ */
+function createCachingTransport(
+  accessToken: string,
+  { identity, cache }: ResponseCache,
+) {
+  return createApiTransport({
+    retry: REQUEST_RETRY_POLICY,
+    fresh: isFreshRead,
+    isIdempotent,
+    credentials: { current: () => ({ token: accessToken, identity }) },
+    cache,
+  });
+}
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.
@@ -614,16 +635,7 @@ export class SentryApiService {
   protected apiPrefix: string;
   /** Cancels every request this service sends, such as a tool call's signal. */
   readonly signal?: AbortSignal | undefined;
-  private readonly core = this.withSignal(
-    createApiClientCore({
-      transport,
-      headers: () => this.requestHeaders(),
-      logger: {
-        warn: (message, extra) =>
-          logWarn(message, { loggerScope: ["api", "client"], extra }),
-      },
-    }),
-  );
+  private readonly core: ApiClientCore;
 
   /**
    * Creates a new Sentry API service instance.
@@ -637,6 +649,7 @@ export class SentryApiService {
    * @param config.clientName DCR-registered OAuth client name
    * @param config.clientFamily Bucketed client family (e.g. "claude-code", "cursor")
    * @param config.utmSource Sanitized MCP request attribution source
+   * @param config.responseCache Caches GETs for `accessToken`'s identity; needs an `accessToken`
    * @param config.signal Aborts every request, retry wait, and pagination walk of this service
    */
   constructor({
@@ -647,6 +660,7 @@ export class SentryApiService {
     clientName = null,
     clientFamily = null,
     utmSource = null,
+    responseCache = null,
     signal,
   }: {
     accessToken?: string | null;
@@ -656,6 +670,7 @@ export class SentryApiService {
     clientName?: string | null | undefined;
     clientFamily?: string | null | undefined;
     utmSource?: string | null | undefined;
+    responseCache?: ResponseCache | null | undefined;
     signal?: AbortSignal | undefined;
   }) {
     this.accessToken = accessToken;
@@ -667,6 +682,19 @@ export class SentryApiService {
     this.protocol = protocol;
     this.apiPrefix = `${protocol}://${host}${API_BASE_PATH}`;
     this.signal = signal;
+    this.core = this.withSignal(
+      createApiClientCore({
+        transport:
+          accessToken !== null && responseCache
+            ? createCachingTransport(accessToken, responseCache)
+            : transport,
+        headers: () => this.requestHeaders(),
+        logger: {
+          warn: (message, extra) =>
+            logWarn(message, { loggerScope: ["api", "client"], extra }),
+        },
+      }),
+    );
   }
 
   /**

@@ -166,6 +166,46 @@ SENTRY_CLIENT_SECRET = "..." # OAuth app secret
 - `/api/metadata` - MCP metadata endpoint
 - `/sse` - Server-sent events for MCP
 
+### Sentry API Response Cache
+
+The MCP handler can cache Sentry API GET responses through the shared
+response cache in `@sentry/api/client`. It is
+behind `MCP_RESPONSE_CACHE`:
+
+| Value               | Behavior                                                                   |
+| ------------------- | -------------------------------------------------------------------------- |
+| unset, `off`, other | No caching. The default in every deployed environment.                     |
+| `memory`            | Caches every tier in the isolate's memory.                                 |
+| `tiered`            | Memory only for now; the R2 tier for allowlisted detail endpoints follows. |
+
+How it works (`src/server/lib/response-cache.ts`):
+
+- **Identity.** Each entry is keyed by the SHA-256 of the MCP grant's user ID
+  and grant ID, both from the wrapper bearer token (`userId:grantId:secret`).
+  A grant never reads another grant's entries, even for the same user and
+  URL, and the key stays the same when the wrapper token refreshes. Requests
+  without a grant ID, including Sentry-Bearer direct tokens, are not cached.
+- **Storage.** One memory store per isolate, shared by every request it
+  serves: a 24 MiB byte budget counted over compressed bodies, a 1 MiB
+  per-entry cap, and least recently used eviction.
+- **Freshness.** Server cache headers win; otherwise the URL's tier applies
+  (60 s volatile, 5 minutes stable, never for autofix polling). A successful
+  write invalidates the same grant's entries under the written resource.
+- **Writes** run in `ctx.waitUntil()`, so they never delay a response.
+  Invalidation first waits for the grant's writes still running, so a write
+  that started before a mutation cannot bring the old body back.
+- **Bodies** are compressed with zstd level 3 when `node:zlib` has it, and
+  brotli quality 4 otherwise. Local workerd (miniflare `5.20261019.1-beta`)
+  has zstd; a deployed Worker is not confirmed yet. The
+  `app.response_cache.write` metric records the encoding each write used.
+
+Turning it on in production is a separate decision: revoked access or deleted
+data can still be served from the cache until the entry expires (up to 5
+minutes for stable entries). Leave `MCP_RESPONSE_CACHE` unset in production
+until that window has privacy and security sign-off. Setting it back to `off`
+restores uncached behavior. Metrics are listed in
+[Monitoring](../operations/monitoring.md#response-cache-metrics).
+
 ## Security Considerations
 
 1. **Authentication**: OAuth tokens stored encrypted in KV

@@ -1,11 +1,69 @@
-import { describe, it, expect } from "vitest";
+import { mswServer } from "@sentry/mcp-server-mocks";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   ApiAuthenticationError,
   ApiNotFoundError,
   createApiError,
 } from "../../api-client";
 import { UserInputError } from "../../errors";
-import { handleApiError, withApiErrorHandling } from "./api";
+import type { ServerContext } from "../../types";
+import {
+  apiServiceFromContext,
+  handleApiError,
+  withApiErrorHandling,
+} from "./api";
+
+describe("apiServiceFromContext", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  function contextWithCache(
+    overrides: Partial<ServerContext> = {},
+  ): ServerContext & {
+    responseCache: NonNullable<ServerContext["responseCache"]>;
+  } {
+    return {
+      accessToken: "token",
+      constraints: {},
+      responseCache: {
+        identity: "identity-a",
+        cache: {
+          lookup: vi.fn(async () => undefined),
+          store: vi.fn(async () => {}),
+          invalidate: vi.fn(async () => {}),
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  function mockAuth() {
+    mswServer.use(
+      http.get("https://sentry.io/api/0/auth/", () =>
+        HttpResponse.json({ id: "1", name: "User", email: "a@x.io" }),
+      ),
+    );
+  }
+
+  it("uses the context's response cache", async () => {
+    mockAuth();
+    const context = contextWithCache();
+    await apiServiceFromContext(context).getAuthenticatedUser();
+    expect(context.responseCache.cache.lookup).toHaveBeenCalled();
+  });
+
+  it("drops the response cache when a credential router swaps tokens", async () => {
+    mockAuth();
+    const context = contextWithCache({
+      credentialRouter: {
+        resolve: vi.fn(),
+        list: vi.fn(),
+      },
+    });
+    await apiServiceFromContext(context).getAuthenticatedUser();
+    expect(context.responseCache.cache.lookup).not.toHaveBeenCalled();
+  });
+});
 
 describe("handleApiError", () => {
   it("converts 404 errors with params to list all parameters", () => {
