@@ -15,7 +15,10 @@ the host theme, and calls the tool again through the host. The goals are in
 - `view-theme` The view follows the host's light or dark theme. Proof: `drive`.
 - `range-roundtrip` The range picker calls `render_sentry_chart` through the host with the new period and redraws without remounting. Proof: `drive`.
 - `open-link` "Open in Sentry" asks the host to open the result's Sentry URL with `ui/open-link`. Proof: `drive`.
-- `grouped` A `groupBy` result draws one series per top group, with a legend. Proof: `drive`.
+- `grouped` A `groupBy` result draws one series per top group, with a legend that shows each group's short label and event count, and no peak, since one group's bucket would read as the chart's peak. Proof: `drive`.
+- `top-by-volume` A grouped chart of a non-additive aggregate, such as p95 by release, plots the groups with the most events, not the sparse groups with the highest values. Proof: `drive`.
+- `null-gaps` A bucket with no data is null in the result, not 0, and the view draws it as a gap; a bucket with no data on either side is a dot, and its tooltip row reads "no data". Proof: `drive`.
+- `compact-result` The result for 5 series of 168 buckets (7 days at 1h) stays under 16 KiB, and its text content is the same JSON. Proof: `drive`.
 - `lifecycle` The view follows a `host-context-changed` theme change, shows a cancelled state on `ui/notifications/tool-cancelled`, and answers `ui/resource-teardown`. Proof: `drive`.
 - `default-csp` The view loads and runs under the spec's default CSP with no console errors, so it needs no `csp` domains. Proof: `drive`.
 
@@ -31,12 +34,13 @@ Preconditions:
 - Launch from `../SKILL.md` has run on this checkout, and `$VERIFY_RUN` is set.
 - A Chromium build for playwright-core is installed. If the script cannot launch it, run `pnpm --filter @sentry/mcp-core exec playwright-core install chromium-headless-shell`.
 
-- **Every `drive` claim: act as the host.** Run `node .agents/skills/verify-toolkit/scripts/mcp-apps-host.mjs --out "$VERIFY_RUN/mcp-apps"`. It starts the mock server, calls the tool, reads the view, and mounts it in headless Chromium inside a host page that uses `AppBridge`. Every line it prints, also in `checks.txt`, is `PASS`. The screenshots `chart-light.png`, `chart-dark.png`, `chart-range-7d.png`, and `chart-grouped-dark.png` show each state. `host-log.json` holds the view's `tools/call` and `ui/open-link` requests to the host.
+- **Every `drive` claim: act as the host.** Run `node .agents/skills/verify-toolkit/scripts/mcp-apps-host.mjs --out "$VERIFY_RUN/mcp-apps"`. It starts the mock server, calls the tool, reads the view, and mounts it in headless Chromium inside a host page that uses `AppBridge`. Every line it prints, also in `checks.txt`, is `PASS`. Its grouped call is `p95(span.duration)` by `release` over 7 days at 1h. The screenshots `chart-light.png`, `chart-dark.png`, `chart-range-7d.png`, and `chart-grouped-dark.png` show each state. `host-log.json` holds the view's `tools/call` and `ui/open-link` requests to the host.
 
 ## Gotchas
 
 - The mock server answers from built packages. Rerun `pnpm run build` after changing mcp-core or the mocks, or the script drives stale code.
 - The view is generated. After changing `packages/mcp-core/chart-app/`, run `pnpm --filter @sentry/mcp-core generate-chart-app`, then build.
+- For a grouped request, the mock returns releases in the order that the request's `sort` gives. Three releases are busy; five have 1 to 57 events, every one at 30s, so a sort by p95 picks those five and leaves most of their buckets null.
 - The host page sets the default CSP with a meta tag in `srcdoc`. Real hosts serve the view from a sandbox origin with CSP headers.
 
 ## Gaps

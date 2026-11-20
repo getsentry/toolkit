@@ -4603,7 +4603,7 @@ describe("search_events", () => {
             | 2025-09-11 00:00 | 100 |
 
             **View these results in Sentry**:
-            https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=42&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%7D&mode=aggregate&sort=-count%28%29&statsPeriod=24h&table=span
+            https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=42&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%7D&mode=aggregate&aggregateSort=-count%28%29&statsPeriod=24h&table=span
             Please tell the user this dashboard link is available if they want to open the results in Sentry."
           `);
         }

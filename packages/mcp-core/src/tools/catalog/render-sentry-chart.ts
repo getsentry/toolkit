@@ -19,7 +19,6 @@ import {
   renderSentryChartOutputSchema,
 } from "../support/chart/schema";
 import { toStructuredIngestion } from "../support/ingestion";
-import { summarizeSeries } from "../support/search-events/formatters";
 
 /** Top groups plotted when the chart is split by an attribute. */
 const MAX_CHART_SERIES = 5;
@@ -38,42 +37,118 @@ function formatInterval(ms: number): string {
   return `${ms / 1000}s`;
 }
 
-function seriesLabel(
-  series: EventsTimeSeriesResponse["timeSeries"][number],
-): string {
+type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];
+
+function seriesLabel(series: TimeSeries): string {
   if (!series.groupBy?.length) return series.yAxis;
   return series.groupBy
     .map(({ value }) => (value === null || value === "" ? "(none)" : value))
     .join(", ");
 }
 
-function toChartSeries(
+/**
+ * The aggregate that counts the events behind `yAxis`, used to pick the top
+ * groups by volume. Ranking by `yAxis` itself would pick the groups with the
+ * most extreme value, such as a p95 from one event. Trace metric aggregates
+ * name their metric (`fn(value,name,type,unit)`), so its count must too; null
+ * when the metric cannot be read from `yAxis`.
+ */
+function countAggregate(dataset: string, yAxis: string): string | null {
+  if (dataset !== "metrics") return "count()";
+  const args = /^\w+\((value,[^,()]+,[^,()]+,[^,()]+)\)$/.exec(yAxis)?.[1];
+  return args ? `count(${args})` : null;
+}
+
+const isCount = (yAxis: string) => /^count\(/i.test(yAxis);
+const isAdditive = (yAxis: string) => isCount(yAxis) || /^sum\(/i.test(yAxis);
+
+/** A bucket value as a number, or null where the bucket has no data. */
+function bucketValue(raw: number | string | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  // Date-typed aggregates such as max(timestamp) return ISO datetime strings.
+  const parsed = Number(raw);
+  const value = Number.isNaN(parsed) ? Date.parse(String(raw)) : parsed;
+  if (!Number.isFinite(value)) return null;
+  // Drops float noise such as 6234.500000001 to keep the result compact.
+  return Number.isInteger(value) ? value : Number(value.toPrecision(8));
+}
+
+function sum(values: readonly (number | null)[]): number {
+  return values.reduce<number>((total, value) => total + (value ?? 0), 0);
+}
+
+function indexesWhere<T>(items: readonly T[], test: (item: T) => boolean) {
+  return items.flatMap((item, index) => (test(item) ? [index] : []));
+}
+
+/**
+ * Turns the response into one shared time axis and one value array per
+ * series. `countYAxis` names the series that counts each group's events,
+ * when the response has one.
+ */
+function toChart(
   response: EventsTimeSeriesResponse,
   yAxis: string,
-): { series: ChartResult["series"]; peak: ChartResult["peak"] } {
-  let peak: ChartResult["peak"] = null;
-  const series = response.timeSeries.map((entry) => {
+  countYAxis: string | null,
+): Pick<
+  ChartResult,
+  "times" | "incomplete" | "outsideRetention" | "series" | "peak"
+> {
+  // Sentry returns top groups in rank order.
+  const plotted = response.timeSeries.filter((entry) => entry.yAxis === yAxis);
+  const counts = new Map(
+    response.timeSeries
+      .filter((entry) => countYAxis !== yAxis && entry.yAxis === countYAxis)
+      .map((entry) => [
+        seriesLabel(entry),
+        sum(entry.values.map((b) => bucketValue(b.value))),
+      ]),
+  );
+  const buckets = plotted[0]?.values ?? [];
+  const outsideRetention = (b: (typeof buckets)[number]) =>
+    b.incomplete && b.incompleteReason === "OUTSIDE_RETENTION";
+  const incomplete = indexesWhere(
+    buckets,
+    (b) => b.incomplete && !outsideRetention(b),
+  );
+  const additive = isAdditive(yAxis);
+  const series = plotted.map((entry) => {
     const label = seriesLabel(entry);
-    const summary = summarizeSeries(entry, yAxis);
-    if (summary.peak && (!peak || summary.peak.value > peak.value)) {
-      peak = {
-        series: label,
-        time: new Date(summary.peak.timestamp).toISOString(),
-        value: summary.peak.value,
-      };
-    }
+    const values = entry.values.map((b) => bucketValue(b.value));
+    const total = additive ? sum(values) : null;
     return {
       label,
-      total: summary.total,
-      buckets: summary.points.map((point) => ({
-        time: new Date(point.timestamp).toISOString(),
-        value: point.value,
-        incomplete: point.filling,
-        outsideRetention: point.outsideRetention,
-      })),
+      count: counts.get(label) ?? (isCount(yAxis) ? total : null),
+      total,
+      values,
     };
   });
-  return { series, peak };
+
+  // Only a single-series chart has a peak. Across groups, any one bucket
+  // would headline a single group, which reads as the chart's peak.
+  let peak: ChartResult["peak"] = null;
+  const only = series.length === 1 ? series[0] : undefined;
+  for (const [index, value] of (only?.values ?? []).entries()) {
+    const bucket = buckets[index];
+    if (!only || value === null || !bucket || incomplete.includes(index)) {
+      continue;
+    }
+    if (!peak || value > peak.value) {
+      peak = {
+        series: only.label,
+        time: new Date(bucket.timestamp).toISOString(),
+        value,
+      };
+    }
+  }
+
+  return {
+    times: buckets.map((b) => new Date(b.timestamp).toISOString()),
+    incomplete,
+    outsideRetention: indexesWhere(buckets, outsideRetention),
+    series,
+    peak,
+  };
 }
 
 export default defineTool({
@@ -85,7 +160,7 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description:
-    "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split into the top 5 values of one attribute. Returns every bucket of each series, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
+    "Chart a count, rate, duration, or other aggregate of Sentry errors, logs, spans, metrics, or profiles over time, optionally split by one attribute into the 5 values with the most events. Returns every bucket of each series, with each group's event count when split, and MCP Apps hosts show it as an interactive chart. To find individual events, use the dataset search tools.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -111,7 +186,7 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Attribute to split by, such as `release` or `transaction`; plots its top 5 values. Not supported for profiles.",
+        "Attribute to split by, such as `release` or `transaction`; plots its 5 values with the most events. Not supported for profiles.",
       ),
     projectSlug: ParamProjectSlug.nullable().default(null),
     period: ParamPeriod.nullable()
@@ -193,6 +268,13 @@ export default defineTool({
       params.start !== null && params.end !== null
         ? { start: params.start, end: params.end }
         : { statsPeriod: params.period ?? DEFAULT_PERIOD };
+    const countYAxis = params.groupBy
+      ? countAggregate(params.dataset, params.yAxis)
+      : null;
+    // "Open in Sentry" ranks groups the same way the chart does.
+    const rankBy = countYAxis ?? params.yAxis;
+    const linkAggregates =
+      rankBy === params.yAxis ? [params.yAxis] : [params.yAxis, rankBy];
     const response = await apiService.getEventsTimeSeries({
       organizationSlug,
       query: params.query,
@@ -202,17 +284,22 @@ export default defineTool({
       dataset: params.dataset,
       ...timeParams,
       topEvents: params.groupBy
-        ? { groupBy: params.groupBy, limit: MAX_CHART_SERIES }
+        ? {
+            groupBy: params.groupBy,
+            limit: MAX_CHART_SERIES,
+            rankBy: countYAxis ?? undefined,
+          }
         : undefined,
     });
 
-    const meta = response.timeSeries[0]?.meta;
+    const meta = response.timeSeries.find(
+      (entry) => entry.yAxis === params.yAxis,
+    )?.meta;
     if (meta?.valueType === "string") {
       throw new UserInputError(
         `\`${params.yAxis}\` returns text, which cannot be charted. Use a numeric aggregate such as \`count()\`.`,
       );
     }
-    const { series, peak } = toChartSeries(response, params.yAxis);
 
     return structuredResult({
       title:
@@ -240,16 +327,15 @@ export default defineTool({
         projectId,
         params.dataset,
         // Discover reads group-by columns from `field`, so list it first.
-        params.groupBy ? [params.groupBy, params.yAxis] : [params.yAxis],
-        `-${params.yAxis}`,
-        [params.yAxis],
+        params.groupBy ? [params.groupBy, ...linkAggregates] : linkAggregates,
+        `-${rankBy}`,
+        linkAggregates,
         params.groupBy ? [params.groupBy] : [],
         timeParams.statsPeriod,
         timeParams.start,
         timeParams.end,
       ),
-      series,
-      peak,
+      ...toChart(response, params.yAxis, countYAxis),
       ingestion: toStructuredIngestion(response.meta?.ingestion),
     });
   },

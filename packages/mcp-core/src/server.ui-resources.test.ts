@@ -15,7 +15,7 @@ vi.mock("@sentry/core/server", () => ({
   wrapMcpServerWithSentry: vi.fn((server) => server),
 }));
 
-const CHART_URI = "ui://sentry/chart/v1.html";
+const CHART_URI = "ui://sentry/chart/v3.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 async function connect(skills: Skill[], experimentalMode = true) {

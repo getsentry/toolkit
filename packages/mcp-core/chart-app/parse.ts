@@ -7,7 +7,6 @@
 import type { ChartResult } from "../src/tools/support/chart/schema";
 
 type Series = ChartResult["series"][number];
-type Bucket = Series["buckets"][number];
 
 /** Thrown inside the parser; parseChartResult turns it into null. */
 class Invalid extends Error {}
@@ -29,11 +28,6 @@ function num(value: unknown): number {
   return value;
 }
 
-function bool(value: unknown): boolean {
-  if (typeof value !== "boolean") throw new Invalid();
-  return value;
-}
-
 function nullable<T>(parse: (value: unknown) => T, value: unknown): T | null {
   return value === null ? null : parse(value);
 }
@@ -43,22 +37,19 @@ function list<T>(parse: (value: unknown) => T, value: unknown): T[] {
   return value.map(parse);
 }
 
-function bucket(value: unknown): Bucket {
-  const b = record(value);
-  return {
-    time: str(b["time"]),
-    value: num(b["value"]),
-    incomplete: bool(b["incomplete"]),
-    outsideRetention: bool(b["outsideRetention"]),
-  };
+function index(value: unknown): number {
+  const n = num(value);
+  if (!Number.isInteger(n) || n < 0) throw new Invalid();
+  return n;
 }
 
 function series(value: unknown): Series {
   const s = record(value);
   return {
     label: str(s["label"]),
+    count: nullable(num, s["count"]),
     total: nullable(num, s["total"]),
-    buckets: list(bucket, s["buckets"]),
+    values: list((v) => nullable(num, v), s["values"]),
   };
 }
 
@@ -99,6 +90,9 @@ export function parseChartResult(value: unknown): ChartResult | null {
         end: nullable(str, range["end"]),
       },
       url: str(c["url"]),
+      times: list(str, c["times"]),
+      incomplete: list(index, c["incomplete"]),
+      outsideRetention: list(index, c["outsideRetention"]),
       series: list(series, c["series"]),
       peak: nullable(peak, c["peak"]),
       ingestion: nullable(ingestion, c["ingestion"]),

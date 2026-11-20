@@ -1,12 +1,16 @@
 /**
  * Draws a render_sentry_chart result as SVG: one area (or line, when there
  * are several series) per series, a y grid, time labels, a hatched band over
- * buckets that are still filling, and a hover tooltip. Values come from an
- * untrusted tool result, so text only ever goes in through textContent.
+ * buckets that are still filling, and a hover tooltip. A bucket with no data
+ * is a gap, not 0, and a bucket with data on neither side is a dot. Values
+ * come from an untrusted tool result, so text only ever goes in through
+ * textContent.
  */
 import type { ChartResult } from "../src/tools/support/chart/schema";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+/** A plotted bucket: x, y, and its index into `times`. */
+type Point = readonly [x: number, y: number, index: number];
 const HEIGHT = 220;
 const MARGIN = { top: 8, right: 8, bottom: 22, left: 48 };
 export const SERIES_COLORS = [
@@ -31,6 +35,16 @@ const compact = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+
+export function formatCount(count: number): string {
+  return compact.format(count);
+}
+
+/** A legend-sized label: a 40-character commit SHA becomes its short form. */
+export function shortLabel(label: string): string {
+  const short = label.replace(/\b([0-9a-f]{7})[0-9a-f]{33}\b/gi, "$1");
+  return short.length > 32 ? `${short.slice(0, 31)}…` : short;
+}
 
 export function formatValue(value: number, chart: ChartResult): string {
   if (chart.valueType === "duration") {
@@ -137,12 +151,12 @@ export function drawChart(
   const width = Math.max(container.clientWidth, 280);
   const plotWidth = width - MARGIN.left - MARGIN.right;
   const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
-  const times = chart.series[0]?.buckets.map((b) => Date.parse(b.time)) ?? [];
+  const times = chart.times.map((time) => Date.parse(time));
   const first = times[0] ?? 0;
   const last = times.at(-1) ?? first;
   const span = Math.max(last - first, 1);
   const scale = valueScale(
-    chart.series.flatMap((s) => s.buckets.map((b) => b.value)),
+    chart.series.flatMap((s) => s.values.filter((v) => v !== null)),
   );
   const { bottom, top, step } = scale;
   const x = (time: number) =>
@@ -210,8 +224,8 @@ export function drawChart(
   }
 
   // Buckets still filling: a hatched band from the first one to the end.
-  const firstFilling = chart.series[0]?.buckets.findIndex((b) => b.incomplete);
-  if (firstFilling !== undefined && firstFilling >= 0) {
+  const firstFilling = chart.incomplete[0];
+  if (firstFilling !== undefined) {
     const fillingStart = x(times[Math.max(firstFilling - 1, 0)] ?? last);
     svg(
       "rect",
@@ -238,48 +252,57 @@ export function drawChart(
   );
 
   const single = chart.series.length === 1;
+  const path = (pts: readonly Point[]) =>
+    pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
   chart.series.forEach((series, index) => {
     const color = SERIES_COLORS[index % SERIES_COLORS.length] ?? "#7553ff";
-    const points = series.buckets.map(
-      (b) => [x(Date.parse(b.time)), y(b.value)] as const,
-    );
-    const split = series.buckets.findIndex((b) => b.incomplete);
-    const settled = split < 0 ? points : points.slice(0, Math.max(split, 1));
-    const filling = split < 0 ? [] : points.slice(Math.max(split - 1, 0));
-    const path = (pts: readonly (readonly [number, number])[]) =>
-      pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
-    if (single && points.length > 1) {
-      svg(
-        "path",
-        {
-          d: `${path(points)}L${points.at(-1)?.[0]},${y(0)}L${points[0]?.[0]},${y(0)}Z`,
-          fill: color,
-          "fill-opacity": 0.16,
-        },
-        root,
-      );
+    // Runs of buckets with data. A null bucket ends a run, so it draws as a
+    // gap instead of a drop to 0.
+    const runs: Point[][] = [];
+    let run: Point[] | null = null;
+    for (const [i, time] of times.entries()) {
+      const value = series.values[i];
+      if (value === null || value === undefined) {
+        run = null;
+        continue;
+      }
+      if (!run) runs.push((run = []));
+      run.push([x(time), y(value), i]);
     }
-    svg(
-      "path",
-      { d: path(settled), fill: "none", stroke: color, "stroke-width": 2 },
-      root,
-    );
-    if (points.length === 1) {
-      const [px, py] = points[0] ?? [0, 0];
-      svg("circle", { cx: px, cy: py, r: 4, fill: color }, root);
-    }
-    if (filling.length > 1) {
-      svg(
-        "path",
-        {
-          d: path(filling),
-          fill: "none",
-          stroke: color,
-          "stroke-width": 2,
-          "stroke-dasharray": "4 3",
-        },
-        root,
-      );
+    for (const pts of runs) {
+      const [px, py] = pts[0] ?? [0, 0];
+      if (pts.length === 1) {
+        svg("circle", { cx: px, cy: py, r: 2.5, fill: color }, root);
+        continue;
+      }
+      if (single) {
+        svg(
+          "path",
+          {
+            d: `${path(pts)}L${pts.at(-1)?.[0]},${y(0)}L${px},${y(0)}Z`,
+            fill: color,
+            "fill-opacity": 0.16,
+          },
+          root,
+        );
+      }
+      const settled =
+        firstFilling === undefined
+          ? pts
+          : pts.filter(([, , i]) => i < firstFilling);
+      const filling =
+        firstFilling === undefined
+          ? []
+          : pts.filter(([, , i]) => i >= firstFilling - 1);
+      const line = { fill: "none", stroke: color, "stroke-width": 2 };
+      if (settled.length > 1) svg("path", { d: path(settled), ...line }, root);
+      if (filling.length > 1) {
+        svg(
+          "path",
+          { d: path(filling), ...line, "stroke-dasharray": "4 3" },
+          root,
+        );
+      }
     }
   });
 
@@ -325,15 +348,18 @@ export function drawChart(
     crosshair.setAttribute("visibility", "visible");
     const timeRow = document.createElement("div");
     timeRow.className = "time";
-    const incomplete = chart.series[0]?.buckets[index]?.incomplete;
+    const incomplete = chart.incomplete.includes(index);
     timeRow.textContent = `${formatTooltipTime(time, format)}${incomplete ? " (still filling)" : ""}`;
     const rows = chart.series.map((series, s) => {
-      const bucket = series.buckets[index];
+      const value = series.values[index] ?? null;
       const marker = markers[s];
-      if (bucket && marker) {
+      if (marker) {
         marker.setAttribute("cx", String(px));
-        marker.setAttribute("cy", String(y(bucket.value)));
-        marker.setAttribute("visibility", "visible");
+        marker.setAttribute("cy", String(y(value ?? 0)));
+        marker.setAttribute(
+          "visibility",
+          value === null ? "hidden" : "visible",
+        );
       }
       const row = document.createElement("div");
       row.className = "row";
@@ -341,10 +367,11 @@ export function drawChart(
       swatch.className = "swatch";
       swatch.style.background = SERIES_COLORS[s % SERIES_COLORS.length] ?? "";
       const label = document.createElement("span");
-      label.textContent = series.label;
-      const value = document.createElement("span");
-      value.textContent = bucket ? formatValue(bucket.value, chart) : "–";
-      row.append(swatch, label, value);
+      label.textContent = shortLabel(series.label);
+      const shown = document.createElement("span");
+      shown.textContent =
+        value === null ? "no data" : formatValue(value, chart);
+      row.append(swatch, label, shown);
       return row;
     });
     tooltip.replaceChildren(timeRow, ...rows);

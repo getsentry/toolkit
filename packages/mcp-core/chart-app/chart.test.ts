@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scaleFraction, valueScale } from "./chart";
+import { scaleFraction, shortLabel, valueScale } from "./chart";
 
 function plotted(values: number[]) {
   const scale = valueScale(values);
@@ -44,5 +44,24 @@ describe("valueScale", () => {
 
   it("gives an all-zero series a one-step domain", () => {
     expect(valueScale([0, 0])).toEqual({ bottom: 0, top: 1, step: 1 });
+  });
+});
+
+describe("shortLabel", () => {
+  it.each([
+    ["a commit SHA", "3f9c2e1a3f9c2e1a3f9c2e1a3f9c2e1a3f9c2e1a", "3f9c2e1"],
+    [
+      "a SHA after a package",
+      "frontend@3f9c2e1a3f9c2e1a3f9c2e1a3f9c2e1a3f9c2e1a",
+      "frontend@3f9c2e1",
+    ],
+    ["a short version", "frontend@2.4.1", "frontend@2.4.1"],
+    [
+      "a long value",
+      "/api/0/organizations/{organization_id_or_slug}/events/",
+      "/api/0/organizations/{organizat…",
+    ],
+  ])("shortens %s", (_, label, expected) => {
+    expect(shortLabel(label)).toBe(expected);
   });
 });

@@ -1227,9 +1227,9 @@ export class SentryApiService {
       }
     }
 
-    // Add sort parameter for all queries
+    // Explore reads the aggregate table's sort from `aggregateSort`.
     if (sort) {
-      urlParams.set("sort", sort);
+      urlParams.set(isAggregateQuery ? "aggregateSort" : "sort", sort);
     }
 
     this.appendExplorerTimeParams(urlParams, params);
@@ -4760,9 +4760,13 @@ export class SentryApiService {
       end?: string;
       /**
        * One series per value of `groupBy`, for the `limit` values with the
-       * highest `yAxis`, without an "Other" series.
+       * highest `rankBy` (default `yAxis`), without an "Other" series. A
+       * `rankBy` other than `yAxis` is fetched as a second yAxis, because
+       * Sentry only sorts top events by a selected column.
        */
-      topEvents?: { groupBy: string; limit: number } | undefined;
+      topEvents?:
+        | { groupBy: string; limit: number; rankBy?: string | undefined }
+        | undefined;
     },
     opts?: RequestOptions,
   ) {
@@ -4771,9 +4775,11 @@ export class SentryApiService {
     queryParams.set("query", query);
     queryParams.set("yAxis", yAxis);
     if (topEvents) {
+      const rankBy = topEvents.rankBy ?? yAxis;
+      if (rankBy !== yAxis) queryParams.append("yAxis", rankBy);
       queryParams.set("topEvents", String(topEvents.limit));
       queryParams.set("groupBy", topEvents.groupBy);
-      queryParams.set("sort", `-${yAxis}`);
+      queryParams.set("sort", `-${rankBy}`);
       queryParams.set("excludeOther", "1");
     }
     // Omit interval to let Sentry pick a sensible bucket size for the range.
