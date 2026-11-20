@@ -7,7 +7,6 @@
  * Spec: https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
  */
 import type { McpServer } from "@modelcontextprotocol/server";
-import { CHART_APP_HTML } from "./ui/chart-app.generated";
 
 /** The MIME type of an MCP Apps view. */
 export const UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
@@ -37,8 +36,12 @@ export interface UiResource {
   name: string;
   title: string;
   description: string;
-  /** A self-contained HTML5 document: inline scripts and styles only. */
-  html: string;
+  /**
+   * Loads the self-contained HTML5 document (inline scripts and styles only)
+   * on the first `resources/read`, so sessions that never render a view do
+   * not load it.
+   */
+  loadHtml(): Promise<string>;
   meta: UiResourceMeta;
 }
 
@@ -49,7 +52,8 @@ export const CHART_UI_RESOURCE: UiResource = {
   title: "Sentry Chart",
   description:
     "Interactive time series chart for render_sentry_chart results, with a range picker and a link to Sentry.",
-  html: CHART_APP_HTML,
+  loadHtml: async () =>
+    (await import("./ui/chart-app.generated")).CHART_APP_HTML,
   // Self-contained, so it loads nothing from the network.
   meta: { csp: {}, prefersBorder: true },
 };
@@ -92,12 +96,6 @@ export function registerUiResources(
     referenced.has(resource.uri),
   );
   for (const resource of resources) {
-    const content = {
-      uri: resource.uri,
-      mimeType: UI_RESOURCE_MIME_TYPE,
-      text: resource.html,
-      _meta: { ui: resource.meta },
-    };
     server.registerResource(
       resource.name,
       resource.uri,
@@ -107,7 +105,16 @@ export function registerUiResources(
         mimeType: UI_RESOURCE_MIME_TYPE,
         _meta: { ui: resource.meta },
       },
-      () => ({ contents: [content] }),
+      async () => ({
+        contents: [
+          {
+            uri: resource.uri,
+            mimeType: UI_RESOURCE_MIME_TYPE,
+            text: await resource.loadHtml(),
+            _meta: { ui: resource.meta },
+          },
+        ],
+      }),
     );
   }
   // Registration enables this by default, but the set of views is fixed.
