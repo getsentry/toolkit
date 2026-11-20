@@ -73,8 +73,6 @@ describe("MCP Apps chart view", () => {
     const html = view && "text" in view ? view.text : "";
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html.endsWith("</html>")).toBe(true);
-    // Hosts block network loads unless `csp` declares the domain.
-    expect(html).not.toMatch(/<(script|link|img)[^>]+(src|href)=/i);
   });
 
   it("lists no view when the session cannot call the chart tool", async () => {

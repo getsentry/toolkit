@@ -37,6 +37,11 @@ export interface UiResource {
   title: string;
   description: string;
   /**
+   * SHA-256 of the HTML that `uri` serves. A test fails when the HTML changes
+   * and this does not, so a change also bumps the version in `uri`.
+   */
+  htmlSha256: string;
+  /**
    * Loads the self-contained HTML5 document (inline scripts and styles only)
    * on the first `resources/read`, so sessions that never render a view do
    * not load it.
@@ -52,6 +57,8 @@ export const CHART_UI_RESOURCE: UiResource = {
   title: "Sentry Chart",
   description:
     "Interactive time series chart for render_sentry_chart results, with a range picker and a link to Sentry.",
+  htmlSha256:
+    "c42d34d3aa082a33b4ab293b509dbe4b2dbde7edc4965033cffa8b920fc6e39f",
   loadHtml: async () =>
     (await import("./ui/chart-app.generated")).CHART_APP_HTML,
   // Self-contained, so it loads nothing from the network.
