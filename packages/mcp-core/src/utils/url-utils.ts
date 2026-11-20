@@ -357,10 +357,12 @@ export function getSeerAutoReloadUrl(
   organizationSlug: string,
   protocol: SentryProtocol = "https",
 ): string {
-  const base = isPublicSentryHost(host)
-    ? `${protocol}://${organizationSlug}.sentry.io/settings/billing/overview/`
-    : `${protocol}://${host}/settings/${organizationSlug}/billing/overview/`;
-  return `${base}#open-seer-auto-reload-modal`;
+  return getSentryWebBaseUrl(
+    host,
+    organizationSlug,
+    "/settings/billing/overview/#open-seer-auto-reload-modal",
+    protocol,
+  );
 }
 
 /**

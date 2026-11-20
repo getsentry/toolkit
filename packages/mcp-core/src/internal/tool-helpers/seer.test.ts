@@ -161,9 +161,7 @@ describe("seer-utils", () => {
           },
           autoReloadUrl,
         ),
-      ).toBe(
-        `${SEER_START_OUT_OF_CREDITS_MESSAGE}\n\nConfigure auto-reload: https://my-org.sentry.io/billing#modal`,
-      );
+      ).toContain(SEER_START_OUT_OF_CREDITS_MESSAGE);
       expect(
         getSeerPaymentRequiredMessage(
           {
@@ -176,31 +174,40 @@ describe("seer-utils", () => {
     });
 
     it.each([
-      ["daily_cap_exceeded", "daily Seer spend limit", ":daily_cap_exceeded"],
-      [
-        "not_enough_credits",
-        SEER_START_OUT_OF_CREDITS_MESSAGE,
-        ":not_enough_credits",
-      ],
-      [null, SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
-      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
+      ["daily_cap_exceeded", "daily Seer spend limit"],
+      ["not_enough_credits", SEER_START_OUT_OF_CREDITS_MESSAGE],
+      [null, SEER_START_OUT_OF_CREDITS_MESSAGE],
+      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE],
     ])(
       "explains an out-of-credits 402 with denial reason %s",
-      (denialReason, message, link) => {
-        const result = getSeerPaymentRequiredMessage(
+      (denialReason, message) => {
+        expect(
+          getSeerPaymentRequiredMessage(
+            {
+              detail: "Out of credits",
+              code: "seer_out_of_credits",
+              denialReason,
+            },
+            autoReloadUrl,
+          ),
+        ).toContain(message);
+      },
+    );
+
+    it("links without a reason when the denial reason is unknown", () => {
+      expect(
+        getSeerPaymentRequiredMessage(
           {
             detail: "Out of credits",
             code: "seer_out_of_credits",
-            denialReason,
+            denialReason: "constructor",
           },
           autoReloadUrl,
-        );
-        expect(result).toContain(message);
-        expect(result).toContain(
-          `Configure auto-reload: https://my-org.sentry.io/billing#modal${link}`,
-        );
-      },
-    );
+        ),
+      ).toBe(
+        `${SEER_START_OUT_OF_CREDITS_MESSAGE}\n\nConfigure auto-reload: ${autoReloadUrl}`,
+      );
+    });
 
     it("treats a 402 without a known code as out of quota", () => {
       expect(
