@@ -12,6 +12,7 @@ import { updateFeedbackStatus } from "./utils.js";
 import { SentryFeedbackSchema } from "../../generated/output-schemas/feedback.js";
 
 export const resolveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Mark User Feedback as resolved",
     fullDescription:

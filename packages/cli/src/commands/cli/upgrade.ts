@@ -1144,6 +1144,7 @@ async function buildCheckResultWithChangelog(opts: {
 }
 
 export const upgradeCommand = buildCommand({
+  exposure: "hidden",
   auth: false,
   docs: {
     brief: "Update the Sentry CLI to the latest version",

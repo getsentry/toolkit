@@ -39,6 +39,8 @@ function formatGuide(data: InitOutput): string {
 
 export const initCommand = buildCommand({
   auth: false,
+  // Prints a static guide: no requests, no local files
+  exposure: "exposed",
   skipRcUrlCheck: true,
   docs: {
     brief: topLevelBrief("init"),

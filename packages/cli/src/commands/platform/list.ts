@@ -34,6 +34,7 @@ function formatPlatformsHuman(list: readonly string[]): string {
 }
 
 export const listCommand = buildCommand({
+  exposure: "exposed",
   auth: false,
   docs: {
     brief: "List all valid Sentry platform identifiers",

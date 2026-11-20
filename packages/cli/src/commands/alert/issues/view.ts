@@ -43,6 +43,7 @@ function formatIssueAlertView(data: IssueRuleResolution): string {
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View an issue alert rule",
     fullDescription: "View a single issue alert rule by ID or name.",

@@ -12,6 +12,7 @@ import { parseFilePath, parseText } from "../lib/completion-target.js";
 import { CliError, EXIT } from "../lib/errors.js";
 
 export const sendEnvelopeCommand = buildCommand({
+  exposure: "hidden",
   docs: {
     brief: "Send a Sentry envelope file (deprecated)",
     fullDescription:

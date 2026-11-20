@@ -426,6 +426,7 @@ async function preparePair(
 }
 
 export const xcodeCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Upload React Native sourcemaps (Xcode build step)",
     fullDescription:

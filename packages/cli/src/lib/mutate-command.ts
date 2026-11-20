@@ -20,6 +20,7 @@ import { isatty } from "node:tty";
 import type { Command, CommandContext } from "@stricli/core";
 import type { GenericSchema } from "valibot";
 import type { ParsedOrgProject } from "./arg-parsing.js";
+import type { CommandExposure } from "./command-access.js";
 import {
   buildCommand,
   type CommandDocumentation,
@@ -313,6 +314,7 @@ export function buildDeleteCommand<
     readonly func: SentryCommandFunction<FLAGS, ARGS, CONTEXT, NoInfer<OUTPUT>>;
     readonly output?: OutputConfig<OUTPUT, SCHEMA, TRANSFORMED>;
     readonly auth?: boolean;
+    readonly exposure: CommandExposure;
   },
   options?: DeleteCommandOptions,
 ): Command<CONTEXT> {

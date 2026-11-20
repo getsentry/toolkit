@@ -103,6 +103,7 @@ async function resolveCreateTarget(
 }
 
 export const createCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create an issue alert rule",
     fullDescription:

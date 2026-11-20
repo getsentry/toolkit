@@ -671,6 +671,7 @@ async function createOneProject(opts: {
 }
 
 export const createCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Create one or more projects",
     customUsage: ["[<org>/]<name>:<platform>..."],

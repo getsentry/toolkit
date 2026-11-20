@@ -133,6 +133,7 @@ type DeleteFlags = {
 };
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Delete a project",
     fullDescription:

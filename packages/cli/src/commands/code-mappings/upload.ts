@@ -170,6 +170,7 @@ async function readAndValidateMappings(
 // Command
 
 export const uploadCommand = buildCommand({
+  exposure: "stdio-only",
   auth: true,
   docs: {
     brief: "Upload code mappings for stack trace linking",

@@ -213,6 +213,7 @@ async function collectEnvToken(
 }
 
 export const statusCommand = buildCommand({
+  exposure: "stdio-only",
   auth: false,
   docs: {
     brief: "View authentication status",

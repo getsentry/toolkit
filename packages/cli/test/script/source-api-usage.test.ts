@@ -60,6 +60,8 @@ describe("source API usage", () => {
       operations: [],
       unresolvedRequests: [],
       deletes: false,
+      methods: [],
+      apiMethods: [],
     });
     expect(analysis.exports.get("src/routes.ts")?.get("routes")?.deletes).toBe(
       false,
@@ -180,6 +182,7 @@ describe("source API usage", () => {
       unresolvedRequests: [
         { method: "DELETE", reason: "Dynamic request identity" },
       ],
+      apiMethods: ["DELETE"],
     });
     expect(result.get("privateApi")).toMatchObject({
       deletes: true,
@@ -224,6 +227,12 @@ describe("source API usage", () => {
     ).toMatchObject({ operations: [operations[2]], deletes: true });
     expect(
       analysis.exports.get("src/commands/project.ts")?.get("safe"),
-    ).toEqual({ operations: [], unresolvedRequests: [], deletes: false });
+    ).toEqual({
+      operations: [],
+      unresolvedRequests: [],
+      deletes: false,
+      methods: [],
+      apiMethods: [],
+    });
   });
 });

@@ -25,6 +25,7 @@ type UnlinkFlags = {
 };
 
 export const unlinkCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Unlink an external issue",
     fullDescription:

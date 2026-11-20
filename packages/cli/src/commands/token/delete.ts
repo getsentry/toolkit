@@ -185,6 +185,7 @@ async function findToken(org: string, ref: TokenRef): Promise<OrgAuthToken> {
 }
 
 export const deleteCommand = buildDeleteCommand({
+  exposure: "exposed",
   docs: {
     brief: "Revoke an org auth token",
     customUsage: [USAGE],

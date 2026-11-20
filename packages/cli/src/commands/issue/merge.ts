@@ -244,6 +244,7 @@ async function orderForMerge(
 }
 
 export const mergeCommand = buildCommand({
+  exposure: "exposed",
   destructive: true,
   docs: {
     brief: "Merge 2+ issues into a single canonical group",

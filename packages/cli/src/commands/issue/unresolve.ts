@@ -27,6 +27,7 @@ function formatUnresolved(issue: SentryIssue): string {
 }
 
 export const unresolveCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "Reopen a resolved issue",
     fullDescription:

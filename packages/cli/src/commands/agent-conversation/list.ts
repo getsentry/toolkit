@@ -127,6 +127,7 @@ function jsonTransform(
 }
 
 export const listCommand = buildListCommand("agent-conversation", {
+  exposure: "exposed",
   docs: {
     brief: "List recent agent conversations",
     fullDescription:

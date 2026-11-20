@@ -121,6 +121,14 @@ parallel list of operation names or command vocabulary. Build diagnostics report
 raw or unpublished calls that the generated catalog cannot identify, so the
 relationships describe discovered usage rather than exhaustive coverage.
 
+The same step writes `src/generated/command-api-access.json`: whether each
+command's Sentry API requests only read (GET, HEAD, OPTIONS) or also write.
+It counts the requests outside the public catalog that `command-api.json`
+leaves out. Introspection combines it with the command's `destructive` flag
+and any declared `permission` into the command's permission class, and
+`check:command-access` fails when a declaration contradicts the requests or
+a command declares no exposure.
+
 Introspection derives canonical command paths, registered aliases, and group
 membership from the route tree. Groups collect their public commands' generated
 references, so adding a command requires no separate group mapping. A related API

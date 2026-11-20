@@ -47,6 +47,7 @@ const usageHint = () =>
 const log = logger.withTag("replay.download");
 
 export const downloadCommand = buildCommand({
+  exposure: "stdio-only",
   docs: {
     brief: "Download a Session Replay as rrweb JSON",
     fullDescription:

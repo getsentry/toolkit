@@ -94,6 +94,7 @@ function jsonTransformFeedbackView(
 }
 
 export const viewCommand = buildCommand({
+  exposure: "exposed",
   docs: {
     brief: "View a User Feedback item",
     fullDescription:

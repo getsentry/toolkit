@@ -1,13 +1,16 @@
 /** CLI conventions for the SDK's build-time API usage analyzer. */
 
+import { readFile } from "node:fs/promises";
 import {
   analyzeSourceApiUsage as analyze,
   type SourceApiOperation,
 } from "@sentry/api/source-analysis";
+import { glob } from "tinyglobby";
+import type { ApiEndpoint } from "../../src/lib/api-schema.js";
 
 export type { SourceApiOperation } from "@sentry/api/source-analysis";
 
-/** Discover command API usage and DELETE declarations without executing commands. */
+/** Discover command API usage, HTTP methods, and DELETE declarations without executing commands. */
 export function analyzeSourceApiUsage(
   sources: ReadonlyMap<string, string>,
   operations: readonly SourceApiOperation[],
@@ -54,6 +57,13 @@ export function analyzeSourceApiUsage(
               operations: usage.operations,
               unresolvedRequests: usage.unresolvedRequests,
               deletes: usage.methods.includes("DELETE"),
+              /** Every request method found, including requests outside the Sentry API. */
+              methods: usage.methods,
+              /** Methods of the Sentry API requests; `undefined` when unknown. */
+              apiMethods: [
+                ...usage.operations.map(({ method }) => method),
+                ...usage.unresolvedRequests.map(({ method }) => method),
+              ],
             },
           ]),
         ),
@@ -67,4 +77,38 @@ export function analyzeSourceApiUsage(
         factories.includes("buildDeleteCommand"),
     })),
   };
+}
+
+/**
+ * Analyze the CLI's own sources (`src/`, without tests or generated files)
+ * against the API catalog.
+ *
+ * It reads `api-schema.json` from disk rather than importing it:
+ * `command-api-analysis-worker.ts` imports this module before
+ * `script/generate.ts` has written the schema on a fresh checkout.
+ */
+export async function analyzeCliSources() {
+  const files = await glob("src/**/*.{ts,tsx}", {
+    ignore: ["src/generated/**", "**/*.test.ts"],
+  });
+  const sources = new Map(
+    await Promise.all(
+      files.map(async (file) => [file, await readFile(file, "utf-8")] as const),
+    ),
+  );
+  const endpoints = JSON.parse(
+    await readFile("src/generated/api-schema.json", "utf-8"),
+  ) as ApiEndpoint[];
+  const operations = endpoints.flatMap((endpoint) =>
+    endpoint.fn
+      ? [
+          {
+            functionName: endpoint.fn,
+            method: endpoint.method,
+            path: endpoint.path,
+          },
+        ]
+      : [],
+  );
+  return { operations, analysis: analyzeSourceApiUsage(sources, operations) };
 }
