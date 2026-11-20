@@ -1672,6 +1672,80 @@ describe("search_events", () => {
     expect(mockGenerateText).toHaveBeenCalled();
   });
 
+  // Natural-language requests that also contain a filter token used to run
+  // verbatim, prose included, and silently match nothing.
+  it.each([
+    {
+      query:
+        "environment:production, count grouped by span.op and sentry.release, last 24h",
+      agentQuery: "environment:production",
+      executed: "environment:production",
+    },
+    {
+      query:
+        "environment:production http.server spans, show timestamp, segment name, release",
+      agentQuery: "environment:production span.op:http.server",
+      executed: "environment:production span.op:http.server",
+    },
+    {
+      query:
+        "production transactions (is_transaction:true), show timestamp, transaction, span.op, release",
+      agentQuery: "sentry.environment:production AND is_transaction:true",
+      executed: "sentry.environment:production AND is_transaction:true",
+    },
+    // A single free-text term next to a filter is still a literal search.
+    {
+      query: "span.op:db SELECT",
+      agentQuery: "span.op:db",
+      executed: "span.op:db SELECT",
+    },
+  ])(
+    "runs $executed for the spans query $query",
+    async ({ query, agentQuery, executed }) => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("spans", agentQuery, undefined, undefined, "-timestamp"),
+      );
+
+      let executedQuery: string | null = null;
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            executedQuery = new URL(request.url).searchParams.get("query");
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          query,
+          dataset: "spans",
+          fields: null,
+          sort: null,
+          period: "7d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+      expect(executedQuery).toBe(executed);
+    },
+  );
+
   it("should handle metrics dataset queries", async () => {
     mockGenerateText.mockResolvedValueOnce(
       mockAIResponse(
