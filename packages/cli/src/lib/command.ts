@@ -40,7 +40,7 @@ import {
 import type { GenericSchema } from "valibot";
 import type { Writer } from "../types/index.js";
 import { getInvocationCommand, sentry } from "./app-identity.js";
-import { appendCacheHint } from "./cache-hint.js";
+import { appendCacheHint, resolveRefreshFlag } from "./cache-hint.js";
 import { type CommandExample, exampleSteps } from "./command-example.js";
 import {
   choiceListParser,
@@ -226,6 +226,17 @@ type LocalCommandBuilderArguments<
    * `issue merge`, `trial start`).
    */
   readonly destructive?: boolean;
+  /**
+   * Mark the command as streaming until stopped: `true` when every run
+   * streams (`log tail`), or `{ flag }` when passing that flag switches it
+   * into streaming (`dashboard view --refresh`).
+   *
+   * The library SDK returns an `AsyncIterable` for streaming invocations.
+   * The SDK generator and `sdk.run()` both derive that from this marker
+   * through `streaming-commands.ts`, so nothing else lists streaming
+   * commands.
+   */
+  readonly streams?: true | { readonly flag: string };
 };
 
 // ---------------------------------------------------------------------------
@@ -612,6 +623,10 @@ export function buildCommand<
     aliases: mergedAliases,
   };
 
+  // Derive the cache-hint refresh flag from the final parameters so the
+  // footer can never name a flag the command binds to something else.
+  const refreshFlag = resolveRefreshFlag(mergedFlags, mergedAliases);
+
   /**
    * If the yielded value is a {@link CommandOutput}, render it via
    * the output config. Void/undefined/Error/other values are ignored.
@@ -909,14 +924,14 @@ export function buildCommand<
 
       // Render phase: output finalization.
       // Append cache-age hint automatically so every command gets
-      // "cached · 3m ago · use -f to refresh" when data was cached.
+      // "cached · 3m ago · use <refreshFlag> to refresh" when data was cached.
       // Skip bare `return;` paths (e.g. `--web` which opens a browser
       // without yielding) — no rendered output should mean no footer.
       // `Tip:` text is stripped first when tips are disabled
       // (`sentry cli defaults tips off` / SENTRY_DISABLE_TIPS); other
       // notices and the cache-age staleness indicator are kept.
       const finalHint = returned
-        ? appendCacheHint(applyTipsPreference(returned.hint))
+        ? appendCacheHint(applyTipsPreference(returned.hint), refreshFlag)
         : undefined;
       await withTracing("render", "cli.command.render", () => {
         writeFinalization(stdout, finalHint, cleanFlags["json"], renderer);
@@ -974,6 +989,10 @@ export function buildCommand<
   }
   if (builderArgs.destructive) {
     (cmd as unknown as Record<string, unknown>)["__destructive"] = true;
+  }
+  if (builderArgs.streams) {
+    (cmd as unknown as Record<string, unknown>)["__streams"] =
+      builderArgs.streams;
   }
 
   // Attach the JSON fields to the built command as a non-standard property.

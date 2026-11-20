@@ -44,6 +44,10 @@ import {
 import { LOG_LEVEL_NAMES, logger, setLogLevel } from "../../src/lib/logger.js";
 import { DRY_RUN_FLAG, YES_FLAG } from "../../src/lib/mutate-command.js";
 import { resolveOrgAndProject } from "../../src/lib/resolve-target.js";
+import {
+  clearLastCacheHitAge,
+  setLastCacheHitAgeForTesting,
+} from "../../src/lib/response-cache.js";
 import { buildRouteMap } from "../../src/lib/route-map.js";
 
 /** Minimal context for test commands */
@@ -1336,6 +1340,55 @@ describe("buildCommand return-based output", () => {
     expect(output).toContain("Value: 42");
     expect(output).toContain("Showing 10 of 25 items");
     expect(output).not.toContain("Tip:");
+  });
+
+  test("cache hint names the command's own refresh flag", async () => {
+    const makeCommand = (aliases: Record<string, string>) =>
+      buildCommand<
+        { fresh: boolean; follow: boolean },
+        [],
+        TestContext,
+        { value: number }
+      >({
+        auth: false,
+        docs: { brief: "Test" },
+        output: { human: (d: { value: number }) => `Value: ${d.value}` },
+        parameters: {
+          flags: {
+            fresh: { kind: "boolean", brief: "Fresh", default: false },
+            follow: { kind: "boolean", brief: "Follow", default: false },
+          },
+          aliases,
+        },
+        async *func(this: TestContext) {
+          yield new CommandOutput({ value: 42 });
+          return {};
+        },
+      });
+    const runWith = async (aliases: Record<string, string>) => {
+      const app = buildApplication(
+        buildRouteMap({
+          routes: { test: makeCommand(aliases) },
+          docs: { brief: "Test app" },
+        }),
+        { name: "test" },
+      );
+      const ctx = createTestContext();
+      await run(app, ["test"], ctx as TestContext);
+      return ctx.output.join("");
+    };
+
+    setLastCacheHitAgeForTesting(180_000);
+    try {
+      const followOwnsF = await runWith({ f: "follow" });
+      expect(followOwnsF).toContain("cached · 3m ago · use --fresh to refresh");
+      expect(followOwnsF).not.toContain("use -f");
+
+      const freshOwnsF = await runWith({ f: "fresh" });
+      expect(freshOwnsF).toContain("cached · 3m ago · use -f to refresh");
+    } finally {
+      clearLastCacheHitAge();
+    }
   });
 
   test("void return does nothing (no crash)", async () => {

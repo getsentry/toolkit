@@ -40,12 +40,15 @@ describe("generated SDK flag types", () => {
 
   test("streaming overloads accept the target positional", () => {
     // Streaming calls still take their target as trailing positionals, e.g.
-    // `sdk.log.list({ follow: "5" }, "org/project")` must type as an AsyncIterable.
-    expect(declarations).toContain(
-      "(params: LogListParams & { follow: string; }, ...positional: string[]): AsyncIterable<unknown>;",
-    );
+    // `sdk.dashboard.view({ refresh: "30" }, "org/123")` must type as an AsyncIterable.
     expect(declarations).toContain(
       "(params: DashboardViewParams & { refresh: string; }, ...positional: string[]): AsyncIterable<unknown>;",
+    );
+  });
+
+  test("always-streaming commands return an AsyncIterable without a flag", () => {
+    expect(declarations).toContain(
+      "tail(params?: LogTailParams, ...positional: string[]): AsyncIterable<unknown>;",
     );
   });
 });
