@@ -1018,6 +1018,49 @@ describe("search_issue_events", () => {
     );
   });
 
+  it("keeps the case of filter values the agent lowercases", async () => {
+    // Sentry matches tag values case-sensitively, so a lowercased
+    // environment matches no events.
+    mockGenerateText.mockResolvedValue(
+      mockAIResponse(
+        'environment:production url:"*/Checkout/*"',
+        ["id", "timestamp", "environment", "url"],
+        "-timestamp",
+      ),
+    );
+
+    let executedQuery: string | null = null;
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/*/issues/*/events/",
+        ({ request }) => {
+          executedQuery = new URL(request.url).searchParams.get("query");
+          return HttpResponse.json([]);
+        },
+      ),
+    );
+
+    const result = await searchIssueEvents.handler(
+      {
+        organizationSlug: "test-org",
+        issueId: "MCP-41",
+        query: "environment:Production url:*/Checkout/*",
+        sort: "-timestamp",
+        period: "90d",
+        projectSlug: null,
+        regionUrl: null,
+        limit: 2,
+        includeExplanation: false,
+      },
+      mockContext,
+    );
+
+    expect(executedQuery).toBe('environment:Production url:"*/Checkout/*"');
+    expect(sc(result).executedSearch.query).toBe(
+      'environment:Production url:"*/Checkout/*"',
+    );
+  });
+
   it("should respect custom limit parameter", async () => {
     mockGenerateText.mockResolvedValue(mockAIResponse());
 

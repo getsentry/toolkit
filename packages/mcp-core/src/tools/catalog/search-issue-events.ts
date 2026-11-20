@@ -20,7 +20,10 @@ import {
   buildIssueEventResults,
   searchIssueEventsOutputSchema,
 } from "../support/search-issue-events/results";
-import { parseIssueParams } from "../support/search-issue-events/utils";
+import {
+  parseIssueParams,
+  restoreFilterValueCase,
+} from "../support/search-issue-events/utils";
 
 function buildIssueEventSearchRepairPrompt(params: {
   query?: string | undefined;
@@ -187,7 +190,7 @@ export default defineTool({
         );
       }
 
-      query = parsed.query || "";
+      query = restoreFilterValueCase(params.query ?? "", parsed.query || "");
       sortParam = parsed.sort;
       explanation = parsed.explanation;
 

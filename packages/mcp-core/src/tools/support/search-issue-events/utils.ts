@@ -81,11 +81,53 @@ ${EXAMPLE_QUERIES.map((ex) => `- "${ex.description}" →\n  ${JSON.stringify(ex.
 
 IMPORTANT:
 - Use these tag names exactly as shown in your query
-- Tags are case-insensitive
+- Tag values are case-sensitive: keep them exactly as the user wrote them (environment:Production is not environment:production)
 - Use wildcards with quotes: url:"*/checkout/*"
 - Your query should NOT include "issue:" prefix - the handler adds it automatically`;
     },
   });
+}
+
+// `key:value` filters at a token start or after `(`, with a quoted or bare
+// value, e.g. `environment:Production` or `!url:"*/Checkout/*"`.
+const FILTER_TOKEN_PATTERN = /(?<=^|[\s(])(!?[\w.\-[\]]+):("[^"]*"|[^\s()"]+)/g;
+
+function unquote(value: string): string {
+  return value.startsWith('"') ? value.slice(1, -1) : value;
+}
+
+function filterKey(key: string, value: string): string {
+  return `${key.toLowerCase()}:${unquote(value).toLowerCase()}`;
+}
+
+/**
+ * Put back the case of filter values that the agent changed only in case.
+ *
+ * Sentry matches tag values case-sensitively, so the agent turning the
+ * user's `environment:Production` into `environment:production` makes the
+ * search return no events.
+ */
+export function restoreFilterValueCase(
+  userQuery: string,
+  agentQuery: string,
+): string {
+  const userValues = new Map<string, string>();
+  for (const [, key = "", value = ""] of userQuery.matchAll(
+    FILTER_TOKEN_PATTERN,
+  )) {
+    userValues.set(filterKey(key, value), unquote(value));
+  }
+
+  return agentQuery.replace(
+    FILTER_TOKEN_PATTERN,
+    (token, key: string, value: string) => {
+      const userValue = userValues.get(filterKey(key, value));
+      if (userValue === undefined || userValue === unquote(value)) {
+        return token;
+      }
+      return `${key}:${value.startsWith('"') ? `"${userValue}"` : userValue}`;
+    },
+  );
 }
 
 /**
