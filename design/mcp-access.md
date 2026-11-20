@@ -17,6 +17,12 @@ each session reaches only the Sentry data and tools that they chose.
 - On remote HTTP, the MCP client never holds the user's Sentry credentials.
 - Stale or invalid access fails closed: the user signs in again instead of a
   session continuing on a credential that Sentry rejects.
+- An MCP client can ask that the user sign in to Sentry through a named
+  identity provider. Sentry decides what each provider name does. Sentry MCP
+  only carries the request, and it never counts as proof of who the user is.
+- A remote connection has 30 minutes after approval to finish on Sentry, so
+  a new user can sign in, create a Sentry account, and approve consent
+  without starting over.
 
 ## Entry points
 
@@ -26,6 +32,8 @@ each session reaches only the Sentry data and tools that they chose.
   `/mcp/<org>/<project>`, with Sentry OAuth and a skill choice on the consent
   screen.
 - Remote HTTP with a `Sentry-Bearer` token, which the caller owns.
+- `idp_hint` on the remote OAuth authorization request, which names the
+  identity provider for the sign-in on Sentry.
 - Skills: `inspect`, `seer`, `triage`, and `project-management`, chosen with
   `--skills`, `--disable-skills`, `--all-skills`, `MCP_SKILLS`, or the consent
   screen.
@@ -41,6 +49,12 @@ each session reaches only the Sentry data and tools that they chose.
 - A scoped session works only on its org or project, and a token minted for a
   scoped URL does not work on a broader one.
 - Refreshing access never widens it.
+- A sign-in hint never skips the Sentry MCP approval screen or Sentry's
+  consent screen. A hinted connection always shows Sentry's consent screen,
+  even when the user approved Sentry MCP before.
+- Sentry MCP forwards one well-formed hint to Sentry after the user approves.
+  A missing, repeated, or malformed hint is dropped, and the connection runs
+  as if the client sent none.
 - An org auth token is sent only to the Sentry host it was issued for.
 - Without a login or a token, `sentry mcp` exits with a message that says to
   run `sentry auth login`. It does not start a session that fails every call.

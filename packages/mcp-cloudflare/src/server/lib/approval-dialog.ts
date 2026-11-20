@@ -1059,6 +1059,7 @@ const ApprovedAuthRequestSchema = z.looseObject({
 const ApprovalStateSchema = z.looseObject({
   oauthReqInfo: ApprovedAuthRequestSchema,
   forcePrompt: z.boolean().optional(),
+  idpHint: z.string().optional(),
 });
 
 /** The signed state the consent form passes back on submission. */
