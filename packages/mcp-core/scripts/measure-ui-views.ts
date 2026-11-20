@@ -72,6 +72,8 @@ async function readViews(): Promise<ViewStats[]> {
       constraints: { organizationSlug: null, projectSlug: null },
       sentryHost: "sentry.io",
     },
+    // MCP Apps views ship to experimental sessions only for now.
+    experimentalMode: true,
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();

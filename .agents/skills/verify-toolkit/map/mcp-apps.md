@@ -10,7 +10,7 @@ the host theme, and calls the tool again through the host. The goals are in
 
 - `tool-meta` `render_sentry_chart` sets `_meta.ui.resourceUri` to a `ui://` URI and `_meta["openai/outputTemplate"]` to the same URI, with no deprecated flat `ui/resourceUri` key. Proof: `drive`.
 - `view-resource` `resources/list` lists that URI, and `resources/read` returns it with mime type `text/html;profile=mcp-app` and an HTML document. Proof: `drive`.
-- `view-listing` A session that cannot call `render_sentry_chart` lists no resources and no resources capability. Proof: `test` with `pnpm --filter @sentry/mcp-core exec vitest run src/server.ui-resources.test.ts`.
+- `view-listing` A session that cannot call `render_sentry_chart`, including every stable (non-experimental) session, lists no resources and no resources capability. Proof: `test` with `pnpm --filter @sentry/mcp-core exec vitest run src/server.ui-resources.test.ts`.
 - `view-renders` Mounted through the ext-apps AppBridge, which also checks the view's hand-written MCP Apps bridge against the reference host, the view draws the series, shows a tooltip on hover, and hides its empty state. Proof: `drive`.
 - `view-theme` The view follows the host's light or dark theme. Proof: `drive`.
 - `range-roundtrip` The range picker calls `render_sentry_chart` through the host with the new period and redraws without remounting. Proof: `drive`.
@@ -21,7 +21,7 @@ the host theme, and calls the tool again through the host. The goals are in
 
 ## How to get to it
 
-- An MCP Apps host that lists `render_sentry_chart` and reads its `ui://` resource, over stdio (`sentry mcp`, `npx @sentry/mcp-server`) or remote HTTP.
+- An MCP Apps host that lists `render_sentry_chart` and reads its `ui://` resource, over stdio (`sentry mcp --experimental`, `npx @sentry/mcp-server --experimental`) or remote HTTP in experimental mode. Stable sessions list neither the tool nor the view.
 - A host with no MCP Apps support gets the same tool with a text and structured result only.
 
 ## Driving it with mcp-apps-host.mjs

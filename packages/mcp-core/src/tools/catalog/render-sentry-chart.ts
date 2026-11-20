@@ -77,6 +77,9 @@ function toChartSeries(
 }
 
 export default defineTool({
+  // MCP Apps views ship to experimental sessions first.
+  experimental: true,
+  includeInSkillDefinitions: false,
   name: "render_sentry_chart",
   title: "Render Sentry Chart",
   skills: ["inspect", "triage", "seer"],
