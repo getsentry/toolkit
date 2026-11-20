@@ -397,20 +397,20 @@ describe("SeerError", () => {
     expect(formatted).toContain("my-org");
   });
 
-  test("format() includes billing URL for out_of_credits with orgSlug", () => {
+  test("format() links auto-reload modal for out_of_credits with orgSlug", () => {
     const formatted = new SeerError("out_of_credits", "my-org").format();
     expect(formatted).toContain("Your organization is out of Seer credits.");
     expect(formatted).toContain(
-      "https://my-org.sentry.io/settings/billing/overview/?product=seer",
+      "https://my-org.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal",
     );
   });
 
-  test("format() includes billing URL for daily_cap_exceeded with orgSlug", () => {
+  test("format() links auto-reload modal with reason for daily_cap_exceeded with orgSlug", () => {
     const formatted = new SeerError("daily_cap_exceeded", "my-org").format();
     expect(formatted).toBe(
       "Your organization has reached its daily Seer spend limit.\n\n" +
         "Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n" +
-        "  https://my-org.sentry.io/settings/billing/overview/?product=seer",
+        "  https://my-org.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal:daily_cap_exceeded",
     );
   });
 
