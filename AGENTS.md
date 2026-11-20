@@ -16,6 +16,12 @@ Toolkit contains the Sentry CLI, the Sentry MCP server, and shared code. Product
 - **Lint rules**: Write new lint rules for Oxlint: a built-in rule in `.oxlintrc.json`, or a custom rule in `packages/cli/lint-rules/cli-oxlint-plugin.js`. Do not add ast-grep rules. See docs/contributing/coding-guidelines.md#formatting-and-linting.
 - **Package CI**: Put checks for one workspace package in its `package.json` scripts and `sentryCi`, which `test.yml` runs per project. Do not add a workflow for them. See docs/operations/github-actions.md#package-ci-checks.
 
+## Enforced Rules
+
+| Rule                                                                                                                                            | Enforced by                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Move Cloudflare traffic only with `deployVersions()`, never `wrangler versions deploy`; Cloudflare 404s (100146) on a fresh version for seconds | `scripts/deploy-workflow.test.mjs` (`pnpm run test:ci-projects`) |
+
 ## Repository Structure
 
 ```
