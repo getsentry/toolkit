@@ -36,6 +36,7 @@ import {
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
 import { withCallSignal } from "./internal/tool-helpers/call-signal";
+import { openOutputSchema } from "./internal/tool-helpers/output-schema";
 import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { MCP_SERVER_INFO } from "./constants";
@@ -339,7 +340,15 @@ export function buildServer({
     logIssue(error, transportLogOptions);
   };
   for (const { name, config, handler } of registrations) {
-    server.registerTool(name, config, handler);
+    server.registerTool(
+      name,
+      {
+        ...config,
+        outputSchema:
+          config.outputSchema && openOutputSchema(config.outputSchema),
+      },
+      handler,
+    );
   }
   registerUiResources(
     server,

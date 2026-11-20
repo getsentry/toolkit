@@ -166,6 +166,13 @@ Policy (encoded in `packages/mcp-core/src/internal/tool-helpers/results.ts`):
   what the framework already checks. Shared builders should declare their
   return type (`StructuredToolOutput<z.output<typeof schema>>`) so
   `structuredResult` gets its type from there.
+- Output schema changes are additive only. Clients validate results against
+  the `tools/list` they cached when they connected, often across our deploys.
+  The server lists every output object without `additionalProperties: false`
+  (`internal/tool-helpers/output-schema.ts`), so a new field is safe. Removing
+  or renaming a field, making a required field optional or nullable, or
+  widening a value (a new enum member or union arm, a broader type) still
+  breaks those clients.
 - Do not duplicate a large structured payload into a markdown artifact block.
 - Treat `structuredContent` as a stable product contract, not a raw upstream API
   passthrough. Map only documented fields that callers should depend on.
