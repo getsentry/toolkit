@@ -272,53 +272,57 @@ describe("search_events", () => {
     expect(result).toContain("No results found");
   });
 
-  it("keeps an issue short ID the agent rewrites", async () => {
-    mockGenerateText.mockResolvedValueOnce(
-      mockAIResponse(
-        "errors",
-        "issue:PROJ-2B",
-        ["count()"],
-        undefined,
-        "-count()",
-      ),
-    );
+  it.each([
+    ["a bare", "issue:PROJ-2B3", "issue:PROJ-2B"],
+    [
+      "a grouped",
+      "(issue:PROJ-2B3 OR issue:OTHER-1)",
+      "(issue:PROJ-2B OR issue:OTHER-1)",
+    ],
+  ])(
+    "keeps %s issue short ID the agent rewrites",
+    async (_, query, rewritten) => {
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse("errors", rewritten, ["count()"], undefined, "-count()"),
+      );
 
-    mswServer.use(
-      http.get(
-        "https://sentry.io/api/0/organizations/test-org/events/",
-        ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("query")).toBe("issue:PROJ-2B3");
-          return HttpResponse.json({ data: [] });
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            const url = new URL(request.url);
+            expect(url.searchParams.get("query")).toBe(query);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      const result = await searchEvents.handler(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query,
+          fields: ["count()"],
+          sort: null,
+          period: "24h",
+          limit: 10,
+          includeExplanation: false,
         },
-      ),
-    );
+        {
+          accessToken: "test-token",
+          userId: "user-123",
+          clientId: "client-123",
+          grantedSkills: new Set(),
+          constraints: {},
+          sentryHost: "sentry.io",
+        },
+      );
 
-    const result = await searchEvents.handler(
-      {
-        organizationSlug: "test-org",
-        regionUrl: null,
-        projectSlug: null,
-        dataset: "errors",
-        query: "issue:PROJ-2B3",
-        fields: ["count()"],
-        sort: null,
-        period: "24h",
-        limit: 10,
-        includeExplanation: false,
-      },
-      {
-        accessToken: "test-token",
-        userId: "user-123",
-        clientId: "client-123",
-        grantedSkills: new Set(),
-        constraints: {},
-        sentryHost: "sentry.io",
-      },
-    );
-
-    expect(result).toContain("No results found");
-  });
+      expect(result).toContain("No results found");
+    },
+  );
 
   it("renders a timeseries when the agent returns timeSeries (per-hour)", async () => {
     const output = {

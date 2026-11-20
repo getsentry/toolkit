@@ -403,7 +403,10 @@ function preservesSearchTokens(originalQuery: string, repairedQuery: string) {
   );
 }
 
-const ISSUE_FILTER_PATTERN = /^!?issue(?:\.id)?:\S/;
+// `issue:` or `issue.id:` filters at a token start or after `(`, with a quoted,
+// bracketed list, or bare value, e.g. `(!issue:"PROJ-1" OR issue:[A, B])`.
+const ISSUE_FILTER_PATTERN =
+  /(?<=^|[\s(])!?issue(?:\.id)?:(?:"[^"]*"|\[[^\]]*\]|[^\s()]+)/g;
 
 /**
  * Whether the agent changed or dropped an explicit `issue:` filter.
@@ -414,10 +417,11 @@ const ISSUE_FILTER_PATTERN = /^!?issue(?:\.id)?:\S/;
  * errors dataset skips validation.
  */
 function changesIssueFilter(originalQuery: string, repairedQuery: string) {
-  return tokenizeSearchQuery(originalQuery).some(
-    (token) =>
-      ISSUE_FILTER_PATTERN.test(token) &&
-      !containsSearchToken(repairedQuery, token),
+  const repairedFilters = new Set(
+    repairedQuery.match(ISSUE_FILTER_PATTERN) ?? [],
+  );
+  return (originalQuery.match(ISSUE_FILTER_PATTERN) ?? []).some(
+    (filter) => !repairedFilters.has(filter),
   );
 }
 
