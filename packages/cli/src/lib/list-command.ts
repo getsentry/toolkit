@@ -208,8 +208,8 @@ export const FRESH_FLAG = {
  * aliases: { ...FRESH_ALIASES, w: "web" }
  * ```
  *
- * **Note**: Commands that use `-f` for a different flag (e.g. `log list`
- * uses `-f` for `--follow`) should NOT spread this constant.
+ * A command with `--fresh` must not bind `-f` to anything else; see
+ * `design/sentry-cli.md` and `test/lib/short-flag-conventions.test.ts`.
  */
 export const FRESH_ALIASES = { f: "fresh" } as const;
 
@@ -498,13 +498,12 @@ type BaseFlags = Readonly<Partial<Record<string, unknown>>>;
  * Options for controlling which flags {@link buildListCommand} auto-injects.
  *
  * By default, `buildListCommand` adds `--fresh`, `--cursor`, and their aliases
- * (`-f`, `-c`). Use these options to opt out when a command has conflicts.
+ * (`-f`, `-c`). `-f` always means `--fresh` (see `design/sentry-cli.md`), so
+ * only the cursor flag can be opted out.
  */
 export type ListCommandOptions = {
-  /** Skip injecting `--cursor` flag and `-c` alias (e.g., log list uses streaming). */
+  /** Skip injecting `--cursor` flag and `-c` alias (e.g., log list has no pagination). */
   noCursorFlag?: boolean;
-  /** Skip injecting `-f` alias for `--fresh` (e.g., log list uses `-f` for `--follow`). */
-  noFreshAlias?: boolean;
 };
 
 /**
@@ -514,7 +513,7 @@ export type ListCommandOptions = {
  * This is a drop-in replacement for `buildCommand` that:
  * 1. Intercepts subcommand names passed through plural aliases
  * 2. Auto-injects `--fresh` and `--cursor` flags (unless already defined)
- * 3. Auto-injects `-f` and `-c` aliases (with opt-outs via `options`)
+ * 3. Auto-injects `-f` and `-c` aliases (`-c` can be opted out via `options`)
  * 4. Auto-calls `applyFreshFlag(flags)` before the command function runs
  *
  * Commands that define their own `cursor` or `fresh` flags (e.g., with a
@@ -563,8 +562,8 @@ export function buildListCommand<
     mergedFlags["cursor"] = LIST_CURSOR_FLAG;
   }
 
-  // Inject -f alias unless opted out or already defined
-  if (!(options?.noFreshAlias || "f" in mergedAliases)) {
+  // Inject -f alias unless already defined
+  if (!("f" in mergedAliases)) {
     mergedAliases["f"] = "fresh";
   }
 

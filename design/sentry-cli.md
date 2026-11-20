@@ -32,7 +32,12 @@ a terminal, with as little setup as the current project allows.
 - The CLI never prints a token in full.
 - Telemetry goes only to the Sentry CLI's own project, and
   `SENTRY_CLI_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` turns it off.
+- `-f` means `--fresh` in every command that can bypass the response cache,
+  and a cached result's footer names the flag that refreshes that command.
+- Live output is its own command, such as `sentry log tail`, not a mode flag
+  on a list or view command. List and view commands return once.
 
 ## Gaps
 
-None.
+- `sentry dashboard view --refresh` keeps redrawing through a flag instead of
+  its own command.

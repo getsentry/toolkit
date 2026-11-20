@@ -136,8 +136,12 @@ describe("cache hint refresh flag for registered commands", () => {
     return resolveRefreshFlag(flags, aliases);
   }
 
-  test("log list names --fresh because -f is --follow", () => {
-    expect(refreshFlagFor("log list")).toBe("--fresh");
+  test("log list names -f, the regression from getsentry/toolkit#2442", () => {
+    expect(refreshFlagFor("log list")).toBe("-f");
+  });
+
+  test("log tail streams live data and suggests no refresh flag", () => {
+    expect(refreshFlagFor("log tail")).toBeUndefined();
   });
 
   test("issue list keeps the -f shorthand", () => {

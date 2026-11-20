@@ -72,7 +72,7 @@ toolkit/
 │       │   │   ├── integration/ # delete, list
 │       │   │   ├── issue/       # archive, events, explain, link, list, merge, plan, resolve, tags, unlink, unresolve, view
 │       │   │   ├── local/       # close, create, list, reset, restart, retention, run, serve, start, status, stop, view
-│       │   │   ├── log/         # list, view
+│       │   │   ├── log/         # list, tail, view
 │       │   │   ├── monitor/     # list, run
 │       │   │   ├── org/         # list, view
 │       │   │   ├── platform/    # list

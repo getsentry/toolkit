@@ -277,14 +277,15 @@ The WASM SQLite fallback (Node.js 20–22.14) does not support [WAL mode](https:
 
 ## Streaming Commands
 
-Two commands support real-time streaming: `log list --follow` and `dashboard view --refresh`.
-When using streaming flags, methods return an `AsyncIterable` instead of a `Promise`:
+Two commands support real-time streaming: `log tail` and `dashboard view --refresh`.
+`sdk.log.tail()` always returns an `AsyncIterable`; `dashboard view` returns one when you
+pass `--refresh`. Other methods return a `Promise`:
 
 ```typescript
 const sdk = createSentrySDK({ token: "sntrys_..." });
 
 // Stream logs as they arrive (polls every 5 seconds)
-for await (const log of sdk.log.list({ follow: "5" }, "acme/backend")) {
+for await (const log of sdk.log.tail({ interval: 5 }, "acme/backend")) {
   console.log(log);
 }
 
@@ -294,7 +295,7 @@ for await (const snapshot of sdk.run("dashboard", "view", "123", "--refresh", "3
 }
 
 // Stop streaming by breaking out of the loop
-for await (const log of sdk.log.list({ follow: "2" })) {
+for await (const log of sdk.log.tail()) {
   if (someCondition) break; // Streaming stops immediately
 }
 ```
@@ -311,7 +312,7 @@ const sdk = createSentrySDK({ token: "...", signal: controller.signal });
 // Cancel after 30 seconds
 setTimeout(() => controller.abort(), 30_000);
 
-for await (const log of sdk.log.list({ follow: "5" })) {
+for await (const log of sdk.log.tail({ interval: 5 })) {
   console.log(log);
 }
 // Loop exits when signal fires

@@ -157,22 +157,16 @@ describe("createSentrySDK() library API", () => {
     expect(authorizationHeaders).not.toContain("Bearer stored-oauth-token");
   });
 
-  test("sdk.run returns AsyncIterable for streaming flag --follow", () => {
+  test("sdk.run returns AsyncIterable for the streaming command log tail", () => {
     const sdk = createSentrySDK();
-    const result = sdk.run("log", "list", "--follow");
-    // Streaming flags return an AsyncIterable, not a Promise
+    const result = sdk.run("log", "tail");
+    // Streaming commands return an AsyncIterable, not a Promise
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
   });
 
   test("sdk.run returns AsyncIterable for streaming flag --refresh", () => {
     const sdk = createSentrySDK();
     const result = sdk.run("issue", "list", "--refresh");
-    expect(Symbol.asyncIterator in (result as object)).toBe(true);
-  });
-
-  test("sdk.run returns AsyncIterable for streaming short flag -f", () => {
-    const sdk = createSentrySDK();
-    const result = sdk.run("log", "list", "-f");
     expect(Symbol.asyncIterator in (result as object)).toBe(true);
   });
 });

@@ -117,7 +117,7 @@ sentry trace logs abc123def456...
 
 ```bash
 # Stream logs in real-time (auto-detects org/project)
-sentry log list --follow
+sentry log tail
 
 # Filter logs by severity
 sentry log list --query "severity:error"

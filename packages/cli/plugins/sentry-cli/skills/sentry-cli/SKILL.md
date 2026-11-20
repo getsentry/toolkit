@@ -127,7 +127,7 @@ sentry trace logs abc123def456...
 
 ```bash
 # Stream logs in real-time (auto-detects org/project)
-sentry log list --follow
+sentry log tail
 
 # Filter logs by severity
 sentry log list --query "severity:error"
@@ -728,6 +728,7 @@ Manage User Feedback
 View Sentry logs
 
 - `sentry log list <org/project-or-trace-id...>` — List logs from a project
+- `sentry log tail <org/project-or-trace-id...>` — Stream new logs from a project or trace
 - `sentry log view <org/project/log-id...>` — View details of one or more log entries
 
 → Full flags and examples: `references/log.md`

@@ -7,9 +7,9 @@
  * commands don't need to call this themselves.
  *
  * The refresh flag named in the hint is derived from each command's own
- * parameters via {@link resolveRefreshFlag}, never hardcoded: commands
- * like `log list` bind `-f` to `--follow`, so a fixed `-f` would point
- * users at the wrong flag.
+ * parameters via {@link resolveRefreshFlag}, never hardcoded, so the hint
+ * names `--fresh` when a command has no `-f` for it and drops the
+ * suggestion when the command cannot bypass the cache at all.
  *
  * getsentry/cli#785 item #1 — `-f/--fresh` flag discoverability.
  *
