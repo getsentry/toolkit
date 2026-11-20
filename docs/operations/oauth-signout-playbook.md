@@ -107,6 +107,14 @@ Attributes:
 
 `OAuth authorization failed: Invalid redirect URI` (both GET and POST `/oauth/authorize`) and `Redirect URI not registered for client on callback` now carry `clientId`, `redirectUri`, `registeredUris`, `clientName` as `extra` fields.
 
+`OAuth authorization request rejected: missing redirect URI` identifies GET
+`/oauth/authorize` requests with a non-empty `client_id` and a missing or empty
+`redirect_uri`. These return a local 400 before client metadata lookup, with no
+redirect or Sentry issue. The log carries `code: invalid_request` and
+`reason: missing_redirect_uri`, without the authorization URL. Ask the user to
+restart authentication in their client and open the full link. Metadata fetch
+failures for complete authorization requests still follow the existing error path.
+
 The OAuth provider itself emits high-volume logs shaped like
 `OAuth error response: 401 invalid_token - Invalid access token`. Treat those
 as the provider-level count source; do not add a second high-volume app log for
