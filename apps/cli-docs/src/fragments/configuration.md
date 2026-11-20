@@ -47,7 +47,7 @@ When you run a command from `packages/frontend/`, the CLI resolves `org = my-com
 When the CLI needs to determine your org and project, it checks these sources in order:
 
 1. **Explicit CLI arguments** — `sentry issue list my-org/my-project`
-2. **Environment variables** — `SENTRY_ORG` / `SENTRY_PROJECT`
+2. **Environment variables** — `SENTRY_ORG` / `SENTRY_PROJECT`. Without `SENTRY_ORG`, an organization auth token (`sntrys_…`) supplies its own organization
 3. **`.sentryclirc` config file** — walked up from CWD, merged with `~/.sentryclirc`
 4. **Persistent defaults** — set via `sentry cli defaults`
 5. **DSN auto-detection** — scans source code and `.env` files

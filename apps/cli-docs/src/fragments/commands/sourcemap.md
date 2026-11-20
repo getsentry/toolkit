@@ -23,7 +23,8 @@ For each JavaScript file, it reports whether the companion `.map` was located
 
 Both `sentry sourcemap inject` and `sentry sourcemap upload` exit with an
 error if zero JS + sourcemap pairs are discovered in the target
-directory. This catches silent bundler misconfigurations — the most
+directory. The `upload` target can also be a glob such as `'.next/static/**'`;
+a path that exists as a directory is used as-is. This catches silent bundler misconfigurations — the most
 common cause is a bundler that isn't emitting `.map` files:
 
 ```
@@ -33,6 +34,12 @@ common cause is a bundler that isn't emitting `.map` files:
 # webpack: set `devtool: "hidden-source-map"`.
 
 # esbuild: set `sourcemap: true` or `sourcemap: "linked"`.
+
+# Next.js: remove `productionBrowserSourceMaps: false` from next.config
+# (`withSentryConfig` turns it on), or set `sourcemaps.disable: true` in
+# `withSentryConfig` to skip the upload. For `.next/server`, check that a
+# custom `webpack()` doesn't set `config.devtool` and that
+# `experimental.serverSourceMaps` isn't `false`.
 ```
 
 For CI steps that may run against legitimately-empty directories (e.g.,

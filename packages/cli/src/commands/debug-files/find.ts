@@ -155,8 +155,7 @@ export const findCommand = buildCommand({
         kind: "parsed",
         parse: choiceParser(FIND_DIF_TYPES),
         variadic: true,
-        brief:
-          "Only consider debug files of the given type (repeatable). Default: all",
+        brief: `Only consider debug files of the given type (repeatable): ${FIND_DIF_TYPES.join(", ")}. Default: all`,
         optional: true,
       },
       "no-well-known": {
