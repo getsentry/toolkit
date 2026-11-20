@@ -234,6 +234,26 @@ describe("API bearer token validation", () => {
     );
     expect(requests).toBe(0);
   });
+
+  it("sends no ID filter only for an explicit all selection", async () => {
+    let url: URL | undefined;
+    mswServer.use(
+      http.delete(
+        "https://sentry.io/api/0/organizations/test-org/inbox/",
+        ({ request }) => {
+          url = new URL(request.url);
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    await new SentryApiService({ accessToken: "test-token" }).removeInboxItems({
+      organizationSlug: "test-org",
+      selection: "all",
+    });
+
+    expect(url?.search).toBe("");
+  });
 });
 
 describe("single-tenant web URLs", () => {
@@ -2366,6 +2386,37 @@ describe("listIssues request", () => {
     expect(params.get("statsPeriod")).toBe(DEFAULT_SEARCH_ISSUES_PERIOD);
     expect(params.getAll("project")).toEqual(["123"]);
     expect(params.getAll("collapse")).toEqual(["unhandled"]);
+  });
+});
+
+describe("inbox mutations", () => {
+  afterEach(() => mswServer.resetHandlers());
+
+  // Sentry applies an unfiltered inbox PUT or DELETE to every item.
+  it("refuses an empty or non-numeric selection without sending a request", async () => {
+    let requests = 0;
+    mswServer.use(
+      http.all("https://sentry.io/api/0/organizations/test-org/inbox/", () => {
+        requests += 1;
+        return HttpResponse.json({ updatedCount: 0 });
+      }),
+    );
+    const api = new SentryApiService({ accessToken: "test-token" });
+
+    await expect(
+      api.removeInboxItems({ organizationSlug: "test-org", selection: [] }),
+    ).rejects.toThrow("Select at least one inbox item ID.");
+    await expect(
+      api.updateInboxItems({
+        organizationSlug: "test-org",
+        selection: [],
+        body: { isRead: true },
+      }),
+    ).rejects.toThrow("Select at least one inbox item ID.");
+    await expect(
+      api.removeInboxItems({ organizationSlug: "test-org", selection: [""] }),
+    ).rejects.toThrow("Inbox item ID must be numeric");
+    expect(requests).toBe(0);
   });
 });
 

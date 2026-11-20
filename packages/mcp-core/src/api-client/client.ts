@@ -87,7 +87,7 @@ import {
 } from "@sentry/api/client/endpoints";
 import { z } from "zod";
 import { DEFAULT_SEARCH_ISSUES_PERIOD } from "../constants";
-import { ConfigurationError } from "../errors";
+import { ConfigurationError, UserInputError } from "../errors";
 import { isFreshRead } from "../internal/fresh-reads";
 import { omitUndefined } from "../internal/type-guards";
 import { logIssue, logWarn } from "../telem/logging";
@@ -146,6 +146,9 @@ import {
   ExternalIssueListSchema,
   ExternalIssueSchema,
   FlamegraphSchema,
+  InboxItemEventListSchema,
+  InboxItemListSchema,
+  InboxUpdateResponseSchema,
   IssueActivityListResponseSchema,
   IssueAlertRuleListSchema,
   IssueAlertRuleSchema,
@@ -226,6 +229,8 @@ import type {
   ExternalIssue,
   ExternalIssueList,
   Flamegraph,
+  InboxItem,
+  InboxItemEvent,
   Issue,
   IssueActivityList,
   IssueAlertRule,
@@ -337,6 +342,73 @@ type RequestOptions = {
   host?: string | undefined;
   allowStatuses?: number[];
 };
+
+/**
+ * Inbox list filters, as `InboxFilterSerializer` in
+ * `src/sentry/inbox/filters.py` accepts them. Omitted filters match all items.
+ */
+export type InboxFilters = {
+  subjectTypes?: readonly string[] | undefined;
+  /** Requires exactly one subject type. */
+  subjectId?: string | undefined;
+  eventTypes?: readonly string[] | undefined;
+  recipients?: readonly ("user" | "team")[] | undefined;
+  isRead?: boolean | undefined;
+};
+
+function inboxFilterSearchParams(filters: InboxFilters): URLSearchParams {
+  const search = new URLSearchParams();
+  for (const subjectType of filters.subjectTypes ?? []) {
+    search.append("subject_type", subjectType);
+  }
+  if (filters.subjectId !== undefined) {
+    search.set("subject_id", filters.subjectId);
+  }
+  for (const eventType of filters.eventTypes ?? []) {
+    search.append("event_type", eventType);
+  }
+  for (const recipient of filters.recipients ?? []) {
+    search.append("recipient", recipient);
+  }
+  if (filters.isRead !== undefined) {
+    search.set("is_read", String(filters.isRead));
+  }
+  return search;
+}
+
+/**
+ * Which items an inbox mutation changes: these item IDs, or `"all"` for every
+ * active item.
+ */
+export type InboxSelection = readonly string[] | "all";
+
+/**
+ * The inbox mutation path for a selection. Sentry applies a PUT or DELETE
+ * without an `id` filter to every item, so only an explicit `"all"` sends one;
+ * an empty ID list is refused before any request is sent.
+ */
+function inboxMutationPath(
+  organizationSlug: string,
+  selection: InboxSelection,
+): string {
+  const path = apiPath`/organizations/${organizationSlug}/inbox/`;
+  if (selection === "all") {
+    return path;
+  }
+  if (selection.length === 0) {
+    throw new UserInputError("Select at least one inbox item ID.");
+  }
+  const search = new URLSearchParams();
+  for (const itemId of selection) {
+    if (!/^\d+$/.test(itemId)) {
+      throw new UserInputError(
+        `Inbox item ID must be numeric, got ${JSON.stringify(itemId)}.`,
+      );
+    }
+    search.append("id", itemId);
+  }
+  return `${path}?${search}`;
+}
 
 /**
  * Caps for automatic retries. Which statuses and methods are retried is the
@@ -4839,6 +4911,118 @@ export class SentryApiService {
       `?${queryParams.toString()}`;
     const body = await this.requestJSON(apiUrl, undefined, opts);
     return DroppedEventsResponseSchema.parse(body);
+  }
+
+  /**
+   * Lists the authenticated user's active Inbox items, newest
+   * activity first. Requires a user token and the organization's
+   * `organizations:universal-inbox` feature; otherwise Sentry returns 404.
+   */
+  async listInboxItems(
+    {
+      organizationSlug,
+      filters = {},
+      cursor,
+      limit,
+    }: {
+      organizationSlug: string;
+      filters?: InboxFilters;
+      cursor?: string | null;
+      limit?: number;
+    },
+    opts?: RequestOptions,
+  ): Promise<{ items: InboxItem[]; nextCursor: string | null }> {
+    const search = inboxFilterSearchParams(filters);
+    if (limit !== undefined) search.set("per_page", String(limit));
+    if (cursor) search.set("cursor", cursor);
+    const response = await this.request(
+      `${apiPath`/organizations/${organizationSlug}/inbox/`}?${search}`,
+      undefined,
+      opts,
+    );
+    return {
+      items: InboxItemListSchema.parse(await readJsonResponse(response)),
+      nextCursor: nextPageCursor(response),
+    };
+  }
+
+  /**
+   * Lists one active inbox item's events, newest first. Reading does not
+   * change the item's read state.
+   */
+  async listInboxItemEvents(
+    {
+      organizationSlug,
+      itemId,
+      cursor,
+      limit,
+    }: {
+      organizationSlug: string;
+      itemId: string;
+      cursor?: string | null;
+      limit?: number;
+    },
+    opts?: RequestOptions,
+  ): Promise<{ events: InboxItemEvent[]; nextCursor: string | null }> {
+    const search = new URLSearchParams();
+    if (limit !== undefined) search.set("per_page", String(limit));
+    if (cursor) search.set("cursor", cursor);
+    const path = apiPath`/organizations/${organizationSlug}/inbox/${itemId}/events/`;
+    const query = search.toString();
+    const response = await this.request(
+      query ? `${path}?${query}` : path,
+      undefined,
+      opts,
+    );
+    return {
+      events: InboxItemEventListSchema.parse(await readJsonResponse(response)),
+      nextCursor: nextPageCursor(response),
+    };
+  }
+
+  /**
+   * Sets read state for the selected active inbox items. Returns how many
+   * items matched, including items already in the requested state.
+   */
+  async updateInboxItems(
+    {
+      organizationSlug,
+      selection,
+      body,
+    }: {
+      organizationSlug: string;
+      selection: InboxSelection;
+      body: { isRead: boolean };
+    },
+    opts?: RequestOptions,
+  ): Promise<{ updatedCount: number }> {
+    const response = await this.requestJSON(
+      inboxMutationPath(organizationSlug, selection),
+      { method: "PUT", body: JSON.stringify(body) },
+      opts,
+    );
+    return InboxUpdateResponseSchema.parse(response);
+  }
+
+  /**
+   * Removes the selected active inbox items at once. Sentry deletes them one
+   * hour later.
+   */
+  async removeInboxItems(
+    {
+      organizationSlug,
+      selection,
+    }: {
+      organizationSlug: string;
+      selection: InboxSelection;
+    },
+    opts?: RequestOptions,
+  ): Promise<void> {
+    await this.request(
+      inboxMutationPath(organizationSlug, selection),
+      { method: "DELETE" },
+      opts,
+    );
   }
 
   // POST https://us.sentry.io/api/0/issues/5485083130/autofix/

@@ -43,6 +43,7 @@ allowedTools:
   - get_doc
   - get_event_attachment
   - get_event_stacktrace
+  - get_inbox
   - get_issue_activity
   - get_issue_breadcrumbs
   - get_issue_details
@@ -79,6 +80,7 @@ allowedTools:
   - unlink_issue
   - update_alert_rule
   - update_dsn
+  - update_inbox_items
   - update_issue
   - update_metric_monitor
   - update_project
