@@ -282,11 +282,24 @@ describe("formatErrorForUser", () => {
       expect(await formatErrorForUser(error)).toBe(expected);
     });
 
-    it("keeps the input error template for a 403 without a challenge", async () => {
+    it("says retrying won't help for a 403 without a challenge", async () => {
       const result = await formatErrorForUser(createApiError("Forbidden", 403));
 
-      expect(result).toContain("**Input Error**");
+      expect(result).toContain("**Permission Denied**");
       expect(result).toContain("API error (403): Forbidden");
+      expect(result).toContain("Retrying the same call will not help");
+      expect(result).not.toContain("**Input Error**");
+      expect(result).not.toContain("trying again");
+    });
+
+    it("finds a 403 without a challenge when a tool rewraps it as an input error", async () => {
+      const cause = new ApiPermissionError("Forbidden", "Forbidden", {});
+      const error = new UserInputError("API error (403): Forbidden", { cause });
+
+      const result = await formatErrorForUser(error);
+
+      expect(result).toContain("**Permission Denied**");
+      expect(result).not.toContain("**Input Error**");
     });
   });
 
