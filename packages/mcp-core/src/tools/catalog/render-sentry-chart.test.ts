@@ -177,6 +177,13 @@ describe("render_sentry_chart", () => {
     );
 
     expect(chart.times).toHaveLength(168);
+    // "Open in Sentry" ranks the groups by event count too.
+    const sentryLink = new URL(chart.url);
+    expect(sentryLink.searchParams.get("aggregateSort")).toBe("-count()");
+    expect(sentryLink.searchParams.getAll("aggregateField")).toEqual([
+      JSON.stringify({ groupBy: "release" }),
+      JSON.stringify({ yAxes: ["p95(span.duration)", "count()"] }),
+    ]);
     expect(
       chart.series.map(({ label, count }) => [label.slice(0, 8), count]),
     ).toEqual([

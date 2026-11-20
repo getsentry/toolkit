@@ -271,6 +271,10 @@ export default defineTool({
     const countYAxis = params.groupBy
       ? countAggregate(params.dataset, params.yAxis)
       : null;
+    // "Open in Sentry" ranks groups the same way the chart does.
+    const rankBy = countYAxis ?? params.yAxis;
+    const linkAggregates =
+      rankBy === params.yAxis ? [params.yAxis] : [params.yAxis, rankBy];
     const response = await apiService.getEventsTimeSeries({
       organizationSlug,
       query: params.query,
@@ -323,9 +327,9 @@ export default defineTool({
         projectId,
         params.dataset,
         // Discover reads group-by columns from `field`, so list it first.
-        params.groupBy ? [params.groupBy, params.yAxis] : [params.yAxis],
-        `-${params.yAxis}`,
-        [params.yAxis],
+        params.groupBy ? [params.groupBy, ...linkAggregates] : linkAggregates,
+        `-${rankBy}`,
+        linkAggregates,
         params.groupBy ? [params.groupBy] : [],
         timeParams.statsPeriod,
         timeParams.start,

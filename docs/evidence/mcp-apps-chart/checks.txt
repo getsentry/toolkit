@@ -4,7 +4,7 @@ PASS mcp-apps#view-renders: light chart with hover tooltip "Sep 10, 16:00 UTC co
 PASS mcp-apps#view-theme: host theme light=rgb(255, 255, 255) dark=rgb(30, 26, 37) -> docs/evidence/mcp-apps-chart/chart-dark.png
 PASS mcp-apps#range-roundtrip: "errors · level:error · Last 24 hours" -> view called render_sentry_chart period=7d through the host, got 56 buckets -> docs/evidence/mcp-apps-chart/chart-range-7d.png
 PASS mcp-apps#open-link: ui/open-link https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=count%28%29&sort=-count%28%29&statsPeriod=7d&mode=aggregate&yAxis=count%28%29
-PASS mcp-apps#compact-result: 5 series x 168 buckets: structuredContent 12286 bytes, text 12286 bytes (budget 16384)
+PASS mcp-apps#compact-result: 5 series x 168 buckets: structuredContent 12304 bytes, text 12304 bytes (budget 16384)
 PASS mcp-apps#top-by-volume: p95 by release picks the releases with the most events: 3f9c2e1=20160, 8b41d07=10080, c05e9a3=3360, 1d7f4b2=57, e2a86c9=23
 PASS mcp-apps#grouped: top groups "3f9c2e1 · 20.2K events | 8b41d07 · 10.1K events | c05e9a3 · 3.4K events | 1d7f4b2 · 57 events | e2a86c9 · 23 events", stats "Interval 1h", peak null -> docs/evidence/mcp-apps-chart/chart-grouped-dark.png
 PASS mcp-apps#null-gaps: e2a86c9 has 4 of 168 buckets with data and no 0s; drawn as 4 dots and 0 lines; tooltip at the left edge "Sep 4, 01:00 UTC 3f9c2e1 6.44s 8b41d07 7.59s c05e9a3 8.04s 1d7f4b2 no data e2a86c9 no data"

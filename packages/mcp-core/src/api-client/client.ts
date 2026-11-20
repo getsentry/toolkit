@@ -1227,9 +1227,9 @@ export class SentryApiService {
       }
     }
 
-    // Add sort parameter for all queries
+    // Explore reads the aggregate table's sort from `aggregateSort`.
     if (sort) {
-      urlParams.set("sort", sort);
+      urlParams.set(isAggregateQuery ? "aggregateSort" : "sort", sort);
     }
 
     this.appendExplorerTimeParams(urlParams, params);
