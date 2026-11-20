@@ -1,5 +1,10 @@
-import type { SentryApiService, Trace, TraceSpan } from "../../api-client";
-import { UserInputError } from "../../errors";
+import {
+  ApiClientError,
+  type SentryApiService,
+  type Trace,
+  type TraceSpan,
+} from "../../api-client";
+import { ConfigurationError, UserInputError } from "../../errors";
 import { hasAgentProvider } from "../../internal/agents/provider-factory";
 import {
   type AIConversationReference,
@@ -15,6 +20,7 @@ import {
   ParamSpanId,
   ParamTraceId,
 } from "../../schema";
+import { logIssue } from "../../telem/logging";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { formatSemanticSpanDisplay } from "../support/traces/semantic-display.js";
@@ -141,10 +147,22 @@ export default defineTool({
     });
 
     const aiConversations = collectAIConversationReferencesFromTrace(trace);
+    const focusedSpan = params.spanId
+      ? findTraceSpan(trace, params.spanId)
+      : null;
+    const recordedAttributes = focusedSpan
+      ? await fetchRecordedAttributes({
+          apiService,
+          organizationSlug: params.organizationSlug,
+          traceId: params.traceId,
+          span: focusedSpan,
+        })
+      : null;
     const markdown = formatTraceOutput({
       organizationSlug: params.organizationSlug,
       traceId: params.traceId,
       spanId: params.spanId,
+      recordedAttributes,
       summary,
       trace,
       traceFetchState,
@@ -651,6 +669,7 @@ function formatTraceOutput({
   organizationSlug,
   traceId,
   spanId,
+  recordedAttributes,
   summary,
   trace,
   traceFetchState,
@@ -663,6 +682,7 @@ function formatTraceOutput({
   organizationSlug: string;
   traceId: string;
   spanId?: string | undefined;
+  recordedAttributes: RecordedAttributes | null;
   summary: TraceSummary;
   trace: Trace;
   traceFetchState: TraceFetchState;
@@ -677,6 +697,7 @@ function formatTraceOutput({
       organizationSlug,
       traceId,
       spanId,
+      recordedAttributes,
       summary,
       trace,
       traceFetchState,
@@ -815,6 +836,7 @@ function formatFocusedSpanOutput({
   organizationSlug,
   traceId,
   spanId,
+  recordedAttributes,
   summary,
   trace,
   traceFetchState,
@@ -827,6 +849,7 @@ function formatFocusedSpanOutput({
   organizationSlug: string;
   traceId: string;
   spanId: string;
+  recordedAttributes: RecordedAttributes | null;
   summary: TraceSummary;
   trace: Trace;
   traceFetchState: TraceFetchState;
@@ -901,6 +924,7 @@ function formatFocusedSpanOutput({
   sections.push("");
   sections.push("## Attributes");
   sections.push("");
+  sections.push(...formatRecordedAttributesSection(recordedAttributes));
   sections.push(...formatSpanAttributeSections(focusedSpan, traceId));
   sections.push(
     ...formatAIConversationSection({
@@ -992,6 +1016,66 @@ function buildSpanUrl(traceUrl: string, spanId: string): string {
   const url = new URL(traceUrl);
   url.searchParams.set("node", `span-${spanId}`);
   return url.toString();
+}
+
+/** A span's recorded attributes, keyed by the name search accepts. */
+type RecordedAttributes = Record<string, unknown>;
+
+/**
+ * Sentry's trace endpoint only returns fixed span columns, so the attributes
+ * an SDK recorded (http.request.method, custom data) come from the
+ * trace-items endpoint. A failure here must not fail the whole span lookup.
+ */
+async function fetchRecordedAttributes({
+  apiService,
+  organizationSlug,
+  traceId,
+  span,
+}: {
+  apiService: SentryApiService;
+  organizationSlug: string;
+  traceId: string;
+  span: TraceSpan;
+}): Promise<RecordedAttributes | null> {
+  const spanId = getTraceSpanId(span);
+  try {
+    const item = await apiService.getSpanAttributes({
+      organizationSlug,
+      projectSlug: span.project_slug,
+      traceId,
+      spanId,
+    });
+    return Object.fromEntries(
+      item.attributes.map((attribute) => [attribute.name, attribute.value]),
+    );
+  } catch (error) {
+    if (
+      !(error instanceof ApiClientError) &&
+      !(error instanceof ConfigurationError)
+    ) {
+      logIssue(error, {
+        loggerScope: ["tools", "get-trace-details", "recorded-attributes"],
+        contexts: {
+          request: { organizationSlug, traceId, spanId },
+        },
+      });
+    }
+    return null;
+  }
+}
+
+function formatRecordedAttributesSection(
+  recordedAttributes: RecordedAttributes | null,
+): string[] {
+  if (!recordedAttributes) {
+    return [
+      "### Recorded Attributes",
+      "",
+      "*Sentry did not return this span's recorded attributes. The sections below only have the fixed fields from the trace.*",
+      "",
+    ];
+  }
+  return formatJsonSection("### Recorded Attributes", recordedAttributes);
 }
 
 function formatSpanAttributeSections(

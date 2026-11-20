@@ -1395,6 +1395,12 @@ describe("get_trace_details", () => {
 
       ## Attributes
 
+      ### Recorded Attributes
+
+      \`\`\`json
+      {}
+      \`\`\`
+
       ### Core Fields
 
       \`\`\`json
