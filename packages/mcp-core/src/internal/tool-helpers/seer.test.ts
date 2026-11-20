@@ -174,40 +174,31 @@ describe("seer-utils", () => {
     });
 
     it.each([
-      ["daily_cap_exceeded", "daily Seer spend limit"],
-      ["not_enough_credits", SEER_START_OUT_OF_CREDITS_MESSAGE],
-      [null, SEER_START_OUT_OF_CREDITS_MESSAGE],
-      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE],
+      ["daily_cap_exceeded", "daily Seer spend limit", ":daily_cap_exceeded"],
+      [
+        "not_enough_credits",
+        SEER_START_OUT_OF_CREDITS_MESSAGE,
+        ":not_enough_credits",
+      ],
+      [null, SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
+      ["constructor", SEER_START_OUT_OF_CREDITS_MESSAGE, ""],
     ])(
       "explains an out-of-credits 402 with denial reason %s",
-      (denialReason, message) => {
-        expect(
-          getSeerPaymentRequiredMessage(
-            {
-              detail: "Out of credits",
-              code: "seer_out_of_credits",
-              denialReason,
-            },
-            autoReloadUrl,
-          ),
-        ).toContain(message);
-      },
-    );
-
-    it("links without a reason when the denial reason is unknown", () => {
-      expect(
-        getSeerPaymentRequiredMessage(
+      (denialReason, message, reasonSuffix) => {
+        const result = getSeerPaymentRequiredMessage(
           {
             detail: "Out of credits",
             code: "seer_out_of_credits",
-            denialReason: "constructor",
+            denialReason,
           },
           autoReloadUrl,
-        ),
-      ).toBe(
-        `${SEER_START_OUT_OF_CREDITS_MESSAGE}\n\nConfigure auto-reload: ${autoReloadUrl}`,
-      );
-    });
+        );
+        expect(result).toContain(message);
+        expect(result.split("\n").at(-1)).toBe(
+          `Configure auto-reload: ${autoReloadUrl}${reasonSuffix}`,
+        );
+      },
+    );
 
     it("treats a 402 without a known code as out of quota", () => {
       expect(
