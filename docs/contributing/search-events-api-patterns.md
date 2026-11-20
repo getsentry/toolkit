@@ -386,12 +386,12 @@ Before translating queries, the tool fetches available attributes/fields for the
 - `project`: Numeric project ID (optional)
 - `statsPeriod`: Time range (e.g., `24h`)
 - `useCache`: Set to `1` for performance
-- `useFlagsBackend`: Set to `1` for latest features
+- Do not send `useFlagsBackend=1`: it makes the endpoint return feature flag keys instead of tags
 
 **Example**:
 
 ```
-https://us.sentry.io/api/0/organizations/sentry/tags/?dataset=events&project=4509062593708032&statsPeriod=24h&useCache=1&useFlagsBackend=1
+https://us.sentry.io/api/0/organizations/sentry/tags/?dataset=events&project=4509062593708032&statsPeriod=24h&useCache=1
 ```
 
 **Response Format**:
@@ -476,7 +476,6 @@ const tagsResponse = await apiService.listTags({
   dataset: "events",
   statsPeriod: "14d",
   useCache: true,
-  useFlagsBackend: true,
 });
 
 // For spans/logs datasets
