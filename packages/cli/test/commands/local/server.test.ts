@@ -1387,7 +1387,59 @@ describe("isServerRunning", () => {
       }
     },
   );
+
+  test("returns false for an OS-assigned port without probing it", async () => {
+    // --port 0 asks the OS for a free port, so there is nothing to attach to.
+    // On macOS, fetching port 0 fails with EADDRNOTAVAIL, not a refusal.
+    const fetchSpy = vi.fn(async () => new Response("OK"));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      await expect(isServerRunning("http://127.0.0.1:0")).resolves.toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("returns false for a free port that fetch refuses to dial", async () => {
+    // Node's fetch blocks some ports (6000, 10080, ...) with "bad port" before
+    // it connects, so the failure says nothing about the port.
+    const probe = createNetServer();
+    await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
+    const port = (probe.address() as { port: number }).port;
+    await new Promise<void>((done) => probe.close(() => done()));
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("rejects a held port that fetch refuses to dial", async () => {
+    const holder = createNetServer((socket) => socket.resume());
+    await new Promise<void>((done) => holder.listen(0, "127.0.0.1", done));
+    const port = (holder.address() as { port: number }).port;
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({ field: PORT_IN_USE_FIELD });
+    } finally {
+      vi.unstubAllGlobals();
+      await new Promise<void>((done) => holder.close(() => done()));
+    }
+  });
 });
+
+/** A fetch that fails the way Node's does for a port it blocks, like 6000. */
+function rejectLikeBlockedPort() {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", { cause: new Error("bad port") });
+  });
+}
 
 /** A fetch that fails the way Node's does when the connection fails with `code`. */
 function rejectLikeNodeFetch(code: string) {

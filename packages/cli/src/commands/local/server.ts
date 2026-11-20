@@ -27,6 +27,7 @@ import { isLoopbackHost } from "./loopback.js";
  */
 
 import type { Server } from "node:http";
+import { connect } from "node:net";
 import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { serve } from "@hono/node-server";
@@ -707,11 +708,17 @@ export function tryListen(
  *   redirects, since the probe does not follow redirects.
  * - `unresponsive`: something accepted the connection but gave no HTTP
  *   answer in time: a silent or slow listener, a non-HTTP or TLS server.
+ *
+ * Port 0 asks the OS for a free port, so nothing holds it and it is not
+ * probed. When fetch fails some other way, such as a port that fetch refuses
+ * to dial ("bad port"), a plain TCP connect decides whether anything listens.
  */
 export async function probeLocalHealth(
   url: string,
   timeoutMs: number,
 ): Promise<"none" | "daemon" | "receiver" | "foreign" | "unresponsive"> {
+  const { hostname, port } = new URL(url);
+  if (port === "0") return "none";
   let res: Response;
   try {
     res = await fetch(`${url}/health`, {
@@ -720,7 +727,12 @@ export async function probeLocalHealth(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (NO_HOLDER_CODES.has(fetchCauseCode(err))) {
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    if (
+      NO_HOLDER_CODES.has(fetchCauseCode(err)) ||
+      (!timedOut &&
+        !(await acceptsTcpConnection(hostname, Number(port || 80), timeoutMs)))
+    ) {
       logger.debug(`No existing server at ${url}`, message);
       return "none";
     }
@@ -885,6 +897,28 @@ const NO_HOLDER_CODES = new Set<string | undefined>([
   "ENETUNREACH",
   "EADDRNOTAVAIL",
 ]);
+
+/** Whether anything accepts a TCP connection at `hostname`:`port`. */
+function acceptsTcpConnection(
+  hostname: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({
+      host: hostname.replace(/^\[(.*)\]$/, "$1"),
+      port,
+      timeout: timeoutMs,
+    });
+    const done = (accepted: boolean) => {
+      socket.destroy();
+      resolve(accepted);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.once("timeout", () => done(false));
+  });
+}
 
 /** The `code` of a failed `fetch`'s cause, such as `ECONNREFUSED`. */
 function fetchCauseCode(err: unknown): string | undefined {

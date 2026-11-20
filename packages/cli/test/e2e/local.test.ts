@@ -66,6 +66,25 @@ async function availablePort(): Promise<number> {
   return address.port;
 }
 
+/**
+ * Ports Node's fetch refuses to dial ("bad port"), though a server can bind
+ * them. Returns one that is free here, or undefined if all are taken.
+ */
+async function freeFetchBlockedPort(): Promise<number | undefined> {
+  for (const port of [6000, 6665, 6666, 6667, 6668, 6669, 6697, 10080]) {
+    const server = createServer();
+    const bound = await new Promise<boolean>((resolve) => {
+      server.once("error", () => resolve(false));
+      server.listen(port, "127.0.0.1", () => resolve(true));
+    });
+    if (bound) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      return port;
+    }
+  }
+  return undefined;
+}
+
 async function createSession(
   label: string,
   port: number,
@@ -1169,6 +1188,64 @@ setTimeout(() => {}, 20000);`,
 });
 
 describe("Local foreground commands", () => {
+  /** `local run` on 127.0.0.1:`port` with a child that prints a marker. */
+  async function runMarkerApp(port: number) {
+    return await runCli(
+      [
+        "local",
+        "run",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        process.execPath,
+        "-e",
+        'console.log("child-ran")',
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+  }
+
+  test("run --port 0 binds an OS-assigned port and runs the app", async () => {
+    const result = await runMarkerApp(0);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain("child-ran");
+  }, 30000);
+
+  test("run binds a free port that fetch refuses to dial", async () => {
+    const port = await freeFetchBlockedPort();
+    if (port === undefined) return;
+    const result = await runMarkerApp(port);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain("child-ran");
+  }, 30000);
+
+  test("run rejects a held port that fetch refuses to dial", async () => {
+    const port = await freeFetchBlockedPort();
+    if (port === undefined) return;
+    const holder = createSilentServer();
+    await new Promise<void>((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    try {
+      const result = await runMarkerApp(port);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stdout).not.toContain("child-ran");
+      expect(result.stderr).toContain(`Port ${port} is already in use`);
+    } finally {
+      await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+  }, 30000);
+
   test.each(["bin", "node_modules/.bin"])(
     "runs a batch-file command from %s on PATH with its arguments intact",
     async (binPath) => {
