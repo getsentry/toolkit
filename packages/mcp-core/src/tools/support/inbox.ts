@@ -3,9 +3,7 @@ import {
   ApiNotFoundError,
   type InboxItem,
   type InboxItemEvent,
-  type SentryApiService,
 } from "../../api-client";
-import { UserInputError } from "../../errors";
 
 /** Inbox item IDs are numeric (`InboxFilterSerializer.id` is an IntegerField). */
 export const ParamInboxItemId = z
@@ -106,52 +104,6 @@ export function formatInboxItem(
     lastActivityAt: item.lastActivityAt,
     lastReadAt: item.lastReadAt,
   };
-}
-
-/**
- * Whether an item belongs in a session scoped to `projectSlug`. Issue items
- * must be in that project. Other subjects, such as Seer investigations, have
- * no project and stay visible, as org-wide dashboards do in find_dashboards.
- */
-export function isInboxItemInProject(
-  item: InboxItem,
-  projectSlug: string,
-): boolean {
-  if (item.subject.type !== "issue") return true;
-  return item.subject.metadata.project?.slug === projectSlug;
-}
-
-/**
- * In a project-scoped session, refuses inbox items about issues in other
- * projects. Sentry has no project filter for the inbox, so this looks the
- * items up first. IDs Sentry does not return are not active items, which
- * Sentry's reads and mutations ignore anyway.
- */
-export async function assertInboxItemsWithinProject({
-  apiService,
-  organizationSlug,
-  itemIds,
-  scopedProjectSlug,
-}: {
-  apiService: SentryApiService;
-  organizationSlug: string;
-  itemIds: readonly string[];
-  scopedProjectSlug: string | null | undefined;
-}): Promise<void> {
-  if (!scopedProjectSlug) return;
-  const { items } = await apiService.listInboxItems({
-    organizationSlug,
-    filters: { ids: itemIds },
-    limit: itemIds.length,
-  });
-  const outside = items
-    .filter((item) => !isInboxItemInProject(item, scopedProjectSlug))
-    .map((item) => item.id);
-  if (outside.length > 0) {
-    throw new UserInputError(
-      `Inbox item ${outside.join(", ")} is outside the active project constraint. Expected project "${scopedProjectSlug}".`,
-    );
-  }
 }
 
 /**
