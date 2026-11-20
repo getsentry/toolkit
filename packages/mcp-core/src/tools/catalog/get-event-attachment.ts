@@ -140,7 +140,10 @@ export default defineTool({
       // notably the JS RN SDK uploads attachments as "application/octet-stream"
       // even when the file is an image — and Step 2 is the authoritative signal.
       const effectiveMimeType = attachment.contentType;
-      const isBinary = !effectiveMimeType.startsWith("text/");
+      const isBinary =
+        !effectiveMimeType.startsWith("text/") &&
+        effectiveMimeType !== "application/json" &&
+        effectiveMimeType !== "application/jsonl";
       // A zero-byte body for a non-empty file means a failed/truncated download.
       const isEmpty = attachment.bytes.length === 0;
 
