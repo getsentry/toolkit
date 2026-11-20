@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { withSentryBaseUrl } from "../../src/lib/sentry-urls.js";
 import {
   AbortError,
   ApiError,
@@ -411,6 +412,16 @@ describe("SeerError", () => {
       "Your organization has reached its daily Seer spend limit.\n\n" +
         "Someone with billing access can raise the limit in Sentry, or you can try again tomorrow:\n" +
         "  https://my-org.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal:daily_cap_exceeded",
+    );
+  });
+
+  test("format() skips billing link for daily_cap_exceeded on self-hosted", () => {
+    const formatted = withSentryBaseUrl("https://sentry.example.com", () =>
+      new SeerError("daily_cap_exceeded", "my-org").format(),
+    );
+    expect(formatted).toBe(
+      "Your organization has reached its daily Seer spend limit.\n\n" +
+        "Someone with billing access can raise the limit in your organization's billing settings, or you can try again tomorrow.",
     );
   });
 
