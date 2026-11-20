@@ -415,7 +415,7 @@ describe("SeerError", () => {
     );
   });
 
-  test("format() skips billing link for daily_cap_exceeded on self-hosted", () => {
+  test("format() does not link auto-reload modal for daily_cap_exceeded on self-hosted", () => {
     const formatted = withSentryBaseUrl("https://sentry.example.com", () =>
       new SeerError("daily_cap_exceeded", "my-org").format(),
     );
