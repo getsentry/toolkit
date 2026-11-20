@@ -41,6 +41,8 @@ export interface UiResource {
    * and this does not, so a change also bumps the version in `uri`.
    */
   htmlSha256: string;
+  /** Most bytes the HTML may take. The view's generator fails over it. */
+  budgetBytes: number;
   /**
    * Loads the self-contained HTML5 document (inline scripts and styles only)
    * on the first `resources/read`, so sessions that never render a view do
@@ -59,6 +61,8 @@ export const CHART_UI_RESOURCE: UiResource = {
     "Interactive time series chart for render_sentry_chart results, with a range picker and a link to Sentry.",
   htmlSha256:
     "c42d34d3aa082a33b4ab293b509dbe4b2dbde7edc4965033cffa8b920fc6e39f",
+  // About 1.5x the current view, so a new dependency cannot slip in.
+  budgetBytes: 24 * 1024,
   loadHtml: async () =>
     (await import("./ui/chart-app.generated")).CHART_APP_HTML,
   // Self-contained, so it loads nothing from the network.

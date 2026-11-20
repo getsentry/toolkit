@@ -9,10 +9,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build, transform } from "esbuild";
+import { CHART_UI_RESOURCE } from "../src/ui-resources.ts";
 import { viewHtmlProblems } from "./view-policy.ts";
 
-/** About 1.5x the current view, so a new dependency cannot slip in. */
-const BUDGET_BYTES = 24 * 1024;
+const BUDGET_BYTES = CHART_UI_RESOURCE.budgetBytes;
 
 const appDir = fileURLToPath(new URL("../chart-app/", import.meta.url));
 const outFile = fileURLToPath(

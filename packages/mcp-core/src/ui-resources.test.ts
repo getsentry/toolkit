@@ -20,6 +20,7 @@ const view: UiResource = {
   title: "Test",
   description: "Test view",
   htmlSha256: createHash("sha256").update(html).digest("hex"),
+  budgetBytes: 1024,
   loadHtml: async () => html,
   meta: { csp: {} },
 };

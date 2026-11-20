@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CHART_APP_HTML } from "../src/ui/chart-app.generated.ts";
+import { CHART_UI_RESOURCE } from "../src/ui-resources.ts";
 import { viewHtmlProblems } from "./view-policy.ts";
 
 const page = (body: string) =>
@@ -7,7 +8,9 @@ const page = (body: string) =>
 
 describe("viewHtmlProblems", () => {
   it("passes the generated chart view", () => {
-    expect(viewHtmlProblems("chart", CHART_APP_HTML, 24 * 1024)).toEqual([]);
+    expect(
+      viewHtmlProblems("chart", CHART_APP_HTML, CHART_UI_RESOURCE.budgetBytes),
+    ).toEqual([]);
   });
 
   it("fails a view over its budget", () => {
