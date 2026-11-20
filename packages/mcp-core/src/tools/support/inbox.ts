@@ -29,12 +29,20 @@ export const inboxEventOutputSchema = z.object({
   dateAdded: z.string(),
 });
 
+const inboxSubjectOutputSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  title: z.string(),
+  metadata: z.object({
+    shortId: z.string().optional(),
+    project: z.object({ id: z.string(), slug: z.string() }).optional(),
+  }),
+});
+
 export const inboxItemOutputSchema = z.object({
   id: z.string(),
-  subjectType: z.string(),
-  subjectId: z.string(),
-  title: z.string().nullable(),
-  url: z.string().nullable(),
+  subject: inboxSubjectOutputSchema,
+  url: z.string(),
   subtitle: z.string(),
   eventTypes: z.array(z.string()),
   eventCount: z.number(),
@@ -63,16 +71,30 @@ export function formatInboxEvent(
   };
 }
 
+function formatInboxSubject(
+  subject: InboxItem["subject"],
+): z.output<typeof inboxSubjectOutputSchema> {
+  const { shortId, project } = subject.metadata;
+  return {
+    id: subject.id,
+    type: subject.type,
+    title: subject.title,
+    metadata: {
+      ...(shortId === undefined ? {} : { shortId }),
+      ...(project === undefined
+        ? {}
+        : { project: { id: project.id, slug: project.slug } }),
+    },
+  };
+}
+
 export function formatInboxItem(
   item: InboxItem,
 ): z.output<typeof inboxItemOutputSchema> {
   return {
     id: item.id,
-    subjectType: item.subjectType,
-    subjectId: item.subjectId,
-    title: item.title,
-    // Null on Sentry versions before getsentry/sentry#131406.
-    url: item.url ?? null,
+    subject: formatInboxSubject(item.subject),
+    url: item.url,
     subtitle: item.subtitle,
     eventTypes: item.eventTypes,
     eventCount: item.eventCount,

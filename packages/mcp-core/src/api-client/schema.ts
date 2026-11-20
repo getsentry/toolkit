@@ -2768,19 +2768,36 @@ export const InboxItemEventSchema = z
 export const InboxItemEventListSchema = z.array(InboxItemEventSchema);
 
 /**
- * One item in the authenticated user's personal Inbox, grouping the
- * events for one subject (an issue or a Seer investigation notebook).
+ * The issue or Seer investigation (notebook) an inbox item is about. Issue
+ * metadata carries the short ID and project; notebook metadata is empty.
+ */
+export const InboxSubjectSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    title: z.string(),
+    metadata: z
+      .object({
+        shortId: z.string().optional(),
+        project: z
+          .object({ id: z.string(), slug: z.string() })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/**
+ * One item in the authenticated user's personal Inbox, grouping the events
+ * for one subject. Sentry leaves out items whose subject no longer exists.
  */
 export const InboxItemSchema = z
   .object({
     id: z.string(),
-    subjectType: z.string(),
-    subjectId: z.string(),
-    // Null when the subject is no longer available.
-    title: z.string().nullable(),
-    // The latest event's URL, falling back to the subject's inbox URL.
-    // Optional until every Sentry deploy returns it (getsentry/sentry#131406).
-    url: z.string().optional(),
+    subject: InboxSubjectSchema,
+    // The latest event's URL, such as a link to the activity on the issue.
+    url: z.string(),
     // The latest event's summary.
     subtitle: z.string(),
     eventTypes: z.array(z.string()),

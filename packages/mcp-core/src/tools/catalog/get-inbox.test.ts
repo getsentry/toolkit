@@ -35,8 +35,8 @@ const baseParams = {
   limit: 25,
 };
 
-// Shapes follow InboxItemSerializer and InboxItemEventSerializer in
-// src/sentry/inbox/serializers.py.
+// Shapes follow InboxItemResponse and InboxItemEventResponse in
+// src/sentry/inbox/response_types.py.
 const mentionEvent = {
   id: "9001",
   type: "issue.user_mentioned",
@@ -56,7 +56,7 @@ const assignmentEvent = {
   id: "9000",
   type: "issue.user_assigned",
   actor: { type: "user", id: "42", name: "Jane Doe", avatar: null },
-  data: { assignmentSource: null },
+  data: { assignmentSource: null, activityId: "6844773384" },
   summary: "Assigned to you",
   isUnread: false,
   dateAdded: "2026-11-14T09:00:00.000000Z",
@@ -66,7 +66,7 @@ const completedEvent = {
   id: "9100",
   type: "notebook.completed",
   actor: { type: "system", id: null, name: "Sentry", avatar: null },
-  data: {},
+  data: { seerRunId: "12", generation: 1 },
   summary: "Investigation completed",
   isUnread: false,
   dateAdded: "2026-11-13T08:00:00.000000Z",
@@ -74,10 +74,16 @@ const completedEvent = {
 
 const issueItem = {
   id: "101",
-  subjectType: "issue",
-  subjectId: "6507376925",
-  title: "TypeError: Cannot read properties of undefined",
-  url: "https://sentry-mcp-evals.sentry.io/inbox/issue/6507376925/",
+  subject: {
+    id: "6507376925",
+    type: "issue",
+    title: "TypeError: Cannot read properties of undefined",
+    metadata: {
+      shortId: "CLOUDFLARE-MCP-41",
+      project: { id: "4509106749636608", slug: "cloudflare-mcp" },
+    },
+  },
+  url: "https://sentry-mcp-evals.sentry.io/inbox/issue/6507376925/#activity-555",
   subtitle: "Mentioned you in a comment",
   eventTypes: ["issue.user_assigned", "issue.user_mentioned"],
   eventCount: 2,
@@ -90,9 +96,12 @@ const issueItem = {
 
 const notebookItem = {
   id: "102",
-  subjectType: "notebook",
-  subjectId: "77",
-  title: null,
+  subject: {
+    id: "77",
+    type: "notebook",
+    title: "Checkout latency investigation",
+    metadata: {},
+  },
   url: "https://sentry-mcp-evals.sentry.io/inbox/notebook/77/",
   subtitle: "Investigation completed",
   eventTypes: ["notebook.completed"],
@@ -152,12 +161,21 @@ describe("get_inbox", () => {
               "summary": "Mentioned you in a comment",
               "type": "issue.user_mentioned",
             },
-            "subjectId": "6507376925",
-            "subjectType": "issue",
+            "subject": {
+              "id": "6507376925",
+              "metadata": {
+                "project": {
+                  "id": "4509106749636608",
+                  "slug": "cloudflare-mcp",
+                },
+                "shortId": "CLOUDFLARE-MCP-41",
+              },
+              "title": "TypeError: Cannot read properties of undefined",
+              "type": "issue",
+            },
             "subtitle": "Mentioned you in a comment",
-            "title": "TypeError: Cannot read properties of undefined",
             "unreadEventCount": 1,
-            "url": "https://sentry-mcp-evals.sentry.io/inbox/issue/6507376925/",
+            "url": "https://sentry-mcp-evals.sentry.io/inbox/issue/6507376925/#activity-555",
           },
           {
             "eventCount": 1,
@@ -174,17 +192,23 @@ describe("get_inbox", () => {
                 "name": "Sentry",
                 "type": "system",
               },
-              "data": {},
+              "data": {
+                "generation": 1,
+                "seerRunId": "12",
+              },
               "dateAdded": "2026-11-13T08:00:00.000000Z",
               "id": "9100",
               "isUnread": false,
               "summary": "Investigation completed",
               "type": "notebook.completed",
             },
-            "subjectId": "77",
-            "subjectType": "notebook",
+            "subject": {
+              "id": "77",
+              "metadata": {},
+              "title": "Checkout latency investigation",
+              "type": "notebook",
+            },
             "subtitle": "Investigation completed",
-            "title": null,
             "unreadEventCount": 0,
             "url": "https://sentry-mcp-evals.sentry.io/inbox/notebook/77/",
           },
@@ -192,17 +216,6 @@ describe("get_inbox", () => {
         "nextCursor": "1731664800000000_102:0:0",
       }
     `);
-  });
-
-  it("returns a null URL when Sentry does not return one", async () => {
-    // Sentry deploys before getsentry/sentry#131406 have no item URL.
-    const { url: _url, ...itemWithoutUrl } = issueItem;
-    mswServer.use(
-      http.get(INBOX_URL, () => HttpResponse.json([itemWithoutUrl])),
-    );
-
-    const result = await getInbox.handler(baseParams, context);
-    expect(parse(result).items?.[0]?.url).toBeNull();
   });
 
   it("forwards filters, the cursor, and the page size", async () => {
@@ -330,6 +343,7 @@ describe("get_inbox", () => {
               "type": "user",
             },
             "data": {
+              "activityId": "6844773384",
               "assignmentSource": null,
             },
             "dateAdded": "2026-11-14T09:00:00.000000Z",
