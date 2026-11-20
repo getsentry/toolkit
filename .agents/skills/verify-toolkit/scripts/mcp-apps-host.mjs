@@ -104,6 +104,7 @@ const hostScript = (
           bridge.onsizechange = ({ height }) => {
             if (height) iframe.style.height = height + "px";
           };
+          window.bridge = bridge;
           const initialized = new Promise((done) => { bridge.oninitialized = done; });
           await bridge.connect(new PostMessageTransport(iframe.contentWindow, iframe.contentWindow));
           iframe.srcdoc = html.replace("<head>", ${JSON.stringify(`<head><meta http-equiv="Content-Security-Policy" content="${DEFAULT_CSP}">`)});
@@ -285,6 +286,26 @@ try {
     "grouped",
     legend.split("\n").filter(Boolean).length === 3,
     `top groups "${legend.replace(/\n/g, " | ")}" -> ${grouped}`,
+  );
+
+  // The rest of the lifecycle: a theme change, a cancelled call, teardown.
+  await page.evaluate(() =>
+    window.bridge.sendHostContextChange({ theme: "light" }),
+  );
+  await frame
+    .locator("html[data-theme='light']")
+    .waitFor({ state: "attached" });
+  await page.evaluate(() =>
+    window.bridge.sendToolCancelled({ reason: "verify-toolkit" }),
+  );
+  const cancelled = await frame.locator(".state.error").innerText();
+  const teardown = await page.evaluate(() =>
+    window.bridge.teardownResource({ reason: "verify-toolkit" }),
+  );
+  check(
+    "lifecycle",
+    cancelled.includes("cancelled") && JSON.stringify(teardown) === "{}",
+    `host-context-changed -> light, tool-cancelled -> "${cancelled}", ui/resource-teardown -> ${JSON.stringify(teardown)}`,
   );
 
   write("host-log.json", await page.evaluate(() => window.hostLog));

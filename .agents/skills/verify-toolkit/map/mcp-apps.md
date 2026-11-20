@@ -4,18 +4,19 @@ What an MCP Apps host (Claude, VS Code, ChatGPT) gets for `render_sentry_chart`:
 the tool names a `ui://` view in `tools/list`, the view reads back as one
 self-contained HTML document, and the view renders the tool result, follows
 the host theme, and calls the tool again through the host. The goals are in
-`design/mcp-tools.md` and `design/mcp-tool-responses.md`.
+`design/mcp-apps.md`.
 
 ## Claims
 
 - `tool-meta` `render_sentry_chart` sets `_meta.ui.resourceUri` to a `ui://` URI and `_meta["openai/outputTemplate"]` to the same URI, with no deprecated flat `ui/resourceUri` key. Proof: `drive`.
 - `view-resource` `resources/list` lists that URI, and `resources/read` returns it with mime type `text/html;profile=mcp-app` and an HTML document. Proof: `drive`.
 - `view-listing` A session that cannot call `render_sentry_chart` lists no resources and no resources capability. Proof: `test` with `pnpm --filter @sentry/mcp-core exec vitest run src/server.ui-resources.test.ts`.
-- `view-renders` Mounted through the ext-apps AppBridge, the view draws the series, shows a tooltip on hover, and hides its empty state. Proof: `drive`.
+- `view-renders` Mounted through the ext-apps AppBridge, which also checks the view's hand-written MCP Apps bridge against the reference host, the view draws the series, shows a tooltip on hover, and hides its empty state. Proof: `drive`.
 - `view-theme` The view follows the host's light or dark theme. Proof: `drive`.
 - `range-roundtrip` The range picker calls `render_sentry_chart` through the host with the new period and redraws without remounting. Proof: `drive`.
 - `open-link` "Open in Sentry" asks the host to open the result's Sentry URL with `ui/open-link`. Proof: `drive`.
 - `grouped` A `groupBy` result draws one series per top group, with a legend. Proof: `drive`.
+- `lifecycle` The view follows a `host-context-changed` theme change, shows a cancelled state on `ui/notifications/tool-cancelled`, and answers `ui/resource-teardown`. Proof: `drive`.
 - `default-csp` The view loads and runs under the spec's default CSP with no console errors, so it needs no `csp` domains. Proof: `drive`.
 
 ## How to get to it
