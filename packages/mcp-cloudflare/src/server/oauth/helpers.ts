@@ -344,11 +344,29 @@ export function promptRequestsAccountSelection(
     .some((value) => ACCOUNT_PROMPT_VALUES.has(value));
 }
 
+// An identity provider name, never a URL or free text.
+const IDP_HINT_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+/**
+ * Reads a client's `idp_hint` (sign in through this identity provider) for
+ * forwarding to Sentry, which decides what each value does. A missing,
+ * repeated (RFC 6749 §3.1) or malformed hint is dropped, so the flow runs as
+ * if the client sent none.
+ */
+export function parseIdpHint(values: string[]): string | undefined {
+  if (values.length !== 1) return undefined;
+  const value = values[0];
+  return value !== undefined && IDP_HINT_PATTERN.test(value)
+    ? value
+    : undefined;
+}
+
 /**
  * Constructs an authorization URL for Sentry.
  *
  * `force_prompt` makes Sentry show its consent step, with the signed-in user
  * and Switch account, even when this user already approved the app.
+ * `idp_hint` asks Sentry to sign the user in through that identity provider.
  */
 export function getUpstreamAuthorizeUrl({
   upstream_url,
@@ -357,6 +375,7 @@ export function getUpstreamAuthorizeUrl({
   redirect_uri,
   state,
   force_prompt = false,
+  idp_hint,
 }: {
   upstream_url: string;
   client_id: string;
@@ -364,6 +383,7 @@ export function getUpstreamAuthorizeUrl({
   redirect_uri: string;
   state?: string;
   force_prompt?: boolean;
+  idp_hint?: string | undefined;
 }) {
   const upstream = new URL(upstream_url);
   upstream.searchParams.set("client_id", client_id);
@@ -372,6 +392,7 @@ export function getUpstreamAuthorizeUrl({
   if (state) upstream.searchParams.set("state", state);
   upstream.searchParams.set("response_type", "code");
   if (force_prompt) upstream.searchParams.set("force_prompt", "1");
+  if (idp_hint) upstream.searchParams.set("idp_hint", idp_hint);
   return upstream.href;
 }
 

@@ -22,6 +22,7 @@ import {
   createResourceValidationError,
   getAuthorizationServerIssuer,
   getUpstreamAuthorizeUrl,
+  parseIdpHint,
   promptRequestsAccountSelection,
   validateResourceParameter,
 } from "../helpers";
@@ -40,6 +41,9 @@ interface AuthRequestWithSkills extends AuthRequest {
   resource?: string;
 }
 
+// Long enough to sign in, sign up for Sentry, and approve consent on Sentry.
+const UPSTREAM_STATE_TTL_MS = 30 * 60 * 1000;
+
 async function redirectToUpstream(
   env: Env,
   request: Request,
@@ -47,7 +51,10 @@ async function redirectToUpstream(
   oauthReqInfo: object,
   headers: HeadersInit = {},
   stateOverride?: string,
-  forcePrompt = false,
+  {
+    forcePrompt = false,
+    idpHint,
+  }: { forcePrompt?: boolean; idpHint?: string | undefined } = {},
 ) {
   const responseHeaders = new Headers(headers);
   responseHeaders.set(
@@ -62,6 +69,7 @@ async function redirectToUpstream(
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
       force_prompt: forcePrompt,
+      idp_hint: idpHint,
     }),
   );
 
@@ -237,6 +245,7 @@ export default new Hono<{ Bindings: Env }>()
         forcePrompt: promptRequestsAccountSelection(
           requestUrl.searchParams.get("prompt"),
         ),
+        idpHint: parseIdpHint(requestUrl.searchParams.getAll("idp_hint")),
       },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
@@ -360,12 +369,11 @@ export default new Hono<{ Bindings: Env }>()
       );
     }
 
-    // Build signed state for redirect to Sentry (10 minute validity)
     const now = Date.now();
     const payload: OAuthState = {
       req: oauthReqWithSkills,
       iat: now,
-      exp: now + 10 * 60 * 1000,
+      exp: now + UPSTREAM_STATE_TTL_MS,
     };
     const signedState = await signState(payload, c.env.COOKIE_SECRET);
 
@@ -389,6 +397,11 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
-      state.forcePrompt === true,
+      {
+        // A hinted sign-in always ends on Sentry's consent screen, so the
+        // user sees which account and org they are connecting.
+        forcePrompt: state.forcePrompt === true || state.idpHint !== undefined,
+        idpHint: state.idpHint,
+      },
     );
   });
