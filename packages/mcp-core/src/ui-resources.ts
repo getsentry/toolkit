@@ -54,13 +54,13 @@ export interface UiResource {
 
 /** The render_sentry_chart view. Built from chart-app/ by generate-chart-app. */
 export const CHART_UI_RESOURCE: UiResource = {
-  uri: "ui://sentry/chart/v3.html",
+  uri: "ui://sentry/chart/v4.html",
   name: "sentry_chart",
   title: "Sentry Chart",
   description:
-    "Interactive time series chart for render_sentry_chart results, with a range picker and a link to Sentry.",
+    "Interactive time series chart for render_sentry_chart results, with a range picker, fullscreen, and a link to Sentry.",
   htmlSha256:
-    "5383b9d3a0f90695bd6811f4f4ed0a8c5a31edef6a3073c1e84990dd38ef5d39",
+    "dedd7ddea50733cca85d7e303d1ad9ac1fac6287f991e137a09657d32a29ed42",
   // About 1.5x the current view, so a new dependency cannot slip in.
   budgetBytes: 24 * 1024,
   loadHtml: async () =>

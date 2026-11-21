@@ -25,12 +25,16 @@ type JsonRpcMessage =
   | { jsonrpc: "2.0"; id: JsonRpcId; result: unknown }
   | { jsonrpc: "2.0"; id: JsonRpcId | null; error: JsonRpcError };
 
+export type DisplayMode = "inline" | "fullscreen" | "pip";
+
 /** The fields of the spec's `HostContext` that the view reads. */
 export interface HostContext {
   theme?: "light" | "dark";
   styles?: { variables?: Record<string, string | undefined> };
   locale?: string;
   timeZone?: string;
+  displayMode?: DisplayMode;
+  availableDisplayModes?: string[];
 }
 
 interface ContentBlock {
@@ -58,6 +62,12 @@ interface ViewHandlers {
   teardown?(): void;
 }
 
+/** What a view may send in `ui/update-model-context`. */
+export interface ModelContext {
+  text: string;
+  structuredContent: Record<string, unknown>;
+}
+
 export interface Host {
   /** `tools/call`, proxied by the host to the MCP server. */
   callTool(
@@ -66,6 +76,17 @@ export interface Host {
   ): Promise<CallToolResult>;
   /** `ui/open-link` */
   openLink(url: string): Promise<void>;
+  /**
+   * `ui/update-model-context`, with only the parts the host advertises in
+   * `hostCapabilities.updateModelContext`. Does nothing when it advertises
+   * neither text nor structured content.
+   */
+  updateModelContext(context: ModelContext): Promise<void>;
+  /**
+   * `ui/request-display-mode`. The mode the host sets reaches the view as a
+   * host context change.
+   */
+  requestDisplayMode(mode: DisplayMode): Promise<void>;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -95,6 +116,7 @@ function toCallToolResult(params: unknown): CallToolResult {
  */
 export async function connect(
   appInfo: { name: string; version: string },
+  appCapabilities: { availableDisplayModes?: DisplayMode[] },
   handlers: ViewHandlers,
   host: Window = window.parent,
 ): Promise<Host> {
@@ -199,10 +221,17 @@ export async function connect(
 
   const initialized = await request("ui/initialize", {
     appInfo,
-    appCapabilities: {},
+    appCapabilities,
     protocolVersion: PROTOCOL_VERSION,
   });
-  updateContext(isObject(initialized) ? initialized["hostContext"] : undefined);
+  const result = isObject(initialized) ? initialized : {};
+  updateContext(result["hostContext"]);
+  const capabilities = isObject(result["hostCapabilities"])
+    ? result["hostCapabilities"]
+    : {};
+  const modelContext = isObject(capabilities["updateModelContext"])
+    ? capabilities["updateModelContext"]
+    : {};
   send({ jsonrpc: "2.0", method: "ui/notifications/initialized" });
   reportSize(send);
 
@@ -211,6 +240,21 @@ export async function connect(
       toCallToolResult(await request("tools/call", { name, arguments: args })),
     openLink: async (url) => {
       await request("ui/open-link", { url });
+    },
+    updateModelContext: async ({ text, structuredContent }) => {
+      const params: Record<string, unknown> = {};
+      if (isObject(modelContext["text"])) {
+        params["content"] = [{ type: "text", text }];
+      }
+      if (isObject(modelContext["structuredContent"])) {
+        params["structuredContent"] = structuredContent;
+      }
+      if (Object.keys(params).length === 0) return;
+      await request("ui/update-model-context", params);
+    },
+    requestDisplayMode: async (mode) => {
+      const set = await request("ui/request-display-mode", { mode });
+      if (isObject(set)) updateContext({ displayMode: set["mode"] });
     },
   };
 }

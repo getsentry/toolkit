@@ -1,16 +1,19 @@
 /**
  * The render_sentry_chart view. The host sends the tool's arguments and
- * result; the range picker calls the tool again through the host and redraws
- * in place.
+ * result; the range picker calls the tool again through the host, redraws in
+ * place, and tells the model what the chart now shows. Hosts that offer
+ * fullscreen get a button for it.
  */
 import type { ChartResult } from "../src/tools/support/chart/schema";
 import {
   type CallToolResult,
   connect,
+  type DisplayMode,
   type Host,
   type HostContext,
 } from "./bridge";
 import {
+  CHART_HEIGHT,
   drawChart,
   formatCount,
   formatTooltipTime,
@@ -39,6 +42,8 @@ let view: View = { kind: "waiting" };
 let toolArgs: Record<string, unknown> = {};
 let pendingRange: string | null = null;
 let format: TimeFormat = { locale: undefined, timeZone: undefined };
+let displayMode: DisplayMode = "inline";
+let canFullscreen = false;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -55,6 +60,8 @@ const title = el("h1", undefined, "Sentry chart");
 const subtitle = el("div", "subtitle");
 const ranges = el("div", "ranges");
 const openButton = el("button", "open", "Open in Sentry");
+const fullscreenButton = el("button", "open");
+fullscreenButton.type = "button";
 const stats = el("div", "stats");
 const chartBox = el("div", "chart");
 const legend = el("div", "legend");
@@ -72,7 +79,7 @@ const header = el("header");
 const heading = el("div");
 heading.append(title, subtitle);
 const controls = el("div", "controls");
-controls.append(ranges, openButton);
+controls.append(ranges, openButton, fullscreenButton);
 header.append(heading, controls);
 const main = el("main");
 main.append(header, stats, chartBox, legend, note, state);
@@ -122,6 +129,11 @@ function render(): void {
     );
   }
   openButton.disabled = !isWebUrl(chart?.url);
+  const fullscreen = displayMode === "fullscreen";
+  document.documentElement.dataset["displayMode"] = displayMode;
+  fullscreenButton.hidden = !canFullscreen;
+  fullscreenButton.textContent = fullscreen ? "Exit fullscreen" : "Fullscreen";
+  fullscreenButton.setAttribute("aria-pressed", String(fullscreen));
 
   if (view.kind === "error") {
     state.hidden = false;
@@ -198,7 +210,11 @@ function render(): void {
     : "";
 
   if (hasData) {
-    drawChart(chartBox, chart, format);
+    // Fullscreen gives the chart the space left under the header.
+    const height = fullscreen
+      ? Math.max(CHART_HEIGHT, chartBox.clientHeight)
+      : CHART_HEIGHT;
+    drawChart(chartBox, chart, format, height);
   } else {
     chartBox.replaceChildren();
   }
@@ -227,6 +243,44 @@ function showResult(result: CallToolResult): void {
 
 let host: Host | null = null;
 
+/**
+ * What the model needs after the user changes the chart: the range they now
+ * see, its headline numbers, the arguments that reproduce it, and the chart.
+ * Labels and values come from the same Sentry result the model already got.
+ */
+function modelContext(chart: ChartResult, args: Record<string, unknown>) {
+  const shown = chart.groupBy
+    ? `${chart.yAxis} by ${chart.groupBy}`
+    : chart.yAxis;
+  const lines = [
+    `The user changed the Sentry chart "${chart.title}" to ${rangeLabel(chart)}. It now shows ${shown} for ${chart.dataset}${chart.query ? ` matching \`${chart.query}\`` : ""}, in ${chart.interval} buckets.`,
+  ];
+  const single = chart.series.length === 1 ? chart.series[0] : undefined;
+  if (single?.total != null) {
+    lines.push(`Total: ${formatValue(single.total, chart)}.`);
+  }
+  if (chart.peak) {
+    lines.push(
+      `Peak: ${formatValue(chart.peak.value, chart)} at ${chart.peak.time}.`,
+    );
+  }
+  if (!single && chart.series.length > 0) {
+    const groups = chart.series.map((series) =>
+      series.count === null
+        ? series.label
+        : `${series.label} (${formatCount(series.count)} events)`,
+    );
+    lines.push(`Groups: ${groups.join("; ")}.`);
+  }
+  lines.push(
+    `To query this range again, call ${TOOL_NAME} with ${JSON.stringify(args)}.`,
+  );
+  return {
+    text: lines.join("\n"),
+    structuredContent: { tool: TOOL_NAME, arguments: args, chart },
+  };
+}
+
 async function changeRange(range: string): Promise<void> {
   const args: Record<string, unknown> = {
     ...toolArgs,
@@ -243,6 +297,10 @@ async function changeRange(range: string): Promise<void> {
     const result = await host.callTool(TOOL_NAME, args);
     if (!result.isError) toolArgs = args;
     showResult(result);
+    // The model only has the first result; tell it what the user sees now.
+    if (view.kind === "ready") {
+      host.updateModelContext(modelContext(view.chart, args)).catch(() => {});
+    }
   } catch (error) {
     view = {
       kind: "error",
@@ -266,6 +324,10 @@ function applyHostContext(context: HostContext): void {
       root.style.setProperty(name, value);
     }
   }
+  displayMode = context.displayMode === "fullscreen" ? "fullscreen" : "inline";
+  canFullscreen =
+    Array.isArray(context.availableDisplayModes) &&
+    context.availableDisplayModes.includes("fullscreen");
   if (context.locale || context.timeZone) {
     format = {
       locale: context.locale ?? format.locale,
@@ -280,11 +342,20 @@ openButton.addEventListener("click", () => {
   if (chart && isWebUrl(chart.url)) void host?.openLink(chart.url);
 });
 
-let lastWidth = 0;
+fullscreenButton.addEventListener("click", () => {
+  const next = displayMode === "fullscreen" ? "inline" : "fullscreen";
+  host?.requestDisplayMode(next).catch(() => {});
+});
+
+// Inline, the chart redraws when its width changes. Fullscreen, it fills the
+// window, so it also redraws when its height changes.
+let lastSize = "";
 new ResizeObserver(([entry]) => {
   const width = Math.round(entry?.contentRect.width ?? 0);
-  if (width !== lastWidth && view.kind !== "waiting") {
-    lastWidth = width;
+  const height = Math.round(entry?.contentRect.height ?? 0);
+  const size = displayMode === "fullscreen" ? `${width}x${height}` : `${width}`;
+  if (size !== lastSize && view.kind !== "waiting") {
+    lastSize = size;
     render();
   }
 }).observe(main);
@@ -292,6 +363,7 @@ new ResizeObserver(([entry]) => {
 render();
 void connect(
   { name: "Sentry chart", version: "1.0.0" },
+  { availableDisplayModes: ["inline", "fullscreen"] },
   {
     toolInput: (args) => {
       toolArgs = { ...args };

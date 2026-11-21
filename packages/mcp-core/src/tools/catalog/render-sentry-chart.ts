@@ -219,7 +219,9 @@ export default defineTool({
       .min(1)
       .nullable()
       .default(null)
-      .describe("Chart heading; defaults to the aggregate."),
+      .describe(
+        "Chart heading, such as `Checkout errors`; defaults to the aggregate. Leave out the time range: the chart shows it, and the user can change it.",
+      ),
   },
   annotations: {
     readOnlyHint: true,

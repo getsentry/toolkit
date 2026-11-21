@@ -20,8 +20,8 @@ client gets the same answer as text.
 
 ## Entry points
 
-- The `render_sentry_chart` chart in an MCP Apps host, with its range picker
-  and Open in Sentry button, in experimental sessions.
+- The `render_sentry_chart` chart in an MCP Apps host, with its range picker,
+  fullscreen, and Open in Sentry buttons, in experimental sessions.
 - `ui://` resources in `resources/list` and `resources/read`, named by a
   tool's `_meta.ui.resourceUri` (and `openai/outputTemplate` for ChatGPT).
 
@@ -58,6 +58,11 @@ client gets the same answer as text.
   HTML only when a host reads the view, so a text-only session never loads
   it.
 - A view follows the host's theme, locale, and time zone.
+- A view uses a host feature, such as fullscreen or model context updates,
+  only when the host advertises it, and works the same without it.
+- When the user changes what a view shows, such as the chart's range, the
+  view tells the model with `ui/update-model-context`, so the model answers
+  about what the user sees and not the first result.
 
 ## Gaps
 

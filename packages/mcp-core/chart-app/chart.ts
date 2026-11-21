@@ -11,7 +11,8 @@ import type { ChartResult } from "../src/tools/support/chart/schema";
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** A plotted bucket: x, y, and its index into `times`. */
 type Point = readonly [x: number, y: number, index: number];
-const HEIGHT = 220;
+/** The chart's height inline, and the least it gets in fullscreen. */
+export const CHART_HEIGHT = 220;
 const MARGIN = { top: 8, right: 8, bottom: 22, left: 48 };
 export const SERIES_COLORS = [
   "#7553ff",
@@ -146,11 +147,12 @@ export function drawChart(
   container: HTMLElement,
   chart: ChartResult,
   format: TimeFormat,
+  height = CHART_HEIGHT,
 ): void {
   container.replaceChildren();
   const width = Math.max(container.clientWidth, 280);
   const plotWidth = width - MARGIN.left - MARGIN.right;
-  const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
+  const plotHeight = height - MARGIN.top - MARGIN.bottom;
   const times = chart.times.map((time) => Date.parse(time));
   const first = times[0] ?? 0;
   const last = times.at(-1) ?? first;
@@ -166,8 +168,8 @@ export function drawChart(
     MARGIN.top + plotHeight - scaleFraction(scale, value) * plotHeight;
 
   const root = svg("svg", {
-    viewBox: `0 0 ${width} ${HEIGHT}`,
-    height: HEIGHT,
+    viewBox: `0 0 ${width} ${height}`,
+    height,
     role: "img",
     "aria-label": chart.title,
   });
@@ -214,7 +216,7 @@ export function drawChart(
       "text",
       {
         x: x(time),
-        y: HEIGHT - 6,
+        y: height - 6,
         "text-anchor":
           i === 0 ? "start" : i === tickCount - 1 ? "end" : "middle",
       },
