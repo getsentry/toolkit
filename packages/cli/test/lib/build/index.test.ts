@@ -383,24 +383,6 @@ describe("normalizeIpa", () => {
     return attributes;
   }
 
-  /**
-   * Offsets of the central directory records of a ZIP without an archive
-   * comment (as fflate writes it), for tests that patch a record in place.
-   */
-  function centralRecordOffsets(bytes: Buffer): number[] {
-    const offsets: number[] = [];
-    let offset = bytes.readUInt32LE(bytes.length - 6);
-    for (let i = 0; i < bytes.readUInt16LE(bytes.length - 12); i++) {
-      offsets.push(offset);
-      offset +=
-        46 +
-        bytes.readUInt16LE(offset + 28) +
-        bytes.readUInt16LE(offset + 30) +
-        bytes.readUInt16LE(offset + 32);
-    }
-    return offsets;
-  }
-
   test("remaps Payload into an XCArchive layout with a generated Info.plist", async () => {
     const zip = await normalizeIpaBytes(fakeIpaBytes());
     const entries = unzipSync(zip);
@@ -535,30 +517,6 @@ describe("normalizeIpa", () => {
     expect(entries[`${APP}/Assets/a\\b.dat`]).toEqual(strToU8("data"));
   });
 
-  test("decodes a name without the UTF-8 flag as UTF-8 when valid, else as CP437", async () => {
-    const bytes = Buffer.from(
-      zipSync({
-        "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
-        "Payload/MyApp.app/utf8-café.png": strToU8("utf8"),
-        "Payload/MyApp.app/cp437-caf_.png": strToU8("cp437"),
-      }),
-    );
-    const [, utf8, cp437] = centralRecordOffsets(bytes) as [
-      number,
-      number,
-      number,
-    ];
-    // macOS ditto, Archive Utility and zip write UTF-8 names without the flag.
-    expect(bytes.readUInt16LE(utf8 + 8)).toBe(0x08_00);
-    bytes.writeUInt16LE(0, utf8 + 8);
-    // 0x82 is "é" in CP437 and is not valid UTF-8 on its own.
-    bytes[bytes.indexOf("_", cp437)] = 0x82;
-
-    const entries = unzipSync(await normalizeIpaBytes(bytes));
-    expect(entries[`${APP}/utf8-café.png`]).toEqual(strToU8("utf8"));
-    expect(entries[`${APP}/cp437-café.png`]).toEqual(strToU8("cp437"));
-  });
-
   test("rejects an IPA whose entry count wrapped instead of uploading part of it", async () => {
     const bytes = Buffer.from(fakeIpaBytes());
     // Without ZIP64 records, an archive over 65,535 entries declares its count
@@ -569,21 +527,6 @@ describe("normalizeIpa", () => {
       name: "ValidationError",
       message: expect.stringContaining("does not match its declared size"),
     });
-  });
-
-  test("rejects corrupted stored bytes instead of masking them with a new checksum", async () => {
-    const bytes = Buffer.from(
-      zipSync(
-        { "Payload/MyApp.app/Info.plist": strToU8("<app/>") },
-        { level: 0 },
-      ),
-    );
-    // Change one payload byte without changing its length or either ZIP checksum.
-    const dataOffset = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);
-    bytes[dataOffset] = 0x58;
-    await expect(normalizeIpaBytes(bytes)).rejects.toThrow(
-      "Invalid checksum in IPA",
-    );
   });
 
   test("reports an archive the ZIP parser rejects as a validation error", async () => {

@@ -22,7 +22,6 @@
  * macOS arm64 also expands asset catalogs with the legacy CoreUI parser.
  */
 
-import { isUtf8 } from "node:buffer";
 import {
   constants,
   createWriteStream,
@@ -49,7 +48,6 @@ import {
   type ZipFile,
 } from "yauzl";
 import { CLI_VERSION } from "../constants.js";
-import { verifyCrc32 } from "../crc32.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
 import {
@@ -551,65 +549,38 @@ function xcarchiveInfoPlist(appName: string): string {
 
 /** A `Payload/…` file entry extracted from an IPA and staged on disk. */
 type StagedIpaEntry = {
-  /** Entry path inside the IPA, `/`-separated; always starts with `Payload/`. */
+  /** Entry path inside the IPA; always starts with `Payload/`. */
   name: string;
-  /** Temp file under the stage directory holding the entry's extracted bytes. */
+  /** Temp file holding the entry's extracted bytes. */
   stagePath: string;
-  /**
-   * Host OS and external attributes to store for the entry in the wrapper, as
-   * chosen by {@link ipaEntryOptions}. Empty (the writer's defaults: MS-DOS,
-   * no attributes) when the IPA carries no usable Unix mode for the entry.
-   */
+  /** Host OS and attributes to store in the wrapper; see {@link ipaEntryOptions}. */
   options: ZipEntryOptions;
 };
 
 /** An IPA central-directory entry selected for staging. */
 type IpaPayloadEntry = {
-  /** Decoded entry path, `/`-separated; always starts with `Payload/`. */
+  /** Decoded entry path; always starts with `Payload/`. */
   name: string;
-  /** The entry's central-directory record, used to open its data stream. */
+  /** Central-directory record, used to open the entry's data. */
   entry: Entry;
 };
-
-/** General-purpose bit 11: the entry's name and comment are UTF-8. */
-const ZIP_FLAG_UTF8 = 0x08_00;
 
 /** Size of a central directory file header before its variable-length fields. */
 const CENTRAL_HEADER_FIXED_SIZE = 46;
 /** Size of the end-of-central-directory record before its comment. */
 const EOCD_FIXED_SIZE = 22;
-/** Offset of the central directory's byte size within that record. */
-const EOCD_DIRECTORY_SIZE_OFFSET = 12;
 /** Size of the ZIP64 locator that directly precedes that record, if any. */
 const ZIP64_LOCATOR_SIZE = 20;
 /** ZIP64 end-of-central-directory locator signature (`PK\x06\x07`). */
 const ZIP64_LOCATOR_SIG = 0x0706_4b50;
 
 /**
- * Decode an IPA entry's name.
- *
- * macOS `ditto`, Archive Utility and `zip` write UTF-8 names without setting
- * the UTF-8 flag, which the ZIP format defines as CP437. A name that is valid
- * UTF-8 is therefore decoded as UTF-8 whatever the flag says, and CP437 is only
- * the fallback. Backslashes are kept: they are legal in Unix file names.
- */
-function decodeIpaEntryName(entry: Entry): string {
-  const flags = isUtf8(entry.fileNameRaw)
-    ? entry.generalPurposeBitFlag | ZIP_FLAG_UTF8
-    : entry.generalPurposeBitFlag;
-  return getFileNameLowLevel(flags, entry.fileNameRaw, entry.extraFields, true);
-}
-
-/**
  * Choose the ZIP host OS and external attributes to store for an IPA entry.
  *
- * The attributes come from the uploaded archive, so only what a consumer needs
- * is forwarded: the regular-file or symlink type and the `rwx` permission bits
- * of an entry written on Unix. Everything else falls back to the writer's
- * defaults, so a mode-honouring extractor never creates a device, a FIFO, a
- * setuid file, or a file nobody can read: other file types, the
- * setuid/setgid/sticky bits, the MS-DOS attribute bits, and a Unix entry with
- * no permission bits at all.
+ * The attributes are archive-controlled, so only the regular-file or symlink
+ * type and the `rwx` bits of a Unix entry are forwarded. Anything else (other
+ * file types, setuid/setgid/sticky bits, a mode without permission bits) gets
+ * the writer's defaults.
  */
 function ipaEntryOptions(entry: Entry): ZipEntryOptions {
   if (entry.versionMadeBy >>> 8 !== ZIP_OS_UNIX) {
@@ -624,8 +595,7 @@ function ipaEntryOptions(entry: Entry): ZipEntryOptions {
       attrs: ((constants.S_IFLNK | permissions) << 16) >>> 0,
     };
   }
-  // Some writers store permission bits without a file type; such an entry is
-  // a regular file.
+  // Some writers store permission bits without a file type.
   if ((type === constants.S_IFREG || type === 0) && permissions !== 0) {
     return {
       os: ZIP_OS_UNIX,
@@ -636,18 +606,14 @@ function ipaEntryOptions(entry: Entry): ZipEntryOptions {
 }
 
 /**
- * Read the central directory's size in bytes as declared by an archive's
- * end-of-central-directory record.
- *
- * Returns `null` for a ZIP64 archive: its 64-bit records hold the real values,
- * so the 32-bit ones are placeholders.
+ * Read the central directory's byte size from the end-of-central-directory
+ * record, or `null` for a ZIP64 archive, whose 64-bit records hold the value.
  */
 async function readDeclaredDirectorySize(
   ipaPath: string,
   zip: ZipFile,
 ): Promise<number | null> {
-  // With `decodeStrings` off, `comment` is the raw archive comment (a Buffer
-  // at runtime), so its length is the comment's byte length.
+  // With `decodeStrings` off, `comment` is the raw comment (a Buffer at runtime).
   const recordOffset = zip.fileSize - EOCD_FIXED_SIZE - zip.comment.length;
   const start = Math.max(0, recordOffset - ZIP64_LOCATOR_SIZE);
   const tail = Buffer.alloc(recordOffset + EOCD_FIXED_SIZE - start);
@@ -664,25 +630,20 @@ async function readDeclaredDirectorySize(
   ) {
     return null;
   }
-  return tail.readUInt32LE(record + EOCD_DIRECTORY_SIZE_OFFSET);
+  // The directory size is the 32-bit field at offset 12 of the record.
+  return tail.readUInt32LE(record + 12);
 }
 
 /**
- * Walk an IPA's central directory and select the `Payload/…` file entries.
+ * Walk an IPA's central directory and select the `Payload/…` file entries,
+ * skipping directory markers, other top-level entries, and unsafe names.
  *
- * Directory markers and entries outside `Payload/` (e.g.
- * `iTunesMetadata.plist`) are left out. So is an entry whose name could escape
- * its directory or be cut short on extraction (a `..` segment under either
- * separator, or a NUL), with one warning for all of them.
+ * The directory is read in full before anything is extracted so a truncated
+ * one fails early: without ZIP64 records the entry count is 16 bits, and macOS
+ * `ditto` and Archive Utility write larger archives that way, so the parser
+ * stops at the wrapped count without an error.
  *
- * The whole directory is read before any entry is extracted so that a
- * truncated one fails early: a ZIP without ZIP64 records counts its entries in
- * 16 bits, and macOS `ditto` and Archive Utility write larger archives that
- * way. The parser then stops at the wrapped count and reports a complete
- * archive that lacks most of its files.
- *
- * @throws {ValidationError} If the directory holds more or fewer bytes than
- *   the archive declares.
+ * @throws {ValidationError} If the directory's size differs from the declared one.
  */
 async function readIpaPayloadEntries(
   ipaPath: string,
@@ -697,7 +658,13 @@ async function readIpaPayloadEntries(
       entry.fileNameLength +
       entry.extraFieldLength +
       entry.fileCommentLength;
-    const name = decodeIpaEntryName(entry);
+    // Strict decoding keeps backslashes, which are legal in Unix file names.
+    const name = getFileNameLowLevel(
+      entry.generalPurposeBitFlag,
+      entry.fileNameRaw,
+      entry.extraFields,
+      true,
+    );
     if (!name.startsWith("Payload/") || name.endsWith("/")) {
       continue;
     }
@@ -728,13 +695,10 @@ async function readIpaPayloadEntries(
  * Extract every `Payload/…` file entry of an IPA to a temp file under
  * `stageDir`, one at a time, without holding extracted bytes in memory.
  *
- * Entries are read through the central directory, the only place a ZIP keeps
- * Unix modes, and selected by {@link readIpaPayloadEntries}. Each entry's bytes
- * are checked against its CRC-32. Returns the staged entries in
- * central-directory order (the caller sorts for determinism).
+ * Entries come from the central directory, the only place a ZIP keeps Unix
+ * modes, in directory order (the caller sorts for determinism).
  *
- * @throws {ValidationError} If the archive is truncated, corrupt, encrypted, or
- *   otherwise unreadable as a ZIP.
+ * @throws {ValidationError} If the archive is truncated or unreadable as a ZIP.
  */
 async function stageIpaPayload(
   ipaPath: string,
@@ -751,12 +715,6 @@ async function stageIpaPayload(
         const stagePath = join(stageDir, `e${staged.length}`);
         await pipeline(
           await zip.openReadStreamPromise(entry),
-          // yauzl checks sizes, but never CRCs. Validate before the wrapper
-          // can replace the checksum and hide corrupted app contents.
-          verifyCrc32(
-            entry.crc32,
-            () => new ValidationError("Invalid checksum in IPA", "path"),
-          ),
           createWriteStream(stagePath),
         );
         staged.push({ name, stagePath, options: ipaEntryOptions(entry) });
@@ -773,8 +731,7 @@ async function stageIpaPayload(
     ) {
       throw err;
     }
-    // Names are never decoded by the parser here, so its messages hold only
-    // numbers, not archive-controlled text.
+    // Names are never decoded by the parser, so its messages hold no archive text.
     log.debug("Failed to read the IPA archive", err);
     throw new ValidationError("Invalid or unsupported IPA archive", "path");
   }
@@ -829,10 +786,7 @@ export async function normalizeIpa(
       name: string;
       /** File on disk to stream in; unset for an in-memory item. */
       stagePath?: string;
-      /**
-       * Host OS and external attributes for a file staged from the IPA; unset
-       * (the writer's defaults) for dSYM files and in-memory items.
-       */
+      /** Host OS and attributes of a file staged from the IPA; else defaults. */
       options?: ZipEntryOptions;
       /** In-memory contents; unset for an item streamed from disk. */
       data?: Uint8Array;
