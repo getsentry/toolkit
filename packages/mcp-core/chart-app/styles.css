@@ -132,6 +132,18 @@ button:disabled {
   transition: opacity 120ms;
 }
 
+/* Fullscreen: the chart takes the height that the header and legend leave. */
+[data-display-mode="fullscreen"] main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+[data-display-mode="fullscreen"] .chart {
+  flex: 1;
+  min-height: 220px;
+}
+
 .chart[data-loading="true"] {
   opacity: 0.45;
 }

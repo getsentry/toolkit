@@ -3,7 +3,7 @@
 // stdio server, call the tool, read its `ui://` view, and mount the view in a
 // headless browser through the ext-apps AppBridge, the way Claude or VS Code
 // does. Screenshots the chart in light and dark, after the range picker calls
-// the tool again through the host, and split by an attribute. The grouped
+// the tool again through the host, in fullscreen, and split by an attribute. The grouped
 // chart is p95 by release over 7 days at 1h, where the mock has busy releases
 // and sparse ones whose p95 is higher, as in getsentry/toolkit#2451. Writes
 // evidence and one PASS or FAIL line per check to checks.txt in --out. See
@@ -89,7 +89,9 @@ const hostScript = (
       contents: `
         import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
         window.hostLog = [];
-        window.mountView = async ({ html, theme, toolArgs, toolResult }) => {
+        // A capable host advertises ui/update-model-context and fullscreen;
+        // the other advertises neither, so the view must not use them.
+        window.mountView = async ({ html, theme, toolArgs, toolResult, capable = true }) => {
           document.body.dataset.theme = theme;
           const iframe = document.createElement("iframe");
           iframe.setAttribute("sandbox", "allow-scripts");
@@ -97,9 +99,12 @@ const hostScript = (
           const bridge = new AppBridge(
             null,
             { name: "verify-toolkit host", version: "0.0.0" },
-            { openLinks: {}, serverTools: {} },
-            { hostContext: { theme, locale: "en-US", timeZone: "UTC", platform: "web", displayMode: "inline", containerDimensions: { width: 720, maxHeight: 900 } } },
+            capable
+              ? { openLinks: {}, serverTools: {}, updateModelContext: { text: {}, structuredContent: {} } }
+              : { openLinks: {}, serverTools: {} },
+            { hostContext: { theme, locale: "en-US", timeZone: "UTC", platform: "web", displayMode: "inline", ...(capable ? { availableDisplayModes: ["inline", "fullscreen"] } : {}), containerDimensions: { width: 720, maxHeight: 900 } } },
           );
+          let displayMode = "inline";
           bridge.oncalltool = async (params) => {
             window.hostLog.push({ method: "tools/call", params });
             return await window.mcpCallTool(params);
@@ -108,8 +113,19 @@ const hostScript = (
             window.hostLog.push({ method: "ui/open-link", params });
             return {};
           };
+          bridge.onupdatemodelcontext = async (params) => {
+            window.hostLog.push({ method: "ui/update-model-context", params });
+            return {};
+          };
+          bridge.onrequestdisplaymode = async (params) => {
+            window.hostLog.push({ method: "ui/request-display-mode", params });
+            displayMode = params.mode === "fullscreen" ? "fullscreen" : "inline";
+            // Fullscreen: the host sizes the view, here 720x560.
+            if (displayMode === "fullscreen") iframe.style.height = "560px";
+            return { mode: displayMode };
+          };
           bridge.onsizechange = ({ height }) => {
-            if (height) iframe.style.height = height + "px";
+            if (height && displayMode === "inline") iframe.style.height = height + "px";
           };
           window.bridge = bridge;
           const initialized = new Promise((done) => { bridge.oninitialized = done; });
@@ -211,12 +227,13 @@ try {
   await page.exposeFunction("mcpCallTool", callTool);
   await page.setContent(hostPage);
   const frame = page.frameLocator("iframe");
-  const mount = async (theme, toolArgs, toolResult) => {
+  const mount = async (theme, toolArgs, toolResult, capable = true) => {
     await page.evaluate((input) => window.mountView(input), {
       html: view.text,
       theme,
       toolArgs,
       toolResult,
+      capable,
     });
     await frame.locator("svg path").first().waitFor();
     // Let the view report its size and the host resize the iframe.
@@ -271,6 +288,50 @@ try {
       rangeCall.params.arguments.period === "7d" &&
       rangeResult?.result?.structuredContent?.timeRange?.statsPeriod === "7d",
     `"${before}" -> view called ${TOOL} period=7d through the host, got ${rangeResult?.result?.structuredContent?.times?.length} buckets -> ${range}`,
+  );
+
+  const modelUpdate = hostLog.find(
+    (entry) => entry.method === "ui/update-model-context",
+  );
+  const modelText = modelUpdate?.params?.content?.[0]?.text ?? "";
+  const modelChart = modelUpdate?.params?.structuredContent?.chart;
+  check(
+    "model-context",
+    modelText.includes("Last 7 days") &&
+      modelUpdate.params.structuredContent.arguments?.period === "7d" &&
+      modelChart?.timeRange?.statsPeriod === "7d" &&
+      modelChart.times.length ===
+        rangeResult?.result?.structuredContent?.times?.length,
+    `after the range change the view sent ui/update-model-context: "${modelText.split("\n")[0]}", structuredContent.chart has ${modelChart?.times?.length} buckets`,
+  );
+
+  const fullscreenButton = frame.getByRole("button", {
+    name: "Fullscreen",
+    exact: true,
+  });
+  const inlineHeight = (await frame.locator("svg").boundingBox()).height;
+  await fullscreenButton.click();
+  await frame
+    .locator("html[data-display-mode='fullscreen']")
+    .waitFor({ state: "attached" });
+  await page.waitForTimeout(300);
+  const fullHeight = (await frame.locator("svg").boundingBox()).height;
+  const fullscreen = await shot("chart-fullscreen.png");
+  await frame.getByRole("button", { name: "Exit fullscreen" }).click();
+  await frame
+    .locator("html[data-display-mode='inline']")
+    .waitFor({ state: "attached" });
+  await page.waitForTimeout(300);
+  const backHeight = (await frame.locator("svg").boundingBox()).height;
+  const modeRequests = (await page.evaluate(() => window.hostLog))
+    .filter((entry) => entry.method === "ui/request-display-mode")
+    .map((entry) => entry.params.mode);
+  check(
+    "fullscreen",
+    modeRequests.join(",") === "fullscreen,inline" &&
+      fullHeight > inlineHeight + 100 &&
+      backHeight === inlineHeight,
+    `ui/request-display-mode ${modeRequests.join(" then ")}; chart height inline ${inlineHeight}px, fullscreen ${fullHeight}px, back ${backHeight}px -> ${fullscreen}`,
   );
 
   await frame.getByRole("button", { name: "Open in Sentry" }).click();
@@ -340,6 +401,23 @@ try {
       lines === 0 &&
       gapTooltip.includes("no data"),
     `${sparse.label.slice(0, 7)} has ${withData} of ${sparse.values.length} buckets with data and no 0s; drawn as ${dots} dots and ${lines} lines; tooltip at the left edge "${gapTooltip.replace(/\s+/g, " ")}"`,
+  );
+
+  // A host that advertises neither fullscreen nor model context updates.
+  await mount("light", ERRORS_CHART, errorsResult, false);
+  const fullscreenHidden = await frame
+    .getByRole("button", { name: "Fullscreen", exact: true })
+    .isHidden();
+  await frame.getByRole("button", { name: "1h", exact: true }).click();
+  await frame.locator(".subtitle", { hasText: "Last hour" }).waitFor();
+  await frame.locator('.chart[data-loading="false"]').waitFor();
+  const plainLog = await page.evaluate(() => window.hostLog);
+  check(
+    "capability-gated",
+    fullscreenHidden &&
+      plainLog.at(-1)?.method === "tools/call" &&
+      plainLog.at(-1)?.params?.arguments?.period === "1h",
+    `host without updateModelContext or fullscreen: Fullscreen button hidden=${fullscreenHidden}; after a range change the last host request is ${plainLog.at(-1)?.method}`,
   );
 
   // The rest of the lifecycle: a theme change, a cancelled call, teardown.
