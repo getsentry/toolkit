@@ -6,6 +6,11 @@ import {
   assertStructuredOnlyResult,
   getStructuredContent,
 } from "../../test-utils/structured-content.js";
+import {
+  DATASET_EXAMPLES,
+  DATASET_FIELDS,
+  RECOMMENDED_FIELDS,
+} from "../support/search-events/config";
 import type { SearchEventsStructuredContent } from "../support/search-events/structured";
 import searchProfiles, { searchProfilesOutputSchema } from "./search-profiles";
 
@@ -23,6 +28,42 @@ vi.mock("../support/search-events/seer", async (importOriginal) => ({
 }));
 
 type SearchParams = Parameters<typeof searchProfiles.handler>[0];
+
+// Columns the events API accepts for dataset=profiles: the aliases in COLUMNS
+// in getsentry/sentry src/sentry/search/events/datasets/profiles.py, plus the
+// project aliases. Any other column fails with HTTP 400 "Unknown field".
+const SENTRY_PROFILES_COLUMNS = new Set([
+  "organization.id",
+  "project.id",
+  "trace.transaction",
+  "id",
+  "profile.id",
+  "timestamp",
+  "device.arch",
+  "device.classification",
+  "device.locale",
+  "device.manufacturer",
+  "device.model",
+  "os.build",
+  "os.name",
+  "os.version",
+  "profile.duration",
+  "transaction.duration",
+  "environment",
+  "platform.name",
+  "trace",
+  "transaction",
+  "release",
+  "project_id",
+  "time",
+  "message",
+  "project",
+  "project.name",
+]);
+
+function isColumn(field: string) {
+  return !field.includes("(");
+}
 
 const baseParams: Omit<SearchParams, "query"> = {
   organizationSlug: "test-org",
@@ -84,16 +125,12 @@ describe("search_profiles structured output", () => {
       {
         project: "backend",
         "profile.id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-        "profiler.id": "",
-        "thread.id": "",
         timestamp: "2025-01-15T10:30:00+00:00",
         transaction: "/api/users",
         "transaction.duration": 152000000,
         release: "backend@1.2.3",
         environment: "production",
         trace: "6a477f5b0f31ef7b6b9b5e1dea66c91d",
-        "precise.start_ts": "",
-        "precise.finish_ts": "",
         secretBackendField: "must-not-leak",
       },
     ]);
@@ -110,16 +147,12 @@ describe("search_profiles structured output", () => {
           "fields": [
             "project",
             "profile.id",
-            "profiler.id",
-            "thread.id",
             "timestamp",
             "transaction",
             "transaction.duration",
             "release",
             "environment",
             "trace",
-            "precise.start_ts",
-            "precise.finish_ts",
           ],
           "query": "transaction:/api/users",
           "sort": "-timestamp",
@@ -144,13 +177,9 @@ describe("search_profiles structured output", () => {
             },
             "values": {
               "environment": "production",
-              "precise.finish_ts": "",
-              "precise.start_ts": "",
               "profile.id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
-              "profiler.id": "",
               "project": "backend",
               "release": "backend@1.2.3",
-              "thread.id": "",
               "timestamp": "2025-01-15T10:30:00+00:00",
               "trace": "6a477f5b0f31ef7b6b9b5e1dea66c91d",
               "transaction": "/api/users",
@@ -179,7 +208,7 @@ describe("search_profiles structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/profiling/?query=transaction%3A%2Fapi%2Fusers&project=-1&sort=-timestamp&field=project&field=profile.id&field=profiler.id&field=thread.id&field=timestamp&field=transaction&field=transaction.duration&field=release&field=environment&field=trace&field=precise.start_ts&field=precise.finish_ts&statsPeriod=24h",
+        "url": "https://test-org.sentry.io/explore/profiling/?query=transaction%3A%2Fapi%2Fusers&project=-1&sort=-timestamp&field=project&field=profile.id&field=timestamp&field=transaction&field=transaction.duration&field=release&field=environment&field=trace&statsPeriod=24h",
       }
     `);
   });
@@ -225,6 +254,44 @@ describe("search_profiles structured output", () => {
         },
       ]
     `);
+  });
+
+  it("runs a default search the profiles dataset accepts", async () => {
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const fields = new URL(request.url).searchParams.getAll("field");
+          const unknown = fields.find(
+            (field) => isColumn(field) && !SENTRY_PROFILES_COLUMNS.has(field),
+          );
+          return unknown
+            ? HttpResponse.json(
+                { detail: `Unknown field: ${unknown}` },
+                { status: 400 },
+              )
+            : HttpResponse.json({ data: [] });
+        },
+      ),
+    );
+
+    const structuredContent = await runSearch({
+      query: "environment:production",
+    });
+
+    expect(structuredContent.results).toEqual([]);
+  });
+
+  it("only suggests columns the profiles dataset accepts", () => {
+    const suggested = [
+      ...RECOMMENDED_FIELDS.profiles.basic,
+      ...Object.keys(DATASET_FIELDS.profiles),
+      ...DATASET_EXAMPLES.profiles.flatMap((example) => example.output.fields),
+    ].filter(isColumn);
+
+    expect(
+      suggested.filter((field) => !SENTRY_PROFILES_COLUMNS.has(field)),
+    ).toEqual([]);
   });
 
   it("returns aggregate rows", async () => {

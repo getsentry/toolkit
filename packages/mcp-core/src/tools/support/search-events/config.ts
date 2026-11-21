@@ -513,10 +513,6 @@ export const DATASET_FIELDS = {
   },
   profiles: {
     "profile.id": "Transaction profile ID for a specific captured profile",
-    "profiler.id":
-      "Continuous profiler session ID for chunk-based profile captures",
-    "thread.id":
-      "Thread ID associated with a continuous profile result when available",
     timestamp: "When the profile was captured",
     transaction: "Transaction name associated with the profile when available",
     trace: "Trace ID linked to the profiled transaction",
@@ -532,10 +528,6 @@ export const DATASET_FIELDS = {
       "Total profile duration in nanoseconds for a captured profile",
     "transaction.duration":
       "Transaction duration represented by the profile in nanoseconds",
-    "precise.start_ts":
-      "Continuous profile precise start timestamp when available",
-    "precise.finish_ts":
-      "Continuous profile precise finish timestamp when available",
     "count()": "Count of matching profiles",
     "last_seen()": "Most recent timestamp of the matching profile group",
     "p50()": "Median profile duration for the selected grouping",
@@ -966,22 +958,6 @@ export const DATASET_EXAMPLES: Record<
       },
     },
     {
-      description: "continuous profiles for a profiler session",
-      output: {
-        query: "profiler.id:041bde57b9844e36b8b7e5734efae5f7",
-        fields: [
-          "project",
-          "profiler.id",
-          "thread.id",
-          "timestamp",
-          "precise.start_ts",
-          "precise.finish_ts",
-          "release",
-        ],
-        sort: "-timestamp",
-      },
-    },
-    {
       description: "profiles grouped by environment",
       output: {
         query: "",
@@ -1054,16 +1030,12 @@ export const RECOMMENDED_FIELDS = {
     basic: [
       "project",
       "profile.id",
-      "profiler.id",
-      "thread.id",
       "timestamp",
       "transaction",
       "transaction.duration",
       "release",
       "environment",
       "trace",
-      "precise.start_ts",
-      "precise.finish_ts",
     ],
     description:
       "Core profiling information including profile identifiers, transaction context, timing, and trace linkage",
