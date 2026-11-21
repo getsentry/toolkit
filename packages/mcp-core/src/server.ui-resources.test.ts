@@ -1,8 +1,9 @@
 /**
- * MCP Apps: what a host reads to render render_sentry_chart inline. The tool
- * names its view in `_meta.ui.resourceUri`, and that `ui://` resource reads
- * back as a self-contained HTML document with the MCP Apps mime type. MCP
- * Apps ship to experimental sessions only for now.
+ * MCP Apps: what a host reads to render render_sentry_chart and
+ * render_issue_chart inline. Each tool names the shared chart view in
+ * `_meta.ui.resourceUri`, and that `ui://` resource reads back as a
+ * self-contained HTML document with the MCP Apps mime type. MCP Apps ship to
+ * experimental sessions only for now.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -15,7 +16,7 @@ vi.mock("@sentry/core/server", () => ({
   wrapMcpServerWithSentry: vi.fn((server) => server),
 }));
 
-const CHART_URI = "ui://sentry/chart/v4.html";
+const CHART_URI = "ui://sentry/chart/v5.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 async function connect(skills: Skill[], experimentalMode = true) {
@@ -41,16 +42,19 @@ async function connect(skills: Skill[], experimentalMode = true) {
 }
 
 describe("MCP Apps chart view", () => {
-  it("links render_sentry_chart to its view in tools/list", async () => {
-    await using session = await connect(["inspect"]);
-    const { tools } = await session.client.listTools();
-    const chartTool = tools.find((tool) => tool.name === "render_sentry_chart");
+  it.each(["render_sentry_chart", "render_issue_chart"])(
+    "links %s to the chart view in tools/list",
+    async (name) => {
+      await using session = await connect(["inspect"]);
+      const { tools } = await session.client.listTools();
+      const chartTool = tools.find((tool) => tool.name === name);
 
-    expect(chartTool?._meta).toEqual({
-      ui: { resourceUri: CHART_URI },
-      "openai/outputTemplate": CHART_URI,
-    });
-  });
+      expect(chartTool?._meta).toEqual({
+        ui: { resourceUri: CHART_URI },
+        "openai/outputTemplate": CHART_URI,
+      });
+    },
+  );
 
   it("lists and reads the view as a self-contained HTML document", async () => {
     await using session = await connect(["inspect"]);

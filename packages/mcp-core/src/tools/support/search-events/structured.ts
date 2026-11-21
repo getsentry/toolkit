@@ -15,6 +15,7 @@ import {
   suggestedToolActionSchema,
 } from "../../../internal/tool-helpers/suggested-actions";
 import { structuredResult } from "../../../internal/tool-helpers/results";
+import { filtersToIssues } from "../chart/series";
 import { logInfo } from "../../../telem/logging";
 import type { StructuredToolOutput } from "../../types";
 import type { PublicEventsDataset } from "../../../utils/events-datasets";
@@ -512,6 +513,8 @@ export function buildStructuredTimeSeriesResult(params: {
         outsideRetention: point.outsideRetention,
       })),
     },
-    suggestedActions: chartAction ? [chartAction] : [],
+    // render_sentry_chart rejects issue filters; render_issue_chart charts an issue
+    suggestedActions:
+      chartAction && !filtersToIssues(params.query) ? [chartAction] : [],
   });
 }

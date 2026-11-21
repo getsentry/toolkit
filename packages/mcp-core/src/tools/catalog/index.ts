@@ -42,6 +42,7 @@ import linkIssue from "./link-issue";
 import unlinkIssue from "./unlink-issue";
 import searchEvents from "./search-events";
 import searchErrors from "./search-errors";
+import renderIssueChart from "./render-issue-chart";
 import renderSentryChart from "./render-sentry-chart";
 import searchLogs from "./search-logs";
 import searchTraces from "./search-traces";
@@ -178,6 +179,7 @@ const catalogTools = withFreshReadInputs({
   search_replays: searchReplays,
   search_events: searchEvents,
   render_sentry_chart: renderSentryChart,
+  render_issue_chart: renderIssueChart,
   create_team: createTeam,
   create_project: createProject,
   update_project: updateProject,

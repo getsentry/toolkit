@@ -90,7 +90,8 @@ node .agents/skills/verify-toolkit/scripts/check-results.mjs local DIR
 ```
 
 `scripts/mcp-apps-host.mjs` acts as an MCP Apps host for
-`render_sentry_chart` on the mock server: it reads the tool's `ui://` view,
+`render_sentry_chart` and `render_issue_chart` on the mock server: it reads
+their shared `ui://` view,
 mounts it in headless Chromium through the ext-apps `AppBridge`, and writes
 screenshots, `host-log.json`, and `checks.txt` to `--out`:
 

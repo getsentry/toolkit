@@ -1,5 +1,5 @@
 /**
- * Bundles the render_sentry_chart view (chart-app/) into one self-contained
+ * Bundles the chart view (chart-app/) into one self-contained
  * HTML document and writes it to src/ui/chart-app.generated.ts, so the stdio
  * server and the Cloudflare Worker serve it without reading files.
  *

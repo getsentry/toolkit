@@ -38,6 +38,7 @@ import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import {
   assertIssueWithinProjectConstraint,
+  isErrorIssue,
   parseIssueParams,
 } from "../../internal/tool-helpers/issue";
 import { structuredResult } from "../../internal/tool-helpers/results";
@@ -450,8 +451,8 @@ function toCount(value: unknown): number | null {
 
 /**
  * Follow-up calls, most specific first: a metric issue's monitor and query, the related
- * issues, the agent conversations in the trace, the trace itself, another thread's
- * stacktrace, and the breadcrumbs.
+ * issues, the issue's chart, the agent conversations in the trace, the trace itself,
+ * another thread's stacktrace, and the breadcrumbs.
  */
 function buildIssueSuggestedActions({
   organizationSlug,
@@ -511,6 +512,18 @@ function buildIssueSuggestedActions({
         arguments: { organizationSlug, issueId: issue.shortId },
         reason:
           "List every related issue with its similarity score before resolving or ignoring this one.",
+        ...session,
+      }),
+    );
+  }
+
+  // experimental, like the chart view that renders it
+  if (session.experimentalMode) {
+    candidates.push(
+      buildSuggestedToolAction({
+        toolName: "render_issue_chart",
+        arguments: { organizationSlug, issueId: issue.shortId },
+        reason: "Chart this issue's events and affected users over time.",
         ...session,
       }),
     );
@@ -1193,7 +1206,5 @@ function shouldFetchTraceForEvent(event: Event): { traceId: string } | null {
 }
 
 function getReplayDataSource(issue: Issue): "discover" | "search_issues" {
-  return issue.issueCategory === "error" || issue.type === "error"
-    ? "discover"
-    : "search_issues";
+  return isErrorIssue(issue) ? "discover" : "search_issues";
 }

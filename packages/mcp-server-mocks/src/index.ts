@@ -52,6 +52,7 @@ import monitorCheckInsFixture from "./fixtures/monitor-checkins.json" with { typ
 import monitorStatsFixture from "./fixtures/monitor-stats.json" with { type: "json" };
 import organizationFixture from "./fixtures/organization.json" with { type: "json" };
 import performanceEventFixture from "./fixtures/performance-event.json" with { type: "json" };
+import performanceIssueFixture from "./fixtures/performance-issue.json" with { type: "json" };
 import profileChunkFixture from "./fixtures/profile-chunk.json" with { type: "json" };
 import projectFixture from "./fixtures/project.json" with { type: "json" };
 import releaseFixture from "./fixtures/release.json" with { type: "json" };
@@ -933,6 +934,16 @@ export const restHandlers: HttpHandler[] = buildHandlers([
   },
 
   // Performance issue with N+1 query detection
+  {
+    method: "get",
+    path: "/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/",
+    fetch: () => HttpResponse.json(performanceIssueFixture),
+  },
+  {
+    method: "get",
+    path: "/api/0/organizations/sentry-mcp-evals/issues/7890123456/",
+    fetch: () => HttpResponse.json(performanceIssueFixture),
+  },
   {
     method: "get",
     path: "/api/0/organizations/sentry-mcp-evals/issues/PERF-N1-001/events/latest/",
