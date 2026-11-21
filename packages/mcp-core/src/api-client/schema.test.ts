@@ -12,6 +12,7 @@ import {
   AutofixRunSchema,
   AutofixRunStateSchema,
   ClientKeySchema,
+  EventAttachmentListSchema,
   EventSchema,
   FlamegraphSchema,
   IssueSchema,
@@ -1157,5 +1158,43 @@ describe("event packages", () => {
   ])("retains $label package metadata during event parsing", ({ packages }) => {
     const event = EventSchema.parse({ ...createDefaultEvent(), packages });
     expect(event.packages).toEqual(packages);
+  });
+});
+
+describe("EventAttachmentListSchema", () => {
+  it("accepts attachments stored without a content type", () => {
+    const [attachment] = EventAttachmentListSchema.parse([
+      {
+        id: "123",
+        event_id: "c2bcb3b9321c4cccb39079c8202dd082",
+        type: "event.attachment",
+        name: "log.txt",
+        mimetype: null,
+        dateCreated: "2026-11-19T10:20:13.000000Z",
+        size: 42,
+        headers: { "Content-Type": null },
+        sha1: null,
+      },
+    ]);
+    expect(attachment?.mimetype).toBeNull();
+    expect(attachment?.headers).toEqual({ "Content-Type": null });
+  });
+
+  it("accepts a null Content-Type header when mimetype is set", () => {
+    const [attachment] = EventAttachmentListSchema.parse([
+      {
+        id: "124",
+        event_id: "c2bcb3b9321c4cccb39079c8202dd082",
+        type: "event.attachment",
+        name: "screenshot.png",
+        mimetype: "image/png",
+        dateCreated: "2026-11-19T10:20:13.000000Z",
+        size: 42,
+        headers: { "Content-Type": null },
+        sha1: null,
+      },
+    ]);
+    expect(attachment?.mimetype).toBe("image/png");
+    expect(attachment?.headers).toEqual({ "Content-Type": null });
   });
 });
