@@ -247,6 +247,16 @@ If `main` advances after that check, the deploy job's own revision checks fail i
 Failure to identify the prior active version, verify deployment ownership, or
 confirm the restored version fails the job rather than guessing a recovery.
 
+Every traffic change goes through `deployVersions()` in
+`scripts/cloudflare-deployment.mjs`. Cloudflare can answer 404 (code 100146)
+for a version for a few seconds after `wrangler versions upload`, and
+`wrangler versions deploy` fails on that read. `deployVersions()` waits until
+Cloudflare serves each version by ID on three reads in a row, then deploys. It
+gives up after 60 seconds, before any traffic moves, so a version that never
+appears fails the job instead of holding the deploy queue.
+`scripts/deploy-workflow.test.mjs` fails any workflow that calls
+`wrangler versions deploy` directly.
+
 ## Manual Deployment
 
 Manual dispatch cannot deploy a new revision. Use a reviewed change and its
