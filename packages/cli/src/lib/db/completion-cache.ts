@@ -42,6 +42,9 @@ import { runUpsert } from "./utils.js";
  * - `span-attribute`, `log-attribute`, `metric-attribute`: key of an
  *   attribute of the spans, logs, or trace metrics dataset, as `--field`
  *   and `--query` take it, with its type
+ * - `widget-series`: `<dashboard id>/<widget index>/<series>` for each
+ *   series of a widget's first query, written as `--transform` takes it
+ *   (`12/0/smooth(count()#2,ema,7)`), with the widget title
  */
 export type CompletionEntityKind =
   | "issue"
@@ -58,6 +61,7 @@ export type CompletionEntityKind =
   | "dsn"
   | "tag-key"
   | "span-attribute"
+  | "widget-series"
   | "log-attribute"
   | "metric-attribute";
 
@@ -91,21 +95,29 @@ type CompletionCacheRow = {
  * @param kind - Entity type
  * @param orgSlug - Organization that owns the entities
  * @param entities - Entities in display order; entries without a value are skipped
+ * @param replacing - Value prefix of the entries `entities` replace: those
+ *   not among them are dropped, even when `entities` is empty
  */
 export function cacheCompletionEntities(
   kind: CompletionEntityKind,
   orgSlug: string,
   entities: readonly CompletionEntity[],
+  replacing?: string,
 ): void {
   const valid = entities
     .filter((entity) => entity.value)
     .slice(0, MAX_ENTITIES_PER_ORG);
-  if (!orgSlug || valid.length === 0) {
+  if (!orgSlug || (valid.length === 0 && replacing === undefined)) {
     return;
   }
 
   const db = getDatabase();
   db.transaction(() => {
+    if (replacing !== undefined) {
+      db.query(
+        "DELETE FROM completion_cache WHERE kind = ? AND org_slug = ? AND substr(value, 1, ?) = ?",
+      ).run(kind, orgSlug, replacing.length, replacing);
+    }
     // Rank this batch above everything already stored, even when two writes
     // land in the same millisecond, so the newest batch always sorts first.
     const latest = db

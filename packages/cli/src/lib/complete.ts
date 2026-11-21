@@ -19,6 +19,7 @@ import { readdirSync, statSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import generatedTargets from "../generated/completion-targets.json" with { type: "json" };
+import type { SeriesCompletionContext } from "../generated/series-expression-grammar.js";
 import type {
   CompletionValues,
   DatasetCompletion,
@@ -443,6 +444,13 @@ const COMPLETERS = Object.freeze({
   /** Dashboard shorthand aggregates: `fn`, then `fn:field`. */
   "aggregate-shorthand": (partial, slot) =>
     completeShorthandAggregates(partial, slot),
+  /**
+   * Dashboard widget series: shorthand aggregates and the `fill(` and
+   * `smooth(` calls around them, then each call's arguments.
+   */
+  series: (partial, slot) => completeSeries(partial, slot),
+  /** What `series` does, naming the edited widget's own series when cached. */
+  "widget-series": (partial, slot) => completeWidgetSeries(partial, slot),
   /** Servers of stored accounts. */
   "account-server": (partial) => completeAccountServers(partial),
   /**
@@ -931,16 +939,20 @@ function projectCompleter(options: { list: boolean }): Completer {
  * default dataset without one, or on every dataset when it has no default
  * (`dashboard widget edit` keeps the widget's).
  */
+/** The dataset the command's `--dataset` names, else its default. */
+function datasetNameOf(slot: CompleterContext): string | undefined {
+  const given = slot.flagValues["--dataset"]?.toLowerCase();
+  return given === undefined
+    ? slot.datasets?.default
+    : (slot.datasets?.aliases?.[given] ?? given);
+}
+
 function datasetFieldsOf(slot: CompleterContext): DatasetFields[] {
   const completion = slot.datasets;
   if (!completion) {
     return [];
   }
-  const given = slot.flagValues["--dataset"]?.toLowerCase();
-  const name =
-    given === undefined
-      ? completion.default
-      : (completion.aliases?.[given] ?? given);
+  const name = datasetNameOf(slot);
   if (name === undefined) {
     return Object.values(completion.datasets);
   }
@@ -1072,6 +1084,347 @@ async function completeShorthandAggregates(
   return (await matchFields(partial.slice(colon + 1), slot, datasets)).map(
     ({ value, description }) => ({ value: `${name}:${value}`, description }),
   );
+}
+
+/** A transformation a series can take, with what it does. */
+const SERIES_TRANSFORMATIONS = [
+  { kind: "fill", description: "fill gaps: zero, linear, or locf" },
+  { kind: "smooth", description: "smooth: sma, ema, or asap" },
+] as const;
+
+const FILL_MODES = [
+  { value: "zero", description: "fill gaps with 0" },
+  { value: "linear", description: "interpolate across gaps" },
+  { value: "locf", description: "carry the last value forward" },
+];
+
+/** Window sizes offered before one is typed; any positive integer works. */
+const WINDOW_SIZES = ["3", "5", "7", "10", "15", "30"];
+
+/** EMA factors offered before one is typed; any in (0, 1] works. */
+const EMA_FACTORS = ["0.1", "0.2", "0.3", "0.5"];
+
+/** Where a series completion stops; see `series-expression.pegjs`. */
+type SeriesContext = {
+  /** What the word says before the part being completed. */
+  prefix: string;
+  /** The part being completed. */
+  partial: string;
+  /** What ends a finished argument: its `)`, then `,` inside another call. */
+  close: string;
+  context: SeriesCompletionContext;
+};
+
+/** The completion context of a series being typed, or `undefined` when it went past one. */
+async function seriesContextOf(
+  partial: string,
+): Promise<SeriesContext | undefined> {
+  const { parse, SyntaxError: SeriesSyntaxError } =
+    await import("../generated/series-expression-grammar.js");
+  try {
+    const context = parse(partial, { partial: true });
+    return {
+      prefix: partial.slice(0, context.start),
+      partial: partial.slice(context.start),
+      close: context.frames.length > 0 ? ")," : ")",
+      context,
+    };
+  } catch (error) {
+    // The word went past a series, or can never become one
+    if (error instanceof SeriesSyntaxError) {
+      return;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Complete the arguments of a transformation. Each value that finishes the
+ * call closes it, and starts the arguments of the call around it, so the
+ * word never stops at a point where the shell would end it with a space.
+ */
+function completeTransformationArgument({
+  prefix,
+  partial,
+  close,
+  context,
+}: SeriesContext): Completion[] {
+  const offer = (values: readonly Completion[]) =>
+    values
+      .filter(({ value }) => value.startsWith(partial))
+      .map(({ value, description }) => ({
+        value: `${prefix}${value}`,
+        description,
+      }));
+  switch (context.kind) {
+    case "fill-mode":
+      return offer(
+        FILL_MODES.map(({ value, description }) => ({
+          value: `${value}${close}`,
+          description,
+        })),
+      );
+    case "smooth-method":
+      return offer([
+        { value: "sma,", description: "simple moving average over N points" },
+        {
+          value: "ema,",
+          description: "exponential moving average over N points",
+        },
+        { value: `asap${close}`, description: "ASAP, window chosen for you" },
+        { value: "asap,", description: "ASAP over N points" },
+      ]);
+    case "window": {
+      const sizes =
+        /^[1-9][0-9]*$/.test(partial) && !WINDOW_SIZES.includes(partial)
+          ? [partial, ...WINDOW_SIZES]
+          : WINDOW_SIZES;
+      return offer(
+        sizes.flatMap((size) => [
+          { value: `${size}${close}`, description: `${size} data points` },
+          ...(context.method === "ema"
+            ? [{ value: `${size},`, description: "then a smoothing factor" }]
+            : []),
+        ]),
+      );
+    }
+    case "factor": {
+      const value = Number(partial);
+      const factors =
+        partial !== "" &&
+        value > 0 &&
+        value <= 1 &&
+        !EMA_FACTORS.includes(partial)
+          ? [partial, ...EMA_FACTORS]
+          : EMA_FACTORS;
+      return offer(
+        factors.map((factor) => ({
+          value: `${factor}${close}`,
+          description: "weight of the newest point",
+        })),
+      );
+    }
+    default:
+      return [];
+  }
+}
+
+/**
+ * The transformations that can wrap the aggregate being typed: those whose
+ * name starts with it, except kinds already around it, when the `--dataset`
+ * and `--display` given take transformations. Shown as `fill(` and
+ * `smooth(`, unless one would be the only completion: then as
+ * `fill(<aggregate>,` for each of `aggregates`, because a lone value ending
+ * in `(` gets a space after it in fish.
+ *
+ * @param others - How many other completions there are
+ */
+async function transformationOpeners(
+  { prefix, partial, context }: SeriesContext,
+  slot: CompleterContext,
+  aggregates: readonly Completion[],
+  others: number,
+): Promise<Completion[]> {
+  const { TRANSFORMATION_DATASETS, TRANSFORMATION_DISPLAYS } =
+    await import("./dashboard-series.js");
+  const dataset = datasetNameOf(slot);
+  const display = slot.flagValues["--display"];
+  if (
+    (dataset !== undefined && !TRANSFORMATION_DATASETS.includes(dataset)) ||
+    (display !== undefined && !TRANSFORMATION_DISPLAYS.includes(display))
+  ) {
+    return [];
+  }
+  const openers = SERIES_TRANSFORMATIONS.filter(
+    ({ kind }) => kind.startsWith(partial) && !context.frames.includes(kind),
+  );
+  const [only] = openers;
+  if (openers.length === 1 && only && others === 0 && aggregates.length > 0) {
+    return aggregates.map(({ value }) => ({
+      value: `${prefix}${only.kind}(${value},`,
+      description: only.description,
+    }));
+  }
+  return openers.map(({ kind, description }) => ({
+    value: `${prefix}${kind}(`,
+    description,
+  }));
+}
+
+/**
+ * Aggregates of the `--dataset` given, as a transformation's first argument
+ * takes them, each followed by the comma that starts the transformation's
+ * own arguments: shorthand once a `:` is typed, else `fn()` and `fn(field)`.
+ * A partial only one function name starts with completes as that name, so
+ * the shell stops at `fn(` instead of inserting `fn(),`, which the field
+ * many functions need would then have to replace.
+ */
+async function datasetSeriesAggregates(
+  partial: string,
+  slot: CompleterContext,
+): Promise<Completion[]> {
+  if (partial.includes(":")) {
+    return withComma(await completeShorthandAggregates(partial, slot));
+  }
+  const names = partial.includes("(")
+    ? []
+    : unionOf(datasetFieldsOf(slot), "functions").filter((name) =>
+        name.startsWith(partial),
+      );
+  const [only] = names;
+  const aggregates = await completeAggregates(partial, slot, { fields: false });
+  if (names.length !== 1 || only === undefined || only === partial) {
+    return withComma(aggregates);
+  }
+  const calls = await completeAggregates(only, slot, { fields: false });
+  const values = new Set(calls.map(({ value }) => value));
+  return withComma([
+    ...aggregates.filter(({ value }) => !values.has(value)),
+    ...calls,
+  ]);
+}
+
+/** Each aggregate followed by the comma before a transformation's arguments. */
+function withComma(aggregates: readonly Completion[]): Completion[] {
+  return aggregates.map(({ value, description }) => ({
+    value: `${value},`,
+    description,
+  }));
+}
+
+/**
+ * Complete a dashboard widget series (`--query`): shorthand aggregates and
+ * `fill(` / `smooth(` around them, then inside a call its aggregate, then
+ * its arguments.
+ */
+async function completeSeries(
+  partial: string,
+  slot: CompleterContext,
+): Promise<Completion[]> {
+  const series = await seriesContextOf(partial);
+  if (!series) {
+    return [];
+  }
+  if (series.context.kind !== "aggregate") {
+    return completeTransformationArgument(series);
+  }
+  const aggregates = (
+    series.context.frames.length > 0
+      ? await datasetSeriesAggregates(series.partial, slot)
+      : await completeShorthandAggregates(series.partial, slot)
+  ).map(({ value, description }) => ({
+    value: `${series.prefix}${value}`,
+    description,
+  }));
+  const inner = await completeAggregates("", slot, { fields: false });
+  return [
+    ...aggregates,
+    ...(await transformationOpeners(series, slot, inner, aggregates.length)),
+  ];
+}
+
+/**
+ * The cached series of the widget `widget edit` targets: those of the
+ * dashboard its positional names (by ID, or by a cached title) and of the
+ * widget `--index` or `--title` picks, else of every widget there. Each is
+ * written as `--transform` names it (`count()#2`), with its saved
+ * transformations around it.
+ */
+async function cachedWidgetSeries(
+  slot: CompleterContext,
+): Promise<{ series: string; widget?: string }[]> {
+  const orgs = await flagOrgs(slot.positionals);
+  const words = slot.positionals.map((word) => word.split("/").at(-1) ?? "");
+  let id = words.find((word) => DIGITS_RE.test(word));
+  if (id === undefined) {
+    const title = words.filter(Boolean).join(" ");
+    id = getCachedCompletionEntities("dashboard", orgs).find(
+      ({ label }) => label === title,
+    )?.value;
+  }
+  if (id === undefined) {
+    return [];
+  }
+  const index = slot.flagValues["--index"];
+  const title = slot.flagValues["--title"];
+  const seen = new Set<string>();
+  return getCachedCompletionEntities("widget-series", orgs).flatMap(
+    ({ value, label }) => {
+      const [dashboard, widget, ...rest] = value.split("/");
+      const series = rest.join("/");
+      const picked =
+        index !== undefined
+          ? widget === index
+          : title === undefined || label === title;
+      if (dashboard !== id || !picked || seen.has(series)) {
+        return [];
+      }
+      seen.add(series);
+      return [{ series, widget: label }];
+    },
+  );
+}
+
+/**
+ * Complete a series of the widget being edited (`--transform`): its own
+ * series from the cached dashboard, else what {@link completeSeries} does.
+ * At the start of the word: each series as saved (to change), bare (to
+ * clear), and wrapped in `fill(` or `smooth(`. Inside a call: the series
+ * the call can name. Arguments complete as for any series.
+ */
+async function completeWidgetSeries(
+  partial: string,
+  slot: CompleterContext,
+): Promise<Completion[]> {
+  const series = await seriesContextOf(partial);
+  if (!series) {
+    return [];
+  }
+  if (series.context.kind !== "aggregate") {
+    return completeTransformationArgument(series);
+  }
+  const cached = await cachedWidgetSeries(slot);
+  if (cached.length === 0) {
+    return await completeSeries(partial, slot);
+  }
+  const { parse, SyntaxError: SeriesSyntaxError } =
+    await import("../generated/series-expression-grammar.js");
+  const targets = cached.flatMap(({ series: saved, widget }) => {
+    try {
+      const { aggregate, occurrence } = parse(saved);
+      const target =
+        occurrence === undefined ? aggregate : `${aggregate}#${occurrence}`;
+      return [{ saved, target, widget }];
+    } catch (error) {
+      // A cached series written by a version with other transformations
+      if (error instanceof SeriesSyntaxError) {
+        return [];
+      }
+      throw error;
+    }
+  });
+  const named = (value: string, description?: string) =>
+    value.startsWith(series.partial)
+      ? [{ value: `${series.prefix}${value}`, description }]
+      : [];
+  if (series.context.frames.length > 0) {
+    return targets.flatMap(({ target, widget }) => named(`${target},`, widget));
+  }
+  const existing = targets.flatMap(({ saved, target, widget }) => [
+    ...(saved === target
+      ? []
+      : named(saved, widget ? `${widget}: as saved` : "as saved")),
+    ...named(target, saved === target ? widget : "clear its transformations"),
+  ]);
+  return [
+    ...existing,
+    ...(await transformationOpeners(
+      series,
+      slot,
+      targets.map(({ target }) => ({ value: target })),
+      existing.length,
+    )),
+  ];
 }
 
 const completeMonitors = flagEntityCompleter("monitor");

@@ -1439,9 +1439,150 @@ describe("getCompletions: fields and aggregates of the --dataset given", () => {
     expect(
       await values([...add, "--dataset", "error-events", "-g"], "brow"),
     ).toEqual(["browser.name"]);
-    // Trace metric aggregates name a metric, so no function completes
-    expect(await values([...add, "--dataset", "metrics", "-q"], "")).toEqual(
-      [],
-    );
+    // Trace metric aggregates name a metric, so no function completes,
+    // only the transformations around one
+    expect(await values([...add, "--dataset", "metrics", "-q"], "")).toEqual([
+      "fill(",
+      "smooth(",
+    ]);
+  });
+});
+
+describe("getCompletions: dashboard widget series", () => {
+  const add = ["dashboard", "widget", "add", "acme/", "Latency"];
+  const edit = ["dashboard", "widget", "edit", "acme/12"];
+
+  async function seed(): Promise<void> {
+    await seedOrgs([{ slug: "acme", name: "Acme" }]);
+    cacheCompletionEntities("span-attribute", "acme", [
+      { value: "span.duration", label: "number" },
+    ]);
+  }
+
+  test("--query offers aggregates and the transformations around them", async () => {
+    await seed();
+    const top = await values([...add, "--query"], "");
+    expect(top).toContain("count");
+    expect(top.slice(-2)).toEqual(["fill(", "smooth("]);
+    // A lone opener comes with each aggregate, so no shell ends the word there
+    const fill = await values([...add, "--query"], "fi");
+    expect(fill).toContain("fill(count(),");
+    expect(
+      fill.every((value) => value.startsWith("fill(") && value.endsWith(",")),
+    ).toBe(true);
+    // Only datasets and displays that take transformations offer them
+    for (const flags of [
+      ["--dataset", "errors"],
+      ["--display", "table"],
+    ]) {
+      expect(await values([...add, ...flags, "-q"], "")).not.toContain("fill(");
+    }
+  });
+
+  test("inside a call, the aggregate is followed by the comma before its arguments", async () => {
+    await seed();
+    const inner = await values([...add, "--query"], "fill(");
+    expect(inner).toContain("fill(count(),");
+    expect(inner).toContain("fill(smooth(");
+    expect(inner).not.toContain("fill(fill(");
+    expect(await values([...add, "-q"], "fill(p95(span.d")).toEqual([
+      "fill(p95(span.duration),",
+    ]);
+    // One name left: stop at `sum(` so its field can still be picked
+    expect(await values([...add, "-q"], "fill(su")).toEqual([
+      "fill(sum(),",
+      "fill(sum(span.duration),",
+    ]);
+    expect(await values([...add, "-q"], "smooth(p95:span.d")).toEqual([
+      "smooth(p95:span.duration,",
+    ]);
+  });
+
+  test("arguments close their call, then open the one around it", async () => {
+    await seed();
+    expect(await values([...add, "-q"], "fill(count(),")).toEqual([
+      "fill(count(),zero)",
+      "fill(count(),linear)",
+      "fill(count(),locf)",
+    ]);
+    expect(await values([...add, "-q"], "smooth(fill(count(),l")).toEqual([
+      "smooth(fill(count(),linear),",
+      "smooth(fill(count(),locf),",
+    ]);
+    expect(await values([...add, "-q"], "smooth(count(), ")).toEqual([
+      "smooth(count(), sma,",
+      "smooth(count(), ema,",
+      "smooth(count(), asap)",
+      "smooth(count(), asap,",
+    ]);
+    expect(await values([...add, "-q"], "smooth(count(),ema,1")).toEqual([
+      "smooth(count(),ema,1)",
+      "smooth(count(),ema,1,",
+      "smooth(count(),ema,10)",
+      "smooth(count(),ema,10,",
+      "smooth(count(),ema,15)",
+      "smooth(count(),ema,15,",
+    ]);
+    expect(await values([...add, "-q"], "smooth(count(),sma,3")).toEqual([
+      "smooth(count(),sma,3)",
+      "smooth(count(),sma,30)",
+    ]);
+    expect(await values([...add, "-q"], "smooth(count(),ema,7,0.2")).toEqual([
+      "smooth(count(),ema,7,0.2)",
+    ]);
+    // Past the end of the series
+    expect(await values([...add, "-q"], "fill(count(),zero),")).toEqual([]);
+  });
+
+  test("--transform offers the edited widget's own series", async () => {
+    await seed();
+    cacheCompletionEntities("dashboard", "acme", [
+      { value: "12", label: "Latency" },
+    ]);
+    cacheCompletionEntities("widget-series", "acme", [
+      { value: "12/0/count()#1", label: "Counts" },
+      { value: "12/0/smooth(count()#2,ema,7)", label: "Counts" },
+      { value: "12/1/p95(span.duration)", label: "Duration" },
+    ]);
+    const counts = [...edit, "--index", "0", "--transform"];
+
+    expect(await getCompletions(counts, "")).toEqual([
+      { value: "count()#1", description: "Counts" },
+      { value: "smooth(count()#2,ema,7)", description: "Counts: as saved" },
+      { value: "count()#2", description: "clear its transformations" },
+      { value: "fill(", description: "fill gaps: zero, linear, or locf" },
+      { value: "smooth(", description: "smooth: sma, ema, or asap" },
+    ]);
+    expect(await values(counts, "smooth(")).toEqual([
+      "smooth(count()#1,",
+      "smooth(count()#2,",
+    ]);
+    expect(await values(counts, "f")).toEqual([
+      "fill(count()#1,",
+      "fill(count()#2,",
+    ]);
+    // By dashboard title and widget title
+    expect(
+      await values(
+        [
+          "dashboard",
+          "widget",
+          "edit",
+          "acme/",
+          "Latency",
+          "--title",
+          "Duration",
+          "--transform",
+        ],
+        "",
+      ),
+    ).toEqual(["p95(span.duration)", "fill(", "smooth("]);
+    // Without the dashboard cached, the aggregates of the dataset
+    expect(
+      await values(
+        ["dashboard", "widget", "edit", "acme/99", "--transform"],
+        "fill(p95(span.d",
+      ),
+    ).toEqual(["fill(p95(span.duration),"]);
   });
 });

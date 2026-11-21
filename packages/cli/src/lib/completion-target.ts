@@ -148,6 +148,18 @@ export const AGGREGATE_TARGET = "aggregate" satisfies CompletionTarget;
 export const AGGREGATE_SHORTHAND_TARGET =
   "aggregate-shorthand" satisfies CompletionTarget;
 
+/**
+ * Dashboard widget series: shorthand aggregates, maybe wrapped in
+ * transformations (`smooth(fill(count(),linear),ema,7)`).
+ */
+export const SERIES_TARGET = "series" satisfies CompletionTarget;
+
+/**
+ * {@link SERIES_TARGET} series that name one of the edited widget's own,
+ * from the cached dashboard, else of the `--dataset` given.
+ */
+export const WIDGET_SERIES_TARGET = "widget-series" satisfies CompletionTarget;
+
 /** Servers of stored accounts. */
 export const ACCOUNT_SERVER_TARGET =
   "account-server" satisfies CompletionTarget;
@@ -420,6 +432,28 @@ export function aggregateShorthandParser(
   completion: DatasetCompletion,
 ): (input: string) => string {
   return datasetParser(AGGREGATE_SHORTHAND_TARGET, completion);
+}
+
+/**
+ * Parses a dashboard widget series (`count`, `smooth(count, ema, 7)`);
+ * completes aggregates, the transformations around them, and their
+ * arguments. The command parses the series itself.
+ */
+export function seriesParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(SERIES_TARGET, completion);
+}
+
+/**
+ * Parses a series of the widget being edited (`smooth(count#2, sma, 5)`);
+ * completes like {@link seriesParser}, offering the widget's own series
+ * first when its dashboard was cached.
+ */
+export function widgetSeriesParser(
+  completion: DatasetCompletion,
+): (input: string) => string {
+  return datasetParser(WIDGET_SERIES_TARGET, completion);
 }
 
 /**

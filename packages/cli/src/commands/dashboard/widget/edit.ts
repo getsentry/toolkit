@@ -13,6 +13,8 @@ import {
   choiceParser,
   fieldParser,
   parseText,
+  seriesParser,
+  widgetSeriesParser,
 } from "../../../lib/completion-target.js";
 import { ValidationError } from "../../../lib/errors.js";
 import { formatWidgetEdited } from "../../../lib/formatters/human.js";
@@ -48,9 +50,15 @@ import {
   type WidgetQueryFlags,
 } from "../resolve.js";
 import { DashboardWidgetChangeOutputSchema } from "../../../generated/output-schemas/dashboard.js";
+import {
+  applySeriesTransformations,
+  parseQuerySeries,
+  WIDGET_SERIES_HELP,
+} from "../transformations.js";
 
 type EditFlags = WidgetQueryFlags &
   WidgetLayoutFlags & {
+    readonly transform?: string[];
     readonly index?: number;
     readonly title?: string;
     readonly "new-title"?: string;
@@ -214,8 +222,22 @@ export const editCommand = buildCommand({
       "Identify the widget by --index (0-based) or --title.\n" +
       "Only provided flags are changed — omitted values are preserved.\n\n" +
       "Layout flags (--col/-x, --row/-y, --width, --height) control widget position\n" +
-      "and size in the 6-column dashboard grid.",
+      "and size in the 6-column dashboard grid.\n\n" +
+      WIDGET_SERIES_HELP +
+      "\n\n" +
+      "--query replaces the series list. A series written without\n" +
+      "transformations keeps the ones it had: the n-th count() keeps those of the\n" +
+      "n-th saved count(), wherever it moves.\n\n" +
+      "--transform sets one series' transformations without restating --query.\n" +
+      "It names the series by its aggregate, and a bare aggregate clears them.\n" +
+      "When the query has the same aggregate more than once, add #<n> to pick\n" +
+      "one, counting from 1: smooth(count#2, sma, 5).",
     examples: [
+      {
+        description:
+          "Smooth one series and clear another's transformations, keeping the rest",
+        run: "dashboard widget edit my-org/12345 --index 0 --transform 'smooth(fill(count, linear), ema, 7)' --transform p95:span.duration",
+      },
       {
         description: "Change a widget's display type",
         run: "dashboard widget edit 12345 --title 'Error Rate' --display bar",
@@ -279,8 +301,17 @@ export const editCommand = buildCommand({
       },
       query: {
         kind: "parsed",
-        parse: aggregateShorthandParser(WIDGET_FIELD_COMPLETION),
-        brief: "Aggregate expression (e.g. count, p95:span.duration)",
+        parse: seriesParser(WIDGET_FIELD_COMPLETION),
+        brief:
+          "Series: an aggregate (count, p95:span.duration), optionally transformed (smooth(count, ema, 7)). Replaces the series list",
+        variadic: true,
+        optional: true,
+      },
+      transform: {
+        kind: "parsed",
+        parse: widgetSeriesParser(WIDGET_FIELD_COMPLETION),
+        brief:
+          "Set one series' transformations, e.g. smooth(count, ema, 7); a bare aggregate clears them (repeatable)",
         variadic: true,
         optional: true,
       },
@@ -399,7 +430,24 @@ export const editCommand = buildCommand({
     // Validate individual layout flag ranges early (catches --col -1, --width 7, etc.)
     validateWidgetLayout(normalizedFlags, existing.layout);
 
-    const replacement = buildReplacement(normalizedFlags, existing);
+    const series = parseQuerySeries(normalizedFlags.query);
+    const replacement = applySeriesTransformations(
+      buildReplacement(
+        {
+          ...normalizedFlags,
+          query: series?.map((entry) => entry.aggregate),
+        },
+        existing,
+      ),
+      {
+        series,
+        transform: normalizedFlags.transform,
+        retyped:
+          normalizedFlags.dataset !== undefined ||
+          normalizedFlags.display !== undefined,
+      },
+      widgets[widgetIndex],
+    );
 
     // Re-validate the final merged layout when the existing widget had no layout
     // and FALLBACK_LAYOUT was used — the early check couldn't cross-validate
