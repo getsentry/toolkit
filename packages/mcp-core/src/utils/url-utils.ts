@@ -347,6 +347,23 @@ export function getIssueUrl(
 }
 
 /**
+ * Generates a link to the billing page with the Seer auto-reload modal open.
+ * @param host The Sentry host (may include regional subdomain for API access)
+ * @param organizationSlug Organization identifier
+ * @returns The complete billing URL
+ */
+export function getSeerAutoReloadUrl(
+  host: string,
+  organizationSlug: string,
+  protocol: SentryProtocol = "https",
+): string {
+  const base = isPublicSentryHost(host)
+    ? `${protocol}://${organizationSlug}.sentry.io/settings/billing/overview/`
+    : `${protocol}://${host}/settings/${organizationSlug}/billing/overview/`;
+  return `${base}#open-seer-auto-reload-modal`;
+}
+
+/**
  * Generates a Sentry dashboard URL.
  * @param host The Sentry host (may include regional subdomain for API access)
  * @param organizationSlug Organization identifier

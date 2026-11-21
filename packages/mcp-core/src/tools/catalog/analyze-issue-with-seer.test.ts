@@ -434,7 +434,7 @@ describe("analyze_issue_with_seer", () => {
           "Your organization does not have enough credits to start an Autofix run.",
         code: "seer_out_of_credits",
       },
-      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.\n\nConfigure auto-reload: https://sentry-mcp-evals.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal",
     ],
     [
       "out of credits, not enough credits",
@@ -444,7 +444,7 @@ describe("analyze_issue_with_seer", () => {
         code: "seer_out_of_credits",
         denialReason: "not_enough_credits",
       },
-      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.\n\nConfigure auto-reload: https://sentry-mcp-evals.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal:not_enough_credits",
     ],
     [
       "out of credits, null denial reason",
@@ -454,7 +454,7 @@ describe("analyze_issue_with_seer", () => {
         code: "seer_out_of_credits",
         denialReason: null,
       },
-      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+      "Your organization does not have enough credits to start an Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.\n\nConfigure auto-reload: https://sentry-mcp-evals.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal",
     ],
     [
       "daily spend limit reached",
@@ -464,7 +464,7 @@ describe("analyze_issue_with_seer", () => {
         code: "seer_out_of_credits",
         denialReason: "daily_cap_exceeded",
       },
-      "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.",
+      "Your organization has reached its daily Seer spend limit. Someone with billing access can raise the limit in Sentry, or you can try again tomorrow.\n\nConfigure auto-reload: https://sentry-mcp-evals.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal:daily_cap_exceeded",
     ],
     [
       "out of quota",
@@ -786,7 +786,7 @@ describe("analyze_issue_with_seer", () => {
 
     expect(result).toContain("## Analysis Failed");
     expect(result).toContain(
-      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.",
+      "Your organization does not have enough credits to continue your Autofix run. Someone with billing access can adjust Seer spend and auto-reload in Sentry.\n\nConfigure auto-reload: https://sentry-mcp-evals.sentry.io/settings/billing/overview/#open-seer-auto-reload-modal",
     );
   });
 

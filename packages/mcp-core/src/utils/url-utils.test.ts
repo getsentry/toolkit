@@ -11,6 +11,7 @@ import {
   getReleaseUrl,
   getReplaysSearchUrl,
   getReplayUrl,
+  getSeerAutoReloadUrl,
   getTraceMetricsExploreUrl,
   getTraceUrl,
   getUptimeMonitorUrl,
@@ -165,6 +166,14 @@ describe("url-utils", () => {
       );
       expect(result).toBe(
         "http://sentry.internal:9000/organizations/myorg/issues/PROJ-123",
+      );
+    });
+  });
+
+  describe("getSeerAutoReloadUrl", () => {
+    it("links the org's billing settings on a dedicated host", () => {
+      expect(getSeerAutoReloadUrl("acme.my.sentry.io", "myorg")).toBe(
+        "https://acme.my.sentry.io/settings/myorg/billing/overview/#open-seer-auto-reload-modal",
       );
     });
   });
