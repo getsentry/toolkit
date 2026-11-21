@@ -16,8 +16,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { strToU8, unzipSync, zipSync } from "fflate";
+import { strToU8, unzipSync, type Zippable, zipSync } from "fflate";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { fromBufferPromise } from "yauzl";
 import {
   detectBuildFormat,
   detectBuildFormatFromFile,
@@ -394,6 +395,40 @@ describe("normalizeIpa", () => {
         "archive.xcarchive/Products/Applications/MyApp.app/Frameworks/X.framework/X"
       ],
     ).toEqual(strToU8("fw"));
+  });
+
+  test("preserves Unix permissions when remapping IPA files", async () => {
+    const modes = {
+      "Info.plist": 0o100644,
+      MyApp: 0o100755,
+      "Frameworks/X.framework/X": 0o100750,
+    };
+    const files: Zippable = {};
+    for (const [name, mode] of Object.entries(modes)) {
+      files[`Payload/MyApp.app/${name}`] = [
+        strToU8(name),
+        { os: 3, attrs: mode * 0x10000 },
+      ];
+    }
+    const wrapper = await fromBufferPromise(
+      await normalizeIpaBytes(zipSync(files)),
+    );
+    const actual = new Map<string, number[]>();
+    try {
+      for await (const entry of wrapper.eachEntry()) {
+        actual.set(entry.fileName, [
+          Math.floor(entry.versionMadeBy / 0x100),
+          entry.externalFileAttributes,
+        ]);
+      }
+    } finally {
+      wrapper.close();
+    }
+    for (const [name, mode] of Object.entries(modes)) {
+      expect(
+        actual.get(`archive.xcarchive/Products/Applications/MyApp.app/${name}`),
+      ).toEqual([3, mode * 0x10000]);
+    }
   });
 
   test("includes only the identified app's entries", async () => {

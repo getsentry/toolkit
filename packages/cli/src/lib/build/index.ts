@@ -22,17 +22,11 @@
  * macOS arm64 also expands asset catalogs with the legacy CoreUI parser.
  */
 
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readdirSync,
-  statSync,
-  writeSync,
-} from "node:fs";
+import { createWriteStream, existsSync, readdirSync, statSync } from "node:fs";
 import { lstat, mkdtemp, open, readdir, readlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, posix, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import {
   strToU8,
   Unzip,
@@ -41,6 +35,7 @@ import {
   UnzipPassThrough,
   unzipSync,
 } from "fflate";
+import { getFileNameLowLevel, openPromise, validateFileName } from "yauzl";
 import { CLI_VERSION } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -49,7 +44,7 @@ import {
   extractAssetCatalogImages,
 } from "./asset-catalog-extract.js";
 import { collectDsymEntries } from "./dsyms.js";
-import { DeterministicZipWriter } from "./zip-writer.js";
+import { DeterministicZipWriter, type ZipEntryOptions } from "./zip-writer.js";
 
 const log = logger.withTag("build.normalize");
 
@@ -542,7 +537,11 @@ function xcarchiveInfoPlist(appName: string): string {
 }
 
 /** A `Payload/…` file entry extracted from an IPA and staged on disk. */
-type StagedIpaEntry = { name: string; stagePath: string };
+type StagedIpaEntry = {
+  name: string;
+  stagePath: string;
+  options: ZipEntryOptions;
+};
 
 /**
  * Stream an IPA ZIP from disk, staging every `Payload/…` file entry to a temp
@@ -558,57 +557,44 @@ async function stageIpaPayload(
   stageDir: string,
 ): Promise<StagedIpaEntry[]> {
   const staged: StagedIpaEntry[] = [];
-  let index = 0;
-
-  const unzip = new Unzip();
-  unzip.register(UnzipInflate);
-  unzip.register(UnzipPassThrough);
-  unzip.onfile = (file: UnzipFile) => {
-    const wanted = !file.name.endsWith("/") && file.name.startsWith("Payload/");
-    if (!wanted) {
-      // Still drain the entry so fflate advances past its data.
-      file.ondata = () => {
-        // Discard.
-      };
-      file.start();
-      return;
-    }
-    const stagePath = join(stageDir, `e${index++}`);
-    const fd = openSync(stagePath, "w");
-    file.ondata = (err, chunk, final) => {
-      if (err) {
-        closeSync(fd);
-        throw err;
-      }
-      if (chunk.length > 0) {
-        writeSync(fd, chunk);
-      }
-      if (final) {
-        closeSync(fd);
-        staged.push({ name: file.name, stagePath });
-      }
-    };
-    file.start();
-  };
-
-  const src = await open(ipaPath, "r");
+  // Unix modes live in the central directory, outside the local file headers.
+  // Decode names per entry so an unsafe name can be skipped independently.
+  const zip = await openPromise(ipaPath, {
+    decodeStrings: false,
+    autoClose: false,
+  });
   try {
-    const buf = Buffer.allocUnsafe(1 << 20);
-    const size = (await src.stat()).size;
-    let position = 0;
-    while (position < size) {
-      const { bytesRead } = await src.read(buf, 0, buf.length, position);
-      if (bytesRead === 0) {
-        break;
-      }
-      position += bytesRead;
-      unzip.push(
-        Uint8Array.prototype.slice.call(buf, 0, bytesRead),
-        position >= size,
+    for await (const entry of zip.eachEntry()) {
+      const name = getFileNameLowLevel(
+        entry.generalPurposeBitFlag,
+        entry.fileNameRaw,
+        entry.extraFields,
+        true,
       );
+      if (
+        !name.startsWith("Payload/") ||
+        name.endsWith("/") ||
+        validateFileName(name) !== null ||
+        name.includes("\0")
+      ) {
+        continue;
+      }
+      const stagePath = join(stageDir, `e${staged.length}`);
+      await pipeline(
+        await zip.openReadStreamPromise(entry),
+        createWriteStream(stagePath),
+      );
+      staged.push({
+        name,
+        stagePath,
+        options: {
+          os: entry.versionMadeBy >>> 8,
+          attrs: entry.externalFileAttributes,
+        },
+      });
     }
   } finally {
-    await src.close();
+    zip.close();
   }
   return staged;
 }
@@ -655,7 +641,12 @@ export async function normalizeIpa(
     // generated Info.plist — then sort so the output depends only on contents,
     // not on the IPA's central-directory order, keeping bytes deterministic for
     // chunk dedup across re-uploads.
-    type ArchiveItem = { name: string; stagePath?: string; data?: Uint8Array };
+    type ArchiveItem = {
+      name: string;
+      stagePath?: string;
+      options?: ZipEntryOptions;
+      data?: Uint8Array;
+    };
     const items: ArchiveItem[] = [
       {
         name: `${archiveDir}/Info.plist`,
@@ -671,14 +662,10 @@ export async function normalizeIpa(
         continue;
       }
       const stripped = entry.name.slice("Payload/".length);
-      // Skip path-traversal entries (a `..` segment) defensively, matching the
-      // legacy CLI's `enclosed_name()` guard.
-      if (stripped.split("/").includes("..")) {
-        continue;
-      }
       items.push({
         name: `${archiveDir}/Products/Applications/${stripped}`,
         stagePath: entry.stagePath,
+        options: entry.options,
       });
     }
     items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -687,7 +674,7 @@ export async function normalizeIpa(
     try {
       for (const item of items) {
         if (item.stagePath !== undefined) {
-          await zip.addFile(item.name, item.stagePath);
+          await zip.addFile(item.name, item.stagePath, item.options);
         } else if (item.data !== undefined) {
           await zip.addData(item.name, item.data);
         }
