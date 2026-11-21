@@ -1,13 +1,17 @@
 /**
- * The render_sentry_chart result. Imports only zod, so the chart view parses
- * the same contract the tool declares.
+ * The result of every tool that renders the chart view, such as
+ * render_sentry_chart and render_issue_chart. Imports only zod, so the view
+ * parses the same contract the tools declare.
  */
 import { z } from "zod";
 import { ingestionSchema } from "../ingestion";
 
 const bucketIndexesSchema = z.array(z.number().int().nonnegative());
 
-export const renderSentryChartOutputSchema = z.object({
+export const chartOutputSchema = z.object({
+  tool: z
+    .enum(["render_sentry_chart", "render_issue_chart"])
+    .describe("Tool that drew this chart; changing the range calls it again."),
   title: z.string(),
   dataset: z.string(),
   query: z.string(),
@@ -39,7 +43,7 @@ export const renderSentryChartOutputSchema = z.object({
       z.object({
         label: z
           .string()
-          .describe("The group's value, or the aggregate when ungrouped."),
+          .describe("The group's value, or what the series measures."),
         count: z
           .number()
           .nullable()
@@ -57,7 +61,7 @@ export const renderSentryChartOutputSchema = z.object({
           ),
       }),
     )
-    .describe("One series, or one per top group, most events first."),
+    .describe("One series per measure or top group, most events first."),
   peak: z
     .object({ series: z.string(), time: z.string(), value: z.number() })
     .nullable()
@@ -67,4 +71,4 @@ export const renderSentryChartOutputSchema = z.object({
   ingestion: ingestionSchema,
 });
 
-export type ChartResult = z.output<typeof renderSentryChartOutputSchema>;
+export type ChartResult = z.output<typeof chartOutputSchema>;

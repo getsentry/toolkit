@@ -1,7 +1,7 @@
 # MCP Apps chart view
 
-What an MCP Apps host (Claude, VS Code, ChatGPT) gets for `render_sentry_chart`:
-the tool names a `ui://` view in `tools/list`, the view reads back as one
+What an MCP Apps host (Claude, VS Code, ChatGPT) gets for `render_sentry_chart`
+and `render_issue_chart`: each tool names the same `ui://` view in `tools/list`, the view reads back as one
 self-contained HTML document, and the view renders the tool result, follows
 the host theme, and calls the tool again through the host. The goals are in
 `design/mcp-apps.md`.
@@ -21,13 +21,15 @@ the host theme, and calls the tool again through the host. The goals are in
 - `grouped` A `groupBy` result draws one series per top group, with a legend that shows each group's short label and event count, and no peak, since one group's bucket would read as the chart's peak. Proof: `drive`.
 - `top-by-volume` A grouped chart of a non-additive aggregate, such as p95 by release, plots the groups with the most events, not the sparse groups with the highest values. Proof: `drive`.
 - `null-gaps` A bucket with no data is null in the result, not 0, and the view draws it as a gap; a bucket with no data on either side is a dot, and its tooltip row reads "no data". Proof: `drive`.
+- `issue-chart` `render_issue_chart` names the same view and charts one issue's Events and Users series from the dataset that holds its events: the issue platform for a performance issue, which the errors dataset would answer with all zeros. It uses the issue page's 4h buckets for the default 14 days, and the view shows the Events peak. Proof: `drive`.
+- `issue-range-roundtrip` The range picker on an issue chart calls `render_issue_chart`, not `render_sentry_chart`, with the same issue and the new period, and gets the issue page's bucket size for it (2h for 7 days). Proof: `drive`.
 - `compact-result` The result for 5 series of 168 buckets (7 days at 1h) stays under 16 KiB, and its text content is the same JSON. Proof: `drive`.
 - `lifecycle` The view follows a `host-context-changed` theme change, shows a cancelled state on `ui/notifications/tool-cancelled`, and answers `ui/resource-teardown`. Proof: `drive`.
 - `default-csp` The view loads and runs under the spec's default CSP with no console errors, so it needs no `csp` domains. Proof: `drive`.
 
 ## How to get to it
 
-- An MCP Apps host that lists `render_sentry_chart` and reads its `ui://` resource, over stdio (`sentry mcp --experimental`, `npx @sentry/mcp-server --experimental`) or remote HTTP in experimental mode. Stable sessions list neither the tool nor the view.
+- An MCP Apps host that lists `render_sentry_chart` or `render_issue_chart` and reads their `ui://` resource, over stdio (`sentry mcp --experimental`, `npx @sentry/mcp-server --experimental`) or remote HTTP in experimental mode. Stable sessions list neither the tool nor the view.
 - A host with no MCP Apps support gets the same tool with a text and structured result only.
 
 ## Driving it with mcp-apps-host.mjs
@@ -37,13 +39,14 @@ Preconditions:
 - Launch from `../SKILL.md` has run on this checkout, and `$VERIFY_RUN` is set.
 - A Chromium build for playwright-core is installed. If the script cannot launch it, run `pnpm --filter @sentry/mcp-core exec playwright-core install chromium-headless-shell`.
 
-- **Every `drive` claim: act as the host.** Run `node .agents/skills/verify-toolkit/scripts/mcp-apps-host.mjs --out "$VERIFY_RUN/mcp-apps"`. It starts the mock server, calls the tool, reads the view, and mounts it in headless Chromium inside a host page that uses `AppBridge`. Every line it prints, also in `checks.txt`, is `PASS`. Its grouped call is `p95(span.duration)` by `release` over 7 days at 1h. The screenshots `chart-light.png`, `chart-dark.png`, `chart-range-7d.png`, `chart-fullscreen.png`, and `chart-grouped-dark.png` show each state. `host-log.json` holds the view's `tools/call`, `ui/update-model-context`, `ui/request-display-mode`, and `ui/open-link` requests to the host.
+- **Every `drive` claim: act as the host.** Run `node .agents/skills/verify-toolkit/scripts/mcp-apps-host.mjs --out "$VERIFY_RUN/mcp-apps"`. It starts the mock server, calls the tool, reads the view, and mounts it in headless Chromium inside a host page that uses `AppBridge`. Every line it prints, also in `checks.txt`, is `PASS`. Its grouped call is `p95(span.duration)` by `release` over 7 days at 1h, and its issue call is `render_issue_chart` for `PERF-N1-001`. The screenshots `chart-light.png`, `chart-dark.png`, `chart-range-7d.png`, `chart-fullscreen.png`, `chart-issue.png`, and `chart-grouped-dark.png` show each state. `host-log.json` holds the view's `tools/call`, `ui/update-model-context`, `ui/request-display-mode`, and `ui/open-link` requests to the host.
 
 ## Gotchas
 
 - The mock server answers from built packages. Rerun `pnpm run build` after changing mcp-core or the mocks, or the script drives stale code.
 - The view is generated. After changing `packages/mcp-core/chart-app/`, run `pnpm --filter @sentry/mcp-core generate-chart-app`, then build.
 - For a grouped request, the mock returns releases in the order that the request's `sort` gives. Three releases are busy; five have 1 to 57 events, every one at 30s, so a sort by p95 picks those five and leaves most of their buckets null.
+- As Sentry does, the mock answers a query for `PERF-N1-001` (`issue.id:7890123456`) on the errors dataset with every bucket 0; only the issue-platform dataset has its events.
 - The host page sets the default CSP with a meta tag in `srcdoc`. Real hosts serve the view from a sandbox origin with CSP headers.
 
 ## Gaps

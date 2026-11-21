@@ -229,15 +229,21 @@ with a comment that says which client reads it.
 A tool can name an inline view for hosts that support
 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
 The rules a view follows are in
-[design/mcp-apps.md](../../design/mcp-apps.md). `render_sentry_chart` is the
-example:
+[design/mcp-apps.md](../../design/mcp-apps.md). `render_sentry_chart` and
+`render_issue_chart` share the chart view:
 
 - The view is a `UiResource` in `packages/mcp-core/src/ui-resources.ts`: a
   versioned `ui://` URI, the `htmlSha256` of its HTML, and a `loadHtml()` that
   imports the generated module on the first `resources/read`.
 - The tool sets `_meta: uiToolMeta(resource)`, which writes
   `_meta.ui.resourceUri` for MCP Apps hosts and `openai/outputTemplate` for
-  ChatGPT. Add both keys to `ALLOWED_TOOL_META`.
+  ChatGPT. Add both keys to `ALLOWED_TOOL_META`. Hosts mount the view on every
+  call of a tool that names it, so a view belongs to a tool that always
+  returns its shape, not to a general tool such as `get_issue_details`.
+- Several tools can share a view. Each returns the same output schema
+  (`tools/support/chart/schema.ts` for the chart), and its `tool` field names
+  the tool that the view calls back for a new range. Shared result building
+  lives in `tools/support/chart/series.ts`.
 - The view source lives in `packages/mcp-core/chart-app/`. `bridge.ts` is the
   MCP Apps protocol over `postMessage`, and `parse.ts` parses
   `structuredContent` into the chart type (`parse.test.ts` keeps it in step

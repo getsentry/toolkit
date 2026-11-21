@@ -14,30 +14,22 @@ import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
 import { CHART_UI_RESOURCE, uiToolMeta } from "../../ui-resources";
 import { PUBLIC_EVENTS_DATASETS } from "../../utils/events-datasets";
+import { chartOutputSchema } from "../support/chart/schema";
 import {
-  type ChartResult,
-  renderSentryChartOutputSchema,
-} from "../support/chart/schema";
+  filtersToIssues,
+  formatInterval,
+  type PlottedSeries,
+  resolveTimeRange,
+  seriesTotal,
+  type TimeSeries,
+  timeRangeResult,
+  toChart,
+} from "../support/chart/series";
 import { toStructuredIngestion } from "../support/ingestion";
 
 /** Top groups plotted when the chart is split by an attribute. */
 const MAX_CHART_SERIES = 5;
 const DEFAULT_PERIOD = "24h";
-
-const INTERVAL_UNITS: [unit: string, ms: number][] = [
-  ["d", 86_400_000],
-  ["h", 3_600_000],
-  ["m", 60_000],
-];
-
-function formatInterval(ms: number): string {
-  for (const [unit, unitMs] of INTERVAL_UNITS) {
-    if (ms % unitMs === 0) return `${ms / unitMs}${unit}`;
-  }
-  return `${ms / 1000}s`;
-}
-
-type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];
 
 function seriesLabel(series: TimeSeries): string {
   if (!series.groupBy?.length) return series.yAxis;
@@ -59,96 +51,26 @@ function countAggregate(dataset: string, yAxis: string): string | null {
   return args ? `count(${args})` : null;
 }
 
-const isCount = (yAxis: string) => /^count\(/i.test(yAxis);
-const isAdditive = (yAxis: string) => isCount(yAxis) || /^sum\(/i.test(yAxis);
-
-/** A bucket value as a number, or null where the bucket has no data. */
-function bucketValue(raw: number | string | null | undefined): number | null {
-  if (raw === null || raw === undefined) return null;
-  // Date-typed aggregates such as max(timestamp) return ISO datetime strings.
-  const parsed = Number(raw);
-  const value = Number.isNaN(parsed) ? Date.parse(String(raw)) : parsed;
-  if (!Number.isFinite(value)) return null;
-  // Drops float noise such as 6234.500000001 to keep the result compact.
-  return Number.isInteger(value) ? value : Number(value.toPrecision(8));
-}
-
-function sum(values: readonly (number | null)[]): number {
-  return values.reduce<number>((total, value) => total + (value ?? 0), 0);
-}
-
-function indexesWhere<T>(items: readonly T[], test: (item: T) => boolean) {
-  return items.flatMap((item, index) => (test(item) ? [index] : []));
-}
-
 /**
- * Turns the response into one shared time axis and one value array per
- * series. `countYAxis` names the series that counts each group's events,
- * when the response has one.
+ * The plotted series in Sentry's rank order, each with its group's event
+ * count when `countYAxis` fetched one.
  */
-function toChart(
+function plottedSeries(
   response: EventsTimeSeriesResponse,
   yAxis: string,
   countYAxis: string | null,
-): Pick<
-  ChartResult,
-  "times" | "incomplete" | "outsideRetention" | "series" | "peak"
-> {
-  // Sentry returns top groups in rank order.
-  const plotted = response.timeSeries.filter((entry) => entry.yAxis === yAxis);
+): PlottedSeries[] {
   const counts = new Map(
     response.timeSeries
       .filter((entry) => countYAxis !== yAxis && entry.yAxis === countYAxis)
-      .map((entry) => [
-        seriesLabel(entry),
-        sum(entry.values.map((b) => bucketValue(b.value))),
-      ]),
+      .map((entry) => [seriesLabel(entry), seriesTotal(entry)]),
   );
-  const buckets = plotted[0]?.values ?? [];
-  const outsideRetention = (b: (typeof buckets)[number]) =>
-    b.incomplete && b.incompleteReason === "OUTSIDE_RETENTION";
-  const incomplete = indexesWhere(
-    buckets,
-    (b) => b.incomplete && !outsideRetention(b),
-  );
-  const additive = isAdditive(yAxis);
-  const series = plotted.map((entry) => {
-    const label = seriesLabel(entry);
-    const values = entry.values.map((b) => bucketValue(b.value));
-    const total = additive ? sum(values) : null;
-    return {
-      label,
-      count: counts.get(label) ?? (isCount(yAxis) ? total : null),
-      total,
-      values,
-    };
-  });
-
-  // Only a single-series chart has a peak. Across groups, any one bucket
-  // would headline a single group, which reads as the chart's peak.
-  let peak: ChartResult["peak"] = null;
-  const only = series.length === 1 ? series[0] : undefined;
-  for (const [index, value] of (only?.values ?? []).entries()) {
-    const bucket = buckets[index];
-    if (!only || value === null || !bucket || incomplete.includes(index)) {
-      continue;
-    }
-    if (!peak || value > peak.value) {
-      peak = {
-        series: only.label,
-        time: new Date(bucket.timestamp).toISOString(),
-        value,
-      };
-    }
-  }
-
-  return {
-    times: buckets.map((b) => new Date(b.timestamp).toISOString()),
-    incomplete,
-    outsideRetention: indexesWhere(buckets, outsideRetention),
-    series,
-    peak,
-  };
+  return response.timeSeries
+    .filter((entry) => entry.yAxis === yAxis)
+    .map((entry) => {
+      const label = seriesLabel(entry);
+      return { label, entry, count: counts.get(label) };
+    });
 }
 
 export default defineTool({
@@ -228,15 +150,13 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  outputSchema: renderSentryChartOutputSchema,
+  outputSchema: chartOutputSchema,
   _meta: uiToolMeta(CHART_UI_RESOURCE),
   async handler(params, context: ServerContext) {
-    if ((params.start === null) !== (params.end === null)) {
-      throw new UserInputError("Pass both `start` and `end`, or neither.");
-    }
-    if (params.start !== null && params.period !== null) {
+    const timeParams = resolveTimeRange(params, DEFAULT_PERIOD);
+    if (filtersToIssues(params.query)) {
       throw new UserInputError(
-        "Pass either `period` or `start` and `end`, not both.",
+        "To chart an issue, use `render_issue_chart`; it reads the dataset that holds the issue's events. An `issue:` or `issue.id:` filter here can return all-zero buckets.",
       );
     }
     if (params.groupBy !== null && params.dataset === "profiles") {
@@ -266,10 +186,6 @@ export default defineTool({
       projectId = String(project.id);
     }
 
-    const timeParams: { statsPeriod?: string; start?: string; end?: string } =
-      params.start !== null && params.end !== null
-        ? { start: params.start, end: params.end }
-        : { statsPeriod: params.period ?? DEFAULT_PERIOD };
     const countYAxis = params.groupBy
       ? countAggregate(params.dataset, params.yAxis)
       : null;
@@ -304,6 +220,7 @@ export default defineTool({
     }
 
     return structuredResult({
+      tool: "render_sentry_chart",
       title:
         params.title ??
         (params.groupBy
@@ -318,11 +235,7 @@ export default defineTool({
       interval: meta
         ? formatInterval(meta.interval)
         : (params.interval ?? "auto"),
-      timeRange: {
-        statsPeriod: timeParams.statsPeriod ?? null,
-        start: timeParams.start ?? null,
-        end: timeParams.end ?? null,
-      },
+      timeRange: timeRangeResult(timeParams),
       url: apiService.getEventsExplorerUrl(
         organizationSlug,
         params.query,
@@ -337,7 +250,7 @@ export default defineTool({
         timeParams.start,
         timeParams.end,
       ),
-      ...toChart(response, params.yAxis, countYAxis),
+      ...toChart(plottedSeries(response, params.yAxis, countYAxis)),
       ingestion: toStructuredIngestion(response.meta?.ingestion),
     });
   },

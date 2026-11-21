@@ -1,5 +1,5 @@
 /**
- * Draws a render_sentry_chart result as SVG: one area (or line, when there
+ * Draws a chart tool result as SVG: one area (or line, when there
  * are several series) per series, a y grid, time labels, a hatched band over
  * buckets that are still filling, and a hover tooltip. A bucket with no data
  * is a gap, not 0, and a bucket with data on neither side is a dot. Values

@@ -1,7 +1,7 @@
 /**
- * Parses an untrusted render_sentry_chart `structuredContent` into a
+ * Parses an untrusted chart tool's `structuredContent` into a
  * ChartResult, or returns null. Hand-written so the view ships without zod;
- * parse.test.ts keeps it in step with renderSentryChartOutputSchema. Builds a
+ * parse.test.ts keeps it in step with chartOutputSchema. Builds a
  * new object, so unknown fields never reach the view.
  */
 import type { ChartResult } from "../src/tools/support/chart/schema";
@@ -71,11 +71,25 @@ function ingestion(value: unknown): NonNullable<ChartResult["ingestion"]> {
   };
 }
 
+/**
+ * The tool the range picker calls again. Only a chart tool, so a result
+ * cannot point the view at a tool that changes data. Results from before the
+ * field existed came from render_sentry_chart.
+ */
+function chartTool(value: unknown): ChartResult["tool"] {
+  if (value === undefined) return "render_sentry_chart";
+  if (value !== "render_sentry_chart" && value !== "render_issue_chart") {
+    throw new Invalid();
+  }
+  return value;
+}
+
 export function parseChartResult(value: unknown): ChartResult | null {
   try {
     const c = record(value);
     const range = record(c["timeRange"]);
     return {
+      tool: chartTool(c["tool"]),
       title: str(c["title"]),
       dataset: str(c["dataset"]),
       query: str(c["query"]),

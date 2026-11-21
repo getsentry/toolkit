@@ -2014,7 +2014,7 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns the same structured payload outside experimental mode, apart from related issues", async () => {
+  it("returns the same structured payload outside experimental mode, apart from related issues and the chart", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
@@ -2025,13 +2025,18 @@ describe("structuredContent", () => {
       experimentalContext,
     );
 
-    // related issues are experimental only until the Seer load is checked
+    // related issues are experimental only until the Seer load is checked,
+    // and render_issue_chart until MCP Apps views are
+    const experimentalOnly = ["find_related_issues", "render_issue_chart"];
     const { relatedIssues, ...rest } = parsePayload(experimental);
     expect(relatedIssues).toBeDefined();
+    expect(rest.suggestedActions.map((action) => action.toolName)).toContain(
+      "render_issue_chart",
+    );
     expect(parsePayload(result)).toEqual({
       ...rest,
       suggestedActions: rest.suggestedActions.filter(
-        (action) => action.toolName !== "find_related_issues",
+        (action) => !experimentalOnly.includes(action.toolName),
       ),
     });
   });
