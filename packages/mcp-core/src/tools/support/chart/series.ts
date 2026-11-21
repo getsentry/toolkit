@@ -4,6 +4,7 @@
  */
 import type { EventsTimeSeriesResponse } from "../../../api-client/schema";
 import { UserInputError } from "../../../errors";
+import { maskQuotedRegions } from "../search-events/utils";
 import type { ChartResult } from "./schema";
 
 export type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];
@@ -154,9 +155,10 @@ export function toChart(
 
 /**
  * True when a search query keeps only the events of named issues
- * (`issue:` or `issue.id:`, not negated). The errors dataset holds only error
- * issues, so such a query returns all-zero buckets for any other issue.
+ * (`issue:` or `issue.id:`, not negated, not inside a quoted value). The
+ * errors dataset holds only error issues, so such a query returns all-zero
+ * buckets for any other issue.
  */
 export function filtersToIssues(query: string): boolean {
-  return /(?:^|[\s(])issue(?:\.id)?:\S/i.test(query);
+  return /(?:^|[\s(])issue(?:\.id)?:\S/i.test(maskQuotedRegions(query));
 }

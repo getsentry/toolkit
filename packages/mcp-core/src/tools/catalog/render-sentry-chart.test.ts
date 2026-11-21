@@ -315,12 +315,12 @@ describe("render_sentry_chart", () => {
     expect((error as Error).message).toContain("render_issue_chart");
   });
 
-  it("charts a query that excludes an issue", async () => {
+  it.each([
+    ["excludes an issue", "!issue:CLOUDFLARE-MCP-41"],
+    ["quotes issue: inside a value", 'message:"see issue:123"'],
+  ])("charts a query that %s", async (_, query) => {
     const chart = getStructuredContent<ChartResult>(
-      await renderSentryChart.handler(
-        { ...baseParams, query: "!issue:CLOUDFLARE-MCP-41" },
-        context,
-      ),
+      await renderSentryChart.handler({ ...baseParams, query }, context),
     );
 
     expect(chart.series[0]?.total).toBeGreaterThan(0);
