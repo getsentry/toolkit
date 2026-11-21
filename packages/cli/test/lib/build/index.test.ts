@@ -361,6 +361,46 @@ describe("normalizeIpa", () => {
     return await normalizeToBuffer((out) => normalizeIpa(src, out, null));
   }
 
+  /** Where the wrapper stores the files of `Payload/MyApp.app`. */
+  const APP = "archive.xcarchive/Products/Applications/MyApp.app";
+
+  /** Map each wrapper entry name to its `[host OS, external attributes]`. */
+  async function wrapperAttributes(
+    wrapperBytes: Buffer,
+  ): Promise<Map<string, number[]>> {
+    const wrapper = await fromBufferPromise(wrapperBytes);
+    const attributes = new Map<string, number[]>();
+    try {
+      for await (const entry of wrapper.eachEntry()) {
+        attributes.set(entry.fileName, [
+          Math.floor(entry.versionMadeBy / 0x100),
+          entry.externalFileAttributes,
+        ]);
+      }
+    } finally {
+      wrapper.close();
+    }
+    return attributes;
+  }
+
+  /**
+   * Offsets of the central directory records of a ZIP without an archive
+   * comment (as fflate writes it), for tests that patch a record in place.
+   */
+  function centralRecordOffsets(bytes: Buffer): number[] {
+    const offsets: number[] = [];
+    let offset = bytes.readUInt32LE(bytes.length - 6);
+    for (let i = 0; i < bytes.readUInt16LE(bytes.length - 12); i++) {
+      offsets.push(offset);
+      offset +=
+        46 +
+        bytes.readUInt16LE(offset + 28) +
+        bytes.readUInt16LE(offset + 30) +
+        bytes.readUInt16LE(offset + 32);
+    }
+    return offsets;
+  }
+
   test("remaps Payload into an XCArchive layout with a generated Info.plist", async () => {
     const zip = await normalizeIpaBytes(fakeIpaBytes());
     const entries = unzipSync(zip);
@@ -410,24 +450,41 @@ describe("normalizeIpa", () => {
         { os: 3, attrs: mode * 0x10000 },
       ];
     }
-    const wrapper = await fromBufferPromise(
+    const actual = await wrapperAttributes(
       await normalizeIpaBytes(zipSync(files)),
     );
-    const actual = new Map<string, number[]>();
-    try {
-      for await (const entry of wrapper.eachEntry()) {
-        actual.set(entry.fileName, [
-          Math.floor(entry.versionMadeBy / 0x100),
-          entry.externalFileAttributes,
-        ]);
-      }
-    } finally {
-      wrapper.close();
-    }
     for (const [name, mode] of Object.entries(modes)) {
-      expect(
-        actual.get(`archive.xcarchive/Products/Applications/MyApp.app/${name}`),
-      ).toEqual([3, mode * 0x10000]);
+      expect(actual.get(`${APP}/${name}`)).toEqual([3, mode * 0x10000]);
+    }
+  });
+
+  test("forwards only regular-file and symlink modes from IPA entries", async () => {
+    // [host OS, mode] stored in the IPA → [host OS, mode] expected in the wrapper.
+    const cases: Record<string, [number, number, number, number]> = {
+      "Info.plist": [3, 0o100644, 3, 0o100644],
+      setuid: [3, 0o104755, 3, 0o100755],
+      symlink: [3, 0o120777, 3, 0o120777],
+      typeless: [3, 0o755, 3, 0o100755],
+      fifo: [3, 0o010644, 0, 0],
+      "no-permissions": [3, 0o100000, 0, 0],
+      "no-mode": [3, 0, 0, 0],
+      "not-unix": [0, 0o100755, 0, 0],
+    };
+    const files: Zippable = {};
+    for (const [name, [os, mode]] of Object.entries(cases)) {
+      files[`Payload/MyApp.app/${name}`] = [
+        strToU8(name),
+        { os, attrs: mode * 0x10000 },
+      ];
+    }
+    const actual = await wrapperAttributes(
+      await normalizeIpaBytes(zipSync(files)),
+    );
+    for (const [name, [, , os, mode]] of Object.entries(cases)) {
+      expect([name, actual.get(`${APP}/${name}`)]).toEqual([
+        name,
+        [os, mode * 0x10000],
+      ]);
     }
   });
 
@@ -458,11 +515,83 @@ describe("normalizeIpa", () => {
           zipSync({
             "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
             "Payload/MyApp.app/../../evil": strToU8("x"),
+            "Payload/MyApp.app/..\\..\\evil": strToU8("x"),
           }),
         ),
       ),
     );
     expect(names.some((n) => n.includes("evil"))).toBe(false);
+  });
+
+  test("keeps a file whose name contains a backslash", async () => {
+    const entries = unzipSync(
+      await normalizeIpaBytes(
+        zipSync({
+          "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
+          "Payload/MyApp.app/Assets/a\\b.dat": strToU8("data"),
+        }),
+      ),
+    );
+    expect(entries[`${APP}/Assets/a\\b.dat`]).toEqual(strToU8("data"));
+  });
+
+  test("decodes a name without the UTF-8 flag as UTF-8 when valid, else as CP437", async () => {
+    const bytes = Buffer.from(
+      zipSync({
+        "Payload/MyApp.app/Info.plist": strToU8("<app/>"),
+        "Payload/MyApp.app/utf8-café.png": strToU8("utf8"),
+        "Payload/MyApp.app/cp437-caf_.png": strToU8("cp437"),
+      }),
+    );
+    const [, utf8, cp437] = centralRecordOffsets(bytes) as [
+      number,
+      number,
+      number,
+    ];
+    // macOS ditto, Archive Utility and zip write UTF-8 names without the flag.
+    expect(bytes.readUInt16LE(utf8 + 8)).toBe(0x08_00);
+    bytes.writeUInt16LE(0, utf8 + 8);
+    // 0x82 is "é" in CP437 and is not valid UTF-8 on its own.
+    bytes[bytes.indexOf("_", cp437)] = 0x82;
+
+    const entries = unzipSync(await normalizeIpaBytes(bytes));
+    expect(entries[`${APP}/utf8-café.png`]).toEqual(strToU8("utf8"));
+    expect(entries[`${APP}/cp437-café.png`]).toEqual(strToU8("cp437"));
+  });
+
+  test("rejects an IPA whose entry count wrapped instead of uploading part of it", async () => {
+    const bytes = Buffer.from(fakeIpaBytes());
+    // Without ZIP64 records, an archive over 65,535 entries declares its count
+    // modulo 65,536. Declaring two of the three entries gives the same shape.
+    bytes.writeUInt16LE(2, bytes.length - 14);
+    bytes.writeUInt16LE(2, bytes.length - 12);
+    await expect(normalizeIpaBytes(bytes)).rejects.toMatchObject({
+      name: "ValidationError",
+      message: expect.stringContaining("does not match its declared size"),
+    });
+  });
+
+  test("rejects corrupted stored bytes instead of masking them with a new checksum", async () => {
+    const bytes = Buffer.from(
+      zipSync(
+        { "Payload/MyApp.app/Info.plist": strToU8("<app/>") },
+        { level: 0 },
+      ),
+    );
+    // Change one payload byte without changing its length or either ZIP checksum.
+    const dataOffset = 30 + bytes.readUInt16LE(26) + bytes.readUInt16LE(28);
+    bytes[dataOffset] = 0x58;
+    await expect(normalizeIpaBytes(bytes)).rejects.toThrow(
+      "Invalid checksum in IPA",
+    );
+  });
+
+  test("reports an archive the ZIP parser rejects as a validation error", async () => {
+    const bytes = Buffer.concat([fakeIpaBytes(), Buffer.from("stray")]);
+    await expect(normalizeIpaBytes(bytes)).rejects.toMatchObject({
+      name: "ValidationError",
+      message: "Invalid or unsupported IPA archive",
+    });
   });
 
   test("is deterministic (identical IPA → identical bytes)", async () => {

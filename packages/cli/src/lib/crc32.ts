@@ -50,3 +50,29 @@ export function crc32Fallback(data: Uint8Array, value = 0): number {
  */
 export const crc32: (data: Uint8Array, value?: number) => number =
   typeof zlib.crc32 === "function" ? zlib.crc32 : crc32Fallback;
+
+/**
+ * Build a `pipeline` stage that passes chunks through unchanged and, once the
+ * source ends, throws unless their CRC-32 equals `expected`.
+ *
+ * Every chunk has already been yielded downstream by then, so the caller must
+ * treat what it wrote as invalid when the pipeline rejects.
+ *
+ * @param expected - Checksum the stream must match (unsigned 32-bit integer).
+ * @param mismatch - Creates the error thrown when the checksums differ.
+ */
+export function verifyCrc32(
+  expected: number,
+  mismatch: () => Error,
+): (chunks: AsyncIterable<Uint8Array>) => AsyncGenerator<Uint8Array> {
+  return async function* (chunks) {
+    let checksum = 0;
+    for await (const chunk of chunks) {
+      checksum = crc32(chunk, checksum);
+      yield chunk;
+    }
+    if (checksum !== expected) {
+      throw mismatch();
+    }
+  };
+}
