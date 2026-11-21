@@ -75,7 +75,8 @@ GitHub Actions workflow runs on every PR and push to main:
 
 **On Pull Requests:**
 
-- 📝 **PR Comment:** Automatic comment with full report (updated on each push)
+- ✅ **Check Run:** `Token Cost` check with the total, tool count, average, and
+  the change from main
 - 📊 **Job Summary:** Detailed per-tool breakdown in Actions tab
 - 📦 **Artifact:** `token-stats-{sha}.json` stored for 90 days
 
@@ -99,12 +100,14 @@ pnpm --filter @sentry/mcp-core measure-ui                      # Display
 pnpm --filter @sentry/mcp-core measure-ui -- -o ui-stats.json  # Write JSON
 ```
 
-Per view it reports raw, gzip (level 9), and brotli (quality 11) bytes, and raw
-bytes as a percentage of the view's `budgetBytes` in `src/ui-resources.ts`.
-The report adds an "MCP Apps views" section to the PR comment and job summary,
-and `ui-stats.json` goes into the `token-stats-{sha}` artifact. The budget is
-enforced by the view's generator, such as `generate-chart-app`, not by this
-report; see [design/mcp-apps.md](../../design/mcp-apps.md).
+Per view it reports raw, gzip (level 9), and brotli (quality 11) bytes. The
+report adds an "MCP Apps views" section to the job summary, and `ui-stats.json`
+goes into the `token-stats-{sha}` artifact.
+
+Each view's raw bytes have a hard limit, `budgetBytes` in
+`src/ui-resources.ts`. The view's generator, such as `generate-chart-app`,
+fails over it, and `ci:policy` runs that check in CI. This report only shows
+the sizes; see [design/mcp-apps.md](../../design/mcp-apps.md).
 
 ## Understanding the Results
 
