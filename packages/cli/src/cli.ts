@@ -765,14 +765,17 @@ export async function runCli(
     if (groupHelp) {
       await writeHelpTip(groupHelp.path);
       await executor(groupHelp.helpArgs);
-      return;
+    } else {
+      await executor(cliArgs);
+
+      // Recover help/`--help --json` requests that Stricli's route scanner
+      // rejected as unknown commands (see the helpers below).
+      await recoverUnknownCommandHelp(
+        cliArgs,
+        executor,
+        ExitCode.UnknownCommand,
+      );
     }
-
-    await executor(cliArgs);
-
-    // Recover help/`--help --json` requests that Stricli's route scanner
-    // rejected as unknown commands (see the helpers below).
-    await recoverUnknownCommandHelp(cliArgs, executor, ExitCode.UnknownCommand);
   } catch (err) {
     // OutputError: data was already rendered to stdout by the command wrapper.
     // Just set exitCode silently — no stderr message needed.

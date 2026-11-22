@@ -85,6 +85,20 @@ describe("sentry <group> help", () => {
     },
   );
 
+  test("still shows the update notification", async () => {
+    vi.resetModules();
+    const versionCheck = await import("../../src/lib/version-check.js");
+    vi.spyOn(versionCheck, "getUpdateNotification").mockReturnValue(
+      "UPDATE AVAILABLE\n",
+    );
+    const { runCli } = await import("../../src/cli.js");
+    const { SENTRY_CLI } = await import("../../src/sentry-cli.js");
+
+    await runCli(["auth", "help"], SENTRY_CLI);
+
+    expect(stderr).toContain("UPDATE AVAILABLE");
+  });
+
   test("keeps global flags before the group", async () => {
     await runFresh(["--json", "auth", "help"]);
 
