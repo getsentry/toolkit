@@ -119,8 +119,11 @@ function isUnknownCommandExit(unknownCode: number): boolean {
  *    route resolution fails before the `renderHelp` hook runs, so no JSON is
  *    produced. Retried as the `help` command so agents get a structured
  *    `{ error }` object instead of Stricli's text `UnknownCommand`.
- * 3. **A trailing `help` token** (e.g. `sentry dashboard help`) — retried as
- *    `sentry help <group...>`, which routes to the custom help command.
+ * 3. **A trailing `help` token after an unknown path** (e.g.
+ *    `sentry dashboard nope help`) — retried as `sentry help <path...>`, which
+ *    prints the unknown-command error with suggestions. A trailing `help` after
+ *    a known group never gets here: {@link groupHelpArgs} rewrites it before
+ *    dispatch.
  *
  * @param cliArgs - The raw CLI arguments that were dispatched
  * @param executor - The command executor (middleware chain) to retry with
@@ -155,14 +158,63 @@ async function recoverUnknownCommandHelp(
   if (cliArgs.length >= 2 && cliArgs.at(-1) === "help") {
     process.exitCode = 0;
     const groupArgs = cliArgs.slice(0, -1);
-    const { warning } = await import("./lib/formatters/colors.js");
-    process.stderr.write(
-      warning(
-        `Tip: use --help for help (e.g., ${sentry`${groupArgs.join(" ")} --help`})\n`,
-      ),
-    );
+    await writeHelpTip(groupArgs);
     await executor(["help", ...groupArgs]);
   }
+}
+
+/** Point a `<path> help` caller at `<path> --help`, on stderr. */
+async function writeHelpTip(path: readonly string[]): Promise<void> {
+  const { warning } = await import("./lib/formatters/colors.js");
+  process.stderr.write(
+    warning(
+      `Tip: use --help for help (e.g., ${sentry`${path.join(" ")} --help`})\n`,
+    ),
+  );
+}
+
+/**
+ * The group path and `help` command args for
+ * `sentry [global flags] <group...> help`, or `undefined` when the args are
+ * not that shape.
+ *
+ * Rewritten before dispatch because Stricli hands a trailing `help` to the
+ * group's default command. A default that takes no positionals (`auth`,
+ * `status`, `local`) rejects it as "Too many arguments" before any help
+ * recovery runs, and a group with no default prints "No command registered"
+ * first. `help` is never a subcommand name, so after a group it always asks
+ * for help. After a leaf command (`sentry issue view help`), `help` stays a
+ * positional and only turns into help when the command fails (see
+ * `maybeRecoverWithHelp` in `lib/command.ts`).
+ */
+async function groupHelpArgs(
+  routes: CliRoutes,
+  cliArgs: readonly string[],
+): Promise<{ path: string[]; helpArgs: string[] } | undefined> {
+  if (cliArgs.at(-1) !== "help") {
+    return;
+  }
+  let index = 0;
+  while (index < cliArgs.length - 1 && cliArgs[index]?.startsWith("-")) {
+    const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
+    if (nextIndex === undefined) {
+      return;
+    }
+    index = nextIndex;
+  }
+  const path = cliArgs.slice(index, -1);
+  if (path.length === 0 || path.some((token) => token.startsWith("-"))) {
+    return;
+  }
+  const { resolveCommandPath } = await import("./lib/introspect.js");
+  const resolved = resolveCommandPath(
+    routes as unknown as Parameters<typeof resolveCommandPath>[0],
+    path,
+  );
+  if (resolved?.kind !== "group") {
+    return;
+  }
+  return { path, helpArgs: ["help", ...cliArgs.slice(0, index), ...path] };
 }
 
 /**
@@ -348,8 +400,8 @@ export async function runCli(
   // Global-flag hoisting, `--version` at any route depth, and `--help --json`
   // structured output are all handled inside Stricli now (the patched route
   // scanner's top-level-flags allow-list + `versionRequested` state, and the
-  // `documentation.renderHelp` hook in app.ts), so no argv preprocessing is
-  // needed before dispatch — the raw args go straight to `run()`.
+  // `documentation.renderHelp` hook in app.ts). The only argv rewrite before
+  // dispatch is `<group> help` → `help <group>` (see `groupHelpArgs`).
 
   // ---------------------------------------------------------------------------
   // Error-recovery middleware
@@ -709,6 +761,13 @@ export async function runCli(
   }
 
   try {
+    const groupHelp = await groupHelpArgs(routes, cliArgs);
+    if (groupHelp) {
+      await writeHelpTip(groupHelp.path);
+      await executor(groupHelp.helpArgs);
+      return;
+    }
+
     await executor(cliArgs);
 
     // Recover help/`--help --json` requests that Stricli's route scanner
