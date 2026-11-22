@@ -99,10 +99,18 @@ describe("sentry <group> help", () => {
     expect(stderr).toContain("UPDATE AVAILABLE");
   });
 
-  test("keeps global flags before the group", async () => {
-    await runFresh(["--json", "auth", "help"]);
+  test.each([
+    ["before the group", ["--json", "auth", "help"]],
+    ["between the group and help", ["auth", "--json", "help"]],
+    [
+      "between nested groups",
+      ["local", "--org", "acme", "daemon", "--json", "help"],
+    ],
+  ])("keeps global flags %s", async (_label, args) => {
+    await runFresh(args);
 
     expect(process.exitCode ?? 0).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ name: "auth" });
+    expect(stderr).not.toContain("Too many arguments");
+    expect(JSON.parse(stdout)).toHaveProperty("name");
   });
 });

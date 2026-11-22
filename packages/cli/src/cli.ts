@@ -174,9 +174,9 @@ async function writeHelpTip(path: readonly string[]): Promise<void> {
 }
 
 /**
- * The group path and `help` command args for
- * `sentry [global flags] <group...> help`, or `undefined` when the args are
- * not that shape.
+ * The group path and `help` command args for `sentry <group...> help`, with
+ * global flags anywhere before `help`, or `undefined` when the args are not
+ * that shape.
  *
  * Rewritten before dispatch because Stricli hands a trailing `help` to the
  * group's default command. A default that takes no positionals (`auth`,
@@ -194,16 +194,28 @@ async function groupHelpArgs(
   if (cliArgs.at(-1) !== "help") {
     return;
   }
+  // Global flags may sit anywhere before `help` (the patched route scanner
+  // accepts them at any depth); any other flag means this is not a bare
+  // group help request.
+  const flags: string[] = [];
+  const path: string[] = [];
+  const end = cliArgs.length - 1;
   let index = 0;
-  while (index < cliArgs.length - 1 && cliArgs[index]?.startsWith("-")) {
+  while (index < end) {
+    const token = cliArgs[index] ?? "";
+    if (!token.startsWith("-")) {
+      path.push(token);
+      index += 1;
+      continue;
+    }
     const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
-    if (nextIndex === undefined) {
+    if (nextIndex === undefined || nextIndex > end) {
       return;
     }
+    flags.push(...cliArgs.slice(index, nextIndex));
     index = nextIndex;
   }
-  const path = cliArgs.slice(index, -1);
-  if (path.length === 0 || path.some((token) => token.startsWith("-"))) {
+  if (path.length === 0) {
     return;
   }
   const { resolveCommandPath } = await import("./lib/introspect.js");
@@ -214,7 +226,7 @@ async function groupHelpArgs(
   if (resolved?.kind !== "group") {
     return;
   }
-  return { path, helpArgs: ["help", ...cliArgs.slice(0, index), ...path] };
+  return { path, helpArgs: ["help", ...flags, ...path] };
 }
 
 /**
