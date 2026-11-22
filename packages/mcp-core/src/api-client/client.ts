@@ -4751,10 +4751,12 @@ export class SentryApiService {
     }: {
       organizationSlug: string;
       query: string;
-      yAxis: string;
+      /** One aggregate, or several to fetch one series each. */
+      yAxis: string | readonly [string, ...string[]];
       interval?: string | undefined;
       projectId?: string | undefined;
-      dataset?: EventsDataset;
+      /** `issuePlatform` holds the events of every non-error issue. */
+      dataset?: EventsDataset | "issuePlatform";
       statsPeriod?: string;
       start?: string;
       end?: string;
@@ -4771,12 +4773,17 @@ export class SentryApiService {
     opts?: RequestOptions,
   ) {
     const queryParams = new URLSearchParams();
-    queryParams.set("dataset", normalizeEventsDataset(dataset));
+    queryParams.set(
+      "dataset",
+      dataset === "issuePlatform" ? dataset : normalizeEventsDataset(dataset),
+    );
     queryParams.set("query", query);
-    queryParams.set("yAxis", yAxis);
+    const yAxes: readonly [string, ...string[]] =
+      typeof yAxis === "string" ? [yAxis] : yAxis;
+    for (const axis of yAxes) queryParams.append("yAxis", axis);
     if (topEvents) {
-      const rankBy = topEvents.rankBy ?? yAxis;
-      if (rankBy !== yAxis) queryParams.append("yAxis", rankBy);
+      const rankBy = topEvents.rankBy ?? yAxes[0];
+      if (!yAxes.includes(rankBy)) queryParams.append("yAxis", rankBy);
       queryParams.set("topEvents", String(topEvents.limit));
       queryParams.set("groupBy", topEvents.groupBy);
       queryParams.set("sort", `-${rankBy}`);

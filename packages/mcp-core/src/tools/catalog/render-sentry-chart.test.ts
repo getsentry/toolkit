@@ -81,6 +81,7 @@ describe("render_sentry_chart", () => {
           "2025-09-10T23:45:00.000Z",
         ],
         "title": "count()",
+        "tool": "render_sentry_chart",
         "url": "https://sentry-mcp-evals.sentry.io/explore/discover/homepage/?dataset=errors&queryDataset=error-events&query=level%3Aerror&project=-1&field=count%28%29&sort=-count%28%29&statsPeriod=1h&mode=aggregate&yAxis=count%28%29",
         "valueType": "integer",
         "valueUnit": null,
@@ -297,6 +298,32 @@ describe("render_sentry_chart", () => {
     await expect(
       renderSentryChart.handler({ ...baseParams, ...overrides }, context),
     ).rejects.toBeInstanceOf(UserInputError);
+  });
+
+  // The errors dataset answers an issue-platform issue with every bucket 0,
+  // which reads as a real answer.
+  it.each([
+    ["an issue short ID", "issue:PERF-N1-001"],
+    ["an issue ID among other filters", "level:error issue.id:7890123456"],
+    ["a list of issues", "issue.id:[7890123456,6507376925]"],
+  ])("sends a chart of %s to render_issue_chart", async (_, query) => {
+    const error = await renderSentryChart
+      .handler({ ...baseParams, query }, context)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(UserInputError);
+    expect((error as Error).message).toContain("render_issue_chart");
+  });
+
+  it.each([
+    ["excludes an issue", "!issue:CLOUDFLARE-MCP-41"],
+    ["quotes issue: inside a value", 'message:"see issue:123"'],
+  ])("charts a query that %s", async (_, query) => {
+    const chart = getStructuredContent<ChartResult>(
+      await renderSentryChart.handler({ ...baseParams, query }, context),
+    );
+
+    expect(chart.series[0]?.total).toBeGreaterThan(0);
   });
 
   it("rejects an aggregate that returns text", async () => {

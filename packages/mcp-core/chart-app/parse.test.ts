@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { renderSentryChartOutputSchema } from "../src/tools/support/chart/schema";
+import { chartOutputSchema } from "../src/tools/support/chart/schema";
 import { parseChartResult } from "./parse";
 
 const chart = {
+  tool: "render_sentry_chart",
   title: "count() of level:error",
   dataset: "errors",
   query: "level:error",
@@ -51,6 +52,7 @@ const invalid: Mutation[] = [
   ],
   ["a peak without time", (c) => ({ ...c, peak: { series: "a", value: 1 } })],
   ["no ingestion", ({ ingestion: _, ...rest }) => rest],
+  ["a tool that is not a chart tool", (c) => ({ ...c, tool: "update_issue" })],
   [
     "a string delaySeconds",
     (c) => ({ ...c, ingestion: { ...c.ingestion, delaySeconds: "5" } }),
@@ -58,12 +60,10 @@ const invalid: Mutation[] = [
 ];
 
 describe("parseChartResult", () => {
-  it("returns what renderSentryChartOutputSchema returns for a valid result", () => {
+  it("returns what chartOutputSchema returns for a valid result", () => {
     const input = { ...chart, extra: "dropped", peak: { ...chart.peak } };
 
-    expect(parseChartResult(input)).toEqual(
-      renderSentryChartOutputSchema.parse(input),
-    );
+    expect(parseChartResult(input)).toEqual(chartOutputSchema.parse(input));
     expect(parseChartResult(input)).not.toHaveProperty("extra");
   });
 
@@ -73,10 +73,16 @@ describe("parseChartResult", () => {
     );
   });
 
+  it("reads a result without a tool as render_sentry_chart's", () => {
+    const { tool: _, ...rest } = chart;
+
+    expect(parseChartResult(rest)?.tool).toBe("render_sentry_chart");
+  });
+
   it.each(invalid)("rejects %s, as the schema does", (_, mutate) => {
     const input = mutate(structuredClone(chart));
 
-    expect(renderSentryChartOutputSchema.safeParse(input).success).toBe(false);
+    expect(chartOutputSchema.safeParse(input).success).toBe(false);
     expect(parseChartResult(input)).toBeNull();
   });
 });

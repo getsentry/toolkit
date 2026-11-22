@@ -49,6 +49,9 @@ interface Release {
   hits?: number;
 }
 
+/** The performance issue fixture, PERF-N1-001, an issue-platform issue. */
+const ISSUE_PLATFORM_ISSUE_ID = "7890123456";
+
 const sha = (seed: string) => seed.repeat(40).slice(0, 40);
 
 const MOCK_RELEASES: Release[] = [
@@ -85,6 +88,7 @@ function releaseEvents(
 
 const isCount = (yAxis: string) => yAxis.startsWith("count(");
 const isDuration = (yAxis: string) => /duration/.test(yAxis);
+const isUsers = (yAxis: string) => yAxis === "count_unique(user)";
 
 /**
  * One release's bucket value: its event count for `count()`, otherwise a
@@ -162,13 +166,21 @@ export function eventsTimeSeriesResponse(request: Request): Response {
     valueUnit: isDuration(yAxis) && !isCount(yAxis) ? "millisecond" : null,
   });
 
+  // As Sentry does, the errors dataset answers a query for an issue-platform
+  // issue with every bucket 0.
+  const wrongDataset =
+    params.get("dataset") === "errors" &&
+    params.get("query")?.includes(`issue.id:${ISSUE_PLATFORM_ISSUE_ID}`);
+
   if (!groupBy) {
     const timeSeries = yAxes.map((yAxis) => ({
       yAxis,
       values: Array.from({ length: bucketCount }, (_, index) => {
+        if (wrongDataset) return bucket(index, 0);
         const wave = Math.sin((index / bucketCount) * Math.PI * 4);
         const spike = index === Math.floor(bucketCount * 0.7) ? 2.5 : 1;
-        const base = isDuration(yAxis) ? 180 : 40;
+        // An issue's affected users trail its events.
+        const base = isDuration(yAxis) ? 180 : isUsers(yAxis) ? 9 : 40;
         return bucket(index, Math.round(base * (1.4 + wave) * spike));
       }),
       meta: meta(yAxis),

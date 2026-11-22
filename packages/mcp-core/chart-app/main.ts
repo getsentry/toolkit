@@ -1,8 +1,9 @@
 /**
- * The render_sentry_chart view. The host sends the tool's arguments and
- * result; the range picker calls the tool again through the host, redraws in
- * place, and tells the model what the chart now shows. Hosts that offer
- * fullscreen get a button for it.
+ * The chart view for render_sentry_chart and render_issue_chart. The host
+ * sends the tool's arguments and result; the range picker calls the tool that
+ * drew the chart again through the host, redraws in place, and tells the
+ * model what the chart now shows. Hosts that offer fullscreen get a button
+ * for it.
  */
 import type { ChartResult } from "../src/tools/support/chart/schema";
 import {
@@ -24,7 +25,6 @@ import {
 } from "./chart";
 import { parseChartResult } from "./parse";
 
-const TOOL_NAME = "render_sentry_chart";
 const RANGES = ["1h", "24h", "7d", "14d"] as const;
 const UNIT_NAMES: Record<string, string> = {
   m: "minute",
@@ -273,11 +273,11 @@ function modelContext(chart: ChartResult, args: Record<string, unknown>) {
     lines.push(`Groups: ${groups.join("; ")}.`);
   }
   lines.push(
-    `To query this range again, call ${TOOL_NAME} with ${JSON.stringify(args)}.`,
+    `To query this range again, call ${chart.tool} with ${JSON.stringify(args)}.`,
   );
   return {
     text: lines.join("\n"),
-    structuredContent: { tool: TOOL_NAME, arguments: args, chart },
+    structuredContent: { tool: chart.tool, arguments: args, chart },
   };
 }
 
@@ -288,13 +288,14 @@ async function changeRange(range: string): Promise<void> {
     start: null,
     end: null,
   };
-  // A fixed bucket size may not fit the new range, so let Sentry pick.
+  // A fixed bucket size may not fit the new range, so let the tool pick.
   delete args["interval"];
-  if (!host) return;
+  const chart = view.kind === "waiting" ? null : view.chart;
+  if (!host || !chart) return;
   pendingRange = range;
   render();
   try {
-    const result = await host.callTool(TOOL_NAME, args);
+    const result = await host.callTool(chart.tool, args);
     if (!result.isError) toolArgs = args;
     showResult(result);
     // The model only has the first result; tell it what the user sees now.

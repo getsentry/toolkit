@@ -20,8 +20,11 @@ client gets the same answer as text.
 
 ## Entry points
 
-- The `render_sentry_chart` chart in an MCP Apps host, with its range picker,
-  fullscreen, and Open in Sentry buttons, in experimental sessions.
+- The chart view in an MCP Apps host, with its range picker, fullscreen, and
+  Open in Sentry buttons, in experimental sessions. `render_sentry_chart` charts a
+  query, and `render_issue_chart` charts one issue's events and users, as
+  the issue page does. Both share one view, and the range picker calls the
+  tool that drew the chart.
 - `ui://` resources in `resources/list` and `resources/read`, named by a
   tool's `_meta.ui.resourceUri` (and `openai/outputTemplate` for ChatGPT).
 

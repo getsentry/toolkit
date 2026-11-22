@@ -37,6 +37,7 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
   // MCP Apps hosts (Claude, VS Code) read `ui`; ChatGPT reads
   // `openai/outputTemplate`. See src/ui-resources.ts.
   render_sentry_chart: ["ui", "openai/outputTemplate"],
+  render_issue_chart: ["ui", "openai/outputTemplate"],
 };
 
 /** Tools that return no `structuredContent` by design. */

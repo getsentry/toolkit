@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Act as an MCP Apps host for render_sentry_chart, with no LLM: start the mock
-// stdio server, call the tool, read its `ui://` view, and mount the view in a
-// headless browser through the ext-apps AppBridge, the way Claude or VS Code
-// does. Screenshots the chart in light and dark, after the range picker calls
-// the tool again through the host, in fullscreen, and split by an attribute. The grouped
+// Act as an MCP Apps host for render_sentry_chart and render_issue_chart, with
+// no LLM: start the mock stdio server, call the tools, read their shared
+// `ui://` view, and mount the view in a headless browser through the ext-apps
+// AppBridge, the way Claude or VS Code does. Screenshots the chart in light and
+// dark, after the range picker calls the tool again through the host, in
+// fullscreen, split by an attribute, and for one issue. The grouped
 // chart is p95 by release over 7 days at 1h, where the mock has busy releases
 // and sparse ones whose p95 is higher, as in getsentry/toolkit#2451. Writes
 // evidence and one PASS or FAIL line per check to checks.txt in --out. See
@@ -50,6 +51,10 @@ const ERRORS_CHART = {
   yAxis: "count()",
   period: "24h",
 };
+const ISSUE_TOOL = "render_issue_chart";
+// A performance issue: its events live in the issue platform, and the errors
+// dataset would chart it as all zeros.
+const ISSUE_CHART = { organizationSlug: ORG, issueId: "PERF-N1-001" };
 const GROUPED_CHART = {
   organizationSlug: ORG,
   dataset: "spans",
@@ -214,6 +219,11 @@ try {
     name: TOOL,
     arguments: GROUPED_CHART,
   });
+  const issueTool = tools.find((t) => t.name === ISSUE_TOOL);
+  const issueResult = await callTool({
+    name: ISSUE_TOOL,
+    arguments: ISSUE_CHART,
+  });
 
   browser = await chromium.launch();
   const page = await browser.newPage({
@@ -345,6 +355,40 @@ try {
     "open-link",
     openLink?.params?.url?.startsWith(`https://${ORG}.sentry.io/`),
     `ui/open-link ${openLink?.params?.url}`,
+  );
+
+  // The issue chart: the same view, the issue-platform dataset, the issue
+  // page's 4h buckets for 14 days, and a range picker that calls
+  // render_issue_chart.
+  await mount("light", ISSUE_CHART, issueResult);
+  const issueChart = issueResult.structuredContent;
+  const issueLegend = await frame.locator(".legend").innerText();
+  const issueStats = await frame.locator(".stats").innerText();
+  const issueShot = await shot("chart-issue.png");
+  check(
+    "issue-chart",
+    issueTool?._meta?.ui?.resourceUri === uri &&
+      issueChart.dataset === "issuePlatform" &&
+      issueChart.interval === "4h" &&
+      issueChart.series.map((s) => s.label).join() === "Events,Users" &&
+      issueChart.series.every((s) => s.values.some((v) => v > 0)) &&
+      issueStats.includes("Peak"),
+    `${ISSUE_TOOL} names ${issueTool?._meta?.ui?.resourceUri}; ${issueChart.dataset} ${issueChart.query}, ${issueChart.times.length} buckets of ${issueChart.interval}, legend "${issueLegend.replace(/\n/g, " | ")}", stats "${issueStats.replace(/\n/g, " ")}" -> ${issueShot}`,
+  );
+  await frame.getByRole("button", { name: "7d", exact: true }).click();
+  await frame.locator(".subtitle", { hasText: "Last 7 days" }).waitFor();
+  await frame.locator('.chart[data-loading="false"]').waitFor();
+  const issueRangeCall = (await page.evaluate(() => window.hostLog))
+    .filter((entry) => entry.method === "tools/call")
+    .at(-1);
+  const issueRange = calls.at(-1)?.result?.structuredContent;
+  check(
+    "issue-range-roundtrip",
+    issueRangeCall?.params?.name === ISSUE_TOOL &&
+      issueRangeCall.params.arguments.issueId === ISSUE_CHART.issueId &&
+      issueRangeCall.params.arguments.period === "7d" &&
+      issueRange?.interval === "2h",
+    `view called ${issueRangeCall?.params?.name} ${JSON.stringify(issueRangeCall?.params?.arguments)} through the host, got ${issueRange?.times?.length} buckets of ${issueRange?.interval}`,
   );
 
   const groupedChart = groupedResult.structuredContent;

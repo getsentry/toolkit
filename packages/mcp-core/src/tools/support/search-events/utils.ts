@@ -272,7 +272,7 @@ const FULL_TEXT_SEARCH_KEYS = new Set(["message", "log.body"]);
  * transaction:"handle message:hello"). Length is preserved so offsets still
  * map back to the original query.
  */
-function maskQuotedRegions(query: string): string {
+export function maskQuotedRegions(query: string): string {
   let out = "";
   let quote: '"' | "'" | null = null;
   let escaped = false;
