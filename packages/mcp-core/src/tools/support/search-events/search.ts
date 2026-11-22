@@ -154,25 +154,24 @@ const PERIOD_UNIT_MS = {
 } as const;
 
 /**
- * Narrow an explicit relative `period` to the agent's absolute range.
+ * Narrow an explicit relative `period` to an absolute range.
  *
- * The agent returns `start`/`end` when the query names a fixed window, often
- * with `period` sent as an outer guard. Keeping only `period` would silently
- * search the whole period. The overlap of the two can only narrow `period`, so
- * it is always safe; without an overlap, `period` is kept.
+ * The range comes from the agent's `timeRange` or from the query's own
+ * `timestamp:` bounds, usually with `period` sent as an outer guard. Keeping
+ * only `period` would silently search, or report, the whole period. The
+ * overlap of the two can only narrow `period`, so it is always safe; without
+ * an overlap, `period` is kept.
  */
-function narrowPeriodToAgentRange(
+function narrowPeriodToRange(
   period: string,
-  agentRange:
-    | { statsPeriod?: string; start?: string; end?: string }
-    | undefined,
+  range: { statsPeriod?: string; start?: string; end?: string } | undefined,
 ): { statsPeriod?: string; start?: string; end?: string } {
   const periodMatch = /^(\d+)([mhdw])$/.exec(period);
-  if (!agentRange?.start || !agentRange.end || !periodMatch) {
+  if (!range?.start || !range.end || !periodMatch) {
     return { statsPeriod: period };
   }
-  const start = Date.parse(agentRange.start);
-  const end = Date.parse(agentRange.end);
+  const start = Date.parse(range.start);
+  const end = Date.parse(range.end);
   const now = Date.now();
   const periodStart =
     now -
@@ -189,13 +188,57 @@ function narrowPeriodToAgentRange(
   return {
     start:
       narrowedStart === start
-        ? agentRange.start
+        ? range.start
         : new Date(narrowedStart).toISOString(),
-    end:
-      narrowedEnd === end
-        ? agentRange.end
-        : new Date(narrowedEnd).toISOString(),
+    end: narrowedEnd === end ? range.end : new Date(narrowedEnd).toISOString(),
   };
+}
+
+const ABSOLUTE_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
+const TIMESTAMP_BOUND_PATTERN = /^timestamp:([<>]=?)(.+)$/;
+const QUOTED_VALUE_PATTERN = /(["'])(?:\\.|(?!\1).)*\1/g;
+
+/**
+ * Read the absolute window a query's top-level `timestamp:` bounds name.
+ *
+ * A lower bound with no upper bound runs until now. Boolean or grouped
+ * queries return nothing, because a bound inside a group does not bound the
+ * whole search.
+ */
+function queryTimestampRange(
+  query: string,
+): { start: string; end: string } | undefined {
+  const tokens = tokenizeSearchQuery(query);
+  if (
+    tokens.some(
+      (token) =>
+        token === "OR" ||
+        token === "AND" ||
+        /[()]/.test(token.replace(QUOTED_VALUE_PATTERN, "")),
+    )
+  ) {
+    return undefined;
+  }
+
+  let start: string | undefined;
+  let end: string | undefined;
+  for (const token of tokens) {
+    const match = TIMESTAMP_BOUND_PATTERN.exec(token);
+    const value = match?.[2]?.replace(/^["']|["']$/g, "");
+    if (!match || !value || !ABSOLUTE_TIMESTAMP_PATTERN.test(value)) {
+      continue;
+    }
+    if (match[1]?.startsWith(">")) {
+      if (!start || Date.parse(value) > Date.parse(start)) {
+        start = value;
+      }
+    } else if (!end || Date.parse(value) < Date.parse(end)) {
+      end = value;
+    }
+  }
+
+  return start ? { start, end: end ?? new Date().toISOString() } : undefined;
 }
 
 function buildRequestFields(
@@ -994,7 +1037,7 @@ async function executeSearchEvents(
     const agentTimeRange = parseAgentTimeRange(parsed.timeRange);
     timeParams =
       shouldTrustExplicitSearchParams && params.period !== undefined
-        ? narrowPeriodToAgentRange(params.period, agentTimeRange)
+        ? narrowPeriodToRange(params.period, agentTimeRange)
         : (agentTimeRange ?? { statsPeriod: "14d" });
 
     if (dataset === "replays") {
@@ -1013,7 +1056,12 @@ async function executeSearchEvents(
       ? explicitStructuredTraceQuery
       : (params.query ?? "");
     sortParam = explicitSort || defaultSortForDataset(dataset);
-    timeParams = { statsPeriod: params.period ?? "14d" };
+    // The query's own bounds already limit the results; sending them as
+    // start/end makes the executed search report the window that ran.
+    timeParams = narrowPeriodToRange(
+      params.period ?? "14d",
+      queryTimestampRange(sentryQuery),
+    );
     fields =
       dataset === "replays"
         ? []
