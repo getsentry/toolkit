@@ -13,6 +13,7 @@ import * as Sentry from "@sentry/node";
 import chalk from "chalk";
 import { Command, Option } from "commander";
 import { config } from "dotenv";
+import { z } from "zod";
 import { runAgent } from "./agent.js";
 import { resolveAgentProvider } from "./agent-provider.js";
 import { logError, logInfo } from "./logger.js";
@@ -30,6 +31,25 @@ config(); // Try current directory first (.env in mcp-test-client)
 config({ path: path.join(rootDir, ".env") }); // Also try root directory (fallback for shared values)
 
 const program = new Command();
+
+/** The options commander parses from the flags declared below. */
+const CliOptionsSchema = z.object({
+  model: z.string().optional(),
+  accessToken: z.string().optional(),
+  transport: z.enum(["auto", "stdio", "http"]),
+  mcpHost: z.string(),
+  host: z.string().optional(),
+  sentryDsn: z.string().optional(),
+  experimental: z.boolean().optional(),
+  stdioBundle: z.boolean().optional(),
+  listTools: z.boolean().optional(),
+});
+
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error
+    ? error.code
+    : undefined;
+}
 
 // OAuth support for MCP server (not Sentry directly)
 
@@ -51,7 +71,7 @@ program
   .option(
     "--mcp-host <host>",
     "MCP server host",
-    process.env.MCP_URL || "http://localhost:5173",
+    process.env["MCP_URL"] || "http://localhost:5173",
   )
   .option("--host <host>", "Sentry host for stdio transport")
   .option(
@@ -67,15 +87,16 @@ program
     "--list-tools",
     "Connect to the MCP server, list available tools, and exit without using an LLM",
   )
-  .action(async (prompt, options) => {
+  .action(async (prompt: string | undefined, rawOptions: unknown) => {
     try {
+      const options = CliOptionsSchema.parse(rawOptions);
       const agentProvider = resolveAgentProvider(process.env);
 
       // Initialize Sentry with CLI-provided DSN if available
       const sentryDsn =
         options.sentryDsn ||
-        process.env.SENTRY_DSN ||
-        process.env.DEFAULT_SENTRY_DSN;
+        process.env["SENTRY_DSN"] ||
+        process.env["DEFAULT_SENTRY_DSN"];
 
       const scopeContext = {
         "gen_ai.agent.name": "sentry-mcp-agent",
@@ -91,7 +112,7 @@ program
           // SDK v11 does not copy scope tags onto streamed spans.
           attributes: scopeContext,
         },
-        release: process.env.SENTRY_RELEASE,
+        release: process.env["SENTRY_RELEASE"],
         integrations: [
           Sentry.consoleIntegration(),
           Sentry.zodErrorsIntegration(),
@@ -101,16 +122,16 @@ program
           }),
         ],
         environment:
-          process.env.SENTRY_ENVIRONMENT ??
-          (process.env.NODE_ENV !== "production"
+          process.env["SENTRY_ENVIRONMENT"] ??
+          (process.env["NODE_ENV"] !== "production"
             ? "development"
             : "production"),
       });
 
       // Check for access token in priority order
       const accessToken =
-        options.accessToken || process.env.SENTRY_ACCESS_TOKEN;
-      const sentryHost = options.host || process.env.SENTRY_HOST;
+        options.accessToken || process.env["SENTRY_ACCESS_TOKEN"];
+      const sentryHost = options.host || process.env["SENTRY_HOST"];
 
       const transport = resolveTransportMode({
         requestedTransport: options.transport,
@@ -198,7 +219,7 @@ program
             } catch (error) {
               // Handle EOF (Ctrl+D) which may throw an error
               if (
-                (error as any).code === "ERR_USE_AFTER_CLOSE" ||
+                errorCode(error) === "ERR_USE_AFTER_CLOSE" ||
                 (error instanceof Error && error.message.includes("EOF"))
               ) {
                 logInfo("Goodbye!");
@@ -229,15 +250,14 @@ program
   });
 
 // Handle uncaught errors
-process.on("unhandledRejection", async (error) => {
+process.on("unhandledRejection", (error) => {
   const eventId = Sentry.captureException(error);
   logError(
     "Unhandled error",
     `${error instanceof Error ? error.message : String(error)}. Event ID: ${eventId}`,
   );
   // Ensure Sentry events are flushed before exit
-  await Sentry.flush(5000);
-  process.exit(1);
+  void Sentry.flush(5000).finally(() => process.exit(1));
 });
 
 program.parse(process.argv);

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { withProgress } from "../../src/lib/polling.js";
+import {
+  abortableSleep,
+  parsePollInterval,
+  withProgress,
+} from "../../src/lib/polling.js";
 
 const originalIsTTY = process.stdout.isTTY;
 
@@ -149,5 +153,40 @@ describe("withProgress", () => {
     ).resolves.toBe("done");
 
     expect(stdoutWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe("parsePollInterval", () => {
+  test("accepts whole seconds at or above the minimum", () => {
+    expect(parsePollInterval("5", { flag: "--interval" })).toBe(5);
+    expect(parsePollInterval("10", { flag: "--refresh", min: 10 })).toBe(10);
+  });
+
+  test("rejects fractions, junk, and values below the minimum", () => {
+    for (const value of ["0", "1.5", "5s", "", "-3"]) {
+      expect(() => parsePollInterval(value, { flag: "--interval" })).toThrow(
+        "--interval must be a whole number of seconds, at least 1",
+      );
+    }
+    expect(() =>
+      parsePollInterval("9", { flag: "--refresh", min: 10 }),
+    ).toThrow("--refresh must be a whole number of seconds, at least 10");
+  });
+});
+
+describe("abortableSleep", () => {
+  test("resolves at once when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(abortableSleep(60_000, controller.signal)).resolves.toBe(
+      undefined,
+    );
+  });
+
+  test("resolves early when the signal aborts mid-sleep", async () => {
+    const controller = new AbortController();
+    const sleeping = abortableSleep(60_000, controller.signal);
+    controller.abort();
+    await expect(sleeping).resolves.toBe(undefined);
   });
 });

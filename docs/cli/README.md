@@ -16,6 +16,9 @@ CLI releases build it from that workspace. Start here for repository guides:
 - [CLI build workflow](../../.github/workflows/cli-build.yml) and
   [release configuration](../../.craft.yml) — binaries, npm packaging, and
   release-gated website artifacts.
+- [Website packaging](../../apps/cli-docs/vercel/build-output.mjs) — the
+  Vercel routes for `/install`, and the `/install/<handoff code>` function that
+  serves the install script with `SENTRY_HANDOFF` set.
 - [CLI nightly watchdog](../../.github/workflows/cli-nightly-watchdog.yml) —
   hourly and after each main Build, checks for stuck or failed Build runs and a
   GHCR `nightly` that lags main. It keeps one open alert issue while unhealthy,

@@ -49,7 +49,9 @@ export default function CodeSnippet({
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-neutral-500 cursor-pointer duration-300 hover:bg-violet-300/25 rounded-md focus:!ring-violet-300/50 group/copy"
-          onClick={handleCopy}
+          onClick={() => {
+            void handleCopy();
+          }}
         >
           {copied ? (
             <Check className="h-4 w-4 text-green-500" />

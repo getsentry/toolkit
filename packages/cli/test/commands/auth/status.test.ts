@@ -10,18 +10,22 @@
  * output and parse JSON for --json output.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { statusCommand } from "../../../src/commands/auth/status.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -30,12 +34,8 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/auth.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/auth.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -44,12 +44,8 @@ import * as dbAuth from "../../../src/lib/db/auth.js";
 vi.mock("../../../src/lib/db/defaults.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/defaults.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -58,12 +54,8 @@ import * as dbDefaults from "../../../src/lib/db/defaults.js";
 vi.mock("../../../src/lib/db/index.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/index.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -72,12 +64,8 @@ import * as dbIndex from "../../../src/lib/db/index.js";
 vi.mock("../../../src/lib/db/user.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/user.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -114,14 +102,20 @@ function createContext() {
 }
 
 describe("statusCommand.func", () => {
-  let getAuthConfigSpy: ReturnType<typeof spyOn>;
-  let getAuthTokenSpy: ReturnType<typeof spyOn>;
-  let isAuthenticatedSpy: ReturnType<typeof spyOn>;
-  let getUserInfoSpy: ReturnType<typeof spyOn>;
-  let getDefaultOrgSpy: ReturnType<typeof spyOn>;
-  let getDefaultProjectSpy: ReturnType<typeof spyOn>;
-  let getDbPathSpy: ReturnType<typeof spyOn>;
-  let listOrgsSpy: ReturnType<typeof spyOn>;
+  let getAuthConfigSpy: MockInstance<(typeof dbAuth)["getAuthConfig"]>;
+  let getAuthTokenSpy: MockInstance<(typeof dbAuth)["getAuthToken"]>;
+  let isAuthenticatedSpy: MockInstance<(typeof dbAuth)["isAuthenticated"]>;
+  let getUserInfoSpy: MockInstance<(typeof dbUser)["getUserInfo"]>;
+  let getDefaultOrgSpy: MockInstance<
+    (typeof dbDefaults)["getDefaultOrganization"]
+  >;
+  let getDefaultProjectSpy: MockInstance<
+    (typeof dbDefaults)["getDefaultProject"]
+  >;
+  let getDbPathSpy: MockInstance<(typeof dbIndex)["getDbPath"]>;
+  let listOrgsSpy: MockInstance<
+    (typeof apiClient)["listOrganizationsUncached"]
+  >;
   let func: StatusFunc;
 
   beforeEach(async () => {
@@ -136,7 +130,7 @@ describe("statusCommand.func", () => {
 
     // Defaults that most tests override
     getAuthTokenSpy.mockReturnValue("fake-oauth-token");
-    getUserInfoSpy.mockReturnValue(null);
+    getUserInfoSpy.mockReturnValue(undefined);
     getDefaultOrgSpy.mockReturnValue(null);
     getDefaultProjectSpy.mockReturnValue(null);
     getDbPathSpy.mockReturnValue("/fake/db/path");
@@ -429,7 +423,9 @@ describe("statusCommand.func", () => {
         source: "oauth",
       });
       isAuthenticatedSpy.mockReturnValue(true);
-      listOrgsSpy.mockResolvedValue([{ name: "My Org", slug: "my-org" }]);
+      listOrgsSpy.mockResolvedValue([
+        { id: "1", name: "My Org", slug: "my-org" },
+      ]);
 
       const { context, getOutput } = createContext();
       await func.call(context, humanFlags);
@@ -480,6 +476,7 @@ describe("statusCommand.func", () => {
       });
       isAuthenticatedSpy.mockReturnValue(true);
       getUserInfoSpy.mockReturnValue({
+        userId: "user-1",
         name: "Jane Doe",
         email: "jane@example.com",
       });
@@ -560,13 +557,16 @@ describe("statusCommand.func", () => {
       });
       isAuthenticatedSpy.mockReturnValue(true);
       getUserInfoSpy.mockReturnValue({
+        userId: "user-1",
         name: "Jane Doe",
         email: "jane@example.com",
         username: "janedoe",
       });
       getDefaultOrgSpy.mockReturnValue("my-org");
       getDefaultProjectSpy.mockReturnValue("my-project");
-      listOrgsSpy.mockResolvedValue([{ name: "My Org", slug: "my-org" }]);
+      listOrgsSpy.mockResolvedValue([
+        { id: "2", name: "My Org", slug: "my-org" },
+      ]);
 
       const { context, getOutput } = createContext();
       await func.call(context, jsonFlags);

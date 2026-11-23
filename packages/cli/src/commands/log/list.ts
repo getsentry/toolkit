@@ -1,9 +1,8 @@
 /**
  * sentry log list
  *
- * List and stream logs from Sentry projects.
- * Supports real-time streaming with --follow flag.
- * Supports trace ID as a positional argument to filter logs by trace.
+ * List logs from Sentry projects, or the logs of a trace when the positional
+ * is a trace ID. `sentry log tail` streams new logs instead.
  */
 
 import type { SentryContext } from "../../context.js";
@@ -15,34 +14,12 @@ import {
 import { sentry } from "../../lib/app-identity.js";
 import {
   buildProjectQuery,
-  type ParsedOrgProject,
   parseLogSort,
-  parseOrgProjectInput,
   validateLimit,
 } from "../../lib/arg-parsing.js";
-import { ORG_PROJECT_TARGET, textParser } from "../../lib/completion-target.js";
-import {
-  AuthError,
-  stringifyUnknown,
-  toSearchQueryError,
-  ValidationError,
-} from "../../lib/errors.js";
-import {
-  type LogLike as BaseLogLike,
-  buildLogRowCells,
-  createLogStreamingTable,
-  formatLogRow,
-  formatLogsHeader,
-  isPlainOutput,
-} from "../../lib/formatters/index.js";
-import { filterFields } from "../../lib/formatters/json.js";
-import { renderInlineMarkdown } from "../../lib/formatters/markdown.js";
-import {
-  CommandOutput,
-  formatFooter,
-  type HumanRenderer,
-} from "../../lib/formatters/output.js";
-import type { StreamingTable } from "../../lib/formatters/text-table.js";
+import { textParser } from "../../lib/completion-target.js";
+import { toSearchQueryError, ValidationError } from "../../lib/errors.js";
+import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   buildListCommand,
   LIST_MAX_LIMIT,
@@ -50,16 +27,8 @@ import {
   TARGET_PATTERN_NOTE,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
-import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
-import {
-  type BoundArguments,
-  boundArguments,
-} from "../../lib/positional-parse.js";
-import {
-  resolveLogProjectId,
-  resolveProjectBoundTarget,
-} from "../../lib/resolve-target.js";
+import { resolveLogProjectId } from "../../lib/resolve-target.js";
 import { sanitizeQuery } from "../../lib/search-query.js";
 import {
   PERIOD_BRIEF,
@@ -69,22 +38,20 @@ import {
   type TimeRange,
   timeRangeToApiParams,
 } from "../../lib/time-range.js";
-import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
-import {
-  applyTraceTargetInput,
-  parseDualModeInput,
-  resolveTraceOrg,
-  type TraceTargetInput,
-  warnIfNormalized,
-} from "../../lib/trace-target.js";
-import { getUpdateNotification } from "../../lib/version-check.js";
 import { SentryLogSchema } from "../../generated/output-schemas/log.js";
-import { reportCliError } from "../../lib/error-reporting.js";
+import {
+  createLogRenderer,
+  jsonTransformLogOutput,
+  type LogListArguments,
+  type LogListResult,
+  logTargetArguments,
+} from "./shared.js";
 
 type ListFlags = {
   readonly limit: number;
   readonly query?: string;
-  readonly follow?: number;
+  /** Removed: streaming moved to `log tail`. Hidden, kept to say so. */
+  readonly follow?: string;
   readonly period?: TimeRange;
   readonly sort: LogSortDirection;
   readonly json: boolean;
@@ -93,145 +60,17 @@ type ListFlags = {
 };
 
 /**
- * Result yielded by the log list command in single-fetch mode.
- *
- * Contains the full array of logs and optional trace context.
- * Follow mode yields bare {@link LogLike} items instead — see
- * {@link LogOutput} for the union type.
- */
-type LogListResult = {
-  logs: LogLike[];
-  /** Trace ID, present for trace-filtered queries */
-  traceId?: string;
-  /** Whether more results are available beyond the limit */
-  hasMore: boolean;
-  /** Extra field names requested via `--fields`, used to render additional columns in human mode. */
-  extraFields?: string[];
-};
-
-/** Output yielded by log list: either a batch (single-fetch) or an individual item (follow). */
-type LogOutput = LogLike | LogListResult;
-
-/** Default poll interval in seconds for --follow mode */
-const DEFAULT_POLL_INTERVAL = 2;
-
-/** Command name used in resolver error messages */
-const COMMAND_NAME = "log list";
-
-/** Usage hint for trace mode error messages */
-const traceUsageHint = () => sentry`log list [<org>/[<project>/]]<trace-id>`;
-
-/**
  * Parse --limit flag, delegating range validation to shared utility.
  */
 function parseLimit(value: string): number {
   return validateLimit(value, LIST_MIN_LIMIT, LIST_MAX_LIMIT);
 }
 
-/**
- * Parse --follow flag value.
- * Supports: -f (empty string → default interval), -f 10 (explicit interval)
- *
- * @throws Error if value is not a positive integer
- */
-function parseFollow(value: string): number {
-  if (value === "") {
-    return DEFAULT_POLL_INTERVAL;
-  }
-  const num = Number.parseInt(value, 10);
-  if (Number.isNaN(num) || num < 1) {
-    throw new Error("--follow interval must be a positive integer");
-  }
-  return num;
-}
-
-/**
- * Extends the base {@link BaseLogLike} from formatters with the
- * `timestamp_precise` field needed for follow-mode dedup tracking.
- */
-type LogLike = BaseLogLike & {
-  /** Nanosecond-precision timestamp used for dedup in follow mode.
-   * Optional because TraceLog may omit it when the API response doesn't include it. */
-  timestamp_precise?: number;
-};
-
 /** Result from a single fetch: logs to yield + hint for the footer. */
 type FetchResult = {
   result: LogListResult;
   hint: string;
 };
-
-// ---------------------------------------------------------------------------
-// Positional argument disambiguation
-// ---------------------------------------------------------------------------
-
-/** What `log list` lists, as parsed: a project's logs or a trace's. */
-type LogListInput =
-  | {
-      readonly mode: "project";
-      readonly target: ParsedOrgProject;
-      /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-      readonly baseUrl?: string;
-    }
-  | { readonly mode: "trace"; readonly trace: TraceTargetInput };
-
-/** What `log list` lists, resolved. */
-type LogListTarget =
-  | { readonly mode: "project"; readonly org: string; readonly project: string }
-  | {
-      readonly mode: "trace";
-      readonly org: string;
-      readonly traceId: string;
-      /** Project the user named, to filter the trace's logs by */
-      readonly projectFilter?: string;
-    };
-
-/** The arguments of `log list`. */
-type LogListArguments = BoundArguments<LogListInput, LogListTarget>;
-
-/**
- * Disambiguate log list positional arguments with {@link parseDualModeInput}
- * (trace mode when the arguments end in a trace ID).
- */
-function parseLogListInput(args: readonly string[]): LogListInput {
-  const input = parseDualModeInput(args, traceUsageHint());
-  if (input.mode === "trace") {
-    return input;
-  }
-  const { parsed, baseUrl } = parseOrgProjectInput(input.target);
-  return { mode: "project", target: parsed, baseUrl };
-}
-
-async function resolveLogListTarget(
-  input: LogListInput,
-  context: SentryContext,
-): Promise<LogListTarget> {
-  if (input.mode === "trace") {
-    const parsed = applyTraceTargetInput(input.trace);
-    warnIfNormalized(parsed, "log.list");
-    const { traceId, org } = await resolveTraceOrg(
-      parsed,
-      context.cwd,
-      "log list",
-      traceUsageHint(),
-    );
-    return {
-      mode: "trace",
-      org,
-      traceId,
-      projectFilter: parsed.type === "explicit" ? parsed.project : undefined,
-    };
-  }
-  if (input.baseUrl) {
-    applySentryUrlContext(input.baseUrl);
-  }
-  const { org, project } = await resolveProjectBoundTarget(
-    input.target,
-    context.cwd,
-    COMMAND_NAME,
-  );
-  return { mode: "project", org, project };
-}
 
 /**
  * Execute a single fetch of logs (non-streaming mode).
@@ -243,7 +82,7 @@ async function executeSingleFetch(
   org: string,
   project: string,
   flags: ListFlags,
-  options: { timeRange: TimeRange; projectId?: number },
+  options: { timeRange: TimeRange; projectId?: number | undefined },
 ): Promise<FetchResult> {
   const { timeRange, projectId } = options;
   const logs = await listLogs(org, project, {
@@ -274,7 +113,9 @@ async function executeSingleFetch(
 
   const hasMore = logs.length >= flags.limit;
   const countText = `Showing ${logs.length} log${logs.length === 1 ? "" : "s"}.`;
-  const tip = hasMore ? " Use --limit to show more, or -f to follow." : "";
+  const tip = hasMore
+    ? ` Use --limit to show more, or '${sentry`log tail`}' to stream new logs.`
+    : "";
 
   return {
     result: { logs, hasMore, extraFields },
@@ -282,268 +123,12 @@ async function executeSingleFetch(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Streaming follow-mode infrastructure
-// ---------------------------------------------------------------------------
-
-/**
- * Sleep that resolves early when an AbortSignal fires.
- * Resolves (not rejects) on abort for clean generator shutdown.
- */
-function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-/**
- * Configuration for the follow-mode async generator.
- *
- * Parameterized over the log type to handle both project-scoped
- * (`SentryLog`) and trace-scoped (`TraceLog`) streaming.
- *
- * Unlike the old callback-based approach, this does NOT include
- * stdout/stderr. All stdout output flows through yielded chunks;
- * diagnostics are reported via the `onDiagnostic` callback.
- */
-type FollowGeneratorConfig<T extends LogLike> = {
-  flags: ListFlags;
-  /** Report diagnostic/error messages (caller logs via logger) */
-  onDiagnostic: (message: string) => void;
-  /**
-   * Fetch logs with the given time window.
-   * @param statsPeriod - Time window (e.g., "1m" for initial, "10m" for polls)
-   * @param afterTimestamp - Only return logs newer than this (nanoseconds).
-   *   Standard mode passes this for server-side dedup; trace mode ignores it.
-   */
-  fetch: (statsPeriod: string, afterTimestamp?: number) => Promise<T[]>;
-  /** Extract only the genuinely new entries from a poll response */
-  extractNew: (logs: T[], lastTimestamp: number) => T[];
-  /**
-   * Called with the initial batch of logs before polling begins.
-   * Use this to seed dedup state (e.g., tracking seen log IDs).
-   */
-  onInitialLogs?: (logs: T[]) => void;
-  /**
-   * External abort signal (library mode). When aborted, the follow
-   * generator stops on the next poll cycle. Complements SIGINT handling.
-   */
-  abortSignal?: AbortSignal;
-};
-
-/** Find the highest timestamp_precise in a batch, or undefined if none have it. */
-function maxTimestamp(logs: LogLike[]): number | undefined {
-  let max: number | undefined;
-  for (const l of logs) {
-    if (l.timestamp_precise !== undefined) {
-      max =
-        max === undefined
-          ? l.timestamp_precise
-          : Math.max(max, l.timestamp_precise);
-    }
-  }
-  return max;
-}
-
-/**
- * Render a batch of log rows as a human-readable string.
- *
- * When a StreamingTable is provided (TTY mode), renders rows through the
- * bordered table. Otherwise falls back to plain markdown rows.
- *
- * @param logs - Log entries to render
- * @param includeTrace - Whether to append trace-ID suffix to messages
- * @param table - Optional streaming table for TTY mode
- * @param extraFields - Additional field names to render as extra columns
- */
-function renderLogRows(
-  logs: LogLike[],
-  includeTrace: boolean,
-  table?: StreamingTable,
-  extraFields?: string[],
-): string {
-  let text = "";
-  for (const log of logs) {
-    if (table) {
-      text += table.row(
-        buildLogRowCells(log, true, includeTrace, extraFields).map(
-          renderInlineMarkdown,
-        ),
-      );
-    } else {
-      text += formatLogRow(log, includeTrace, extraFields);
-    }
-  }
-  return text;
-}
-
-/**
- * Execute a single poll iteration in follow mode.
- *
- * Returns the new logs, or `undefined` if a transient error occurred
- * (reported via `onDiagnostic`). Re-throws {@link AuthError} and
- * {@link ValidationError} (a converted bad-`--query` 400).
- */
-async function fetchPoll<T extends LogLike>(
-  config: FollowGeneratorConfig<T>,
-  lastTimestamp: number,
-): Promise<T[] | undefined> {
-  try {
-    const rawLogs = await config.fetch("10m", lastTimestamp);
-    return config.extractNew(rawLogs, lastTimestamp);
-  } catch (error) {
-    if (error instanceof AuthError) {
-      throw error;
-    }
-    // A ValidationError here is a converted search-query 400 (bad user
-    // --query). It is a user input mistake, not a transient fetch failure, so
-    // surface it and stop the stream rather than capturing it as a CLI bug.
-    if (error instanceof ValidationError) {
-      throw error;
-    }
-    reportCliError(error);
-    const message = stringifyUnknown(error);
-    config.onDiagnostic(`Error fetching logs: ${message}\n`);
-    return;
-  }
-}
-
-/**
- * Async generator that streams log entries via follow-mode polling.
- *
- * Yields batches of log entries (chronological order). The command
- * unwraps each batch into individual {@link CommandOutput} yields so
- * the OutputConfig formatters can handle incremental rendering and JSONL.
- *
- * The generator handles SIGINT via AbortController for clean shutdown.
- * It never touches stdout — all data output flows through yielded batches
- * and diagnostics use the `onDiagnostic` callback.
- *
- * @throws {AuthError} if the API returns an authentication error
- */
-async function* generateFollowLogs<T extends LogLike>(
-  config: FollowGeneratorConfig<T>,
-): AsyncGenerator<T[], void, undefined> {
-  const { flags } = config;
-  const pollInterval = flags.follow ?? DEFAULT_POLL_INTERVAL;
-  const pollIntervalMs = pollInterval * 1000;
-
-  // timestamp_precise is nanoseconds; Date.now() is milliseconds → convert
-  let lastTimestamp = Date.now() * 1_000_000;
-
-  // AbortController for clean SIGINT handling + library mode abort
-  const controller = new AbortController();
-  const stop = () => controller.abort();
-  process.once("SIGINT", stop);
-
-  // Library mode: honor external abort signal (e.g., consumer break)
-  if (config.abortSignal) {
-    config.abortSignal.addEventListener("abort", stop, { once: true });
-  }
-
-  try {
-    // Initial fetch
-    const initialLogs = await config.fetch("1m");
-    if (initialLogs.length > 0) {
-      yield [...initialLogs].reverse();
-    }
-    lastTimestamp = maxTimestamp(initialLogs) ?? lastTimestamp;
-    config.onInitialLogs?.(initialLogs);
-
-    // Poll loop — exits when SIGINT fires
-    while (!controller.signal.aborted) {
-      await abortableSleep(pollIntervalMs, controller.signal);
-      if (controller.signal.aborted) {
-        break;
-      }
-
-      const newLogs = await fetchPoll(config, lastTimestamp);
-      if (newLogs && newLogs.length > 0) {
-        yield [...newLogs].reverse();
-        lastTimestamp = maxTimestamp(newLogs) ?? lastTimestamp;
-      }
-    }
-  } finally {
-    process.removeListener("SIGINT", stop);
-  }
-}
-
-/**
- * Consume a project-scoped follow-mode generator, yielding items individually.
- *
- * When `extraFields` is provided, the first non-empty batch is yielded as a
- * {@link LogListResult} so the human renderer can discover the extra columns
- * and create a table with the right headers. Subsequent items are yielded
- * bare for proper JSONL streaming.
- */
-async function* yieldFollowItems<T extends LogLike>(
-  generator: AsyncGenerator<T[], void, undefined>,
-  extraFields?: string[],
-): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
-  let contextSent = !extraFields?.length;
-  for await (const batch of generator) {
-    if (!contextSent && batch.length > 0) {
-      yield new CommandOutput({
-        logs: batch,
-        hasMore: false,
-        extraFields,
-      });
-      contextSent = true;
-    } else {
-      for (const item of batch) {
-        yield new CommandOutput(item);
-      }
-    }
-  }
-}
-
-/**
- * Consume a trace follow-mode generator, yielding items individually.
- *
- * The first non-empty batch is yielded as a {@link LogListResult} so
- * the human renderer can detect `traceId` and hide the trace column.
- * Subsequent items are yielded bare for proper JSONL streaming.
- */
-async function* yieldTraceFollowItems<T extends LogLike>(
-  generator: AsyncGenerator<T[], void, undefined>,
-  traceId: string,
-): AsyncGenerator<CommandOutput<LogOutput>, void, undefined> {
-  let contextSent = false;
-  for await (const batch of generator) {
-    if (!contextSent && batch.length > 0) {
-      // First non-empty batch: yield as LogListResult to set trace context
-      yield new CommandOutput({
-        logs: batch,
-        traceId,
-        hasMore: false,
-      });
-      contextSent = true;
-    } else {
-      for (const item of batch) {
-        yield new CommandOutput(item);
-      }
-    }
-  }
-}
-
 /** Options for {@link executeTraceSingleFetch}. */
 type TraceFetchOptions = {
   flags: ListFlags;
   timeRange: TimeRange;
   /** Project slug for API-level filtering (from org/project/trace-id syntax) */
-  projectFilter?: string;
+  projectFilter?: string | undefined;
 };
 
 /**
@@ -605,174 +190,13 @@ async function executeTraceSingleFetch(
   };
 }
 
-/**
- * Write the follow-mode banner via logger. Suppressed in JSON mode
- * to avoid stderr noise when agents consume JSONL output.
- */
-function writeFollowBanner(
-  pollInterval: number,
-  bannerText: string,
-  json: boolean,
-): void {
-  if (json) {
-    return;
-  }
-  logger.info(`${bannerText} (poll interval: ${pollInterval}s)`);
-  logger.info("Press Ctrl+C to stop.");
-  const notification = getUpdateNotification();
-  if (notification) {
-    logger.info(notification);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Output formatting
-// ---------------------------------------------------------------------------
-
-/**
- * Create a stateful human renderer for log list output.
- *
- * The factory is called once per command invocation. The returned renderer
- * tracks streaming table state (header emitted, table instance) and cleans
- * up via `finalize()`.
- *
- * All yields go through `render()` — both single-fetch and follow mode.
- * The renderer emits the table header on the first non-empty batch, rows
- * per batch, and the table footer + hint via `finalize()`.
- *
- * Discriminates between {@link LogListResult} (single-fetch or first trace
- * follow batch) and bare {@link LogLike} items (follow mode).
- */
-/** Shared discriminator for log output type. */
-function isLogListResult(data: LogOutput): data is LogListResult {
-  return "logs" in data && Array.isArray((data as LogListResult).logs);
-}
-
-/** Mutable state for the log renderer, extracted to reduce cognitive complexity. */
-type LogRendererState = {
-  table: StreamingTable | undefined;
-  includeTrace: boolean;
-  headerEmitted: boolean;
-  extraFields: string[] | undefined;
-};
-
-/** Initialize table and column settings on the first non-empty render. */
-function initFirstRender(
-  state: LogRendererState,
-  data: LogOutput,
-  plain: boolean,
-): void {
-  if (isLogListResult(data)) {
-    if (data.traceId) {
-      state.includeTrace = false;
-    }
-    state.extraFields = data.extraFields;
-  }
-  state.table = plain
-    ? undefined
-    : createLogStreamingTable({}, state.extraFields);
-  state.headerEmitted = true;
-}
-
-function createLogRenderer(): HumanRenderer<LogOutput> {
-  const plain = isPlainOutput();
-  const state: LogRendererState = {
-    table: undefined,
-    includeTrace: true,
-    headerEmitted: false,
-    extraFields: undefined,
-  };
-
-  return {
-    render(data: LogOutput): string {
-      const logs: LogLike[] = isLogListResult(data) ? data.logs : [data];
-      if (logs.length === 0) {
-        return "";
-      }
-
-      if (!state.headerEmitted) {
-        initFirstRender(state, data, plain);
-        let text = state.table
-          ? state.table.header()
-          : formatLogsHeader(state.extraFields);
-        text += renderLogRows(
-          logs,
-          state.includeTrace,
-          state.table,
-          state.extraFields,
-        );
-        return text.trimEnd();
-      }
-
-      return renderLogRows(
-        logs,
-        state.includeTrace,
-        state.table,
-        state.extraFields,
-      ).trimEnd();
-    },
-
-    finalize(hint?: string): string {
-      let text = "";
-
-      if (state.headerEmitted && state.table) {
-        text += state.table.footer();
-      }
-
-      if (hint) {
-        if (state.headerEmitted) {
-          text += `${text ? "\n" : ""}${formatFooter(hint)}`;
-        } else {
-          text += `${hint}\n`;
-        }
-      }
-
-      return text;
-    },
-  };
-}
-
-/**
- * Transform log output into the JSON shape.
- *
- * Discriminates between {@link LogListResult} (single-fetch) and bare
- * {@link LogLike} items (follow mode). Single-fetch yields a JSON envelope
- * with `data` and `hasMore`; follow mode yields one JSON object per line (JSONL).
- */
-function jsonTransformLogOutput(
-  data: LogOutput,
-  fields?: string[],
-): ListEnvelope<LogLike> | Partial<LogLike> {
-  if (isLogListResult(data)) {
-    // Batch (single-fetch): return envelope with data + hasMore
-    const logList = data;
-    const items =
-      fields && fields.length > 0
-        ? logList.logs.map((log) => filterFields(log, fields))
-        : logList.logs;
-    return { data: items, hasMore: logList.hasMore };
-  }
-  // Single item (follow mode): return bare object for JSONL
-  return fields && fields.length > 0 ? filterFields(data, fields) : data;
-}
-
-/** Validate flag combinations that are invalid regardless of mode. */
-function validateFollowFlags(flags: ListFlags): void {
-  if (flags.follow && flags.sort === "oldest") {
-    throw new ValidationError(
-      '--sort "oldest" cannot be used with --follow. Follow mode streams new logs as they arrive.',
-      "sort",
-    );
-  }
-}
-
 export const listCommand = buildListCommand(
   "log",
   {
     docs: {
       brief: "List logs from a project",
       fullDescription:
-        "List and stream logs from Sentry projects.\n\n" +
+        "List logs from Sentry projects. To stream new logs as they arrive, use `sentry log tail`.\n\n" +
         `${TARGET_PATTERN_NOTE}\n\n` +
         "Pass a 32-character trace ID instead of a project to filter by trace.\n\n" +
         "Alias: `sentry logs` → `sentry log list`",
@@ -799,18 +223,6 @@ export const listCommand = buildListCommand(
           run: "log list abc123def456abc123def456abc12345",
         },
         {
-          description: "Stream logs (2-second poll interval)",
-          run: "log list -f",
-        },
-        {
-          description: "Stream logs (5-second poll interval)",
-          run: "log list -f 5",
-        },
-        {
-          description: "Stream error logs from a specific project",
-          run: "log list my-org/backend -f -q 'severity:error'",
-        },
-        {
           description: "Filter JSON output with jq",
           run: "log list --json | jq '.data[] | select(.severity == \"error\")'",
         },
@@ -826,13 +238,7 @@ export const listCommand = buildListCommand(
       schema: SentryLogSchema,
     },
     parameters: {
-      positional: boundArguments({
-        placeholder: "org/project-or-trace-id",
-        brief: "[<org>/[<project>/]]<trace-id>, <org>/<project>, or <project>",
-        kind: ORG_PROJECT_TARGET,
-        parse: parseLogListInput,
-        resolve: resolveLogListTarget,
-      }),
+      positional: logTargetArguments("log list"),
       flags: {
         limit: {
           kind: "parsed",
@@ -849,10 +255,11 @@ export const listCommand = buildListCommand(
         },
         follow: {
           kind: "parsed",
-          parse: textParser(parseFollow),
-          brief: "Stream logs (optionally specify poll interval in seconds)",
+          parse: textParser(String),
+          brief: "Removed: use `sentry log tail`",
           optional: true,
           inferEmpty: true,
+          hidden: true,
         },
         period: {
           kind: "parsed",
@@ -870,7 +277,6 @@ export const listCommand = buildListCommand(
       aliases: {
         n: "limit",
         q: "query",
-        f: "follow",
         t: "period",
         s: "sort",
       },
@@ -880,22 +286,18 @@ export const listCommand = buildListCommand(
       flags: ListFlags,
       target: LogListArguments,
     ) {
-      validateFollowFlags(flags);
+      if (flags.follow !== undefined) {
+        throw new ValidationError(
+          `--follow moved to its own command: ${sentry`log tail`}. ` +
+            "Pass the same target and --query; set the poll interval with --interval.",
+          "follow",
+        );
+      }
 
       // Resolve mode-dependent default period
       const timeRange =
         flags.period ??
         (target.parsed.mode === "trace" ? TIME_RANGE_14D : TIME_RANGE_30D);
-
-      // Follow mode streams live events via short polling intervals —
-      // absolute date ranges are silently ignored, so reject them entirely.
-      if (flags.follow && timeRange.type === "absolute") {
-        throw new ValidationError(
-          "--follow cannot be used with an absolute date range. " +
-            "Use a relative duration (e.g., --period 1h) or omit --period.",
-          "period",
-        );
-      }
 
       const resolved = await target.resolved;
       if (resolved.mode === "trace") {
@@ -908,63 +310,6 @@ export const listCommand = buildListCommand(
           logger.warn(
             "--fields is not supported for trace-scoped log queries. Use project-scoped mode instead.",
           );
-        }
-
-        // Prepend project filter to the query when user explicitly specified a project
-        const traceQuery = buildProjectQuery(flags.query, projectFilter);
-
-        if (flags.follow) {
-          // Banner (suppressed in JSON mode)
-          writeFollowBanner(
-            flags.follow ?? DEFAULT_POLL_INTERVAL,
-            `Streaming logs for trace ${traceId}...`,
-            flags.json,
-          );
-
-          // Track IDs of logs seen without timestamp_precise so they are
-          // shown once but not duplicated on subsequent polls.
-          const seenWithoutTs = new Set<string>();
-          const generator = generateFollowLogs({
-            flags,
-            onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
-            fetch: (statsPeriod) =>
-              listTraceLogs(org, traceId, {
-                query: traceQuery,
-                limit: flags.limit,
-                statsPeriod,
-              }).catch((error: unknown): never => {
-                // An unparseable user --query is a user input mistake, not a
-                // CLI bug — surface it as an actionable ValidationError.
-                throw toSearchQueryError(error, flags.query);
-              }),
-            extractNew: (logs, lastTs) =>
-              logs.filter((l) => {
-                if (l.timestamp_precise !== undefined) {
-                  return l.timestamp_precise > lastTs;
-                }
-                // No precise timestamp — deduplicate by id
-                if (!l.id) {
-                  return true; // Can't dedup without id, include it
-                }
-                if (seenWithoutTs.has(l.id)) {
-                  return false;
-                }
-                seenWithoutTs.add(l.id);
-                return true;
-              }),
-            onInitialLogs: (logs) => {
-              for (const l of logs) {
-                if (l.timestamp_precise === undefined && l.id) {
-                  seenWithoutTs.add(l.id);
-                }
-              }
-            },
-          });
-
-          yield* yieldTraceFollowItems(generator, traceId);
-          return;
         }
 
         const { result, hint } = await withProgress(
@@ -990,38 +335,6 @@ export const listCommand = buildListCommand(
         // via the `project` param. The `project:<slug>` filter only matches
         // actively-selected projects and can otherwise return no logs (#1317).
         const projectId = await resolveLogProjectId(org, project);
-        if (flags.follow) {
-          writeFollowBanner(
-            flags.follow ?? DEFAULT_POLL_INTERVAL,
-            "Streaming logs...",
-            flags.json,
-          );
-
-          const generator = generateFollowLogs({
-            flags,
-            onDiagnostic: (msg) => logger.warn(msg),
-            abortSignal: (this.process as { abortSignal?: AbortSignal })
-              ?.abortSignal,
-            fetch: (statsPeriod, afterTimestamp) =>
-              listLogs(org, project, {
-                query: flags.query,
-                limit: flags.limit,
-                statsPeriod,
-                afterTimestamp,
-                extraFields: flags.fields,
-                projectId,
-              }).catch((error: unknown): never => {
-                // An unparseable user --query is a user input mistake, not a
-                // CLI bug — surface it as an actionable ValidationError.
-                throw toSearchQueryError(error, flags.query);
-              }),
-            extractNew: (logs) => logs,
-          });
-
-          yield* yieldFollowItems(generator, flags.fields);
-          return;
-        }
-
         const { result, hint } = await withProgress(
           {
             message: `Fetching logs (up to ${flags.limit})...`,
@@ -1035,8 +348,5 @@ export const listCommand = buildListCommand(
       }
     },
   },
-  {
-    noCursorFlag: true,
-    noFreshAlias: true,
-  },
+  { noCursorFlag: true },
 );

@@ -75,8 +75,8 @@ jobs:
         with:
           node-version: "22"
 
-      # pnpm/action-setup@v4
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
+      # pnpm/action-setup@v6.1.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115
         name: Install pnpm
         with:
           run_install: false
@@ -153,12 +153,20 @@ jobs:
           fi
 
       - name: Deploy exact Docs MCP version
-        working-directory: apps/docs-mcp
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CANDIDATE_VERSION: ${{ steps.uploaded.outputs.candidate_version }}
-        run: pnpm exec wrangler versions deploy "$CANDIDATE_VERSION@100" --yes --message "$DEPLOYMENT_MARKER"
+        run: |
+          node --input-type=module <<'NODE'
+          import { deployVersions } from './scripts/cloudflare-deployment.mjs';
+          await deployVersions(
+            process.env,
+            { [process.env.CANDIDATE_VERSION]: 100 },
+            process.env.DEPLOYMENT_MARKER,
+            { worker: 'docs-mcp' },
+          );
+          NODE
 
       - name: Verify active Docs MCP version
         env:

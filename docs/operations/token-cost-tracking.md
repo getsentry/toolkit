@@ -86,6 +86,26 @@ GitHub Actions workflow runs on every PR and push to main:
 
 **Workflow:** `.github/workflows/token-cost.yml`
 
+## MCP Apps View Size
+
+The same workflow measures each MCP Apps view, the `ui://` HTML that a host
+such as Claude, VS Code, or ChatGPT downloads to render a tool result. The
+script builds the server with every skill, lists its resources, and reads each
+`ui://` resource through `resources/read`, so a new view shows up without a
+script change.
+
+```bash
+pnpm --filter @sentry/mcp-core measure-ui                      # Display
+pnpm --filter @sentry/mcp-core measure-ui -- -o ui-stats.json  # Write JSON
+```
+
+Per view it reports raw, gzip (level 9), and brotli (quality 11) bytes, and raw
+bytes as a percentage of the view's `budgetBytes` in `src/ui-resources.ts`.
+The report adds an "MCP Apps views" section to the PR comment and job summary,
+and `ui-stats.json` goes into the `token-stats-{sha}` artifact. The budget is
+enforced by the view's generator, such as `generate-chart-app`, not by this
+report; see [design/mcp-apps.md](../../design/mcp-apps.md).
+
 ## Understanding the Results
 
 Run `pnpm run measure-tokens` for current numbers; the examples above are a

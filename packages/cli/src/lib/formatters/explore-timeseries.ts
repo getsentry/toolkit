@@ -24,7 +24,7 @@ export type ExploreTimeSeriesData = EventsTimeSeriesResponse & {
   /** Organization slug, omitted from JSON output. */
   org: string;
   /** Optional project slug, omitted from JSON output. */
-  project?: string;
+  project?: string | undefined;
 };
 
 type TimeSeries = EventsTimeSeriesResponse["timeSeries"][number];
@@ -121,8 +121,8 @@ function formatBuckets(series: TimeSeries, buckets: Bucket[]): string {
       : {
           ...column,
           value: (row: Record<string, unknown>) =>
-            typeof row.value === "string"
-              ? text(row.value.replace(/\n/g, " "))
+            typeof row["value"] === "string"
+              ? text(row["value"].replace(/\n/g, " "))
               : column.value(row),
         },
   );
@@ -142,7 +142,7 @@ export function formatExploreTimeSeriesHuman(
 ): string {
   const scope = data.project ? `${data.org}/${data.project}` : data.org;
   const details = [`Querying ${text(data.dataset)} in ${text(scope)}`];
-  if (data.meta?.start !== undefined && data.meta.end !== undefined) {
+  if (data.meta) {
     details.push(
       `Range (UTC): ${formatUtcTimestamp(data.meta.start)} to ${formatUtcTimestamp(data.meta.end)}`,
     );

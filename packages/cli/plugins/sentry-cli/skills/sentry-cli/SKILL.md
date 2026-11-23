@@ -1,6 +1,6 @@
 ---
 name: sentry-cli
-version: 0.50.0-dev.0
+version: 0.51.0-dev.0
 description: Guide for using the Sentry CLI to interact with Sentry from the command line. Use when the user asks about viewing issues, events, projects, organizations, making API calls, or authenticating with Sentry via CLI.
 requires:
   bins: ["sentry"]
@@ -127,7 +127,7 @@ sentry trace logs abc123def456...
 
 ```bash
 # Stream logs in real-time (auto-detects org/project)
-sentry log list --follow
+sentry log tail
 
 # Filter logs by severity
 sentry log list --query "severity:error"
@@ -152,12 +152,17 @@ sentry local run --open -- npm run dev
 # Watch only AI/agent (gen_ai, mcp) spans while iterating on an agent.
 sentry local -f ai
 
-# Server-side SDKs read SENTRY_SPOTLIGHT automatically. The CLI also injects
-# the URL under every framework client prefix (NEXT_PUBLIC_, VITE_, PUBLIC_,
-# NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_). Until the browser SDK reads
-# these automatically (getsentry/sentry-javascript#18198), reference the var
-# matching your framework in the client config:
-# Sentry.init({ spotlight: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT ?? false })
+# Node.js, Python, and Ruby SDKs read SENTRY_SPOTLIGHT on their own. PHP needs
+# 'spotlight' => getenv('SENTRY_SPOTLIGHT'). Go and Rust have no Spotlight
+# support: set SENTRY_DSN=http://key@localhost:8970/0 and pin --port 8970.
+# The CLI also injects the URL under framework client prefixes (NEXT_PUBLIC_,
+# VITE_, PUBLIC_, NUXT_PUBLIC_, REACT_APP_, VUE_APP_, GATSBY_), but browser
+# SDKs ignore them. Pass the var to the integration in the client config:
+# integrations: [Sentry.spotlightBrowserIntegration({ sidecarUrl: process.env.NEXT_PUBLIC_SENTRY_SPOTLIGHT })]
+# Cloudflare Workers capture nothing until withSentry() sets
+# tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).
+# Replays and browser-to-server trace links need a DSN too. Next.js edge code
+# sends only errors (through the Node.js server). See `sentry help local run`.
 ```
 
 #### Query Sentry Documentation
@@ -220,20 +225,37 @@ sentry release deploy my-org/1.0.0 production
 - Without a checkout or CI variables, pass the commit explicitly: `--commit owner/repo@<sha>`.
 - With no flag, `set-commits` tries `--auto` first and falls back to `--local` on failure. Without a git checkout there is nothing to fall back to, so the `--auto` error is reported.
 
-#### View Agent Conversations
+#### Investigate AI Agents
+
+Start with aggregates to find what stands out, then read the conversations behind it.
+Agent spans carry `gen_ai.operation.type`: `ai_client` for model calls, `tool` for
+tool calls, and `agent` for agent runs. Filter on one type, group by the attribute you
+care about, and pick an aggregate:
+
+- Group by `gen_ai.tool.name`, `gen_ai.request.model`, or `gen_ai.agent.name`.
+- Usage is `count()`, failures are `failure_rate()`, latency is `p95(span.duration)`,
+  tokens are `sum(gen_ai.usage.total_tokens)`, cost in USD is
+  `sum(gen_ai.cost.total_tokens)`, and conversations are
+  `count_unique(gen_ai.conversation.id)`.
+- To rank by number of failures, sort by `equation|failure_rate() * count()`.
+  `failure_rate()` alone puts rarely used items first.
+- `--time-series` cannot group, so chart one item at a time by adding it to `--query`.
 
 ```bash
-# List recent agent conversations (org auto-detected)
-sentry agent-conversation list
+# 1. Which tools are used most, and how often do they fail?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" \
+  -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d
 
-# Explicit org, last 24 hours
-sentry agent-conversation list my-org/ --period 24h
+# 2. Which models cost the most?
+sentry explore my-org/my-agent --dataset spans -F gen_ai.request.model -F "count()" \
+  -F "sum(gen_ai.usage.total_tokens)" -F "sum(gen_ai.cost.total_tokens)" \
+  -q "gen_ai.operation.type:ai_client" --sort "-sum(gen_ai.cost.total_tokens)" --period 7d
 
-# View a conversation transcript
-sentry agent-conversation view my-org/conv-123
+# 3. Find conversations behind a result, such as ones that used a tool
+sentry agent-conversation list my-org/my-agent -q "gen_ai.tool.name:search_issues" --period 7d
 
-# JSON output for programmatic access
-sentry agent-conversation view conv-123 --json
+# 4. Read one conversation's transcript
+sentry agent-conversation view my-org/conv-123 --json
 ```
 
 #### Process WebAssembly Modules
@@ -706,6 +728,7 @@ Manage User Feedback
 View Sentry logs
 
 - `sentry log list <org/project-or-trace-id...>` — List logs from a project
+- `sentry log tail <org/project-or-trace-id...>` — Stream new logs from a project or trace
 - `sentry log view <org/project/log-id...>` — View details of one or more log entries
 
 → Full flags and examples: `references/log.md`

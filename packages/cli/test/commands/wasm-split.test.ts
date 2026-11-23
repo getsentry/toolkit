@@ -27,6 +27,7 @@ import {
   toHex,
   wasmModule,
 } from "../lib/wasm/helpers.js";
+import { loadCommand } from "../helpers.js";
 
 /** Flags the command sees when the user passes none. */
 const NO_FLAGS = {
@@ -62,7 +63,7 @@ async function run(
   input: string,
 ): Promise<string> {
   const harness = createContext();
-  const func = await wasmSplitCommand.loader();
+  const func = await loadCommand(wasmSplitCommand);
   await func.call(harness.context, { ...NO_FLAGS, ...flags }, input);
   return harness.output();
 }

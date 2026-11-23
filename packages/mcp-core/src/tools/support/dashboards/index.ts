@@ -1,3 +1,4 @@
+import { API_MAX_PER_PAGE } from "@sentry/api/client";
 import { listSavedAggregateTransformations } from "@sentry/toolkit-core/dashboard-transformations";
 import { z } from "zod";
 import type {
@@ -7,6 +8,7 @@ import type {
   DashboardWidget,
   SentryApiService,
 } from "../../../api-client";
+import { fetchEveryPage } from "../../../api-client/pagination";
 import { UserInputError } from "../../../errors";
 import { isNumericId } from "../../../utils/slug-validation";
 import { isPlainObject } from "../../../internal/type-guards";
@@ -47,7 +49,7 @@ export async function resolveDashboardProjectConstraint({
 }: {
   apiService: SentryApiService;
   organizationSlug: string;
-  scopedProjectSlug?: string | null;
+  scopedProjectSlug?: string | null | undefined;
 }): Promise<Project | null> {
   if (!scopedProjectSlug) {
     return null;
@@ -65,7 +67,7 @@ export function filterDashboardsByProjectConstraint({
   projectId,
 }: {
   dashboards: DashboardListItem[];
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
 }): DashboardListItem[] {
   return dashboards.filter((dashboard) =>
     dashboardIncludesProject(dashboard, projectId ?? null),
@@ -79,8 +81,8 @@ export function assertDashboardWithinProjectConstraint({
   projectId,
 }: {
   dashboard: Dashboard;
-  scopedProjectSlug?: string | null;
-  projectId?: string | number | null;
+  scopedProjectSlug?: string | null | undefined;
+  projectId?: string | number | null | undefined;
 }): void {
   if (
     scopedProjectSlug &&
@@ -243,18 +245,18 @@ function toWidget(
 function toFilters(
   filters: Record<string, unknown>,
 ): DashboardDetails["filters"] {
-  const globalFilters = Array.isArray(filters.globalFilter)
-    ? filters.globalFilter.filter(isPlainObject).map((filter) => ({
+  const globalFilters = Array.isArray(filters["globalFilter"])
+    ? filters["globalFilter"].filter(isPlainObject).map((filter) => ({
         dataset: readString(filter, "dataset"),
-        tagKey: isPlainObject(filter.tag)
-          ? readString(filter.tag, "key")
+        tagKey: isPlainObject(filter["tag"])
+          ? readString(filter["tag"], "key")
           : null,
         value: readString(filter, "value"),
       }))
     : [];
   return {
-    releases: readStringArray(filters.release),
-    releaseIds: readStringArray(filters.releaseId),
+    releases: readStringArray(filters["release"]),
+    releaseIds: readStringArray(filters["releaseId"]),
     globalFilters,
   };
 }
@@ -313,47 +315,33 @@ export async function resolveDashboardId({
   apiService: SentryApiService;
   organizationSlug: string;
   dashboardIdOrTitle: string;
-  projectId?: string | number | null;
+  projectId?: string | number | null | undefined;
 }): Promise<string> {
   const ref = dashboardIdOrTitle.trim();
   if (isNumericId(ref)) {
     return ref;
   }
 
-  const visibleDashboards: DashboardListItem[] = [];
-  const exactMatches: DashboardListItem[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | null = null;
+  const visibleDashboards = filterDashboardsByProjectConstraint({
+    dashboards: await fetchEveryPage(async (cursor) => {
+      const page = await apiService.listDashboards({
+        organizationSlug,
+        query: ref,
+        sortBy: "title",
+        limit: API_MAX_PER_PAGE,
+        cursor,
+      });
+      return { data: page.dashboards, nextCursor: page.nextCursor };
+    }, "resolving the dashboard title"),
+    projectId,
+  });
+  const exactMatches = visibleDashboards.filter(
+    (dashboard) => dashboard.title.toLowerCase() === ref.toLowerCase(),
+  );
 
-  do {
-    const { dashboards, nextCursor } = await apiService.listDashboards({
-      organizationSlug,
-      query: ref,
-      sortBy: "title",
-      limit: 100,
-      cursor,
-    });
-
-    const visiblePage = filterDashboardsByProjectConstraint({
-      dashboards,
-      projectId,
-    });
-    visibleDashboards.push(...visiblePage);
-    exactMatches.push(
-      ...visiblePage.filter(
-        (dashboard) => dashboard.title.toLowerCase() === ref.toLowerCase(),
-      ),
-    );
-
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      break;
-    }
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  } while (cursor);
-
-  if (exactMatches.length === 1) {
-    return String(exactMatches[0].id);
+  const [exactMatch] = exactMatches;
+  if (exactMatches.length === 1 && exactMatch) {
+    return String(exactMatch.id);
   }
 
   if (exactMatches.length > 1) {

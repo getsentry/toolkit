@@ -15,7 +15,7 @@ import {
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useTestConfigDir } from "../../helpers.js";
+import { mockFetch, useTestConfigDir, at } from "../../helpers.js";
 
 const integration = {
   id: "42",
@@ -77,7 +77,7 @@ describe("integration API", () => {
     expect(page.data).toEqual([integration]);
     expect(page.nextCursor).toBe("0:25:0");
     expect(calls).toHaveLength(1);
-    const { url, method } = calls[0];
+    const { url, method } = at(calls, 0);
     expect(method).toBe("GET");
     expect(url.pathname).toBe("/api/0/organizations/my-org/integrations/");
     expect(url.searchParams.get("includeConfig")).toBe("0");

@@ -23,7 +23,8 @@ async function highlightCommand(cmd: string): Promise<string> {
   });
   
   // Convert tokens to inline HTML spans (single line command)
-  return tokens[0]
+  const [line = []] = tokens;
+  return line
     .map(token => {
       const escaped = token.content
         .replace(/&/g, '&amp;')
@@ -44,6 +45,11 @@ const highlightedOptions = await Promise.all(
 );
 
 const defaultOption = highlightedOptions[defaultIndex];
+if (!defaultOption) {
+  throw new Error(
+    `InstallSelector: defaultIndex ${defaultIndex} is out of range for ${options.length} options`,
+  );
+}
 ---
 
 <div class="install-selector">

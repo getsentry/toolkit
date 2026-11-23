@@ -248,7 +248,7 @@ function hasBareApiPrefix(endpoint: string): boolean {
 
 function resolveApiTarget(endpoint: string): {
   normalizedEndpoint: string;
-  requestBaseUrl?: string;
+  requestBaseUrl?: string | undefined;
   strippedApiPrefix: boolean;
 } {
   const cleaned = endpoint.replace(LINE_BREAK_PATTERN, "").trim();
@@ -773,7 +773,7 @@ export function prepareRequestOptions(
   typedFields?: string[],
   rawFields?: string[],
 ): {
-  body?: Record<string, unknown>;
+  body?: Record<string, unknown> | undefined;
   params?: Record<string, string | string[]>;
 } {
   const hasTypedFields = typedFields && typedFields.length > 0;
@@ -880,7 +880,7 @@ function parseUrlEncodedParams(
  * @internal Exported for testing
  */
 export function dataToQueryParams(
-  data: Record<string, unknown> | unknown[] | string,
+  data: unknown,
 ): Record<string, string | string[]> {
   if (typeof data === "string") {
     return parseUrlEncodedParams(data);
@@ -951,8 +951,8 @@ function tryParseJsonField(
  * @internal Exported for testing
  */
 export function extractJsonBody(fields: string[] | undefined): {
-  body?: Record<string, unknown> | unknown[];
-  remaining?: string[];
+  body?: Record<string, unknown> | unknown[] | undefined;
+  remaining?: string[] | undefined;
 } {
   if (!fields || fields.length === 0) {
     return {};
@@ -1233,6 +1233,25 @@ function resolveRequestEndpoint(
   return appendSearchParams(withoutFragment, params);
 }
 
+/**
+ * Remove every `cursor` from an endpoint's query, keeping the other parameters
+ * and their encoding as written.
+ */
+function withoutCursor(endpoint: string): string {
+  const queryIndex = endpoint.indexOf("?");
+  if (queryIndex === -1) {
+    return endpoint;
+  }
+  const kept = endpoint
+    .slice(queryIndex + 1)
+    .split("&")
+    .filter(
+      (part) => new URLSearchParams(part).keys().next().value !== "cursor",
+    );
+  const path = endpoint.slice(0, queryIndex);
+  return kept.length > 0 ? `${path}?${kept.join("&")}` : path;
+}
+
 /** Pagination resolved for one GET, without mutating its saved history. */
 type ApiPagination = {
   /** SDK-prepared request with the resolved server cursor and page size. */
@@ -1263,9 +1282,8 @@ async function resolveApiNavigation(
     queryIndex === -1 ? "" : endpoint.slice(queryIndex + 1),
   );
   const inputCursor = query.getAll("cursor").at(-1);
-  const context = await prepareRawApiRequest(endpoint, request, {
-    cursor: null,
-  });
+  const endpointWithoutCursor = withoutCursor(endpoint);
+  const context = await prepareRawApiRequest(endpointWithoutCursor, request);
   const contextUrl = context.request.url;
   const effectiveHeaders = new Headers(context.request.headers);
   applyCustomHeaders(effectiveHeaders, contextUrl);
@@ -1292,8 +1310,8 @@ async function resolveApiNavigation(
     prepared:
       cursorFlag === undefined && inputCursor === undefined
         ? context
-        : await prepareRawApiRequest(endpoint, request, {
-            cursor: position.cursor ?? null,
+        : await prepareRawApiRequest(endpointWithoutCursor, request, {
+            cursor: position.cursor,
             per_page: position.perPage,
           }),
     contextKey,
@@ -1316,8 +1334,8 @@ export function buildFromFields(
   method: HttpMethod,
   flags: Pick<ApiFlags, "field" | "raw-field">,
 ): {
-  body?: Record<string, unknown> | unknown[];
-  params?: Record<string, string | string[]>;
+  body?: Record<string, unknown> | unknown[] | undefined;
+  params?: Record<string, string | string[]> | undefined;
 } {
   const field = normalizeFields(flags.field);
   let rawField = normalizeFields(flags["raw-field"]);
@@ -1381,8 +1399,8 @@ export async function resolveBody(
   flags: Pick<ApiFlags, "method" | "data" | "input" | "field" | "raw-field">,
   stdin: NodeJS.ReadStream & { fd: 0 },
 ): Promise<{
-  body?: Record<string, unknown> | unknown[] | string;
-  params?: Record<string, string | string[]>;
+  body?: Record<string, unknown> | unknown[] | string | undefined;
+  params?: Record<string, string | string[]> | undefined;
 }> {
   if (flags.data !== undefined && flags.input !== undefined) {
     throw new ValidationError(
@@ -1440,7 +1458,7 @@ function recordApiErrorAttributes(
   const span = Sentry.getActiveSpan();
   if (span) {
     span.setAttribute("api_error.status", status);
-    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint));
+    span.setAttribute("api_error.endpoint", templateEndpoint(endpoint, method));
     span.setAttribute("api_error.method", method);
   }
 }
@@ -1847,8 +1865,10 @@ export const apiCommand = buildCommand({
         );
         response.body = envelope ? { ...envelope, data: page.data } : page.data;
         pagination = {
-          nextCursor: page.nextCursor,
-          prevCursor: pagination.prevCursor,
+          ...(page.nextCursor !== undefined && { nextCursor: page.nextCursor }),
+          ...(pagination.prevCursor !== undefined && {
+            prevCursor: pagination.prevCursor,
+          }),
         };
       } else if (navigation.position.skip > 0) {
         throw new ValidationError(

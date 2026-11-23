@@ -47,12 +47,12 @@ export async function preloadProjectContext(cwd: string): Promise<void> {
 
   // Apply persistent URL default (lower priority than env vars and .sentryclirc).
   const env = getEnv();
-  if (!(env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim())) {
+  if (!(env["SENTRY_HOST"]?.trim() || env["SENTRY_URL"]?.trim())) {
     try {
       const { getDefaultUrl } = await import("./db/defaults.js");
       const url = getDefaultUrl();
       if (url) {
-        env.SENTRY_URL = url;
+        env["SENTRY_URL"] = url;
         const { markPersistedDefaultUrl } = await import("./constants.js");
         markPersistedDefaultUrl(url);
       }

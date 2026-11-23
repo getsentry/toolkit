@@ -40,7 +40,7 @@ export function createLocalAgentServer() {
   );
 
   app.post("/api/agent/run", async (c) => {
-    const { prompt } = (await c.req.json()) as { prompt?: unknown };
+    const { prompt } = await c.req.json<{ prompt?: unknown }>();
     const safePrompt = typeof prompt === "string" ? prompt : "";
 
     return await startSpan(
@@ -104,11 +104,11 @@ export function createLocalAgentServer() {
 
 function startServer(): void {
   init({
-    dsn: process.env.SENTRY_DSN,
+    dsn: process.env["SENTRY_DSN"],
     tracesSampleRate: 1,
   });
 
-  const port = Number(process.env.PORT ?? DEFAULT_PORT);
+  const port = Number(process.env["PORT"] ?? DEFAULT_PORT);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("PORT must be an integer between 1 and 65535");
   }

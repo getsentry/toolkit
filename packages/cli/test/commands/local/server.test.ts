@@ -8,22 +8,43 @@
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { createLocalRetentionBuffer } from "../../../src/commands/local/retention-buffer.js";
 import { logger } from "../../../src/lib/logger.js";
+import { gzipSync } from "node:zlib";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  createServer as createNetServer,
+  type Server as NetServer,
+  type Socket,
+} from "node:net";
+import { createServer as createTlsServer } from "node:tls";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import {
   buildApp,
   consumeSSE,
   configureExistingRetention,
   feedSSELine,
   isServerRunning,
+  MAX_BODY_BYTES,
   parsePort,
   SERVER_IDENTIFIER,
   serverCommand,
   tryListen,
 } from "../../../src/commands/local/server.js";
 import { openBrowser } from "../../../src/lib/browser.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import {
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../../src/lib/formatters/local.js";
+import { at, refuseLocalHealthProbes } from "../../helpers.js";
 
 vi.mock("../../../src/lib/browser.js", () => ({
   openBrowser: vi.fn().mockResolvedValue(true),
@@ -173,6 +194,64 @@ test.each([
   },
 );
 
+test.each([
+  {
+    gone: "refuses connections",
+    reconnect: () =>
+      Promise.reject(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connect ECONNREFUSED"), {
+            code: "ECONNREFUSED",
+          }),
+        }),
+      ),
+  },
+  {
+    gone: "no longer knows the session",
+    reconnect: () => Promise.resolve(new Response(null, { status: 404 })),
+  },
+])(
+  "stops a scoped tail with one warning when the daemon $gone",
+  async ({ reconnect }) => {
+    const savedFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = () => {
+      requests += 1;
+      // The first stream opens, then ends when the daemon stops.
+      return requests === 1
+        ? Promise.resolve(
+            new Response("", {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+          )
+        : reconnect();
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+    const signal = AbortSignal.timeout(6000);
+    try {
+      await consumeSSE({
+        url: "http://127.0.0.1:8969",
+        streamUrl:
+          "http://127.0.0.1:8969/_local/v1/sessions/session-id/stream?cap=fixture-secret",
+        activeFilters: new Set(),
+        signal,
+      });
+      expect(signal.aborted).toBe(false);
+      expect(requests).toBe(2);
+      expect(warn.mock.calls.map((call) => String(call[0]))).toEqual([
+        expect.stringContaining(
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
+        ),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  },
+);
+
 test("keeps reading after a retained reset notification until Close", async () => {
   const savedFetch = globalThis.fetch;
   const envelope = [{}, [[{ type: "event" }, { message: "after reset" }]]];
@@ -209,6 +288,8 @@ test("keeps reading after a retained reset notification until Close", async () =
   }
 });
 
+refuseLocalHealthProbes();
+
 describe("parsePort", () => {
   test("parses valid port numbers", () => {
     expect(parsePort("8969")).toBe(8969);
@@ -234,7 +315,7 @@ describe("parsePort", () => {
 });
 
 describe("sentry local serve --open", () => {
-  let info: ReturnType<typeof vi.spyOn>;
+  let info: MockInstance<(typeof logger)["info"]>;
   beforeEach(() => {
     info = vi.spyOn(logger, "info").mockImplementation(() => {});
   });
@@ -294,7 +375,7 @@ describe("sentry local serve --open", () => {
       signal.trigger();
       await command;
       expectViewerHint();
-      const url = new URL(opener.mock.calls[0][0]);
+      const url = new URL(at(opener.mock.calls, 0)[0]);
       expect(new URLSearchParams(url.hash.slice(1)).get("directory")).toBe(
         directoryUrl,
       );
@@ -694,32 +775,103 @@ describe("buildApp", () => {
     expect(buffer.read({ all: true })).toEqual([]);
   });
 
-  test("ingest endpoint accepts envelopes and returns 204", async () => {
+  test("ingest answers 200 with the id, and 400 to bodies that are not envelopes", async () => {
     const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
-
-    const envelope =
-      '{"sdk":{"name":"sentry.node"}}\n{"type":"event"}\n{"message":"test"}';
-    const res = await app.request("/stream", {
-      method: "POST",
-      headers: { "Content-Type": SENTRY_CONTENT_TYPE },
-      body: envelope,
-    });
-    expect(res.status).toBe(204);
+    const post = (
+      body: string | ReturnType<typeof gzipSync>,
+      encoding?: string,
+    ) =>
+      app.request("/stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": SENTRY_CONTENT_TYPE,
+          ...(encoding ? { "Content-Encoding": encoding } : {}),
+        },
+        body,
+      });
+    for (const body of [
+      "",
+      '{not json\n{"type":"event"}\n{}',
+      '[]\n{"type":"event"}\n{}',
+      "not-an-envelope",
+    ]) {
+      const res = await post(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.any(String) });
+    }
+    expect((await post(gzipSync("{not json\n"), "gzip")).status).toBe(400);
+    expect(buffer.read({ all: true })).toEqual([]);
+    const id = "9ec79c33ec9942ab8353589fcb2e04dc";
+    const valid = await post(
+      `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"ok"}`,
+    );
+    expect(valid.status).toBe(200);
+    expect(await valid.json()).toEqual({ id });
+    // Like Relay, unknown item types and items without `length` are fine.
+    const unknown = await post(
+      '{}\n{"type":"future_item"}\n{"x":1}\n{"type":"event"}\n{"message":"ok"}',
+    );
+    expect(unknown.status).toBe(200);
+    expect(await unknown.json()).toEqual({});
+    expect(buffer.read({ all: true })).toHaveLength(2);
   });
 
-  test("ingest via /api/:projectId/envelope/ returns 204", async () => {
+  test("ingest answers like Relay, with the envelope header event_id", async () => {
     const buffer = createLocalRetentionBuffer(10).buffer;
     const app = buildApp(buffer);
+    const id = "9ec79c33ec9942ab8353589fcb2e04dc";
+    const withId = `{"event_id":"${id}","sdk":{"name":"sentry.elixir"}}\n{"type":"event"}\n{"message":"test"}`;
+    const post = (
+      path: string,
+      body: string | ReturnType<typeof gzipSync>,
+      encoding?: string,
+    ) =>
+      app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": SENTRY_CONTENT_TYPE,
+          ...(encoding ? { "Content-Encoding": encoding } : {}),
+        },
+        body,
+      });
+    for (const path of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      const res = await post(path, withId);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(await res.json()).toEqual({ id });
+    }
+    const gzipped = await post("/stream", gzipSync(withId), "gzip");
+    expect(await gzipped.json()).toEqual({ id });
+    // Relay prints the id without hyphens.
+    const hyphenated = await post(
+      "/stream",
+      '{"event_id":"9EC79C33-EC99-42AB-8353-589FCB2E04DC"}\n{"type":"event"}\n{}',
+    );
+    expect(await hyphenated.json()).toEqual({ id });
+    // Envelopes without an event, such as sessions or logs, get an empty object.
+    const withoutId = await post(
+      "/stream",
+      '{"sdk":{"name":"sentry.node"}}\n{"type":"session"}\n{}',
+    );
+    expect(withoutId.status).toBe(200);
+    expect(await withoutId.json()).toEqual({});
+  });
 
+  test("plain receivers keep the envelope header dsn", async () => {
+    const buffer = createLocalRetentionBuffer(10).buffer;
+    const app = buildApp(buffer);
     const envelope =
-      '{"sdk":{"name":"sentry.node"}}\n{"type":"event"}\n{"message":"test"}';
-    const res = await app.request("/api/123/envelope/", {
+      '{"dsn":"http://local@127.0.0.1:8969/0"}\n{"type":"event"}\n{"message":"test"}';
+    const res = await app.request("/api/0/envelope/", {
       method: "POST",
       headers: { "Content-Type": SENTRY_CONTENT_TYPE },
       body: envelope,
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(buffer.read({ all: true })[0]?.getData().toString("utf8")).toBe(
+      envelope,
+    );
   });
 
   test("ingest rejects oversized payloads with 413", async () => {
@@ -966,6 +1118,21 @@ describe("buildApp", () => {
     expect(res.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
   });
 
+  test("sets X-Powered-By on unknown routes and errors", async () => {
+    // isServerRunning recognizes a receiver by this header on /health, which
+    // must hold even when the response is an error.
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    app.get("/boom", () => {
+      throw new Error("boom");
+    });
+    const notFound = await app.request("/no-such-route");
+    expect(notFound.status).toBe(404);
+    expect(notFound.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
+    const failed = await app.request("/boom");
+    expect(failed.status).toBe(500);
+    expect(failed.headers.get("x-powered-by")).toBe(SERVER_IDENTIFIER);
+  });
+
   test("SSE event type carries no base64 suffix by default", async () => {
     const chunk = await readFirstSSEEvent("/stream");
     expect(chunk).toContain(`event: ${SENTRY_CONTENT_TYPE}\n`);
@@ -977,13 +1144,60 @@ describe("buildApp", () => {
   });
 });
 
+describe("sentry local serve on a port held by another process", () => {
+  test("fails instead of attaching", async () => {
+    const foreign = new Hono();
+    foreign.get("/health", (c) => c.text("Not Found", 404));
+    const { server, port } = await tryListen(foreign, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+
+    try {
+      const error = await func
+        .call(
+          {},
+          {
+            port,
+            host: "127.0.0.1",
+            quiet: true,
+            filter: [],
+            format: "human",
+            attributes: false,
+            open: false,
+          },
+        )
+        .catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+});
+
 describe("isServerRunning", () => {
   test("returns true when /health answers with an error status", async () => {
     // Spotlight's sidecar can 5xx on /health while still holding the port and
     // ingesting envelopes. Reporting "no server" made the CLI try to bind the
-    // port anyway and abort with "Port 8969 is in use after 3 retries".
+    // port anyway and abort with "Port 8969 is already in use".
+    // The sidecar sets X-Powered-By in middleware, so the header comes back
+    // with the error too.
     const unhealthy = new Hono();
-    unhealthy.get("/health", (c) => c.text("Internal Server Error", 500));
+    unhealthy.get("/health", (c) => {
+      c.header("X-Powered-By", SERVER_IDENTIFIER);
+      return c.text("Internal Server Error", 500);
+    });
     const { server, port } = await tryListen(unhealthy, 0, "127.0.0.1");
 
     const savedFetch = globalThis.fetch;
@@ -1003,10 +1217,420 @@ describe("isServerRunning", () => {
     }
   });
 
+  test("rejects a port that an HTTP server other than a receiver holds", async () => {
+    // e.g. `python -m http.server 8969`: attaching to it loses every event.
+    const foreign = new Hono();
+    foreign.get("/health", (c) => c.text("Not Found", 404));
+    const { server, port } = await tryListen(foreign, 0, "127.0.0.1");
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  /** Expect `isServerRunning` to reject `port` as held by another process. */
+  async function expectHeldByAnotherProcess(port: number): Promise<void> {
+    const savedFetch = globalThis.fetch;
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (realFetch) {
+      globalThis.fetch = realFetch;
+    }
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_IN_USE_FIELD,
+        message: expect.stringContaining(
+          `Port ${port} is already in use by another process`,
+        ),
+      });
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  }
+
+  /** Listen on a free loopback port with a raw TCP or TLS server. */
+  async function listenRaw(
+    server: NetServer,
+  ): Promise<{ server: NetServer; port: number }> {
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected a TCP address");
+    }
+    return { server, port: address.port };
+  }
+
+  function closeRaw(server: NetServer, sockets: Set<Socket>): Promise<void> {
+    for (const socket of sockets) socket.destroy();
+    return new Promise<void>((done) => server.close(() => done()));
+  }
+
+  test("rejects a port whose listener never answers /health", async () => {
+    // A silent listener, or one slower than the probe: binding the port
+    // would fail, and attaching would lose every event.
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => sockets.add(socket)),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  }, 10_000);
+
+  test("rejects a port whose listener does not speak HTTP", async () => {
+    const sockets = new Set<Socket>();
+    const { server, port } = await listenRaw(
+      createNetServer((socket) => {
+        sockets.add(socket);
+        socket.write("SSH-2.0-OpenSSH_9.6\r\n");
+      }),
+    );
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose listener speaks TLS", async () => {
+    const sockets = new Set<Socket>();
+    const tls = createTlsServer({});
+    tls.on("connection", (socket: Socket) => sockets.add(socket));
+    tls.on("tlsClientError", () => {});
+    const { server, port } = await listenRaw(tls);
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await closeRaw(server, sockets);
+    }
+  });
+
+  test("rejects a port whose /health redirects to a receiver", async () => {
+    const receiver = await tryListen(
+      buildApp(createLocalRetentionBuffer(10).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const redirect = new Hono();
+    redirect.get("/health", (c) =>
+      c.redirect(`http://127.0.0.1:${receiver.port}/health`, 302),
+    );
+    const { server, port } = await tryListen(redirect, 0, "127.0.0.1");
+    try {
+      await expectHeldByAnotherProcess(port);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+      await new Promise<void>((done) => receiver.server.close(() => done()));
+    }
+  });
+
+  test("rejects a port that a Sentry Local daemon holds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("OK", { headers: { "X-Sentry-Local-Mode": "daemon" } }),
+      ),
+    );
+    try {
+      await expect(
+        isServerRunning("http://127.0.0.1:8969"),
+      ).rejects.toMatchObject({
+        name: "ValidationError",
+        field: PORT_HELD_BY_DAEMON_FIELD,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("returns false when no server is running", async () => {
-    // isServerRunning uses global fetch which is mocked in tests.
-    // Verify the function handles connection errors gracefully.
-    const result = await isServerRunning("http://127.0.0.1:19999");
-    expect(result).toBe(false);
+    vi.stubGlobal("fetch", rejectLikeNodeFetch("ECONNREFUSED"));
+    try {
+      await expect(isServerRunning("http://127.0.0.1:19999")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("returns false when both localhost addresses refuse", async () => {
+    // Dual-stack `localhost`: Node wraps both refusals in an AggregateError
+    // and copies ECONNREFUSED onto it.
+    const refused = Object.assign(
+      new AggregateError(
+        [
+          Object.assign(new Error("connect ECONNREFUSED ::1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+          Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8969"), {
+            code: "ECONNREFUSED",
+          }),
+        ],
+        "",
+      ),
+      { code: "ECONNREFUSED" },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed", { cause: refused });
+      }),
+    );
+    try {
+      await expect(isServerRunning("http://localhost:8969")).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test.each([
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "EHOSTUNREACH",
+    "ENETUNREACH",
+    "EADDRNOTAVAIL",
+  ])(
+    "returns false for an address it cannot reach (%s), so the bind reports it",
+    async (code) => {
+      // A bad --host is not a busy port; the bind's own error says what's wrong.
+      vi.stubGlobal("fetch", rejectLikeNodeFetch(code));
+      try {
+        await expect(isServerRunning("http://typo.invalid:8969")).resolves.toBe(
+          false,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  test("returns false for an OS-assigned port without probing it", async () => {
+    // --port 0 asks the OS for a free port, so there is nothing to attach to.
+    // On macOS, fetching port 0 fails with EADDRNOTAVAIL, not a refusal.
+    const fetchSpy = vi.fn(async () => new Response("OK"));
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      await expect(isServerRunning("http://127.0.0.1:0")).resolves.toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("returns false for a free port that fetch refuses to dial", async () => {
+    // Node's fetch blocks some ports (6000, 10080, ...) with "bad port" before
+    // it connects, so the failure says nothing about the port.
+    const probe = createNetServer();
+    await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
+    const port = (probe.address() as { port: number }).port;
+    await new Promise<void>((done) => probe.close(() => done()));
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(isServerRunning(`http://127.0.0.1:${port}`)).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("rejects a held port that fetch refuses to dial", async () => {
+    const holder = createNetServer((socket) => socket.resume());
+    await new Promise<void>((done) => holder.listen(0, "127.0.0.1", done));
+    const port = (holder.address() as { port: number }).port;
+    vi.stubGlobal("fetch", rejectLikeBlockedPort());
+    try {
+      await expect(
+        isServerRunning(`http://127.0.0.1:${port}`),
+      ).rejects.toMatchObject({ field: PORT_IN_USE_FIELD });
+    } finally {
+      vi.unstubAllGlobals();
+      await new Promise<void>((done) => holder.close(() => done()));
+    }
+  });
+});
+
+/** A fetch that fails the way Node's does for a port it blocks, like 6000. */
+function rejectLikeBlockedPort() {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", { cause: new Error("bad port") });
+  });
+}
+
+/** A fetch that fails the way Node's does when the connection fails with `code`. */
+function rejectLikeNodeFetch(code: string) {
+  return vi.fn(async () => {
+    throw new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code}`), { code }),
+    });
+  });
+}
+
+describe("oversized envelopes", () => {
+  /** One byte over the encoded ingest limit; SDKs ignore the 413 and drop it. */
+  const OVERSIZED_BODY = "x".repeat(MAX_BODY_BYTES + 1);
+  const OVERSIZED_WARNING = /over the .*ingest limit/;
+
+  function postOversized(app: Hono, url: string): Promise<Response> {
+    return Promise.resolve(
+      app.request(url, {
+        method: "POST",
+        headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+        body: OVERSIZED_BODY,
+      }),
+    );
+  }
+
+  test("a plain receiver warns once per burst, then counts the rest", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const oversizedWarnings = () =>
+      warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+    try {
+      const app = buildApp(createLocalRetentionBuffer(10).buffer);
+      for (let i = 0; i < 3; i++) {
+        const response = await postOversized(
+          app,
+          "http://localhost:8969/stream",
+        );
+        expect(response.status).toBe(413);
+      }
+      expect(oversizedWarnings()).toHaveLength(1);
+      // The two held back print when the interval ends, without a new drop.
+      vi.advanceTimersByTime(5000);
+      expect(oversizedWarnings()).toHaveLength(2);
+      expect(oversizedWarnings()[1]).toMatch(/^Dropped 2 more envelopes over/);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test("a plain receiver prints held-back drops when it shuts down early", async () => {
+    const realFetch = (globalThis as { __originalFetch?: typeof fetch })
+      .__originalFetch;
+    if (!realFetch) {
+      throw new Error("Expected the test preload to retain the native fetch");
+    }
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const { server, port } = await tryListen(app, 0, "127.0.0.1");
+    try {
+      for (let i = 0; i < 3; i++) {
+        const response = await realFetch(`http://127.0.0.1:${port}/stream`, {
+          method: "POST",
+          headers: { "Content-Type": SENTRY_CONTENT_TYPE },
+          body: OVERSIZED_BODY,
+        });
+        expect(response.status).toBe(413);
+      }
+      // `local run` and `local serve` close the server and exit well inside
+      // the five-second interval, so closing must print the count.
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 2 more envelopes over/),
+      ]);
+    } finally {
+      server.closeAllConnections();
+      warn.mockRestore();
+    }
+  });
+
+  test("a plain receiver tells stream consumers about a rejected envelope", async () => {
+    const app = buildApp(createLocalRetentionBuffer(10).buffer);
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 2000);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const response = await app.request("http://localhost:8969/stream", {
+        signal: controller.signal,
+      });
+      const reader = response.body!.getReader();
+      await postOversized(app, "http://localhost:8969/stream");
+      const decoder = new TextDecoder();
+      let text = "";
+      while (!text.includes("\n\n")) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      expect(text).toContain("event: sentry.local.oversized");
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      warn.mockRestore();
+    }
+  });
+
+  test("a session tail warns when the daemon rejects an oversized envelope", async () => {
+    const plane = createLocalControlPlane({ controlToken: "oversize-test" });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest, stream } = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://localhost:8969/_local/v1/sessions/${session.id}`;
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      const response = await plane.app.request(url, init);
+      setTimeout(() => {
+        void (async () => {
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          await postOversized(plane.app, `${base}/ingest/${ingest}`);
+          plane.sessionStore.close(session.id);
+        })();
+      }, 50);
+      return response;
+    };
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await consumeSSE({
+        url: "http://localhost:8969",
+        streamUrl: `${base}/stream?cap=${stream}`,
+        activeFilters: new Set(),
+        signal: AbortSignal.timeout(3000),
+      });
+      const warnings = warn.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => OVERSIZED_WARNING.test(line));
+      // The second drop is held back, then printed when the tail ends.
+      expect(warnings).toEqual([
+        expect.stringMatching(/^Dropped an envelope over/),
+        expect.stringMatching(/^Dropped 1 more envelope over/),
+      ]);
+    } finally {
+      globalThis.fetch = savedFetch;
+      warn.mockRestore();
+    }
   });
 });

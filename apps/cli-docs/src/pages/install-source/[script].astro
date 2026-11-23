@@ -1,6 +1,6 @@
 ---
 // Browsers that open /install or /install.ps1 are rewritten here (see the
-// Vercel config in .github/workflows/cli-build.yml); curl, wget, and irm still
+// routes in apps/cli-docs/vercel/build-output.mjs); curl, wget, and irm still
 // get the raw script. The markup copies Chrome's text/plain viewer, with color.
 import { codeToHtml } from "shiki";
 import bash from "../../../public/install?raw";

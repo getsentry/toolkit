@@ -15,14 +15,18 @@ const ToolOutputSchema = z
   })
   .passthrough();
 
+/** JSON.stringify returns undefined for values JSON cannot represent. */
+function toJson(value: unknown): string | undefined {
+  return JSON.stringify(value);
+}
+
 function stringifyUnknown(value: unknown): string {
   if (typeof value === "string") {
     return value;
   }
 
   try {
-    const json = JSON.stringify(value) as string | undefined;
-    return json ?? String(value);
+    return toJson(value) ?? String(value);
   } catch {
     return String(value);
   }

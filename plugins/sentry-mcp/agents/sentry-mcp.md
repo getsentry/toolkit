@@ -32,6 +32,7 @@ allowedTools:
   - find_monitors
   - find_organizations
   - find_projects
+  - find_related_issues
   - find_releases
   - find_teams
   - find_uptime_monitors

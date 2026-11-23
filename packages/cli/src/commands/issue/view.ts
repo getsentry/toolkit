@@ -227,12 +227,12 @@ async function buildSingleIssueViewData(
   // A merged issue resolves to a different ID than the one requested, so the
   // prefetched details would belong to the old issue.
   const { event, ...details } =
-    prefetched && prefetched.org === orgSlug && prefetched.issueId === issue.id
+    prefetched?.org === orgSlug && prefetched.issueId === issue.id
       ? await prefetched.details
       : await fetchIssueDetails(orgSlug, issue.id, spans);
 
   return {
-    org: orgSlug ?? null,
+    org: orgSlug,
     issue,
     event: event ?? null,
     ...details,

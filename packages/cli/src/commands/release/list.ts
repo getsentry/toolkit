@@ -185,7 +185,7 @@ function formatSessionSparkline(r: SentryRelease): string {
 function formatCrashes(r: ReleaseWithOrg): string {
   const h = getHealthData(r);
   const v = h?.sessionsCrashed;
-  if (v === undefined || v === null) {
+  if (v === undefined) {
     return colorTag("muted", "—");
   }
   return v > 0 ? colorTag("red", String(v)) : colorTag("green", "0");
@@ -519,7 +519,7 @@ async function handleAutoDetectWithProject(
 
   // Client-side sort matching the --sort flag, then trim with project guarantee
   const comparator = buildMergeSorter(
-    (effectiveExtra.sort as ReleaseSortValue) ?? "date",
+    (effectiveExtra.sort ?? "date") as ReleaseSortValue,
   );
   merged.sort(comparator);
   const limited = isMultiProject

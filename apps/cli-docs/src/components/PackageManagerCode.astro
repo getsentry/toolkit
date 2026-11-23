@@ -7,7 +7,7 @@ interface Props {
 }
 
 const { npm, pnpm, yarn, bun } = Astro.props;
-const id = `pm-${Math.random().toString(36).substr(2, 9)}`;
+const id = `pm-${Math.random().toString(36).slice(2, 11)}`;
 ---
 
 <div class="pm-code" data-id={id}>

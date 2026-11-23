@@ -3,7 +3,7 @@
  * verify terminal reconnection for setup and the existing init handoff.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -14,6 +14,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -26,6 +28,7 @@ import {
   type ServedAsset,
   toolkitDownload,
 } from "./install-scenarios.js";
+import { at } from "../helpers.js";
 
 const installScript = join(import.meta.dirname, "..", "..", "install");
 const downloadedExecutable = `#!/usr/bin/env bash
@@ -47,9 +50,11 @@ record_tty() {
 if [[ "$1" == "cli" && "$2" == "setup" ]]; then
   printf '%s\\n' "$@" > "$SENTRY_TEST_DIR/setup-args"
   printf '%s\\n' "$0" > "$SENTRY_TEST_DIR/setup-binary"
+  printf '%s\\n' "\${SENTRY_HANDOFF:-}" > "$SENTRY_TEST_DIR/setup-handoff"
   record_tty 3> "$SENTRY_TEST_DIR/setup-tty"
-  mkdir -p "$SENTRY_INSTALL_DIR"
-  cp "$0" "$SENTRY_INSTALL_DIR/sentry"
+  install_dir="\${SENTRY_INSTALL_DIR:-\${0%/*}}"
+  mkdir -p "$install_dir"
+  cp "$0" "$install_dir/sentry"
   if [[ "\${SENTRY_TEST_KEEP_TEMP_BINARY:-}" != "1" ]]; then
     rm "$0"
   fi
@@ -89,7 +94,7 @@ describe("install script", () => {
       TMPDIR: testDir,
     };
     applyScenario(
-      { ...INSTALL_SCENARIOS[0], name: "default" },
+      { ...at(INSTALL_SCENARIOS, 0), name: "default" },
       served,
       testDir,
       env,
@@ -101,12 +106,27 @@ describe("install script", () => {
 set -euo pipefail
 url="\${!#}"
 out=""
+write_out=""
+data=""
 args=("$@")
 for ((i = 0; i < \${#args[@]}; i++)); do
-  if [[ "\${args[i]}" == "-o" ]]; then out="\${args[i + 1]}"; fi
+  case "\${args[i]}" in
+    -o) out="\${args[i + 1]}" ;;
+    -w) write_out="\${args[i + 1]}" ;;
+    -d) data="\${args[i + 1]}" ;;
+  esac
 done
-emit() { if [[ -n "$out" ]]; then cat > "$out"; else cat; fi; }
+# Like curl, exit 23 when the output file cannot be written.
+emit() { if [[ -n "$out" ]]; then cat > "$out" || exit 23; else cat; fi; }
+# Usage: nth <name>. Counts the requests of one kind.
+nth() {
+  local file="$SENTRY_TEST_DIR/count-$1" n
+  n=$(( $(cat "$file" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > "$file"
+  echo "$n"
+}
 printf '%s\\n' "$url" >> "$SENTRY_TEST_DIR/curl-urls"
+printf '%s\\n' "$*" >> "$SENTRY_TEST_DIR/curl-args"
 case "$url" in
   https://release-registry.services.sentry.io/apps/sentry/*)
     version="\${url##*/}"
@@ -116,14 +136,17 @@ case "$url" in
     else
       : | emit
     fi
-    printf '%s' "$SENTRY_TEST_REGISTRY_STATUS"
+    printf "\${write_out//'%{http_code}'/$SENTRY_TEST_REGISTRY_STATUS}"
     ;;
-  *"/repos/getsentry/toolkit/releases?per_page=100&page="*)
-    page_file="SENTRY_TEST_RELEASES_PAGE_\${url##*=}"
-    if [[ -n "\${!page_file:-}" ]]; then cat "\${!page_file}"; else printf '[]'; fi
+  https://o1.ingest.us.sentry.io/api/*/envelope/)
+    printf '%s\\n' "$data" > "$SENTRY_TEST_DIR/error-report"
     ;;
   https://github.com/*/releases/download/*.gz)
     if [[ "\${SENTRY_TEST_GZ_MISSING:-}" == "1" ]]; then exit 22; fi
+    if (( $(nth gz) <= \${SENTRY_TEST_GZ_CORRUPT:-0} )); then
+      head -c 100 "$SENTRY_TEST_GZ_FILE" | emit
+      exit 0
+    fi
     emit < "$SENTRY_TEST_GZ_FILE"
     ;;
   https://github.com/*/releases/download/*)
@@ -183,7 +206,7 @@ esac
     },
   ])("parses $name registry metadata", ({ format }) => {
     writeFileSync(
-      env.SENTRY_TEST_REGISTRY_BODY as string,
+      env["SENTRY_TEST_REGISTRY_BODY"] as string,
       format(registryTemplate(served, {})),
     );
     const result = spawnSync("bash", [installScript, "--no-modify-path"], {
@@ -205,9 +228,12 @@ esac
       : [];
   }
 
+  /** Installer files left behind in the temp or install directory. */
   function installerTempFiles(): string[] {
-    return readdirSync(testDir).filter((name) =>
-      name.startsWith("sentry-install-"),
+    const installed = existsSync(installDir) ? readdirSync(installDir) : [];
+    return [...readdirSync(testDir), ...installed].filter(
+      (name) =>
+        name.startsWith("sentry-install-") || name.endsWith(".download"),
     );
   }
 
@@ -228,8 +254,8 @@ esac
     });
 
     writeFileSync(gzipPath, gzipSync(downloadedExecutable));
-    env.SENTRY_TEST_GZIP = gzipPath;
-    env.SENTRY_TEST_NIGHTLY_REDIRECT = redirect ? "1" : "0";
+    env["SENTRY_TEST_GZIP"] = gzipPath;
+    env["SENTRY_TEST_NIGHTLY_REDIRECT"] = redirect ? "1" : "0";
     writeFileSync(
       join(binDir, "curl"),
       `#!/usr/bin/env bash
@@ -252,12 +278,15 @@ ${manifest}
 JSON
     ;;
   "https://objects.example/nightly.gz")
-    for arg in "$@"; do
-      if [[ "$arg" == Authorization:* ]]; then
-        exit 90
-      fi
+    output=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        Authorization:*) exit 90 ;;
+        -o) output="$2"; shift 2 ;;
+        *) shift ;;
+      esac
     done
-    cat "$SENTRY_TEST_GZIP"
+    cp "$SENTRY_TEST_GZIP" "$output" 2>/dev/null || exit 23
     ;;
   *"/blobs/"*)
     headers=""
@@ -269,13 +298,15 @@ JSON
         *) shift ;;
       esac
     done
+    # The installer reads the headers from stdout.
+    if [[ "$headers" != "-" ]]; then exit 92; fi
     if [[ "$SENTRY_TEST_NIGHTLY_REDIRECT" == "1" ]]; then
-      printf 'HTTP/1.1 307 Temporary Redirect\\r\\nLocation: https://objects.example/nightly.gz\\r\\n\\r\\n' > "$headers"
-      : > "$output"
+      : 2>/dev/null > "$output" || exit 23
+      printf 'HTTP/1.1 307 Temporary Redirect\\r\\nLocation: https://objects.example/nightly.gz\\r\\n\\r\\n'
       printf '307'
     else
-      printf 'HTTP/1.1 200 OK\\r\\n\\r\\n' > "$headers"
-      cp "$SENTRY_TEST_GZIP" "$output"
+      cp "$SENTRY_TEST_GZIP" "$output" 2>/dev/null || exit 23
+      printf 'HTTP/1.1 200 OK\\r\\n\\r\\n'
       printf '200'
     fi
     ;;
@@ -290,7 +321,7 @@ esac
       join(binDir, "gunzip"),
       `#!/usr/bin/env bash
 set -euo pipefail
-if [[ $# -gt 0 && "$1" != "-c" ]]; then
+if [[ $# -gt 0 && "$1" != "-c" && "$1" != "-t" ]]; then
   exit 64
 fi
 exec /usr/bin/gunzip "$@"
@@ -340,7 +371,10 @@ process.exitCode = result.status ?? 1;
     });
   }
 
-  test("passes setup flags through and skips login without a terminal", () => {
+  test("passes setup environment and flags through without a terminal", () => {
+    const handoffCode = `sntryh_${"a".repeat(43)}`;
+    env["SENTRY_HANDOFF"] = handoffCode;
+
     const result = spawnSync(
       "bash",
       [
@@ -366,6 +400,7 @@ process.exitCode = result.status ?? 1;
       "--no-completions",
       "--no-agent-skills",
     ]);
+    expect(recorded("setup-handoff")).toEqual([handoffCode]);
     expect(recorded("setup-tty").slice(0, 3)).toEqual([
       "0:false",
       "1:false",
@@ -411,6 +446,28 @@ process.exitCode = result.status ?? 1;
   });
 
   test.each([
+    { response: "direct HTTP 200 response", redirect: false },
+    { response: "HTTP redirect", redirect: true },
+  ])(
+    "downloads nightly from a $response into the install directory",
+    ({ redirect }) => {
+      configureNightlyDownload(redirect);
+      env["TMPDIR"] = join(testDir, "deleted");
+      const result = spawnSync(
+        "bash",
+        [installScript, "--version", "nightly", "--no-modify-path"],
+        { env, encoding: "utf8", timeout: 10_000 },
+      );
+
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(recorded("setup-binary")).toEqual([
+        join(installDir, "sentry.download"),
+      ]);
+      expect(readdirSync(installDir)).toEqual(["sentry"]);
+    },
+  );
+
+  test.each([
     { failure: "token", flag: "SENTRY_TEST_NIGHTLY_TOKEN_FAIL" },
     { failure: "manifest", flag: "SENTRY_TEST_NIGHTLY_MANIFEST_FAIL" },
   ])(
@@ -448,128 +505,16 @@ process.exitCode = result.status ?? 1;
     },
   );
 
-  test("checks further release pages before selecting a stable Toolkit CLI", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    const secondPage = join(testDir, "releases-2.json");
-    writeFileSync(
-      firstPage,
-      '[\n  {\n    "tag_name": "mcp@1.0.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    writeFileSync(
-      secondPage,
-      '[\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_RELEASES_PAGE_2 = secondPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls").slice(0, 3)).toEqual([
-      "https://release-registry.services.sentry.io/apps/sentry/latest",
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=1",
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100&page=2",
-    ]);
-    expect(recorded("curl-urls")[3]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-  });
-
-  test("skips SemVer prereleases even when GitHub marks them stable", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    writeFileSync(
-      firstPage,
-      '[\n  {\n    "tag_name": "cli@0.47.0-dev.1",\n    "prerelease": false\n  },\n  {\n    "tag_name": "cli@0.46.0",\n    "prerelease": false\n  }\n]\n',
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")[2]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-    expect(recorded("setup-args")).toContain("stable");
-  });
-
-  test("selects the first stable CLI release from compact GitHub JSON", () => {
-    const firstPage = join(testDir, "releases-1.json");
-    writeFileSync(
-      firstPage,
-      JSON.stringify([
-        {
-          tag_name: "mcp@0.42.0",
-          prerelease: false,
-          body: 'A quoted "tag_name" in the release notes',
-        },
-        {
-          prerelease: false,
-          tag_name: "cli@0.47.0-dev.1",
-        },
-        {
-          prerelease: false,
-          assets: [{ tag_name: "cli@99.0.0", prerelease: false }],
-          tag_name: "cli@0.46.0",
-        },
-      ]),
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")[2]).toBe(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-  });
-
-  test("reads a large releases page without SIGPIPE and selects its first stable CLI", () => {
-    const firstPage = join(testDir, "releases-large.json");
-    writeFileSync(
-      firstPage,
-      `[
-  {
-    "tag_name": "cli@0.46.0",
-    "prerelease": false
-  },
-  {
-    "tag_name": "cli@0.45.0",
-    "prerelease": false,
-    "body": "${"x".repeat(256 * 1024)}"
-  }
-]`,
-    );
-    env.SENTRY_TEST_RELEASES_PAGE_1 = firstPage;
-    env.SENTRY_TEST_REGISTRY_STATUS = "503";
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
-      env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(recorded("curl-urls")).toContain(
-      toolkitDownload("0.46.0", `${hostAsset}.gz`),
-    );
-    expect(existsSync(join(installDir, "sentry"))).toBe(true);
-  });
-
   test("directs musl users to the npm package before downloading a glibc binary", () => {
     writeFileSync(
+      join(binDir, "uname"),
+      '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
+      { mode: 0o700 },
+    );
+    // Like the real musl ldd: version on stderr, non-zero exit.
+    writeFileSync(
       join(binDir, "ldd"),
-      "#!/bin/sh\nprintf 'musl libc (x86_64)\\n'\n",
+      "#!/bin/sh\nprintf 'musl libc (x86_64)\\n' >&2\nexit 1\n",
       {
         mode: 0o700,
       },
@@ -585,8 +530,172 @@ process.exitCode = result.status ?? 1;
     expect(recorded("curl-urls")).toEqual([]);
   });
 
+  function install() {
+    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
+      env,
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    return { ...result, output: `${result.stdout}${result.stderr}` };
+  }
+
+  // CLI-BJ: transient network errors used to end the install.
+  test("retries transient registry errors with the real curl", async () => {
+    const realCurl = spawnSync("sh", ["-c", "command -v curl"], {
+      encoding: "utf8",
+    }).stdout.trim();
+    let registryRequests = 0;
+    const server = createServer((request, response) => {
+      const path = request.url ?? "";
+      if (path.startsWith("/release-registry.services.sentry.io/")) {
+        registryRequests++;
+        if (registryRequests <= 2) {
+          response.writeHead(503).end();
+          return;
+        }
+        response.end(
+          registryTemplate(served, {}).replaceAll(
+            "__VERSION__",
+            LATEST_VERSION,
+          ),
+        );
+      } else if (path.endsWith(`/${hostAsset}.gz`)) {
+        response.end(served.gz);
+      } else {
+        response.writeHead(404).end();
+      }
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    // Send every https:// URL to the local server.
+    writeFileSync(
+      join(binDir, "curl"),
+      `#!/usr/bin/env bash
+args=()
+for arg in "$@"; do
+  case "$arg" in https://*) arg="http://127.0.0.1:${port}/\${arg#https://}" ;; esac
+  args+=("$arg")
+done
+exec ${realCurl} "\${args[@]}"
+`,
+      { mode: 0o755 },
+    );
+    try {
+      const child = spawn("bash", [installScript, "--no-modify-path"], { env });
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      const status = await new Promise((resolve) => child.on("close", resolve));
+      expect(status, output).toBe(0);
+    } finally {
+      server.close();
+    }
+    expect(registryRequests).toBe(3);
+    expect(existsSync(join(installDir, "sentry"))).toBe(true);
+  }, 30_000);
+
+  test("downloads a corrupt archive again", () => {
+    env["SENTRY_TEST_GZ_CORRUPT"] = "1";
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain("Downloading it again");
+    expect(
+      recorded("curl-urls").filter((url) => url.endsWith(".gz")),
+    ).toHaveLength(2);
+    expect(existsSync(join(installDir, "sentry"))).toBe(true);
+  });
+
+  test("downloads into the install directory as setup's own temp file", () => {
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    // Setup renames sentry.download into place instead of copying it.
+    expect(recorded("setup-binary")).toEqual([
+      join(installDir, "sentry.download"),
+    ]);
+    expect(readdirSync(installDir)).toEqual(["sentry"]);
+  });
+
+  test("does not need the temp directory", () => {
+    env["TMPDIR"] = join(testDir, "deleted");
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(readdirSync(installDir)).toEqual(["sentry"]);
+  });
+
+  test("downloads into a home bin directory listed in PATH with a trailing slash", () => {
+    const homeBin = join(testDir, "home", "bin");
+    mkdirSync(homeBin);
+    delete env["SENTRY_INSTALL_DIR"];
+    env["PATH"] = `${env["PATH"]}:${homeBin}/`;
+    env["TMPDIR"] = join(testDir, "deleted");
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    // Setup's determineInstallDir picks the same directory, so it can rename
+    // the download instead of copying it.
+    expect(recorded("setup-binary")).toEqual([
+      join(homeBin, "sentry.download"),
+    ]);
+  });
+
+  test("names a full install directory", () => {
+    writeFileSync(
+      join(binDir, "gunzip"),
+      `#!/usr/bin/env bash
+if [[ "$1" == "-c" ]]; then
+  echo 'gzip: stdout: No space left on device' >&2
+  exit 1
+fi
+exec /usr/bin/gunzip "$@"
+`,
+      { mode: 0o755 },
+    );
+    const result = install();
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain(
+      "There is not enough room to download sentry",
+    );
+    expect(result.output).not.toContain("Unexpected failure");
+    expect(recorded("setup-args")).toEqual([]);
+    expect(installerTempFiles()).toEqual([]);
+    expect(readdirSync(installDir)).toEqual([]);
+  });
+
+  // CLI-BJ: the trap reported only a line number, which bash 3.2 sets to the
+  // closing `fi` of the enclosing block.
+  test("reports the failing command of an unexpected failure without local paths", () => {
+    writeFileSync(
+      join(binDir, "chmod"),
+      "#!/bin/sh\necho 'chmod: Operation not permitted' >&2\nexit 1\n",
+      { mode: 0o755 },
+    );
+    delete env["SENTRY_CLI_NO_TELEMETRY"];
+    const result = install();
+
+    const failure = '(exit 1): chmod +x "$binary"';
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(
+      /Unexpected failure at line \d+ in main\(\) \(exit 1\)/,
+    );
+    expect(result.output).toContain(failure);
+    // spawnSync returns only after the backgrounded report_error subshell
+    // exits, because it keeps the installer's stdout and stderr open.
+    const [, , event] = recorded("error-report");
+    const report = JSON.parse(event ?? "{}");
+    expect(report.message.formatted).toContain(failure);
+    expect(report.tags.step).toBe("trap");
+    expect(event).not.toContain(testDir);
+    expect(recorded("setup-args")).toEqual([]);
+  });
+
   test("connects setup to the controlling terminal and cleans up after setup", () => {
-    env.SENTRY_TEST_KEEP_TEMP_BINARY = "1";
+    env["SENTRY_TEST_KEEP_TEMP_BINARY"] = "1";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-tty")).toEqual([
@@ -617,15 +726,18 @@ process.exitCode = result.status ?? 1;
       expected: ["0:false", "1:true", "2:true", "controlling:false"],
     },
   ])("skips login when $name", ({ redirect, detached, expected }) => {
-    const result = runInTerminal({ redirect, detached });
+    const result = runInTerminal({
+      ...(redirect !== undefined && { redirect }),
+      ...(detached !== undefined && { detached }),
+    });
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-tty")).toEqual(expected);
     expect(recorded("post-args")).toEqual([]);
   });
 
   test("runs init after setup, which keeps the terminal, when SENTRY_INIT is set", () => {
-    env.SENTRY_INIT = "1";
-    env.SENTRY_TEST_POST_EXIT = "7";
+    env["SENTRY_INIT"] = "1";
+    env["SENTRY_TEST_POST_EXIT"] = "7";
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(7);
     expect(recorded("setup-tty")).toEqual([
@@ -639,7 +751,7 @@ process.exitCode = result.status ?? 1;
   });
 
   test("runs init without a terminal when SENTRY_INIT is set", () => {
-    env.SENTRY_INIT = "1";
+    env["SENTRY_INIT"] = "1";
     const result = spawnSync("bash", [installScript, "--version", "0.31.0"], {
       env,
       encoding: "utf8",
@@ -653,28 +765,28 @@ process.exitCode = result.status ?? 1;
   test("initializes the downloaded binary even after setup deletes it", () => {
     // A stale install that is not where setup puts the new binary must not be
     // the one that runs init.
-    const staleDir = join(env.HOME!, ".local", "bin");
+    const staleDir = join(env["HOME"]!, ".local", "bin");
     mkdirSync(staleDir, { recursive: true });
     writeFileSync(join(staleDir, "sentry"), downloadedExecutable);
     chmodSync(join(staleDir, "sentry"), 0o755);
-    env.PATH = `${staleDir}:${env.PATH}`;
-    env.SENTRY_INIT = "1";
+    env["PATH"] = `${staleDir}:${env["PATH"]}`;
+    env["SENTRY_INIT"] = "1";
 
     const result = runInTerminal();
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(recorded("setup-args")).toContain("setup");
     expect(recorded("post-args")).toEqual(["init"]);
     const [initBinary] = recorded("post-binary");
-    expect(initBinary?.startsWith(join(testDir, "sentry-install-init-"))).toBe(
-      true,
-    );
+    expect(
+      initBinary?.startsWith(join(installDir, "sentry-install-init-")),
+    ).toBe(true);
     expect(installerTempFiles()).toEqual([]);
   });
 
   test.each([1, 130])(
     "preserves setup failure or interruption exit %i",
     (exitCode) => {
-      env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
+      env["SENTRY_TEST_SETUP_EXIT"] = String(exitCode);
       const result = runInTerminal();
       expect(result.status, result.stdout + result.stderr).toBe(exitCode);
       expect(recorded("post-args")).toEqual([]);
@@ -683,7 +795,7 @@ process.exitCode = result.status ?? 1;
   );
 
   test.each([1, 130])("preserves non-interactive setup exit %i", (exitCode) => {
-    env.SENTRY_TEST_SETUP_EXIT = String(exitCode);
+    env["SENTRY_TEST_SETUP_EXIT"] = String(exitCode);
     const result = spawnSync("bash", [installScript, "--version", "0.31.0"], {
       env,
       encoding: "utf8",
