@@ -5,6 +5,7 @@
  * and mode mutual exclusivity.
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -389,17 +390,24 @@ describe("release set-commits --auto", () => {
 describe("release set-commits (default mode)", () => {
   let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
   let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let getPreviousReleaseCommitSpy: MockInstance<
+    (typeof apiClient)["getPreviousReleaseCommit"]
+  >;
   let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     setCommitsAutoSpy = vi.spyOn(apiClient, "setCommitsAuto");
     setCommitsLocalSpy = vi.spyOn(apiClient, "setCommitsLocal");
+    getPreviousReleaseCommitSpy = vi
+      .spyOn(apiClient, "getPreviousReleaseCommit")
+      .mockResolvedValue(undefined);
     resolveOrgSpy = vi.spyOn(resolveTarget, "resolveOrg");
   });
 
   afterEach(() => {
     setCommitsAutoSpy.mockRestore();
     setCommitsLocalSpy.mockRestore();
+    getPreviousReleaseCommitSpy.mockRestore();
     resolveOrgSpy.mockRestore();
   });
 
@@ -507,6 +515,142 @@ describe("release set-commits (default mode)", () => {
 
     expect(setCommitsAutoSpy).toHaveBeenCalled();
     expect(setCommitsLocalSpy).toHaveBeenCalled();
+  });
+});
+
+// https://github.com/getsentry/toolkit/issues/2472
+describe("release set-commits (default mode, previous release)", () => {
+  let setCommitsAutoSpy: MockInstance<(typeof apiClient)["setCommitsAuto"]>;
+  let setCommitsLocalSpy: MockInstance<(typeof apiClient)["setCommitsLocal"]>;
+  let getPreviousReleaseCommitSpy: MockInstance<
+    (typeof apiClient)["getPreviousReleaseCommit"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
+  let cwd: string;
+
+  const git = (...args: string[]) =>
+    execFileSync(
+      "git",
+      ["-c", "user.name=Jane", "-c", "user.email=jane@example.com", ...args],
+      { cwd, encoding: "utf-8" },
+    ).trim();
+
+  /** Create an empty commit and return its SHA. */
+  const commit = (message: string) => {
+    git("commit", "-q", "--allow-empty", "--no-gpg-sign", "-m", message);
+    return git("rev-parse", "HEAD");
+  };
+
+  /** Run the default mode and return the messages of the commits it sent. */
+  const sentMessages = async (initialDepth = 20) => {
+    const { context } = createMockContext(cwd);
+    const func = await loadCommand(setCommitsCommand);
+    await func.call(
+      context,
+      {
+        auto: false,
+        local: false,
+        clear: false,
+        commit: undefined,
+        "initial-depth": initialDepth,
+        json: true,
+      },
+      "1.0.0",
+    );
+    return setCommitsLocalSpy.mock.lastCall?.[2].map((c) => c.message);
+  };
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "set-commits-previous-"));
+    git("init", "-q", "-b", "main");
+    resolveOrgSpy = vi
+      .spyOn(resolveTarget, "resolveOrg")
+      .mockResolvedValue({ org: "my-org" });
+    setCommitsAutoSpy = vi
+      .spyOn(apiClient, "setCommitsAuto")
+      .mockRejectedValue(
+        new ApiError(
+          NO_REPO_INTEGRATIONS_MESSAGE,
+          404,
+          undefined,
+          "releases/1.0.0/",
+        ),
+      );
+    setCommitsLocalSpy = vi
+      .spyOn(apiClient, "setCommitsLocal")
+      .mockResolvedValue(sampleRelease);
+    getPreviousReleaseCommitSpy = vi
+      .spyOn(apiClient, "getPreviousReleaseCommit")
+      .mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    setCommitsAutoSpy.mockRestore();
+    setCommitsLocalSpy.mockRestore();
+    getPreviousReleaseCommitSpy.mockRestore();
+    resolveOrgSpy.mockRestore();
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  test("sends only the commits after the previous release's commit", async () => {
+    commit("one");
+    const released = commit("two");
+    commit("three");
+    commit("four");
+    getPreviousReleaseCommitSpy.mockResolvedValue(released);
+
+    // The range bounds itself: --initial-depth doesn't cut it short.
+    expect(await sentMessages(1)).toEqual(["four", "three"]);
+    expect(getPreviousReleaseCommitSpy).toHaveBeenCalledWith("my-org", "1.0.0");
+
+    // The second run skips --auto through the cached missing integration.
+    expect(await sentMessages(1)).toEqual(["four", "three"]);
+    expect(setCommitsAutoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("sends no commits when HEAD is the previous release's commit", async () => {
+    commit("one");
+    getPreviousReleaseCommitSpy.mockResolvedValue(commit("two"));
+
+    expect(await sentMessages()).toEqual([]);
+  });
+
+  test("also uses it when no Sentry repository matches", async () => {
+    const released = commit("one");
+    commit("two");
+    getPreviousReleaseCommitSpy.mockResolvedValue(released);
+    setCommitsAutoSpy.mockRejectedValue(
+      new ValidationError("No Sentry repository matching.", "repository"),
+    );
+
+    expect(await sentMessages()).toEqual(["two"]);
+  });
+
+  test.each([
+    ["there is no previous release", () => {}],
+    [
+      "its commit is not in the local history",
+      () => getPreviousReleaseCommitSpy.mockResolvedValue("f".repeat(40)),
+    ],
+    [
+      "its commit is only on another branch",
+      () => {
+        git("checkout", "-q", "-b", "other");
+        getPreviousReleaseCommitSpy.mockResolvedValue(commit("other"));
+        git("checkout", "-q", "main");
+      },
+    ],
+    [
+      "its commit looks like a git option",
+      () => getPreviousReleaseCommitSpy.mockResolvedValue("--all"),
+    ],
+  ])("reads --initial-depth commits when %s", async (_case, setUp) => {
+    commit("one");
+    commit("two");
+    commit("three");
+    setUp();
+
+    expect(await sentMessages(2)).toEqual(["three", "two"]);
   });
 });
 

@@ -9,6 +9,7 @@ import type { SentryContext } from "../../context.js";
 import {
   correctRefRepositories,
   explainSetCommitsError,
+  getPreviousReleaseCommit,
   NO_REPO_INTEGRATIONS_MESSAGE,
   setCommitsAuto,
   setCommitsLocal,
@@ -33,6 +34,7 @@ import { CommandOutput } from "../../lib/formatters/output.js";
 import {
   getCommitLog,
   getRepositoryName,
+  isInHeadHistory,
   isInsideGitWorkTree,
   isShallowRepository,
 } from "../../lib/git.js";
@@ -59,14 +61,21 @@ const FROM_DASHED_REF_NOTE =
  * When `from` is set, reads the whole `from..HEAD` range (bounded by the range
  * itself, so `depth` is omitted); otherwise walks back `depth` commits from
  * HEAD. Optional `paths` restrict the log to commits touching those subtrees.
+ * `sincePreviousRelease` says that `from` is the previous release's commit
+ * rather than a ref the user passed, so an empty range is not their mistake.
  */
 function setCommitsFromLocal(
   org: string,
   version: string,
   cwd: string,
-  options: { depth?: number; paths?: string[]; from?: string | undefined },
+  options: {
+    depth?: number;
+    paths?: string[];
+    from?: string | undefined;
+    sincePreviousRelease?: boolean;
+  },
 ): Promise<SentryRelease> {
-  const { depth, paths, from } = options;
+  const { depth, paths, from, sincePreviousRelease } = options;
   if (!isInsideGitWorkTree(cwd)) {
     throw validationError(
       `Cannot read local commits: ${cwd} is not a git checkout.`,
@@ -87,7 +96,9 @@ function setCommitsFromLocal(
   }
 
   const commits = getCommitLog(cwd, { depth, paths, from });
-  if (commits.length === 0) {
+  if (commits.length === 0 && sincePreviousRelease) {
+    log.info(`No commits since the previous release's commit ${from}.`);
+  } else if (commits.length === 0) {
     const hasPaths = paths !== undefined && paths.length > 0;
     const scope = from
       ? `in ${from}..HEAD`
@@ -171,6 +182,40 @@ function clearRepoIntegrationCache(orgSlug: string): void {
 }
 
 /**
+ * Fallback of the default mode: read the local commits since the previous
+ * release's last commit, so that consecutive releases don't share commits.
+ *
+ * Without a previous release, or when its commit is not in the local history
+ * (shallow clone, rewritten history, another repository), walks back `depth`
+ * commits from HEAD.
+ */
+async function setCommitsSincePreviousRelease(
+  org: string,
+  version: string,
+  cwd: string,
+  depth: number,
+): Promise<SentryRelease> {
+  const previousCommit = isInsideGitWorkTree(cwd)
+    ? await getPreviousReleaseCommit(org, version)
+    : undefined;
+  if (previousCommit && isInHeadHistory(previousCommit, cwd)) {
+    return await setCommitsFromLocal(org, version, cwd, {
+      // The range bounds itself, so depth 0 (no cap) reads all of it.
+      depth: 0,
+      from: previousCommit,
+      sincePreviousRelease: true,
+    });
+  }
+  if (previousCommit) {
+    log.warn(
+      `The previous release's commit ${previousCommit} is not in the local history. ` +
+        `Reading the last ${depth} commits instead (--initial-depth).`,
+    );
+  }
+  return await setCommitsFromLocal(org, version, cwd, { depth });
+}
+
+/**
  * Default mode: try auto-discovery, fall back to local git.
  *
  * Uses a per-org negative cache to skip the speculative auto API call
@@ -184,7 +229,7 @@ async function setCommitsDefault(
 ): Promise<SentryRelease> {
   // Fast path: cached "no repos" — skip the API call entirely
   if (hasNoRepoIntegration(org)) {
-    return await setCommitsFromLocal(org, version, cwd, { depth });
+    return await setCommitsSincePreviousRelease(org, version, cwd, depth);
   }
 
   try {
@@ -208,7 +253,7 @@ async function setCommitsDefault(
         "Could not auto-discover commits (no repository integration). " +
           "Falling back to local git history.",
       );
-      return await setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsSincePreviousRelease(org, version, cwd, depth);
     }
     if (error instanceof ValidationError && error.field === "repository") {
       // Without a git checkout there is no local history to fall back to,
@@ -220,7 +265,7 @@ async function setCommitsDefault(
         `Auto-discovery failed: ${error.message}\n\n` +
           "Falling back to local git history.",
       );
-      return await setCommitsFromLocal(org, version, cwd, { depth });
+      return await setCommitsSincePreviousRelease(org, version, cwd, depth);
     }
     throw error;
   }
@@ -373,7 +418,9 @@ export const setCommitsCommand = buildCommand({
       "(matches the origin remote against Sentry repos; without a git checkout it\n" +
       "uses the repository and commit from CI variables such as GITHUB_REPOSITORY),\n" +
       "or --local to read commits from the local git history.\n" +
-      "With no flag, tries --auto first and falls back to --local on failure.\n\n" +
+      "With no flag, tries --auto first and falls back to the local git history:\n" +
+      "the commits since the previous release, or the last --initial-depth commits\n" +
+      "when there is none or its commit is not in the local history.\n\n" +
       "For monorepos, --path restricts commits to one or more subtrees\n" +
       "(comma-separated). It implies --local and cannot be combined with\n" +
       "--auto or --commit, whose ranges are expanded server-side.\n\n" +

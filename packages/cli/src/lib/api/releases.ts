@@ -474,7 +474,7 @@ export async function createReleaseDeploy(
  * @param version - Current release version
  * @returns Previous release's last commit SHA, or undefined if no previous release
  */
-async function getPreviousReleaseCommit(
+export async function getPreviousReleaseCommit(
   orgSlug: string,
   version: string,
 ): Promise<string | undefined> {
