@@ -60,6 +60,7 @@ describe("find_related_issues", () => {
     );
     expect(structuredContent).toMatchInlineSnapshot(`
       {
+        "investigations": [],
         "issueId": "CLOUDFLARE-MCP-41",
         "notes": [],
         "organizationSlug": "sentry-mcp-evals",
@@ -196,6 +197,45 @@ describe("find_related_issues", () => {
       "contributing",
       "same_title",
       "same_supergroup",
+      "investigations",
+    ]);
+  });
+
+  it("returns the investigations that linked the issue, apart from related issues", async () => {
+    mswServer.use(
+      http.get(RELATED_URL, () =>
+        HttpResponse.json({
+          data: [],
+          investigations: [
+            {
+              investigation: { id: "42", title: "Duplicate tool registration" },
+              hypothesisStatement:
+                "The server registers its tools again on every restart.",
+              reason: "Its stack trace shows the second registration.",
+            },
+          ],
+          meta: { types: [{ type: "investigations", status: "ok" }] },
+        }),
+      ),
+    );
+
+    const result = await findRelatedIssues.handler(
+      { ...params, types: ["investigations"] },
+      context,
+    );
+    const structuredContent = getStructuredContent<Output>(result);
+
+    expect(findRelatedIssuesOutputSchema.parse(structuredContent)).toEqual(
+      structuredContent,
+    );
+    expect(structuredContent.relatedIssues).toEqual([]);
+    expect(structuredContent.investigations).toEqual([
+      {
+        title: "Duplicate tool registration",
+        url: "https://sentry-mcp-evals.sentry.io/seer/investigations/42/",
+        hypothesis: "The server registers its tools again on every restart.",
+        reason: "Its stack trace shows the second registration.",
+      },
     ]);
   });
 
@@ -413,6 +453,7 @@ describe("find_related_issues through the MCP server", () => {
         "contributing",
         "same_title",
         "same_supergroup",
+        "investigations",
       ]);
       expect(relatedRequest?.searchParams.get("limit")).toBe("10");
 

@@ -1,6 +1,7 @@
 import { getActiveSpan } from "@sentry/core";
 import { z } from "zod";
 import {
+  ISSUE_RELATION_TYPES,
   RELATED_ISSUE_TYPE_STATUSES,
   RELATED_ISSUE_TYPES,
 } from "../../api-client/schema";
@@ -38,7 +39,7 @@ export const findRelatedIssuesOutputSchema = z.object({
         relations: z
           .array(
             z.object({
-              type: z.enum(RELATED_ISSUE_TYPES),
+              type: z.enum(ISSUE_RELATION_TYPES),
               score: z
                 .number()
                 .nullable()
@@ -51,6 +52,21 @@ export const findRelatedIssuesOutputSchema = z.object({
       }),
     )
     .describe("Issues matched by more relation types first."),
+  investigations: z
+    .array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        hypothesis: z
+          .string()
+          .describe("The hypothesis whose evidence named this issue."),
+        reason: z
+          .string()
+          .nullable()
+          .describe("Why Seer found this issue relevant."),
+      }),
+    )
+    .describe("Seer investigations that linked this issue, most recent first."),
   relationTypes: z
     .array(
       z.object({
@@ -103,7 +119,7 @@ export default defineTool({
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
   description:
-    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
+    "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert, plus the Seer investigations that linked it. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -114,7 +130,7 @@ export default defineTool({
       .nullable()
       .default(null)
       .describe(
-        "Relation types; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace. contributing: errors behind a metric issue. same_title: errors with the same title, last 14 days. same_supergroup: same root cause per Seer.",
+        "All when omitted. similar_stacktrace: likely duplicates. same_trace: same trace. contributing: behind a metric issue. same_title: same title, last 14 days. same_supergroup: same Seer root cause. investigations: Seer investigations that linked this issue.",
       ),
     limit: z
       .number()
@@ -210,6 +226,17 @@ export default defineTool({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
       relatedIssues,
+      investigations: related.investigations.map(
+        ({ investigation, hypothesisStatement, reason }) => ({
+          title: investigation.title,
+          url: apiService.getInvestigationUrl(
+            parsed.organizationSlug,
+            investigation.id,
+          ),
+          hypothesis: hypothesisStatement,
+          reason,
+        }),
+      ),
       relationTypes: related.meta.types.map((meta) => ({
         type: meta.type,
         status: meta.status,

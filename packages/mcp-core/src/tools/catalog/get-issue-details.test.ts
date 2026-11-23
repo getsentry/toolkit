@@ -2066,11 +2066,13 @@ describe("structuredContent", () => {
       const payload = parsePayload(result);
 
       expect(requests).toHaveLength(1);
-      // Not same_title or same_supergroup: each adds a lookup to every call.
+      // Not same_title: its issue search would add to every call.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
+        "investigations",
       ]);
       expect(requests[0]?.searchParams.get("limit")).toBe("5");
       // the latest event is the endpoint's default
@@ -2092,6 +2094,7 @@ describe("structuredContent", () => {
             relations: ["same_trace"],
           },
         ],
+        investigations: [],
         unavailableTypes: [],
       });
       expect(payload.suggestedActions[0]).toEqual({
@@ -2131,6 +2134,7 @@ describe("structuredContent", () => {
 
       expect(payload.relatedIssues).toEqual({
         issues: [],
+        investigations: [],
         unavailableTypes: [],
       });
       expect(
@@ -2243,6 +2247,52 @@ describe("structuredContent", () => {
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_supergroup",
+        "investigations",
+      ]);
+    });
+
+    it("lists same-supergroup issues and the investigations that linked this one", async () => {
+      mockLatestEvent();
+      captureRelatedRequest(() =>
+        HttpResponse.json({
+          data: [
+            {
+              issue: relatedIssuesFixture.data[0]?.issue,
+              relations: [{ type: "same_supergroup" }],
+            },
+          ],
+          investigations: [
+            {
+              investigation: { id: "42", title: "Checkout outage" },
+              hypothesisStatement: "A bad deploy broke the payment client.",
+              reason: null,
+            },
+          ],
+          meta: {
+            types: [
+              {
+                type: "same_supergroup",
+                status: "ok",
+                supergroup: { id: "17", title: "Payment client times out" },
+              },
+              { type: "investigations", status: "ok" },
+            ],
+          },
+        }),
+      );
+
+      const result = await getIssueDetails.handler(params, experimentalContext);
+      const payload = parsePayload(result);
+
+      expect(payload.relatedIssues?.issues).toMatchObject([
+        { shortId: "CLOUDFLARE-MCP-42", relations: ["same_supergroup"] },
+      ]);
+      expect(payload.relatedIssues?.investigations).toEqual([
+        {
+          title: "Checkout outage",
+          url: "https://sentry-mcp-evals.sentry.io/seer/investigations/42/",
+        },
       ]);
     });
   });

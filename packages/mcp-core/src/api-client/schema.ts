@@ -902,8 +902,8 @@ export const ISSUE_STATUSES = [
   "unresolved",
 ] as const;
 
-/** Relation types the related issues endpoint supports (`RelationType`). */
-export const RELATED_ISSUE_TYPES = [
+/** Relation types that find related issues, filling the response's `data`. */
+export const ISSUE_RELATION_TYPES = [
   "similar_stacktrace",
   "same_trace",
   "contributing",
@@ -912,16 +912,13 @@ export const RELATED_ISSUE_TYPES = [
 ] as const;
 
 /**
- * The relation types tools fetch alongside their own result, on every call:
- * get_issue_details and update_issue's resolve side quest. same_title and
- * same_supergroup are left out because each adds a lookup per call, a 14-day
- * issue search and a Seer request, so only find_related_issues asks for them.
+ * Relation types the related issues endpoint supports (`RelationType`).
+ * investigations fills the response's `investigations` instead of `data`.
  */
-export const INLINE_RELATED_ISSUE_TYPES = [
-  "similar_stacktrace",
-  "same_trace",
-  "contributing",
-] as const satisfies readonly (typeof RELATED_ISSUE_TYPES)[number][];
+export const RELATED_ISSUE_TYPES = [
+  ...ISSUE_RELATION_TYPES,
+  "investigations",
+] as const;
 
 /** Outcome of each requested relation type (`RelationTypeStatus`). */
 export const RELATED_ISSUE_TYPE_STATUSES = [
@@ -938,6 +935,7 @@ export const RELATED_ISSUE_TYPE_STATUSES = [
  *
  * Upstream source of truth in getsentry/sentry:
  * - `src/sentry/issues/related/types.py` (`RelatedIssuesResponse`)
+ * - `src/sentry/issues/related/investigations.py`
  * - `src/sentry/issues/endpoints/group_related.py`
  */
 export const RelatedIssuesResponseSchema = z.object({
@@ -947,7 +945,7 @@ export const RelatedIssuesResponseSchema = z.object({
       relations: z.array(
         z
           .object({
-            type: z.enum(RELATED_ISSUE_TYPES),
+            type: z.enum(ISSUE_RELATION_TYPES),
             score: z.number().optional(),
           })
           .passthrough(),
@@ -972,6 +970,17 @@ export const RelatedIssuesResponseSchema = z.object({
         .passthrough(),
     ),
   }),
+  // Seer investigations that linked the issue, from the investigations type.
+  // Missing from Sentry versions without that type.
+  investigations: z
+    .array(
+      z.object({
+        investigation: z.object({ id: z.string(), title: z.string() }),
+        hypothesisStatement: z.string(),
+        reason: z.string().nullable(),
+      }),
+    )
+    .default([]),
 });
 
 export const FrameInterface = z

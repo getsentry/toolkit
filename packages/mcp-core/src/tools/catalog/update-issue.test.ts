@@ -1993,11 +1993,13 @@ describe("update_issue", () => {
       );
 
       expect(requests).toHaveLength(1);
-      // Not same_title or same_supergroup: each adds a lookup to every call.
+      // Every type that finds issues; the quest doesn't read investigations.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_title",
+        "same_supergroup",
       ]);
       expect(requests[0]?.searchParams.get("limit")).toBe("5");
       expect(output.updated).toBe(true);
