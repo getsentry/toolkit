@@ -18,7 +18,7 @@ import { validateRegionUrl } from "./validate-region-url";
  */
 export function apiServiceFromContext(
   context: ServerContext,
-  opts: { regionUrl?: string } = {},
+  opts: { regionUrl?: string | undefined } = {},
 ) {
   let host = context.sentryHost;
 
@@ -37,6 +37,7 @@ export function apiServiceFromContext(
     clientName: context.clientName,
     clientFamily: context.clientFamily,
     utmSource: context.utmSource,
+    signal: context.signal,
   });
 }
 

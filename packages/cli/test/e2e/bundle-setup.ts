@@ -100,7 +100,7 @@ async function spawnBundle(): Promise<void> {
       cwd: ROOT_DIR,
       env: {
         ...process.env,
-        SENTRY_CLIENT_ID: process.env.SENTRY_CLIENT_ID || "test-client-id",
+        SENTRY_CLIENT_ID: process.env["SENTRY_CLIENT_ID"] || "test-client-id",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

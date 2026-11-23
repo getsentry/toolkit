@@ -1,0 +1,989 @@
+{
+  "android": {
+    "name": "Android",
+    "docsUrl": "https://docs.sentry.io/platforms/android/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/android/tracing/",
+      "logs": "https://docs.sentry.io/platforms/android/logs/",
+      "metrics": "https://docs.sentry.io/platforms/android/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/android/session-replay/"
+    }
+  },
+  "apple": {
+    "name": "Apple",
+    "docsUrl": "https://docs.sentry.io/platforms/apple/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/apple/tracing/",
+      "logs": "https://docs.sentry.io/platforms/apple/logs/",
+      "metrics": "https://docs.sentry.io/platforms/apple/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/apple/session-replay/"
+    }
+  },
+  "apple-ios": {
+    "name": "iOS",
+    "docsUrl": "https://docs.sentry.io/platforms/apple/guides/ios/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/apple/guides/ios/tracing/",
+      "logs": "https://docs.sentry.io/platforms/apple/guides/ios/logs/",
+      "metrics": "https://docs.sentry.io/platforms/apple/guides/ios/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/apple/guides/ios/session-replay/"
+    }
+  },
+  "apple-macos": {
+    "name": "macOS",
+    "docsUrl": "https://docs.sentry.io/platforms/apple/guides/macos/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/apple/guides/macos/tracing/",
+      "logs": "https://docs.sentry.io/platforms/apple/guides/macos/logs/",
+      "metrics": "https://docs.sentry.io/platforms/apple/guides/macos/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/apple/guides/macos/session-replay/"
+    }
+  },
+  "bun": {
+    "name": "Bun",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/bun/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/bun/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/bun/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/bun/metrics/"
+    }
+  },
+  "capacitor": {
+    "name": "Capacitor",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/capacitor/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/capacitor/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/capacitor/logs/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/capacitor/session-replay/"
+    }
+  },
+  "cordova": {
+    "name": "Cordova",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/cordova/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/cordova/tracing/"
+    }
+  },
+  "dart": {
+    "name": "Dart",
+    "docsUrl": "https://docs.sentry.io/platforms/dart/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dart/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dart/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dart/metrics/"
+    }
+  },
+  "deno": {
+    "name": "Deno",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/deno/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/deno/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/deno/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/deno/metrics/"
+    }
+  },
+  "dotnet": {
+    "name": ".NET",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/metrics/"
+    }
+  },
+  "dotnet-aspnet": {
+    "name": "ASP.NET",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/aspnet/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/aspnet/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/aspnet/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/aspnet/metrics/"
+    }
+  },
+  "dotnet-aspnetcore": {
+    "name": "ASP.NET Core",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/aspnetcore/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/aspnetcore/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/aspnetcore/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/aspnetcore/metrics/"
+    }
+  },
+  "dotnet-awslambda": {
+    "name": "AWS Lambda (.NET)",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/aws-lambda/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/aws-lambda/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/aws-lambda/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/aws-lambda/metrics/"
+    }
+  },
+  "dotnet-gcpfunctions": {
+    "name": "Google Cloud Functions (.NET)",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/google-cloud-functions/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/google-cloud-functions/tracing/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/google-cloud-functions/metrics/"
+    }
+  },
+  "dotnet-maui": {
+    "name": ".NET MAUI",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/maui/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/maui/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/maui/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/maui/metrics/"
+    }
+  },
+  "dotnet-winforms": {
+    "name": "Windows Forms",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/winforms/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/winforms/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/winforms/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/winforms/metrics/"
+    }
+  },
+  "dotnet-wpf": {
+    "name": "WPF",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/wpf/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/wpf/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dotnet/guides/wpf/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dotnet/guides/wpf/metrics/"
+    }
+  },
+  "dotnet-xamarin": {
+    "name": "Xamarin",
+    "docsUrl": "https://docs.sentry.io/platforms/dotnet/guides/xamarin/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dotnet/guides/xamarin/tracing/"
+    }
+  },
+  "electron": {
+    "name": "Electron",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/electron/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/electron/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/electron/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/electron/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/electron/session-replay/"
+    }
+  },
+  "elixir": {
+    "name": "Elixir",
+    "docsUrl": "https://docs.sentry.io/platforms/elixir/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/elixir/tracing/",
+      "logs": "https://docs.sentry.io/platforms/elixir/logs/",
+      "metrics": "https://docs.sentry.io/platforms/elixir/metrics/"
+    }
+  },
+  "expo": {
+    "name": "Expo",
+    "docsUrl": "https://docs.sentry.io/platforms/react-native/guides/expo/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/react-native/guides/expo/tracing/",
+      "logs": "https://docs.sentry.io/platforms/react-native/guides/expo/logs/",
+      "metrics": "https://docs.sentry.io/platforms/react-native/guides/expo/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/react-native/guides/expo/session-replay/"
+    }
+  },
+  "flutter": {
+    "name": "Flutter",
+    "docsUrl": "https://docs.sentry.io/platforms/dart/guides/flutter/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/dart/guides/flutter/tracing/",
+      "logs": "https://docs.sentry.io/platforms/dart/guides/flutter/logs/",
+      "metrics": "https://docs.sentry.io/platforms/dart/guides/flutter/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/dart/guides/flutter/session-replay/"
+    }
+  },
+  "go": {
+    "name": "Go",
+    "docsUrl": "https://docs.sentry.io/platforms/go/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/metrics/"
+    }
+  },
+  "go-echo": {
+    "name": "Echo",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/echo/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/echo/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/echo/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/echo/metrics/"
+    }
+  },
+  "go-fasthttp": {
+    "name": "FastHTTP",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/fasthttp/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/fasthttp/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/fasthttp/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/fasthttp/metrics/"
+    }
+  },
+  "go-fiber": {
+    "name": "Fiber",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/fiber/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/fiber/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/fiber/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/fiber/metrics/"
+    }
+  },
+  "go-gin": {
+    "name": "Gin",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/gin/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/gin/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/gin/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/gin/metrics/"
+    }
+  },
+  "go-http": {
+    "name": "Net/Http",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/http/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/http/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/http/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/http/metrics/"
+    }
+  },
+  "go-iris": {
+    "name": "Iris",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/iris/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/iris/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/iris/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/iris/metrics/"
+    }
+  },
+  "go-negroni": {
+    "name": "Negroni",
+    "docsUrl": "https://docs.sentry.io/platforms/go/guides/negroni/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/go/guides/negroni/tracing/",
+      "logs": "https://docs.sentry.io/platforms/go/guides/negroni/logs/",
+      "metrics": "https://docs.sentry.io/platforms/go/guides/negroni/metrics/"
+    }
+  },
+  "godot": {
+    "name": "Godot",
+    "docsUrl": "https://docs.sentry.io/platforms/godot/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/godot/tracing/",
+      "logs": "https://docs.sentry.io/platforms/godot/logs/",
+      "metrics": "https://docs.sentry.io/platforms/godot/metrics/"
+    }
+  },
+  "ionic": {
+    "name": "Ionic",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/capacitor/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/capacitor/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/capacitor/logs/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/capacitor/session-replay/"
+    }
+  },
+  "java": {
+    "name": "Java",
+    "docsUrl": "https://docs.sentry.io/platforms/java/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/java/tracing/",
+      "logs": "https://docs.sentry.io/platforms/java/logs/",
+      "metrics": "https://docs.sentry.io/platforms/java/metrics/"
+    }
+  },
+  "java-log4j2": {
+    "name": "Log4j 2.x",
+    "docsUrl": "https://docs.sentry.io/platforms/java/guides/log4j2/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/java/guides/log4j2/tracing/",
+      "logs": "https://docs.sentry.io/platforms/java/guides/log4j2/logs/",
+      "metrics": "https://docs.sentry.io/platforms/java/guides/log4j2/metrics/"
+    }
+  },
+  "java-logback": {
+    "name": "Logback",
+    "docsUrl": "https://docs.sentry.io/platforms/java/guides/logback/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/java/guides/logback/tracing/",
+      "logs": "https://docs.sentry.io/platforms/java/guides/logback/logs/",
+      "metrics": "https://docs.sentry.io/platforms/java/guides/logback/metrics/"
+    }
+  },
+  "java-spring": {
+    "name": "Spring",
+    "docsUrl": "https://docs.sentry.io/platforms/java/guides/spring/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/java/guides/spring/tracing/",
+      "logs": "https://docs.sentry.io/platforms/java/guides/spring/logs/",
+      "metrics": "https://docs.sentry.io/platforms/java/guides/spring/metrics/"
+    }
+  },
+  "java-spring-boot": {
+    "name": "Spring Boot",
+    "docsUrl": "https://docs.sentry.io/platforms/java/guides/spring-boot/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/java/guides/spring-boot/tracing/",
+      "logs": "https://docs.sentry.io/platforms/java/guides/spring-boot/logs/",
+      "metrics": "https://docs.sentry.io/platforms/java/guides/spring-boot/metrics/"
+    }
+  },
+  "javascript": {
+    "name": "Browser JavaScript",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/session-replay/"
+    }
+  },
+  "javascript-angular": {
+    "name": "Angular",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/angular/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/angular/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/angular/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/angular/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/angular/session-replay/"
+    }
+  },
+  "javascript-astro": {
+    "name": "Astro",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/astro/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/astro/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/astro/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/astro/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/astro/session-replay/"
+    }
+  },
+  "javascript-ember": {
+    "name": "Ember",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/ember/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/ember/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/ember/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/ember/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/ember/session-replay/"
+    }
+  },
+  "javascript-gatsby": {
+    "name": "Gatsby",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/gatsby/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/gatsby/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/gatsby/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/gatsby/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/gatsby/session-replay/"
+    }
+  },
+  "javascript-nextjs": {
+    "name": "Next.js",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nextjs/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/nextjs/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/nextjs/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/nextjs/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/nextjs/session-replay/"
+    }
+  },
+  "javascript-react": {
+    "name": "React",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/react/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/react/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/react/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/react/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/react/session-replay/"
+    }
+  },
+  "javascript-react-router": {
+    "name": "React Router Framework",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/react-router/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/react-router/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/react-router/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/react-router/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/react-router/session-replay/"
+    }
+  },
+  "javascript-remix": {
+    "name": "Remix",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/remix/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/remix/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/remix/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/remix/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/remix/session-replay/"
+    }
+  },
+  "javascript-solid": {
+    "name": "Solid",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/solid/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/solid/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/solid/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/solid/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/solid/session-replay/"
+    }
+  },
+  "javascript-solidstart": {
+    "name": "SolidStart",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/solidstart/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/solidstart/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/solidstart/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/solidstart/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/solidstart/session-replay/"
+    }
+  },
+  "javascript-svelte": {
+    "name": "Svelte",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/svelte/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/svelte/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/svelte/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/svelte/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/svelte/session-replay/"
+    }
+  },
+  "javascript-sveltekit": {
+    "name": "SvelteKit",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/sveltekit/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/sveltekit/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/sveltekit/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/sveltekit/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/sveltekit/session-replay/"
+    }
+  },
+  "javascript-tanstackstart-react": {
+    "name": "TanStack Start React",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/session-replay/"
+    }
+  },
+  "javascript-vue": {
+    "name": "Vue",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/vue/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/vue/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/vue/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/vue/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/vue/session-replay/"
+    }
+  },
+  "javascript-nuxt": {
+    "name": "Nuxt",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nuxt/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/nuxt/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/nuxt/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/nuxt/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/javascript/guides/nuxt/session-replay/"
+    }
+  },
+  "kotlin": {
+    "name": "Kotlin",
+    "docsUrl": "https://docs.sentry.io/platforms/kotlin/",
+    "signals": {}
+  },
+  "minidump": {
+    "name": "Minidump",
+    "docsUrl": "https://docs.sentry.io/platforms/native/guides/minidumps/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/native/guides/minidumps/tracing/"
+    }
+  },
+  "native": {
+    "name": "Native",
+    "docsUrl": "https://docs.sentry.io/platforms/native/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/native/tracing/",
+      "logs": "https://docs.sentry.io/platforms/native/logs/",
+      "metrics": "https://docs.sentry.io/platforms/native/metrics/"
+    }
+  },
+  "native-qt": {
+    "name": "Qt",
+    "docsUrl": "https://docs.sentry.io/platforms/native/guides/qt/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/native/guides/qt/tracing/"
+    }
+  },
+  "nintendo-switch": {
+    "name": "Nintendo Switch",
+    "docsUrl": "https://docs.sentry.io/platforms/nintendo-switch/",
+    "signals": {}
+  },
+  "node": {
+    "name": "Node.js",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-awslambda": {
+    "name": "AWS Lambda (Node)",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/aws-lambda/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/aws-lambda/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/aws-lambda/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/aws-lambda/metrics/"
+    }
+  },
+  "node-azurefunctions": {
+    "name": "Azure Functions (Node)",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/azure-functions/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/azure-functions/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/azure-functions/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/azure-functions/metrics/"
+    }
+  },
+  "node-cloudflare-pages": {
+    "name": "Cloudflare (Node)",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/metrics/"
+    }
+  },
+  "node-cloudflare-workers": {
+    "name": "Cloudflare (Node)",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/cloudflare/metrics/"
+    }
+  },
+  "node-connect": {
+    "name": "Connect",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/node/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-eve": {
+    "name": "Eve",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/eve/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/eve/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/eve/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/eve/metrics/"
+    }
+  },
+  "node-express": {
+    "name": "Express",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/express/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-fastify": {
+    "name": "Fastify",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/fastify/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-flue": {
+    "name": "Flue",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/flue/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/flue/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/flue/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/flue/metrics/"
+    }
+  },
+  "node-hapi": {
+    "name": "Hapi",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/hapi/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-hono": {
+    "name": "Hono",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/hono/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/hono/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/hono/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/hono/metrics/"
+    }
+  },
+  "node-gcpfunctions": {
+    "name": "Google Cloud Functions (Node)",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/gcp-functions/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/gcp-functions/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/gcp-functions/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/gcp-functions/metrics/"
+    }
+  },
+  "node-koa": {
+    "name": "Koa",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/koa/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/node/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/node/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/node/metrics/"
+    }
+  },
+  "node-mastra": {
+    "name": "Mastra",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/mastra/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/mastra/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/mastra/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/mastra/metrics/"
+    }
+  },
+  "node-nestjs": {
+    "name": "Nest.js",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/nestjs/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/nestjs/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/nestjs/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/nestjs/metrics/"
+    }
+  },
+  "node-pi-durable": {
+    "name": "Pi Durable",
+    "docsUrl": "https://docs.sentry.io/platforms/javascript/guides/pi-durable/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/javascript/guides/pi-durable/tracing/",
+      "logs": "https://docs.sentry.io/platforms/javascript/guides/pi-durable/logs/",
+      "metrics": "https://docs.sentry.io/platforms/javascript/guides/pi-durable/metrics/"
+    }
+  },
+  "php": {
+    "name": "PHP",
+    "docsUrl": "https://docs.sentry.io/platforms/php/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/php/tracing/",
+      "logs": "https://docs.sentry.io/platforms/php/logs/",
+      "metrics": "https://docs.sentry.io/platforms/php/metrics/"
+    }
+  },
+  "php-laravel": {
+    "name": "Laravel",
+    "docsUrl": "https://docs.sentry.io/platforms/php/guides/laravel/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/php/guides/laravel/tracing/",
+      "logs": "https://docs.sentry.io/platforms/php/guides/laravel/logs/",
+      "metrics": "https://docs.sentry.io/platforms/php/guides/laravel/metrics/"
+    }
+  },
+  "php-symfony": {
+    "name": "Symfony",
+    "docsUrl": "https://docs.sentry.io/platforms/php/guides/symfony/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/php/guides/symfony/tracing/",
+      "logs": "https://docs.sentry.io/platforms/php/guides/symfony/logs/",
+      "metrics": "https://docs.sentry.io/platforms/php/guides/symfony/metrics/"
+    }
+  },
+  "playstation": {
+    "name": "PlayStation",
+    "docsUrl": "https://docs.sentry.io/platforms/playstation/",
+    "signals": {}
+  },
+  "powershell": {
+    "name": "PowerShell",
+    "docsUrl": "https://docs.sentry.io/platforms/powershell/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/powershell/tracing/"
+    }
+  },
+  "python": {
+    "name": "Python",
+    "docsUrl": "https://docs.sentry.io/platforms/python/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-aiohttp": {
+    "name": "AIOHTTP",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/aiohttp/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-asgi": {
+    "name": "ASGI",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/asgi/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-awslambda": {
+    "name": "AWS Lambda (Python)",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/aws-lambda/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-bottle": {
+    "name": "Bottle",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/bottle/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-celery": {
+    "name": "Celery",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/celery/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-chalice": {
+    "name": "Chalice",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/chalice/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-django": {
+    "name": "Django",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/django/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-falcon": {
+    "name": "Falcon",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/falcon/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-fastapi": {
+    "name": "FastAPI",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/fastapi/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-flask": {
+    "name": "Flask",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/flask/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-litestar": {
+    "name": "Litestar",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/litestar/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-gcpfunctions": {
+    "name": "Google Cloud Functions (Python)",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/gcp-functions/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-pyramid": {
+    "name": "Pyramid",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/pyramid/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-quart": {
+    "name": "Quart",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/quart/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-rq": {
+    "name": "RQ (Redis Queue)",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/rq/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-sanic": {
+    "name": "Sanic",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/sanic/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-serverless": {
+    "name": "Serverless (Python)",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/serverless/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-starlette": {
+    "name": "Starlette",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/starlette/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-tornado": {
+    "name": "Tornado",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/tornado/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-tryton": {
+    "name": "Tryton",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/tryton/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "python-wsgi": {
+    "name": "WSGI",
+    "docsUrl": "https://docs.sentry.io/platforms/python/integrations/wsgi/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/python/tracing/",
+      "logs": "https://docs.sentry.io/platforms/python/logs/",
+      "metrics": "https://docs.sentry.io/platforms/python/metrics/"
+    }
+  },
+  "react-native": {
+    "name": "React Native",
+    "docsUrl": "https://docs.sentry.io/platforms/react-native/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/react-native/tracing/",
+      "logs": "https://docs.sentry.io/platforms/react-native/logs/",
+      "metrics": "https://docs.sentry.io/platforms/react-native/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/react-native/session-replay/"
+    }
+  },
+  "ruby": {
+    "name": "Ruby",
+    "docsUrl": "https://docs.sentry.io/platforms/ruby/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/ruby/tracing/",
+      "logs": "https://docs.sentry.io/platforms/ruby/logs/",
+      "metrics": "https://docs.sentry.io/platforms/ruby/metrics/"
+    }
+  },
+  "ruby-rack": {
+    "name": "Rack Middleware",
+    "docsUrl": "https://docs.sentry.io/platforms/ruby/guides/rack/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/ruby/guides/rack/tracing/",
+      "metrics": "https://docs.sentry.io/platforms/ruby/guides/rack/metrics/"
+    }
+  },
+  "ruby-rails": {
+    "name": "Rails",
+    "docsUrl": "https://docs.sentry.io/platforms/ruby/guides/rails/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/ruby/guides/rails/tracing/",
+      "logs": "https://docs.sentry.io/platforms/ruby/guides/rails/logs/",
+      "metrics": "https://docs.sentry.io/platforms/ruby/guides/rails/metrics/"
+    }
+  },
+  "rust": {
+    "name": "Rust",
+    "docsUrl": "https://docs.sentry.io/platforms/rust/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/rust/tracing/",
+      "logs": "https://docs.sentry.io/platforms/rust/logs/",
+      "metrics": "https://docs.sentry.io/platforms/rust/metrics/"
+    }
+  },
+  "unity": {
+    "name": "Unity",
+    "docsUrl": "https://docs.sentry.io/platforms/unity/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/unity/tracing/",
+      "logs": "https://docs.sentry.io/platforms/unity/logs/",
+      "metrics": "https://docs.sentry.io/platforms/unity/metrics/"
+    }
+  },
+  "unreal": {
+    "name": "Unreal Engine",
+    "docsUrl": "https://docs.sentry.io/platforms/unreal/",
+    "signals": {
+      "traces": "https://docs.sentry.io/platforms/unreal/tracing/",
+      "logs": "https://docs.sentry.io/platforms/unreal/logs/",
+      "metrics": "https://docs.sentry.io/platforms/unreal/metrics/",
+      "sessionReplay": "https://docs.sentry.io/platforms/unreal/session-replay/"
+    }
+  },
+  "xbox": {
+    "name": "Xbox",
+    "docsUrl": "https://docs.sentry.io/platforms/xbox/",
+    "signals": {}
+  }
+}

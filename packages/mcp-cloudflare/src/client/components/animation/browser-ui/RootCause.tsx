@@ -12,6 +12,7 @@ export default function RootCause({ step }: { step: number }) {
       const t = setTimeout(() => setStarted(true), 0);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [step]);
 
   const orange = "#ff8904";
@@ -43,7 +44,7 @@ export default function RootCause({ step }: { step: number }) {
   // globe depth
   const centerX = (cols - 1) / 2;
   const centerY = (rows - 1) / 2;
-  const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+  const maxDistance = Math.hypot(centerX, centerY);
   const maxScaleReduction = 0.35;
   const translateStrength = 12;
   const opacityFalloff = 0.7;
@@ -91,7 +92,7 @@ export default function RootCause({ step }: { step: number }) {
         const dy = row + 0.5 - originY;
         const angle = Math.atan2(dx, dy);
         const normalized = (angle + Math.PI / 2) / Math.PI; // 0..1
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = Math.hypot(dx, dy);
         const radialOffset = Math.min(200, distance * 14);
         const sweepDelayMs = Math.round(normalized * sweepMs + radialOffset);
         const effectiveSweepDelay = globalDelayMs + sweepDelayMs;
@@ -99,9 +100,7 @@ export default function RootCause({ step }: { step: number }) {
         // Depth transform
         const toCenterX = centerX - col;
         const toCenterY = centerY - row;
-        const distToCenter = Math.sqrt(
-          toCenterX * toCenterX + toCenterY * toCenterY,
-        );
+        const distToCenter = Math.hypot(toCenterX, toCenterY);
         const sphereFactor = Math.min(1, distToCenter / maxDistance);
         const outsideCircle = distToCenter > radius;
 
@@ -171,21 +170,19 @@ export default function RootCause({ step }: { step: number }) {
             }}
           >
             <span
-              style={
-                {
-                  color: startColor,
-                  fontWeight: isCenter ? 700 : 400,
-                  display: "inline-block",
-                  transformOrigin: "center center",
-                  animation: animationValue,
-                  "--pulse-color": pulseColor,
-                  "--start-color": startColor,
-                  "--end-color": endColor,
-                  "--flicker-color": flickerBright,
-                  visibility: outsideCircle ? "hidden" : "visible",
-                  lineHeight: 1,
-                } as any
-              }
+              style={{
+                color: startColor,
+                fontWeight: isCenter ? 700 : 400,
+                display: "inline-block",
+                transformOrigin: "center center",
+                animation: animationValue,
+                "--pulse-color": pulseColor,
+                "--start-color": startColor,
+                "--end-color": endColor,
+                "--flicker-color": flickerBright,
+                visibility: outsideCircle ? "hidden" : "visible",
+                lineHeight: 1,
+              }}
             >
               {displayedChar}
             </span>

@@ -145,7 +145,7 @@ export async function buildMainScript(
     target: options.target,
     format: "cjs",
     outfile: options.outfile,
-    banner: options.banner ? { js: options.banner } : undefined,
+    ...(options.banner && { banner: { js: options.banner } }),
     define: {
       CHUNK_BUILD: JSON.stringify(options.chunks),
       CHUNK_ASSET_DIR:

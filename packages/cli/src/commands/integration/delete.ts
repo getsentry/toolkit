@@ -253,5 +253,6 @@ export const deleteCommand = buildDeleteCommand({
       throw enrichDeleteError(error, elevation === "unavailable");
     }
     yield new CommandOutput({ ...result, deleted: true });
+    return;
   },
 });

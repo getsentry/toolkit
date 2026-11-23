@@ -91,7 +91,7 @@ async function createAuthorizationCode(
 }
 
 function requestToken(parameters: Record<string, string>) {
-  return handler.fetch!(
+  return handler.fetch(
     new Request(`${ORIGIN}/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -106,7 +106,7 @@ async function exchangeCode(
   authorization: Awaited<ReturnType<typeof createAuthorizationCode>>,
   clientId = CODEX_CLIENT_ID,
 ) {
-  return requestToken({
+  return await requestToken({
     grant_type: "authorization_code",
     client_id: clientId,
     redirect_uri: REDIRECT_URI,
@@ -124,7 +124,7 @@ describe("pre-registered client metadata integration", () => {
     ).rejects.toThrow("Failed to fetch client metadata: HTTP 403");
 
     // Exercise production wiring as well as the provider's authorization helpers.
-    const consent = await handler.fetch!(
+    const consent = await handler.fetch(
       createAuthorizationRequest(),
       workerEnv,
       createExecutionContext(),
@@ -135,10 +135,10 @@ describe("pre-registered client metadata integration", () => {
     const authorization = await createAuthorizationCode(createOAuthApi());
     const exchange = await exchangeCode(authorization);
     expect(exchange.status).toBe(200);
-    const tokens = (await exchange.json()) as {
+    const tokens = await exchange.json<{
       access_token: string;
       refresh_token: string;
-    };
+    }>();
     expect(tokens.access_token).toBeTruthy();
     expect(tokens.refresh_token).toBeTruthy();
 
@@ -155,7 +155,7 @@ describe("pre-registered client metadata integration", () => {
   });
 
   it("rejects an unregistered redirect URI for a pre-registered client", async () => {
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       createAuthorizationRequest(CODEX_CLIENT_ID, {
         redirect_uri: "https://example.com/callback",
       }),

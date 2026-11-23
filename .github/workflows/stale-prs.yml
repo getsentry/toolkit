@@ -1,0 +1,32 @@
+name: Stale PRs
+
+# Aggressive timer on purpose: a PR with no activity for 3 days gets a stale
+# label, then closes 2 days later. Any push or comment resets the timer.
+# Add the WIP label to opt a PR out. Issues are not touched.
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 3
+          days-before-pr-close: 2
+          exempt-pr-labels: WIP
+          stale-pr-label: Stale
+          stale-pr-message: >-
+            This PR has had no activity for 3 days. It closes in 2 days
+            unless someone pushes, comments, or adds the `WIP` label.
+          close-pr-message: >-
+            Closed after 5 days with no activity. Reopen it to keep going.

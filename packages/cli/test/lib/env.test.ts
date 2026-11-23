@@ -15,7 +15,7 @@ describe("env registry", () => {
     const custom = { CUSTOM_VAR: "test" } as NodeJS.ProcessEnv;
     setEnv(custom);
     expect(getEnv()).toBe(custom);
-    expect(getEnv().CUSTOM_VAR).toBe("test");
+    expect(getEnv()["CUSTOM_VAR"]).toBe("test");
   });
 
   test("setEnv(process.env) restores the default", () => {

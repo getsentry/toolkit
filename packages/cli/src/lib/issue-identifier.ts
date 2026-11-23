@@ -36,7 +36,12 @@ export type ParsedIssueArg =
   | { type: "project-search"; projectSlug: string; suffix: string }
   | { type: "suffix-only"; suffix: string }
   | { type: "selector"; selector: IssueSelector; org?: string }
-  | { type: "share"; shareId: string; org?: string; baseUrl: string }
+  | {
+      type: "share";
+      shareId: string;
+      org?: string | undefined;
+      baseUrl: string;
+    }
   /** Not an identifier: text to search issues for */
   | { type: "search"; query: string };
 

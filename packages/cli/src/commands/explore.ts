@@ -176,17 +176,19 @@ type ExploreFlags = {
 /** Data yielded by the explore command for both JSON and human output */
 type ExploreData = {
   data: Record<string, unknown>[];
-  meta?: {
-    fields?: Record<string, string>;
-    units?: Record<string, string | null>;
-  };
+  meta?:
+    | {
+        fields?: Record<string, string> | undefined;
+        units?: Record<string, string | null> | undefined;
+      }
+    | undefined;
   hasMore: boolean;
   hasPrev: boolean;
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   dataset: string;
   org: string;
   /** Project filter, when target was `org/project` */
-  project?: string;
+  project?: string | undefined;
   /** The fields the user requested, in their original order — drives column order */
   requestedFields: string[];
 };
@@ -321,7 +323,7 @@ function jsonTransformExplore(
     data.nextCursor !== undefined &&
     data.nextCursor !== ""
   ) {
-    envelope.nextCursor = data.nextCursor;
+    envelope["nextCursor"] = data.nextCursor;
   }
   return envelope;
 }
@@ -470,7 +472,7 @@ type DatasetConfig = {
     timeRange: TimeRange;
   }) => Promise<{
     data: { data: Record<string, unknown>[]; meta?: ExploreData["meta"] };
-    nextCursor?: string;
+    nextCursor?: string | undefined;
   }>;
 };
 
@@ -641,7 +643,7 @@ function resolveDatasetConfig(params: {
   // duplicating and skipping rows (#1519) and makes --limit a top N (#1477).
   const { fields, sort } = resolveEventsSort({
     fields: fieldList,
-    sort: flags.sort,
+    sort: flags.sort ?? null,
   });
 
   const query = resolved.query;
@@ -751,6 +753,27 @@ export const exploreCommand = buildListCommand("explore", {
       {
         description: "Top spans by count",
         run: 'explore my-org/cli -F span.op -F "count()" --dataset spans --sort "-count()"',
+      },
+      {
+        description: "Most used agent tools, with their failure rates",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -q "gen_ai.operation.type:tool" --sort "-count()" --period 7d',
+      },
+      {
+        description: "Agent tools ranked by failed calls, not failure rate",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.tool.name -F "count()" -F "failure_rate()" -F "equation|failure_rate() * count()" -q "gen_ai.operation.type:tool" --sort "-equation|failure_rate() * count()" --period 7d',
+      },
+      {
+        description: "Agent model calls, tokens, and cost in USD by model",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.request.model -F "count()" -F "sum(gen_ai.usage.total_tokens)" -F "sum(gen_ai.cost.total_tokens)" -q "gen_ai.operation.type:ai_client" --sort "-sum(gen_ai.cost.total_tokens)" --period 7d',
+      },
+      {
+        description:
+          "Agent runs, conversations, p95 latency, and failure rate by agent",
+        run: 'explore my-org/my-agent --dataset spans -F gen_ai.agent.name -F "count()" -F "count_unique(gen_ai.conversation.id)" -F "p95(span.duration)" -F "failure_rate()" -q "gen_ai.operation.type:agent" --sort "-count()" --period 7d',
+      },
+      {
+        description: "Daily calls to one agent tool",
+        run: 'explore my-org/my-agent --dataset spans -F "count()" -q "gen_ai.operation.type:tool gen_ai.tool.name:search_issues" --time-series 1d --period 7d',
       },
       {
         description: "Error counts in 15-minute buckets over the last hour",

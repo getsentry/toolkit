@@ -1,0 +1,19 @@
+{
+  // Vitest runs these in jsdom (vite.config.ts) with Node APIs available, so
+  // the browser app settings apply plus Node types.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    // The integration tests run the CLI's local receiver in process, so this
+    // program also checks packages/cli sources, which target ESNext.
+    "lib": ["ESNext", "DOM"],
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test-setup.ts",
+    "src/test-fixtures"
+  ],
+  "exclude": []
+}

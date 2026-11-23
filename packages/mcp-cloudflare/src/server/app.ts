@@ -87,7 +87,7 @@ const app = new Hono<{
     });
   })
   .get("/_health/version", (c) => {
-    return c.json({ id: c.env?.CF_VERSION_METADATA?.id ?? null });
+    return c.json({ id: c.env.CF_VERSION_METADATA?.id ?? null });
   })
   .get("/mcp.json", (c) => {
     const baseUrl = getBaseUrl(c);

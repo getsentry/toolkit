@@ -6,8 +6,17 @@ import { ValidationError } from "../../../src/lib/errors.js";
 function finalize(input: Partial<McpMergedArgs>) {
   return finalizeMcpConfig({
     agentProviderFromFlag: false,
+    insecureHttp: false,
+    allSkills: false,
+    experimental: false,
     ...input,
   });
+}
+
+/** Whether the config grants `skill`, including names that are not skills. */
+function grants(cfg: ReturnType<typeof finalize>, skill: string): boolean {
+  const skills: ReadonlySet<string> = cfg.finalSkills;
+  return skills.has(skill);
 }
 
 describe("finalizeMcpConfig", () => {
@@ -165,7 +174,7 @@ describe("finalizeMcpConfig", () => {
     expect(cfg.finalSkills.has("project-management")).toBe(true);
     expect(cfg.finalSkills.has("seer")).toBe(true);
     expect(cfg.finalSkills.has("docs")).toBe(false);
-    expect(cfg.finalSkills.has("preprod")).toBe(false);
+    expect(grants(cfg, "preprod")).toBe(false);
   });
 
   it("grants all active skills with --all-skills", () => {
@@ -178,7 +187,7 @@ describe("finalizeMcpConfig", () => {
     expect(cfg.finalSkills.has("project-management")).toBe(true);
     expect(cfg.finalSkills.has("seer")).toBe(true);
     expect(cfg.finalSkills.has("docs")).toBe(false);
-    expect(cfg.finalSkills.has("preprod")).toBe(false);
+    expect(grants(cfg, "preprod")).toBe(false);
   });
 
   // Self-hosted defaults
@@ -254,7 +263,7 @@ describe("finalizeMcpConfig", () => {
     expect(cfg.finalSkills.has("triage")).toBe(true);
     expect(cfg.finalSkills.has("project-management")).toBe(true);
     expect(cfg.finalSkills.has("docs")).toBe(false);
-    expect(cfg.finalSkills.has("preprod")).toBe(false);
+    expect(grants(cfg, "preprod")).toBe(false);
   });
 
   it("removes disabled skills when combined with --skills", () => {

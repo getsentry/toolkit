@@ -18,7 +18,7 @@ describe("/api/search", () => {
     );
 
     expect(res.status).toBe(400);
-    const json = (await res.json()) as { error: string; details: unknown[] };
+    const json = await res.json<{ error: string; details: unknown[] }>();
     expect(json.error).toBe("Invalid request");
     expect(json.details).toBeDefined();
   });
@@ -55,7 +55,7 @@ describe("/api/search", () => {
     );
 
     expect(res.status).toBe(503);
-    const json = (await res.json()) as { error: string; name: string };
+    const json = await res.json<{ error: string; name: string }>();
     expect(json.error).toBe("AI service not available");
     expect(json.name).toBe("AI_SERVICE_UNAVAILABLE");
   });

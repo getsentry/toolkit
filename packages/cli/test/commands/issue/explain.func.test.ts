@@ -9,20 +9,18 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([key, value]) => [
-      key,
-      typeof value === "function" ? vi.fn(value) : value,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 import { explainCommand } from "../../../src/commands/issue/explain.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as issueUtils from "../../../src/commands/issue/utils.js";
-import { ApiError, ContextError } from "../../../src/lib/errors.js";
+import { ApiError, ContextError, EXIT } from "../../../src/lib/errors.js";
 import type { IssueArgument } from "../../../src/lib/issue-arguments.js";
 import type { AutofixState, RootCause } from "../../../src/types/seer.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const EXPLAIN_FLAGS = {
   json: true,
@@ -50,11 +48,11 @@ function sampleState(cause: RootCause): AutofixState {
 }
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn((_chunk: string) => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -80,7 +78,7 @@ describe("issue explain multiple IDs", () => {
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Single cause")));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1");
 
     expect(JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "")).toEqual([
@@ -100,7 +98,7 @@ describe("issue explain multiple IDs", () => {
     );
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1", "IOS-2");
 
     expect(JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "")).toEqual([
@@ -128,7 +126,7 @@ describe("issue explain multiple IDs", () => {
     );
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Cause")));
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(
       createMockContext().context,
       { json: false, force: false, fresh: false },
@@ -154,7 +152,7 @@ describe("issue explain multiple IDs", () => {
     analyzeSpy.mockResolvedValue(sampleState(sampleCause("Cause")));
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await func.call(context, EXPLAIN_FLAGS, "IOS-1", "MISSING");
 
     const output = JSON.parse(stdoutWrite.mock.calls[0]?.[0] ?? "");
@@ -166,7 +164,7 @@ describe("issue explain multiple IDs", () => {
     const error = new Error("analysis failed");
     resolveSpy.mockRejectedValue(error);
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1", "IOS-2"),
     ).rejects.toBe(error);
@@ -184,14 +182,72 @@ describe("issue explain multiple IDs", () => {
       ),
     );
 
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
     ).rejects.toMatchObject({ reason: "out_of_credits", orgSlug: "test-org" });
   });
 
+  test("throws daily_cap_exceeded when Sentry refuses the analysis for the daily limit", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockRejectedValue(
+      new ApiError(
+        "Failed to start root cause analysis: 402 Payment Required",
+        402,
+        "Your organization does not have enough credits to start an Autofix run.",
+        undefined,
+        { code: "seer_out_of_credits", denialReason: "daily_cap_exceeded" },
+      ),
+    );
+
+    const func = await loadCommand(explainCommand);
+    await expect(
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
+    ).rejects.toMatchObject({
+      reason: "daily_cap_exceeded",
+      orgSlug: "test-org",
+    });
+  });
+
+  test("throws repos_not_linked when Sentry refuses the analysis with a 409", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockRejectedValue(
+      new ApiError(
+        "Failed to start root cause analysis: 409 Conflict",
+        409,
+        "Seer Autofix requires repositories to be connected to this project before a new run can be started.",
+        undefined,
+        { code: "repos_not_linked" },
+      ),
+    );
+
+    const func = await loadCommand(explainCommand);
+    await expect(
+      func.call(createMockContext().context, EXPLAIN_FLAGS, "IOS-1"),
+    ).rejects.toMatchObject({
+      reason: "repos_not_linked",
+      orgSlug: "test-org",
+      exitCode: EXIT.SEER_SETUP_REQUIRED,
+    });
+  });
+
+  test("points single runs at the fix in the closing hint", async () => {
+    resolveSpy.mockResolvedValue({ org: "test-org", issueId: "1" });
+    analyzeSpy.mockResolvedValue({
+      ...sampleState(sampleCause("Single cause")),
+      feature_id: "autofix_single_run",
+    });
+
+    const { context, stdoutWrite } = createMockContext();
+    const func = await loadCommand(explainCommand);
+    await func.call(context, { ...EXPLAIN_FLAGS, json: false }, "IOS-1");
+
+    const output = stdoutWrite.mock.calls.map((call) => call[0]).join("");
+    expect(output).toContain("To see the fix, run: sentry issue plan IOS-1");
+  });
+
   test("fails to parse when no issue ID is provided", async () => {
-    const func = await explainCommand.loader();
+    const func = await loadCommand(explainCommand);
     await expect(
       func.call(createMockContext().context, EXPLAIN_FLAGS),
     ).rejects.toMatchObject({ exception: expect.any(ContextError) });

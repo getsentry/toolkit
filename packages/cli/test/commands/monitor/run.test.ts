@@ -6,12 +6,23 @@
  * abort the wrapped command. The envelope transport is mocked.
  */
 
+import type { SentryContext } from "../../../src/context.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { runCommand } from "../../../src/commands/monitor/run.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
-import { CliError, ValidationError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import {
+  COMMAND_NOT_FOUND_FIELD,
+  ValidationError,
+} from "../../../src/lib/errors.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+} from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("monitor-run-");
 
@@ -22,19 +33,19 @@ const NODE = process.execPath;
 function makeContext() {
   return {
     ctx: {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
   };
 }
 
 describe("monitor runCommand.func()", () => {
-  let func: Awaited<ReturnType<typeof runCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
   let sendSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    func = await runCommand.loader();
+    func = await loadCommand(runCommand);
     sendSpy = vi
       .spyOn(transport, "sendEnvelopeRequest")
       .mockResolvedValue(undefined);
@@ -170,19 +181,66 @@ describe("monitor runCommand.func()", () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  test("non-existent binary throws CliError and sends error check-in", async () => {
+  test("non-existent binary throws a command-not-found error and sends error check-in", async () => {
     const { ctx } = makeContext();
-    await expect(
-      func.call(
+    const error = await func
+      .call(
         ctx,
         { dsn: SAAS_DSN, environment: "production" },
         "my-job",
         "this-binary-does-not-exist-xyz",
-      ),
-    ).rejects.toBeInstanceOf(CliError);
+      )
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).field).toBe(COMMAND_NOT_FOUND_FIELD);
+    expect((error as Error).message).toContain(
+      "Command not found: this-binary-does-not-exist-xyz",
+    );
     // Both check-ins are still sent; the close one reports an error.
     expect(sendSpy).toHaveBeenCalledTimes(2);
     const closeBody = sendSpy.mock.calls[1]?.[1] as string;
     expect(closeBody).toContain('"status":"error"');
+  });
+  test("still runs the command when the working directory was deleted", async () => {
+    // context.cwd falls back to a stale PWD then; the child must not be
+    // started there, or spawn fails with ENOENT.
+    const { ctx } = makeContext();
+    ctx.cwd = "/nonexistent-deleted-worktree";
+    await func.call(
+      ctx,
+      { dsn: SAAS_DSN, environment: "production" },
+      "my-job",
+      NODE,
+      "-e",
+      "process.exit(0)",
+    );
+    expect(sendSpy.mock.calls[1]?.[1] as string).toContain('"status":"ok"');
+  });
+
+  test("sends an error check-in when the command cannot be started", async () => {
+    // e.g. a .cmd argument with a line break on Windows: the throw must not
+    // leave the monitor stuck in_progress.
+    const spawnSpy = vi
+      .spyOn(windowsSpawn, "spawnUserCommand")
+      .mockImplementation(() => {
+        throw new ValidationError("bad argument", "command");
+      });
+    try {
+      const { ctx } = makeContext();
+      await expect(
+        func.call(
+          ctx,
+          { dsn: SAAS_DSN, environment: "production" },
+          "my-job",
+          NODE,
+        ),
+      ).rejects.toThrow("bad argument");
+      expect(sendSpy).toHaveBeenCalledTimes(2);
+      expect(sendSpy.mock.calls[1]?.[1] as string).toContain(
+        '"status":"error"',
+      );
+    } finally {
+      spawnSpy.mockRestore();
+    }
   });
 });

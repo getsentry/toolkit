@@ -12,7 +12,7 @@ import chalk from "chalk";
 
 let responseStarted = false;
 
-export const logError = (msg: string, detail?: any) =>
+export const logError = (msg: string, detail?: unknown) =>
   process.stdout.write(
     `\n${chalk.red("●")} ${msg}${detail ? `\n  ⎿  ${chalk.gray(detail instanceof Error ? detail.message : detail)}` : ""}\n`,
   );
@@ -30,9 +30,9 @@ export const logInfo = (msg: string, detail?: string) =>
 export const logUser = (msg: string) =>
   process.stdout.write(`\n${chalk.gray(">")} ${chalk.gray(msg)}\n`);
 
-export const logTool = (name: string, args?: any) => {
+export const logTool = (name: string, args?: unknown) => {
   const params =
-    args && Object.keys(args).length > 0
+    typeof args === "object" && args !== null && Object.keys(args).length > 0
       ? `(${Object.entries(args)
           .map(
             ([k, v]) =>

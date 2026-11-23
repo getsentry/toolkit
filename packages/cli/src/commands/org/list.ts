@@ -58,6 +58,7 @@ import type {
   OrgListAccountSchema,
   OrgListEntryFields,
 } from "../../output-schemas/org.js";
+import { rethrow } from "../../lib/rethrow.js";
 
 type ListFlags = {
   readonly limit: number;
@@ -77,7 +78,7 @@ type OrgListEntry = WithOutputFields<
 
 /** One account's fetched orgs plus its slug → region URL cache. */
 type AccountOrgs = {
-  account?: AccountSummary;
+  account?: AccountSummary | undefined;
   orgs: SentryOrganization[];
   regions: Map<string, string>;
 };
@@ -253,7 +254,7 @@ async function fetchOrgsAcrossAccounts(
 ): Promise<AccountOrgs[]> {
   const settled = await Promise.allSettled(accounts.map(fetchAccountOrgs));
   const fetched: AccountOrgs[] = [];
-  let firstError: unknown;
+  let firstError: AuthError | ApiError | TimeoutError | undefined;
   for (const [i, result] of settled.entries()) {
     if (result.status === "fulfilled") {
       fetched.push(result.value);
@@ -276,7 +277,7 @@ async function fetchOrgsAcrossAccounts(
     );
   }
   if (fetched.length === 0 && firstError !== undefined) {
-    throw firstError;
+    rethrow(firstError);
   }
   return fetched;
 }

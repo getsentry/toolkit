@@ -6,6 +6,7 @@ import { DEFAULT_SENTRY_URL } from "../../../../src/lib/constants.js";
 import { setOrgRegion } from "../../../../src/lib/db/regions.js";
 import { ValidationError } from "../../../../src/lib/errors.js";
 import { useTestConfigDir } from "../../../helpers.js";
+import type { Writer } from "../../../../src/types/index.js";
 
 const getConfigDir = useTestConfigDir("test-alert-metrics-create-", {
   isolateProjectRoot: true,
@@ -26,10 +27,10 @@ type CreateFlags = {
 };
 
 function createContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     stdout: { write: stdoutWrite },
-    stderr: { write: vi.fn(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: getConfigDir(),
     commandPrefix: ["sentry", "alert", "metrics", "create"],
     stdoutWrite,

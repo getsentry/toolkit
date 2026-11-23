@@ -1,4 +1,5 @@
-import type { LocalFeedItem } from "./spotlight.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import { itemTime, type LocalFeedItem } from "./spotlight.ts";
 import { spanData, text } from "./inspection.ts";
 export type EventColumn = "time" | "type" | "level" | "logger" | "duration";
 export type EventFilters = {
@@ -17,13 +18,9 @@ export function loggerForItem(item: LocalFeedItem): string | undefined {
   return text(spanData(item.payload)["sentry.logger.name"]);
 }
 function timestamp(item: LocalFeedItem): number {
-  const value = item.timestamp;
-  if (typeof value === "number") return value < 1e12 ? value * 1000 : value;
-  if (typeof value === "string") {
-    const date = Date.parse(value);
-    if (Number.isFinite(date)) return date;
-  }
-  return -Infinity;
+  const value = parseEventTimestamp(itemTime(item));
+  if (value === undefined) return -Infinity;
+  return value < 1e12 ? value * 1000 : value;
 }
 export function filterEvents(
   items: readonly LocalFeedItem[],

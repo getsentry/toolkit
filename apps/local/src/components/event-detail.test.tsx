@@ -1,8 +1,22 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { decodeEnvelope } from "@/lib/spotlight.ts";
 import { buildTraceGroups } from "@/lib/trace-model.ts";
+import { werkzeugLogEnvelope } from "@/test-fixtures/sentry-python.ts";
 import { EventDetail } from "./event-detail.tsx";
+import { pythonBreadcrumbEvent } from "@/test-fixtures/python-breadcrumbs.ts";
+import {
+  jsCaptureMessage,
+  pythonHandledException,
+  pythonLoggingEvent,
+  sdkErrorMessage,
+} from "@/test-fixtures/sdk-message.ts";
 
 afterEach(() => {
   cleanup();
@@ -288,4 +302,165 @@ test("errors without captured attachments show no attachment section", () => {
     screen.queryByRole("region", { name: "Event attachments" }),
   ).toBeNull();
   expect(screen.queryByRole("heading", { name: "Attachments" })).toBeNull();
+});
+
+test("log messages hide terminal colour codes while JSON keeps them", () => {
+  const [banner] = decodeEnvelope(werkzeugLogEnvelope, "logs");
+  if (!banner) throw new Error("Expected log");
+  render(<EventDetail item={banner} />);
+  const overview = screen.getByRole("tabpanel").textContent ?? "";
+  expect(overview).toContain("WARNING: This is a development server.");
+  expect(overview).not.toContain("\u001b");
+  expect(overview).not.toContain("[31m");
+  fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+  expect(screen.getByRole("tabpanel").textContent).toContain("[31m");
+});
+
+test("breadcrumb messages hide terminal colour codes", () => {
+  // sentry-python records werkzeug's coloured access log as a breadcrumb.
+  render(
+    <EventDetail
+      item={item("event", {
+        level: "error",
+        message: "Checkout failed",
+        breadcrumbs: {
+          values: [
+            {
+              type: "log",
+              category: "werkzeug",
+              level: "info",
+              message:
+                '127.0.0.1 - - [17/Nov/2026 20:59:55] "\u001b[33mGET /missing HTTP/1.1\u001b[0m" 404 -',
+              timestamp: "2026-11-17T20:59:55.120Z",
+            },
+          ],
+        },
+      })}
+    />,
+  );
+  const breadcrumbs = screen.getByRole("region", { name: "Breadcrumbs" });
+  expect(breadcrumbs.textContent).toContain('"GET /missing HTTP/1.1" 404');
+  expect(breadcrumbs.textContent).not.toContain("[33m");
+});
+
+test("breadcrumb times use local time for epoch and ISO timestamps", () => {
+  render(<EventDetail item={item("event", pythonBreadcrumbEvent)} />);
+  const times = [
+    ...screen
+      .getByRole("region", { name: "Breadcrumbs" })
+      .querySelectorAll("time"),
+  ].map((time) => time.textContent);
+  expect(times).toEqual([
+    new Date(1794947420913).toLocaleTimeString(),
+    new Date("2026-11-17T20:30:21.050Z").toLocaleTimeString(),
+  ]);
+});
+
+test("logging events show their message and key event fields in Overview", () => {
+  render(<EventDetail item={item("event", pythonLoggingEvent)} />);
+  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(
+    "Database query failed for orders",
+  );
+  expect(
+    screen.getByTestId("event-detail").querySelector("header")?.textContent,
+  ).toContain("Message");
+  const details = screen.getByRole("table", { name: "Event details" });
+  const rows: [string, string][] = [
+    ["Message", "Database query failed for orders"],
+    ["Level", "error"],
+    ["Environment", "production"],
+    ["Release", "shop@1.4.2"],
+    ["Server", "web-1"],
+  ];
+  for (const [label, value] of rows)
+    expect(
+      within(details).getByRole("rowheader", { name: label }).nextSibling
+        ?.textContent,
+    ).toBe(value);
+  const user = screen.getByRole("table", { name: "Event user" });
+  for (const value of ["42", "ada@example.test", "ada", "127.0.0.1"])
+    expect(user.textContent).toContain(value);
+});
+
+test("exception events show whether the SDK handled them", () => {
+  render(<EventDetail item={item("event", pythonHandledException)} />);
+  const details = screen.getByRole("table", { name: "Event details" });
+  expect(
+    within(details).getByRole("rowheader", { name: "Handled" }).nextSibling
+      ?.textContent,
+  ).toBe("Yes");
+  const header = screen.getByTestId("event-detail").querySelector("header");
+  expect(header?.textContent).toContain("Exception");
+  expect(header?.textContent).not.toContain("event.django");
+});
+
+test("message events at error level are labelled as messages, not exceptions", () => {
+  render(<EventDetail item={item("event", sdkErrorMessage)} />);
+  const header = screen.getByTestId("event-detail").querySelector("header");
+  expect(header?.textContent).toContain("Message");
+  expect(header?.textContent).not.toContain("http.server");
+  expect(header?.textContent).not.toContain("Exception");
+});
+
+test("contexts use readable names and skip empty sections", () => {
+  render(<EventDetail item={item("event", pythonLoggingEvent)} />);
+  const headings = screen
+    .getAllByRole("heading", { level: 4 })
+    .map((heading) => heading.textContent);
+  expect(headings).toContain("OS");
+  expect(headings).toContain("Runtime");
+  expect(headings).not.toContain("Cloud resource");
+  expect(headings).not.toContain("cloud_resource");
+});
+
+test("events whose contexts are all empty show no Contexts section", () => {
+  render(
+    <EventDetail
+      item={item("event", {
+        message: "Cache warmed",
+        contexts: { cloud_resource: {}, culture: {} },
+        tags: { region: "eu" },
+      })}
+    />,
+  );
+  expect(screen.queryByText(/^contexts$/i)).toBeNull();
+  expect(screen.getByRole("table", { name: "Event tags" })).toBeDefined();
+});
+
+test("JS SDK 11 captureMessage events are messages, not handled exceptions", () => {
+  render(<EventDetail item={item("event", jsCaptureMessage)} />);
+  const header = screen.getByTestId("event-detail").querySelector("header");
+  expect(header?.textContent).toContain("Message");
+  expect(header?.textContent).not.toContain("Exception");
+  const details = screen.getByRole("table", { name: "Event details" });
+  expect(
+    within(details).queryByRole("rowheader", { name: "Handled" }),
+  ).toBeNull();
+  // The synthetic stack still shows where the message was captured.
+  expect(screen.queryByRole("region", { name: "Exception" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Message" })).toBeDefined();
+  expect(screen.getByText("capture.mjs:11", { exact: false })).toBeDefined();
+});
+
+test("log attribute values hide terminal colour codes while JSON keeps them", () => {
+  // uvicorn's startup log keeps its coloured template in `color_message`.
+  render(
+    <EventDetail
+      item={item("log", {
+        body: "Started server process [41234]",
+        level: "info",
+        attributes: {
+          color_message: {
+            type: "string",
+            value: "Started server process [\u001b[36m%d\u001b[0m]",
+          },
+        },
+      })}
+    />,
+  );
+  const attributes = screen.getByRole("table", { name: "Log attributes" });
+  expect(attributes.textContent).toContain("Started server process [%d]");
+  expect(attributes.textContent).not.toContain("[36m");
+  fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
+  expect(screen.getByRole("tabpanel").textContent).toContain("[36m");
 });

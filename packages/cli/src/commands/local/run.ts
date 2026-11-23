@@ -2,26 +2,32 @@
  * sentry local run
  *
  * Run a command with the local dev server enabled. Injects
- * `SENTRY_SPOTLIGHT` (read automatically by server-side SDKs) plus the
+ * `SENTRY_SPOTLIGHT` (read by the Node.js, Python, and Ruby SDKs, and by
+ * PHP through its `spotlight` option) plus the
  * framework-prefixed client variants (`NEXT_PUBLIC_SENTRY_SPOTLIGHT`,
  * `VITE_SENTRY_SPOTLIGHT`, etc.) so the spotlight URL also reaches
- * browser bundles regardless of bundler.
+ * browser bundles. Browser SDKs do not read those variants yet; the app
+ * passes the URL to `spotlightBrowserIntegration` itself.
  *
  * If no server is already running on the target port, one is started
  * automatically in the background and shut down when the child exits.
- * If one is already running, this command attaches to it as an SSE consumer
- * so events still tail to the terminal.
+ * If a Local or Spotlight receiver is already running, this command attaches
+ * to it as an SSE consumer so events still tail to the terminal. Another
+ * process on the default port makes it capture on a free port instead.
  */
 
-import {
-  type ChildProcess,
-  type StdioOptions,
-  spawn,
-} from "node:child_process";
+import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { Server } from "node:http";
 import { basename, resolve } from "node:path";
+import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
+import {
+  appIsRunning,
+  signalApp,
+  startsOwnProcessGroup,
+  terminalSignalsProcess,
+} from "../../lib/child-signals.js";
 import { buildCommand } from "../../lib/command.js";
 import {
   choiceParser,
@@ -29,20 +35,38 @@ import {
   parseText,
   textParser,
 } from "../../lib/completion-target.js";
+import { redactCredentialText } from "../../lib/credential-redaction.js";
 import { detectDevCommand } from "../../lib/dev-script.js";
-import { CliError, EXIT, ValidationError } from "../../lib/errors.js";
+import {
+  CliError,
+  EXIT,
+  PORT_HELD_BY_DAEMON_FIELD,
+  PORT_IN_USE_FIELD,
+  signalExitCode,
+  ValidationError,
+  VerifyFailedError,
+} from "../../lib/errors.js";
 import { bold } from "../../lib/formatters/colors.js";
 import {
   FILTER_VALUES,
   type FilterValue,
   FORMAT_VALUES,
+  createReplayTracker,
+  envelopeHasTelemetry,
   formatEnvelopeLines,
   formatEnvelopeLinesJson,
   type FormatValue,
   printLocalViewerHint,
+  sanitize,
 } from "../../lib/formatters/local.js";
 import { logger, printJsonLine, printLine } from "../../lib/logger.js";
-import { injectWranglerSpotlightBinding } from "../../lib/wrangler.js";
+import { spawnFailureError } from "../../lib/spawn-failure.js";
+import { spawnUserCommand, windowsEnvKey } from "../../lib/windows-spawn.js";
+import {
+  injectWranglerSpotlightBinding,
+  wranglerInjectedMessage,
+  wranglerSetupHint,
+} from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
   retainLocalDaemonSession,
@@ -71,7 +95,8 @@ import {
 } from "./retention-buffer.js";
 
 type RunFlags = {
-  readonly port: number;
+  /** Omitted unless the user passed `--port`; plain runs then use {@link DEFAULT_PORT}. */
+  readonly port?: number;
   readonly host: string;
   readonly verify: boolean;
   readonly timeout: number;
@@ -149,11 +174,17 @@ type EventTail = {
 
 type EventTailOptions = {
   port: number;
+  /**
+   * Capture on a free port when the daemon or a server that is not a receiver
+   * holds `port`. Only for the default port: a `--port` the user chose stays
+   * an error.
+   */
+  freePortIfHeld?: boolean;
   host: string;
   activeFilters: ReadonlySet<FilterValue>;
   useJson: boolean;
   showAttributes: boolean;
-  maxEnvelopes?: number;
+  maxEnvelopes?: number | undefined;
 };
 
 /** Keep stdout exclusively for NDJSON when an agent requests JSON output. */
@@ -235,11 +266,17 @@ async function startBackgroundServer({
   const { server, port: boundPort } = await tryListen(app, port, host);
   const url = formatLocalServerUrl(host, boundPort);
 
+  const replays = createReplayTracker();
   const subscriptionId = buffer.subscribe((container) => {
     try {
       const formatLines = useJson
         ? formatEnvelopeLinesJson(container, activeFilters, showAttributes)
-        : formatEnvelopeLines(container, activeFilters, showAttributes);
+        : formatEnvelopeLines(
+            container,
+            activeFilters,
+            showAttributes,
+            replays,
+          );
       for (const line of formatLines) {
         if (useJson) {
           printJsonLine(line);
@@ -265,14 +302,32 @@ async function startBackgroundServer({
 }
 
 /**
+ * Say that this run listens on `boundPort` because `defaultPort` is taken.
+ * An SDK that hard-codes the default port sends there instead, and the
+ * daemon drops traffic that isn't for a session without a word, so the
+ * notice says to use SENTRY_SPOTLIGHT.
+ *
+ * @param reason - Why the default port is taken, e.g. "is held by another process"
+ */
+function freePortNotice(
+  defaultPort: number,
+  boundPort: number,
+  reason: string,
+): string {
+  return `Port ${defaultPort} ${reason}, so this run listens on port ${boundPort} instead. SDKs that hard-code ${defaultPort} won't reach it; make sure they read SENTRY_SPOTLIGHT.`;
+}
+
+/**
  * Get a live event tail on `host:port`, whichever way is available.
  *
- * Prefers attaching to whatever already holds the port so we never compete
- * with it, and falls back to attaching if the bind loses a race. `run` wraps
- * the user's dev command, so a busy port must never be fatal here.
+ * Prefers attaching to a receiver that already holds the port so we never
+ * compete with it, and probes again if the bind loses a race. Anything else on
+ * the port fails with a port-in-use error, unless `freePortIfHeld` lets this
+ * run capture on a free port instead.
  */
 async function openEventTail({
   port,
+  freePortIfHeld = false,
   host,
   activeFilters,
   useJson,
@@ -281,56 +336,116 @@ async function openEventTail({
 }: EventTailOptions): Promise<EventTail> {
   const url = formatLocalServerUrl(host, port);
 
-  if (await isServerRunning(url)) {
+  /**
+   * Whether a receiver to attach to holds `port`, or, when `freePortIfHeld`
+   * lets this run move off a held port, why it captures on a free one instead.
+   */
+  const probe = async (): Promise<{
+    running: boolean;
+    heldNotice?: (boundPort: number) => string;
+  }> => {
+    try {
+      return { running: await isServerRunning(url) };
+    } catch (err) {
+      if (!(freePortIfHeld && err instanceof ValidationError)) throw err;
+      if (err.field === PORT_HELD_BY_DAEMON_FIELD) {
+        // The daemon's receiver only takes session traffic, and it stays up
+        // while it retains sessions, so a plain run gets its own receiver.
+        return {
+          running: false,
+          heldNotice: (bound) =>
+            `${freePortNotice(port, bound, "is held by the Local daemon")} Add --session <name> to capture into the daemon instead.`,
+        };
+      }
+      if (err.field === PORT_IN_USE_FIELD) {
+        // A server that is not a receiver would drop every event.
+        return {
+          running: false,
+          heldNotice: (bound) =>
+            freePortNotice(port, bound, "is held by another process"),
+        };
+      }
+      throw err;
+    }
+  };
+
+  const attach = async (): Promise<EventTail> => {
     await configureExistingRetention(url, maxEnvelopes);
-    logger.info(`Connected to existing server at ${bold(url)}`);
     return attachToExistingServer({
       activeFilters,
       showAttributes,
       url,
       useJson,
     });
-  }
+  };
 
-  logger.info("No server detected, starting one in the background...");
-  try {
+  const start = async (
+    heldNotice: ((boundPort: number) => string) | undefined,
+  ): Promise<EventTail> => {
     const bg = await startBackgroundServer({
       maxEnvelopes,
-      port,
+      port: heldNotice ? 0 : port,
       host,
       activeFilters,
       useJson,
       showAttributes,
     });
+    if (heldNotice) {
+      logger.info(heldNotice(Number(new URL(bg.url).port)));
+    }
     logger.info(`Background server listening on ${bold(bg.url)}`);
     return bg;
+  };
+
+  const first = await probe();
+  if (first.running) {
+    logger.info(`Connected to existing server at ${bold(url)}`);
+    return await attach();
+  }
+  if (!first.heldNotice) {
+    logger.info("No server detected, starting one in the background...");
+  }
+  try {
+    return await start(first.heldNotice);
   } catch (err) {
-    if (!(err instanceof ValidationError && err.field === "port")) {
+    if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
       throw err;
     }
-    await configureExistingRetention(url, maxEnvelopes);
-    // Something grabbed the port between the probe and the bind.
-    logger.warn(`${err.message}; attaching to it instead`);
-    return attachToExistingServer({
-      activeFilters,
-      showAttributes,
-      url,
-      useJson,
-    });
+    // Something grabbed the port between the probe and the bind. Attach only
+    // if it is a receiver; anything else would drop every event.
+    const second = await probe();
+    if (second.running) {
+      logger.warn(`Port ${port} is in use; attaching to it instead`);
+      return await attach();
+    }
+    if (!second.heldNotice) throw err;
+    return await start(second.heldNotice);
   }
 }
 
-/** Augment PATH with `./node_modules/.bin` for Node project scripts. */
-function augmentPathForNode(
+/**
+ * Augment PATH with `./node_modules/.bin` for Node project scripts.
+ *
+ * On Windows the variable is usually spelled `Path`, and names are
+ * case-insensitive: prepend to the key the child would read and drop the
+ * other spellings, so it never gets a PATH holding only `node_modules/.bin`.
+ */
+export function augmentPathForNode(
   env: Record<string, string | undefined>,
   cwd: string,
+  platform: NodeJS.Platform = process.platform,
 ): Record<string, string | undefined> {
   const binDir = resolve(cwd, "node_modules", ".bin");
-  const sep = process.platform === "win32" ? ";" : ":";
-  return {
-    ...env,
-    PATH: env.PATH ? `${binDir}${sep}${env.PATH}` : binDir,
-  };
+  if (platform !== "win32") {
+    return { ...env, PATH: env["PATH"] ? `${binDir}:${env["PATH"]}` : binDir };
+  }
+  const key = windowsEnvKey(env, "PATH") ?? "PATH";
+  const current = env[key];
+  const augmented = Object.fromEntries(
+    Object.entries(env).filter(([k]) => k.toUpperCase() !== "PATH"),
+  );
+  augmented[key] = current ? `${binDir};${current}` : binDir;
+  return augmented;
 }
 
 /** The error shown when no command was given and none was detected. */
@@ -340,11 +455,20 @@ function autoDetectErrorMessage(): string {
     `Usage: ${sentry`local run -- <command>`}`,
     "",
     "Supported auto-detection:",
+    "  - artisan (Laravel: composer run dev, or php artisan serve)",
+    "  - Gemfile with bin/rails (Rails: bin/dev, or bin/rails server)",
     "  - package.json (scripts: dev, develop, serve, start)",
     "  - manage.py (Django)",
-    "  - app.py / main.py (Python)",
+    "  - a FastAPI app in app.py / main.py (uvicorn)",
+    "  - a Flask app in app.py / main.py / wsgi.py (flask run)",
+    "  - app.py / main.py (Python script)",
+    "  - FLASK_APP in a Python project (flask run)",
+    "  - Gemfile with config.ru (Rack)",
+    "  - Cargo.toml with a binary target (Rust)",
     "  - go.mod (Go)",
     "  - docker-compose.yml / compose.yml (Docker Compose)",
+    "",
+    "Python commands use the project's .venv or venv interpreter when present.",
   ].join("\n");
 }
 
@@ -364,8 +488,8 @@ function buildChildEnv(
     ...process.env,
     ...clientSpotlightVars,
     SENTRY_SPOTLIGHT: spotlightUrl,
-    SENTRY_TRACES_SAMPLE_RATE: process.env.SENTRY_TRACES_SAMPLE_RATE ?? "1",
-    SENTRY_RELEASE: process.env.SENTRY_RELEASE ?? "sentry-cli-local",
+    SENTRY_TRACES_SAMPLE_RATE: process.env["SENTRY_TRACES_SAMPLE_RATE"] ?? "1",
+    SENTRY_RELEASE: process.env["SENTRY_RELEASE"] ?? "sentry-cli-local",
   };
   if (isPackageJsonSource(commandSource)) {
     env = augmentPathForNode(env, cwd);
@@ -383,9 +507,12 @@ async function resolveArgs(
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
-    throw new ValidationError(autoDetectErrorMessage(), "command");
+    throw new ValidationError(autoDetectErrorMessage(), "command.missing");
   }
   logger.info(`Detected ${detected.source}: ${detected.args.join(" ")}`);
+  if (detected.hint) {
+    logger.warn(detected.hint);
+  }
   return { args: detected.args, commandSource: detected.source };
 }
 
@@ -393,17 +520,28 @@ export const runCommand = buildCommand({
   docs: {
     brief: "Run a command with the local dev server enabled",
     fullDescription:
-      "Run a command with the SENTRY_SPOTLIGHT environment variable\n" +
-      "injected so the Sentry SDK automatically sends envelopes to the\n" +
-      "local server.\n\n" +
+      "Run a command with the SENTRY_SPOTLIGHT environment variable set\n" +
+      "to the local server's URL.\n\n" +
       "If no server is already listening on the port, one is started\n" +
       "automatically and shut down when the child process exits.\n\n" +
       "The child process inherits all current env vars plus\n" +
-      "SENTRY_SPOTLIGHT (server-side SDKs read this automatically), the\n" +
-      "framework-prefixed client variants (NEXT_PUBLIC_, VITE_, etc.), and\n" +
-      "SENTRY_TRACES_SAMPLE_RATE=1. Use --format json to stream versioned\n" +
-      "NDJSON observations to stdout for agents. Use --open to launch the\n" +
-      "Sentry Local UI.",
+      "SENTRY_SPOTLIGHT, the same URL under framework client prefixes\n" +
+      "(NEXT_PUBLIC_, VITE_, etc.), and SENTRY_TRACES_SAMPLE_RATE=1.\n\n" +
+      "What your SDK needs:\n" +
+      "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
+      "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
+      "  - Go and Rust have no Spotlight support. Set\n" +
+      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
+      "  - Browser SDKs ignore the prefixed variables. Add\n" +
+      "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
+      "  - Cloudflare Workers (wrangler dev) need\n" +
+      "    tunnel: env.SENTRY_SPOTLIGHT and a DSN (a placeholder works).\n" +
+      "  - Without a DSN, browser replays are dropped and browser-to-server\n" +
+      "    traces do not link. Python also drops logs buffered at exit.\n" +
+      "  - The Next.js edge runtime sends no messages or logs here; its\n" +
+      "    errors still arrive through the Node.js server.\n\n" +
+      "Use --format json to stream versioned NDJSON observations to stdout\n" +
+      "for agents. Use --open to launch the Sentry Local UI.",
     examples: [
       {
         description: "Run a Node.js dev server with the local server enabled",
@@ -455,8 +593,8 @@ export const runCommand = buildCommand({
       port: {
         kind: "parsed",
         parse: textParser(parsePort),
-        brief: "Port for the local server",
-        default: String(DEFAULT_PORT),
+        brief: `Port for the local server (default: ${DEFAULT_PORT})`,
+        optional: true,
       },
       host: {
         kind: "parsed",
@@ -474,14 +612,15 @@ export const runCommand = buildCommand({
       },
       verify: {
         kind: "boolean",
-        brief: "Verify SDK sends events, then exit",
+        brief:
+          "Wait for the app's first event (of the --filter types, if set), then exit",
         default: false,
       },
       timeout: {
         kind: "parsed",
         parse: textParser(parseTimeout),
         brief:
-          "Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode)",
+          "Stop the child after N seconds and exit 124 (0 = no timeout; defaults to 30 s in --verify mode, which exits 64)",
         default: "0",
       },
       format: {
@@ -492,7 +631,8 @@ export const runCommand = buildCommand({
       },
       attributes: {
         kind: "boolean",
-        brief: "Include selected event attributes in output",
+        brief:
+          "Also show SDK attributes, under each transaction, span and log or in JSON",
         default: false,
       },
       open: {
@@ -538,7 +678,8 @@ export const runCommand = buildCommand({
       return;
     }
 
-    let url = formatLocalServerUrl(flags.host, flags.port);
+    const port = flags.port ?? DEFAULT_PORT;
+    let url = formatLocalServerUrl(flags.host, port);
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
@@ -553,7 +694,7 @@ export const runCommand = buildCommand({
             cwd: this.cwd,
             host: flags.host,
             label: flags.session || basename(this.cwd),
-            port: flags.port,
+            port,
           });
           daemonSessionId = session.id;
           daemonIngestUrl = session.ingestUrl;
@@ -569,7 +710,8 @@ export const runCommand = buildCommand({
         })()
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
-          port: flags.port,
+          port,
+          freePortIfHeld: flags.port === undefined,
           host: flags.host,
           activeFilters,
           useJson,
@@ -591,9 +733,12 @@ export const runCommand = buildCommand({
       this.cwd,
     );
     if (wrangler.injected) {
-      logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+      logger.info(wranglerInjectedMessage());
     }
-    logger.info(`Starting: ${bold(wrangler.args.join(" "))}`);
+    // A session's Wrangler binding carries its ingest capability.
+    logger.info(
+      `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
+    );
     logger.info(
       daemonSessionId
         ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
@@ -602,13 +747,16 @@ export const runCommand = buildCommand({
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
+    const ownGroup = startsOwnProcessGroup();
     let child: ChildProcess;
     try {
       const [cmd = "", ...cmdArgs] = wrangler.args;
-      child = spawn(cmd, cmdArgs, {
+      child = spawnUserCommand(cmd, cmdArgs, {
         cwd: this.cwd,
+        resolveCwd: this.cwd,
         env: childEnv,
         stdio: childStdio(useJson),
+        detached: ownGroup,
       });
       forwardChildOutput(child, useJson);
     } catch (err) {
@@ -616,40 +764,62 @@ export const runCommand = buildCommand({
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
       }
-      throw new CliError(
-        `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-        EXIT.GENERAL,
-      );
+      throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
-    const onSigint = () => child.kill("SIGINT");
-    const onSigterm = () => child.kill("SIGTERM");
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
+    const interruptState = { interrupted: false, timedOut: false };
+    const interrupts = interruptForwarder(child, ownGroup);
+    const onSigint = () => {
+      interruptState.interrupted = true;
+      interrupts.forward();
+    };
+    const onSigterm = () => {
+      interruptState.interrupted = true;
+      signalApp(child, "SIGTERM", ownGroup);
+    };
+    const onSighup = () => {
+      interruptState.interrupted = true;
+      signalApp(child, "SIGHUP", ownGroup);
+    };
+    // `on`, not `once`: a second signal must reach the app too, not kill the
+    // CLI and leave the app running.
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
+    // In its own group the app no longer gets the hangup sent to the CLI's
+    // group or session, so pass it on.
+    if (ownGroup) {
+      process.on("SIGHUP", onSighup);
+    }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (flags.timeout > 0) {
-      timeoutId = setTimeout(async () => {
-        logger.warn(`Timeout: killing child after ${flags.timeout}s`);
-        await gracefulKill(child);
+      timeoutId = setTimeout(() => {
+        // The user already stopped the app, so it is shutting down: let it
+        // finish and keep its exit code.
+        if (interruptState.interrupted) {
+          return;
+        }
+        logger.info(`Stopping after ${flags.timeout}s (--timeout)…`);
+        interruptState.timedOut = true;
+        void gracefulKill(child, ownGroup);
       }, flags.timeout * 1000);
     }
 
-    let exitCode: number;
+    let exit: ChildExit;
     try {
-      exitCode = await new Promise<number>((done, fail) => {
+      exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
-        child.on("close", (code) => {
+        child.on("close", (code, signal) => {
           if (!settled) {
             settled = true;
-            done(code ?? 1);
+            done({ code, signal });
           }
         });
         child.on("error", (err) => {
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
-            fail(err);
+            fail(spawnFailureError(wrangler.args[0] ?? "", err, this.cwd));
           }
         });
       });
@@ -657,19 +827,108 @@ export const runCommand = buildCommand({
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      // A wrapper such as `go run` can exit while the app it started keeps
+      // running. Stop what is left once the user asked the app to stop, with
+      // the signal handlers still installed so a second signal reaches the
+      // group instead of killing the CLI mid-cleanup.
+      if (ownGroup && (interruptState.interrupted || interruptState.timedOut)) {
+        await gracefulKill(child, ownGroup);
+      }
+      interrupts.dispose();
       process.removeListener("SIGINT", onSigint);
       process.removeListener("SIGTERM", onSigterm);
+      process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
       if (daemonSessionId) {
         await retainLocalDaemonSession(daemonSessionId);
       }
     }
 
-    if (exitCode !== 0) {
-      throw new CliError(`Process exited with code ${exitCode}`, exitCode);
+    // How the app ends once --timeout stops it depends on the app (0, 143,
+    // 137, ...), so report the timeout itself.
+    if (interruptState.timedOut) {
+      logger.info(`Stopped after ${flags.timeout}s (--timeout)`);
+      this.process.exitCode = EXIT.RUN_TIMEOUT;
+      return;
     }
+    const exitCode = exit.signal
+      ? signalExitCode(exit.signal)
+      : (exit.code ?? EXIT.GENERAL);
+    if (exitCode === 0) {
+      return;
+    }
+    // The user stopped the app: however it ended is what they asked for, so
+    // exit with its code and print no error.
+    if (interruptState.interrupted) {
+      this.process.exitCode = exitCode;
+      return;
+    }
+    throw new CliError(
+      exit.signal
+        ? `Process exited with code ${exitCode} (killed by ${exit.signal})`
+        : `Process exited with code ${exitCode}`,
+      exitCode,
+    );
   },
 });
+
+/** How the wrapped app ended, from the child's `close` event. */
+type ChildExit = {
+  /** Exit code, or `null` when a signal killed it. */
+  code: number | null;
+  /** The signal that killed it, or `null` when it exited. */
+  signal: NodeJS.Signals | null;
+};
+
+/**
+ * How long to wait before passing on a SIGINT that the terminal seemed to
+ * deliver already. Long enough for most apps to finish shutting down, so they
+ * don't get a second SIGINT, which many treat as "force quit".
+ */
+const INTERRUPT_FALLBACK_MS = 3000;
+
+/**
+ * Pass the SIGINTs the CLI receives on to the child.
+ *
+ * Ctrl-C signals the terminal's whole foreground process group, which holds
+ * the child too, so the first SIGINT is not resent while the child is in that
+ * group: sending it twice made apps such as Flask run their shutdown twice.
+ * The CLI can't tell Ctrl-C from `kill -INT <cli pid>`, though, so if the
+ * child is still running {@link INTERRUPT_FALLBACK_MS} later it gets the
+ * SIGINT anyway. Later SIGINTs are always passed on.
+ */
+function interruptForwarder(
+  child: ChildProcess,
+  ownGroup: boolean,
+): {
+  forward: () => void;
+  dispose: () => void;
+} {
+  let received = 0;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
+  const send = () => {
+    clearTimeout(fallback);
+    fallback = undefined;
+    signalApp(child, "SIGINT", ownGroup);
+  };
+  return {
+    forward() {
+      received += 1;
+      if (received > 1 || !terminalSignalsProcess(child.pid)) {
+        send();
+        return;
+      }
+      logger.debug("The terminal already sent SIGINT to the app");
+      fallback = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          logger.debug("The app is still running; sending it SIGINT");
+          send();
+        }
+      }, INTERRUPT_FALLBACK_MS);
+    },
+    dispose: () => clearTimeout(fallback),
+  };
+}
 
 /** Default timeout for --verify when no explicit --timeout is given. */
 const DEFAULT_VERIFY_TIMEOUT_S = 30;
@@ -677,9 +936,25 @@ const DEFAULT_VERIFY_TIMEOUT_S = 30;
 /** Grace period before escalating SIGTERM to SIGKILL. */
 const KILL_GRACE_MS = 5000;
 
-/** Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive. */
-async function gracefulKill(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) {
+/** How often to check whether the app's process group has exited. */
+const GROUP_POLL_MS = 50;
+
+/**
+ * Send SIGTERM, wait up to {@link KILL_GRACE_MS}, then SIGKILL if still alive.
+ * With its own process group the whole group is signalled, so a wrapper that
+ * exited early does not leave the app it started running.
+ */
+async function gracefulKill(
+  child: ChildProcess,
+  ownGroup: boolean,
+): Promise<void> {
+  if (ownGroup) {
+    await stopProcessGroup(child);
+    return;
+  }
+  // No pid means the spawn failed: there is nothing to kill, and `close` may
+  // never fire, so waiting for it would hang.
+  if (child.exitCode !== null || child.pid === undefined) {
     return;
   }
   try {
@@ -696,6 +971,7 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }),
   ]);
   clearTimeout(graceTimer);
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
   if (!exited && child.exitCode === null) {
     try {
       child.kill("SIGKILL");
@@ -705,9 +981,75 @@ async function gracefulKill(child: ChildProcess): Promise<void> {
     }
     // Only await close if the child hasn't exited yet — avoids hanging
     // if close fired between SIGKILL and listener attachment.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- exitCode changes while awaiting; TS keeps the earlier narrowing
     if (child.exitCode === null) {
       await new Promise<void>((r) => child.on("close", () => r()));
     }
+  }
+}
+
+/** SIGTERM the app's process group, then SIGKILL whatever is left after the grace period. */
+async function stopProcessGroup(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (pid === undefined || !appIsRunning(pid)) {
+    return;
+  }
+  signalApp(child, "SIGTERM", true);
+  if (!(await waitForAppExit(pid, KILL_GRACE_MS))) {
+    signalApp(child, "SIGKILL", true);
+    await waitForAppExit(pid, KILL_GRACE_MS);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    await new Promise<void>((r) => child.once("close", () => r()));
+  }
+}
+
+/** Wait until no process is left in the group `pid`, up to `ms`. */
+async function waitForAppExit(pid: number, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (appIsRunning(pid)) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((r) => setTimeout(r, GROUP_POLL_MS));
+  }
+  return true;
+}
+
+/**
+ * Bind the verify receiver without waiting out another listener.
+ *
+ * The receiver only lives until the first envelope and every URL the app gets
+ * is built from the bound port, so any free port works. The default port is
+ * tried first for SDKs that hard-code it, and a busy default (most often the
+ * daemon) falls back to an OS-assigned port. A busy `--port` the user chose
+ * fails right away.
+ */
+async function listenForVerify(
+  app: Hono,
+  port: number | undefined,
+  host: string,
+): Promise<{ server: Server; port: number; fellBack: boolean }> {
+  try {
+    const bound = await tryListen(app, port ?? DEFAULT_PORT, host, {
+      retries: 0,
+    });
+    return { ...bound, fellBack: false };
+  } catch (err) {
+    if (!(err instanceof ValidationError && err.field === PORT_IN_USE_FIELD)) {
+      throw err;
+    }
+    if (port !== undefined) {
+      throw new ValidationError(
+        `Port ${port} is already in use. Stop whatever holds it, pass a different --port, or omit --port to verify on a free port.`,
+        PORT_IN_USE_FIELD,
+      );
+    }
+    const bound = await tryListen(app, 0, host, { retries: 0 });
+    logger.info(
+      freePortNotice(DEFAULT_PORT, bound.port, "is held by another process"),
+    );
+    return { ...bound, fellBack: true };
   }
 }
 
@@ -729,23 +1071,46 @@ async function* runWithVerify(
     uiActions: isLoopbackHost(flags.host),
     retention,
   });
-  const { server, port: boundPort } = await tryListen(
-    app,
-    flags.port,
-    flags.host,
-  );
+  const {
+    server,
+    port: boundPort,
+    fellBack,
+  } = await listenForVerify(app, flags.port, flags.host);
   const url = formatLocalServerUrl(flags.host, boundPort);
+  // No viewer link: this receiver shuts down after the first envelope.
   logger.info(`Verify server listening on ${bold(url)}`);
-  printLocalViewerHint(url, flags.format === "json");
 
   const spotlightUrl = `${url}/stream`;
 
+  // Only telemetry the active filters show counts: an SDK sends sessions and
+  // client reports even when nothing else reaches Sentry Local. Remember what
+  // did arrive, so a timeout can say the SDK connected.
+  const activeFilters = new Set(flags.filter);
+  const uncountedTypes = new Set<string>();
   let subscriptionId: string | undefined;
   const envelopeReceived = new Promise<void>((resolveEnvelope) => {
-    subscriptionId = buffer.subscribe(() => {
-      resolveEnvelope();
+    subscriptionId = buffer.subscribe((container) => {
+      if (envelopeHasTelemetry(container, activeFilters)) {
+        resolveEnvelope();
+        return;
+      }
+      for (const [{ type }] of container.getParsedEnvelope()?.envelope[1] ??
+        []) {
+        // Item types are untrusted input that ends up in the terminal.
+        const safeType = type ? sanitize(type).trim() : "";
+        if (safeType) {
+          uncountedTypes.add(safeType);
+        }
+      }
     });
   });
+  const connectedNote = (): string | undefined => {
+    if (uncountedTypes.size === 0) {
+      return;
+    }
+    const filters = [...activeFilters].map((f) => `-f ${f}`).join(" ");
+    return `the SDK connected but sent only ${[...uncountedTypes].join(", ")}${filters ? ` (nothing matching ${filters})` : ""}`;
+  };
 
   const childEnv = buildChildEnv(spotlightUrl, commandSource, cwd);
   const wrangler = await injectWranglerSpotlightBinding(
@@ -754,43 +1119,61 @@ async function* runWithVerify(
     cwd,
   );
   if (wrangler.injected) {
-    logger.info("Injected SENTRY_SPOTLIGHT as a Wrangler Worker binding");
+    logger.info(wranglerInjectedMessage());
   }
 
   let child: ChildProcess;
   const useJson = flags.format === "json";
+  const ownGroup = startsOwnProcessGroup();
   try {
     const [cmd = "", ...cmdArgs] = wrangler.args;
-    child = spawn(cmd, cmdArgs, {
+    child = spawnUserCommand(cmd, cmdArgs, {
       cwd,
+      resolveCwd: cwd,
       env: childEnv,
       stdio: childStdio(useJson),
+      detached: ownGroup,
     });
     forwardChildOutput(child, useJson);
   } catch (err) {
     await shutdownServer(server);
-    throw new CliError(
-      `Failed to start "${wrangler.args[0]}": ${err instanceof Error ? err.message : String(err)}`,
-      EXIT.GENERAL,
-    );
+    throw spawnFailureError(wrangler.args[0] ?? "", err, cwd);
   }
 
-  let signalReceived: NodeJS.Signals | null = null;
+  const signalState: { current: NodeJS.Signals | null } = { current: null };
+  const interrupts = interruptForwarder(child, ownGroup);
   const onSigint = () => {
-    signalReceived = "SIGINT";
-    child.kill("SIGINT");
+    signalState.current = "SIGINT";
+    interrupts.forward();
   };
   const onSigterm = () => {
-    signalReceived = "SIGTERM";
-    child.kill("SIGTERM");
+    signalState.current = "SIGTERM";
+    signalApp(child, "SIGTERM", ownGroup);
   };
-  process.once("SIGINT", onSigint);
-  process.once("SIGTERM", onSigterm);
+  const onSighup = () => {
+    signalState.current = "SIGHUP";
+    signalApp(child, "SIGHUP", ownGroup);
+  };
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
+  // In its own group the app no longer gets the hangup sent to the CLI's
+  // group or session, so pass it on.
+  if (ownGroup) {
+    process.on("SIGHUP", onSighup);
+  }
 
+  // A spawn failure (e.g. ENOENT) emits `error`; `close` may also fire with
+  // a negative errno code, which is not a real exit code of the app.
+  let spawnError: Error | undefined;
   const childExited = new Promise<{ kind: "exited"; code: number }>((r) => {
     child.on("close", (code) =>
       r({ kind: "exited" as const, code: code ?? 1 }),
     );
+    child.on("error", (err) => {
+      logger.debug(`Child process error: ${err.message}`);
+      spawnError = err;
+      r({ kind: "exited" as const, code: 1 });
+    });
   });
 
   const verifyTimeout =
@@ -831,47 +1214,76 @@ async function* runWithVerify(
 
   // Clean up — keep signal handlers active during graceful kill
   try {
-    await gracefulKill(child);
+    await gracefulKill(child, ownGroup);
   } finally {
     if (subscriptionId) {
       buffer.unsubscribe(subscriptionId);
     }
+    interrupts.dispose();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
     await shutdownServer(server);
   }
 
   // Re-emit the signal after cleanup so the default handler terminates the
   // process instead of continuing with the outcome switch below.
-  if (signalReceived) {
-    process.kill(process.pid, signalReceived);
+  if (signalState.current) {
+    process.kill(process.pid, signalState.current);
     return;
   }
 
   switch (outcome.kind) {
     case "envelope": {
-      logger.info("Setup verified — your app is sending events to Sentry");
+      logger.info(
+        "Setup verified — your app is sending events to Sentry Local",
+      );
       return;
     }
     case "timeout": {
-      logger.warn(
+      const connected = connectedNote();
+      if (connected) {
+        // The SDK reached this receiver, so the DSN and port hints don't apply.
+        throw new VerifyFailedError(
+          `Verification timed out after ${verifyTimeout}s: ${connected}`,
+        );
+      }
+      if (wrangler.injected) {
+        logger.warn(
+          `A Worker sends nothing until it handles a request, so send one to it while --verify waits. ${wranglerSetupHint()}`,
+        );
+      } else {
+        const dsn = new URL(url);
+        dsn.username = "key";
+        dsn.pathname = "/0";
+        logger.warn(
+          `SDKs without Spotlight support, such as Go and Rust, need SENTRY_DSN=${dsn.href} instead.`,
+        );
+      }
+      if (fellBack) {
+        // An SDK that ignores SENTRY_SPOTLIGHT still sends to the busy default
+        // port, so it reaches whatever holds that port instead of this receiver.
+        logger.warn(
+          freePortNotice(DEFAULT_PORT, boundPort, "is held by another process"),
+        );
+      }
+      throw new VerifyFailedError(
         `Verification timed out after ${verifyTimeout}s — no events received from the SDK`,
-      );
-      throw new CliError(
-        `Verification timed out after ${verifyTimeout}s`,
-        EXIT.VERIFY_FAILED,
       );
     }
     case "exited": {
+      if (spawnError) {
+        throw spawnFailureError(wrangler.args[0] ?? "", spawnError, cwd);
+      }
       if (outcome.code === 0) {
-        logger.warn("Process exited before sending any events");
-        throw new CliError(
-          "Process exited before sending any events",
-          EXIT.VERIFY_FAILED,
+        const connected = connectedNote();
+        throw new VerifyFailedError(
+          connected
+            ? `Process exited before verifying: ${connected}`
+            : "Process exited before sending any events",
         );
       }
-      logger.warn(`Process crashed with code ${outcome.code}`);
-      throw new CliError(
+      throw new VerifyFailedError(
         `Process crashed with code ${outcome.code}`,
         outcome.code,
       );

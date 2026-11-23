@@ -1,5 +1,6 @@
 import { resolveCachedRegion } from "@sentry/toolkit-core/region-cache";
 import { apiServiceFromContext } from "./api";
+import { getSessionContext } from "./call-signal";
 import type { ServerContext } from "../../types";
 
 type ContextRegionCache = {
@@ -51,7 +52,7 @@ export async function resolveRegionUrlForOrganization({
 }: {
   context: ServerContext;
   organizationSlug: string;
-  regionUrl?: string | null;
+  regionUrl?: string | null | undefined;
 }): Promise<string | null> {
   if (typeof regionUrl === "string") {
     const trimmed = regionUrl.trim();
@@ -66,7 +67,10 @@ export async function resolveRegionUrlForOrganization({
   }
 
   const normalizedOrganizationSlug = organizationSlug.trim();
-  const cache = getRegionUrlCache(context);
+  // The lookup is shared by the session's calls, so it runs without this
+  // call's cancellation signal.
+  const sessionContext = getSessionContext(context);
+  const cache = getRegionUrlCache(sessionContext);
 
   try {
     const resolved = await resolveCachedRegion(
@@ -74,14 +78,14 @@ export async function resolveRegionUrlForOrganization({
       normalizedOrganizationSlug,
       async () => {
         const organization = await apiServiceFromContext(
-          context,
+          sessionContext,
         ).getOrganization(normalizedOrganizationSlug);
         return organization.links?.regionUrl?.trim() || null;
       },
     );
     // A credential or source-host change while the lookup was pending must
     // never route the new credential using the previous lookup's region.
-    return matchesContext(cache, context) ? resolved : null;
+    return matchesContext(cache, sessionContext) ? resolved : null;
   } catch {
     return null;
   }

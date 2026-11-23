@@ -8,7 +8,13 @@ function warningsFor(input: Partial<McpMergedArgs>): string[] {
   const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
   const log = vi.spyOn(console, "log");
   warnIneffectiveDisabledSkills(
-    finalizeMcpConfig({ agentProviderFromFlag: false, ...input }),
+    finalizeMcpConfig({
+      agentProviderFromFlag: false,
+      insecureHttp: false,
+      allSkills: false,
+      experimental: false,
+      ...input,
+    }),
   );
   // stdout carries the MCP transport, so nothing may be logged there.
   expect(log).not.toHaveBeenCalled();

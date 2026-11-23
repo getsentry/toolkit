@@ -183,6 +183,147 @@ describe("oauth authorize routes", () => {
       },
     );
 
+    it.each([
+      ["no hint", [], null, null],
+      ["a hint", ["example-idp"], "example-idp", "1"],
+      ["a repeated hint", ["example-idp", "other-idp"], null, null],
+      ["an empty hint", [""], null, null],
+      ["a URL hint", ["https://idp.example.com"], null, null],
+      ["an overlong hint", ["a".repeat(65)], null, null],
+    ])(
+      "forwards %s to Sentry as idp_hint=%s",
+      async (_label, hints, idpHint, forcePrompt) => {
+        mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+          clientId: "test-client",
+          redirectUri: "https://example.com/callback",
+          scope: ["read"],
+          state: "orig",
+        });
+        mockOAuthProvider.lookupClient.mockResolvedValue({
+          clientId: "test-client",
+          clientName: "Test Client",
+          redirectUris: ["https://example.com/callback"],
+          tokenEndpointAuthMethod: "client_secret_basic",
+        });
+
+        const url = new URL("http://localhost/oauth/authorize");
+        for (const hint of hints) url.searchParams.append("idp_hint", hint);
+        const page = await app.fetch(new Request(url), testEnv);
+        expect(page.status).toBe(200);
+        const encodedState = (await page.text()).match(
+          /name="state" value="([^"]+)"/,
+        )?.[1];
+        expect(encodedState).toBeTruthy();
+
+        const formData = new FormData();
+        formData.append("state", encodedState!);
+        formData.append("skill", "triage");
+        const response = await app.fetch(
+          new Request("http://localhost/oauth/authorize", {
+            method: "POST",
+            body: formData,
+          }),
+          testEnv,
+        );
+
+        expect(response.status).toBe(302);
+        const redirectUrl = new URL(response.headers.get("location")!);
+        expect(redirectUrl.hostname).toBe("sentry.io");
+        expect(redirectUrl.searchParams.get("idp_hint")).toBe(idpHint);
+        expect(redirectUrl.searchParams.get("force_prompt")).toBe(forcePrompt);
+        const upstreamState = await verifyAndParseState(
+          redirectUrl.searchParams.get("state")!,
+          testEnv.COOKIE_SECRET!,
+        );
+        expect(upstreamState.req).not.toHaveProperty("idpHint");
+      },
+    );
+
+    it("redirects a denied hinted request to the client without contacting Sentry", async () => {
+      mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+        clientId: "test-client",
+        redirectUri: "https://example.com/callback",
+        scope: ["read"],
+        state: "orig",
+      });
+      mockOAuthProvider.lookupClient.mockResolvedValue({
+        clientId: "test-client",
+        clientName: "Test Client",
+        redirectUris: ["https://example.com/callback"],
+        tokenEndpointAuthMethod: "client_secret_basic",
+      });
+
+      const url = new URL("http://localhost/oauth/authorize");
+      url.searchParams.set("idp_hint", "example-idp");
+      const page = await app.fetch(new Request(url), testEnv);
+      const encodedState = (await page.text()).match(
+        /name="state" value="([^"]+)"/,
+      )?.[1];
+      expect(encodedState).toBeTruthy();
+
+      const formData = new FormData();
+      formData.append("state", encodedState!);
+      formData.append("decision", "deny");
+      const response = await app.fetch(
+        new Request("http://localhost/oauth/authorize", {
+          method: "POST",
+          body: formData,
+        }),
+        testEnv,
+      );
+
+      expect(response.status).toBe(302);
+      const location = new URL(response.headers.get("location")!);
+      expect(location.origin + location.pathname).toBe(
+        "https://example.com/callback",
+      );
+      expect(location.searchParams.get("error")).toBe("access_denied");
+      expect(location.searchParams.get("state")).toBe("orig");
+      expect(location.searchParams.has("idp_hint")).toBe(false);
+    });
+
+    it("gives the sign-in on Sentry 30 minutes to finish", async () => {
+      mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
+        clientId: "test-client",
+        redirectUri: "https://example.com/callback",
+        scope: ["read"],
+        state: "orig",
+      });
+      mockOAuthProvider.lookupClient.mockResolvedValue({
+        clientId: "test-client",
+        clientName: "Test Client",
+        redirectUris: ["https://example.com/callback"],
+        tokenEndpointAuthMethod: "client_secret_basic",
+      });
+
+      const page = await app.fetch(
+        new Request("http://localhost/oauth/authorize"),
+        testEnv,
+      );
+      const encodedState = (await page.text()).match(
+        /name="state" value="([^"]+)"/,
+      )?.[1];
+      expect(encodedState).toBeTruthy();
+
+      const formData = new FormData();
+      formData.append("state", encodedState!);
+      formData.append("skill", "triage");
+      const response = await app.fetch(
+        new Request("http://localhost/oauth/authorize", {
+          method: "POST",
+          body: formData,
+        }),
+        testEnv,
+      );
+
+      const redirectUrl = new URL(response.headers.get("location")!);
+      const upstreamState = await verifyAndParseState(
+        redirectUrl.searchParams.get("state")!,
+        testEnv.COOKIE_SECRET!,
+      );
+      expect(upstreamState.exp - upstreamState.iat).toBe(30 * 60 * 1000);
+    });
+
     it("renders only the requested redirect URI when the client has multiple registered URIs", async () => {
       mockOAuthProvider.parseAuthRequest.mockResolvedValueOnce({
         clientId: "test-client",

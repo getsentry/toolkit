@@ -36,5 +36,4 @@ them. The [Toolkit index](../README.md) also links the CLI and shared guides.
   [OAuth](../cloudflare/oauth-architecture.md).
 - [Stdio release](../releases/stdio.md) and
   [Cloudflare deployment](../releases/cloudflare.md).
-- [MCP specs](../specs/README.md) and
-  [integrations](../integrations/claude-code-plugin.md).
+- [Integrations](../integrations/claude-code-plugin.md).

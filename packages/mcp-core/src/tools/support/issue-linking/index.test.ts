@@ -113,7 +113,7 @@ function usePut(status = 201) {
       `${endpoint}:integrationId/`,
       async ({ request, params: route }) => {
         const body = await request.json();
-        writes.push({ integrationId: String(route.integrationId), body });
+        writes.push({ integrationId: String(route["integrationId"]), body });
         return HttpResponse.json(
           {
             id: "900",

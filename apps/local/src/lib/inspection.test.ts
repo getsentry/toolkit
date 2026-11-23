@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { inspectAi } from "./inspection.ts";
+import { goPanicEvent } from "../../../../packages/cli/test/fixtures/local-sdk-events.ts";
+import { eventKind, inspectAi } from "./inspection.ts";
 
 const messages = [
   {
@@ -82,4 +83,17 @@ test("meaningful standard content keeps precedence over populated aliases", () =
       },
     }),
   ).toMatchObject({ messages, response: "Standard answer", tools: calls });
+});
+
+test.each([
+  [{ message: null }, "Event"],
+  [goPanicEvent, "Exception"],
+  [{ exception: { values: [{ value: null }] } }, "Exception"],
+  [{ exception: { values: [{ value: 42 }] } }, "Exception"],
+  [{ message: "" }, "Event"],
+  [{ logentry: { message: "", params: [] } }, "Event"],
+  [{ message: "Payment retry limit reached" }, "Message"],
+  [{ logentry: { formatted: "Database query failed for orders" } }, "Message"],
+])("event kind for %j is %s", (payload, kind) => {
+  expect(eventKind(payload)).toBe(kind);
 });

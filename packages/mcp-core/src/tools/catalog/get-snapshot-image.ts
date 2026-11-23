@@ -12,53 +12,26 @@ export default defineTool({
   title: "Get Snapshot Image",
   skills: ["inspect"],
   requiredScopes: ["project:read"],
-  description: [
-    "Get metadata and image content for one image in a preprod snapshot.",
-    "",
-    "Use this tool when you need to:",
-    "- View the current, previous, or diff image for a snapshot entry",
-    "- Inspect metadata and context for a specific snapshot image",
-    "- Fetch full-resolution image bytes when preview images are insufficient; full-resolution images can substantially increase response size and token usage",
-    "",
-    "Pass organizationSlug, snapshotId, and imageIdentifier. Use get_sentry_resource for snapshot URLs.",
-    "Preview images are returned by default; set imageResolution=full for original bytes when needed, but expect higher response size and token usage.",
-    "",
-    "<examples>",
-    "### View a preview image",
-    "",
-    "```",
-    'get_snapshot_image(organizationSlug="sentry", snapshotId="231949", imageIdentifier="login_screen.png")',
-    "```",
-    "",
-    "### Fetch original full-resolution bytes",
-    "",
-    "```",
-    'get_snapshot_image(organizationSlug="sentry", snapshotId="231949", imageIdentifier="login_screen.png", imageResolution="full")',
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Use get_snapshot first if you need to discover available image file names.",
-    "- Use get_sentry_resource when starting from a Sentry snapshot URL.",
-    "- imageIdentifier values may include slashes; pass the full image_file_name exactly as shown by get_snapshot.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get one image from a preprod snapshot: the current, previous, or diff screenshot, with its metadata. Returns a preview image unless full resolution is requested. Get image file names from get_snapshot or get_latest_base_snapshot.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     snapshotId: z
       .string()
       .trim()
       .min(1)
-      .describe("The numeric snapshot artifact ID."),
+      .describe("Numeric snapshot artifact ID."),
     imageIdentifier: z
       .string()
       .trim()
       .min(1)
-      .describe("The snapshot image file name or identifier to fetch."),
+      .describe(
+        "Image file name exactly as get_snapshot lists it, including any slashes.",
+      ),
     imageResolution: z
       .enum(["preview", "full"])
       .describe(
-        "Return locally generated previews or original full-resolution bytes. Full-resolution images can substantially increase response size and token usage.",
+        "`full` returns the original bytes, which can make the response much larger.",
       )
       .default("preview"),
     regionUrl: ParamRegionUrl.nullable().default(null),

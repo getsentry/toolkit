@@ -57,9 +57,9 @@ export function toEnvAccountSummary(
   host: string,
   user?: {
     id?: string;
-    email?: string | null;
-    username?: string | null;
-    name?: string | null;
+    email?: string | null | undefined;
+    username?: string | null | undefined;
+    name?: string | null | undefined;
   },
 ): AccountSummary {
   return {
@@ -312,7 +312,7 @@ export function accountSelectorOf(account: AccountSummary): string {
  * assumes HTTPS for a bare host. `undefined` when no host is recorded.
  */
 export function accountServerOf(account: {
-  readonly host?: string;
+  readonly host?: string | undefined;
 }): string | undefined {
   const host = account.host;
   const origin = normalizeHttpOrigin(host);
@@ -412,7 +412,7 @@ function matchesIdentity(account: AccountSummary, needle: string): boolean {
  * or both SaaS (`*.sentry.io`). `false` for an account without a host.
  */
 export function isAccountOnServer(
-  account: { readonly host?: string | null },
+  account: { readonly host?: string | null | undefined },
   url: string,
 ): boolean {
   return account.host ? isSameServer(account.host, url) : false;
@@ -509,9 +509,8 @@ export function listUsableAccountRowsByRecency(): AccountRow[] {
  */
 export function listUsableAccountRowsForOrg(
   orgSlug: string,
-  orgId?: string,
+  orgId: string | null = null,
 ): AccountRow[] {
-  const id = orgId ?? null;
   return getDatabase()
     .query(
       `SELECT * FROM accounts
@@ -527,7 +526,7 @@ export function listUsableAccountRowsForOrg(
        ) AND ${USABLE_ACCOUNT_SQL}
        ${BY_RECENCY}`,
     )
-    .all(orgSlug, id, id, Date.now()) as AccountRow[];
+    .all(orgSlug, orgId, orgId, Date.now()) as AccountRow[];
 }
 
 /**

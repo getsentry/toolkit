@@ -38,7 +38,7 @@ export type PollOptions<T> = {
   /** Suppress progress output (JSON mode) */
   json?: boolean;
   /** Poll interval in ms (default: 1000) */
-  pollIntervalMs?: number;
+  pollIntervalMs?: number | undefined;
   /** Timeout in ms (default: 360000 / 6 min) */
   timeoutMs?: number;
   /** Custom timeout message */
@@ -164,7 +164,7 @@ export type WithProgressOptions = {
   message: string;
   /** Suppress progress output (JSON mode). When true, the operation runs
    *  without a spinner — matching the behaviour of {@link poll}. */
-  json?: boolean;
+  json?: boolean | undefined;
   /**
    * Suppress progress when stdout is not a terminal, even if rich output is
    * explicitly forced. Use for terminal-only feedback that must not enter a
@@ -261,4 +261,48 @@ export async function withProgress<T>(
     spinner.stop();
     process.stdout.write("\r\x1b[K");
   }
+}
+
+/**
+ * Parse a poll-interval flag value: a whole number of seconds, at least `min`.
+ * Shared by the commands that stream until Ctrl+C (`log tail --interval`,
+ * `dashboard view --refresh`).
+ *
+ * @param flag - Flag spelling for the error message, e.g. `"--interval"`
+ * @throws Error when the value is not a whole number of seconds `>= min`
+ */
+export function parsePollInterval(
+  value: string,
+  options: { flag: string; min?: number },
+): number {
+  const min = options.min ?? 1;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < min) {
+    throw new Error(
+      `${options.flag} must be a whole number of seconds, at least ${min}`,
+    );
+  }
+  return seconds;
+}
+
+/**
+ * Sleep that resolves early when an AbortSignal fires.
+ * Resolves (not rejects) on abort for clean generator shutdown.
+ */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }

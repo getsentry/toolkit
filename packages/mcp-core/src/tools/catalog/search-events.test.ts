@@ -131,8 +131,8 @@ describe("search_events", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
     mockGenerateText.mockResolvedValue(mockAIResponse("errors"));
     mockValidEventsValidation();
   });
@@ -270,6 +270,69 @@ describe("search_events", () => {
     );
 
     expect(result).toContain("No results found");
+  });
+
+  it("sends an agent-written numeric issue ID list as issue.id to validate and events", async () => {
+    // MCP-SERVER-GP2: from a natural-language request, the agent wrote
+    // `issue:[<numeric ids>]`, which Sentry rejects with "Issue IDs do not exist".
+    mockGenerateText.mockResolvedValue(
+      mockAIResponse(
+        "errors",
+        "issue:[7768113107,7768562918]",
+        ["issue", "count()"],
+        undefined,
+        "-count()",
+      ),
+    );
+    const sentQueries: Array<string | null> = [];
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/validate/",
+        ({ request }) => {
+          sentQueries.push(new URL(request.url).searchParams.get("query"));
+          return HttpResponse.json(validEventsValidationResponse);
+        },
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/test-org/events/",
+        ({ request }) => {
+          const url = new URL(request.url);
+          sentQueries.push(url.searchParams.get("query"));
+          expect(url.searchParams.get("dataset")).toBe("errors");
+          return HttpResponse.json({
+            data: [{ issue: "PROJ-1", "count()": 3 }],
+          });
+        },
+      ),
+    );
+
+    const result = await searchEvents.handler(
+      {
+        organizationSlug: "test-org",
+        regionUrl: null,
+        projectSlug: null,
+        dataset: "errors",
+        query: "count events for issue IDs 7768113107, 7768562918",
+        fields: null,
+        sort: null,
+        limit: 10,
+        includeExplanation: false,
+      },
+      {
+        accessToken: "test-token",
+        userId: "user-123",
+        clientId: "client-123",
+        grantedSkills: new Set(),
+        constraints: {},
+        sentryHost: "sentry.io",
+      },
+    );
+
+    expect(sentQueries).toEqual([
+      "issue.id:[7768113107,7768562918]",
+      "issue.id:[7768113107,7768562918]",
+    ]);
+    expect(result).toContain("- Query: `issue.id:[7768113107,7768562918]`");
   });
 
   it("renders a timeseries when the agent returns timeSeries (per-hour)", async () => {
@@ -1742,7 +1805,7 @@ describe("search_events", () => {
       - Time range: Last 14d
 
       **View these results in Sentry**:
-      https://test-org.sentry.io/explore/metrics/?statsPeriod=14d&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22yAxes%22%3A%5B%22count%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22groupBy%22%3A%22transaction%22%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22aggregate%22%7D
+      https://test-org.sentry.io/explore/metrics/?project=-1&statsPeriod=14d&metric=%7B%22metric%22%3A%7B%22name%22%3A%22http.request.duration%22%2C%22type%22%3A%22distribution%22%2C%22unit%22%3A%22millisecond%22%7D%2C%22query%22%3A%22%22%2C%22aggregateFields%22%3A%5B%7B%22yAxes%22%3A%5B%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22yAxes%22%3A%5B%22count%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%5D%7D%2C%7B%22groupBy%22%3A%22transaction%22%7D%5D%2C%22aggregateSortBys%22%3A%5B%7B%22field%22%3A%22p95%28value%2Chttp.request.duration%2Cdistribution%2Cmillisecond%29%22%2C%22kind%22%3A%22desc%22%7D%5D%2C%22mode%22%3A%22aggregate%22%7D
       Please tell the user this dashboard link is available if they want to open the results in Sentry.
 
       Found 1 aggregate result:
@@ -3219,9 +3282,9 @@ describe("search_events", () => {
   });
 
   it("should search events with direct query syntax (no agent)", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -3502,6 +3565,98 @@ describe("search_events", () => {
     // Final validation must keep the structured filter, not the message rewrite.
     expect(validatedQueries.at(-1)).toBe("conv_id:ZYGC-86ZR");
     expect(validatedQueries.at(-1)).not.toContain("message:");
+  });
+
+  describe("explicit period with an absolute range from the agent", () => {
+    const HOUR_MS = 3_600_000;
+
+    const runWithAgentRange = async (range: { start: string; end: string }) => {
+      // The query names a fixed window in prose next to structured filters,
+      // and the caller also sends `period` as an outer guard.
+      mockGenerateText.mockResolvedValueOnce(
+        mockAIResponse(
+          "errors",
+          "environment:production is:unresolved",
+          ["count()", "count_unique(user.id)"],
+          undefined,
+          "-count()",
+          range,
+        ),
+      );
+      const requests: URLSearchParams[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/test-org/events/",
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({ data: [] });
+          },
+        ),
+      );
+
+      await runSearchEvents(
+        {
+          organizationSlug: "test-org",
+          regionUrl: null,
+          projectSlug: null,
+          dataset: "errors",
+          query: `Between ${range.start} and ${range.end}, environment:production is:unresolved, count() and count_unique(user.id)`,
+          period: "3d",
+          limit: 10,
+          includeExplanation: false,
+        },
+        {
+          constraints: {
+            organizationSlug: null,
+            regionUrl: null,
+            projectSlug: null,
+          },
+          accessToken: "test-token",
+          userId: "1",
+        },
+        { lockDataset: true },
+      );
+
+      expect(requests).toHaveLength(1);
+      return requests[0]!;
+    };
+
+    it("searches the agent's absolute window inside the period", async () => {
+      const start = new Date(Date.now() - 30 * HOUR_MS).toISOString();
+      const end = new Date(Date.now() - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.get("query")).toBe("environment:production is:unresolved");
+      expect(request.has("statsPeriod")).toBe(false);
+      expect(request.get("start")).toBe(start);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("clips an absolute window that starts before the period", async () => {
+      const before = Date.now();
+      const start = new Date(before - 5 * 24 * HOUR_MS).toISOString();
+      const end = new Date(before - 2 * HOUR_MS).toISOString();
+
+      const request = await runWithAgentRange({ start, end });
+
+      expect(request.has("statsPeriod")).toBe(false);
+      const clippedStart = Date.parse(request.get("start")!);
+      expect(clippedStart).toBeGreaterThanOrEqual(before - 3 * 24 * HOUR_MS);
+      expect(clippedStart).toBeLessThanOrEqual(Date.now() - 3 * 24 * HOUR_MS);
+      expect(request.get("end")).toBe(end);
+    });
+
+    it("keeps the period when the absolute window is outside it", async () => {
+      const request = await runWithAgentRange({
+        start: "2020-01-01T00:00:00Z",
+        end: "2020-01-02T00:00:00Z",
+      });
+
+      expect(request.get("statsPeriod")).toBe("3d");
+      expect(request.has("start")).toBe(false);
+      expect(request.has("end")).toBe(false);
+    });
   });
 
   it("rejects partial full-text downgrades when a duplicate structured key remains", async () => {
@@ -3967,9 +4122,9 @@ describe("search_events", () => {
   });
 
   it("rejects search immediately when validation fails without an agent provider", async () => {
-    process.env.OPENAI_API_KEY = "";
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "";
+    process.env["ANTHROPIC_API_KEY"] = "";
+    process.env["OPENROUTER_API_KEY"] = "";
 
     mswServer.use(
       http.get(
@@ -4057,7 +4212,7 @@ describe("search_events", () => {
     };
 
     beforeEach(() => {
-      process.env.OPENAI_API_KEY = "";
+      process.env["OPENAI_API_KEY"] = "";
     });
 
     it("explains a rejected log timestamp aggregate", async () => {
@@ -4511,7 +4666,7 @@ describe("search_events", () => {
             | 2025-09-11 00:00 | 100 |
 
             **View these results in Sentry**:
-            https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=42&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%7D&mode=aggregate&sort=-count%28%29&statsPeriod=24h&table=span
+            https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=42&aggregateField=%7B%22yAxes%22%3A%5B%22count%28%29%22%5D%7D&mode=aggregate&aggregateSort=-count%28%29&statsPeriod=24h&table=span
             Please tell the user this dashboard link is available if they want to open the results in Sentry."
           `);
         }
@@ -4829,9 +4984,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/environments/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json([]);
           },
           { once: true },
@@ -4839,9 +4992,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/events/validate/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json(validEventsValidationResponse);
           },
           { once: true },
@@ -4849,9 +5000,7 @@ describe("search_events", () => {
         http.get(
           "https://sentry.io/api/0/organizations/test-org/events/",
           ({ request }) => {
-            expect(new URL(request.url).searchParams.has("project")).toBe(
-              false,
-            );
+            expect(new URL(request.url).searchParams.get("project")).toBe("-1");
             return HttpResponse.json({ data: [] });
           },
           { once: true },
@@ -4930,9 +5079,9 @@ describe("search_events", () => {
         "**Note:** `query` was not translated from natural language because no embedded agent or Seer translation was available, so Sentry searched for it as literal text and found nothing. Retry with Sentry search syntax, such as `environment:production`, and use `period` for the time range.";
 
       beforeEach(() => {
-        process.env.OPENAI_API_KEY = "";
-        process.env.ANTHROPIC_API_KEY = "";
-        process.env.OPENROUTER_API_KEY = "";
+        process.env["OPENAI_API_KEY"] = "";
+        process.env["ANTHROPIC_API_KEY"] = "";
+        process.env["OPENROUTER_API_KEY"] = "";
         mswServer.use(
           mockOrganization(["mcp-search-events-seer-translate"]),
           http.get(

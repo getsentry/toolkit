@@ -22,11 +22,13 @@ import { validateRegionUrl } from "./internal/tool-helpers/validate-region-url";
 
 /** Rejects a lookup that took longer than its time limit. */
 export class ConstraintLookupTimeoutError extends Error {
-  constructor(
-    readonly resource: "organization" | "project",
-    readonly timeoutMs: number,
-  ) {
+  readonly resource: "organization" | "project";
+  readonly timeoutMs: number;
+
+  constructor(resource: "organization" | "project", timeoutMs: number) {
     super(`The ${resource} lookup timed out after ${timeoutMs}ms`);
+    this.resource = resource;
+    this.timeoutMs = timeoutMs;
     this.name = "ConstraintLookupTimeoutError";
   }
 }

@@ -64,9 +64,9 @@ afterEach(() => {
  * requested, which is captured either way.
  */
 async function callToolAsClient(
-  // getFilteredInputSchema and injectConstraintParams take ToolConfig<any> so they
+  // getFilteredInputSchema and injectConstraintParams take ToolConfig so they
   // can accept tools with heterogeneous schemas.
-  tool: ToolConfig<any>,
+  tool: ToolConfig,
   clientParams: Record<string, unknown>,
   context: ServerContext,
 ): Promise<void> {
@@ -111,7 +111,7 @@ describe("path traversal containment", () => {
   /** Every ID parameter named across the four reports. */
   const sinks: [
     string,
-    ToolConfig<any>,
+    ToolConfig,
     (payload: string) => Record<string, unknown>,
   ][] = [
     [
