@@ -81,7 +81,6 @@ import type {
   FlamegraphProfileSchema,
   FlamegraphSchema,
   GenericEventSchema,
-  ISSUE_RELATION_TYPES,
   IssueActivityListResponseSchema,
   IssueActivitySchema,
   IssueAlertRuleListSchema,
@@ -257,7 +256,6 @@ export type StacktraceLink = z.infer<typeof StacktraceLinkSchema>;
 export type SourceMapDebug = z.infer<typeof SourceMapDebugSchema>;
 export type RelatedIssues = z.infer<typeof RelatedIssuesResponseSchema>;
 export type RelatedIssueType = (typeof RELATED_ISSUE_TYPES)[number];
-export type IssueRelationType = (typeof ISSUE_RELATION_TYPES)[number];
 
 export type EventAttachment = z.infer<typeof EventAttachmentSchema>;
 export type Tag = z.infer<typeof TagSchema>;

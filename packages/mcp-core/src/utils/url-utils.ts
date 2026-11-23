@@ -588,21 +588,6 @@ export function getTraceUrl(
   );
 }
 
-/** A Seer investigation's page in the Sentry UI. */
-export function getInvestigationUrl(
-  host: string,
-  organizationSlug: string,
-  investigationId: string,
-  protocol: SentryProtocol = "https",
-): string {
-  return getSentryWebBaseUrl(
-    host,
-    organizationSlug,
-    `/seer/investigations/${investigationId}/`,
-    protocol,
-  );
-}
-
 export function getLogUrl(
   host: string,
   organizationSlug: string,

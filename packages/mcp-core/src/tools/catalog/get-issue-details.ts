@@ -1,11 +1,7 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
 import { ApiClientError, ApiNotFoundError } from "../../api-client";
-import {
-  ISSUE_RELATION_TYPES,
-  ISSUE_STATUSES,
-  RELATED_ISSUE_TYPES,
-} from "../../api-client/schema";
+import { ISSUE_STATUSES, RELATED_ISSUE_TYPES } from "../../api-client/schema";
 import type {
   AutofixRunState,
   CommitterList,
@@ -98,7 +94,6 @@ const ISSUE_DETAILS_RELATED_TYPES = [
   "same_trace",
   "contributing",
   "same_supergroup",
-  "investigations",
 ] as const satisfies readonly RelatedIssueType[];
 
 /**
@@ -137,12 +132,9 @@ export const getIssueDetailsOutputSchema = z.object({
           title: z.string(),
           status: z.enum(ISSUE_STATUSES).nullable(),
           project: z.string().nullable(),
-          relations: z.array(z.enum(ISSUE_RELATION_TYPES)),
+          relations: z.array(z.enum(RELATED_ISSUE_TYPES)),
         }),
       ),
-      investigations: z
-        .array(z.object({ title: z.string(), url: z.string() }))
-        .describe("Seer investigations whose evidence pointed to this issue."),
       unavailableTypes: z
         .array(z.enum(RELATED_ISSUE_TYPES))
         .describe("Relation types that failed, so some may be missing."),
@@ -267,21 +259,14 @@ function toIssueStatus(
 }
 
 /**
- * The endpoint's top few related issues and the investigations that linked this one.
- * Same-trace and same-supergroup issues can be in any project, so a project-scoped session
- * drops the ones outside its project, as find_related_issues does.
+ * The endpoint's top few related issues. Same-trace and same-supergroup issues can be in any
+ * project, so a project-scoped session drops the ones outside its project, as
+ * find_related_issues does.
  */
-function buildRelatedIssues({
-  related,
-  projectSlug,
-  organizationSlug,
-  apiService,
-}: {
-  related: RelatedIssues;
-  projectSlug: string | null | undefined;
-  organizationSlug: string;
-  apiService: SentryApiService;
-}): NonNullable<GetIssueDetailsPayload["relatedIssues"]> {
+function buildRelatedIssues(
+  related: RelatedIssues,
+  projectSlug: string | null | undefined,
+): NonNullable<GetIssueDetailsPayload["relatedIssues"]> {
   const inScope = projectSlug
     ? related.data.filter(({ issue }) => issue.project.slug === projectSlug)
     : related.data;
@@ -295,10 +280,6 @@ function buildRelatedIssues({
         project: nonEmptyString(issue.project.name),
         relations: relations.map((relation) => relation.type),
       })),
-    investigations: related.investigations.map(({ investigation }) => ({
-      title: investigation.title,
-      url: apiService.getInvestigationUrl(organizationSlug, investigation.id),
-    })),
     unavailableTypes: related.meta.types
       .filter((meta) => meta.status === "unavailable")
       .map((meta) => meta.type),
@@ -365,12 +346,7 @@ function buildIssueDetailsPayload({
     packageNames,
   });
   const related = relatedIssues
-    ? buildRelatedIssues({
-        related: relatedIssues,
-        projectSlug,
-        organizationSlug,
-        apiService,
-      })
+    ? buildRelatedIssues(relatedIssues, projectSlug)
     : undefined;
 
   return {

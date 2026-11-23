@@ -3,7 +3,6 @@ import {
   extractConversationIdFromSearchQuery,
   getAIConversationUrl,
   getEventsExplorerUrl,
-  getInvestigationUrl,
   getIssuesSearchUrl,
   getIssueUrl,
   getLogUrl,
@@ -307,20 +306,6 @@ describe("url-utils", () => {
       const result = getTraceUrl("sentry.example.com", "myorg", "abc123");
       expect(result).toBe(
         "https://sentry.example.com/organizations/myorg/explore/traces/trace/abc123",
-      );
-    });
-  });
-
-  describe("getInvestigationUrl", () => {
-    it("links the investigation on the org subdomain for SaaS", () => {
-      expect(getInvestigationUrl("us.sentry.io", "myorg", "42")).toBe(
-        "https://myorg.sentry.io/seer/investigations/42/",
-      );
-    });
-
-    it("links the investigation under the org path for self-hosted", () => {
-      expect(getInvestigationUrl("sentry.example.com", "myorg", "42")).toBe(
-        "https://sentry.example.com/organizations/myorg/seer/investigations/42/",
       );
     });
   });

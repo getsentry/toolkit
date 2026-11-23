@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
-import { ISSUE_RELATION_TYPES } from "../../api-client/schema";
 import type {
   AssignedTo,
   Issue,
@@ -915,8 +914,6 @@ async function tryGetRelatedIssues(
     return await apiService.getRelatedIssues({
       organizationSlug,
       issueId,
-      // The side quest reads only the related issues, not investigations
-      types: ISSUE_RELATION_TYPES,
       limit: RELATED_ISSUES_LIMIT,
     });
   } catch (error) {

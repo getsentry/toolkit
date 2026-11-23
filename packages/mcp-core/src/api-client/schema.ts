@@ -902,22 +902,13 @@ export const ISSUE_STATUSES = [
   "unresolved",
 ] as const;
 
-/** Relation types that find related issues, filling the response's `data`. */
-export const ISSUE_RELATION_TYPES = [
+/** Relation types the related issues endpoint supports (`RelationType`). */
+export const RELATED_ISSUE_TYPES = [
   "similar_stacktrace",
   "same_trace",
   "contributing",
   "same_title",
   "same_supergroup",
-] as const;
-
-/**
- * Relation types the related issues endpoint supports (`RelationType`).
- * investigations fills the response's `investigations` instead of `data`.
- */
-export const RELATED_ISSUE_TYPES = [
-  ...ISSUE_RELATION_TYPES,
-  "investigations",
 ] as const;
 
 /** Outcome of each requested relation type (`RelationTypeStatus`). */
@@ -935,7 +926,6 @@ export const RELATED_ISSUE_TYPE_STATUSES = [
  *
  * Upstream source of truth in getsentry/sentry:
  * - `src/sentry/issues/related/types.py` (`RelatedIssuesResponse`)
- * - `src/sentry/issues/related/investigations.py`
  * - `src/sentry/issues/endpoints/group_related.py`
  */
 export const RelatedIssuesResponseSchema = z.object({
@@ -945,7 +935,7 @@ export const RelatedIssuesResponseSchema = z.object({
       relations: z.array(
         z
           .object({
-            type: z.enum(ISSUE_RELATION_TYPES),
+            type: z.enum(RELATED_ISSUE_TYPES),
             score: z.number().optional(),
           })
           .passthrough(),
@@ -970,17 +960,6 @@ export const RelatedIssuesResponseSchema = z.object({
         .passthrough(),
     ),
   }),
-  // Seer investigations that linked the issue, from the investigations type.
-  // Missing from Sentry versions without that type.
-  investigations: z
-    .array(
-      z.object({
-        investigation: z.object({ id: z.string(), title: z.string() }),
-        hypothesisStatement: z.string(),
-        reason: z.string().nullable(),
-      }),
-    )
-    .default([]),
 });
 
 export const FrameInterface = z
