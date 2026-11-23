@@ -275,13 +275,16 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  */
 async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
   const clientId = getClientId();
+  const host = getSentryUrl();
   const response = await fetchWithConnectionError(
-    `${getSentryUrl()}/oauth/device/code/`,
+    `${host}/oauth/device/code/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      redirect: "error",
       body: deviceCodeRequestBody(clientId, scope, loginHint),
     },
+    isLoginTrustAnchorFor(host) || undefined,
   );
 
   if (!response.ok) {
@@ -324,13 +327,16 @@ async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
  * Poll Sentry's token endpoint for the access token
  */
 async function pollForToken(deviceCode: string): Promise<TokenResponse> {
+  const host = getSentryUrl();
   const response = await fetchWithConnectionError(
-    `${getSentryUrl()}/oauth/token/`,
+    `${host}/oauth/token/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      redirect: "error",
       body: deviceTokenRequestBody(getClientId(), deviceCode),
     },
+    isLoginTrustAnchorFor(host) || undefined,
   );
 
   let data: unknown;
