@@ -104,6 +104,43 @@ const REPLAY_BUILT_IN_FIELDS = [
 ] as const;
 
 /**
+ * List the tags for a dataset from Sentry's tags API.
+ *
+ * Issue search covers error issues and issue platform issues, but the
+ * search_issues dataset only holds issue platform occurrences. Like Sentry's
+ * issue search UI, also list error event tags (dataset=events) so custom tags
+ * set only on errors are discoverable.
+ */
+async function listDatasetTags(
+  apiService: SentryApiService,
+  organizationSlug: string,
+  dataset: DatasetType,
+  projectId: string | undefined,
+): Promise<DatasetTag[]> {
+  const listTags = (tagDataset: DatasetType) =>
+    apiService.listTags({
+      organizationSlug,
+      dataset: tagDataset,
+      project: projectId,
+      statsPeriod: "14d",
+    });
+
+  if (dataset !== "search_issues") {
+    return await listTags(dataset);
+  }
+
+  const [issuePlatformTags, errorTags] = await Promise.all([
+    listTags("search_issues"),
+    listTags("events"),
+  ]);
+  const keys = new Set(issuePlatformTags.map((tag) => tag.key));
+  return [
+    ...issuePlatformTags,
+    ...errorTags.filter((tag) => !keys.has(tag.key)),
+  ];
+}
+
+/**
  * Discover available fields for a dataset by querying Sentry's tags API.
  * Replay search mirrors Sentry's UI by merging built-in replay fields, click/tap fields, and custom tags.
  */
@@ -117,13 +154,12 @@ export async function discoverDatasetFields(
 ): Promise<DatasetFieldsResult> {
   const { projectId } = options;
 
-  // Get available tags for the dataset
-  const tags = await apiService.listTags({
+  const tags = await listDatasetTags(
+    apiService,
     organizationSlug,
     dataset,
-    project: projectId,
-    statsPeriod: "14d",
-  });
+    projectId,
+  );
 
   if (dataset === "replays") {
     const fields = buildReplayFields(tags);
