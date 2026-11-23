@@ -276,7 +276,7 @@ function pythonLines(source: string): PythonLine[] {
       code += char;
       i += 1;
     }
-    if (quote !== null && quote.length === 1) {
+    if (quote?.length === 1) {
       // A single-quoted string cannot span lines.
       code += '""';
       quote = null;
