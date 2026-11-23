@@ -80,8 +80,6 @@ function issueInterval(range: TimeRange): string {
 }
 
 export default defineTool({
-  // MCP Apps views ship to experimental sessions first.
-  experimental: true,
   includeInSkillDefinitions: false,
   name: "render_issue_chart",
   title: "Render Issue Chart",
