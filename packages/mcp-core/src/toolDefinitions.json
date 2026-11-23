@@ -3116,7 +3116,7 @@
   {
     "name": "find_related_issues",
     "title": "Find Related Issues",
-    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
+    "description": "Find Sentry issues related to an issue: likely duplicates with a similar stack trace or the same title in the same project, other errors in the same trace, issues Seer found to share a root cause, and the error issues behind a metric alert, plus the Seer investigations that linked it. Returns each related issue with its status and why it's related. Use it before resolving or ignoring an issue.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -3147,7 +3147,7 @@
         },
         "types": {
           "default": null,
-          "description": "Relation types; all when omitted. similar_stacktrace: likely duplicates. same_trace: errors in the same trace. contributing: errors behind a metric issue. same_title: errors with the same title, last 14 days. same_supergroup: same root cause per Seer.",
+          "description": "All when omitted. similar_stacktrace: likely duplicates. same_trace: same trace. contributing: behind a metric issue. same_title: same title, last 14 days. same_supergroup: same Seer root cause. investigations: Seer investigations that linked this issue.",
           "anyOf": [
             {
               "type": "array",
@@ -3158,7 +3158,8 @@
                   "same_trace",
                   "contributing",
                   "same_title",
-                  "same_supergroup"
+                  "same_supergroup",
+                  "investigations"
                 ]
               }
             },
@@ -3309,6 +3310,31 @@
           },
           "description": "Issues matched by more relation types first."
         },
+        "investigations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "hypothesis": {
+                "type": "string",
+                "description": "The hypothesis whose evidence named this issue."
+              },
+              "reason": {
+                "description": "Why Seer found this issue relevant.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["title", "url", "hypothesis", "reason"],
+            "additionalProperties": false
+          },
+          "description": "Seer investigations that linked this issue, most recent first."
+        },
         "relationTypes": {
           "type": "array",
           "items": {
@@ -3321,7 +3347,8 @@
                   "same_trace",
                   "contributing",
                   "same_title",
-                  "same_supergroup"
+                  "same_supergroup",
+                  "investigations"
                 ]
               },
               "status": {
@@ -3395,6 +3422,7 @@
         "organizationSlug",
         "issueId",
         "relatedIssues",
+        "investigations",
         "relationTypes",
         "notes",
         "suggestedActions"
@@ -7518,6 +7546,23 @@
                 "additionalProperties": false
               }
             },
+            "investigations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["title", "url"],
+                "additionalProperties": false
+              },
+              "description": "Seer investigations whose evidence pointed to this issue."
+            },
             "unavailableTypes": {
               "type": "array",
               "items": {
@@ -7527,13 +7572,14 @@
                   "same_trace",
                   "contributing",
                   "same_title",
-                  "same_supergroup"
+                  "same_supergroup",
+                  "investigations"
                 ]
               },
               "description": "Relation types that failed, so some may be missing."
             }
           },
-          "required": ["issues", "unavailableTypes"],
+          "required": ["issues", "investigations", "unavailableTypes"],
           "additionalProperties": false
         },
         "event": {

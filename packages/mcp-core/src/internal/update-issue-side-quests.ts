@@ -1,6 +1,6 @@
 import { getActiveSpan } from "@sentry/core";
 import { inlineCode } from "@sentry/toolkit-core/markdown";
-import type { RelatedIssueType, RelatedIssues } from "../api-client/types";
+import type { IssueRelationType, RelatedIssues } from "../api-client/types";
 import {
   type SideQuest,
   type SideQuestCandidate,
@@ -51,7 +51,7 @@ export const RELATED_ISSUES_OPEN_COUNT_ATTRIBUTE =
 /** Related issues to request per relation type. */
 export const RELATED_ISSUES_LIMIT = 5;
 
-const RELATION_LABELS: Record<RelatedIssueType, string> = {
+const RELATION_LABELS: Record<IssueRelationType, string> = {
   similar_stacktrace: "similar stack trace",
   same_trace: "same trace",
   contributing: "contributing",
@@ -64,7 +64,7 @@ const RELATION_LABELS: Record<RelatedIssueType, string> = {
  * exist than the response holds.
  */
 function isPartial({ data }: RelatedIssues): boolean {
-  const perType = new Map<RelatedIssueType, number>();
+  const perType = new Map<IssueRelationType, number>();
   for (const { relations } of data) {
     for (const { type } of relations) {
       perType.set(type, (perType.get(type) ?? 0) + 1);

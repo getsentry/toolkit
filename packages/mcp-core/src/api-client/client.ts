@@ -104,6 +104,7 @@ import {
   getAIConversationUrl as getAIConversationUrlUtil,
   getContinuousProfileUrl as getContinuousProfileUrlUtil,
   getDashboardUrl as getDashboardUrlUtil,
+  getInvestigationUrl as getInvestigationUrlUtil,
   getIssueUrl as getIssueUrlUtil,
   getLogUrl as getLogUrlUtil,
   getMonitorUrl as getMonitorUrlUtil,
@@ -859,6 +860,18 @@ export class SentryApiService {
    */
   getTraceUrl(organizationSlug: string, traceId: string): string {
     return getTraceUrlUtil(this.host, organizationSlug, traceId, this.protocol);
+  }
+
+  getInvestigationUrl(
+    organizationSlug: string,
+    investigationId: string,
+  ): string {
+    return getInvestigationUrlUtil(
+      this.host,
+      organizationSlug,
+      investigationId,
+      this.protocol,
+    );
   }
 
   getLogUrl(organizationSlug: string, logId: string): string {
