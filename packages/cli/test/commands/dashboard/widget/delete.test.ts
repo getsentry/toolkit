@@ -5,19 +5,23 @@
  * Uses spyOn pattern to mock API client and resolve-target.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import { deleteCommand } from "../../../../src/commands/dashboard/widget/delete.js";
 
 vi.mock("../../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -29,28 +33,26 @@ vi.mock("../../../../src/lib/resolve-target.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../../src/lib/resolve-target.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../../src/lib/resolve-target.js";
 import type { DashboardDetail } from "../../../../src/types/dashboard.js";
+import { loadCommand, at, rejection } from "../../../helpers.js";
+import type { Writer } from "../../../../src/types/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd,
     },
     stdoutWrite,
@@ -104,9 +106,11 @@ const sampleDashboard: DashboardDetail = {
 // ---------------------------------------------------------------------------
 
 describe("dashboard widget delete", () => {
-  let getDashboardSpy: ReturnType<typeof spyOn>;
-  let updateDashboardSpy: ReturnType<typeof spyOn>;
-  let resolveOrgOnlyTargetSpy: ReturnType<typeof spyOn>;
+  let getDashboardSpy: MockInstance<(typeof apiClient)["getDashboard"]>;
+  let updateDashboardSpy: MockInstance<(typeof apiClient)["updateDashboard"]>;
+  let resolveOrgOnlyTargetSpy: MockInstance<
+    (typeof resolveTarget)["resolveOrgOnlyTarget"]
+  >;
 
   beforeEach(() => {
     getDashboardSpy = vi.spyOn(apiClient, "getDashboard");
@@ -130,7 +134,7 @@ describe("dashboard widget delete", () => {
 
   test("deletes widget by index", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { json: false, yes: true, index: 0 }, "123");
 
     expect(getDashboardSpy).toHaveBeenCalledWith("acme-corp", "123");
@@ -144,50 +148,50 @@ describe("dashboard widget delete", () => {
       }),
     );
     // Only one widget should remain after deleting index 0
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(1);
-    expect(body.widgets[0].title).toBe("Slow Spans");
+    expect(at(body.widgets, 0).title).toBe("Slow Spans");
   });
 
   test("deletes widget by title", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(
       context,
       { json: false, yes: true, title: "Slow Spans" },
       "123",
     );
 
-    const body = updateDashboardSpy.mock.calls[0]?.[2];
+    const body = at(updateDashboardSpy.mock.calls, 0)[2];
     expect(body.widgets.length).toBe(1);
-    expect(body.widgets[0].title).toBe("Error Count");
+    expect(at(body.widgets, 0).title).toBe("Error Count");
   });
 
   test("throws ValidationError when neither --index nor --title provided", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
-    const err = await func
-      .call(context, { json: false, yes: true }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, yes: true }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("--index or --title");
   });
 
   test("throws ValidationError when index is out of range", async () => {
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
-    const err = await func
-      .call(context, { json: false, yes: true, index: 99 }, "123")
-      .catch((e: Error) => e);
+    const err = await rejection(
+      func.call(context, { json: false, yes: true, index: 99 }, "123"),
+    );
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.message).toContain("out of range");
   });
 
   test("human output contains 'Removed widget' and title", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { json: false, yes: true, index: 0 }, "123");
 
     const output = stdoutWrite.mock.calls.map((c) => c[0]).join("");

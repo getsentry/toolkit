@@ -659,7 +659,7 @@ Before deploying changes:
 pnpm -w run build
 
 # 2. Type check
-pnpm -w run tsc
+pnpm -w run typecheck
 
 # 3. Lint
 pnpm -w run lint

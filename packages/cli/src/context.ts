@@ -53,7 +53,7 @@ function resolveCwd(process: NodeJS.Process): string {
   try {
     return process.cwd();
   } catch (error) {
-    const pwd = process.env.PWD;
+    const pwd = process.env["PWD"];
     if (!(pwd && isAbsolute(pwd))) {
       throw error;
     }

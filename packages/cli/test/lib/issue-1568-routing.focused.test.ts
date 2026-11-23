@@ -36,12 +36,12 @@ function orgToken(url: string): string {
 }
 
 test("invalid SENTRY_HOST never falls through to a lower-priority URL", () => {
-  process.env.SENTRY_HOST = "https://user:password@example.com";
-  process.env.SENTRY_URL = "https://lower-priority.example.com";
+  process.env["SENTRY_HOST"] = "https://user:password@example.com";
+  process.env["SENTRY_URL"] = "https://lower-priority.example.com";
   expect(() => getConfiguredSentryUrl()).toThrow(ConfigError);
 });
 
 test("an invalid active token claim never falls through to SaaS", () => {
-  process.env.SENTRY_AUTH_TOKEN = orgToken("ftp://invalid.example.com");
+  process.env["SENTRY_AUTH_TOKEN"] = orgToken("ftp://invalid.example.com");
   expect(() => getEnvTokenHost()).toThrow(ConfigError);
 });

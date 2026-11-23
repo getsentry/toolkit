@@ -575,8 +575,8 @@ function formatHttpLabel({
   target,
   fallbackLabel,
 }: {
-  method?: string;
-  target?: string;
+  method?: string | undefined;
+  target?: string | undefined;
   fallbackLabel: string;
 }): string {
   if (method && target) {
@@ -624,8 +624,7 @@ function formatHttpTarget(value: string): string {
   const trimmed = value.trim();
 
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
-    const withoutFragment = trimmed.split("#", 1)[0];
-    return withoutFragment.split("?", 1)[0];
+    return stripQueryAndFragment(trimmed);
   }
 
   try {
@@ -633,9 +632,14 @@ function formatHttpTarget(value: string): string {
     const path = url.pathname === "/" ? "" : url.pathname;
     return `${url.host}${path}`;
   } catch {
-    const withoutFragment = trimmed.split("#", 1)[0];
-    return withoutFragment.split("?", 1)[0];
+    return stripQueryAndFragment(trimmed);
   }
+}
+
+function stripQueryAndFragment(value: string): string {
+  const [withoutFragment = ""] = value.split("#", 1);
+  const [path = ""] = withoutFragment.split("?", 1);
+  return path;
 }
 
 function formatOperationLabel(

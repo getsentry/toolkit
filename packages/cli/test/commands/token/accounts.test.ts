@@ -18,7 +18,9 @@ import {
   resetHostScopingState,
   useEnvSandbox,
   useTestConfigDir,
+  loadCommand,
 } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const getConfigDir = useTestConfigDir("token-accounts-", {
   isolateProjectRoot: true,
@@ -119,11 +121,11 @@ async function runCommand(
   target: string,
   name = "list",
 ): Promise<void> {
-  const func = await command.loader();
+  const func = await loadCommand(command);
   await func.call(
     {
-      stdout: { write: vi.fn(() => true) },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: getConfigDir(),
       commandPrefix: ["sentry", "token", name],
     },

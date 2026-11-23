@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { collectGrep, grepFiles } from "../../../src/lib/scan/grep.js";
+import { at } from "../../helpers.js";
 
 const ROOT = mkdtempSync(join(tmpdir(), "scan-grep-test-"));
 
@@ -676,7 +677,7 @@ describe("collectGrep — literal prefilter fast path", () => {
         pattern: "Sentry\\.init",
       });
       expect(matches).toHaveLength(1);
-      expect(matches[0].lineNum).toBe(2);
+      expect(at(matches, 0).lineNum).toBe(2);
     } finally {
       cleanup();
     }

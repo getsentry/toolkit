@@ -21,7 +21,7 @@ useTestConfigDir("test-tips-");
 /** Point getEnv() at process.env with SENTRY_DISABLE_TIPS set or removed. */
 function setTipsEnv(value?: string): void {
   const env = { ...process.env };
-  delete env.SENTRY_DISABLE_TIPS;
+  delete env["SENTRY_DISABLE_TIPS"];
   setEnv(value === undefined ? env : { ...env, SENTRY_DISABLE_TIPS: value });
 }
 

@@ -29,38 +29,8 @@ export default defineTool({
   title: "Update Project",
   skills: ["project-management"], // Only available in project-management skill
   requiredScopes: ["project:write"],
-  description: [
-    "Update project metadata in Sentry, such as name, slug, and platform.",
-    "",
-    "Be careful when using this tool!",
-    "",
-    "Use this tool when you need to:",
-    "- Update a project's name or slug to fix onboarding mistakes",
-    "- Change the platform assigned to a project",
-    "",
-    "<examples>",
-    "### Update a project's name and slug",
-    "",
-    "```",
-    "update_project(organizationSlug='my-organization', projectSlug='old-project', name='New Project Name', slug='new-project-slug')",
-    "```",
-    "",
-    "### Update platform",
-    "",
-    "```",
-    "update_project(organizationSlug='my-organization', projectSlug='my-project', platform='python')",
-    "```",
-    "",
-    "</examples>",
-    "",
-    "<hints>",
-    "- If the user passes a parameter in the form of name/otherName, it's likely in the format of <organizationSlug>/<projectSlug>.",
-    "- Team access changes are handled by separate project-management tools.",
-    "- If any parameter is ambiguous, you should clarify with the user what they meant.",
-    "- When updating the slug, the project will be accessible at the new slug after the update",
-    "- Do not update the slug from a project-scoped session; reconnect with an organization-scoped or unconstrained session first.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Rename a Sentry project, change its slug, or change its platform. Returns the updated project. To change which teams can access a project, use add_team_to_project or remove_team_from_project.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -68,11 +38,11 @@ export default defineTool({
     name: z
       .string()
       .trim()
-      .describe("The new name for the project")
+      .describe("New display name.")
       .nullable()
       .default(null),
     slug: ParamProjectSlug.describe(
-      "The new slug for the project (must be unique)",
+      "New slug, unique in the organization. The project moves to the new slug.",
     )
       .nullable()
       .default(null),

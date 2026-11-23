@@ -195,25 +195,8 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read", "event:read"],
   requiredCapabilities: ["replays"],
-  description: [
-    "Get a Sentry replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.",
-    "",
-    "USE THIS TOOL WHEN USERS:",
-    "- Share a replay URL",
-    "- Ask what happened in a replay, or what a user saw and clicked",
-    "- Need the moments before an error, a dead click, or the end of a session",
-    "",
-    "<examples>",
-    "get_replay_details(replayUrl='https://my-organization.sentry.io/explore/replays/7e07485f-12f9-416b-8b14-26260799b51f/')",
-    "get_replay_details(organizationSlug='my-organization', replayId='7e07485f-12f9-416b-8b14-26260799b51f', startOffsetSeconds=-10)",
-    "get_replay_details(replayUrl='...', categories=['click', 'network'], startOffsetSeconds=60, endOffsetSeconds=90)",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Offsets are seconds from the replay start; negative offsets count back from the end, so startOffsetSeconds=-10 shows the last 10 seconds",
-    "- `timeline.recorded` counts every recorded event by category, so you can see what to ask for next",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get a Sentry session replay's summary and a timeline of what the user did: page loads and navigations, clicks (including dead and rage clicks), inputs and key presses, console warnings and errors, failed requests, and feedback.",
   inputSchema: {
     replayUrl: ParamReplayUrl.optional(),
     organizationSlug: ParamOrganizationSlug.optional(),
@@ -225,21 +208,21 @@ export default defineTool({
       .nullable()
       .optional()
       .describe(
-        "Timeline categories to show. Default: notable events only (navigations, clicks, inputs, console warnings and errors, failed requests, feedback). Naming a category shows all of its events, such as every request for 'network' or every log level for 'console'.",
+        "Timeline categories to show. Omit for notable events only; naming a category shows all its events, such as every request for network or every log level for console.",
       ),
     startOffsetSeconds: z
       .number()
       .nullable()
       .optional()
       .describe(
-        "Start of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+        "Window start, in seconds from the replay start; negative counts back from the end, so -10 is the last 10 seconds.",
       ),
     endOffsetSeconds: z
       .number()
       .nullable()
       .optional()
       .describe(
-        "End of the timeline window in seconds from the replay start. Negative values count back from the replay end.",
+        "Window end, in seconds from the replay start; negative counts back from the end.",
       ),
     limit: z
       .number()
@@ -249,7 +232,7 @@ export default defineTool({
       .nullable()
       .optional()
       .describe(
-        `Maximum timeline events to return (1-${MAX_TIMELINE_LIMIT}, default ${DEFAULT_TIMELINE_LIMIT}).`,
+        `Maximum timeline events to return; defaults to ${DEFAULT_TIMELINE_LIMIT}.`,
       ),
     skip: z
       .number()
@@ -258,7 +241,7 @@ export default defineTool({
       .nullable()
       .optional()
       .describe(
-        "Number of matching timeline events to skip. Pass `timeline.nextSkip` from a previous response to continue past the limit.",
+        "Matching timeline events to skip; pass timeline.nextSkip from the previous response to see more.",
       ),
   },
   outputSchema: getReplayDetailsOutputSchema,
@@ -361,9 +344,9 @@ export default defineTool({
 });
 
 export function resolveReplayParams(params: {
-  replayUrl?: string | null;
-  organizationSlug?: string | null;
-  replayId?: string | null;
+  replayUrl?: string | null | undefined;
+  organizationSlug?: string | null | undefined;
+  replayId?: string | null | undefined;
 }): ResolvedReplayParams {
   if (params.replayUrl) {
     const parsed = parseSentryUrl(params.replayUrl);
@@ -403,7 +386,7 @@ async function assertReplayWithinProjectConstraint({
   apiService: SentryApiService;
   organizationSlug: string;
   replay: ReplayDetails;
-  projectSlug?: string | null;
+  projectSlug?: string | null | undefined;
 }): Promise<void> {
   if (!projectSlug) {
     return;
@@ -595,10 +578,10 @@ function buildReplayUser(
   }
   const { id, username, email, ip, geo } = replay.user;
   const mappedGeo = {
-    city: geo?.city || null,
-    countryCode: geo?.country_code || null,
-    region: geo?.region || null,
-    subdivision: geo?.subdivision || null,
+    city: geo?.["city"] || null,
+    countryCode: geo?.["country_code"] || null,
+    region: geo?.["region"] || null,
+    subdivision: geo?.["subdivision"] || null,
   };
   const user = {
     id: id || null,
@@ -736,19 +719,20 @@ function buildSuggestedActions({
       replayId,
     };
     if (regionUrl) {
-      continueArguments.regionUrl = regionUrl;
+      continueArguments["regionUrl"] = regionUrl;
     }
     if (timelineRequest.categories) {
-      continueArguments.categories = timelineRequest.categories;
+      continueArguments["categories"] = timelineRequest.categories;
     }
     if (timelineRequest.startOffsetSeconds !== null) {
-      continueArguments.startOffsetSeconds = timelineRequest.startOffsetSeconds;
+      continueArguments["startOffsetSeconds"] =
+        timelineRequest.startOffsetSeconds;
     }
     if (timelineRequest.endOffsetSeconds !== null) {
-      continueArguments.endOffsetSeconds = timelineRequest.endOffsetSeconds;
+      continueArguments["endOffsetSeconds"] = timelineRequest.endOffsetSeconds;
     }
-    continueArguments.limit = timelineRequest.limit;
-    continueArguments.skip = timeline.nextSkip;
+    continueArguments["limit"] = timelineRequest.limit;
+    continueArguments["skip"] = timeline.nextSkip;
     candidates.push(
       buildSuggestedToolAction({
         toolName: "get_replay_details",

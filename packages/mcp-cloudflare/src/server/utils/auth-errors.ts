@@ -6,7 +6,7 @@ export interface AuthErrorInfo {
   isAuthError: boolean;
   isExpired: boolean;
   isForbidden: boolean;
-  statusCode?: number;
+  statusCode?: 401 | 403;
 }
 
 /**

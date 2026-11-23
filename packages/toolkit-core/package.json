@@ -63,6 +63,10 @@
       "types": "./src/sentry-origin.ts",
       "default": "./src/sentry-origin.ts"
     },
+    "./stats-period": {
+      "types": "./src/stats-period.ts",
+      "default": "./src/stats-period.ts"
+    },
     "./markdown": {
       "types": "./src/markdown.ts",
       "default": "./src/markdown.ts"
@@ -71,13 +75,14 @@
   "scripts": {
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
-    "tsc": "tsc --noEmit && tsc -p tsconfig.browser.json"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.browser.json"
   },
   "dependencies": {
     "@sentry/api": "catalog:",
     "@sentry/search-syntax": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "fast-check": "^4.8.0",
     "marked": "catalog:",
     "mdast-util-from-markdown": "catalog:",

@@ -31,7 +31,7 @@ export { DashboardRevisionSchema } from "../types/dashboard.js";
 /** Schema for dashboard list items (lightweight, from GET /dashboards/) */
 export const DashboardListItemSchema = looseObject({
   id: string(),
-  title: string(),
+  title: optional(string()),
   dateCreated: optional(string()),
   createdBy: optional(
     object({

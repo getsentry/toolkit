@@ -13,7 +13,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { getDatabase } from "../../../src/lib/db/index.js";
 import { makeStoringTransport } from "../../../src/lib/telemetry/offline-transport.js";
 import { makeCompressedTransport } from "../../../src/lib/telemetry/zstd-transport.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, at, must } from "../../helpers.js";
 import {
   closeIngestServers,
   noop,
@@ -52,7 +52,8 @@ function storedEventIds(): string[] {
 /** Event IDs in the bodies a mock ingest received (bodies are small, so uncompressed). */
 function deliveredEventIds(captures: { body: Buffer }[]): string[] {
   return captures.map(
-    (capture) => JSON.parse(capture.body.toString().split("\n")[0]).event_id,
+    (capture) =>
+      JSON.parse(at(capture.body.toString().split("\n"), 0)).event_id,
   );
 }
 
@@ -119,7 +120,7 @@ describe("makeStoringTransport (e2e)", () => {
     expect(deliveredEventIds(ingest.captures).sort()).toEqual(["a", "b"]);
     expect(storedEventIds()).toEqual([]);
     const header = JSON.parse(
-      ingest.captures[0]?.body.toString().split("\n")[0],
+      at(must(ingest.captures[0]?.body.toString().split("\n")), 0),
     );
     expect(Date.parse(header.sent_at)).toBeGreaterThan(Date.now() - 60_000);
   });

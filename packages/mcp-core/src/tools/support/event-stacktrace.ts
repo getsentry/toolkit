@@ -2,10 +2,13 @@ import { z } from "zod";
 import { ThreadsEntrySchema } from "../../api-client";
 import type { SentryApiService, ThreadEntrySchema } from "../../api-client";
 import type { Event } from "../../api-client/types";
+import { findEventStacktrace } from "../../internal/formatting";
 import {
+  mapStructuredStacktrace,
   mapStructuredThread,
   mapStructuredThreadSummary,
   nonEmptyString,
+  structuredStacktraceSchema,
   structuredThreadSchema,
   structuredThreadSummarySchema,
 } from "./structured-stacktrace";
@@ -55,6 +58,11 @@ export const eventStacktraceOutputSchema = z.object({
     .describe(
       "Every thread on the event, listed only when the `thread` selector matched none or several.",
     ),
+  stacktrace: structuredStacktraceSchema
+    .nullable()
+    .describe(
+      "The event-level stacktrace, when the event has no threads but has a stack outside them, as on a captured message.",
+    ),
 });
 
 export type EventStacktracePayload = z.output<
@@ -75,7 +83,7 @@ export async function fetchEventStacktrace({
   organizationSlug: string;
   issueId: string;
   eventId: string;
-  thread?: string | number;
+  thread?: string | number | undefined;
 }): Promise<EventStacktracePayload> {
   const event = await apiService.getEventForIssue({
     organizationSlug,
@@ -93,14 +101,18 @@ export async function fetchEventStacktrace({
   };
 
   if (threads.length === 0) {
+    const stacktrace = mapStructuredStacktrace(findEventStacktrace(event));
     return {
       ...base,
       selection: {
         status: "no_threads",
-        message: "No thread stacktraces were found for this event.",
+        message: stacktrace
+          ? "This event has no threads; its event-level stacktrace is in `stacktrace`."
+          : "No thread stacktraces were found for this event.",
       },
       thread: null,
       availableThreads: null,
+      stacktrace,
     };
   }
 
@@ -115,6 +127,7 @@ export async function fetchEventStacktrace({
       },
       thread: null,
       availableThreads: threads.map(mapStructuredThreadSummary),
+      stacktrace: null,
     };
   }
 
@@ -123,6 +136,7 @@ export async function fetchEventStacktrace({
     selection: { status: "selected", message: null },
     thread: mapStructuredThread(selected.thread),
     availableThreads: null,
+    stacktrace: null,
   };
 }
 
@@ -138,7 +152,9 @@ function selectThread(
 ): SelectedThread {
   if (selector === undefined) {
     const selected = selectSentryDefaultThread(threads);
-    return { kind: "selected", thread: selected };
+    return selected
+      ? { kind: "selected", thread: selected }
+      : { kind: "not_found", message: "No threads were found." };
   }
 
   if (typeof selector === "number") {
@@ -177,7 +193,7 @@ function selectThread(
 
 // Mirrors Sentry's thread UI default: crashed first, otherwise a thread with a
 // stacktrace, otherwise the first available thread.
-function selectSentryDefaultThread(threads: Thread[]): Thread {
+function selectSentryDefaultThread(threads: Thread[]): Thread | undefined {
   const sortedThreads = [...threads].sort(
     (a, b) => Number(Boolean(b.crashed)) - Number(Boolean(a.crashed)),
   );
@@ -199,8 +215,9 @@ function selectUnique(
   ambiguousMessage: string,
 ): SelectedThread {
   const matches = threads.filter(predicate);
+  const [match] = matches;
 
-  if (matches.length === 0) {
+  if (!match) {
     return { kind: "not_found", message: notFoundMessage };
   }
 
@@ -208,5 +225,5 @@ function selectUnique(
     return { kind: "ambiguous", message: ambiguousMessage };
   }
 
-  return { kind: "selected", thread: matches[0] };
+  return { kind: "selected", thread: match };
 }

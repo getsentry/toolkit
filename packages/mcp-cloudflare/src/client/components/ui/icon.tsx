@@ -1,5 +1,5 @@
 interface IconProps {
-  className?: string;
+  className?: string | undefined;
   path: string;
   viewBox?: string;
   title?: string;

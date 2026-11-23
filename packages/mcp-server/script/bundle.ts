@@ -23,9 +23,9 @@ const CLI_ROOT = resolve(PACKAGE_ROOT, "../cli");
 const OUTFILE = resolve(PACKAGE_ROOT, "dist/sentry-mcp.cjs");
 
 /**
- * Output is 3,624,475 bytes (3.46 MiB) once help's image banner is left out.
- * The budget leaves about 300 KB for new tools and commands, not enough for a
- * heavy CLI dependency to slip in unnoticed.
+ * Output is 3,902,133 bytes (3.72 MiB) once help's image banner is left out,
+ * 17 KB of it the inlined render_sentry_chart MCP Apps view. The budget
+ * leaves about 30 KB, so a heavy dependency or view cannot slip in unnoticed.
  */
 const MAX_BUNDLE_BYTES = 3.75 * 1024 * 1024;
 
@@ -122,8 +122,12 @@ const result = await build({
   define: {
     SENTRY_CLI_VERSION: JSON.stringify(cliPkg.version),
     // Without it, the CLI falls back to its committed default client ID.
-    ...(process.env.SENTRY_CLIENT_ID
-      ? { SENTRY_CLIENT_ID_BUILD: JSON.stringify(process.env.SENTRY_CLIENT_ID) }
+    ...(process.env["SENTRY_CLIENT_ID"]
+      ? {
+          SENTRY_CLIENT_ID_BUILD: JSON.stringify(
+            process.env["SENTRY_CLIENT_ID"],
+          ),
+        }
       : {}),
     "process.env.NODE_ENV": JSON.stringify("production"),
     // Tree-shakes the SDK's runtime module hooks, which can't instrument a

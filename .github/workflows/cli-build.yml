@@ -55,7 +55,7 @@ jobs:
             os: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION_22 }}
@@ -264,7 +264,7 @@ jobs:
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || startsWith(github.ref, 'refs/heads/release/cli/') && 'cli-release' || '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION_22 }}
@@ -344,7 +344,7 @@ jobs:
       PUBLIC_SENTRY_ENVIRONMENT: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/cli/')) && 'production' || 'development' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION_24 }}
@@ -382,13 +382,10 @@ jobs:
       - name: Remove sourcemaps
         run: find apps/cli-docs/dist -name '*.map' -delete
       - name: Package docs
-        run: |
-          output_dir="$RUNNER_TEMP/vercel-output"
-          rm -rf "$output_dir"
-          mkdir -p "$output_dir/.vercel/output/static"
-          cp -R apps/cli-docs/dist/. "$output_dir/.vercel/output/static/"
-          printf '%s\n' '{"version":3,"routes":[{"src":"^/install(\\.ps1)?$","headers":{"Vary":"Accept"},"continue":true},{"src":"^/install(\\.ps1)?$","has":[{"type":"header","key":"accept","value":{"re":".*text/html.*"}}],"dest":"/install-source/install$1/index.html","check":true},{"src":"^/install$","headers":{"Content-Type":"text/plain; charset=utf-8"},"continue":true}]}' > "$output_dir/.vercel/output/config.json"
-          (cd "$output_dir" && zip -qr "$GITHUB_WORKSPACE/vercel.zip" .vercel)
+        run: node apps/cli-docs/vercel/build-output.mjs "$RUNNER_TEMP/vercel-output/.vercel/output"
+      - name: Zip docs
+        working-directory: ${{ runner.temp }}/vercel-output
+        run: zip -qr "$GITHUB_WORKSPACE/vercel.zip" .vercel
       - name: Upload docs artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

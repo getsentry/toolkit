@@ -44,7 +44,7 @@ export function getAzureOpenAIApiSurface(): AzureOpenAIApiSurface {
 }
 
 function getAzureOpenAIApiVersion(): string | undefined {
-  const apiVersion = process.env.OPENAI_API_VERSION?.trim();
+  const apiVersion = process.env["OPENAI_API_VERSION"]?.trim();
   return apiVersion && apiVersion.length > 0 ? apiVersion : undefined;
 }
 
@@ -72,10 +72,10 @@ function createAzureOpenAIFetch(baseUrl: string): typeof fetch {
       }
     }
 
-    if (process.env.OPENAI_API_KEY) {
+    if (process.env["OPENAI_API_KEY"]) {
       // Azure API-key auth uses the `api-key` header. Keep the existing
       // Authorization header as well for proxy compatibility.
-      headers.set("api-key", process.env.OPENAI_API_KEY);
+      headers.set("api-key", process.env["OPENAI_API_KEY"]);
     }
 
     if (input instanceof Request) {
@@ -100,7 +100,8 @@ export function getAzureOpenAIModel(model?: string): LanguageModel {
   }
 
   const apiSurface = getAzureOpenAIApiSurface();
-  const modelId = model ?? (process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL);
+  const modelId =
+    model ?? (process.env["OPENAI_MODEL"] || DEFAULT_OPENAI_MODEL);
 
   const factory = createOpenAI({
     baseURL: configuredBaseUrl,

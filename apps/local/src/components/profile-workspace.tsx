@@ -45,8 +45,11 @@ function boxes(
       depth: 0,
     },
   ];
-  while (pending.length && result.length < 2500) {
-    const box = pending.pop()!;
+  for (
+    let box = pending.pop();
+    box && result.length < 2500;
+    box = pending.pop()
+  ) {
     result.push(box);
     if (box.depth >= 32 || box.node.samples === 0) continue;
     let offset = 0;
@@ -135,6 +138,7 @@ function ProfileChart({
   return (
     <div ref={container} className="overflow-auto">
       <svg
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no semantic grouping element
         role="group"
         aria-label={`${type} profile visualization`}
         viewBox={`0 0 ${width} ${height}`}
@@ -149,6 +153,7 @@ function ProfileChart({
           .map((box) => (
             <g
               key={box.node.id}
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG shapes can't be HTML buttons
               role="button"
               tabIndex={0}
               aria-label={`Zoom to ${box.node.name}, ${box.node.samples} samples`}
@@ -247,7 +252,11 @@ function ProfileInspector({
       ? focused.node
       : undefined;
   const setFocus = (node?: ProfileNode) =>
-    setFocused(node ? { source, thread, node } : undefined);
+    setFocused(
+      node
+        ? { source, ...(thread !== undefined && { thread }), node }
+        : undefined,
+    );
   const linked = traces.filter((trace) => profileMatchesTrace(source, trace));
   const functions = profile.functions
     .filter((fn) =>
@@ -439,10 +448,10 @@ function ProfileInspector({
               </div>
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">
+            <output className="block text-sm text-muted-foreground">
               No usable stack samples were captured. Inspect JSON for the
               original profile payload.
-            </p>
+            </output>
           )}
         </>
       }
@@ -460,7 +469,7 @@ export function ProfileWorkspace({
   items: readonly LocalFeedItem[];
   traces: readonly TraceGroup[];
   query: string;
-  selectedId?: string;
+  selectedId?: string | undefined;
   onSelect: (id: string) => void;
   onSelectTrace: (id: string) => void;
 }) {
@@ -471,11 +480,11 @@ export function ProfileWorkspace({
     profiles.find((item) => item.id === selectedId) ?? profiles[0];
   if (!selected)
     return (
-      <p role="status" className="p-6 text-sm text-muted-foreground">
+      <output className="block p-6 text-sm text-muted-foreground">
         {query
           ? "No profiles match this filter."
           : "No profiles captured. Enable profiling in your SDK and send its envelopes to this receiver."}
-      </p>
+      </output>
     );
   return (
     <ResizableWorkspace
@@ -487,28 +496,27 @@ export function ProfileWorkspace({
             Profiles · {profiles.length}
           </h1>
           <ol className="min-h-0 flex-1 overflow-y-auto">
-            {profiles.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  aria-label={`View ${item.type} event`}
-                  aria-current={selected.id === item.id ? "true" : undefined}
-                  className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
-                  onClick={() => onSelect(item.id)}
-                >
-                  <span className="block">
-                    {item.type === "profile_chunk" ? "Chunk" : "Profile"}{" "}
-                    {index + 1} ·{" "}
-                    {text(record(item.payload).platform) ?? "Unknown platform"}
-                  </span>
-                  <code className="block break-all text-xs text-muted-foreground">
-                    {text(record(item.payload).event_id) ??
-                      text(record(item.payload).chunk_id) ??
-                      item.id}
-                  </code>
-                </button>
-              </li>
-            ))}
+            {profiles.map((item, index) => {
+              const label = `${item.type === "profile_chunk" ? "Chunk" : "Profile"} ${index + 1} · ${text(record(item.payload)["platform"]) ?? "Unknown platform"}`;
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-label={`View ${item.type.replaceAll("_", " ")}: ${label}`}
+                    aria-current={selected.id === item.id ? "true" : undefined}
+                    className="w-full border-b border-border p-3 text-left text-sm hover:bg-muted aria-current:bg-muted"
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span className="block">{label}</span>
+                    <code className="block break-all text-xs text-muted-foreground">
+                      {text(record(item.payload)["event_id"]) ??
+                        text(record(item.payload)["chunk_id"]) ??
+                        item.id}
+                    </code>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </section>
       }

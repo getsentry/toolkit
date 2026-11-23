@@ -97,7 +97,7 @@ type ProjectViewEntry = WithOutputFields<
   typeof ProjectViewOutputFields
 > & {
   /** Where the project was auto-detected from (human output only) */
-  detectedFrom?: string;
+  detectedFrom?: string | undefined;
 };
 
 /** Result of fetching a single project with its DSN */
@@ -204,14 +204,15 @@ async function fetchAllProjectDetails(
  * JSON output shape stays stable across CLI versions.
  */
 function hydrateOrganizationName(entry: ProjectViewEntry): ProjectViewEntry {
-  if (!entry.organization || entry.organization.name) {
+  const { organization } = entry;
+  if (!organization || organization.name) {
     return entry;
   }
   return {
     ...entry,
     organization: {
-      ...entry.organization,
-      name: resolveOrgDisplayName(entry.organization.slug),
+      ...organization,
+      name: resolveOrgDisplayName(organization.slug),
     },
   };
 }
@@ -267,7 +268,7 @@ function formatProjectViewHuman(entries: ProjectViewEntry[]): string {
 }
 
 /** Project view targets: one for an explicit or searched project, all detected ones for auto-detect. */
-type ViewTargets = { targets: ResolvedTarget[]; footer?: string };
+type ViewTargets = { targets: ResolvedTarget[]; footer?: string | undefined };
 
 /** Resolve the `project view` positional to the projects to show. */
 async function resolveViewTargets(
