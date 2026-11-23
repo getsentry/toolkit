@@ -109,10 +109,6 @@
       "types": "./dist/tools/search-attributes/agent.d.ts",
       "default": "./dist/tools/search-attributes/agent.js"
     },
-    "./tools/agent-tools": {
-      "types": "./dist/tools/agent-tools.d.ts",
-      "default": "./dist/tools/agent-tools.js"
-    },
     "./internal/agents/callEmbeddedAgent": {
       "types": "./dist/internal/agents/callEmbeddedAgent.d.ts",
       "default": "./dist/internal/agents/callEmbeddedAgent.js"
