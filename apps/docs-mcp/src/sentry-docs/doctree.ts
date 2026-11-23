@@ -432,11 +432,14 @@ export function searchDocTree(
   hits.sort(
     (a, b) => b.score - a.score || a.node.path.localeCompare(b.node.path),
   );
-  return hits.slice(0, limit).map(({ node }) => ({
-    description: node.frontmatter?.description,
-    title: node.frontmatter?.title ?? node.slug ?? node.path,
-    url: buildDocsUrl(node.path),
-  }));
+  return hits.slice(0, limit).map(({ node }) => {
+    const description = node.frontmatter?.description;
+    return {
+      ...(description === undefined ? {} : { description }),
+      title: node.frontmatter?.title ?? node.slug ?? node.path,
+      url: buildDocsUrl(node.path),
+    };
+  });
 }
 
 export function searchPages(query: string, limit = 8): Promise<DocPageHit[]> {

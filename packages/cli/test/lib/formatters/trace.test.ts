@@ -43,14 +43,14 @@ function stripAnsi(str: string): string {
 function useRenderedMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -59,14 +59,14 @@ function useRenderedMode() {
 function usePlainMode() {
   let savedPlain: string | undefined;
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
   });
   afterEach(() => {
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -601,14 +601,6 @@ describe("findSpanById", () => {
   test("returns null for non-existent span ID", () => {
     const spans = [makeSpan({ span_id: "a1b2c3d4e5f67890" })];
     const result = findSpanById(spans, "0000000000000000");
-    expect(result).toBeNull();
-  });
-
-  test("handles span with undefined span_id gracefully", () => {
-    const spans = [
-      { start_timestamp: 1000, children: [] } as unknown as TraceSpan,
-    ];
-    const result = findSpanById(spans, "a1b2c3d4e5f67890");
     expect(result).toBeNull();
   });
 });

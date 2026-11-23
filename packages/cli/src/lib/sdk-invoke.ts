@@ -21,14 +21,14 @@ import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
 import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
+import generatedStreamingCommands from "../generated/streaming-commands.json" with { type: "json" };
+import {
+  isStreamingInvocation,
+  type StreamingCommands,
+} from "./streaming-commands.js";
 
-/** CLI flag names/aliases that trigger infinite streaming output. */
-const STREAMING_FLAG_NAMES = new Set(["--refresh", "--follow", "-f"]);
-
-/** Check if CLI args contain any streaming flag. */
-function hasStreamingFlag(args: string[]): boolean {
-  return args.some((arg) => STREAMING_FLAG_NAMES.has(arg));
-}
+/** Streaming commands, generated from the commands' `streams` markers. */
+const STREAMING_COMMANDS: StreamingCommands = generatedStreamingCommands;
 
 /**
  * Build an isolated env from options, starting from `options.env` or the
@@ -44,20 +44,20 @@ function buildIsolatedEnv(
     env[NO_PERSISTENCE_ENV_VAR] = "1";
   }
   if (options?.token) {
-    env.SENTRY_AUTH_TOKEN = options.token;
-    env.SENTRY_FORCE_ENV_TOKEN = "1";
+    env["SENTRY_AUTH_TOKEN"] = options.token;
+    env["SENTRY_FORCE_ENV_TOKEN"] = "1";
   }
   if (options?.url) {
-    env.SENTRY_HOST = options.url;
+    env["SENTRY_HOST"] = options.url;
   }
   if (options?.org) {
-    env.SENTRY_ORG = options.org;
+    env["SENTRY_ORG"] = options.org;
   }
   if (options?.project) {
-    env.SENTRY_PROJECT = options.project;
+    env["SENTRY_PROJECT"] = options.project;
   }
   if (jsonByDefault && !options?.text) {
-    env.SENTRY_OUTPUT_FORMAT = "json";
+    env["SENTRY_OUTPUT_FORMAT"] = "json";
   }
   return env;
 }
@@ -560,7 +560,7 @@ function executeWithStream<T>(
  * zero-copy capture, and error wrapping — used by the typed SDK methods.
  *
  * When `meta.streaming` is true, returns an AsyncIterable that yields
- * values as the command produces them (for `--follow`/`--refresh` commands).
+ * values as the command produces them (`log tail`, `dashboard view --refresh`).
  */
 export function buildInvoker(options?: SentryOptions) {
   return function invokeCommand<T>(
@@ -614,14 +614,14 @@ export function buildInvoker(options?: SentryOptions) {
  * typed SDK methods (or for passing raw CLI flags).
  *
  * Returns parsed JSON by default, or trimmed text for commands
- * without JSON support. When streaming flags are detected, returns
- * an AsyncIterable instead.
+ * without JSON support. Returns an AsyncIterable instead for a streaming
+ * command or flag (see `streaming-commands.ts`).
  */
 export function buildRunner(options?: SentryOptions) {
   return function run(
     ...args: string[]
   ): Promise<unknown> | AsyncIterable<unknown> {
-    if (hasStreamingFlag(args)) {
+    if (isStreamingInvocation(args, STREAMING_COMMANDS)) {
       return executeWithStream<unknown>(options, async (ctx, span) => {
         const { run: stricliRun } = await import("@stricli/core");
         const { loadSdkApp } = await import("../sdk-app.js");

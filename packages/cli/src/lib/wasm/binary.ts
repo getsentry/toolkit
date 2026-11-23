@@ -325,8 +325,7 @@ export function decodeBuildId(contents: Uint8Array): Uint8Array | null {
 export function isDebugSection(section: WasmSection): boolean {
   return (
     section.id === CUSTOM_SECTION_ID &&
-    section.name !== undefined &&
-    section.name.startsWith(DEBUG_SECTION_PREFIX)
+    section.name?.startsWith(DEBUG_SECTION_PREFIX) === true
   );
 }
 

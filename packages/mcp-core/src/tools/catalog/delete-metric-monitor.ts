@@ -15,11 +15,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["org:read", "project:read", "alerts:write"],
   description: [
-    "Permanently delete a Sentry Metric Monitor, preserving its connected Alerts and their other monitors.",
-    "Use get_metric_monitor_details to inspect the monitor and obtain its native monitorId. Legacy metric alert IDs are not monitor IDs.",
-    "Use update_metric_monitor(status='disabled') to pause detection instead. Deletion also removes an associated legacy metric alert and its incident history when present.",
-    "Sentry hides the monitor from normal reads immediately and completes deletion in the background.",
-    "delete_metric_monitor(organizationSlug='my-org', monitorId='12345')",
+    "Permanently delete a Sentry Metric Monitor, and its legacy metric alert and incident history if present. Connected Alerts are kept.",
+    "To pause detection instead, use update_metric_monitor. Cron jobs: find_monitors. URL checks: find_uptime_monitors.",
   ].join("\n"),
   inputSchema: metricMonitorReferenceFields,
   outputSchema: z.object({ success: z.literal(true), monitorId: z.string() }),

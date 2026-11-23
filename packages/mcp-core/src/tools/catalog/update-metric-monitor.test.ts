@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { UserInputError } from "../../errors";
 import { createTestContext } from "../../test-utils/context";
 import { metricMonitor } from "../../test-utils/metric-monitor";
@@ -188,7 +188,9 @@ describe("update_metric_monitor", () => {
         query: "",
         environment: null,
       };
-      const source = structuredClone(metricMonitor.dataSources[0]);
+      const [fixtureSource] = metricMonitor.dataSources;
+      assert(fixtureSource, "Expected a fixture data source");
+      const source = structuredClone(fixtureSource);
       Object.assign(source.queryObj.snubaQuery, {
         ...query,
         timeWindow: 7200,
@@ -265,5 +267,24 @@ describe("update_metric_monitor", () => {
       update({ query: { aggregate: "count_unique(user)" } }),
     ).rejects.toThrow(UserInputError);
     expect(writes).toEqual([]);
+  });
+
+  it("explains a permission denial from Sentry", async () => {
+    mswServer.use(
+      http.get(endpoint, () => HttpResponse.json(metricMonitor)),
+      http.put(endpoint, () =>
+        HttpResponse.json(
+          { detail: "You do not have permission to perform this action." },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    await expect(update({ name: "Renamed" })).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining(
+        "Changing a Metric Monitor needs the alerts:write scope",
+      ),
+    });
   });
 });

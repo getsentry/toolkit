@@ -67,7 +67,7 @@ export const uuidCommand = buildCommand({
     _flags: Record<string, never>,
     path: string,
   ) {
-    if (!path?.trim()) {
+    if (!path.trim()) {
       throw new ContextError(
         "Mapping file path",
         sentry`proguard uuid <path>`,

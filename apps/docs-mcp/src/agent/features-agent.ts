@@ -1,5 +1,11 @@
-import { Agent } from "@mastra/core/agent";
 import * as Sentry from "@sentry/cloudflare";
+import {
+  asSchema,
+  generateText,
+  type Output,
+  parsePartialJson,
+  stepCountIs,
+} from "ai";
 import { z } from "zod";
 import { trackAgentCall, trackAgentSteps, trackAgentTokens } from "../metrics";
 import { libToPlatformPath } from "../sentry-docs/doctree";
@@ -53,13 +59,11 @@ const KNOWN_FEATURE_SLUGS = [
  * wizard's downstream feature picker even if our docs lookup is broken.
  */
 const FALLBACK_FEATURES = ["error-monitoring", "tracing"];
-const AGENT_DEFAULT_OPTIONS = {
-  modelSettings: {
-    temperature: TEMPERATURE,
-    // Disable p-retry's inner retries so the outer fallback loop is the
-    // sole retry/fallback mechanism. See default-options.ts in getsentry/cli-init-api/apps/server.
-    maxRetries: 0,
-  },
+const MODEL_SETTINGS = {
+  temperature: TEMPERATURE,
+  // The model fallback chain is the only retry/fallback mechanism. See
+  // createFallbackModel.
+  maxRetries: 0,
 };
 
 function getUsedModelId(result: {
@@ -111,6 +115,142 @@ const featuresOutputSchema = z.object({
 });
 
 /**
+ * Ask for the output schema as the response format on every step. The AI
+ * SDK's own parsing is skipped: parseFeaturesOutput reads the steps instead.
+ */
+const featuresOutput: Output.Output<undefined, undefined> = {
+  type: "object",
+  responseFormat: {
+    type: "json",
+    schema: asSchema(featuresOutputSchema).jsonSchema,
+  },
+  parsePartial: () => Promise.resolve(undefined),
+  parseOutput: () => Promise.resolve(undefined),
+};
+
+const MESSAGE_MARKER_RE = /<\|message\|>([\s\S]+)$/;
+const JSON_FENCE_RE = /^```json\s*\n?([\s\S]*?)\n?\s*```\s*$/;
+const JSON_FENCE_START_RE = /^```json\s*\n?/;
+
+/** The last balanced `{...}` in text that does not itself start with JSON. */
+function extractLastJsonObject(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return undefined;
+  }
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let last: string | undefined;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      inString = !inString;
+    } else if (!inString && char === "{") {
+      if (depth === 0) {
+        start = i;
+      }
+      depth++;
+    } else if (!inString && char === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        last = text.slice(start, i + 1);
+      }
+    }
+  }
+  return last;
+}
+
+const CONTROL_CHAR_ESCAPES: Record<string, string> = {
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+};
+
+/** Escape raw newlines, carriage returns, and tabs inside JSON strings. */
+function escapeControlCharsInStrings(text: string): string {
+  let result = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    if (char === "\\" && i + 1 < text.length) {
+      result += char + text[++i];
+    } else {
+      if (char === '"') {
+        inString = !inString;
+      }
+      result += (inString && CONTROL_CHAR_ESCAPES[char]) || char;
+    }
+  }
+  return result;
+}
+
+/** Turn model text into JSON text the way Mastra's object output did. */
+function preprocessJsonText(text: string): string {
+  let processed = text.match(MESSAGE_MARKER_RE)?.[1] ?? text;
+  const trimmedStart = processed.trimStart();
+  if (/^```json\b/.test(trimmedStart)) {
+    processed =
+      trimmedStart.match(JSON_FENCE_RE)?.[1]?.trim() ||
+      trimmedStart.replace(JSON_FENCE_START_RE, "");
+  }
+  return escapeControlCharsInStrings(
+    extractLastJsonObject(processed) ?? processed,
+  );
+}
+
+interface FeaturesStep {
+  finishReason: string;
+  text: string;
+  toolCalls: readonly unknown[];
+}
+
+/**
+ * Read the structured output with the rules of the Mastra 1.83 agent this
+ * code replaced, so results stay the same. Steps with no text, an error, or
+ * tool calls are skipped; a step cut off by the length limit or the content
+ * filter fails. Otherwise the step's text must match the schema: prose
+ * around one JSON object, a ```json fence, and truncated JSON are accepted.
+ * The last matching step wins, and no such step means no output.
+ */
+export async function parseFeaturesOutput(
+  steps: readonly FeaturesStep[],
+): Promise<z.infer<typeof featuresOutputSchema> | undefined> {
+  let output: z.infer<typeof featuresOutputSchema> | undefined;
+  for (const { finishReason, text, toolCalls } of steps) {
+    const cutOff =
+      finishReason === "length" || finishReason === "content-filter";
+    if (
+      !text.trim() ||
+      finishReason === "error" ||
+      (toolCalls.length > 0 && !cutOff)
+    ) {
+      continue;
+    }
+    if (cutOff) {
+      throw new Error(
+        `Structured output was truncated because the model finished with reason "${finishReason}".`,
+      );
+    }
+    const { value } = await parsePartialJson(preprocessJsonText(text));
+    const parsed = featuresOutputSchema.safeParse(value);
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .map((issue) => `- ${issue.path.join(".") || "root"}: ${issue.message}`)
+        .join("\n");
+      throw new Error(`Structured output validation failed: ${issues}`);
+    }
+    output = parsed.data;
+  }
+  return output;
+}
+
+/**
  * Filter agent output to only canonical slugs and ensure error-monitoring is present.
  *
  * Defends against the model returning slugs outside the allow-list, even
@@ -128,23 +268,6 @@ function sanitizeFeatures(raw: string[]): string[] {
     }
   }
   return [...out];
-}
-
-function createFeaturesAgent(
-  apiKey: string | undefined,
-  fetchedUrls: string[],
-) {
-  return new Agent({
-    id: "docs-features-agent",
-    name: "Docs Features Agent",
-    instructions: SYSTEM_PROMPT,
-    defaultOptions: AGENT_DEFAULT_OPTIONS,
-    model: createNativeModelFallbacks(PRIMARY_MODEL, apiKey),
-    tools: {
-      search_docs: createSearchDocsTool(),
-      fetch_doc_page: createFetchDocPageTool(fetchedUrls),
-    },
-  });
 }
 
 /**
@@ -202,11 +325,19 @@ ${seedSection}
 Return the canonical feature slugs available for this platform.`;
 
       try {
-        const agent = createFeaturesAgent(apiKey, fetchedUrls);
-        const result = await agent.generate(userPrompt, {
-          maxSteps: MAX_STEPS,
-          structuredOutput: { schema: featuresOutputSchema },
+        const result = await generateText({
+          ...MODEL_SETTINGS,
+          experimental_output: featuresOutput,
+          model: createNativeModelFallbacks(PRIMARY_MODEL, apiKey),
+          prompt: userPrompt,
+          stopWhen: stepCountIs(MAX_STEPS),
+          system: SYSTEM_PROMPT,
+          tools: {
+            search_docs: createSearchDocsTool(),
+            fetch_doc_page: createFetchDocPageTool(fetchedUrls),
+          },
         });
+        const output = await parseFeaturesOutput(result.steps);
 
         const inputTokens = result.totalUsage.inputTokens ?? 0;
         const outputTokens = result.totalUsage.outputTokens ?? 0;
@@ -222,10 +353,6 @@ Return the canonical feature slugs available for this platform.`;
         trackAgentSteps(stepCount);
         trackAgentCall(true);
 
-        // Mastra types `object` as always set, but it is undefined when the stream errors or a tripwire fires.
-        const output = result.object as
-          | z.infer<typeof featuresOutputSchema>
-          | undefined;
         const rawFeatures = output?.features ?? [];
         const features = sanitizeFeatures(rawFeatures);
 

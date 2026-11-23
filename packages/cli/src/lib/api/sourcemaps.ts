@@ -92,9 +92,9 @@ export type UploadOptions = {
   /** Project slug. */
   project: string;
   /** Release version (optional — debug IDs can work without releases). */
-  release?: string;
+  release?: string | undefined;
   /** Distribution identifier (optional — disambiguates builds within a release). */
-  dist?: string;
+  dist?: string | undefined;
   /** Files to upload (must already have debug IDs injected). */
   files: ArtifactFile[];
   /**
@@ -168,9 +168,9 @@ export async function buildArtifactBundle(
   options: {
     org: string;
     project: string;
-    release?: string;
-    dist?: string;
-    compression?: ZipCompression;
+    release?: string | undefined;
+    dist?: string | undefined;
+    compression?: ZipCompression | undefined;
   },
 ): Promise<void> {
   // Build manifest.json
@@ -190,7 +190,7 @@ export async function buildArtifactBundle(
       headers["debug-id"] = file.debugId;
     }
     if (file.sourcemapFilename) {
-      headers.Sourcemap = file.sourcemapFilename;
+      headers["Sourcemap"] = file.sourcemapFilename;
     }
 
     filesManifest[bundlePath] = {

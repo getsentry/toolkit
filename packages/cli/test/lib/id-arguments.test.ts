@@ -172,7 +172,7 @@ describe.each(KINDS)("%s IDs", (_name, kind, id, other) => {
     const label = kind.label.charAt(0).toLowerCase() + kind.label.slice(1);
     const text = args.at(-1)?.split("/").at(-1) ?? "";
     expect(() => parse(kind, args)).toThrow(
-      `Not a ${label}: "${text}". To search, try \`${kind.search?.command()} --query '${text}'\`.`,
+      `Not a ${label}: "${text}". To search, try \`${kind.search.command()} --query '${text}'\`.`,
     );
     // Unvalidated, it stays raw for the command to recover, then validate
     expect(parse(kind, args, { validate: false }).ids).toEqual([text]);

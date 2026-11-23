@@ -6,7 +6,7 @@ type Frame = z.infer<typeof FrameInterface>;
 type Thread = z.infer<typeof ThreadEntrySchema>;
 type Stacktrace = {
   frames: Frame[];
-  framesOmitted?: unknown[] | null;
+  framesOmitted?: unknown[] | null | undefined;
 };
 
 /** Lines kept on each side of the detail frame's line, as the markdown frame view shows. */

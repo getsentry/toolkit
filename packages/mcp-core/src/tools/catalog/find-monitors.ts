@@ -71,7 +71,8 @@ function parseSchedule(value: unknown): {
     return { type: null, value: value.trim() || null };
   }
   if (Array.isArray(value)) {
-    const [first, second, third] = value;
+    const entries: unknown[] = value;
+    const [first, second, third] = entries;
     if (first === "crontab" && typeof second === "string") {
       return { type: "crontab", value: second };
     }
@@ -94,17 +95,17 @@ function parseSchedule(value: unknown): {
     return { type: null, value: null };
   }
   const schedule = value as Record<string, unknown>;
-  const type = typeof schedule.type === "string" ? schedule.type : null;
-  if (type === "crontab" && typeof schedule.value === "string") {
-    return { type, value: schedule.value };
+  const type = typeof schedule["type"] === "string" ? schedule["type"] : null;
+  if (type === "crontab" && typeof schedule["value"] === "string") {
+    return { type, value: schedule["value"] };
   }
   if (
     type === "interval" &&
-    (typeof schedule.value === "number" ||
-      typeof schedule.value === "string") &&
-    typeof schedule.unit === "string"
+    (typeof schedule["value"] === "number" ||
+      typeof schedule["value"] === "string") &&
+    typeof schedule["unit"] === "string"
   ) {
-    return { type, value: `${schedule.value} ${schedule.unit}` };
+    return { type, value: `${schedule["value"]} ${schedule["unit"]}` };
   }
   return { type, value: null };
 }
@@ -114,16 +115,18 @@ function getSchedule(monitor: Monitor) {
   if (!config) {
     return null;
   }
-  const parsedSchedule = parseSchedule(config.schedule);
+  const parsedSchedule = parseSchedule(config["schedule"]);
   const type =
-    typeof config.schedule_type === "string"
-      ? config.schedule_type
+    typeof config["schedule_type"] === "string"
+      ? config["schedule_type"]
       : parsedSchedule.type;
   const value = parsedSchedule.value;
   const checkInMargin =
-    typeof config.checkin_margin === "number" ? config.checkin_margin : null;
+    typeof config["checkin_margin"] === "number"
+      ? config["checkin_margin"]
+      : null;
   const maxRuntime =
-    typeof config.max_runtime === "number" ? config.max_runtime : null;
+    typeof config["max_runtime"] === "number" ? config["max_runtime"] : null;
   if (
     type === null &&
     value === null &&
@@ -141,19 +144,9 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read"],
   description: [
-    "List or search Sentry cron monitors, which track scheduled jobs through check-ins.",
-    "For HTTP uptime checks use find_uptime_monitors; for metric thresholds use find_metric_monitors.",
-    "",
-    "Use this tool when you need to:",
-    "- List cron monitors in an organization",
-    "- Find a monitor by name or slug before getting details",
-    "- Check monitor status, owner, project, schedule, or recent environment state",
-    "- When `hasMore` is true, narrow the results with project, environment, owner, or query filters",
-    "",
-    "<examples>",
-    "find_monitors(organizationSlug='my-organization')",
-    "find_monitors(organizationSlug='my-organization', projectSlug='backend', query='billing')",
-    "</examples>",
+    "Find Sentry cron monitors, which track scheduled jobs through check-ins. Returns each monitor's status, schedule, owner, project, and recent environment state.",
+    "Uptime URL checks: find_uptime_monitors. Metric thresholds: find_metric_monitors.",
+    "When more results exist, narrow by project, environment, owner, or name.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -162,21 +155,21 @@ export default defineTool({
     environment: z
       .string()
       .trim()
-      .describe("Optional environment name to limit monitor state.")
+      .describe("Environment to report monitor state for.")
       .nullable()
       .default(null),
     owner: z
       .string()
       .trim()
       .describe(
-        "Optional owner filter, such as `user:123`, `team:456`, `myteams`, or `unassigned`.",
+        "Owner filter: `user:123`, `team:456`, `myteams`, or `unassigned`.",
       )
       .nullable()
       .default(null),
     query: z
       .string()
       .trim()
-      .describe("Optional search query for monitor name or slug.")
+      .describe("Text to match in the monitor name or slug.")
       .nullable()
       .default(null),
     limit: z
@@ -184,7 +177,7 @@ export default defineTool({
       .int()
       .positive()
       .max(99)
-      .describe("Maximum number of monitors to return.")
+      .describe("Maximum monitors to return.")
       .default(10),
   },
   annotations: {

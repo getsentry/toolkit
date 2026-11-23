@@ -18,6 +18,7 @@ import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import * as region from "../../../src/lib/region.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 let tmpDir: string;
 
@@ -81,7 +82,7 @@ describe("build download", () => {
       installUrl: "https://us.sentry.io/dl/?response_format=plist",
     });
     const { context, output } = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(context, { output: undefined }, "build-1");
 
@@ -102,7 +103,7 @@ describe("build download", () => {
     });
     const outPath = join(tmpDir, "custom.apk");
     const { context } = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(context, { output: outPath }, "b2");
 
@@ -113,7 +114,7 @@ describe("build download", () => {
   test("rejects a non-installable build without downloading", async () => {
     installSpy.mockResolvedValue({ isInstallable: false, installUrl: null });
     const { context } = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await expect(
       func.call(context, { output: undefined }, "b3"),

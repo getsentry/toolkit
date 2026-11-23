@@ -4,7 +4,7 @@ import {
   isValidMaxEnvelopes,
 } from "../../../../packages/cli/src/commands/local/retention-limits.ts";
 import type { LocalFeedItem } from "./spotlight.ts";
-import { isErrorEvent } from "./workspace.ts";
+import { isErrorEvent, SDK_REPORT_TYPES } from "./workspace.ts";
 
 export type LocalTelemetrySnapshot = {
   items: LocalFeedItem[];
@@ -62,9 +62,7 @@ function buildSnapshot(
     profiles: items.filter(
       (item) => item.type === "profile" || item.type === "profile_chunk",
     ),
-    sdks: items.filter(
-      (item) => item.type === "client_report" || item.type === "session",
-    ),
+    sdks: items.filter((item) => SDK_REPORT_TYPES.has(item.type)),
     ai: aiItems(items),
   };
 }

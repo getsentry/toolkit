@@ -8,6 +8,7 @@
 import { ApiError, isApiAuthenticationErrorDeep } from "../../api-client";
 import type { RoutedCredential, ServerContext } from "../../types";
 import { parseSentryUrl } from "../url-helpers";
+import { getSessionContext, withCallSignal } from "./call-signal";
 
 /**
  * Tool parameters that hold a Sentry URL whose organization the call targets
@@ -28,7 +29,7 @@ const ORGANIZATION_URL_PARAMS = [
 export function getTargetOrganizationSlug(
   params: Record<string, unknown>,
 ): string | null {
-  const slug = params.organizationSlug;
+  const slug = params["organizationSlug"];
   if (typeof slug === "string" && slug.trim()) {
     return slug.trim();
   }
@@ -62,7 +63,8 @@ function getRoutedContext(
 ): ServerContext {
   // A nested call (execute_sentry_tool, get_sentry_resource) routes again
   // from the context it was given; derive from the same base.
-  const base = baseContexts.get(context) ?? context;
+  const session = getSessionContext(context);
+  const base = baseContexts.get(session) ?? session;
   let byCredential = routedContexts.get(base);
   if (!byCredential) {
     byCredential = new Map();
@@ -140,7 +142,9 @@ export async function withRoutedCredential<T>(
     organizationSlug: getTargetOrganizationSlug(params),
   });
   try {
-    return await run(getRoutedContext(context, credential));
+    return await run(
+      withCallSignal(getRoutedContext(context, credential), context.signal),
+    );
   } catch (error) {
     await refreshAfterUnauthorized(credential, context, error);
     throw error;
@@ -167,7 +171,10 @@ export async function listCredentialContexts(
   const credentials = await router.list();
   return credentials.map((credential) => ({
     credential,
-    context: getRoutedContext(context, credential),
+    context: withCallSignal(
+      getRoutedContext(context, credential),
+      context.signal,
+    ),
   }));
 }
 
@@ -192,9 +199,12 @@ export async function mapCredentialContexts<T>(
     }),
   );
   const results: Array<{ entry: CredentialContext; value: T }> = [];
-  let firstError: unknown;
+  let firstError: ApiError | undefined;
   for (const [index, result] of settled.entries()) {
     const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
     if (result.status === "fulfilled") {
       results.push({ entry, value: result.value });
       continue;

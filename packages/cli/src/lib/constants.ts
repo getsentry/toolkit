@@ -63,7 +63,7 @@ export function normalizeUrl(url: string | undefined): string | undefined {
  */
 export function getConfiguredSentryUrl(): string | undefined {
   const env = getEnv();
-  const raw = env.SENTRY_HOST?.trim() || env.SENTRY_URL?.trim();
+  const raw = env["SENTRY_HOST"]?.trim() || env["SENTRY_URL"]?.trim();
   if (!raw) {
     return;
   }
@@ -118,8 +118,8 @@ export function isPersistedDefaultUrlInEffect(): boolean {
   const applied = persistedDefaultUrls.get(env);
   return (
     applied !== undefined &&
-    !env.SENTRY_HOST?.trim() &&
-    env.SENTRY_URL?.trim() === applied
+    !env["SENTRY_HOST"]?.trim() &&
+    env["SENTRY_URL"]?.trim() === applied
   );
 }
 
@@ -158,8 +158,8 @@ export function getCliEnvironment(version: string = CLI_VERSION): string {
  */
 export function getUserAgent(): string {
   const runtime =
-    typeof process.versions.bun !== "undefined"
-      ? `bun/${process.versions.bun}`
+    typeof process.versions["bun"] !== "undefined"
+      ? `bun/${process.versions["bun"]}`
       : `node/${process.versions.node}`;
   return `sentry-cli/${CLI_VERSION} (${process.platform}-${process.arch}) ${runtime}`;
 }

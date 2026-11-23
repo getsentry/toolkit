@@ -104,7 +104,7 @@ ${paragraphs}
 }
 
 export class OAuthClient {
-  private config: OAuthConfig;
+  private config: Required<OAuthConfig>;
   private server: Server | null = null;
   private configManager: ConfigManager;
   private redirect: OAuthRedirect;
@@ -160,7 +160,7 @@ export class OAuthClient {
       grant_types: ["authorization_code"],
       response_types: ["code"],
       token_endpoint_auth_method: "none", // PKCE, no client secret
-      scope: this.config.scopes!.join(" "),
+      scope: this.config.scopes.join(" "),
     };
 
     const response = await fetch(registrationUrl, {
@@ -411,7 +411,7 @@ export class OAuthClient {
     authUrl.searchParams.set("client_id", clientId);
     authUrl.searchParams.set("redirect_uri", this.redirect.redirectUri);
     authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("scope", this.config.scopes!.join(" "));
+    authUrl.searchParams.set("scope", this.config.scopes.join(" "));
     authUrl.searchParams.set("state", state);
     authUrl.searchParams.set("code_challenge", challenge);
     authUrl.searchParams.set("code_challenge_method", "S256");

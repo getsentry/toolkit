@@ -62,7 +62,7 @@ export type FixResult = {
   /** True when at least one issue couldn't be repaired */
   repairFailed: boolean;
   /** Manual instructions when automatic repair isn't possible */
-  instructions?: string;
+  instructions?: string | undefined;
 };
 
 /** Format a schema issue as a human-readable string for display. */
@@ -315,7 +315,7 @@ async function repairOwnership(
 /** Result of diagnosing a category of issues (used internally) */
 type HandlerResult = {
   issues: FixIssue[];
-  instructions?: string;
+  instructions?: string | undefined;
   repairFailed: boolean;
 };
 

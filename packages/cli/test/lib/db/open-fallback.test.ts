@@ -37,7 +37,7 @@ afterEach(() => {
 /** Capture everything written to stderr, where the logger prints warnings. */
 function captureStderr(): () => string {
   const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-  return () => spy.mock.calls.map((call) => String(call[0] ?? "")).join("");
+  return () => spy.mock.calls.map((call) => String(call[0])).join("");
 }
 
 /** Write a metadata key and read it back through `getDatabase()`. */

@@ -35,24 +35,25 @@ export function syncOpenRouterEnvFromBindings(
   >,
 ): boolean {
   const openRouterApiKey =
-    env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+    env.OPENROUTER_API_KEY || process.env["OPENROUTER_API_KEY"];
   if (!openRouterApiKey) {
     return false;
   }
 
-  process.env.OPENROUTER_API_KEY = openRouterApiKey;
+  process.env["OPENROUTER_API_KEY"] = openRouterApiKey;
 
   // Always mirror or clear optional bindings so a reused worker isolate cannot
   // keep a previous request's model/effort after the binding is removed.
   if (env.OPENROUTER_MODEL) {
-    process.env.OPENROUTER_MODEL = env.OPENROUTER_MODEL;
+    process.env["OPENROUTER_MODEL"] = env.OPENROUTER_MODEL;
   } else {
-    delete process.env.OPENROUTER_MODEL;
+    delete process.env["OPENROUTER_MODEL"];
   }
   if (env.OPENROUTER_REASONING_EFFORT !== undefined) {
-    process.env.OPENROUTER_REASONING_EFFORT = env.OPENROUTER_REASONING_EFFORT;
+    process.env["OPENROUTER_REASONING_EFFORT"] =
+      env.OPENROUTER_REASONING_EFFORT;
   } else {
-    delete process.env.OPENROUTER_REASONING_EFFORT;
+    delete process.env["OPENROUTER_REASONING_EFFORT"];
   }
 
   return true;
@@ -433,16 +434,17 @@ Remember: You're a test assistant, not a general-purpose helper. Stay focused on
           401,
         );
       }
-
-      const eventId = logIssue(error);
-      return c.json(
-        {
-          error: "Internal server error",
-          name: "INTERNAL_ERROR",
-          eventId,
-        },
-        500,
-      );
     }
+
+    // Anything else, including non-Error throwables, is an internal error.
+    const eventId = logIssue(error);
+    return c.json(
+      {
+        error: "Internal server error",
+        name: "INTERNAL_ERROR",
+        eventId,
+      },
+      500,
+    );
   }
 });

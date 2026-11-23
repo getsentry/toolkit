@@ -284,5 +284,6 @@ export const deleteCommand = buildDeleteCommand({
       throw explainTokenForbidden(error, DELETE_SCOPES, scopeMissing);
     }
     yield new CommandOutput({ ...result, deleted: true });
+    return;
   },
 });

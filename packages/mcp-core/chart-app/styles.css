@@ -1,0 +1,253 @@
+:root {
+  color-scheme: light;
+  --bg: var(--color-background-primary, #ffffff);
+  --panel: var(--color-background-secondary, #faf9fb);
+  --fg: var(--color-text-primary, #2b2233);
+  --muted: var(--color-text-secondary, #71637e);
+  --border: var(--color-border-primary, #e0dce5);
+  --grid: var(--color-border-tertiary, #f0ecf3);
+  --danger: var(--color-text-danger, #cf2126);
+  --accent: #6c5fc7;
+  --radius: var(--border-radius-md, 6px);
+  font-family: var(
+    --font-sans,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif
+  );
+  font-size: var(--font-text-sm-size, 13px);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--color-background-primary, #1e1a25);
+  --panel: var(--color-background-secondary, #262130);
+  --fg: var(--color-text-primary, #ebe6ef);
+  --muted: var(--color-text-secondary, #a397b0);
+  --border: var(--color-border-primary, #3e3446);
+  --grid: var(--color-border-tertiary, #2f2838);
+  --danger: var(--color-text-danger, #ff7f7f);
+  --accent: #a796f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+main {
+  padding: 14px 16px 12px;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: var(--font-heading-sm-size, 15px);
+  font-weight: var(--font-weight-semibold, 600);
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin-top: 2px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.subtitle code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.95em;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ranges {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 0;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ranges button + button {
+  border-left: 1px solid var(--border);
+}
+
+.ranges button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.open {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 4px;
+  color: var(--muted);
+}
+
+.stats strong {
+  color: var(--fg);
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.chart {
+  position: relative;
+  transition: opacity 120ms;
+}
+
+/* Fullscreen: the chart takes the height that the header and legend leave. */
+[data-display-mode="fullscreen"] main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+[data-display-mode="fullscreen"] .chart {
+  flex: 1;
+  min-height: 220px;
+}
+
+.chart[data-loading="true"] {
+  opacity: 0.45;
+}
+
+svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.axis text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.grid line {
+  stroke: var(--grid);
+}
+
+.baseline {
+  stroke: var(--border);
+}
+
+.incomplete-band {
+  fill: url(#incomplete-hatch);
+}
+
+#incomplete-hatch line {
+  stroke: var(--border);
+}
+
+.crosshair {
+  stroke: var(--muted);
+  stroke-dasharray: 2 3;
+}
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  min-width: 140px;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md, 0 2px 8px rgba(0, 0, 0, 0.15));
+  font-size: 12px;
+}
+
+.tooltip .time {
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.tooltip .row,
+.legend .item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tooltip .row span:last-child {
+  margin-left: auto;
+  padding-left: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.state {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  margin-top: 10px;
+  padding: 16px;
+}
+
+.state.error {
+  color: var(--danger);
+}
+
+/* Author display rules otherwise beat the hidden attribute. */
+[hidden] {
+  display: none !important;
+}

@@ -115,7 +115,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // captures SaaS default), then rc shim writes env.SENTRY_URL to the
     // attacker's host.
     captureEnvTokenHost(); // captures SaaS default (no env set)
-    process.env.SENTRY_URL = "https://evil.com"; // simulate rc shim write
+    process.env["SENTRY_URL"] = "https://evil.com"; // simulate rc shim write
 
     const func = (await loginCommand.loader()) as unknown as LoginFunc;
     const context = createContext();
@@ -146,7 +146,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // attacker URL in the first place — much stronger than relying on
     // them to spot the malicious URL in terminal output.
     captureEnvTokenHost();
-    process.env.SENTRY_URL = "https://evil.com";
+    process.env["SENTRY_URL"] = "https://evil.com";
 
     const func = (await loginCommand.loader()) as unknown as LoginFunc;
     const context = createContext();
@@ -163,7 +163,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // The explicit --url path is the documented way to acknowledge a
     // new host. rc-sourced env.SENTRY_URL is overwritten by applyLoginUrl.
     captureEnvTokenHost();
-    process.env.SENTRY_URL = "https://evil.com"; // poisoned by rc
+    process.env["SENTRY_URL"] = "https://evil.com"; // poisoned by rc
 
     const func = (await loginCommand.loader()) as unknown as LoginFunc;
     const context = createContext();
@@ -195,7 +195,11 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
     // requires --url to confirm the host. This simplifies the trust model
     // (only --url registers a trust anchor) and avoids the boot-snapshot
     // comparison complexity. Self-hosted users add --url on first login.
-    process.env.SENTRY_HOST = "https://sentry.acme.com";
+    // Even when SENTRY_HOST is legitimately shell-exported, --token login
+    // requires --url to confirm the host. This simplifies the trust model
+    // (only --url registers a trust anchor) and avoids the boot-snapshot
+    // comparison complexity. Self-hosted users add --url on first login.
+    process.env["SENTRY_HOST"] = "https://sentry.acme.com";
     captureEnvTokenHost();
 
     const func = (await loginCommand.loader()) as unknown as LoginFunc;
@@ -224,7 +228,7 @@ describe("CVE: auth login --token with rc-poisoned env.SENTRY_URL", () => {
       await import("../../../src/lib/token-host.js");
     registerLoginTrustAnchor("https://sentry.hosta.com");
 
-    process.env.SENTRY_URL = "https://evil.com";
+    process.env["SENTRY_URL"] = "https://evil.com";
 
     const func = (await loginCommand.loader()) as unknown as LoginFunc;
     const context = createContext();

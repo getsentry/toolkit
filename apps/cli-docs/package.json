@@ -11,7 +11,8 @@
     "build": "astro build",
     "test": "node --test test/*.test.mjs",
     "preview": "astro preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "typecheck": "astro check"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",
@@ -20,11 +21,13 @@
     "@sentry/starlight-theme": "^0.8.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "astro": "^7.1.1",
+    "astro": "^7.4.7",
     "sharp": "^0.35.5",
     "shiki": "^3.21.0"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "typescript": "catalog:astro-check",
     "wrangler": "catalog:"
   }
 }

@@ -150,12 +150,12 @@ function readNumber(
 }
 
 function readRepositoryName(value: Record<string, unknown>): string | null {
-  const repository = value.repository;
+  const repository = value["repository"];
   return isPlainObject(repository) ? readString(repository, "name") : null;
 }
 
 function mapAssignee(data: Record<string, unknown>) {
-  const id = data.assignee;
+  const id = data["assignee"];
   if (typeof id !== "string" && typeof id !== "number") {
     return undefined;
   }
@@ -176,8 +176,8 @@ function mapIgnore(data: Record<string, unknown>) {
     userWindow: readNumber(data, "ignoreUserWindow"),
     until: readString(data, "ignoreUntil") ?? undefined,
     untilEscalating:
-      typeof data.ignoreUntilEscalating === "boolean"
-        ? data.ignoreUntilEscalating
+      typeof data["ignoreUntilEscalating"] === "boolean"
+        ? data["ignoreUntilEscalating"]
         : undefined,
   };
   return Object.values(ignore).some((value) => value !== undefined)
@@ -186,7 +186,7 @@ function mapIgnore(data: Record<string, unknown>) {
 }
 
 function readGitAuthor(value: Record<string, unknown>) {
-  const author = value.author;
+  const author = value["author"];
   if (!isPlainObject(author)) {
     return null;
   }
@@ -196,15 +196,15 @@ function readGitAuthor(value: Record<string, unknown>) {
 }
 
 function mapCommit(data: Record<string, unknown>) {
-  const commit = data.commit;
+  const commit = data["commit"];
   if (commit === null) {
     return null;
   }
-  if (!isPlainObject(commit) || commit.id == null) {
+  if (!isPlainObject(commit) || commit["id"] == null) {
     return undefined;
   }
   return {
-    id: formatId(commit.id as string | number),
+    id: formatId(commit["id"] as string | number),
     message: readString(commit, "message")?.split("\n")[0]?.trim() || null,
     repository: readRepositoryName(commit),
     author: readGitAuthor(commit),
@@ -212,15 +212,15 @@ function mapCommit(data: Record<string, unknown>) {
 }
 
 function mapPullRequest(data: Record<string, unknown>) {
-  const pullRequest = data.pullRequest;
+  const pullRequest = data["pullRequest"];
   if (pullRequest === null) {
     return null;
   }
-  if (!isPlainObject(pullRequest) || pullRequest.id == null) {
+  if (!isPlainObject(pullRequest) || pullRequest["id"] == null) {
     return undefined;
   }
   return {
-    id: formatId(pullRequest.id as string | number),
+    id: formatId(pullRequest["id"] as string | number),
     title: readString(pullRequest, "title"),
     repository: readRepositoryName(pullRequest),
     author: readGitAuthor(pullRequest),
@@ -228,12 +228,12 @@ function mapPullRequest(data: Record<string, unknown>) {
 }
 
 function mapSeerPullRequestUrls(data: Record<string, unknown>) {
-  const pullRequests = data.pull_requests;
+  const pullRequests = data["pull_requests"];
   if (!Array.isArray(pullRequests)) {
     return undefined;
   }
   const urls = pullRequests.flatMap((item) => {
-    const pullRequest = isPlainObject(item) ? item.pull_request : null;
+    const pullRequest = isPlainObject(item) ? item["pull_request"] : null;
     const url = isPlainObject(pullRequest)
       ? readString(pullRequest, "pr_url")
       : null;
@@ -252,11 +252,11 @@ function mapUnmerge(type: string, data: Record<string, unknown>) {
     return undefined;
   }
   return {
-    fingerprintCount: Array.isArray(data.fingerprints)
-      ? data.fingerprints.length
+    fingerprintCount: Array.isArray(data["fingerprints"])
+      ? data["fingerprints"].length
       : 0,
-    source: readShortId(data.source),
-    destination: readShortId(data.destination),
+    source: readShortId(data["source"]),
+    destination: readShortId(data["destination"]),
   };
 }
 
@@ -322,19 +322,8 @@ export default defineTool({
   title: "Get Issue Activity",
   skills: ["inspect", "triage"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get the activity feed and comments for a Sentry issue.",
-    "",
-    "Use this tool when you need to:",
-    "- Review prior comments before triaging an issue",
-    "- Understand who resolved, ignored, assigned, or commented on an issue",
-    "- See recent issue activity that is not included in `get_issue_details`",
-    "",
-    "<examples>",
-    "get_issue_activity(organizationSlug='my-organization', issueId='PROJECT-123')",
-    "get_issue_activity(issueUrl='https://my-organization.sentry.io/issues/PROJECT-123/')",
-    "</examples>",
-  ].join("\n"),
+  description:
+    "Get the activity feed and comments of a Sentry issue: who resolved, ignored, assigned, or commented on it, and when.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),

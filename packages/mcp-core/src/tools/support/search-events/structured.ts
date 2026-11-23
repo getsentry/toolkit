@@ -15,6 +15,7 @@ import {
   suggestedToolActionSchema,
 } from "../../../internal/tool-helpers/suggested-actions";
 import { structuredResult } from "../../../internal/tool-helpers/results";
+import { filtersToIssues } from "../chart/series";
 import { logInfo } from "../../../telem/logging";
 import type { StructuredToolOutput } from "../../types";
 import type { PublicEventsDataset } from "../../../utils/events-datasets";
@@ -30,6 +31,7 @@ import {
   type SearchResultHints,
   summarizeTimeSeries,
 } from "./formatters";
+import { ingestionSchema, toStructuredIngestion } from "../ingestion";
 import { type FlexibleEventData, isAggregateQuery } from "./utils";
 
 export const timeRangeSchema = z.object({
@@ -64,13 +66,7 @@ const timeSeriesSchema = z.object({
     })
     .nullable()
     .describe("Highest bucket that is no longer receiving data."),
-  ingestion: z
-    .object({
-      status: z.string(),
-      delaySeconds: z.number().nullable(),
-      completeThrough: z.string().nullable(),
-    })
-    .nullable(),
+  ingestion: ingestionSchema,
   bucketCount: z.number(),
   buckets: z
     .array(
@@ -109,8 +105,8 @@ interface StructuredSearchSession {
   apiService: SentryApiService;
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 type RowLinkShape = Record<string, z.ZodType<string | null>>;
@@ -161,7 +157,7 @@ function firstTraceAction(
   reason: string,
 ): SuggestedToolAction[] {
   const traceId = results
-    .map((row) => row.values.trace)
+    .map((row) => row.values["trace"])
     .find((trace): trace is string => typeof trace === "string" && !!trace);
   const action = traceId
     ? buildSuggestedToolAction({
@@ -186,13 +182,13 @@ const STRUCTURED_DATASETS = {
     links: { issueUrl: z.string().nullable() },
     rowLinks: (event, { apiService, organizationSlug }) => ({
       issueUrl:
-        typeof event.issue === "string" && event.issue
-          ? apiService.getIssueUrl(organizationSlug, event.issue)
+        typeof event["issue"] === "string" && event["issue"]
+          ? apiService.getIssueUrl(organizationSlug, event["issue"])
           : null,
     }),
     suggestedActions(results, session) {
       const issueId = results
-        .map((row) => row.values.issue)
+        .map((row) => row.values["issue"])
         .find((issue): issue is string => typeof issue === "string" && !!issue);
       const action = issueId
         ? buildSuggestedToolAction({
@@ -277,8 +273,9 @@ const STRUCTURED_DATASETS = {
       traceUrl: traceUrlFor(event, session),
     }),
     suggestedActions(results, session) {
-      const profileUrl = results.find((row) => row.links.profileUrl)?.links
-        .profileUrl;
+      const profileUrl = results.find((row) => row.links["profileUrl"])?.links[
+        "profileUrl"
+      ];
       const reason = "Analyze the flamegraph for the first matching profile.";
       // Experimental sessions route profile URLs through get_sentry_resource.
       const profileAction = profileUrl
@@ -388,7 +385,7 @@ export function buildStructuredEventsResult(params: {
   eventData: FlexibleEventData[];
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   explorerUrl: string;
   sentryQuery: string;
   fields: string[];
@@ -449,14 +446,38 @@ export function buildStructuredTimeSeriesResult(params: {
   interval: string | null;
   inputQuery: string;
   includeExplanation: boolean;
-  explanation?: string;
+  explanation?: string | undefined;
   query: string;
   timeRange: { statsPeriod?: string; start?: string; end?: string };
   url: string;
   notes: string[];
+  session: StructuredSearchSession;
+  projectSlug: string | null;
+  regionUrl: string | null;
 }): StructuredToolOutput<SearchEventsStructuredContent> {
   const { bucketCount, shown, total, hasFilling, peak, ingestion } =
     summarizeTimeSeries(params.series, params.yAxis);
+  const { session, timeRange } = params;
+  const chartAction = buildSuggestedToolAction({
+    toolName: "render_sentry_chart",
+    arguments: {
+      organizationSlug: session.organizationSlug,
+      dataset: params.dataset,
+      query: params.query,
+      yAxis: params.yAxis,
+      ...(timeRange.start && timeRange.end
+        ? { start: timeRange.start, end: timeRange.end }
+        : timeRange.statsPeriod
+          ? { period: timeRange.statsPeriod }
+          : {}),
+      ...(params.projectSlug && { projectSlug: params.projectSlug }),
+      ...(params.regionUrl && { regionUrl: params.regionUrl }),
+    },
+    reason: "Chart every bucket of this series.",
+    experimentalMode: session.experimentalMode,
+    availableToolNames: session.availableToolNames,
+    directToolNames: session.directToolNames,
+  });
 
   return structuredResult({
     query: params.inputQuery,
@@ -483,16 +504,7 @@ export function buildStructuredTimeSeriesResult(params: {
       peak: peak
         ? { time: new Date(peak.timestamp).toISOString(), value: peak.rawValue }
         : null,
-      ingestion: ingestion
-        ? {
-            status: ingestion.status,
-            delaySeconds: ingestion.delaySeconds ?? null,
-            completeThrough:
-              ingestion.completeThrough === undefined
-                ? null
-                : new Date(ingestion.completeThrough).toISOString(),
-          }
-        : null,
+      ingestion: toStructuredIngestion(ingestion),
       bucketCount,
       buckets: shown.map((point) => ({
         time: new Date(point.timestamp).toISOString(),
@@ -501,6 +513,8 @@ export function buildStructuredTimeSeriesResult(params: {
         outsideRetention: point.outsideRetention,
       })),
     },
-    suggestedActions: [],
+    // render_sentry_chart rejects issue filters; render_issue_chart charts an issue
+    suggestedActions:
+      chartAction && !filtersToIssues(params.query) ? [chartAction] : [],
   });
 }

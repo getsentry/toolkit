@@ -19,7 +19,11 @@ import {
   FRESH_FLAG,
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
-import { withProgress } from "../../lib/polling.js";
+import {
+  abortableSleep,
+  parsePollInterval,
+  withProgress,
+} from "../../lib/polling.js";
 import { resolveOrgRegion } from "../../lib/region.js";
 import { buildDashboardUrl } from "../../lib/sentry-web-urls.js";
 import type { GraphicsRendererPreference } from "../../lib/sixel.js";
@@ -65,34 +69,9 @@ function parseRefresh(value: string): number {
   if (value === "") {
     return DEFAULT_REFRESH_INTERVAL;
   }
-  const num = Number.parseInt(value, 10);
-  if (Number.isNaN(num) || num < MIN_REFRESH_INTERVAL) {
-    throw new Error(
-      `--refresh interval must be at least ${MIN_REFRESH_INTERVAL} seconds`,
-    );
-  }
-  return num;
-}
-
-/**
- * Sleep that resolves early when an AbortSignal fires.
- * Resolves (not rejects) on abort for clean generator shutdown.
- */
-function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
+  return parsePollInterval(value, {
+    flag: "--refresh",
+    min: MIN_REFRESH_INTERVAL,
   });
 }
 
@@ -103,8 +82,8 @@ function buildViewData(
   dashboard: {
     id: string;
     title: string;
-    dateCreated?: string;
-    environment?: string[];
+    dateCreated?: string | undefined;
+    environment?: string[] | undefined;
   },
   widgetResults: Map<number, WidgetDataResult>,
   widgets: DashboardWidget[],
@@ -129,7 +108,7 @@ function buildViewData(
       title: w.title,
       displayType: w.displayType,
       widgetType: w.widgetType,
-      description: (w as Record<string, unknown>).description as
+      description: (w as Record<string, unknown>)["description"] as
         | string
         | undefined,
       layout: w.layout,
@@ -159,6 +138,7 @@ function resolveViewTimeRange(
 }
 
 export const viewCommand = buildCommand({
+  streams: { flag: "refresh" },
   docs: {
     brief: "View a dashboard",
     fullDescription:
@@ -313,7 +293,7 @@ export const viewCommand = buildCommand({
 
       // Library mode: honor external abort signal (e.g., consumer break)
       const externalSignal = (this.process as { abortSignal?: AbortSignal })
-        ?.abortSignal;
+        .abortSignal;
       if (externalSignal) {
         externalSignal.addEventListener("abort", stop, { once: true });
       }

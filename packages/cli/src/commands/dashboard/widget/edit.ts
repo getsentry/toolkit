@@ -194,12 +194,12 @@ function buildReplacement(
   // Only set widgetType if explicitly provided via --dataset or already on the widget.
   // Avoids parseWidgetInput defaulting to "spans" for widgets without a widgetType.
   if (flags.dataset) {
-    raw.widgetType = flags.dataset;
+    raw["widgetType"] = flags.dataset;
   } else if (existing.widgetType) {
-    raw.widgetType = existing.widgetType;
+    raw["widgetType"] = existing.widgetType;
   }
   if (limit !== undefined && limit !== null) {
-    raw.limit = limit;
+    raw["limit"] = limit;
   }
 
   return prepareWidgetQueries(parseWidgetInput(raw));
