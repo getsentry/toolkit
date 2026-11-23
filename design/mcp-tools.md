@@ -34,7 +34,7 @@ harness the user already works in, such as Claude Code, Codex, or Cursor.
   gateway surface.
 - MCP Apps views, which follow [MCP Apps views](./mcp-apps.md).
   `render_sentry_chart` and `render_issue_chart` are the tools with a
-  view, and both are experimental.
+  view.
 
 ## Rules
 

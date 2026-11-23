@@ -21,19 +21,17 @@ client gets the same answer as text.
 ## Entry points
 
 - The chart view in an MCP Apps host, with its range picker, fullscreen, and
-  Open in Sentry buttons, in experimental sessions. `render_sentry_chart` charts a
-  query, and `render_issue_chart` charts one issue's events and users, as
-  the issue page does. Both share one view, and the range picker calls the
-  tool that drew the chart.
+  Open in Sentry buttons. `render_sentry_chart` charts a query, and
+  `render_issue_chart` charts one issue's events and users, as the issue
+  page does. Both share one view, and the range picker calls the tool that
+  drew the chart.
 - `ui://` resources in `resources/list` and `resources/read`, named by a
   tool's `_meta.ui.resourceUri` (and `openai/outputTemplate` for ChatGPT).
 
 ## Rules
 
-- MCP Apps ship in experimental sessions only, until real hosts are
-  verified. A tool with a view is marked `experimental`, so a stable
-  session lists neither the tool nor its view, and skill prompts do not
-  advertise it.
+- Skill prompts do not advertise a tool with a view. Models find it through
+  `tools/list` and the suggested actions of related tools.
 - A tool with a view is listed for every client that can call it, and its
   result is the same for every client. A view shows nothing that the result
   does not hold.

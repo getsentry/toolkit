@@ -2,8 +2,7 @@
  * MCP Apps: what a host reads to render render_sentry_chart and
  * render_issue_chart inline. Each tool names the shared chart view in
  * `_meta.ui.resourceUri`, and that `ui://` resource reads back as a
- * self-contained HTML document with the MCP Apps mime type. MCP Apps ship to
- * experimental sessions only for now.
+ * self-contained HTML document with the MCP Apps mime type.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -19,14 +18,14 @@ vi.mock("@sentry/core/server", () => ({
 const CHART_URI = "ui://sentry/chart/v5.html";
 const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
 
-async function connect(skills: Skill[], experimentalMode = true) {
+async function connect(skills: Skill[]) {
   const context: ServerContext = {
     accessToken: "test-token",
     grantedSkills: new Set(skills),
     constraints: { organizationSlug: null, projectSlug: null },
     sentryHost: "sentry.io",
   };
-  const server = buildServer({ context, experimentalMode });
+  const server = buildServer({ context });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "mcp-apps-host", version: "1.0.0" });
@@ -85,15 +84,6 @@ describe("MCP Apps chart view", () => {
     const { tools } = await session.client.listTools();
 
     expect(tools.map((tool) => tool.name)).not.toContain("render_sentry_chart");
-    expect(session.client.getServerCapabilities()?.resources).toBeUndefined();
-  });
-
-  it("keeps the chart tool and its view out of stable sessions", async () => {
-    await using session = await connect(["inspect"], false);
-    const { tools } = await session.client.listTools();
-
-    expect(tools.map((tool) => tool.name)).not.toContain("render_sentry_chart");
-    expect(tools.some((tool) => tool._meta?.["ui"] !== undefined)).toBe(false);
     expect(session.client.getServerCapabilities()?.resources).toBeUndefined();
   });
 });

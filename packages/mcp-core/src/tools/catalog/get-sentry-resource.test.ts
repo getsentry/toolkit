@@ -1352,6 +1352,15 @@ describe("event package selection", () => {
             "suggestedActions": [
               {
                 "arguments": {
+                  "issueId": "CLOUDFLARE-MCP-41",
+                  "organizationSlug": "sentry-mcp-evals",
+                },
+                "reason": "Chart this issue's events and affected users over time.",
+                "toolName": "render_issue_chart",
+                "type": "tool_call",
+              },
+              {
+                "arguments": {
                   "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
                 },
                 "reason": "Read the breadcrumb trail leading up to this event.",
