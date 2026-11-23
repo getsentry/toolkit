@@ -67,7 +67,9 @@ export function createScopedAuthorizationServerMetadataResponse(
       "none",
     ],
     revocation_endpoint: new URL("/oauth/token", requestUrl.origin).href,
-    code_challenge_methods_supported: ["plain", "S256"],
+    // Match the provider's root metadata. workers-oauth-provider rejects
+    // `plain` PKCE unless `allowPlainPKCE` is set, which we do not set.
+    code_challenge_methods_supported: ["S256"],
     prompt_values_supported: SUPPORTED_PROMPT_VALUES,
   };
 
@@ -108,11 +110,11 @@ export async function patchRootAuthorizationServerMetadata(
   }
 
   try {
-    const metadata = (await response.clone().json()) as Record<string, unknown>;
+    const metadata = await response.clone().json<Record<string, unknown>>();
     const patched = {
       ...metadata,
       prompt_values_supported: SUPPORTED_PROMPT_VALUES,
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- temporarily-off toggle; see the TODO on its declaration
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- deliberate compile-time toggle; see the TODO on the constant.
       ...(ADVERTISE_AUTHORIZATION_RESPONSE_ISS_PARAMETER_SUPPORTED
         ? { authorization_response_iss_parameter_supported: true }
         : {}),

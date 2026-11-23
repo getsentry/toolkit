@@ -43,12 +43,7 @@ function toUser(user: {
 export default defineTool({
   name: "whoami",
   title: "Who Am I",
-  description: [
-    "Identify the authenticated user in Sentry.",
-    "",
-    "Use this tool when you need to:",
-    "- Get the user's name and email address.",
-  ].join("\n"),
+  description: "Identify the authenticated Sentry user: name and email.",
   inputSchema: {},
   outputSchema: whoamiOutputSchema,
   skills: ALL_SKILLS, // Foundational tool - available to all skills
@@ -58,7 +53,7 @@ export default defineTool({
     destructiveHint: false,
     openWorldHint: true,
   },
-  async handler(params, context: ServerContext) {
+  async handler(_params, context: ServerContext) {
     // User data endpoints (like /auth/) should never use regionUrl
     // as they must always query the main API server, not region-specific servers
     // API client will throw ApiClientError/ApiServerError which the MCP server wrapper handles
@@ -74,6 +69,9 @@ export default defineTool({
           ).map(({ value }) => value)
         : [toUser(await apiServiceFromContext(context).getAuthenticatedUser())];
     const [user] = users;
+    if (!user) {
+      throw new Error("Expected at least one authenticated user.");
+    }
 
     const constraints = context.constraints;
     const sessionConstraints =

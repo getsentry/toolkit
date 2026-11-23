@@ -24,15 +24,8 @@ export default defineTool({
   skills: ["project-management"],
   requiredScopes: ["project:write"],
   description: [
-    "Delete one environment from a Sentry cron monitor.",
-    "",
-    "Use find_monitors or get_monitor_details to identify the monitor and exact environment name.",
-    "",
-    "Deletion is irreversible and completes in the background. The monitor and its other environments are preserved. An already absent environment is treated as success.",
-    "",
-    "<examples>",
-    "delete_monitor_environment(organizationSlug='my-organization', projectSlug='backend', monitorSlug='nightly-import', environment='production')",
-    "</examples>",
+    "Delete one environment from a Sentry cron monitor, irreversibly. The monitor and its other environments are kept; an absent environment counts as success.",
+    "To find the monitor and exact environment name, use find_monitors or get_monitor_details.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,

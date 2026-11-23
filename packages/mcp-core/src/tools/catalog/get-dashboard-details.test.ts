@@ -4,7 +4,7 @@ import {
   mswServer,
 } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   assertStructuredOnlyResult,
   getStructuredContent,
@@ -254,15 +254,20 @@ describe("get_dashboard_details", () => {
   });
 
   it("returns candidates for ambiguous dashboard titles", async () => {
+    const [firstDashboard, secondDashboard] = dashboardListFixture;
+    assert(
+      firstDashboard && secondDashboard,
+      "Expected two fixture dashboards",
+    );
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
         () =>
           HttpResponse.json([
-            dashboardListFixture[0],
+            firstDashboard,
             {
-              ...dashboardListFixture[1],
-              title: dashboardListFixture[0].title,
+              ...secondDashboard,
+              title: firstDashboard.title,
             },
           ]),
       ),
@@ -273,7 +278,7 @@ describe("get_dashboard_details", () => {
         {
           organizationSlug: "sentry-mcp-evals",
           regionUrl: null,
-          dashboardIdOrTitle: dashboardListFixture[0].title,
+          dashboardIdOrTitle: firstDashboard.title,
         },
         context,
       ),
@@ -362,6 +367,7 @@ describe("get_dashboard_details", () => {
 
   function mockQuery(query: Record<string, unknown>) {
     const [widget] = dashboardDetailsFixture.widgets;
+    assert(widget, "Expected a fixture widget");
     mswServer.use(
       http.get(
         "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/101/",
@@ -391,7 +397,11 @@ describe("get_dashboard_details", () => {
         context,
       ),
     );
-    return dashboard.widgets[0].queries[0];
+    const [widget] = dashboard.widgets;
+    assert(widget, "Expected a widget");
+    const [query] = widget.queries;
+    assert(query, "Expected a widget query");
+    return query;
   }
 
   it("describes saved transformations by aggregate position", async () => {

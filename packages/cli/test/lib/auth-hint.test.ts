@@ -34,31 +34,31 @@ let savedSentryToken: string | undefined;
 let savedForceEnv: string | undefined;
 
 beforeEach(() => {
-  savedAuthToken = process.env.SENTRY_AUTH_TOKEN;
-  savedSentryToken = process.env.SENTRY_TOKEN;
-  savedForceEnv = process.env.SENTRY_FORCE_ENV_TOKEN;
-  delete process.env.SENTRY_AUTH_TOKEN;
-  delete process.env.SENTRY_TOKEN;
-  delete process.env.SENTRY_FORCE_ENV_TOKEN;
+  savedAuthToken = process.env["SENTRY_AUTH_TOKEN"];
+  savedSentryToken = process.env["SENTRY_TOKEN"];
+  savedForceEnv = process.env["SENTRY_FORCE_ENV_TOKEN"];
+  delete process.env["SENTRY_AUTH_TOKEN"];
+  delete process.env["SENTRY_TOKEN"];
+  delete process.env["SENTRY_FORCE_ENV_TOKEN"];
   clearSentryCliRcCache();
   resetAuthHintState();
 });
 
 afterEach(() => {
   if (savedAuthToken !== undefined) {
-    process.env.SENTRY_AUTH_TOKEN = savedAuthToken;
+    process.env["SENTRY_AUTH_TOKEN"] = savedAuthToken;
   } else {
-    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
   }
   if (savedSentryToken !== undefined) {
-    process.env.SENTRY_TOKEN = savedSentryToken;
+    process.env["SENTRY_TOKEN"] = savedSentryToken;
   } else {
-    delete process.env.SENTRY_TOKEN;
+    delete process.env["SENTRY_TOKEN"];
   }
   if (savedForceEnv !== undefined) {
-    process.env.SENTRY_FORCE_ENV_TOKEN = savedForceEnv;
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = savedForceEnv;
   } else {
-    delete process.env.SENTRY_FORCE_ENV_TOKEN;
+    delete process.env["SENTRY_FORCE_ENV_TOKEN"];
   }
   clearSentryCliRcCache();
 });
@@ -80,11 +80,10 @@ function captureStderr() {
     /** Number of calls whose first argument contained the env-hint body. */
     hintCalls: () =>
       stderrSpy.mock.calls.filter((call) =>
-        String(call[0] ?? "").includes("SENTRY_FORCE_ENV_TOKEN=1"),
+        String(call[0]).includes("SENTRY_FORCE_ENV_TOKEN=1"),
       ).length,
     /** Flattened first-arg text across all calls (for substring assertions). */
-    text: () =>
-      stderrSpy.mock.calls.map((call) => String(call[0] ?? "")).join(""),
+    text: () => stderrSpy.mock.calls.map((call) => String(call[0])).join(""),
     restore: () => stderrSpy.mockRestore(),
   };
 }
@@ -102,7 +101,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
   });
 
   test("does nothing when no stored OAuth login exists", () => {
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
     const cap = captureStderr();
     try {
       maybeWarnEnvTokenIgnored();
@@ -114,8 +113,8 @@ describe("maybeWarnEnvTokenIgnored", () => {
 
   test("does nothing when SENTRY_FORCE_ENV_TOKEN is set", () => {
     setAuthToken("stored_oauth", 3600, "refresh_a");
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
-    process.env.SENTRY_FORCE_ENV_TOKEN = "1";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
+    process.env["SENTRY_FORCE_ENV_TOKEN"] = "1";
     const cap = captureStderr();
     try {
       maybeWarnEnvTokenIgnored();
@@ -132,7 +131,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
       username: "alice",
       email: "alice@example.com",
     });
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
 
     const cap = captureStderr();
     try {
@@ -172,7 +171,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
 
   test("is silent on repeat calls within the same process", () => {
     setAuthToken("stored_oauth", 3600, "refresh_a");
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
 
     const cap = captureStderr();
     try {
@@ -187,7 +186,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
 
   test("uses SENTRY_TOKEN when only that legacy var is set", () => {
     setAuthToken("stored_oauth", 3600, "refresh_a");
-    process.env.SENTRY_TOKEN = "legacy_token";
+    process.env["SENTRY_TOKEN"] = "legacy_token";
 
     const cap = captureStderr();
     try {
@@ -205,7 +204,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
       userId: "u-1",
       email: "alice@example.com",
     });
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
 
     const cap = captureStderr();
     try {
@@ -219,7 +218,7 @@ describe("maybeWarnEnvTokenIgnored", () => {
   test("falls back to name when username and email are unavailable", () => {
     setAuthToken("stored_oauth", 3600, "refresh_a");
     setUserInfo({ userId: "u-1", name: "Alice Wonderland" });
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
 
     const cap = captureStderr();
     try {
@@ -233,7 +232,8 @@ describe("maybeWarnEnvTokenIgnored", () => {
   test("uses a neutral label when no user info is cached", () => {
     setAuthToken("stored_oauth", 3600, "refresh_a");
     // No setUserInfo — user_info table is empty.
-    process.env.SENTRY_AUTH_TOKEN = "env_token";
+    // No setUserInfo — user_info table is empty.
+    process.env["SENTRY_AUTH_TOKEN"] = "env_token";
 
     const cap = captureStderr();
     try {

@@ -77,7 +77,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
     }
 
     // Parse and validate request body
-    const body = await c.req.json();
+    const body: unknown = await c.req.json();
     const validationResult = SearchRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
@@ -183,11 +183,11 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
         query,
         results: searchData.data.map((result) => {
           // Extract text from content array
-          const text = result.content.at(0)?.text || "";
+          const text = result.content[0]?.text || "";
 
           // Get filename from result - ensure it's a string
           const rawFilename =
-            result.filename || result.attributes.filename || "";
+            result.filename || result.attributes["filename"] || "";
           const filename =
             typeof rawFilename === "string" ? rawFilename : String(rawFilename);
 

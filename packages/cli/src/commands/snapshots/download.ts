@@ -108,7 +108,7 @@ function validateSnapshotFlags(flags: DownloadFlags): void {
  * configured default project.
  */
 function resolveOptionalProject(env: NodeJS.ProcessEnv): string | undefined {
-  const raw = env.SENTRY_PROJECT?.trim();
+  const raw = env["SENTRY_PROJECT"]?.trim();
   if (raw) {
     const parts = raw.split("/");
     return parts.length === 2 ? parts[1] : raw;

@@ -59,9 +59,18 @@ const DEBUGID_REGISTRY = "(?:_sentryDebugIds|_debugIds)";
  * Indexed registry writes emitted by Sentry's bundler plugins, the legacy CLI
  * (`e._sentryDebugIds[n]="<id>"`), and Turbopack, which initializes the
  * registry inline: `(e._debugIds|| (e._debugIds={}))[n]="<id>"`.
+ *
+ * The registry may also be a bare global rather than a property: the React
+ * Native Metro plugin emits `_sentryDebugIds[stack]="<id>"`. A longer
+ * identifier that merely ends with the registry name does not count.
+ *
+ * Minifiers such as Oxc (Vite 8) rewrite these, so two more forms are
+ * accepted: a string quoted with backticks (`"<id>"` becomes a template
+ * literal), and the inline initialization written with a logical assignment,
+ * `(e._debugIds||={})[n]` or `??=`.
  */
 const DEBUGID_REGISTRATION_RE = new RegExp(
-  `(?:\\.\\s*${DEBUGID_REGISTRY}|\\[\\s*["']${DEBUGID_REGISTRY}["']\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'])(${DEBUGID_PATTERN})\\1`,
+  `(?:(?<![$\\w])${DEBUGID_REGISTRY}|\\[\\s*["'\`]${DEBUGID_REGISTRY}["'\`]\\s*\\])(?:\\s*=\\s*\\{\\s*\\}\\s*\\)\\s*\\)|\\s*(?:\\|\\||\\?\\?)=\\s*\\{\\s*\\}\\s*\\))?\\s*\\[\\s*[$\\w]+\\s*\\]\\s*=\\s*(["'\`])(${DEBUGID_PATTERN})\\1`,
   "g",
 );
 
@@ -339,7 +348,7 @@ export async function injectDebugId(
 type SourcemapJson = {
   mappings?: string;
   sources?: (string | null)[];
-  sections?: IndexMapSection[];
+  sections?: (IndexMapSection | null)[];
   debug_id?: string;
   debugId?: string;
 };
@@ -347,7 +356,7 @@ type SourcemapJson = {
 /** A section of an ECMA-426 index map, which Turbopack emits. */
 type IndexMapSection = {
   offset?: { line?: unknown };
-  map?: SourcemapJson;
+  map?: SourcemapJson | null;
 };
 
 /**
@@ -389,7 +398,7 @@ function insertGeneratedLine(map: SourcemapJson, line: number): void {
   let spanning: { map: SourcemapJson; start: number } | undefined;
   for (const section of map.sections) {
     const start = section?.offset?.line;
-    if (typeof start !== "number") {
+    if (!section || typeof start !== "number") {
       continue;
     }
     if (start >= line) {
@@ -423,7 +432,7 @@ function insertGeneratedLine(map: SourcemapJson, line: number): void {
 function mutateSourcemap(
   map: SourcemapJson,
   debugId: string,
-  options: { snippetLine?: number },
+  options: { snippetLine?: number | undefined },
 ): void {
   if (map.sources) {
     map.sources = map.sources.map((s) => (s ? s.replaceAll("\\", "/") : s));

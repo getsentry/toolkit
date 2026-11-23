@@ -10,6 +10,7 @@ import {
 import { loginCommand } from "../../../src/commands/auth/login.js";
 import { statusCommand } from "../../../src/commands/auth/status.js";
 import { CommandOutput } from "../../../src/lib/formatters/output.js";
+import { loadCommand } from "../../helpers.js";
 
 describe("resolveAuthDefaultTarget", () => {
   test("logged out → login", () => {
@@ -76,7 +77,7 @@ describe("authDefaultCommand", () => {
     };
 
     try {
-      const func = await authDefaultCommand.loader();
+      const func = await loadCommand(authDefaultCommand);
       await func.call(context, {
         timeout: 900,
         force: false,
@@ -127,7 +128,7 @@ describe("authDefaultCommand", () => {
     };
 
     try {
-      const func = await authDefaultCommand.loader();
+      const func = await loadCommand(authDefaultCommand);
       await func.call(context, {
         timeout: 900,
         force: false,

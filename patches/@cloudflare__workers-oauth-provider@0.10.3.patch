@@ -1,5 +1,5 @@
 diff --git a/dist/oauth-provider.d.ts b/dist/oauth-provider.d.ts
-index 01141b6b4e708a7f40b32667ed8dd9cf33592888..33c099916cedc3666a5330675f1b3dc88d60a5c1 100644
+index 01141b6b4e708a7f40b32667ed8dd9cf33592888..a702879d22e030ede1271a972d5abd2d5e0a6ba1 100644
 --- a/dist/oauth-provider.d.ts
 +++ b/dist/oauth-provider.d.ts
 @@ -684,6 +684,12 @@ interface OAuthProviderOptions<Env = Cloudflare.Env> {
@@ -15,10 +15,43 @@ index 01141b6b4e708a7f40b32667ed8dd9cf33592888..33c099916cedc3666a5330675f1b3dc8
    /**
     * When true, requested-vs-granted resource validation compares origins only
     * (scheme + host + port) instead of exact URIs. This allows an origin-only
+@@ -697,6 +703,14 @@ interface OAuthProviderOptions<Env = Cloudflare.Env> {
+    * multi-tenant deployments. Prefer configuring `resourceMetadata.resource`.
+    */
+   resourceMatchOriginOnly?: boolean;
++  /**
++   * When true, requested-vs-granted resource validation and access-token audience
++   * checks compare scheme, host, port and path, ignoring the query component and
++   * trailing slashes. Clients disagree about whether the resource carries the
++   * query of the configured server URL, so a login and a later token request can
++   * name the same resource in two forms. Path binding is unchanged.
++   */
++  resourceMatchCanonical?: boolean;
+   /**
+    * Optional metadata for RFC 9728 OAuth 2.0 Protected Resource Metadata.
+    * Controls the response served at /.well-known/oauth-protected-resource.
 diff --git a/dist/oauth-provider.js b/dist/oauth-provider.js
-index c15348c226f1064f6c277f45f10740b9266219e9..43b4d2bc3fca7aa844722c57c895c68951b76d55 100644
+index c15348c226f1064f6c277f45f10740b9266219e9..66099c2ee0257afed31fb8daf61b261f8df7e572 100644
 --- a/dist/oauth-provider.js
 +++ b/dist/oauth-provider.js
+@@ -2693,7 +2693,7 @@ var OAuthProviderImpl = class {
+ 			if (tokenData.audience) {
+ 				const requestUrl = new URL(request.url);
+ 				const resourceServer = `${requestUrl.protocol}//${requestUrl.host}${requestUrl.pathname}${requestUrl.search}`;
+-				if (!(Array.isArray(tokenData.audience) ? tokenData.audience : [tokenData.audience]).some((aud) => audienceMatches(resourceServer, aud))) return this.createErrorResponse("invalid_token", {
++				if (!(Array.isArray(tokenData.audience) ? tokenData.audience : [tokenData.audience]).some((aud) => audienceMatches(resourceServer, aud, !!this.options.resourceMatchCanonical))) return this.createErrorResponse("invalid_token", {
+ 					description: "Token audience does not match resource server",
+ 					statusCode: 401,
+ 					headers: { "WWW-Authenticate": this.buildWwwAuthenticateHeader(resourceMetadataUrl, "invalid_token", "Invalid audience") }
+@@ -2727,7 +2727,7 @@ var OAuthProviderImpl = class {
+ 			if (ext.audience) {
+ 				const requestUrl = new URL(request.url);
+ 				const resourceServer = `${requestUrl.protocol}//${requestUrl.host}${requestUrl.pathname}${requestUrl.search}`;
+-				if (!(Array.isArray(ext.audience) ? ext.audience : [ext.audience]).some((aud) => audienceMatches(resourceServer, aud))) return this.createErrorResponse("invalid_token", {
++				if (!(Array.isArray(ext.audience) ? ext.audience : [ext.audience]).some((aud) => audienceMatches(resourceServer, aud, !!this.options.resourceMatchCanonical))) return this.createErrorResponse("invalid_token", {
+ 					description: "Token audience does not match resource server",
+ 					statusCode: 401,
+ 					headers: { "WWW-Authenticate": this.buildWwwAuthenticateHeader(resourceMetadataUrl, "invalid_token", "Invalid audience") }
 @@ -2806,6 +2806,11 @@ var OAuthProviderImpl = class {
  			}
  			if (!this.hasGlobalFetchStrictlyPublic()) throw new Error(`CIMD is enabled but 'global_fetch_strictly_public' compatibility flag is not set.`);
@@ -31,3 +64,65 @@ index c15348c226f1064f6c277f45f10740b9266219e9..43b4d2bc3fca7aa844722c57c895c689
  				return await fetchClientIdMetadataDocument(clientId, this.serverCapabilities);
  			} catch (error) {
  				console.warn(`CIMD fetch failed for ${clientId}:`, error instanceof Error ? error.message : error);
+@@ -2836,10 +2841,11 @@ var OAuthProviderImpl = class {
+ 			throw new OAuthError("invalid_target", { description: "The authorization grant is not bound to the configured resource" });
+ 		}
+ 		const originOnly = !!this.options.resourceMatchOriginOnly;
++		const canonical = !!this.options.resourceMatchCanonical;
+ 		if (resourceWasProvided && grantResourceWasStored) {
+ 			const requestedResources = Array.isArray(requestedResource) ? requestedResource : [requestedResource];
+ 			const grantedResources = Array.isArray(grantedResource) ? grantedResource : [grantedResource];
+-			for (const requested of requestedResources) if (!grantedResources.some((granted) => resourceMatches(requested, granted, originOnly))) throw new OAuthError("invalid_target", { description: "Requested resource was not included in the authorization request" });
++			for (const requested of requestedResources) if (!grantedResources.some((granted) => resourceMatches(requested, granted, originOnly, canonical))) throw new OAuthError("invalid_target", { description: "Requested resource was not included in the authorization request" });
+ 		}
+ 		return requestedAudience ?? grantedAudience;
+ 	}
+@@ -3135,19 +3141,27 @@ function validateResourceUri(uri) {
+ * @param audienceValue - The audience value from token
+ * @returns true if they match, false otherwise
+ */
+-function audienceMatches(resourceServerUrl, audienceValue) {
++function audienceMatches(resourceServerUrl, audienceValue, canonical = false) {
+ 	try {
+ 		const resource = new URL(resourceServerUrl);
+ 		const audience = new URL(audienceValue);
+ 		if (resource.origin !== audience.origin) return false;
+-		if (audience.search && resource.search !== audience.search) return false;
+-		if (audience.pathname === "/" || audience.pathname === "") return true;
+-		return resource.pathname === audience.pathname || resource.pathname.startsWith(audience.pathname + "/");
++		if (!canonical && audience.search && resource.search !== audience.search) return false;
++		const audiencePath = canonical ? canonicalResourcePath(audience) : audience.pathname;
++		if (audiencePath === "/" || audiencePath === "") return true;
++		return resource.pathname === audiencePath || resource.pathname.startsWith(audiencePath + "/");
+ 	} catch {
+ 		return false;
+ 	}
+ }
+ /**
++* Path of a resource indicator without trailing slashes, so `/mcp/` and `/mcp`
++* name the same resource. The root path stays `/`.
++*/
++function canonicalResourcePath(url) {
++	return url.pathname.replace(/\/+$/, "") || "/";
++}
++/**
+ * Parses and validates the resource parameter from a token request (RFC 8707)
+ * Handles single string or array of strings (from multiple form parameters)
+ * @param value - The resource parameter value from the request body
+@@ -3169,10 +3183,13 @@ function isExactResource(value, configuredResource) {
+ * When originOnly is true, compares only the origin (scheme + host + port),
+ * allowing path-aware resources to match origin-only grants.
+ */
+-function resourceMatches(requested, granted, originOnly) {
+-	if (!originOnly) return requested === granted;
++function resourceMatches(requested, granted, originOnly, canonical = false) {
++	if (!originOnly && !canonical) return requested === granted;
+ 	try {
+-		return new URL(requested).origin === new URL(granted).origin;
++		const requestedUrl = new URL(requested);
++		const grantedUrl = new URL(granted);
++		if (requestedUrl.origin !== grantedUrl.origin) return false;
++		return originOnly || canonicalResourcePath(requestedUrl) === canonicalResourcePath(grantedUrl);
+ 	} catch {
+ 		return requested === granted;
+ 	}

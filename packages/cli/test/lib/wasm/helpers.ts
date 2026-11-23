@@ -6,6 +6,7 @@
  * fixture built with the same bug.
  */
 
+import { at } from "../../helpers.js";
 /** Magic bytes and version that open every WebAssembly module. */
 export const WASM_HEADER = Uint8Array.from([
   0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
@@ -42,7 +43,7 @@ export function toHex(bytes: Uint8Array): string {
 }
 
 /** Join byte ranges into one buffer. */
-export function concat(parts: Uint8Array[]): Uint8Array {
+export function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const total = parts.reduce((sum, part) => sum + part.length, 0);
   const out = new Uint8Array(total);
   let offset = 0;
@@ -72,7 +73,7 @@ export function leb128(value: number, padTo = 0): Uint8Array {
     bytes.push(0x00);
   }
   for (let index = 0; index < bytes.length - 1; index++) {
-    bytes[index] = bytes[index] | 0x80;
+    bytes[index] = at(bytes, index) | 0x80;
   }
   return Uint8Array.from(bytes);
 }
@@ -106,7 +107,7 @@ export function customSection(
 }
 
 /** Wrap sections in a module header. */
-export function wasmModule(sections: Uint8Array[]): Uint8Array {
+export function wasmModule(sections: Uint8Array[]): Uint8Array<ArrayBuffer> {
   return concat([WASM_HEADER, ...sections]);
 }
 

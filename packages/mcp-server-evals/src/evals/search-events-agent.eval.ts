@@ -268,7 +268,7 @@ describeEval("search-events-agent", {
 
     return {
       result: JSON.stringify(agentResult.result),
-      toolCalls: agentResult.toolCalls.map((call: any) => ({
+      toolCalls: agentResult.toolCalls.map((call) => ({
         name: call.toolName,
         arguments: call.args,
       })),

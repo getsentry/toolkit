@@ -321,7 +321,7 @@ This PR implements comprehensive improvements to the search_events tool...
 
 ```bash
 # Run all quality checks before requesting review
-pnpm run tsc     # TypeScript compilation
+pnpm run typecheck  # TypeScript compilation
 pnpm run lint    # Code linting
 pnpm run test    # Unit tests
 

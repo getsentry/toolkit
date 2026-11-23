@@ -26,7 +26,9 @@ export const metricMonitorReferenceFields = {
     .string()
     .trim()
     .regex(/^\d+$/)
-    .describe("Native Metric Monitor ID from find_metric_monitors."),
+    .describe(
+      "Metric Monitor ID from find_metric_monitors, not a legacy metric alert ID.",
+    ),
 };
 
 export const metricMonitorSummarySchema = z.object({
@@ -103,7 +105,7 @@ export function toMetricMonitorDetails(
     dataSources: (detector.dataSources ?? []).map((source) => {
       const query = getMetricQuery(source);
       return {
-        type: typeof source.type === "string" ? source.type : "unknown",
+        type: typeof source["type"] === "string" ? source["type"] : "unknown",
         ...(query
           ? { query }
           : { unavailableReason: "Source configuration is unavailable." }),
@@ -124,9 +126,9 @@ export async function listMetricMonitors(
   api: SentryApiService,
   params: {
     organizationSlug: string;
-    projectSlug?: string;
-    query?: string;
-    cursor?: string;
+    projectSlug?: string | undefined;
+    query?: string | undefined;
+    cursor?: string | undefined;
     limit?: number;
   },
 ) {
@@ -159,8 +161,8 @@ export async function getMetricMonitor(
   params: {
     organizationSlug: string;
     monitorId: string;
-    projectSlug?: string;
-    scopedProjectSlug?: string | null;
+    projectSlug?: string | undefined;
+    scopedProjectSlug?: string | null | undefined;
   },
 ): Promise<Detector> {
   if (params.projectSlug) {
@@ -196,7 +198,11 @@ export async function getMetricMonitor(
 
 export async function findExactMetricMonitorMatches(
   api: SentryApiService,
-  params: { organizationSlug: string; projectSlug?: string; name: string },
+  params: {
+    organizationSlug: string;
+    projectSlug?: string | undefined;
+    name: string;
+  },
 ) {
   const page = await listMetricMonitors(api, {
     ...params,

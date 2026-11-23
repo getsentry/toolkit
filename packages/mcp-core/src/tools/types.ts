@@ -44,7 +44,7 @@ export type ToolOutputSchema = z.ZodType<Record<string, unknown>>;
  * Markdown, strings, and raw MCP content are only allowed without a schema.
  * Tools without a schema may still pass through another tool's structured
  * result (`execute_sentry_tool`, `get_sentry_resource`). The type distributes
- * over a union so `ToolConfig<any>` registries accept every tool.
+ * over a union so `ToolConfig` registries accept every tool.
  */
 export type ToolOutputFor<TOutputSchema extends ToolOutputSchema | undefined> =
   TOutputSchema extends ToolOutputSchema
@@ -71,8 +71,8 @@ export type ToolHandler<
  */
 export interface DescriptionContext {
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -84,10 +84,17 @@ export type ToolDescription =
   | ((context: DescriptionContext) => string);
 
 /**
- * Longest allowed tool description, in characters. VS Code (via OpenAI)
- * limits descriptions to 1,024; this cap limits the damage until that rises.
+ * Longest allowed tool description, in characters. Half of OpenAI's hard
+ * 1,024-character limit on a function description, which VS Code enforces.
+ * See docs/contributing/adding-tools.md#descriptions-and-params.
  */
-export const MAX_TOOL_DESCRIPTION_LENGTH = 2_048;
+export const MAX_TOOL_DESCRIPTION_LENGTH = 512;
+
+/**
+ * Longest allowed param description, in characters. No provider limits it;
+ * one or two sentences fit.
+ */
+export const MAX_PARAM_DESCRIPTION_LENGTH = 256;
 
 /**
  * Resolves a tool description to a string.
@@ -145,14 +152,6 @@ export interface ToolConfig<
    * `ToolOutputFor`.
    */
   outputSchema?: TOutputSchema;
-  /**
-   * Structured result contract advertised only to experimental sessions, for a
-   * tool whose structured payload has not graduated yet. Set it instead of
-   * `outputSchema`; the handler must return `structuredResult(...)` matching it
-   * on every experimental success path. tsc cannot check that, because stable
-   * sessions still get markdown, so the tool's tests must parse the payload.
-   */
-  experimentalOutputSchema?: ToolOutputSchema;
   annotations: {
     // readOnlyHint, destructiveHint, and openWorldHint are required so every
     // tool declares its safety posture explicitly. Filters and confirmation
@@ -163,6 +162,12 @@ export interface ToolConfig<
     idempotentHint?: boolean;
     openWorldHint: boolean;
   };
+  /**
+   * MCP `_meta` sent with the tool in tools/list, for keys that hosts read,
+   * such as `ui.resourceUri` (MCP Apps). Every key must be listed in
+   * `ALLOWED_TOOL_META` in server.metadata.test.ts.
+   */
+  _meta?: Record<string, unknown>;
   handler: ToolHandler<TSchema, ToolOutputFor<TOutputSchema>>;
   /**
    * Optional hook invoked when the handler throws, for tool-specific failure

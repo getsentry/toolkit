@@ -15,12 +15,8 @@ import { downloadCommand } from "../../../src/commands/replay/download.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -34,17 +30,14 @@ import {
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { ReplayDetails } from "../../../src/types/index.js";
+import { loadCommand } from "../../helpers.js";
 
 const REPLAY_ID = "346789a703f6454384f1de473b8b9fcc";
 const T0 = 1_787_282_938_000;
@@ -74,6 +67,7 @@ function sampleReplay(overrides: Partial<ReplayDetails> = {}): ReplayDetails {
     urls: [],
     user: { display_name: "Test User" },
     warning_ids: [],
+    releases: [],
     ...overrides,
   };
 }
@@ -130,7 +124,7 @@ describe("replay download", () => {
 
   test("writes a flat rrweb array to <replay-id>.rrweb.json in cwd", async () => {
     const harness = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(harness.context, { fresh: false }, REPLAY_ID);
 
@@ -143,7 +137,7 @@ describe("replay download", () => {
   });
 
   test("fetches every segment from the replay's own project", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(createContext().context, { fresh: false }, REPLAY_ID);
 
@@ -152,7 +146,7 @@ describe("replay download", () => {
   });
 
   test("writes to --output, creating parent directories", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(
       createContext().context,
@@ -166,7 +160,7 @@ describe("replay download", () => {
 
   test("reports counts with --json", async () => {
     const harness = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(harness.context, { fresh: false, json: true }, REPLAY_ID);
 
@@ -181,7 +175,7 @@ describe("replay download", () => {
   });
 
   test("accepts a replay URL", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(
       createContext().context,
@@ -200,7 +194,7 @@ describe("replay download", () => {
     segmentsSpy.mockResolvedValue([
       [{ type: 5, data: { tag: "video" }, timestamp: T0 }],
     ]);
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(createContext().context, { fresh: false }, REPLAY_ID);
 
@@ -212,7 +206,7 @@ describe("replay download", () => {
     resolveReplaySpy.mockResolvedValue(
       sampleReplay({ is_archived: true, project_id: null }),
     );
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await expect(
       func.call(createContext().context, { fresh: false }, REPLAY_ID),
@@ -226,7 +220,7 @@ describe("replay download", () => {
       project: "other",
       projectData: { id: "7" },
     });
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await expect(
       func.call(
@@ -240,7 +234,7 @@ describe("replay download", () => {
 
   test("rejects a replay whose recording is empty", async () => {
     segmentsSpy.mockResolvedValue([[], []]);
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await expect(
       func.call(createContext().context, { fresh: false }, REPLAY_ID),
@@ -252,7 +246,7 @@ describe("replay download", () => {
 
   test("maps a 404 to a not-found resolution error", async () => {
     resolveReplaySpy.mockRejectedValue(new ApiError("Not found", 404));
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await expect(
       func.call(createContext().context, { fresh: false }, REPLAY_ID),
@@ -260,7 +254,7 @@ describe("replay download", () => {
   });
 
   test("shows its own usage when the replay ID is missing", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     const error = await func
       .call(createContext().context, { fresh: false })

@@ -638,6 +638,20 @@ describe.each(["external", "inline"] as const)(
 })();`,
       // Emitted by Next.js 16 with `turbopack.debugIds` (getsentry/toolkit#2189).
       turbopack: `;!function(){try { var e="undefined"!=typeof globalThis?globalThis:"undefined"!=typeof global?global:"undefined"!=typeof window?window:"undefined"!=typeof self?self:{},n=(new e.Error).stack;n&&((e._debugIds|| (e._debugIds={}))[n]="${debugId}")}catch(e){}}();`,
+      // A bundler plugin's snippet after Oxc minification in Vite 8, which
+      // rewrites its string literals to template literals
+      // (getsentry/toolkit#2267).
+      templateLiterals: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof window<\`u\`?window:typeof global<\`u\`?global:typeof self<\`u\`?self:{};var t=new e.Error().stack;t&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[t]=\`${debugId}\`,e._sentryDebugIdIdentifier=\`sentry-dbid-${debugId}\`)}catch{}})();`,
+      // Turbopack's snippet after the same minification, which also folds
+      // the inline registry initialization into a logical assignment.
+      turbopackLogicalAssignment: `(function(){try{var e=typeof globalThis<\`u\`?globalThis:typeof global<\`u\`?global:typeof window<\`u\`?window:typeof self<\`u\`?self:{},t=new e.Error().stack;t&&((e._debugIds||={})[t]=\`${debugId}\`)}catch{}})();`,
+      // Emitted by the React Native Metro plugin, which registers on a bare
+      // global instead of a property of the global object.
+      reactNativeMetro: `var _sentryDebugIds,_sentryDebugIdIdentifier;void 0===_sentryDebugIds&&(_sentryDebugIds={});try{var stack=(new Error).stack;stack&&(_sentryDebugIds[stack]="${debugId}",_sentryDebugIdIdentifier="sentry-dbid-${debugId}")}catch(e){}`,
+      // No minifier tested emits these two, but the registration check
+      // accepts them, so they pin those branches.
+      nullishAssignment: `(function(){var e=globalThis,t=new e.Error().stack;t&&((e._debugIds??={})[t]=\`${debugId}\`)})();`,
+      bracketTemplateRegistry: `(function(){var e=globalThis,t=new e.Error().stack;e[\`_sentryDebugIds\`]=e[\`_sentryDebugIds\`]||{};e[\`_sentryDebugIds\`][t]=\`${debugId}\`})();`,
     };
 
     test.each(Object.keys(snippets))(
@@ -759,6 +773,53 @@ describe.each(["external", "inline"] as const)(
             injected: false,
           },
         );
+      },
+    );
+
+    // Near misses of the accepted forms that do not register the ID, so
+    // injection must still happen.
+    const nearMisses: Record<string, string> = {
+      interpolatedTemplate: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]=\`\${t}${debugId}\`;`,
+      andAssignment: `var e=globalThis,t="s";try{(e._debugIds&&={})[t]=\`${debugId}\`}catch{}`,
+      comparison: `var e=globalThis,t="s";e._sentryDebugIds=e._sentryDebugIds||{};e._sentryDebugIds[t]==\`${debugId}\`;`,
+      // A different identifier that only ends with the registry name.
+      longerIdentifier: `var my_sentryDebugIds={},t="s";my_sentryDebugIds[t]="${debugId}";`,
+    };
+
+    test.each(Object.keys(nearMisses))(
+      "injects despite a %s near miss",
+      async (format) => {
+        const jsPath = join(dir, "main.js");
+        const mapContent = JSON.stringify({
+          version: 3,
+          sources: ["main.ts"],
+          names: [],
+          mappings: "AAAA",
+          debugId,
+        });
+        const mapUrl =
+          kind === "inline"
+            ? `data:application/json;base64,${Buffer.from(mapContent).toString("base64")}`
+            : "main.js.map";
+        const js = `${nearMisses[format]}\n//# debugId=${debugId}\n//# sourceMappingURL=${mapUrl}\n`;
+        writeFileSync(jsPath, js);
+        if (kind === "external") {
+          writeFileSync(`${jsPath}.map`, mapContent);
+        }
+
+        expect((await injectDirectory(dir))[0]).toMatchObject({
+          debugId,
+          injected: true,
+        });
+        const sandbox: { _sentryDebugIds?: Record<string, string> } = {};
+        runInNewContext(readFileSync(jsPath, "utf-8"), sandbox, {
+          filename: "main.js",
+        });
+        expect(
+          Object.values(sandbox._sentryDebugIds ?? {}).filter(
+            (id) => id === debugId,
+          ),
+        ).toHaveLength(1);
       },
     );
   },

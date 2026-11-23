@@ -50,7 +50,7 @@ import { logger } from "../src/lib/logger.js";
 /**
  * Read `patchedDependencies` from the workspace configuration.
  *
- * pnpm 11 reads workspace-root settings from `pnpm-workspace.yaml`.
+ * pnpm reads workspace-root settings from `pnpm-workspace.yaml`.
  */
 const WORKSPACE_PATH = "../../pnpm-workspace.yaml";
 const PATCHED_DEPENDENCIES_SECTION = /^patchedDependencies:\n((?: {2}.+\n)*)/m;
@@ -71,13 +71,12 @@ function parsePatchedDependencies(source: string): Record<string, string> {
 
   const patches: Record<string, string> = {};
   for (const line of section.trimEnd().split("\n")) {
-    const entry = line.match(PATCHED_DEPENDENCY_ENTRY);
-    if (!entry) {
+    const [, key, patchPath] = line.match(PATCHED_DEPENDENCY_ENTRY) ?? [];
+    if (key === undefined || patchPath === undefined) {
       throw new Error(
         `Unsupported patchedDependencies entry in ${WORKSPACE_PATH}: ${line}`,
       );
     }
-    const [, key, patchPath] = entry;
     patches[key] = patchPath;
   }
   return patches;
@@ -137,10 +136,8 @@ function resolveMainEntry(pkgName: string): string {
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
 function resolvePackageFile(subpath: string): string | null {
-  const parts = subpath.split("/");
-  const pkgName = subpath.startsWith("@")
-    ? `${parts[0]}/${parts[1]}`
-    : parts[0];
+  const [first = "", second = ""] = subpath.split("/");
+  const pkgName = subpath.startsWith("@") ? `${first}/${second}` : first;
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
@@ -351,7 +348,7 @@ for (const assertion of CONTENT_ASSERTIONS) {
 }
 
 // Emit GitHub Actions annotations for CI visibility
-const isCI = !!process.env.CI;
+const isCI = !!process.env["CI"];
 for (const w of warnings) {
   if (isCI) {
     // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.

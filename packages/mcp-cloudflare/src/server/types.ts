@@ -76,6 +76,7 @@ export interface Env {
   EMBEDDED_AGENT_PROVIDER?: string;
   MCP_URL?: string;
   OAUTH_PROVIDER: OAuthHelpers;
+  // Absent when the Worker runs without the Workers AI binding.
   AI?: Ai;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   CHAT_RATE_LIMITER?: RateLimit;

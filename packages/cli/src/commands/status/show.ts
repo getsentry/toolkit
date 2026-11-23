@@ -70,5 +70,6 @@ export const showCommand = buildCommand({
         hint: `Run \`${sentry`status`}\` again to refresh, or open ${status.url}`,
       };
     }
+    return;
   },
 });

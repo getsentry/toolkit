@@ -1,6 +1,6 @@
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { MetricMonitorCreate } from "../../api-client/types";
 import { createTestContext } from "../../test-utils/context";
@@ -57,8 +57,11 @@ function create(changes: Record<string, unknown> = {}) {
 }
 
 function savedMonitor(body: MetricMonitorCreate) {
-  const source = structuredClone(metricMonitor.dataSources[0]);
-  Object.assign(source.queryObj.snubaQuery, body.dataSources[0]);
+  const [fixtureSource] = metricMonitor.dataSources;
+  const [bodySource] = body.dataSources;
+  assert(fixtureSource && bodySource, "Expected a data source");
+  const source = structuredClone(fixtureSource);
+  Object.assign(source.queryObj.snubaQuery, bodySource);
   return {
     ...metricMonitor,
     ...body,
@@ -250,6 +253,19 @@ describe("create_metric_monitor", () => {
       monitors: [{ id: "123", name: params.name }],
     });
     expect(writes).toHaveLength(1);
+  });
+
+  it("explains a permission denial without the partial-creation note", async () => {
+    useCreateHandler(403);
+    const error = await create().catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      name: "ApiPermissionError",
+      status: 403,
+      message: expect.stringContaining(
+        "Changing a Metric Monitor needs the alerts:write scope",
+      ),
+    });
+    expect((error as Error).message).not.toContain("partially succeeded");
   });
 
   it("rejects a conflicting project before creating a monitor", async () => {

@@ -1,13 +1,24 @@
 {
   "extends": "./tsconfig.server.json",
   "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "noEmit": true,
+    // skipLibCheck exception: `@cloudflare/workers-types` and `@types/node` declare the same globals (TS2300 DOMException/Blob, TS2451 console/crypto, TS2502 PerformanceEntry); the Worker tests use nodejs_compat and need both. Remove when both can load in one program without conflicts.
+    // skipLibCheck exception: `ai` declarations fail TS2344 under exactOptionalPropertyTypes (ai@6 dist/index.d.ts) and TS2304 on DOM names workers-types lacks. Remove when they check cleanly.
+    // skipLibCheck exception: `miniflare` declarations (via @cloudflare/vitest-plugin) fail TS2307/TS2305/TS2552/TS7016 on packages it bundles but does not ship. Remove when they check cleanly.
+    // skipLibCheck exception: `urlpattern-polyfill` declarations fail TS2300 against the URLPattern global from @cloudflare/workers-types. Remove when they check cleanly.
+    "skipLibCheck": true,
     "types": [
       "@cloudflare/workers-types",
-      "@cloudflare/vitest-plugin"
+      "@types/node",
+      "@cloudflare/vitest-plugin/types"
     ]
   },
+  // Client component tests belong to tsconfig.client.json, which includes
+  // all of src/client.
   "include": [
-    "src/**/*.test.ts",
+    "src/*.test.ts",
+    "src/server/**/*.test.ts",
     "src/test-setup.ts",
     "src/test-utils/**/*.ts"
   ],

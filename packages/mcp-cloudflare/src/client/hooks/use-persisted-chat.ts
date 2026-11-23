@@ -17,21 +17,17 @@ interface LegacyMessage {
   metadata?: Record<string, unknown>;
 }
 
-type StoredMessage = Omit<UIMessage, "parts"> & {
-  parts?: UIMessage["parts"];
-};
-
 // Migrate legacy messages (AI SDK 4.x format with `content`) to new format (with `parts`)
-function migrateMessage(msg: LegacyMessage): StoredMessage {
+function migrateMessage(msg: LegacyMessage): UIMessage | undefined {
   // Preserve metadata from either 'metadata' or legacy 'data' property
   const metadata = msg.metadata ?? msg.data;
 
   // If message already has parts, use it as-is (but ensure metadata is preserved)
   if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
     if (metadata) {
-      return { ...msg, metadata };
+      return { ...msg, metadata } as UIMessage;
     }
-    return msg;
+    return msg as UIMessage;
   }
 
   // If message has legacy content string, convert to parts format
@@ -44,8 +40,8 @@ function migrateMessage(msg: LegacyMessage): StoredMessage {
     };
   }
 
-  // Return as-is if neither format matches (will be filtered by validation)
-  return msg;
+  // Neither format matches, so there is nothing to restore
+  return undefined;
 }
 
 export function usePersistedChat(isAuthenticated: boolean) {
@@ -73,8 +69,9 @@ export function usePersistedChat(isAuthenticated: boolean) {
   }, []);
 
   // Validate a message to ensure it won't cause conversion errors
-  const isValidMessage = useCallback((msg: StoredMessage): msg is UIMessage => {
-    if (!msg.parts || !Array.isArray(msg.parts) || msg.parts.length === 0) {
+  const isValidMessage = useCallback((msg: UIMessage): boolean => {
+    // UIMessage always has parts array in AI SDK 6+
+    if (msg.parts.length === 0) {
       return false;
     }
 
@@ -145,7 +142,9 @@ export function usePersistedChat(isAuthenticated: boolean) {
         // Validate the data structure
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Migrate legacy messages and filter out any invalid ones
-          const migratedMessages = parsed.map(migrateMessage);
+          const migratedMessages = parsed.flatMap(
+            (message) => migrateMessage(message) ?? [],
+          );
           const validMessages = migratedMessages.filter(isValidMessage);
           if (validMessages.length > 0) {
             // Update timestamp since we're loading existing messages

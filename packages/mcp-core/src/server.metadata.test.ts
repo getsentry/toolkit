@@ -34,6 +34,10 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
   // Claude Code keeps it loaded so a pasted Sentry URL works without a tool
   // search. See docs/mcp/harnesses.md.
   get_sentry_resource: ["anthropic/alwaysLoad"],
+  // MCP Apps hosts (Claude, VS Code) read `ui`; ChatGPT reads
+  // `openai/outputTemplate`. See src/ui-resources.ts.
+  render_sentry_chart: ["ui", "openai/outputTemplate"],
+  render_issue_chart: ["ui", "openai/outputTemplate"],
 };
 
 /** Tools that return no `structuredContent` by design. */
@@ -53,8 +57,6 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * its PR merges; a test below fails until you do.
  */
 const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
-  get_issue_details:
-    "pending: outputSchema is experimental-only until it graduates",
   search_attributes: "pending: experimental-only, no outputSchema PR yet",
 };
 
@@ -226,28 +228,26 @@ describe.each(Object.keys(MODES))("%s mode", (mode) => {
 });
 
 describe("outputSchema skip lists", () => {
-  const listings = (name: string) =>
-    [...surfaces.values()].flatMap(({ tools }) =>
-      tools.filter((tool) => tool.name === name),
+  const listed = () =>
+    new Map(
+      [...surfaces.values()].flatMap(({ tools }) =>
+        tools.map((tool) => [tool.name, tool] as const),
+      ),
     );
 
   it("name listed tools without an outputSchema", () => {
+    const tools = listed();
     const problems = [
-      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
-      ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
+      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map(
+        (name) => ["EXEMPT", name] as const,
+      ),
+      ...Object.keys(OUTPUT_SCHEMA_PENDING).map(
+        (name) => ["PENDING", name] as const,
+      ),
     ].flatMap(([list, name]) => {
-      const tools = listings(name);
-      if (tools.length === 0) {
-        return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
-      }
-      // a PENDING tool can declare its outputSchema to experimental sessions
-      // first, so it is stale once every surface declares one; an EXEMPT tool
-      // is stale as soon as any surface does
-      const stale =
-        list === "PENDING"
-          ? tools.every((tool) => tool.outputSchema)
-          : tools.some((tool) => tool.outputSchema);
-      if (stale) {
+      const tool = tools.get(name);
+      if (!tool) return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];
+      if (tool.outputSchema) {
         return [
           `${name}: has an outputSchema now; delete its OUTPUT_SCHEMA_${list} entry`,
         ];

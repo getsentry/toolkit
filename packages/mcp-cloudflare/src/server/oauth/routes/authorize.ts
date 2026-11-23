@@ -17,10 +17,12 @@ import { isRegisteredRedirectUri } from "../../lib/redirect-uri";
 import type { Env } from "../../types";
 import { SENTRY_AUTH_URL } from "../constants";
 import {
+  ACCESS_DENIED_DESCRIPTION,
   createAuthorizationErrorRedirect,
   createResourceValidationError,
   getAuthorizationServerIssuer,
   getUpstreamAuthorizeUrl,
+  parseIdpHint,
   promptRequestsAccountSelection,
   validateResourceParameter,
 } from "../helpers";
@@ -39,13 +41,20 @@ interface AuthRequestWithSkills extends AuthRequest {
   resource?: string;
 }
 
+// Long enough to sign in, sign up for Sentry, and approve consent on Sentry.
+const UPSTREAM_STATE_TTL_MS = 30 * 60 * 1000;
+
 async function redirectToUpstream(
   env: Env,
   request: Request,
-  oauthReqInfo: AuthRequest | AuthRequestWithSkills,
+  // Only serialized into the upstream state when no override is given.
+  oauthReqInfo: object,
   headers: HeadersInit = {},
   stateOverride?: string,
-  forcePrompt = false,
+  {
+    forcePrompt = false,
+    idpHint,
+  }: { forcePrompt?: boolean; idpHint?: string | undefined } = {},
 ) {
   const responseHeaders = new Headers(headers);
   responseHeaders.set(
@@ -60,6 +69,7 @@ async function redirectToUpstream(
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
       force_prompt: forcePrompt,
+      idp_hint: idpHint,
     }),
   );
 
@@ -159,7 +169,7 @@ export default new Hono<{ Bindings: Env }>()
     const requestUrl = new URL(c.req.url);
     const resourceParams = requestUrl.searchParams.getAll("resource");
     const resourceParam =
-      resourceParams.length <= 1 ? (resourceParams.at(0) ?? null) : undefined;
+      resourceParams.length <= 1 ? (resourceParams[0] ?? null) : undefined;
     const hasInvalidResourceParam =
       resourceParams.length > 1 ||
       (resourceParam !== null &&
@@ -235,6 +245,7 @@ export default new Hono<{ Bindings: Env }>()
         forcePrompt: promptRequestsAccountSelection(
           requestUrl.searchParams.get("prompt"),
         ),
+        idpHint: parseIdpHint(requestUrl.searchParams.getAll("idp_hint")),
       },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
@@ -277,10 +288,6 @@ export default new Hono<{ Bindings: Env }>()
     }
 
     const { state, headers, skills, decision } = result;
-
-    if (!state.oauthReqInfo) {
-      return c.text("Invalid request", 400);
-    }
 
     // Store the selected skills in the OAuth request info
     // This will be passed through to the callback via the state parameter
@@ -335,8 +342,8 @@ export default new Hono<{ Bindings: Env }>()
       return createAuthorizationErrorRedirect(
         oauthReqWithSkills.redirectUri,
         "access_denied",
-        "The user denied the authorization request",
-        oauthReqWithSkills.state ?? undefined,
+        ACCESS_DENIED_DESCRIPTION,
+        oauthReqWithSkills.state,
         getAuthorizationServerIssuer(c.req.url),
       );
     }
@@ -362,12 +369,11 @@ export default new Hono<{ Bindings: Env }>()
       );
     }
 
-    // Build signed state for redirect to Sentry (10 minute validity)
     const now = Date.now();
     const payload: OAuthState = {
       req: oauthReqWithSkills,
       iat: now,
-      exp: now + 10 * 60 * 1000,
+      exp: now + UPSTREAM_STATE_TTL_MS,
     };
     const signedState = await signState(payload, c.env.COOKIE_SECRET);
 
@@ -391,6 +397,11 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
-      state.forcePrompt === true,
+      {
+        // A hinted sign-in always ends on Sentry's consent screen, so the
+        // user sees which account and org they are connecting.
+        forcePrompt: state.forcePrompt === true || state.idpHint !== undefined,
+        idpHint: state.idpHint,
+      },
     );
   });
