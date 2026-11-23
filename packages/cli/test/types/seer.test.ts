@@ -11,6 +11,7 @@ import {
   extractNoSolutionReason,
   extractRootCauses,
   extractSolution,
+  isSingleRun,
   isTerminalStatus,
   type RootCause,
   requireAutofixRunId,
@@ -254,6 +255,7 @@ describe("extractRootCauses", () => {
     const state = {
       run_id: 102,
       status: "COMPLETED",
+      feature_id: "autofix_single_run",
       blocks: [
         {
           artifacts: [
@@ -262,6 +264,7 @@ describe("extractRootCauses", () => {
               data: {
                 headline: "Regex rejects ids",
                 cause: "The regex is too strict.",
+                relevant_repos: ["org/api-server", "org/web"],
               },
               reason: "",
             },
@@ -274,6 +277,8 @@ describe("extractRootCauses", () => {
     expect(causes).toHaveLength(1);
     expect(causes[0]?.description).toBe("Regex rejects ids");
     expect(causes[0]?.cause).toBe("The regex is too strict.");
+    expect(causes[0]?.relevant_repos).toEqual(["org/api-server", "org/web"]);
+    expect(isSingleRun(state)).toBe(true);
   });
 
   test("extracts root cause from agent artifact without relevant_repo", () => {

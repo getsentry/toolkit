@@ -69,7 +69,7 @@ export type CompletionEntity = {
   /** Text the shell inserts (e.g. `CLI-1A2` or a dashboard ID). */
   value: string;
   /** Description shown next to the value (e.g. the issue title). */
-  label?: string;
+  label?: string | undefined;
 };
 
 /** A remembered entity together with the org it belongs to. */

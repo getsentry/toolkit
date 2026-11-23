@@ -30,9 +30,7 @@ export const ParamUptimeIntervalSeconds = z
       message: `intervalSeconds must be one of: ${UPTIME_INTERVAL_SECONDS.join(", ")}`,
     },
   )
-  .describe(
-    "Seconds between checks. Allowed values: 60, 300, 600, 1200, 1800, 3600.",
-  );
+  .describe("Seconds between checks: 60, 300, 600, 1200, 1800, or 3600.");
 
 export const ParamUptimeHttpMethod = z
   .enum(UPTIME_HTTP_METHODS)
@@ -49,7 +47,7 @@ export const ParamUptimeTimeoutMs = z
   .int()
   .min(1000)
   .max(60_000)
-  .describe("Request timeout in milliseconds (1000-60000).");
+  .describe("Request timeout in milliseconds.");
 
 /**
  * Header pairs, matching HEADERS_LIST_SCHEMA in getsentry/sentry
@@ -61,13 +59,15 @@ export const ParamUptimeTimeoutMs = z
 export const ParamUptimeHeaders = z
   .array(z.array(z.string()).length(2))
   .describe(
-    'Optional HTTP headers as an array of [name, value] pairs, e.g. [["Accept","application/json"]].',
+    'HTTP headers as [name, value] pairs, e.g. [["Accept","application/json"]].',
   );
 
 export function toUptimeHeaderPairs(
   headers: string[][],
 ): Array<[string, string]> {
-  return headers.map(([name, value]) => [name, value]);
+  return headers.flatMap(([name, value]) =>
+    name === undefined || value === undefined ? [] : [[name, value]],
+  );
 }
 
 /** Owner actor for create/update. Empty/whitespace rejected. */
@@ -79,7 +79,7 @@ export const ParamUptimeOwner = z
     /^(user|team):.+$/,
     "owner must use `user:ID` or `team:ID` format (e.g. `user:123` or `team:456`).",
   )
-  .describe("Owner actor in `user:ID` or `team:ID` format.");
+  .describe("Owner as `user:ID` or `team:ID`.");
 
 const SENSITIVE_HEADER_NAMES = new Set([
   "authorization",
@@ -128,7 +128,8 @@ export function toUptimeHeadersForOutput(
     if (!Array.isArray(header) || header.length < 2) {
       continue;
     }
-    const [name, value] = header;
+    const entry: unknown[] = header;
+    const [name, value] = entry;
     if (typeof name !== "string" || typeof value !== "string") {
       continue;
     }
@@ -206,6 +207,8 @@ export function toUptimeMonitorListItem(
   monitor: UptimeMonitor,
   webUrl: string,
 ): UptimeMonitorListItem {
+  const environment = optionalString(monitor.environment);
+  const owner = getUptimeOwnerName(monitor);
   return {
     id: String(monitor.id),
     name: monitor.name,
@@ -215,12 +218,8 @@ export function toUptimeMonitorListItem(
     url: monitor.url,
     ...(monitor.method ? { method: monitor.method } : {}),
     intervalSeconds: monitor.intervalSeconds,
-    ...(optionalString(monitor.environment)
-      ? { environment: optionalString(monitor.environment) }
-      : {}),
-    ...(getUptimeOwnerName(monitor)
-      ? { owner: getUptimeOwnerName(monitor)! }
-      : {}),
+    ...(environment ? { environment } : {}),
+    ...(owner ? { owner } : {}),
     webUrl,
   };
 }

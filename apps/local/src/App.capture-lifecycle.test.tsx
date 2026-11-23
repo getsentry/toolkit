@@ -18,6 +18,10 @@ import {
   REMOTE_STREAM_STORAGE_KEY,
   STREAM_STORAGE_KEY,
 } from "./lib/spotlight.ts";
+import {
+  pythonLoggingEvent,
+  sdkErrorMessage,
+} from "./test-fixtures/sdk-message.ts";
 
 const STREAM =
   "http://127.0.0.1:8969/_local/v1/sessions/web/stream?cap=web-read";
@@ -25,7 +29,7 @@ const WORKER_STREAM =
   "http://127.0.0.1:8969/_local/v1/sessions/worker/stream?cap=worker-read";
 const DIRECTORY =
   "http://127.0.0.1:8969/_local/v1/ui/sessions?cap=directory-read";
-const EXPIRES_AT = 1_795_000_000_000;
+const EXPIRES_AT = Date.now() + 3 * 60 * 60 * 1000;
 const REMOTE_STREAM = "https://receiver.example/stream?token=remote-read";
 
 class ControllableEventSource extends EventTarget {
@@ -33,8 +37,10 @@ class ControllableEventSource extends EventTarget {
   onopen: ((event: Event) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   closed = false;
-  constructor(readonly url: string) {
+  readonly url: string;
+  constructor(url: string) {
     super();
+    this.url = url;
     ControllableEventSource.instances.push(this);
   }
   close() {
@@ -72,13 +78,11 @@ async function openLatestReceiver() {
 }
 
 async function switchReceiver(streamUrl: string) {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Switch receiver", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch receiver" }));
   fireEvent.change(screen.getByLabelText("Receiver endpoint"), {
     target: { value: streamUrl },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Connect", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   return await openLatestReceiver();
 }
 
@@ -115,25 +119,37 @@ async function sendEvent(
   );
 }
 
+async function sendItems(
+  source: ControllableEventSource,
+  id: string,
+  items: [Record<string, unknown>, unknown][],
+) {
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([{}, items]),
+        lastEventId: id,
+      }),
+    ),
+  );
+}
+
 function captureAction(name: string): HTMLButtonElement {
-  let action = screen.queryByRole("button", { name, exact: true });
+  let action = screen.queryByRole("button", { name });
   if (!action) {
     fireEvent.click(
       screen.getAllByRole("button", {
         name: "Capture actions",
-        exact: true,
       })[0]!,
     );
-    action = screen.getByRole("button", { name, exact: true });
+    action = screen.getByRole("button", { name });
   }
   return action as HTMLButtonElement;
 }
 
 function openSettings() {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Settings", exact: true }),
-  );
-  return screen.getByRole("dialog", { name: "Settings", exact: true });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  return screen.getByRole("dialog", { name: "Settings" });
 }
 
 beforeEach(() => {
@@ -243,17 +259,14 @@ test("switching captures clears the old label and deadline before new metadata",
   const first = await openSource();
   await waitFor(() =>
     expect(
-      screen.getByRole("combobox", { name: "Session", exact: true })
-        .textContent,
+      screen.getByRole("combobox", { name: "Session" }).textContent,
     ).toContain("Web checkout"),
   );
   await sessionMetadata(first, { state: "retained", expiresAt: EXPIRES_AT });
   expect(
     screen.getByRole("banner", { name: "Capture context" }).textContent,
   ).toContain("Saved until");
-  fireEvent.click(
-    screen.getByRole("combobox", { name: "Session", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("combobox", { name: "Session" }));
   fireEvent.click(
     await screen.findByRole("option", { name: /^Worker jobs ·/ }),
   );
@@ -311,9 +324,7 @@ test("deletion cancellation sends no HTTP and confirmation mutates only the scop
     confirmation,
   );
   expect(request).not.toHaveBeenCalled();
-  fireEvent.click(
-    within(confirmation).getByRole("button", { name: "Cancel", exact: true }),
-  );
+  fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(request).not.toHaveBeenCalled();
   expect(source.closed).toBe(false);
@@ -324,7 +335,7 @@ test("deletion cancellation sends no HTTP and confirmation mutates only the scop
   fireEvent.click(
     within(
       screen.getByRole("dialog", { name: "Delete captured events?" }),
-    ).getByRole("button", { name: "Delete captured events", exact: true }),
+    ).getByRole("button", { name: "Delete captured events" }),
   );
   await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
   const [url, options] = request.mock.calls[0]!;
@@ -366,13 +377,12 @@ test("pending deletion disables Reload capture and ignores queued events until c
   fireEvent.click(
     within(
       screen.getByRole("dialog", { name: "Delete captured events?" }),
-    ).getByRole("button", { name: "Delete captured events", exact: true }),
+    ).getByRole("button", { name: "Delete captured events" }),
   );
   expect(request).toHaveBeenCalledTimes(1);
-  const reload = screen.getByRole("button", {
+  const reload = screen.getByRole<HTMLButtonElement>("button", {
     name: "Reload capture",
-    exact: true,
-  }) as HTMLButtonElement;
+  });
   expect(reload.disabled).toBe(true);
   fireEvent.click(reload);
   expect(ControllableEventSource.instances).toHaveLength(1);
@@ -393,12 +403,9 @@ test("pending deletion disables Reload capture and ignores queued events until c
     "before pending reset",
   );
   expect(
-    (
-      screen.getByRole("button", {
-        name: "Reload capture",
-        exact: true,
-      }) as HTMLButtonElement
-    ).disabled,
+    screen.getByRole<HTMLButtonElement>("button", {
+      name: "Reload capture",
+    }).disabled,
   ).toBe(false);
   expect(request).toHaveBeenCalledTimes(1);
 });
@@ -460,9 +467,7 @@ test.each(["capturing", "saved"] as const)(
       screen.getByRole("heading", { name: "No traces displayed" }),
     ).not.toBeNull();
     expect(screen.getByText(/Clear view only affects this tab/)).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload capture", exact: true }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Reload capture" }));
     const replay = await openSource();
     expect(replay).not.toBe(initial);
     await sendEvent(replay, "saved event without traces", "reload-event");
@@ -491,7 +496,7 @@ test("session command search leaves the active view filter unchanged until Filte
   });
   await waitFor(() =>
     expect(
-      screen.getAllByRole("button", { name: "View event event" }),
+      screen.getAllByRole("button", { name: /^View event:/ }),
     ).toHaveLength(1),
   );
   expect(screen.getByTestId("event-list").textContent).toContain(
@@ -500,11 +505,10 @@ test("session command search leaves the active view filter unchanged until Filte
   fireEvent.click(
     screen.getAllByRole("button", {
       name: "Search this session",
-      exact: true,
     })[0]!,
   );
   fireEvent.change(
-    screen.getByRole("combobox", { name: "Search this session", exact: true }),
+    screen.getByRole("combobox", { name: "Search this session" }),
     {
       target: { value: "beta" },
     },
@@ -528,12 +532,10 @@ test("session command search leaves the active view filter unchanged until Filte
     ),
   );
   expect(new URLSearchParams(window.location.search).get("q")).toBe("beta");
-  fireEvent.click(
-    screen.getByRole("button", { name: "Clear filter", exact: true }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
   await waitFor(() =>
     expect(
-      screen.getAllByRole("button", { name: "View event event" }),
+      screen.getAllByRole("button", { name: /^View event:/ }),
     ).toHaveLength(2),
   );
 });
@@ -585,7 +587,7 @@ test.each(["connecting", "failed"] as const)(
       ),
     );
     expect(
-      (screen.getByLabelText("Receiver endpoint") as HTMLInputElement).value,
+      screen.getByLabelText<HTMLInputElement>("Receiver endpoint").value,
     ).toBe("http://127.0.0.1:8970/stream");
     expect(ControllableEventSource.instances).toHaveLength(attempts);
   },
@@ -625,3 +627,220 @@ test.each(["filtered", "saved", "offline"] as const)(
     ).toBeNull();
   },
 );
+
+test("envelope times use the receiver's time, not when the viewer loaded them", async () => {
+  // The receiver assigns each envelope a UUIDv7 SSE id at ingest.
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:30:30.000Z" },
+          [
+            [{ type: "event" }, { message: "Checkout failed" }],
+            [{ type: "attachment", filename: "log.txt" }, "log"],
+          ],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /^View envelope/ });
+  expect(row.textContent).toContain(new Date(receivedAt).toLocaleTimeString());
+  expect(row.textContent).toContain("event, attachment");
+  expect(
+    screen.getByText(/Last received/).querySelector("time")?.dateTime,
+  ).toBe(new Date(receivedAt).toISOString());
+});
+
+test("envelopes without a receiver time fall back to their sent_at header", async () => {
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:30:30.000Z" },
+          [[{ type: "event" }, { message: "Checkout failed" }]],
+        ]),
+        lastEventId: "legacy-envelope",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /^View envelope/ });
+  expect(row.textContent).toContain(
+    new Date("2026-11-17T20:30:30.000Z").toLocaleTimeString(),
+  );
+});
+
+test("Last received never moves back when a later envelope only has sent_at", async () => {
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/envelopes" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          {},
+          [[{ type: "event" }, { message: "Checkout failed" }]],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { sent_at: "2026-11-17T20:00:00.000Z" },
+          [[{ type: "event" }, { message: "Retry queued" }]],
+        ]),
+        lastEventId: "legacy-envelope",
+      }),
+    ),
+  );
+  expect(
+    screen.getByText(/Last received/).querySelector("time")?.dateTime,
+  ).toBe(new Date(receivedAt).toISOString());
+});
+
+test("event rows name their kind and title instead of an exception badge", async () => {
+  renderCapture({ path: "/errors" });
+  const source = await openSource();
+  await sendItems(source, "logging", [[{ type: "event" }, pythonLoggingEvent]]);
+  await sendItems(source, "message", [[{ type: "event" }, sdkErrorMessage]]);
+  const logging = await screen.findByRole("button", {
+    name: "View event: Database query failed for orders",
+  });
+  expect(logging.textContent).toContain("Message");
+  expect(logging.textContent).not.toContain("Exception");
+  const message = screen.getByRole("button", {
+    name: "View event: Payment retry limit reached",
+  });
+  expect(message.textContent).toContain("Message");
+  expect(message.textContent).not.toContain("Exception");
+});
+
+test("feedback rows show the feedback message, not the page path", async () => {
+  renderCapture({ path: "/feedback" });
+  const source = await openSource();
+  await sendItems(source, "feedback", [
+    [
+      { type: "feedback" },
+      {
+        timestamp: 1730000002.1,
+        request: { url: "http://localhost:3000/" },
+        contexts: {
+          feedback: {
+            message: "The checkout button did not complete my order.",
+            url: "http://localhost:3000/",
+          },
+        },
+      },
+    ],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: "View feedback: The checkout button did not complete my order.",
+  });
+  expect(row.textContent).toContain(
+    "The checkout button did not complete my order.",
+  );
+});
+
+test("long event titles are shortened in row labels", async () => {
+  renderCapture({ path: "/errors" });
+  const source = await openSource();
+  const message = `Query failed: ${"SELECT * FROM orders ".repeat(20)}`;
+  await sendItems(source, "long", [
+    [{ type: "event" }, { level: "error", message }],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: /^View event: Query failed/,
+  });
+  const label = row.getAttribute("aria-label") ?? "";
+  expect(label.length).toBeLessThanOrEqual(140);
+  expect(label.endsWith("…")).toBe(true);
+  expect(row.textContent).toContain(message.trim());
+});
+
+test("replay recordings show when they were received instead of unknown time", async () => {
+  // @sentry/browser replay: a replay_event with a timestamp, then a recording without one.
+  const receivedAt = 1_794_947_420_913;
+  renderCapture({ path: "/live" });
+  const source = await openSource();
+  await act(async () =>
+    source.dispatchEvent(
+      new MessageEvent("application/x-sentry-envelope", {
+        data: JSON.stringify([
+          { event_id: "4d1c5b0e9a3f4c7e8b2a6f1d0c9e8b7a" },
+          [
+            [
+              { type: "replay_recording" },
+              { data: "H4sIAAAAAAAAA4uOBQApu0wNAgAAAA==" },
+            ],
+          ],
+        ]),
+        lastEventId: "01a1eb34-12f1-7abc-8def-0123456789ab",
+      }),
+    ),
+  );
+  const row = await screen.findByRole("button", { name: /replay recording/i });
+  expect(row.textContent).not.toContain("unknown time");
+  expect(row.textContent).toContain(new Date(receivedAt).toLocaleTimeString());
+});
+
+test("an untimed item in a trace does not stretch the trace to its receive time", async () => {
+  // A 400 ms transaction, then a sentry-python cron check-in in the same
+  // trace that the receiver got 222 s later. Check-ins carry no timestamp.
+  const uuidv7 = (ms: number) =>
+    `${ms
+      .toString(16)
+      .padStart(12, "0")
+      .replace(/^(.{8})(.{4})$/, "$1-$2")}-7abc-8def-0123456789ab`;
+  const finishedAt = 1_794_947_420.913;
+  const traceId = "8f2a6c1e4b7d4f0a9c3e5b1d7a2f6c8e";
+  renderCapture({ path: "/traces" });
+  const source = await openSource();
+  const send = (lastEventId: string, items: unknown[]) =>
+    act(async () =>
+      source.dispatchEvent(
+        new MessageEvent("application/x-sentry-envelope", {
+          data: JSON.stringify([{}, items]),
+          lastEventId,
+        }),
+      ),
+    );
+  await send(uuidv7(finishedAt * 1000 + 50), [
+    [
+      { type: "transaction" },
+      {
+        type: "transaction",
+        transaction: "nightly-report",
+        start_timestamp: finishedAt - 0.4,
+        timestamp: finishedAt,
+        contexts: {
+          trace: { trace_id: traceId, span_id: "a1b2c3d4e5f60718", op: "task" },
+        },
+      },
+    ],
+  ]);
+  await send(uuidv7(finishedAt * 1000 + 222_000), [
+    [
+      { type: "check_in" },
+      {
+        check_in_id: "5f1c0e8a2b9d4c7e8f3a1b6d0c9e2f4a",
+        monitor_slug: "nightly-report",
+        status: "ok",
+        duration: 0.4,
+        contexts: { trace: { trace_id: traceId, span_id: "a1b2c3d4e5f60718" } },
+      },
+    ],
+  ]);
+  const row = await screen.findByRole("button", {
+    name: "View trace nightly-report",
+  });
+  expect(row.textContent).toMatch(/400(\.0+)? ms/);
+  expect(row.textContent).not.toContain("222");
+});

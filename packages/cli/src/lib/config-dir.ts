@@ -71,7 +71,7 @@ export function resolveXdgConfigDir(
     return override;
   }
 
-  const xdgConfigHome = env.XDG_CONFIG_HOME;
+  const xdgConfigHome = env["XDG_CONFIG_HOME"];
   const configHome =
     xdgConfigHome && isAbsolute(xdgConfigHome)
       ? xdgConfigHome

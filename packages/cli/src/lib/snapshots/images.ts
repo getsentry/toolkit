@@ -48,6 +48,7 @@ function readPngDimensions(
       return { width, height };
     }
   }
+  return undefined;
 }
 
 /** Return whether a JPEG marker contains a baseline or progressive frame. */

@@ -189,7 +189,7 @@ function fromStored(stored: StoredEntry): ParsedEntry {
 function legacyExpiresAt(legacy: LegacyEntry): number {
   return (
     legacy.expiresAt ??
-    legacy.createdAt + FALLBACK_TTL_MS[classifyUrl(legacy.url ?? "")]
+    legacy.createdAt + FALLBACK_TTL_MS[classifyUrl(legacy.url)]
   );
 }
 
@@ -211,6 +211,7 @@ function fromLegacy(legacy: LegacyEntry): ParsedEntry {
 }
 
 function isStored(parsed: StoredEntry | LegacyEntry): parsed is StoredEntry {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- a newer CLI may have written another version
   return "v" in parsed && parsed.v === 2;
 }
 

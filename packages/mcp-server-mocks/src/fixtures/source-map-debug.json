@@ -1,0 +1,54 @@
+{
+  "dist": null,
+  "release": null,
+  "exceptions": [
+    {
+      "frames": [
+        {
+          "debug_id_process": {
+            "debug_id": null,
+            "uploaded_source_file_with_correct_debug_id": false,
+            "uploaded_source_map_with_correct_debug_id": false
+          },
+          "release_process": null,
+          "scraping_process": {
+            "source_file": null,
+            "source_map": null
+          }
+        },
+        {
+          "debug_id_process": {
+            "debug_id": null,
+            "uploaded_source_file_with_correct_debug_id": false,
+            "uploaded_source_map_with_correct_debug_id": false
+          },
+          "release_process": null,
+          "scraping_process": {
+            "source_file": null,
+            "source_map": null
+          }
+        },
+        {
+          "debug_id_process": {
+            "debug_id": null,
+            "uploaded_source_file_with_correct_debug_id": false,
+            "uploaded_source_map_with_correct_debug_id": false
+          },
+          "release_process": null,
+          "scraping_process": {
+            "source_file": null,
+            "source_map": null
+          }
+        }
+      ]
+    }
+  ],
+  "has_debug_ids": false,
+  "sdk_version": "9.12.0",
+  "project_has_some_artifact_bundle": false,
+  "release_has_some_artifact": false,
+  "has_uploaded_some_artifact_with_a_debug_id": false,
+  "sdk_debug_id_support": "full",
+  "min_debug_id_sdk_version": "7.56.0",
+  "has_scraping_data": false
+}

@@ -24,6 +24,7 @@ import {
   drawPixelText,
   type Rgb,
 } from "./pixel-canvas.js";
+import { formatAxisTimestamp } from "./time-utils.js";
 
 /** Number of dashboard grid columns. */
 const GRID_COLUMNS = 6;
@@ -65,7 +66,7 @@ export type SixelDashboardWidget = {
   /** Sentry display type, used to distinguish categorical bars. */
   displayType: string | null;
   /** Grid position when supplied by the dashboard API. */
-  layout?: SixelWidgetLayout;
+  layout?: SixelWidgetLayout | undefined;
   /** Fully resolved query result. */
   data: WidgetDataResult;
 };
@@ -94,7 +95,7 @@ export type RenderSixelDashboardOptions = {
    * Encode the finished RGBA canvas to a terminal graphics escape string.
    * Defaults to sixel; callers pass a kitty encoder on kitty-capable terminals.
    */
-  encodeImage?: (image: DecodedImage) => string | undefined;
+  encodeImage?: ((image: DecodedImage) => string | undefined) | undefined;
 };
 
 /** A widget paired with the layout used for the final composite. */
@@ -345,15 +346,25 @@ function drawChartContent(
     firstLabel:
       model.kind === "categorical"
         ? model.series[0]?.label
-        : formatTimestamp(firstTimestamp, spanDays),
+        : axisLabel(firstTimestamp, spanDays),
     lastLabel:
       model.kind === "categorical"
         ? model.series.at(-1)?.label
-        : formatTimestamp(lastTimestamp, spanDays),
+        : axisLabel(lastTimestamp, spanDays),
   });
   if (chart) {
     blitPixelImage(image, chart, options.x, options.y);
   }
+}
+
+/** Format a time-axis end label, or leave it blank when the series is empty. */
+function axisLabel(
+  timestamp: number | undefined,
+  spanDays: number,
+): string | undefined {
+  return timestamp === undefined
+    ? undefined
+    : formatAxisTimestamp(timestamp, spanDays);
 }
 
 /** Format a number compactly enough for the chart-axis gutter. */
@@ -366,38 +377,6 @@ function formatChartValue(
     maximumFractionDigits: 1,
   }).format(value);
   return unit ? `${formatted} ${unit}` : formatted;
-}
-
-/** Format timestamps using the same span-aware form as the character dashboard. */
-export function formatTimestamp(
-  timestamp: number | undefined,
-  spanDays: number,
-): string {
-  if (timestamp === undefined) {
-    return "";
-  }
-  const date = new Date(timestamp * 1000);
-  if (spanDays < 2) {
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  }
-  if (spanDays <= 30) {
-    return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
-  }
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return `${months[date.getMonth()] ?? "???"} ${date.getDate()}`;
 }
 
 /** Remove terminal formatting sequences before drawing text into a bitmap. */

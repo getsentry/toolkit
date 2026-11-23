@@ -77,7 +77,7 @@ const DEFAULT_OAUTH_CLIENT_ID =
 declare const SENTRY_CLIENT_ID_BUILD: string | undefined;
 function getClientId(): string {
   return (
-    getEnv().SENTRY_CLIENT_ID ??
+    getEnv()["SENTRY_CLIENT_ID"] ??
     (typeof SENTRY_CLIENT_ID_BUILD !== "undefined"
       ? SENTRY_CLIENT_ID_BUILD
       : DEFAULT_OAUTH_CLIENT_ID)
@@ -490,12 +490,12 @@ export type StoreTokenOptions = {
    * re-authentication (`sentry auth login --force`, `sentry auth refresh`,
    * automatic login) expects.
    */
-  newAccount?: boolean;
+  newAccount?: boolean | undefined;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for an account picked for the target org).
    */
-  accountId?: string;
+  accountId?: string | undefined;
 };
 
 /**
@@ -621,6 +621,7 @@ export async function refreshAccessToken(
 export async function exchangeSetupCode(
   code: string,
   host: string,
+  clientId: string = getClientId(),
 ): Promise<TokenResponse> {
   const response = await fetchWithConnectionError(
     host + "/oauth/token/",
@@ -630,7 +631,7 @@ export async function exchangeSetupCode(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
-        client_id: getClientId(),
+        client_id: clientId,
         setup_code: code,
       }),
     },

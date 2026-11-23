@@ -14,10 +14,14 @@ const FEATURES_TTL_SECONDS = 3600;
 const FEATURES_SCOPE = "features";
 const QUERY_SCOPE = "query";
 
+/**
+ * Project metadata from the request body. The validated input forwards
+ * omitted fields as `undefined`, and every reader treats that as absent.
+ */
 export interface DocsQueryContext {
-  frameworks?: string[];
-  languages?: string[];
-  sentryConfigured?: boolean;
+  frameworks?: string[] | undefined;
+  languages?: string[] | undefined;
+  sentryConfigured?: boolean | undefined;
 }
 
 export interface CachedDocsQuery {
@@ -31,9 +35,10 @@ export interface CachedDocsQuery {
  */
 function getCache(): Cache | undefined {
   try {
-    return (caches as CacheStorage & { default?: Cache })?.default;
+    return (caches as CacheStorage & { default?: Cache }).default;
   } catch {
     // Cache API is unavailable outside the Worker runtime.
+    return undefined;
   }
 }
 

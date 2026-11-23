@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { startNewTrace, startSpan } from "@sentry/core";
 import { logSuccess } from "./logger.js";
-import type { MCPConnection, MCPConfig } from "./types.js";
+import type { MCPConnection, MCPTool, MCPConfig } from "./types.js";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { LIB_VERSION } from "./version.js";
@@ -54,7 +54,7 @@ export async function connectToMCPServer(
 
           // Discover available tools
           const toolsMap = await client.tools();
-          const tools = new Map<string, any>();
+          const tools = new Map<string, MCPTool>();
 
           for (const [name, tool] of Object.entries(toolsMap)) {
             tools.set(name, tool);

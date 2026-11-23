@@ -1,7 +1,17 @@
 {
-  "extends": "@sentry/mcp-server-tsconfig/tsconfig.base.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types"]
+    "lib": ["ES2023", "ES2024.String"],
+    "allowJs": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "incremental": true,
+    // The Worker runs with nodejs_compat, and @sentry/cloudflare's
+    // declarations (via @sentry/server-utils) need Node types.
+    "types": ["@cloudflare/workers-types", "node"],
+    // skipLibCheck exception: `@cloudflare/workers-types` and `@types/node` declare the same globals (TS2300 DOMException/Blob, TS2451 console/crypto, TS2502 PerformanceEntry). Remove when both can load in one program without conflicts.
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

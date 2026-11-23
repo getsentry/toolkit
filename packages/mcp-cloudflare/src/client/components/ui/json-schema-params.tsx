@@ -1,10 +1,12 @@
-type JsonSchema =
-  | {
-      properties?: Record<string, { description?: string } | undefined>;
-      required?: string[];
-    }
-  | null
-  | undefined;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readDescription(property: unknown): string {
+  return isObject(property) && typeof property["description"] === "string"
+    ? property["description"]
+    : "";
+}
 
 interface JsonSchemaParamsProps {
   schema: unknown;
@@ -20,20 +22,15 @@ export default function JsonSchemaParams({
   schema,
   title = "Parameters",
 }: JsonSchemaParamsProps) {
-  let entries: Array<[string, { description?: string } | undefined]> = [];
+  let entries: Array<[string, unknown]> = [];
 
-  const obj = (schema as JsonSchema) ?? undefined;
-  if (obj && typeof obj === "object" && "properties" in obj) {
-    const props = obj.properties;
-    if (props && Object.keys(props).length > 0) {
+  if (isObject(schema) && "properties" in schema) {
+    const props = schema["properties"];
+    if (isObject(props)) {
       entries = Object.entries(props);
     }
-  } else if (schema && typeof schema === "object") {
-    const flat = schema as Record<string, { description?: string } | undefined>;
-    const keys = Object.keys(flat);
-    if (keys.length > 0) {
-      entries = Object.entries(flat);
-    }
+  } else if (isObject(schema)) {
+    entries = Object.entries(schema);
   }
 
   if (entries.length === 0) return null;
@@ -48,7 +45,7 @@ export default function JsonSchemaParams({
           <div key={key} className="p-2 bg-black/20">
             <dt className="text-sm font-medium text-violet-300">{key}</dt>
             <dd className="text-sm text-slate-300 mt-0.5">
-              {property?.description || ""}
+              {readDescription(property)}
             </dd>
           </div>
         ))}

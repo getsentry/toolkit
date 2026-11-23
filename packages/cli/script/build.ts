@@ -67,7 +67,7 @@ const NODE_VERSION = "lts";
  * Optional OAuth client ID override baked into the binary. When unset, the
  * binary uses the committed sentry.io default in src/lib/oauth.ts.
  */
-const SENTRY_CLIENT_ID = process.env.SENTRY_CLIENT_ID;
+const SENTRY_CLIENT_ID = process.env["SENTRY_CLIENT_ID"];
 
 /** Build targets configuration */
 type BuildTarget = {
@@ -267,7 +267,7 @@ async function uploadSourcemapsToSentry(
   if (injected.length === 0) {
     return;
   }
-  if (!process.env.SENTRY_AUTH_TOKEN) {
+  if (!process.env["SENTRY_AUTH_TOKEN"]) {
     logger.info("No SENTRY_AUTH_TOKEN, skipping sourcemap upload");
     return;
   }
@@ -357,9 +357,9 @@ async function compileAllTargets(
         assets,
         outDir: "dist-bin",
         outputName: "sentry",
-        cacheDir: process.env.FOSSILIZE_CACHE_DIR ?? ".node-cache",
+        cacheDir: process.env["FOSSILIZE_CACHE_DIR"] ?? ".node-cache",
         concurrencyLimit: Number(
-          process.env.FOSSILIZE_CONCURRENCY_LIMIT ?? "3",
+          process.env["FOSSILIZE_CONCURRENCY_LIMIT"] ?? "3",
         ),
         noBundle: true,
         holePunch: true,
@@ -370,7 +370,7 @@ async function compileAllTargets(
         // writes. process.env is untouched, so child processes still
         // inherit the user's NODE_OPTIONS.
         ignoreNodeOptions: true,
-        sign: envFlag(process.env.FOSSILIZE_SIGN),
+        sign: envFlag(process.env["FOSSILIZE_SIGN"]),
       },
       SEA_MAIN_JS,
     );
@@ -423,7 +423,7 @@ async function postProcessTarget(target: BuildTarget): Promise<void> {
 
   // On main and release branches (RELEASE_BUILD=1), create gzip-compressed
   // copies for release downloads / GHCR nightly (~70% smaller with hole-punch).
-  if (process.env.RELEASE_BUILD) {
+  if (process.env["RELEASE_BUILD"]) {
     const binary = await readFile(outfile);
     const compressed = await gzipAsync(Buffer.from(binary), { level: 6 });
     await writeFile(`${outfile}.gz`, compressed);

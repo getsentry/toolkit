@@ -620,6 +620,11 @@ describe("queryAllWidgets timeseries", () => {
         dataset: "errors",
         start: 1_700_000_000_000,
         end: 1_700_003_600_000,
+        ingestion: {
+          status: "delayed",
+          delaySeconds: 90,
+          completeThrough: 1_700_003_510_000,
+        },
       },
       timeSeries: [
         {
@@ -651,11 +656,11 @@ describe("queryAllWidgets timeseries", () => {
 
     const { path, params } = lastRequest();
     expect(path).toEqual({ organization_id_or_slug: ORG });
-    expect(params.dataset).toBe("errors");
-    expect(params.yAxis).toEqual(["count()"]);
-    expect(params.statsPeriod).toBe("24h");
-    expect(params.groupBy).toBeUndefined();
-    expect(params.topEvents).toBeUndefined();
+    expect(params["dataset"]).toBe("errors");
+    expect(params["yAxis"]).toEqual(["count()"]);
+    expect(params["statsPeriod"]).toBe("24h");
+    expect(params["groupBy"]).toBeUndefined();
+    expect(params["topEvents"]).toBeUndefined();
     expect(results.get(0)).toEqual({
       type: "timeseries",
       series: [
@@ -664,10 +669,99 @@ describe("queryAllWidgets timeseries", () => {
           unit: null,
           values: [
             { timestamp: 1_700_000_000, value: 10 },
-            { timestamp: 1_700_003_600, value: null },
+            { timestamp: 1_700_003_600, value: null, incomplete: true },
           ],
         },
       ],
+      ingestion: {
+        status: "delayed",
+        delaySeconds: 90,
+        completeThrough: 1_700_003_510,
+      },
+    });
+  });
+
+  test("omits ingestion and incomplete flags when the API reports none", async () => {
+    mockResponse({
+      timeSeries: [
+        {
+          yAxis: "count()",
+          values: [bucket(1)],
+          meta: SERIES_META,
+        },
+      ],
+    });
+    const dashboard = makeDashboard([
+      {
+        title: "Errors",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [{ aggregates: ["count()"], columns: [], conditions: "" }],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    const result = results.get(0);
+    expect(result).toStrictEqual({
+      type: "timeseries",
+      series: [
+        {
+          label: "count()",
+          unit: null,
+          values: [{ timestamp: 1_700_000_000, value: 1 }],
+        },
+      ],
+    });
+  });
+
+  test("keeps the slowest ingestion status across widget queries", async () => {
+    const window = {
+      dataset: "errors",
+      start: 1_700_000_000_000,
+      end: 1_700_003_600_000,
+    };
+    listOrganizationEventsTimeseriesMock
+      .mockResolvedValueOnce({
+        data: {
+          meta: {
+            ...window,
+            ingestion: { status: "delayed", delaySeconds: 30 },
+          },
+          timeSeries: [],
+        },
+        response: new Response(),
+      })
+      .mockResolvedValueOnce({
+        data: {
+          meta: {
+            ...window,
+            ingestion: { status: "delayed", delaySeconds: 120 },
+          },
+          timeSeries: [],
+        },
+        response: new Response(),
+      });
+    const dashboard = makeDashboard([
+      {
+        title: "Two queries",
+        displayType: "line",
+        widgetType: "error-events",
+        queries: [
+          { aggregates: ["count()"], columns: [], conditions: "level:error" },
+          { aggregates: ["count()"], columns: [], conditions: "level:warning" },
+        ],
+      },
+    ]);
+
+    const results = await queryAllWidgets(REGION, ORG, dashboard, {
+      period: "1h",
+    });
+
+    expect(results.get(0)).toMatchObject({
+      ingestion: { status: "delayed", delaySeconds: 120 },
     });
   });
 
@@ -692,15 +786,15 @@ describe("queryAllWidgets timeseries", () => {
     await queryAllWidgets(REGION, ORG, dashboard, { period: "1h" });
 
     const { params } = lastRequest();
-    expect(params.groupBy).toEqual([
+    expect(params["groupBy"]).toEqual([
       "severity",
       "count()",
       "count_unique(user)",
       "max(timestamp)",
     ]);
-    expect(params.sort).toBe("-max(timestamp)");
-    expect(params.topEvents).toBe(5);
-    expect(params.excludeOther).toBe("1");
+    expect(params["sort"]).toBe("-max(timestamp)");
+    expect(params["topEvents"]).toBe(5);
+    expect(params["excludeOther"]).toBe("1");
   });
 
   test("labels grouped series by group values and marks Other", async () => {

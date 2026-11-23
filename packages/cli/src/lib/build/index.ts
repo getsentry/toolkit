@@ -23,16 +23,16 @@
  */
 
 import {
-  closeSync,
+  constants,
+  createWriteStream,
   existsSync,
-  openSync,
   readdirSync,
   statSync,
-  writeSync,
 } from "node:fs";
 import { lstat, mkdtemp, open, readdir, readlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, posix, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import {
   strToU8,
   Unzip,
@@ -41,6 +41,12 @@ import {
   UnzipPassThrough,
   unzipSync,
 } from "fflate";
+import {
+  type Entry,
+  getFileNameLowLevel,
+  openPromise,
+  type ZipFile,
+} from "yauzl";
 import { CLI_VERSION } from "../constants.js";
 import { ValidationError } from "../errors.js";
 import { logger } from "../logger.js";
@@ -49,7 +55,7 @@ import {
   extractAssetCatalogImages,
 } from "./asset-catalog-extract.js";
 import { collectDsymEntries } from "./dsyms.js";
-import { DeterministicZipWriter } from "./zip-writer.js";
+import { DeterministicZipWriter, type ZipEntryOptions } from "./zip-writer.js";
 
 const log = logger.withTag("build.normalize");
 
@@ -221,7 +227,7 @@ export function parsePluginFromPipeline(
 /** Build the `.sentry-cli-metadata.txt` contents. */
 function buildMetadataFile(plugin: PipelinePlugin | null): string {
   const version =
-    process.env.SENTRY_CLI_INTEGRATION_TEST_VERSION_OVERRIDE ?? CLI_VERSION;
+    process.env["SENTRY_CLI_INTEGRATION_TEST_VERSION_OVERRIDE"] ?? CLI_VERSION;
   let out = `sentry-cli-version: ${version}\n`;
   if (plugin) {
     out += `${plugin.name}: ${plugin.version}\n`;
@@ -542,75 +548,193 @@ function xcarchiveInfoPlist(appName: string): string {
 }
 
 /** A `Payload/…` file entry extracted from an IPA and staged on disk. */
-type StagedIpaEntry = { name: string; stagePath: string };
+type StagedIpaEntry = {
+  /** Entry path inside the IPA; always starts with `Payload/`. */
+  name: string;
+  /** Temp file holding the entry's extracted bytes. */
+  stagePath: string;
+  /** Host OS and attributes to store in the wrapper; see {@link ipaEntryOptions}. */
+  options: ZipEntryOptions;
+};
+
+/** An IPA central-directory entry selected for staging. */
+type IpaPayloadEntry = {
+  /** Decoded entry path; always starts with `Payload/`. */
+  name: string;
+  /** Central-directory record, used to open the entry's data. */
+  entry: Entry;
+};
+
+/** Size of a central directory file header before its variable-length fields. */
+const CENTRAL_HEADER_FIXED_SIZE = 46;
+/** Size of the end-of-central-directory record before its comment. */
+const EOCD_FIXED_SIZE = 22;
+/** Size of the ZIP64 locator that directly precedes that record, if any. */
+const ZIP64_LOCATOR_SIZE = 20;
+/** ZIP64 end-of-central-directory locator signature (`PK\x06\x07`). */
+const ZIP64_LOCATOR_SIG = 0x0706_4b50;
 
 /**
- * Stream an IPA ZIP from disk, staging every `Payload/…` file entry to a temp
- * file under `stageDir` without holding decompressed bytes in memory.
+ * Choose the ZIP host OS and external attributes to store for an IPA entry.
  *
- * Only file entries (not directory markers) whose name begins with `Payload/`
- * are staged; other top-level entries (e.g. `iTunesMetadata.plist`) are dropped,
- * matching the previous in-memory filter. Returns the staged entries in the
- * order they appeared in the archive (the caller sorts for determinism).
+ * The attributes are archive-controlled, so only the regular-file or symlink
+ * type and the `rwx` bits of a Unix entry are forwarded. Anything else (other
+ * file types, setuid/setgid/sticky bits, a mode without permission bits) gets
+ * the writer's defaults.
+ */
+function ipaEntryOptions(entry: Entry): ZipEntryOptions {
+  if (entry.versionMadeBy >>> 8 !== ZIP_OS_UNIX) {
+    return {};
+  }
+  const mode = entry.externalFileAttributes >>> 16;
+  const type = mode & constants.S_IFMT;
+  const permissions = mode & 0o777;
+  if (type === constants.S_IFLNK) {
+    return {
+      os: ZIP_OS_UNIX,
+      attrs: ((constants.S_IFLNK | permissions) << 16) >>> 0,
+    };
+  }
+  // Some writers store permission bits without a file type.
+  if ((type === constants.S_IFREG || type === 0) && permissions !== 0) {
+    return {
+      os: ZIP_OS_UNIX,
+      attrs: ((constants.S_IFREG | permissions) << 16) >>> 0,
+    };
+  }
+  return {};
+}
+
+/**
+ * Read the central directory's byte size from the end-of-central-directory
+ * record, or `null` for a ZIP64 archive, whose 64-bit records hold the value.
+ */
+async function readDeclaredDirectorySize(
+  ipaPath: string,
+  zip: ZipFile,
+): Promise<number | null> {
+  // With `decodeStrings` off, `comment` is the raw comment (a Buffer at runtime).
+  const recordOffset = zip.fileSize - EOCD_FIXED_SIZE - zip.comment.length;
+  const start = Math.max(0, recordOffset - ZIP64_LOCATOR_SIZE);
+  const tail = Buffer.alloc(recordOffset + EOCD_FIXED_SIZE - start);
+  const src = await open(ipaPath, "r");
+  try {
+    await src.read(tail, 0, tail.length, start);
+  } finally {
+    await src.close();
+  }
+  const record = recordOffset - start;
+  if (
+    record >= ZIP64_LOCATOR_SIZE &&
+    tail.readUInt32LE(record - ZIP64_LOCATOR_SIZE) === ZIP64_LOCATOR_SIG
+  ) {
+    return null;
+  }
+  // The directory size is the 32-bit field at offset 12 of the record.
+  return tail.readUInt32LE(record + 12);
+}
+
+/**
+ * Walk an IPA's central directory and select the `Payload/…` file entries,
+ * skipping directory markers, other top-level entries, and unsafe names.
+ *
+ * The directory is read in full before anything is extracted so a truncated
+ * one fails early: without ZIP64 records the entry count is 16 bits, and macOS
+ * `ditto` and Archive Utility write larger archives that way, so the parser
+ * stops at the wrapped count without an error.
+ *
+ * @throws {ValidationError} If the directory's size differs from the declared one.
+ */
+async function readIpaPayloadEntries(
+  ipaPath: string,
+  zip: ZipFile,
+): Promise<IpaPayloadEntry[]> {
+  const entries: IpaPayloadEntry[] = [];
+  let directorySize = 0;
+  let unsafeNames = 0;
+  for await (const entry of zip.eachEntry()) {
+    directorySize +=
+      CENTRAL_HEADER_FIXED_SIZE +
+      entry.fileNameLength +
+      entry.extraFieldLength +
+      entry.fileCommentLength;
+    // Strict decoding keeps backslashes, which are legal in Unix file names.
+    const name = getFileNameLowLevel(
+      entry.generalPurposeBitFlag,
+      entry.fileNameRaw,
+      entry.extraFields,
+      true,
+    );
+    if (!name.startsWith("Payload/") || name.endsWith("/")) {
+      continue;
+    }
+    if (name.split(/[/\\]/).includes("..") || name.includes("\0")) {
+      unsafeNames += 1;
+      continue;
+    }
+    entries.push({ name, entry });
+  }
+
+  const declaredSize = await readDeclaredDirectorySize(ipaPath, zip);
+  if (declaredSize !== null && declaredSize !== directorySize) {
+    throw new ValidationError(
+      "The IPA's ZIP directory does not match its declared size. " +
+        "An archive with more than 65,535 entries or over 4 GiB needs ZIP64 records, " +
+        "which macOS ditto and Archive Utility do not write.",
+      "path",
+    );
+  }
+  if (unsafeNames > 0) {
+    // Names are archive-controlled text, so only their count is reported.
+    log.warn(`Skipped ${unsafeNames} IPA file(s) with an unsafe path`);
+  }
+  return entries;
+}
+
+/**
+ * Extract every `Payload/…` file entry of an IPA to a temp file under
+ * `stageDir`, one at a time, without holding extracted bytes in memory.
+ *
+ * Entries come from the central directory, the only place a ZIP keeps Unix
+ * modes, in directory order (the caller sorts for determinism).
+ *
+ * @throws {ValidationError} If the archive is truncated or unreadable as a ZIP.
  */
 async function stageIpaPayload(
   ipaPath: string,
   stageDir: string,
 ): Promise<StagedIpaEntry[]> {
-  const staged: StagedIpaEntry[] = [];
-  let index = 0;
-
-  const unzip = new Unzip();
-  unzip.register(UnzipInflate);
-  unzip.register(UnzipPassThrough);
-  unzip.onfile = (file: UnzipFile) => {
-    const wanted = !file.name.endsWith("/") && file.name.startsWith("Payload/");
-    if (!wanted) {
-      // Still drain the entry so fflate advances past its data.
-      file.ondata = () => {
-        // Discard.
-      };
-      file.start();
-      return;
-    }
-    const stagePath = join(stageDir, `e${index++}`);
-    const fd = openSync(stagePath, "w");
-    file.ondata = (err, chunk, final) => {
-      if (err) {
-        closeSync(fd);
-        throw err;
-      }
-      if (chunk.length > 0) {
-        writeSync(fd, chunk);
-      }
-      if (final) {
-        closeSync(fd);
-        staged.push({ name: file.name, stagePath });
-      }
-    };
-    file.start();
-  };
-
-  const src = await open(ipaPath, "r");
   try {
-    const buf = Buffer.allocUnsafe(1 << 20);
-    const size = (await src.stat()).size;
-    let position = 0;
-    while (position < size) {
-      const { bytesRead } = await src.read(buf, 0, buf.length, position);
-      if (bytesRead === 0) {
-        break;
+    const zip = await openPromise(ipaPath, {
+      decodeStrings: false,
+      autoClose: false,
+    });
+    try {
+      const staged: StagedIpaEntry[] = [];
+      for (const { name, entry } of await readIpaPayloadEntries(ipaPath, zip)) {
+        const stagePath = join(stageDir, `e${staged.length}`);
+        await pipeline(
+          await zip.openReadStreamPromise(entry),
+          createWriteStream(stagePath),
+        );
+        staged.push({ name, stagePath, options: ipaEntryOptions(entry) });
       }
-      position += bytesRead;
-      unzip.push(
-        Uint8Array.prototype.slice.call(buf, 0, bytesRead),
-        position >= size,
-      );
+      return staged;
+    } finally {
+      zip.close();
     }
-  } finally {
-    await src.close();
+  } catch (err) {
+    // A failing disk (e.g. a full temp directory) is not the archive's fault.
+    if (
+      err instanceof ValidationError ||
+      (err instanceof Error && "syscall" in err)
+    ) {
+      throw err;
+    }
+    // Names are never decoded by the parser, so its messages hold no archive text.
+    log.debug("Failed to read the IPA archive", err);
+    throw new ValidationError("Invalid or unsupported IPA archive", "path");
   }
-  return staged;
 }
 
 /**
@@ -631,6 +755,8 @@ async function stageIpaPayload(
  * @param outPath - Destination path for the normalized wrapper ZIP.
  * @param plugin - Optional plugin identity for the metadata file.
  * @param dsymPaths - Additional bundles, directories of bundles, or ZIPs.
+ * @throws {ValidationError} If the IPA is truncated, corrupt, or otherwise
+ *   unreadable as a ZIP.
  * @throws {Error} If the IPA does not contain exactly one `.app`.
  */
 export async function normalizeIpa(
@@ -655,7 +781,16 @@ export async function normalizeIpa(
     // generated Info.plist — then sort so the output depends only on contents,
     // not on the IPA's central-directory order, keeping bytes deterministic for
     // chunk dedup across re-uploads.
-    type ArchiveItem = { name: string; stagePath?: string; data?: Uint8Array };
+    type ArchiveItem = {
+      /** Entry path inside the wrapper ZIP. */
+      name: string;
+      /** File on disk to stream in; unset for an in-memory item. */
+      stagePath?: string;
+      /** Host OS and attributes of a file staged from the IPA; else defaults. */
+      options?: ZipEntryOptions;
+      /** In-memory contents; unset for an item streamed from disk. */
+      data?: Uint8Array;
+    };
     const items: ArchiveItem[] = [
       {
         name: `${archiveDir}/Info.plist`,
@@ -671,14 +806,10 @@ export async function normalizeIpa(
         continue;
       }
       const stripped = entry.name.slice("Payload/".length);
-      // Skip path-traversal entries (a `..` segment) defensively, matching the
-      // legacy CLI's `enclosed_name()` guard.
-      if (stripped.split("/").includes("..")) {
-        continue;
-      }
       items.push({
         name: `${archiveDir}/Products/Applications/${stripped}`,
         stagePath: entry.stagePath,
+        options: entry.options,
       });
     }
     items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -687,7 +818,7 @@ export async function normalizeIpa(
     try {
       for (const item of items) {
         if (item.stagePath !== undefined) {
-          await zip.addFile(item.name, item.stagePath);
+          await zip.addFile(item.name, item.stagePath, item.options);
         } else if (item.data !== undefined) {
           await zip.addData(item.name, item.data);
         }

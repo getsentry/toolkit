@@ -421,6 +421,30 @@ describe("createSeerError", () => {
     expect(error?.reason).toBe("out_of_credits");
   });
 
+  test.each([
+    ["daily_cap_exceeded", "daily_cap_exceeded"],
+    [undefined, "out_of_credits"],
+  ] as const)(
+    "maps an out-of-credits 402 with denial reason %s to %s",
+    (denialReason, reason) => {
+      const error = createSeerError(
+        402,
+        undefined,
+        "my-org",
+        "seer_out_of_credits",
+        denialReason,
+      );
+      expect(error?.reason).toBe(reason);
+    },
+  );
+
+  test("ignores a code that only matches an Object.prototype key", () => {
+    expect(
+      createSeerError(402, undefined, "my-org", "constructor")?.reason,
+    ).toBe("no_budget");
+    expect(createSeerError(409, "Conflict", "my-org", "toString")).toBeNull();
+  });
+
   test("returns no_budget for a 402 with the out-of-quota code", () => {
     const error = createSeerError(
       402,

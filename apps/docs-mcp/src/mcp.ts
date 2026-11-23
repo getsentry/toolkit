@@ -64,7 +64,7 @@ interface AgentToolConfig<TInput, TAgentResult> {
 }
 
 /**
- * Register an MCP tool that delegates to a Mastra-backed agent.
+ * Register an MCP tool that delegates to an AI-backed agent.
  *
  * Relies on `wrapMcpServerWithSentry` for MCP input/output spans, then
  * handles shared app concerns: wall-clock duration metrics, exception
@@ -142,7 +142,7 @@ function registerAgentTool<TInput, TAgentResult>(
  * Build the MCP server.
  *
  * An OpenRouter API key is required at call time — each tool invocation
- * throws a clear error if it is missing. The Mastra-backed tools route both
+ * throws a clear error if it is missing. The AI-backed tools route both
  * their primary and fallback models through OpenRouter.
  */
 export function createMcpServer(

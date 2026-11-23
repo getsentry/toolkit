@@ -67,6 +67,8 @@ When adding a package, always use `pnpm add -D <package>` (the `-D` flag).
 
 When the `@sentry/api` SDK provides types for an API response, import them directly from `@sentry/api` instead of creating redundant Valibot schemas in `src/types/sentry.ts`.
 
+Call Sentry API routes through the generated `@sentry/api` operations. The `sentry-cli/no-manual-api-request` lint rule rejects `apiRequest*` and `customFetch` in `src/`. A route that has no generated operation, or a request to a non-API host, goes in the rule's `MANUAL_API_REQUEST_EXCEPTIONS` list with a one-line reason.
+
 ## Rules: Use Node.js APIs
 
 **CRITICAL**: This project runs on Node.js. Use Node.js standard-library
@@ -916,7 +918,7 @@ CliError (base, exitCode=1)
 ├── ResolutionError (exitCode=23 — value provided but not found)
 ├── ValidationError (exitCode=21 — input validation)
 ├── DeviceFlowError (exitCode=51 — OAuth flow)
-├── SeerError (exitCode=40–44 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits' | 'scm_integration_required' | 'repos_not_linked')
+├── SeerError (exitCode=40–44 by reason — 'not_enabled' | 'no_budget' | 'ai_disabled' | 'out_of_credits' | 'daily_cap_exceeded' | 'scm_integration_required' | 'repos_not_linked')
 ├── TimeoutError (exitCode=31 — operation timed out)
 └── UpgradeError (exitCode=50 — upgrade failures)
 ```
@@ -1058,6 +1060,7 @@ Before creating a new `src/lib/*.ts` utility file, check whether existing shared
 | Duration formatting | `src/lib/formatters/time-utils.ts` (`formatDurationCompact`, `formatDurationVerbose`) |
 | Hex ID validation/normalization | `src/lib/hex-id.ts` (`validateHexId`, `tryNormalizeHexId`, `normalizeHexId`) |
 | Relative time display | `src/lib/formatters/time-utils.ts` (`formatRelativeTime`) |
+| Absolute date/time display | `src/lib/formatters/time-utils.ts` (`formatLocalDateTime` and `formatLocalTime` for epoch ms or ISO strings, `formatUtcTimestamp`, `formatAxisTimestamp` for chart axes). `sentry-cli/no-inline-date-format` rejects `new Date(x).toLocale*String()` elsewhere in `src/`. |
 | Table/markdown output | `src/lib/formatters/` directory |
 | Pagination | `src/lib/db/pagination.ts`, `src/lib/list-command.ts` |
 | Error classes | `src/lib/errors.ts` (never create ad-hoc error types) |

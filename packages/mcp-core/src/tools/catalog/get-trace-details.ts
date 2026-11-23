@@ -64,49 +64,15 @@ export default defineTool({
   skills: ["inspect"], // Only available in inspect skill
   requiredScopes: ["event:read"],
   requiredCapabilities: ["traces"],
-  description: [
-    "Get detailed information about a specific Sentry trace by ID.",
-    "",
-    "USE THIS TOOL WHEN USERS:",
-    "- Provide a specific trace ID (e.g., 'a4d1aae7216b47ff8117cf4e09ce9d0a')",
-    "- Ask to 'show me trace [TRACE-ID]', 'explain trace [TRACE-ID]'",
-    "- Want high-level overview and link to view trace details in Sentry",
-    "- Need trace statistics and span breakdown",
-    "- Want an overview first, then a guided pivot into additional spans or events",
-    "",
-    "DO NOT USE for:",
-    "- General searching for traces (use search_traces)",
-    "- Complete span enumeration or branch-by-branch reconstruction (use search_traces scoped to the trace)",
-    "",
-    "TRIGGER PATTERNS:",
-    "- 'Show me trace abc123' → use get_trace_details",
-    "- 'Explain trace a4d1aae7216b47ff8117cf4e09ce9d0a' → use get_trace_details",
-    "- 'What is trace [trace-id]' → use get_trace_details",
-    "",
-    "<examples>",
-    "### Get trace overview",
-    "```",
-    "get_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a')",
-    "```",
-    "",
-    "### Focus a single span",
-    "```",
-    "get_trace_details(organizationSlug='my-organization', traceId='a4d1aae7216b47ff8117cf4e09ce9d0a', spanId='aa8e7f3384ef4ff5')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Trace IDs are 32-character hexadecimal strings",
-    "- This returns a condensed trace overview, not a full span dump",
-    "- Provide `spanId` to focus on a single span within the trace",
-    "- If the response says it shows a subset of spans, use search_traces to inspect the rest of the trace",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get an overview of one Sentry trace by trace ID: trace statistics, a span breakdown, and a link to the trace in Sentry. Shows a condensed subset of spans, not every span; to list all spans in a trace, use search_traces.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
     traceId: ParamTraceId,
-    spanId: ParamSpanId.optional(),
+    spanId: ParamSpanId.optional().describe(
+      "A span ID in the trace to focus on; omit for the trace overview.",
+    ),
   },
   annotations: {
     readOnlyHint: true,
@@ -285,8 +251,8 @@ function selectInterestingSpans(
       break;
     }
 
-    fakeRoot.children.push(createSelectedSpan(root, 0));
-    const selectedRoot = fakeRoot.children[fakeRoot.children.length - 1];
+    const selectedRoot = createSelectedSpan(root, 0);
+    fakeRoot.children.push(selectedRoot);
     spanCount += 1;
     enqueueSelectedChildren(
       root,
@@ -371,7 +337,7 @@ function normalizeSpanId(value: unknown): string | undefined {
 function getTraceSpanId(span: TraceSpan): string {
   return (
     normalizeSpanId(span.span_id) ||
-    normalizeSpanId(span.additional_attributes?.span_id) ||
+    normalizeSpanId(span.additional_attributes?.["span_id"]) ||
     span.event_id
   );
 }
@@ -545,16 +511,14 @@ function renderSpanTree(spans: SelectedSpan[]): string[] {
     }
 
     // Render children with proper tree indentation
-    for (let i = 0; i < span.children.length; i++) {
-      const child = span.children[i];
+    for (const [i, child] of span.children.entries()) {
       const isLastChild = i === span.children.length - 1;
       const childPrefix = prefix + (isLast ? "   " : "│  ");
       renderSpan(child, childPrefix, isLastChild);
     }
   }
 
-  for (let i = 0; i < spans.length; i++) {
-    const span = spans[i];
+  for (const [i, span] of spans.entries()) {
     const isLastRoot = i === spans.length - 1;
     renderSpan(span, "", isLastRoot);
   }
@@ -607,7 +571,8 @@ function calculateOperationStats(trace: Trace): Record<
     // Only consider leaf nodes - spans that have no children
     if (span.children.length === 0) {
       // Use span.op if available, otherwise extract from span.name, fallback to "unknown"
-      const op = span.op || (span.name ? span.name.split(" ")[0] : "unknown");
+      const op =
+        span.op || (span.name ? (span.name.split(" ")[0] ?? "") : "unknown");
       const bucket = operationSpans.get(op);
       if (bucket) {
         bucket.push(span);
@@ -697,14 +662,14 @@ function formatTraceOutput({
 }: {
   organizationSlug: string;
   traceId: string;
-  spanId?: string;
+  spanId?: string | undefined;
   summary: TraceSummary;
   trace: Trace;
   traceFetchState: TraceFetchState;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   if (spanId) {
@@ -752,9 +717,9 @@ function formatTraceOverviewOutput({
   summary: TraceSummary;
   trace: Trace;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   const sections: string[] = [];
@@ -866,9 +831,9 @@ function formatFocusedSpanOutput({
   trace: Trace;
   traceFetchState: TraceFetchState;
   apiService: SentryApiService;
-  experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  experimentalMode?: boolean | undefined;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
   aiConversations: AIConversationReference[];
 }): string {
   const focusedSpan = findTraceSpan(trace, spanId);
@@ -1188,8 +1153,8 @@ function formatAIConversationSection({
   aiConversations: AIConversationReference[];
   organizationSlug: string;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   if (aiConversations.length === 0) {
     return [];
@@ -1204,8 +1169,8 @@ function formatAIConversationSection({
   });
 
   const lines = ["## Agent Conversations", ""];
-  if (aiConversations.length === 1) {
-    const [conversation] = aiConversations;
+  const [conversation] = aiConversations;
+  if (aiConversations.length === 1 && conversation) {
     lines.push(`**Conversation ID**: \`${conversation.conversationId}\``);
     if (conversation.spanId) {
       lines.push(`**Matching Span**: \`${conversation.spanId}\``);
@@ -1240,8 +1205,8 @@ function buildTraceNextSteps({
   traceId: string;
   spanFocused?: boolean;
   experimentalMode: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }): string[] {
   const formatSearchStep = ({
     label,

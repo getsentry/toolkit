@@ -24,7 +24,7 @@ export default function IssueDetails({ step }: { step: number }) {
                 ? "motion-reduce:opacity-0 motion-reduce:duration-1000 motion-reduce:delay-800 motion-reduce:!animate-none animate-issue-context opacity-30"
                 : "opacity-0"
             } pb-4 rounded-xl absolute inset-0 border border-white/20 bg-pink-900 text-pink100`}
-            style={{ ["--delay" as any]: "0.8s" }}
+            style={{ "--delay": "0.8s" }}
           >
             <div className="h-full w-full rounded-xl border border-white/20 bg-white/10 pb-4" />
           </div>
@@ -34,7 +34,7 @@ export default function IssueDetails({ step }: { step: number }) {
                 ? "motion-reduce:opacity-0 motion-reduce:duration-1000 motion-reduce:delay-1000 motion-reduce:!animate-none animate-issue-context opacity-30"
                 : "opacity-0"
             } pb-4 rounded-xl absolute inset-0 border border-white/20 bg-pink-900 text-pink100`}
-            style={{ ["--delay" as any]: "1s" }}
+            style={{ "--delay": "1s" }}
           >
             <div className="h-full w-full rounded-xl border border-white/20 bg-white/10 pb-4" />
           </div>
@@ -44,7 +44,7 @@ export default function IssueDetails({ step }: { step: number }) {
                 ? "motion-reduce:opacity-0 motion-reduce:duration-1000 motion-reduce:delay-1200 motion-reduce:!animate-none animate-issue-context opacity-30"
                 : "opacity-0"
             } pb-4 rounded-xl absolute inset-0 border border-white/20 bg-pink-900 text-pink100`}
-            style={{ ["--delay" as any]: "1.2s" }}
+            style={{ "--delay": "1.2s" }}
           >
             <div className="h-full w-full rounded-xl border border-white/20 bg-white/10 pb-4" />
           </div>
@@ -56,7 +56,7 @@ export default function IssueDetails({ step }: { step: number }) {
                   ? "opacity-0"
                   : "opacity-100"
             } pb-4 rounded-xl border border-white/20 bg-pink-900 text-pink100`}
-            style={{ ["--delay" as any]: "0.675s" }}
+            style={{ "--delay": "0.675s" }}
           >
             <div className="h-full w-full rounded-xl border border-white/20 bg-white/10 pb-4">
               <pre>

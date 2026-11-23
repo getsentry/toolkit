@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { decodeEnvelope, type LocalFeedItem } from "./spotlight.js";
 import { buildTraceGroups, traceIdForItem } from "./trace-model.js";
+import { spanEnvelope } from "../test-fixtures/streamed-pageload.ts";
+import { jsCaptureMessage } from "../test-fixtures/sdk-message.ts";
 
 function item(overrides: Partial<LocalFeedItem>): LocalFeedItem {
   return {
@@ -65,9 +67,9 @@ describe("buildTraceGroups", () => {
         itemCount: 3,
         roots: [{ id: "root", children: [{ id: "query", durationMs: 125 }] }],
       });
-      expect(trace.spans).toHaveLength(2);
-      expect(trace.roots).toHaveLength(1);
-      expect(trace.roots[0]?.children).toHaveLength(1);
+      expect(trace?.spans).toHaveLength(2);
+      expect(trace?.roots).toHaveLength(1);
+      expect(trace?.roots[0]?.children).toHaveLength(1);
     },
   );
 
@@ -209,9 +211,9 @@ describe("buildTraceGroups", () => {
       durationMs: 70000000,
       itemCount: 1,
     });
-    expect(trace.spans).toHaveLength(70001);
-    expect(trace.roots).toHaveLength(1);
-    expect(trace.roots[0]?.children).toHaveLength(70000);
+    expect(trace?.spans).toHaveLength(70001);
+    expect(trace?.roots).toHaveLength(1);
+    expect(trace?.roots[0]?.children).toHaveLength(70000);
   });
 
   test("uses a transaction ID as the trace fallback used by routing", () => {
@@ -438,7 +440,7 @@ test("child spans retain their own raw payload independently of the transaction"
       "payload",
     ),
   );
-  expect(trace.spans.find((span) => span.id === "query")?.payload).toEqual(
+  expect(trace?.spans.find((span) => span.id === "query")?.payload).toEqual(
     payload,
   );
 });
@@ -480,9 +482,9 @@ test.each([true, false])(
         ? [...transaction, ...segment]
         : [...segment, ...transaction],
     );
-    expect(trace.title).toBe("GET /orders");
-    expect(trace.spans).toHaveLength(1);
-    expect(trace.spans[0]).toMatchObject({
+    expect(trace?.title).toBe("GET /orders");
+    expect(trace?.spans).toHaveLength(1);
+    expect(trace?.spans[0]).toMatchObject({
       description: "GET /orders",
       operation: "http.server",
       startTimestamp: 1,
@@ -535,8 +537,8 @@ test("cycles keep every captured span reachable without changing declared parent
     pending.push(...span.children);
   }
   expect([...seen].sort()).toEqual(["a", "b", "child", "self"]);
-  expect(trace.spans.find((span) => span.id === "a")?.parentId).toBe("b");
-  expect(trace.spans.find((span) => span.id === "b")?.parentId).toBe("a");
+  expect(trace?.spans.find((span) => span.id === "a")?.parentId).toBe("b");
+  expect(trace?.spans.find((span) => span.id === "b")?.parentId).toBe("a");
 });
 
 test.each([true, false])(
@@ -707,7 +709,7 @@ test.each([true, false])(
       decode(payload, String(index)),
     );
     const [completed] = buildTraceGroups(entries);
-    expect(completed.spans[0]).toMatchObject({
+    expect(completed?.spans[0]).toMatchObject({
       description: "Chat",
       endTimestamp: 3,
       metadata: { spanStatus: "internal_error" },
@@ -721,7 +723,7 @@ test.each([true, false])(
       ...entries,
       ...decode(partial, "partial"),
     ]);
-    expect(updated.spans[0]).toMatchObject({
+    expect(updated?.spans[0]).toMatchObject({
       description: "Chat",
       operation: "gen_ai.chat",
       endTimestamp: 4,
@@ -962,3 +964,328 @@ test.each([
     ]);
   },
 );
+
+test("reads durations from sentry-python ISO 8601 timestamps", () => {
+  // sentry-python sends transaction and span timestamps as ISO 8601 strings,
+  // while JavaScript SDKs send epoch seconds.
+  const traceId = "8b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e";
+  const sdk = { name: "sentry.python.flask", version: "2.75.0" };
+  const items = decodeEnvelope(
+    JSON.stringify([
+      { event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d", sdk },
+      [
+        [
+          { type: "transaction" },
+          {
+            event_id: "4f0b0d6c2e9a4f5b8d3e1c7a6b5f4e3d",
+            type: "transaction",
+            platform: "python",
+            transaction: "/sync-error",
+            transaction_info: { source: "url" },
+            start_timestamp: "2026-11-17T20:25:06.425134Z",
+            timestamp: "2026-11-17T20:25:06.497301Z",
+            contexts: {
+              trace: {
+                trace_id: traceId,
+                span_id: "a1b2c3d4e5f60718",
+                op: "http.server",
+                status: "internal_error",
+                origin: "auto.http.flask",
+              },
+            },
+            spans: [
+              {
+                trace_id: traceId,
+                span_id: "b2c3d4e5f6071829",
+                parent_span_id: "a1b2c3d4e5f60718",
+                same_process_as_parent: true,
+                op: "db",
+                description: "SELECT 1",
+                origin: "auto.db.sqlalchemy",
+                start_timestamp: "2026-11-17T20:25:06.430001Z",
+                timestamp: "2026-11-17T20:25:06.430412Z",
+              },
+            ],
+            sdk,
+          },
+        ],
+      ],
+    ]),
+    "python-transaction",
+  );
+
+  expect(items[0]?.metadata?.durationMs).toBeCloseTo(72.17, 2);
+  const trace = buildTraceGroups(items)[0]!;
+  expect(trace.durationMs).toBeCloseTo(72.17, 2);
+  expect(trace.startTimestamp).toBeCloseTo(
+    Date.UTC(2026, 10, 17, 20, 25, 6) / 1000 + 0.425_134,
+    6,
+  );
+  expect(trace.roots).toMatchObject([
+    {
+      id: "a1b2c3d4e5f60718",
+      durationMs: expect.closeTo(72.17, 2),
+      children: [
+        { id: "b2c3d4e5f6071829", durationMs: expect.closeTo(0.41, 2) },
+      ],
+    },
+  ]);
+});
+
+const envelope = (id: string, items: [string, unknown][]) =>
+  decodeEnvelope(
+    JSON.stringify([{}, items.map(([type, payload]) => [{ type }, payload])]),
+    id,
+  );
+
+test("an unhandled error counts once, not again for its 5xx request", () => {
+  // Hono: one thrown error showed "2 errors".
+  const [trace] = buildTraceGroups(
+    envelope("hono", [
+      [
+        "transaction",
+        {
+          transaction: "GET /boom",
+          start_timestamp: 1,
+          timestamp: 1.1,
+          contexts: {
+            trace: {
+              trace_id: "hono",
+              span_id: "root",
+              op: "http.server",
+              status: "internal_error",
+              data: { "http.response.status_code": 500 },
+            },
+          },
+        },
+      ],
+      [
+        "event",
+        {
+          level: "error",
+          exception: {
+            values: [
+              { type: "Error", value: "boom", mechanism: { handled: false } },
+            ],
+          },
+          contexts: { trace: { trace_id: "hono", span_id: "root" } },
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount: 1 });
+});
+
+test("error logs are counted as logs, not as errors", () => {
+  // Flask /logerror: one Message event and one error log showed "2 errors".
+  const [trace] = buildTraceGroups(
+    envelope("flask", [
+      [
+        "event",
+        {
+          level: "error",
+          logentry: { message: "Something went wrong" },
+          contexts: { trace: { trace_id: "flask", span_id: "root" } },
+        },
+      ],
+      [
+        "log",
+        {
+          items: [
+            {
+              timestamp: 1,
+              level: "error",
+              body: "Something went wrong",
+              trace_id: "flask",
+            },
+          ],
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount: 1, logCount: 1 });
+});
+
+test.each([
+  ["warning", 0],
+  ["info", 0],
+  ["error", 1],
+  ["fatal", 1],
+])("a %s captureMessage counts as %i trace errors", (level, errorCount) => {
+  const [trace] = buildTraceGroups(
+    envelope("message", [
+      [
+        "event",
+        {
+          level,
+          message: "Checkout retry limit reached",
+          contexts: { trace: { trace_id: "message", span_id: "root" } },
+        },
+      ],
+    ]),
+  );
+  expect(trace).toMatchObject({ errorCount });
+});
+
+test.each([
+  ["warning", 0],
+  ["info", 0],
+  ["error", 1],
+])(
+  "a JS SDK 11 %s captureMessage with its synthetic stack counts as %i trace errors",
+  (level, errorCount) => {
+    // SDK 11 attaches an untyped exception to carry the call-site stack.
+    const [trace] = buildTraceGroups(
+      envelope("message", [["event", { ...jsCaptureMessage, level }]]),
+    );
+    expect(trace).toMatchObject({ errorCount });
+  },
+);
+
+test.each([
+  [{ "url.full": "http://localhost:3000/api/edge" }, "GET /api/edge"],
+  [{ "url.path": "/api/edge" }, "GET /api/edge"],
+  [{ "http.route": "/api/[id]", "url.path": "/api/7" }, "GET /api/[id]"],
+  [{}, "GET"],
+])(
+  "a segment named only by its method gets its route or path: %o",
+  (attributes, title) => {
+    // Next.js edge http.server segments are named "GET".
+    const [trace] = buildTraceGroups(
+      decodeEnvelope(
+        spanEnvelope([
+          {
+            trace_id: "edge",
+            span_id: "segment",
+            is_segment: true,
+            name: "GET",
+            start_timestamp: 1,
+            end_timestamp: 1.1,
+            attributes: Object.fromEntries(
+              Object.entries({ "sentry.op": "http.server", ...attributes }).map(
+                ([key, value]) => [key, { type: "string", value }],
+              ),
+            ),
+          },
+        ]),
+        "edge",
+      ),
+    );
+    expect(trace?.title).toBe(title);
+  },
+);
+
+test.each([
+  [
+    "http.server",
+    "GET",
+    {
+      "url.template": "/api/items/{id}",
+      "url.full": "http://localhost:3000/api/items/7",
+    },
+    "GET /api/items/{id}",
+  ],
+  [
+    "http.client",
+    "GET",
+    { "url.full": "https://api.stripe.com/v1/charges?limit=1" },
+    "GET api.stripe.com/v1/charges",
+  ],
+  ["http.server", "get", { "url.path": "/api/edge" }, "get /api/edge"],
+  [
+    "http.server",
+    "GET",
+    { "url.full": "/api/edge?x=1", "url.path": "/api/edge" },
+    "GET /api/edge",
+  ],
+  [
+    "resource.script",
+    "get localhost",
+    { "url.full": "http://localhost:5173/src/app.js?v=1" },
+    "get http://localhost:5173/src/app.js",
+  ],
+])(
+  "a %s span named %o is labeled with its target",
+  (op, name, attributes, title) => {
+    const [trace] = buildTraceGroups(
+      decodeEnvelope(
+        spanEnvelope([
+          {
+            trace_id: "target",
+            span_id: "segment",
+            is_segment: true,
+            name,
+            start_timestamp: 1,
+            end_timestamp: 1.1,
+            attributes: Object.fromEntries(
+              Object.entries({ "sentry.op": op, ...attributes }).map(
+                ([key, value]) => [key, { type: "string", value }],
+              ),
+            ),
+          },
+        ]),
+        "target",
+      ),
+    );
+    expect(trace?.title).toBe(title);
+  },
+);
+
+test("span counts leave out the transaction and segment like the tail's [N spans]", () => {
+  // Django /queries/: the tail printed [7 spans] while the viewer showed 8.
+  const children = Array.from({ length: 7 }, (_, index) => ({
+    span_id: `child-${index}`,
+    parent_span_id: "root",
+    op: "db",
+    description: `SELECT ${index}`,
+    start_timestamp: 1 + index / 100,
+    timestamp: 1.005 + index / 100,
+  }));
+  const [request] = buildTraceGroups(
+    decodeEnvelope(
+      JSON.stringify([
+        {},
+        [
+          [
+            { type: "transaction" },
+            {
+              transaction: "/queries/",
+              start_timestamp: 1,
+              timestamp: 2,
+              contexts: { trace: { trace_id: "django", span_id: "root" } },
+              spans: children,
+            },
+          ],
+        ],
+      ]),
+      "django",
+    ),
+  );
+  expect(request).toMatchObject({ spanCount: 7 });
+  expect(request!.spans).toHaveLength(8);
+
+  const [streamed] = buildTraceGroups(
+    decodeEnvelope(
+      spanEnvelope([
+        {
+          trace_id: "streamed",
+          span_id: "segment",
+          is_segment: true,
+          name: "GET /",
+          start_timestamp: 1,
+          end_timestamp: 2,
+        },
+        {
+          trace_id: "streamed",
+          span_id: "child",
+          parent_span_id: "segment",
+          name: "fetch",
+          start_timestamp: 1.1,
+          end_timestamp: 1.2,
+        },
+      ]),
+      "streamed",
+    ),
+  );
+  expect(streamed).toMatchObject({ spanCount: 1 });
+});

@@ -120,7 +120,7 @@ async function main() {
     throw new Error("Compression must be none, gzip, or br.");
   if (positionals.length > 1)
     throw new Error("Supply at most one fixture directory or file.");
-  const spotlight = process.env.SENTRY_SPOTLIGHT;
+  const spotlight = process.env["SENTRY_SPOTLIGHT"];
   const endpoint =
     values.endpoint ??
     (spotlight && !/^(1|true|yes|on|enabled)$/i.test(spotlight)
@@ -128,15 +128,16 @@ async function main() {
       : "http://localhost:8969/stream");
   const target = new URL(endpoint);
   console.log(`Replaying envelopes to ${target.origin}${target.pathname}`);
+  const fixtures = values.fixtures ?? positionals[0];
   const count = await replayEnvelopes({
     endpoint,
-    fixtures: values.fixtures ?? positionals[0],
+    ...(fixtures !== undefined && { fixtures }),
     compression,
     interval: Number(values.interval),
     repeat: Number(values.repeat),
     onSent: (file, index) =>
       console.log(
-        `${index}. ${file.slice(dirname(resolve(values.fixtures ?? positionals.at(0) ?? defaultFixtures)).length + 1)}`,
+        `${index}. ${file.slice(dirname(resolve(values.fixtures ?? positionals[0] ?? defaultFixtures)).length + 1)}`,
       ),
   });
   console.log(`Sent ${count} envelope${count === 1 ? "" : "s"}.`);

@@ -71,13 +71,13 @@ export interface FormatReplayResultsParams {
   searchUrl: string;
   replayQuery: string;
   sort: string;
-  environment?: string | string[] | null;
-  explanation?: string;
+  environment?: string | string[] | null | undefined;
+  explanation?: string | undefined;
   timeRange?: ReplayTimeRange;
   executedSearch?: ExecutedSearch;
   experimentalMode?: boolean;
-  availableToolNames?: ReadonlySet<string>;
-  directToolNames?: ReadonlySet<string>;
+  availableToolNames?: ReadonlySet<string> | undefined;
+  directToolNames?: ReadonlySet<string> | undefined;
 }
 
 const REPLAY_RESULTS_HINT =

@@ -212,7 +212,7 @@ type SpanListInput =
       readonly mode: "project";
       readonly target: ParsedOrgProject;
       /** Server of a pasted Sentry URL, for `applySentryUrlContext` */
-      readonly baseUrl?: string;
+      readonly baseUrl?: string | undefined;
     }
   | { readonly mode: "trace"; readonly trace: TraceTargetInput };
 
@@ -344,7 +344,7 @@ type SpanListData = {
   /** Whether a previous page exists (for bidirectional hints) */
   hasPrev?: boolean;
   /** Opaque cursor for fetching the next page (null/undefined when no more) */
-  nextCursor?: string | null;
+  nextCursor?: string | null | undefined;
   /** The trace ID being queried (only in trace mode) */
   traceId?: string;
   /** Org slug for project-mode header */
@@ -352,7 +352,7 @@ type SpanListData = {
   /** Project slug for project-mode header */
   project?: string;
   /** Extra attribute names from --fields for human table columns */
-  extraAttributes?: string[];
+  extraAttributes?: string[] | undefined;
 };
 
 /**
@@ -424,7 +424,7 @@ type ModeContext = {
   /** Parsed time range from the --period flag */
   timeRange: TimeRange;
   /** Extra API field names derived from --fields (undefined when none needed) */
-  extraApiFields?: string[];
+  extraApiFields?: string[] | undefined;
 };
 
 /**
@@ -436,7 +436,7 @@ type ModeContext = {
 async function handleTraceMode(
   { traceId, org, project }: ResolvedTraceOrgProject,
   ctx: ModeContext,
-): Promise<{ output: SpanListData; hint?: string }> {
+): Promise<{ output: SpanListData; hint?: string | undefined }> {
   const { flags, extraApiFields, timeRange } = ctx;
   const queryParts = [`trace:${traceId}`];
   if (flags.query) {
@@ -519,7 +519,7 @@ async function handleTraceMode(
 async function handleProjectMode(
   { org, project }: { readonly org: string; readonly project: string },
   ctx: ModeContext,
-): Promise<{ output: SpanListData; hint?: string }> {
+): Promise<{ output: SpanListData; hint?: string | undefined }> {
   const { flags, extraApiFields, timeRange } = ctx;
   // Resolve slug → numeric ID so the Events query scopes via the `project`
   // param. `project:<slug>` only matches actively-selected projects (#1317).

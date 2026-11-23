@@ -296,8 +296,8 @@ describe("Constraint Helpers", () => {
 
       // Both should handle the explicit constraint the same way
       expect(keysToFilter).toContain("projectSlugOrId");
-      expect(paramsToInject.projectSlugOrId).toBe("project-b");
-      expect(paramsToInject.projectSlug).toBeUndefined();
+      expect(paramsToInject["projectSlugOrId"]).toBe("project-b");
+      expect(paramsToInject["projectSlug"]).toBeUndefined();
     });
   });
 });

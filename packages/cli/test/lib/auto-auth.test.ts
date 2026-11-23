@@ -78,18 +78,18 @@ describe("assertAutoLoginHostTrusted", () => {
   });
 
   test("throws for an unconfirmed self-hosted host", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     expect(() => assertAutoLoginHostTrusted()).toThrow(HostScopeError);
   });
 
   test("passes for a self-hosted host confirmed via default URL", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     setDefaultUrl("https://sentry.example.com");
     expect(() => assertAutoLoginHostTrusted()).not.toThrow();
   });
 
   test("passes for a self-hosted host with a process trust anchor", () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     registerLoginTrustAnchor("https://sentry.example.com");
     expect(() => assertAutoLoginHostTrusted()).not.toThrow();
   });
@@ -135,7 +135,7 @@ describe("recoverWithAutoLogin", () => {
   });
 
   test("refuses an unconfirmed self-hosted host (the #1121 gate)", async () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     const runInteractiveLogin = vi.fn();
     const writes: string[] = [];
 
@@ -206,7 +206,7 @@ describe("recoverWithAutoLogin", () => {
   });
 
   test("self-hosted host confirmed via persisted default URL proceeds", async () => {
-    process.env.SENTRY_HOST = "https://sentry.example.com";
+    process.env["SENTRY_HOST"] = "https://sentry.example.com";
     setDefaultUrl("https://sentry.example.com");
     const runInteractiveLogin = vi.fn().mockResolvedValue(true);
     const retry = vi.fn().mockResolvedValue(undefined);
