@@ -950,9 +950,7 @@ export const RelatedIssuesResponseSchema = z.object({
           status: z.enum(RELATED_ISSUE_TYPE_STATUSES),
           detail: z.string().optional(),
           traceId: z.string().optional(),
-          // same_title: the title that was searched
           title: z.string().optional(),
-          // same_supergroup: the issue's supergroup, when it's in one
           supergroup: z
             .object({ id: z.string(), title: z.string() })
             .optional(),

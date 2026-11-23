@@ -86,8 +86,8 @@ const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
 // also the per-type limit sent to /related/, so the top few are the endpoint's own top few
 const MAX_RELATED_ISSUES = 5;
 /**
- * The relation types asked for on every call. same_title is left out: it runs a 14-day issue
- * search, so only find_related_issues asks for it.
+ * Because this is a high-volume tool, it asks only for the relation types that are quick to
+ * compute and light on rate limits.
  */
 const ISSUE_DETAILS_RELATED_TYPES = [
   "similar_stacktrace",
