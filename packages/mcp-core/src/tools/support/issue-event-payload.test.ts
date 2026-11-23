@@ -175,6 +175,54 @@ describe("buildIssueEventPayload", () => {
     expect(result.metricAlert).toBeNull();
   });
 
+  describe("performance issues detected from spans", () => {
+    function genericEvent(occurrenceType: number): Event {
+      return {
+        id: "span-n1-event",
+        type: "generic",
+        title: "N+1 Query",
+        message: null,
+        platform: "python",
+        dateCreated: "2026-11-23T01:30:00.000Z",
+        entries: [],
+        occurrence: {
+          id: "occ-n1",
+          projectId: 1,
+          eventId: "span-n1-event",
+          fingerprint: ["n1"],
+          issueTitle: "N+1 Query",
+          type: occurrenceType,
+          culprit: "GET /items",
+          evidenceData: {
+            transactionName: "GET /items",
+            parentSpan: "http.server - GET /items",
+            offenderSpanIds: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"],
+            numberRepeatingSpans: "5",
+          },
+        },
+      } as unknown as Event;
+    }
+
+    it("keeps N+1 detector evidence on a generic event", () => {
+      const { performance } = payload(genericEvent(1006));
+
+      expect(performance).toMatchObject({
+        issueType: "performance_n_plus_one_db_queries",
+        transactionName: "GET /items",
+        parentOperation: "http.server - GET /items",
+        repeatCount: 5,
+      });
+      expect(performance?.spans.map((span) => span.spanId)).toEqual([
+        "aaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbb",
+      ]);
+    });
+
+    it("does not fill performance for other generic occurrences", () => {
+      expect(payload(genericEvent(8001)).performance).toBeNull();
+    });
+  });
+
   describe("metric alert", () => {
     it("maps the monitor query from camelCased evidence", () => {
       expect(
