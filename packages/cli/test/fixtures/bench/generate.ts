@@ -94,7 +94,8 @@ class XorShift32 {
     x ^= x << 13;
     x ^= x >>> 17;
     x ^= x << 5;
-    this.state = x;
+    // oxlint-disable-next-line unicorn/prefer-math-trunc -- `| 0` keeps state an int32 for V8's small-integer fast path
+    this.state = x | 0;
     // Convert to [0, 1) by dividing by 2^32.
     return (x >>> 0) / 4_294_967_296;
   }
