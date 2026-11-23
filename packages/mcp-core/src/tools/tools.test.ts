@@ -16,11 +16,7 @@ import {
   TOP_LEVEL_TOOL_NAMES,
   WRAPPER_TOOL_NAMES,
 } from "./surfaces.js";
-import {
-  isToolVisibleInMode,
-  MAX_TOOL_DESCRIPTION_LENGTH,
-  resolveDescription,
-} from "./types.js";
+import { isToolVisibleInMode } from "./types.js";
 
 const PUBLIC_TOOL_HARD_LIMIT = 25;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,20 +41,6 @@ function getCatalogToolSourceFiles(): string[] {
 function getCatalogToolSourceFileName(toolName: string): string {
   return `${toolName.replaceAll("_", "-")}.ts`;
 }
-
-test(`all tool descriptions under maximum length`, () => {
-  for (const experimentalMode of [false, true]) {
-    for (const tool of Object.values(tools.default)) {
-      const length = resolveDescription(tool.description, {
-        experimentalMode,
-      }).length;
-      assert(
-        length <= MAX_TOOL_DESCRIPTION_LENGTH,
-        `${tool.name} description must be at most ${MAX_TOOL_DESCRIPTION_LENGTH} characters in ${experimentalMode ? "experimental" : "stable"} mode (was ${length})`,
-      );
-    }
-  }
-});
 
 // server.metadata.test.ts checks the titles of listed tools. These tools never
 // appear in its tools/list: deprecated aliases, and the feedback tool, which

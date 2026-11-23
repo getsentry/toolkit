@@ -73,7 +73,7 @@ export const completionCommand = buildCommand({
   ) {
     const shellType = shell
       ? detectShellType(shell)
-      : detectShellType(this.env.SHELL);
+      : detectShellType(this.env["SHELL"]);
 
     const script = getCompletionScript(shellType);
     if (script === null) {

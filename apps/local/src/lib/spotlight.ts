@@ -1,5 +1,12 @@
-import { formatExceptionTitle, getEventExceptions } from "./exceptions.ts";
+import { describeEventForDisplay } from "./exceptions.ts";
+import { jsonText, withoutUndefined } from "./objects.ts";
 import { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
+import { stripAnsi } from "../../../../packages/cli/src/lib/formatters/strip-ansi.ts";
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import {
+  sessionAggregates,
+  sessionCountsTitle,
+} from "../../../../packages/cli/src/commands/local/session-counts.ts";
 export { isLoopbackHost } from "../../../../packages/cli/src/commands/local/loopback.ts";
 
 export const SENTRY_ENVELOPE_EVENT = "application/x-sentry-envelope";
@@ -17,7 +24,9 @@ export type StreamEndpoint = {
 export type LocalFeedItem = {
   id: string;
   type: string;
-  timestamp?: number | string;
+  timestamp?: number | string | undefined;
+  /** When the receiver got the item's envelope, in epoch milliseconds. */
+  receivedAt?: number | undefined;
   text: string;
   payload: unknown;
   metadata?: EventMetadata;
@@ -59,7 +68,7 @@ function getAttributeValue(
   key: string,
 ): unknown {
   const attribute = attributes[key];
-  return isRecord(attribute) ? attribute.value : attribute;
+  return isRecord(attribute) ? attribute["value"] : attribute;
 }
 
 function getAttributeString(
@@ -81,11 +90,29 @@ function getRoute(url: string | undefined): string | undefined {
   }
 }
 
+/** Read the Sentry message interface (`logentry`, or an object-valued `message`). */
+function getLogEntry(value: unknown): string | undefined {
+  return isRecord(value)
+    ? (getString(value["formatted"]) ?? getString(value["message"]))
+    : undefined;
+}
+
 function contextFeedback(
   event: Record<string, unknown>,
 ): Record<string, unknown> {
-  const contexts = isRecord(event.contexts) ? event.contexts : {};
-  return isRecord(contexts.feedback) ? contexts.feedback : {};
+  const contexts = isRecord(event["contexts"]) ? event["contexts"] : {};
+  return isRecord(contexts["feedback"]) ? contexts["feedback"] : {};
+}
+
+/** An event's title as the Local tail prints it; undefined when it has neither kind. */
+function describedEventTitle(
+  event: Record<string, unknown>,
+): string | undefined {
+  const { kind, errorType, text } = describeEventForDisplay(event);
+  if (kind === "exception") {
+    return `${errorType ?? "Error"}: ${text ?? "Unknown error"}`;
+  }
+  return kind === "message" ? text : undefined;
 }
 
 /** Derive display metadata from this payload without inheriting its parent event. */
@@ -94,117 +121,131 @@ export function getEventMetadata(
   type: string,
 ): EventMetadata {
   const event = isRecord(payload) ? payload : {};
-  const exception =
-    type === "event" ? getEventExceptions(payload)[0] : undefined;
-  const transaction = getString(event.transaction);
-  const description = getString(event.description);
-  const message =
-    getString(event.message) ??
-    getString(event.body) ??
-    getString(event.name) ??
-    getString(
-      isRecord(contextFeedback(event))
-        ? contextFeedback(event).message
-        : undefined,
-    );
+  const transaction = getString(event["transaction"]);
+  const description = getString(event["description"]);
+  // Dev servers colour their console logs; captured messages keep the escapes.
+  const message = getString(
+    stripAnsi(
+      getString(event["message"]) ??
+        getLogEntry(event["message"]) ??
+        getLogEntry(event["logentry"]) ??
+        getString(event["body"]) ??
+        getString(event["name"]) ??
+        getString(
+          isRecord(contextFeedback(event))
+            ? contextFeedback(event)["message"]
+            : undefined,
+        ) ??
+        "",
+    ),
+  );
   const transactionMatch = transaction?.match(/^([A-Z]+)\s+(.+)$/);
-  const contexts = isRecord(event.contexts) ? event.contexts : {};
-  const trace = isRecord(contexts.trace) ? contexts.trace : event;
-  const data = isRecord(trace.data)
-    ? trace.data
-    : isRecord(event.data)
-      ? event.data
+  const contexts = isRecord(event["contexts"]) ? event["contexts"] : {};
+  const trace = isRecord(contexts["trace"]) ? contexts["trace"] : event;
+  const data = isRecord(trace["data"])
+    ? trace["data"]
+    : isRecord(event["data"])
+      ? event["data"]
       : {};
-  const attributes = isRecord(event.attributes) ? event.attributes : {};
+  const attributes = isRecord(event["attributes"]) ? event["attributes"] : {};
   const spanAttributes = type === "span" ? attributes : {};
-  const request = isRecord(event.request) ? event.request : {};
+  const request = isRecord(event["request"]) ? event["request"] : {};
   const method =
-    getString(request.method) ??
+    getString(request["method"]) ??
     getString(data["http.method"]) ??
     getAttributeString(spanAttributes, "http.request.method") ??
     transactionMatch?.[1];
   const url =
-    getString(request.url) ??
+    getString(request["url"]) ??
     getString(data["http.url"]) ??
     getAttributeString(spanAttributes, "url.full");
   const route = getRoute(url) ?? transactionMatch?.[2];
-  const startTimestamp = getNumber(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event["start_timestamp"]);
   const timestamp =
-    getNumber(event.timestamp) ?? getNumber(event.end_timestamp);
+    parseEventTimestamp(event["timestamp"]) ??
+    parseEventTimestamp(event["end_timestamp"]);
   const durationMs =
     startTimestamp !== undefined && timestamp !== undefined
       ? Math.round((timestamp - startTimestamp) * 100_000) / 100
       : undefined;
 
-  return {
+  return withoutUndefined({
     title:
-      (exception?.type || exception?.value
-        ? formatExceptionTitle(exception)
-        : undefined) ??
+      (type === "event" ? describedEventTitle(event) : undefined) ??
       (type === "event" ? message : undefined) ??
       transaction ??
       description ??
       message ??
       route ??
-      (exception ? formatExceptionTitle(exception) : undefined) ??
+      (type === "sessions" ? sessionCountsTitle(event) : undefined) ??
       type,
-    ...(type === "event" && message ? { message } : {}),
-    level: getString(event.level),
+    ...((type === "event" || type === "log") && message ? { message } : {}),
+    level: getString(event["level"]),
     method,
     route,
     statusCode:
-      getNumber(request.status_code) ??
+      getNumber(request["status_code"]) ??
       getNumber(data["http.response.status_code"]) ??
       getNumber(getAttributeValue(spanAttributes, "http.response.status_code")),
-    spanStatus: getString(trace.status) ?? getString(event.status),
+    spanStatus: getString(trace["status"]) ?? getString(event["status"]),
     durationMs,
-    traceId: getString(trace.trace_id) ?? getString(event.trace_id),
-    spanId: getString(trace.span_id) ?? getString(event.span_id),
+    traceId: getString(trace["trace_id"]) ?? getString(event["trace_id"]),
+    spanId: getString(trace["span_id"]) ?? getString(event["span_id"]),
     operation:
-      getString(trace.op) ??
-      getString(event.op) ??
-      getString(event.transaction_op) ??
+      getString(trace["op"]) ??
+      getString(event["op"]) ??
+      getString(event["transaction_op"]) ??
       getAttributeString(attributes, "sentry.op"),
     origin:
       getString(data["sentry.origin"]) ??
-      getString(event.origin) ??
+      getString(event["origin"]) ??
       getAttributeString(attributes, "sentry.origin"),
-  };
+  });
 }
 
 function getBatchedPayloadItems(payload: unknown, type: string): unknown[] {
   if (type === "span") {
     if (!isRecord(payload)) return [];
     const isContainer = "items" in payload;
-    if (isContainer && (payload.version !== 2 || !Array.isArray(payload.items)))
+    if (
+      isContainer &&
+      (payload["version"] !== 2 || !Array.isArray(payload["items"]))
+    )
       return [];
     const spans: unknown[] = isContainer
-      ? (payload.items as unknown[])
+      ? (payload["items"] as unknown[])
       : [payload];
     return spans.filter(
       (span) =>
         isRecord(span) &&
-        getString(span.trace_id) !== undefined &&
-        getString(span.span_id) !== undefined &&
-        getNumber(span.start_timestamp) !== undefined &&
+        getString(span["trace_id"]) !== undefined &&
+        getString(span["span_id"]) !== undefined &&
+        getNumber(span["start_timestamp"]) !== undefined &&
         getNumber(
           isContainer
-            ? span.end_timestamp
-            : (span.timestamp ?? span.end_timestamp),
+            ? span["end_timestamp"]
+            : (span["timestamp"] ?? span["end_timestamp"]),
         ) !== undefined,
     );
   }
-  if (type !== "log" || !isRecord(payload) || !Array.isArray(payload.items)) {
+  if (
+    type !== "log" ||
+    !isRecord(payload) ||
+    !Array.isArray(payload["items"])
+  ) {
     return [payload];
   }
-  return payload.items.filter(isRecord);
+  return payload["items"].filter(isRecord);
 }
 
 function getItemTimestamp(payload: unknown): number | string | undefined {
   if (!isRecord(payload)) {
     return undefined;
   }
-  const timestamp = payload.timestamp ?? payload.end_timestamp;
+  const timestamp =
+    payload["timestamp"] ??
+    payload["end_timestamp"] ??
+    sessionAggregates(payload)[0]?.["started"];
   return typeof timestamp === "number" || typeof timestamp === "string"
     ? timestamp
     : undefined;
@@ -259,11 +300,36 @@ function normalizeRemoteStreamUrl(stream: string | null): string | undefined {
   return endpoint?.kind === "remote" ? endpoint.url : undefined;
 }
 
+/**
+ * When to show and sort an item by: its SDK time, else when it was received.
+ * Trace timing reads only `timestamp`, so a late receive time cannot stretch a
+ * trace.
+ */
+export function itemTime(item: LocalFeedItem): number | string | undefined {
+  return item.timestamp ?? item.receivedAt;
+}
+
+/**
+ * The raw `stream` and `directory` a CLI link carries in the URL fragment.
+ * `present` is true when either is there, so callers clear both even when a
+ * value fails validation.
+ */
+export function readConnectionLink(hash: string): {
+  present: boolean;
+  stream: string | null;
+  directory: string | null;
+} {
+  const fragment = new URLSearchParams(hash.replace(/^#/, ""));
+  return {
+    present: fragment.has("stream") || fragment.has("directory"),
+    stream: fragment.get("stream"),
+    directory: fragment.get("directory"),
+  };
+}
+
 /** Read the CLI-provided stream endpoint without allowing arbitrary targets. */
 export function getStreamUrlFromHash(hash: string): string | undefined {
-  return normalizeLoopbackStreamUrl(
-    new URLSearchParams(hash.replace(/^#/, "")).get("stream"),
-  );
+  return normalizeLoopbackStreamUrl(readConnectionLink(hash).stream);
 }
 
 /** Public viewer query links may select only a credential-free loopback receiver. */
@@ -330,25 +396,28 @@ export function decodeEnvelope(data: string, eventId: string): LocalFeedItem[] {
       return [];
     }
     const header = item[0];
-    const type = typeof header.type === "string" ? header.type : "unknown";
+    const type =
+      typeof header["type"] === "string" ? header["type"] : "unknown";
     const payloads = getBatchedPayloadItems(item[1], type);
-    return payloads.map((payload, payloadIndex) => ({
-      id:
-        payloads.length === 1
-          ? `${eventId}:${index}`
-          : `${eventId}:${index}:${payloadIndex}`,
-      type,
-      envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
-      itemHeader: header,
-      timestamp: getItemTimestamp(payload),
-      text: JSON.stringify(payload, null, 2) ?? String(payload),
-      payload,
-      metadata: {
-        ...getEventMetadata(payload, type),
-        ...(type === "attachment" && typeof header.filename === "string"
-          ? { title: header.filename }
-          : {}),
-      },
-    }));
+    return payloads.map((payload, payloadIndex) =>
+      withoutUndefined({
+        id:
+          payloads.length === 1
+            ? `${eventId}:${index}`
+            : `${eventId}:${index}:${payloadIndex}`,
+        type,
+        envelopeHeader: isRecord(parsed[0]) ? parsed[0] : {},
+        itemHeader: header,
+        timestamp: getItemTimestamp(payload),
+        text: jsonText(payload, 2) ?? String(payload),
+        payload,
+        metadata: {
+          ...getEventMetadata(payload, type),
+          ...(type === "attachment" && typeof header["filename"] === "string"
+            ? { title: header["filename"] }
+            : {}),
+        },
+      }),
+    );
   });
 }

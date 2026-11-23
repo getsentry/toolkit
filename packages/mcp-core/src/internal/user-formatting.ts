@@ -8,10 +8,10 @@ export function formatUserGeoSummary(value: unknown): string | null {
   }
 
   const parts = [
-    value.country_code,
-    value.city,
-    value.region,
-    value.country_name,
+    value["country_code"],
+    value["city"],
+    value["region"],
+    value["country_name"],
   ].filter(
     (part): part is string => typeof part === "string" && part.length > 0,
   );

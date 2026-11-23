@@ -30,20 +30,15 @@ export default defineTool({
   title: "Find Projects",
   skills: ALL_SKILLS, // Foundational tool - available to all skills
   requiredScopes: ["project:read"],
-  description: [
-    "List or search projects in a Sentry organization.",
-    "",
-    "Use this tool when you need to:",
-    "- View projects in a Sentry organization",
-    "- Find a project's slug to aid other tool requests",
-    "- Search for specific projects by name or slug",
-    "",
-    `Returns up to ${RESULT_LIMIT} results per page. When hasMore is true, pass the returned nextCursor with the same filters and scope to fetch the next page.`,
-  ].join("\n"),
+  description: `List or search projects in a Sentry organization. Returns project slugs, ${RESULT_LIMIT} per page.`,
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
-    query: ParamSearchQuery.nullable().default(null),
+    query: ParamSearchQuery.describe(
+      "Filter by name or slug, or pass a numeric project ID.",
+    )
+      .nullable()
+      .default(null),
     cursor: ParamCursor.nullable().default(null),
   },
   annotations: {
@@ -66,14 +61,24 @@ export default defineTool({
 
     setTargetTagsAndAttributes({ organizationSlug });
 
-    const { projects, nextCursor } = await apiService.listProjects(
-      organizationSlug,
-      {
-        query: params.query ?? undefined,
+    const listProjects = (query: string | undefined) =>
+      apiService.listProjects(organizationSlug, {
+        query,
         limit: RESULT_LIMIT,
         cursor: params.cursor ?? undefined,
-      },
-    );
+      });
+
+    // Sentry matches free text against name and slug only, so a bare
+    // numeric ID finds nothing unless it is sent as `id:`.
+    const query = params.query ?? undefined;
+    let result: Awaited<ReturnType<typeof listProjects>> | undefined;
+    if (query && /^\d+$/.test(query) && !params.cursor) {
+      result = await listProjects(`id:${query}`);
+    }
+    if (!result?.projects.length) {
+      result = await listProjects(query);
+    }
+    const { projects, nextCursor } = result;
 
     return structuredResult({
       projects: projects.map((project) => ({ slug: project.slug })),

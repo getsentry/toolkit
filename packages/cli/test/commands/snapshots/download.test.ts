@@ -17,6 +17,7 @@ import * as preprod from "../../../src/lib/api/preprod-artifacts.js";
 import { ContextError, ValidationError } from "../../../src/lib/errors.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
+import { loadCommand } from "../../helpers.js";
 
 let tmpDir: string;
 
@@ -92,7 +93,7 @@ describe("snapshots download", () => {
   test("downloads a snapshot by --snapshot-id and extracts images", async () => {
     const out = join(tmpDir, "base");
     const harness = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(harness.context, {
       "snapshot-id": "snap-1",
@@ -112,7 +113,7 @@ describe("snapshots download", () => {
 
   test("resolves the latest baseline by --app-id", async () => {
     const harness = createContext();
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
 
     await func.call(harness.context, {
       "app-id": "my-app",
@@ -128,7 +129,7 @@ describe("snapshots download", () => {
   });
 
   test("rejects when both --app-id and --snapshot-id are given", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
     await expect(
       func.call(createContext().context, {
         "app-id": "a",
@@ -138,14 +139,14 @@ describe("snapshots download", () => {
   });
 
   test("rejects when neither --app-id nor --snapshot-id is given", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
     await expect(func.call(createContext().context, {})).rejects.toThrow(
       ContextError,
     );
   });
 
   test("rejects --branch without --app-id", async () => {
-    const func = await downloadCommand.loader();
+    const func = await loadCommand(downloadCommand);
     await expect(
       func.call(createContext().context, {
         "snapshot-id": "s",

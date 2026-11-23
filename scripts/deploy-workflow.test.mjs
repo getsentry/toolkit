@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const workflow = readFileSync(
@@ -146,4 +146,27 @@ test("external actions use immutable commit pins", () => {
   )) {
     assert.match(action, /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, action);
   }
+});
+
+// Runs 43952070458 and 44604518080 failed because `wrangler versions deploy`
+// ran a few seconds after `versions upload`, before Cloudflare served the new
+// version by ID (code 100146).
+test("traffic moves only through deployVersions, which waits for the version", () => {
+  const workflows = new URL("../.github/workflows/", import.meta.url);
+  for (const name of readdirSync(workflows)) {
+    assert.doesNotMatch(
+      readFileSync(new URL(name, workflows), "utf8"),
+      /wrangler\s+versions\s+deploy/,
+      `${name}: call deployVersions() from scripts/cloudflare-deployment.mjs instead of wrangler versions deploy`,
+    );
+  }
+  const script = readFileSync(
+    new URL("./cloudflare-deployment.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.equal(
+    script.match(/\brunWrangler\(/g)?.length,
+    2,
+    "Only deployVersions() may call runWrangler(); it waits until Cloudflare serves each version",
+  );
 });

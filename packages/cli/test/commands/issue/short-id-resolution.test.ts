@@ -129,7 +129,7 @@ describe("short IDs with configured organization context", () => {
         `[defaults]\norg = ${targetOrg.slug}\n`,
       );
       if (envOrg) {
-        process.env.SENTRY_ORG = envOrg;
+        process.env["SENTRY_ORG"] = envOrg;
       }
       for (const org of [cachedOrg, targetOrg, secondOrg]) {
         addIssue(org.slug);

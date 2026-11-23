@@ -1,11 +1,14 @@
 import { request } from "node:http";
+import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
   createLocalSessionStore,
+  SESSION_CHOICE_HEADER,
   SESSION_RETENTION_MS,
 } from "../../../src/commands/local/session-store.js";
+import { at } from "../../helpers.js";
 
 const CONTROL_TOKEN = "control-token";
 
@@ -89,7 +92,7 @@ describe("Local control plane", () => {
     try {
       const chunk = new TextDecoder().decode((await reader.read()).value);
       expect(chunk).toContain("event: sentry.local.directory");
-      const data = JSON.parse(chunk.match(/data: (.+)/)![1]);
+      const data = JSON.parse(at(chunk.match(/data: (.+)/)!, 1));
       expect(new URL(data.directoryUrl).pathname).toBe(
         "/_local/v1/ui/sessions",
       );
@@ -228,6 +231,72 @@ describe("Local control plane", () => {
     );
   });
 
+  test("session ingest answers like Relay on every ingest path", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "phoenix", cwd: "/phoenix" }),
+    });
+    const { ingestUrl } = await created.json();
+    const id = "0b6e5f9cb8d44f4e9a6f3e1c2d7a8b90";
+    const envelope = `{"event_id":"${id}"}\n{"type":"event"}\n{"message":"boom"}`;
+    for (const url of [
+      ingestUrl,
+      `${ingestUrl}/stream`,
+      `${ingestUrl}/api/0/envelope/`,
+      `${ingestUrl}/api/0/envelope`,
+    ]) {
+      const response = await plane.app.request(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body: envelope,
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ id });
+    }
+    const gzipped = await plane.app.request(ingestUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-sentry-envelope",
+        "Content-Encoding": "gzip",
+      },
+      body: gzipSync('{}\n{"type":"log"}\n{"items":[]}'),
+    });
+    expect(gzipped.status).toBe(200);
+    expect(await gzipped.json()).toEqual({});
+  });
+
+  test("session ingest answers 200 with the id, and 400 to bodies that are not envelopes", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: controlHeaders(),
+      body: JSON.stringify({ label: "malformed", cwd: "/malformed" }),
+    });
+    const { id, ingestUrl } = await created.json();
+    const post = (body: string) =>
+      plane.app.request(ingestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-sentry-envelope" },
+        body,
+      });
+    const eventId = "0b6e5f9cb8d44f4e9a6f3e1c2d7a8b90";
+    const valid = await post(
+      `{"event_id":"${eventId}"}\n{"type":"event"}\n{"message":"ok"}`,
+    );
+    expect(valid.status).toBe(200);
+    expect(await valid.json()).toEqual({ id: eventId });
+    for (const body of ["", '{not json\n{"type":"event"}\n{}']) {
+      const response = await post(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: expect.any(String) });
+    }
+    expect(plane.sessionStore.getBuffer(id).read({ all: true })).toHaveLength(
+      1,
+    );
+  });
+
   test("replaces expired clientId sessions with usable fresh capabilities on creation", async () => {
     let now = 1000;
     const sessionStore = createLocalSessionStore({ now: () => now });
@@ -265,7 +334,7 @@ describe("Local control plane", () => {
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body: '{}\n{"type":"event"}\n{"event_id":"fresh","message":"fresh capture"}',
     });
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     expect(
       sessionStore.getBuffer(replacement.id).read({ all: true }),
     ).toHaveLength(1);
@@ -443,35 +512,42 @@ describe("Local control plane", () => {
     expect(plane.sessionStore.resolve(session.id).maxEnvelopes).toBe(50000);
   });
 
-  test("reports ambiguous session names with ID guidance across control routes", async () => {
+  test("resolves a shared session name to its newest open session on every control route", async () => {
     const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
-    const one = plane.sessionStore.create({ label: "My App", cwd: "/one" });
-    plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const older = plane.sessionStore.create({ label: "My App", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "My App", cwd: "/two" });
+    const closed = plane.sessionStore.create({
+      label: "My App",
+      cwd: "/three",
+    });
+    plane.sessionStore.close(closed.id);
     for (const [method, suffix] of [
       ["GET", ""],
       ["GET", "/events"],
       ["GET", "/envelopes"],
-      ["GET", "/events/id"],
-      ["GET", "/envelopes/id"],
-      ["POST", "/close"],
-      ["POST", "/reset"],
-    ]) {
+      ["GET", "/retention"],
+    ] as const) {
       const response = await plane.app.request(
         `/_local/v1/sessions/My%20App${suffix}`,
         { method, headers: controlHeaders() },
       );
-      expect(response.status).toBe(409);
-      await expect(response.json()).resolves.toEqual({
-        error: 'Local session name "My App" is ambiguous; use its session ID.',
+      expect(response.status, suffix).toBeLessThan(300);
+      expect(
+        JSON.parse(response.headers.get(SESSION_CHOICE_HEADER) ?? "null"),
+      ).toEqual({
+        id: newer.id,
+        others: [{ id: older.id, createdAt: older.createdAt }],
       });
     }
-    expect(
-      (
-        await plane.app.request(`/_local/v1/sessions/${one.id}`, {
-          headers: controlHeaders(),
-        })
-      ).status,
-    ).toBe(200);
+    const viewed = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    await expect(viewed.json()).resolves.toMatchObject({ id: newer.id });
+    const byId = await plane.app.request(`/_local/v1/sessions/${older.id}`, {
+      headers: controlHeaders(),
+    });
+    expect(byId.status).toBe(200);
+    expect(byId.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
     expect(
       (
         await plane.app.request("/_local/v1/sessions/missing", {
@@ -479,6 +555,104 @@ describe("Local control plane", () => {
         })
       ).status,
     ).toBe(404);
+
+    plane.sessionStore.close(newer.id);
+    const remaining = await plane.app.request("/_local/v1/sessions/My%20App", {
+      headers: controlHeaders(),
+    });
+    expect(remaining.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+    await expect(remaining.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "open",
+    });
+  });
+
+  test("refuses to change a session by a name that several open sessions share", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const older = plane.sessionStore.create({ label: "p", cwd: "/one" });
+    const newer = plane.sessionStore.create({ label: "p", cwd: "/two" });
+    const { stream } = plane.sessionStore.getCapabilities(newer.id);
+    for (const [suffix, body] of [
+      ["/close", "{}"],
+      ["/reset", "{}"],
+      ["/retention", JSON.stringify({ maxEnvelopes: 10 })],
+      [`/ui/close?cap=${stream}`, "{}"],
+    ] as const) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/p${suffix}`,
+        {
+          method: "POST",
+          headers: { ...controlHeaders(), "Content-Type": "application/json" },
+          body,
+        },
+      );
+      expect(response.status, suffix).toBe(409);
+      expect(response.headers.get(SESSION_CHOICE_HEADER)).toBeNull();
+      await expect(response.json()).resolves.toMatchObject({
+        code: "ambiguous_session",
+        reference: "p",
+        sessionIds: [newer.id, older.id],
+        sessions: [
+          { id: newer.id, state: "open", createdAt: newer.createdAt },
+          { id: older.id, state: "open", createdAt: older.createdAt },
+        ],
+      });
+    }
+    // A stream capability alone must not reveal the other sessions.
+    const viewer = await plane.app.request(
+      `/_local/v1/sessions/p/ui/close?cap=${stream}`,
+      { method: "POST", headers: { "Content-Type": "application/json" } },
+    );
+    expect(viewer.status).toBe(409);
+    const viewerBody: Record<string, unknown> = await viewer.json();
+    expect(viewerBody).toMatchObject({ code: "ambiguous_session" });
+    expect(viewerBody).not.toHaveProperty("sessionIds");
+    expect(viewerBody).not.toHaveProperty("sessions");
+    expect(JSON.stringify(viewerBody)).not.toContain(older.id);
+
+    expect(plane.sessionStore.resolve(newer.id)).toMatchObject({
+      state: "open",
+      maxEnvelopes: newer.maxEnvelopes,
+    });
+    expect(plane.sessionStore.resolve(older.id).state).toBe("open");
+
+    const byId = await plane.app.request(
+      `/_local/v1/sessions/${newer.id}/close`,
+      {
+        method: "POST",
+        headers: controlHeaders(),
+      },
+    );
+    expect(byId.status).toBe(200);
+    const byName = await plane.app.request("/_local/v1/sessions/p/close", {
+      method: "POST",
+      headers: controlHeaders(),
+    });
+    await expect(byName.json()).resolves.toMatchObject({
+      id: older.id,
+      state: "retained",
+    });
+  });
+
+  test("caps the sessions it names when many open sessions share a name", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const sessions = Array.from({ length: 300 }, () =>
+      plane.sessionStore.create({ label: "busy", cwd: "/busy" }),
+    );
+    const response = await plane.app.request("/_local/v1/sessions/busy", {
+      headers: controlHeaders(),
+    });
+    expect(response.status).toBe(200);
+    const header = response.headers.get(SESSION_CHOICE_HEADER) ?? "";
+    expect(header.length).toBeLessThan(1024);
+    const choice = JSON.parse(header) as {
+      id: string;
+      others: { id: string }[];
+      more: number;
+    };
+    expect(choice.id).toBe(sessions.at(-1)?.id);
+    expect(choice.others).toHaveLength(5);
+    expect(choice.more).toBe(294);
   });
 
   test("creates isolated sessions through its authenticated control API", async () => {
@@ -541,7 +715,7 @@ describe("Local control plane", () => {
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body: envelope,
     });
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     expect(
       controlPlane.sessionStore.getBuffer(session.id).read({ all: true }),
     ).toHaveLength(1);
@@ -551,6 +725,119 @@ describe("Local control plane", () => {
       { method: "POST", body: envelope },
     );
     expect(rejected.status).toBe(401);
+  });
+
+  test("accepts Spotlight /stream and DSN envelope posts under the ingest capability", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "php", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const ingest = `/_local/v1/sessions/${session.id}/ingest`;
+    const envelope =
+      '{"sdk":{"name":"sentry.php"}}\n{"type":"event"}\n{"message":"hi"}';
+    const post = (path: string, headers: Record<string, string> = {}) =>
+      plane.app.request(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-sentry-envelope",
+          ...headers,
+        },
+        body: envelope,
+      });
+
+    // PHP posts to `<SENTRY_SPOTLIGHT>/stream`; Go, Rust, PHP and Ruby build
+    // `<dsn path>/api/<project>/envelope/` from a DSN.
+    for (const suffix of ["/stream", "/api/0/envelope/", "/api/0/envelope"]) {
+      expect((await post(`${ingest}/${caps.ingest}${suffix}`)).status).toBe(
+        200,
+      );
+      expect((await post(`${ingest}/wrong${suffix}`)).status).toBe(401);
+      expect((await post(`${ingest}/${caps.stream}${suffix}`)).status).toBe(
+        401,
+      );
+      expect(
+        (
+          await post(`${ingest}/${caps.ingest}${suffix}`, {
+            Origin: "https://example.com",
+          })
+        ).status,
+      ).toBe(403);
+    }
+    // A path under the ingest capability can't climb to the stream-capability
+    // UI actions.
+    for (const dots of ["..", "%2e%2e"]) {
+      expect(
+        (
+          await post(
+            `${ingest}/${caps.ingest}/${dots}/${dots}/ui/reset?cap=${caps.ingest}`,
+          )
+        ).status,
+      ).toBe(401);
+    }
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(3);
+  });
+
+  test("drops the DSN, which holds the ingest capability, from session envelope headers", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "go", cwd: "/work" });
+    const caps = plane.sessionStore.getCapabilities(session.id);
+    const base = `http://127.0.0.1:8969/_local/v1/sessions/${session.id}`;
+    const item = '{"message":"hi"}';
+    const envelope = [
+      JSON.stringify({
+        event_id: "dsn-header",
+        dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
+        sdk: { name: "sentry.go" },
+      }),
+      `{"type":"event","length":${item.length}}`,
+      item,
+    ].join("\n");
+    // PHP and Ruby compress their requests.
+    for (const [body, headers] of [
+      [envelope, {}],
+      [gzipSync(envelope), { "Content-Encoding": "gzip" }],
+    ] as const) {
+      const posted = await plane.app.request(
+        `${base}/ingest/${caps.ingest}/api/0/envelope/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-sentry-envelope",
+            ...headers,
+          },
+          body,
+        },
+      );
+      expect(posted.status).toBe(200);
+    }
+
+    const stored = plane.sessionStore
+      .getBuffer(session.id)
+      .read({ all: true })
+      .map((container) => container.getData().toString("utf8"));
+    expect(stored).toHaveLength(2);
+    for (const data of stored) {
+      expect(data).not.toContain(caps.ingest);
+      expect(data).toContain('"event_id":"dsn-header"');
+      expect(data.endsWith(`\n${item}`)).toBe(true);
+    }
+
+    const controller = new AbortController();
+    const response = await plane.app.request(
+      `${base}/stream?cap=${caps.stream}`,
+      { signal: controller.signal },
+    );
+    const reader = response.body!.getReader();
+    let streamed = "";
+    try {
+      while ((streamed.match(/dsn-header/g) ?? []).length < 2)
+        streamed += new TextDecoder().decode((await reader.read()).value);
+    } finally {
+      controller.abort();
+      await reader.cancel();
+    }
+    expect(streamed).not.toContain(caps.ingest);
   });
 
   test("protects pathname ingestion from read capabilities and remote browser writes", async () => {
@@ -689,6 +976,258 @@ describe("Local control plane", () => {
     expect(viewed.status).toBe(200);
   });
 
+  test("gives each replay segment its own event ID", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "web", cwd: "/web" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const replayId = "5c3b1e7a9d2f4e6a8b0c1d2e3f4a5b6c";
+    // @sentry/browser sends every replay segment with the replay ID as the
+    // envelope event_id.
+    for (const segmentId of [0, 1]) {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: [
+            { event_id: replayId, sent_at: "2026-11-17T20:25:06.000Z" },
+            { type: "replay_event" },
+            {
+              type: "replay_event",
+              replay_id: replayId,
+              event_id: replayId,
+              segment_id: segmentId,
+              timestamp: 1_794_947_106 + segmentId,
+            },
+            { type: "replay_recording", length: 2 },
+            "[]",
+          ]
+            .map((line) =>
+              typeof line === "string" ? line : JSON.stringify(line),
+            )
+            .join("\n"),
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const listed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events`,
+      { headers: controlHeaders() },
+    );
+    const { events } = (await listed.json()) as {
+      events: { eventId: string; envelopeId: string }[];
+    };
+    expect(events).toHaveLength(2);
+    const ids = events.map((event) => event.eventId);
+    expect(new Set(ids).size).toBe(2);
+    for (const event of events) {
+      const viewed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events/${encodeURIComponent(event.eventId)}`,
+        { headers: controlHeaders() },
+      );
+      expect(viewed.status).toBe(200);
+      await expect(viewed.json()).resolves.toMatchObject({
+        envelopeId: event.envelopeId,
+      });
+    }
+  });
+
+  test("summarizes each listed event so agents can skip per-event views", async () => {
+    const traceId = "4c79f60c11214eb38604f4ae0781bfb2";
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const session = plane.sessionStore.create({ label: "sdk", cwd: "/sdk" });
+    const { ingest } = plane.sessionStore.getCapabilities(session.id);
+    const send = async (...lines: unknown[]) => {
+      const response = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/ingest/${ingest}`,
+        {
+          method: "POST",
+          body: lines.map((line) => JSON.stringify(line)).join("\n"),
+        },
+      );
+      expect(response.status).toBe(200);
+    };
+    const before = Date.now();
+
+    // sentry-python: logging.error("Payment failed for order %s", 42)
+    await send(
+      { event_id: "9ec79c33ec9942ab8353589fcb2e04dc" },
+      { type: "event" },
+      {
+        level: "error",
+        logger: "shop.payments",
+        logentry: {
+          message: "Payment failed for order %s",
+          params: [42],
+          formatted: "Payment failed for order 42",
+        },
+        platform: "python",
+        timestamp: "2026-11-17T10:00:00.100000Z",
+        contexts: { trace: { trace_id: traceId, span_id: "a7e1f3b5c9d2e4f6" } },
+      },
+    );
+    // JavaScript SDK 11: captureMessage with a synthetic stack, no exception type
+    await send(
+      {
+        event_id: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        trace: { trace_id: traceId },
+      },
+      { type: "event" },
+      {
+        level: "warning",
+        message: "Hello from captureMessage",
+        exception: {
+          values: [
+            {
+              value: "Hello from captureMessage",
+              mechanism: { type: "generic", synthetic: true },
+            },
+          ],
+        },
+        platform: "javascript",
+        timestamp: 1_794_045_602.5,
+      },
+    );
+    // An exception thrown in a Node.js route handler
+    await send(
+      { event_id: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a" },
+      { type: "event" },
+      {
+        level: "error",
+        exception: {
+          values: [{ type: "TypeError", value: "x is not a function" }],
+        },
+        platform: "node",
+        timestamp: 1_794_045_603,
+        contexts: { trace: { trace_id: traceId, span_id: "d4e5f6a7b8c9d0e1" } },
+      },
+    );
+    await send(
+      { event_id: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c" },
+      { type: "transaction" },
+      {
+        transaction: "GET /api/users",
+        start_timestamp: 1_794_045_603,
+        timestamp: 1_794_045_604,
+        contexts: { trace: { trace_id: traceId, span_id: "e5f6a7b8c9d0e1f2" } },
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.python.flask" } },
+      { type: "log", item_count: 2 },
+      {
+        items: [
+          {
+            timestamp: 1_794_045_605,
+            trace_id: traceId,
+            level: "info",
+            body: '"GET /boom HTTP/1.1" 500 -',
+          },
+          { timestamp: 1_794_045_605.1, level: "error", body: "boom" },
+        ],
+      },
+    );
+    await send(
+      { sdk: { name: "sentry.javascript.node" } },
+      { type: "session" },
+      {
+        sid: "7c0ab2b2a4b74bb9b9b5e5c6b1d2e3f4",
+        status: "exited",
+        started: "2026-11-17T10:00:00.000Z",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    );
+
+    const received = Date.now();
+    const list = async () => {
+      const listed = await plane.app.request(
+        `/_local/v1/sessions/${session.id}/events`,
+        { headers: controlHeaders() },
+      );
+      return ((await listed.json()) as { events: Record<string, unknown>[] })
+        .events;
+    };
+    const events = await list();
+    expect(events.map(({ receivedAt: _, ...event }) => event)).toEqual([
+      {
+        envelopeId: expect.any(String),
+        eventId: "9ec79c33ec9942ab8353589fcb2e04dc",
+        itemTypes: ["event"],
+        type: "message",
+        level: "error",
+        title: "Payment failed for order 42",
+        timestamp: "2026-11-17T10:00:00.100Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "b1c2d3e4f5a64b7c8d9e0f1a2b3c4d5e",
+        itemTypes: ["event"],
+        type: "message",
+        level: "warning",
+        title: "Hello from captureMessage",
+        timestamp: "2026-11-07T10:00:02.500Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a",
+        itemTypes: ["event"],
+        type: "error",
+        level: "error",
+        title: "TypeError: x is not a function",
+        timestamp: "2026-11-07T10:00:03.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: "f1e2d3c4b5a64f7e8d9c0b1a2f3e4d5c",
+        itemTypes: ["transaction"],
+        type: "transaction",
+        title: "GET /api/users",
+        timestamp: "2026-11-07T10:00:04.000Z",
+        traceId,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["log"],
+        type: "log",
+        level: "error",
+        title: "boom",
+        timestamp: "2026-11-07T10:00:05.100Z",
+        traceId,
+        count: 2,
+      },
+      {
+        envelopeId: expect.any(String),
+        eventId: expect.any(String),
+        itemTypes: ["session"],
+        type: "session",
+        title: "exited",
+        timestamp: "2026-11-17T10:00:06.000Z",
+      },
+    ]);
+    for (const event of events) {
+      const receivedAt = Date.parse(String(event["receivedAt"]));
+      expect(receivedAt).toBeGreaterThanOrEqual(before);
+      expect(receivedAt).toBeLessThanOrEqual(received);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await list()).toEqual(events);
+
+    const viewed = await plane.app.request(
+      `/_local/v1/sessions/${session.id}/events/d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a`,
+      { headers: controlHeaders() },
+    );
+    await expect(viewed.json()).resolves.toMatchObject({
+      type: "error",
+      title: "TypeError: x is not a function",
+      receivedAt: expect.any(String),
+      envelope: expect.any(Array),
+    });
+  });
+
   test.each([
     [
       { sdk: { name: "sentry.node" } },
@@ -718,7 +1257,7 @@ describe("Local control plane", () => {
             .join("\n"),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const listed = await plane.app.request(
         `/_local/v1/sessions/${session.id}/events`,
         { headers: controlHeaders() },
@@ -894,7 +1433,7 @@ describe("Local daemon receiver compatibility", () => {
           ),
         },
       );
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
       const events = await plane.app.request(
         `/_local/v1/sessions/${session.id}/events/compressed`,
         { headers: controlHeaders() },
@@ -922,7 +1461,7 @@ describe("Local daemon receiver compatibility", () => {
         body: '{"event_id":"browser"}\n{"type":"event"}\n{"message":"browser SDK"}',
       },
     );
-    expect(ingested.status).toBe(204);
+    expect(ingested.status).toBe(200);
     const response = await plane.app.request(
       `/_local/v1/sessions/${session.id}/events/browser`,
       { headers: controlHeaders() },

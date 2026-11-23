@@ -31,7 +31,7 @@ import { assertProjectRefWithinConstraint } from "./support/project-constraints"
 const AlertRuleKind = z
   .enum(["all", "issue", "metric"])
   .describe(
-    "Which alert family to inspect. Numeric metric IDs are legacy alert-rule IDs, not monitor IDs. `all` performs an exact-name lookup.",
+    "Alert family: `issue` for Alerts (workflows), `metric` for Metric Monitors. `all` matches by exact name only.",
   );
 
 const LIST_HINT = "To list alert rules, use find_alert_rules.";
@@ -40,12 +40,12 @@ type AlertRuleMatch =
   | {
       kind: "issue";
       rule: IssueAlertRule;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
     }
   | {
       kind: "metric";
       rule: Detector;
-      projectSlug?: string;
+      projectSlug?: string | undefined;
     };
 
 function describeMatch(match: AlertRuleMatch): string {
@@ -69,23 +69,8 @@ export default defineTool({
   skills: ["inspect"],
   requiredScopes: ["org:read", "project:read"],
   description: [
-    "Get details for one Sentry alert rule by ID or exact name.",
-    "",
-    "Use this tool when you need to inspect an alert rule's exact conditions, query, triggers, and actions before explaining or planning changes.",
-    "To list or search alert rules, use find_alert_rules instead.",
-    "",
-    "<examples>",
-    "get_alert_rule(organizationSlug='my-org', kind='metric', ruleIdOrName='12345')",
-    "get_alert_rule(organizationSlug='my-org', kind='issue', projectSlug='backend', ruleIdOrName='Notify backend team')",
-    "get_alert_rule(organizationSlug='my-org', projectSlug='backend', ruleIdOrName='P95 latency')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Prefer get_metric_monitor_details for Metric Monitors. With kind=metric, numeric IDs retain their legacy alert-rule meaning; detector:123 explicitly identifies monitor 123.",
-    "- With `kind='all'`, a digit-only `ruleIdOrName` is treated as an exact alert rule name.",
-    "- Issue Alerts are notification workflows and may cover multiple projects or have no connected sources. Omit projectSlug to inspect organization-wide.",
-    "- Issue details include complete conditions, notification actions, connected monitors and project scope. Inaccessible or session-restricted sources are marked explicitly.",
-    "</hints>",
+    "Get one Sentry alert rule by ID or exact name: its triggers, conditions, notification actions, connected monitors, and project scope.",
+    "Prefer get_metric_monitor_details for Metric Monitors; cron and uptime monitors have their own get tools.",
   ].join("\n"),
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
@@ -101,7 +86,7 @@ export default defineTool({
       .trim()
       .min(1, `Required: one Alert ID or exact name. ${LIST_HINT}`)
       .describe(
-        "An Alert ID or exact name. Metric references accept legacy numeric alert-rule IDs or detector:123 for canonical monitor IDs.",
+        "Alert ID or exact name. With `metric`, a number is a legacy alert-rule ID; use detector:<id> for a Metric Monitor ID. With `all`, digits are matched as a name.",
       ),
   },
   outputSchema: getAlertRuleOutputSchema,
@@ -173,7 +158,8 @@ export default defineTool({
         })),
       );
 
-      if (matches.length === 0) {
+      const [found] = matches;
+      if (!found) {
         throw new UserInputError(
           `Alert rule "${params.ruleIdOrName}" was not found. ${LIST_HINT}`,
         );
@@ -183,7 +169,6 @@ export default defineTool({
           `Multiple alert rules named "${params.ruleIdOrName}" were found: ${matches.map(describeMatch).join(", ")}. Retry with the Alert ID and kind=issue, or use get_metric_monitor_details with the monitor ID. ${LIST_HINT}`,
         );
       }
-      const [found] = matches;
       match =
         found.kind === "issue"
           ? {

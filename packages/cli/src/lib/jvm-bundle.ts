@@ -97,7 +97,7 @@ export type JvmBundleOptions = {
   /** Debug ID (UUID) to stamp on the bundle. */
   debugId: string;
   /** Additional directory names to exclude during traversal. */
-  excludePatterns?: string[];
+  excludePatterns?: string[] | undefined;
 };
 
 /** Result of {@link buildJvmBundle}. */

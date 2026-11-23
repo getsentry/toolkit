@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@hono/mcp": "^0.2.3",
-    "@mastra/core": "^1.63.2",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@openrouter/ai-sdk-provider": "^1.5.4",
     "@sentry/cloudflare": "catalog:",
@@ -23,8 +22,8 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "typescript": "^5.9.3",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
     "wrangler": "catalog:",
     "vitest": "catalog:"
   }

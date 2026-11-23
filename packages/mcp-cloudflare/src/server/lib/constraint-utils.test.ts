@@ -1,10 +1,21 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, assert, describe, it, expect, vi } from "vitest";
 import "urlpattern-polyfill";
 import {
   verifyConstraintsAccess,
   type CachedConstraints,
   type CacheOptions,
 } from "./constraint-utils";
+
+const { logIssue, logWarn } = vi.hoisted(() => ({
+  logIssue: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@sentry/mcp-core/telem/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/mcp-core/telem/logging")>()),
+  logIssue,
+  logWarn,
+}));
 
 /**
  * Create a mock KVNamespace for testing cache behavior.
@@ -67,12 +78,23 @@ function mockProjectResponse(
   });
 }
 
+/** Returns the arguments of a mock's nth call (0-based), failing if absent. */
+function nthCall<Args extends unknown[]>(
+  fn: { mock: { calls: Args[] } },
+  index: number,
+): Args {
+  const call = fn.mock.calls[index];
+  assert(call, `expected mock call #${index + 1}`);
+  return call;
+}
+
 describe("verifyConstraintsAccess", () => {
   const token = "test-token";
   const host = "sentry.io";
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.useRealTimers();
   });
 
@@ -186,6 +208,25 @@ describe("verifyConstraintsAccess", () => {
         },
       },
     });
+  });
+
+  it("requests the organization without its projects and teams", async () => {
+    const requested: URL[] = [];
+    const originalFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      requested.push(new URL(input instanceof Request ? input.url : input));
+      return originalFetch(input, init);
+    });
+
+    const result = await verifyConstraintsAccess(
+      { organizationSlug: "sentry-mcp-evals", projectSlug: null },
+      { accessToken: token, sentryHost: host },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(requested.map((url) => `${url.pathname}${url.search}`)).toEqual([
+      "/api/0/organizations/sentry-mcp-evals/?detailed=0",
+    ]);
   });
 
   it("fails when org does not exist", async () => {
@@ -308,14 +349,14 @@ describe("verifyConstraintsAccess", () => {
           },
         },
       });
-      await vi.mocked(cache.waitUntil).mock.calls[0][0];
+      await nthCall(vi.mocked(cache.waitUntil), 0)[0];
 
       await vi.advanceTimersByTimeAsync(5000);
       expect(await slowRequest).toMatchObject({
         ok: true,
         constraints: { projectCapabilities: null },
       });
-      await vi.mocked(cache.waitUntil).mock.calls[1][0];
+      await nthCall(vi.mocked(cache.waitUntil), 1)[0];
 
       const apiFetch = vi.spyOn(globalThis, "fetch");
       expect(await verifyConstraintsAccess(constraints, options)).toEqual(
@@ -364,8 +405,18 @@ describe("verifyConstraintsAccess", () => {
           projectCapabilities: null,
         },
       });
+      // Upstream slowness is a handled fail-open: a warning log, not an issue.
+      expect(logIssue).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledWith("Project verification timed out", {
+        loggerScope: ["cloudflare", "constraint-utils"],
+        extra: {
+          ...constraints,
+          regionUrl: "https://us.sentry.io",
+          timeoutMs: 5000,
+        },
+      });
       expect(cache.waitUntil).toHaveBeenCalledOnce();
-      await vi.mocked(cache.waitUntil).mock.calls[0][0];
+      await nthCall(vi.mocked(cache.waitUntil), 0)[0];
       expect(kv.put).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
@@ -394,7 +445,7 @@ describe("verifyConstraintsAccess", () => {
         },
       );
       expect(apiFetch).toHaveBeenCalled();
-      await vi.mocked(cache.waitUntil).mock.calls[1][0];
+      await nthCall(vi.mocked(cache.waitUntil), 1)[0];
       expect(kv.put).toHaveBeenLastCalledWith(
         expect.any(String),
         expect.any(String),
@@ -512,7 +563,7 @@ describe("verifyConstraintsAccess", () => {
         });
       }
 
-      await vi.mocked(cache.waitUntil).mock.calls[0][0];
+      await nthCall(vi.mocked(cache.waitUntil), 0)[0];
 
       // Verify cache was written with correct key and TTL
       expect(mockKV.put).toHaveBeenCalledOnce();
@@ -523,7 +574,7 @@ describe("verifyConstraintsAccess", () => {
       );
 
       // Verify cached data structure
-      const cachedJson = vi.mocked(mockKV.put).mock.calls[0][1] as string;
+      const cachedJson = nthCall(vi.mocked(mockKV.put), 0)[1] as string;
       const parsed = JSON.parse(cachedJson);
       expect(parsed).toMatchObject({
         regionUrl: "https://us.sentry.io",
@@ -582,7 +633,7 @@ describe("verifyConstraintsAccess", () => {
       }
 
       await expect(
-        vi.mocked(cache.waitUntil).mock.calls[0][0],
+        nthCall(vi.mocked(cache.waitUntil), 0)[0],
       ).resolves.toBeUndefined();
 
       // Verify cache write was attempted
@@ -671,16 +722,14 @@ describe("verifyConstraintsAccess", () => {
 
       expect(result.ok).toBe(true);
       expect(mockKV.get).toHaveBeenCalledOnce();
-      await vi.mocked(cache.waitUntil).mock.calls[0][0];
+      await nthCall(vi.mocked(cache.waitUntil), 0)[0];
       expect(mockKV.put).toHaveBeenCalledOnce();
       expect(mockKV.put).toHaveBeenCalledWith(
         "caps:v1:user-org-cache-write:sentry.io:sentry-mcp-evals:org",
         expect.any(String),
         { expirationTtl: 900 },
       );
-      const parsed = JSON.parse(
-        vi.mocked(mockKV.put).mock.calls[0][1] as string,
-      );
+      const parsed = JSON.parse(nthCall(vi.mocked(mockKV.put), 0)[1] as string);
       expect(parsed).toMatchObject({
         regionUrl: "https://us.sentry.io",
         projectCapabilities: null,

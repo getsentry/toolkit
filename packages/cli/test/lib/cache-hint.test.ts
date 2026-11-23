@@ -6,12 +6,27 @@
  * module is small and the formatting has specific boundary values.
  */
 
+import {
+  boolean,
+  constantFrom,
+  dictionary,
+  assert as fcAssert,
+  property,
+} from "fast-check";
 import { describe, expect, test } from "vitest";
+import { routes } from "../../src/app.js";
 import {
   appendCacheHint,
   formatAge,
   formatCacheHint,
+  resolveRefreshFlag,
 } from "../../src/lib/cache-hint.js";
+import {
+  type Command,
+  isCommand,
+  isRouteMap,
+  type RouteMap,
+} from "../../src/lib/introspect.js";
 import {
   clearLastCacheHitAge,
   getLastCacheHitAge,
@@ -50,6 +65,90 @@ describe("formatAge", () => {
   });
 });
 
+describe("resolveRefreshFlag", () => {
+  test("prefers the short alias bound to --fresh", () => {
+    expect(resolveRefreshFlag({ fresh: {} }, { f: "fresh" })).toBe("-f");
+  });
+
+  test("falls back to --fresh when -f is bound to another flag", () => {
+    expect(resolveRefreshFlag({ fresh: {}, follow: {} }, { f: "follow" })).toBe(
+      "--fresh",
+    );
+  });
+
+  test("returns undefined when the command has no --fresh flag", () => {
+    expect(resolveRefreshFlag({ force: {} }, { f: "force" })).toBeUndefined();
+  });
+
+  test("property: the result always parses back to --fresh", () => {
+    const names = constantFrom("fresh", "follow", "force", "filter", "web");
+    fcAssert(
+      property(
+        boolean(),
+        dictionary(constantFrom("f", "F", "r", "w", "x"), names),
+        (hasFresh, aliases) => {
+          const flags: Record<string, unknown> = hasFresh ? { fresh: {} } : {};
+          const result = resolveRefreshFlag(flags, aliases);
+          if (!hasFresh) {
+            expect(result).toBeUndefined();
+          } else if (result === "--fresh") {
+            expect(Object.values(aliases)).not.toContain("fresh");
+          } else {
+            expect(result).toMatch(/^-[^-]$/);
+            expect(aliases[(result as string).slice(1)]).toBe("fresh");
+          }
+        },
+      ),
+    );
+  });
+});
+
+/** Collect every registered command with its full `sentry ...` path. */
+function collectCommands(
+  map: RouteMap,
+  prefix: string[],
+): Array<{ path: string; command: Command }> {
+  return map.getAllEntries().flatMap((entry) => {
+    const path = [...prefix, entry.name.original];
+    if (isRouteMap(entry.target)) {
+      return collectCommands(entry.target, path);
+    }
+    if (isCommand(entry.target)) {
+      return [{ path: path.join(" "), command: entry.target }];
+    }
+    return [];
+  });
+}
+
+describe("cache hint refresh flag for registered commands", () => {
+  const commands = collectCommands(routes as unknown as RouteMap, []);
+
+  /** Refresh flag named in a command's footer, from its final parameters. */
+  function refreshFlagFor(path: string): string | undefined {
+    const found = commands.find((c) => c.path === path);
+    if (!found) {
+      throw new Error(`command not registered: ${path}`);
+    }
+    const { flags = {}, aliases = {} } = found.command.parameters as {
+      flags?: Record<string, unknown>;
+      aliases?: Record<string, unknown>;
+    };
+    return resolveRefreshFlag(flags, aliases);
+  }
+
+  test("log list names -f, the regression from getsentry/toolkit#2442", () => {
+    expect(refreshFlagFor("log list")).toBe("-f");
+  });
+
+  test("log tail streams live data and suggests no refresh flag", () => {
+    expect(refreshFlagFor("log tail")).toBeUndefined();
+  });
+
+  test("issue list keeps the -f shorthand", () => {
+    expect(refreshFlagFor("issue list")).toBe("-f");
+  });
+});
+
 describe("formatCacheHint", () => {
   test("returns undefined when no cache hit recorded", () => {
     clearLastCacheHitAge();
@@ -64,19 +163,33 @@ describe("formatCacheHint", () => {
 
   test("returns formatted hint when cache hit recorded (3m)", () => {
     setLastCacheHitAgeForTesting(180_000);
-    expect(formatCacheHint()).toBe("cached · 3m ago · use -f to refresh");
+    expect(formatCacheHint("-f")).toBe("cached · 3m ago · use -f to refresh");
     clearLastCacheHitAge();
   });
 
   test("returns formatted hint when cache hit recorded (just now)", () => {
     setLastCacheHitAgeForTesting(0);
-    expect(formatCacheHint()).toBe("cached · just now · use -f to refresh");
+    expect(formatCacheHint("-f")).toBe("cached · just now · use -f to refresh");
     clearLastCacheHitAge();
   });
 
   test("returns formatted hint when cache hit recorded (2h)", () => {
     setLastCacheHitAgeForTesting(2 * 60 * 60_000);
-    expect(formatCacheHint()).toBe("cached · 2h ago · use -f to refresh");
+    expect(formatCacheHint("-f")).toBe("cached · 2h ago · use -f to refresh");
+    clearLastCacheHitAge();
+  });
+
+  test("names the given refresh flag", () => {
+    setLastCacheHitAgeForTesting(180_000);
+    expect(formatCacheHint("--fresh")).toBe(
+      "cached · 3m ago · use --fresh to refresh",
+    );
+    clearLastCacheHitAge();
+  });
+
+  test("omits the refresh suggestion when there is no refresh flag", () => {
+    setLastCacheHitAgeForTesting(180_000);
+    expect(formatCacheHint()).toBe("cached · 3m ago");
     clearLastCacheHitAge();
   });
 });
@@ -94,7 +207,7 @@ describe("appendCacheHint", () => {
 
   test("returns just the cache hint when no existing hint", () => {
     setLastCacheHitAgeForTesting(180_000);
-    expect(appendCacheHint(undefined)).toBe(
+    expect(appendCacheHint(undefined, "-f")).toBe(
       "cached · 3m ago · use -f to refresh",
     );
     clearLastCacheHitAge();
@@ -102,7 +215,7 @@ describe("appendCacheHint", () => {
 
   test("joins existing and cache hints with ' | ' separator", () => {
     setLastCacheHitAgeForTesting(180_000);
-    expect(appendCacheHint("Showing 5 issues")).toBe(
+    expect(appendCacheHint("Showing 5 issues", "-f")).toBe(
       "Showing 5 issues | cached · 3m ago · use -f to refresh",
     );
     clearLastCacheHitAge();
@@ -111,7 +224,9 @@ describe("appendCacheHint", () => {
   test("treats empty existing hint as falsy (no separator)", () => {
     setLastCacheHitAgeForTesting(180_000);
     // Empty string is falsy — appendCacheHint returns just the cache hint.
-    expect(appendCacheHint("")).toBe("cached · 3m ago · use -f to refresh");
+    expect(appendCacheHint("", "-f")).toBe(
+      "cached · 3m ago · use -f to refresh",
+    );
     clearLastCacheHitAge();
   });
 });

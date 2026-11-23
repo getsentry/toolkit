@@ -1,5 +1,5 @@
-import { Agent } from "@mastra/core/agent";
 import * as Sentry from "@sentry/cloudflare";
+import { generateText, stepCountIs } from "ai";
 import { searchPages } from "../sentry-docs/doctree";
 import {
   buildDocsUrl,
@@ -81,7 +81,7 @@ export function finalizeDocsAnswer(
 
   const body = answer.replace(SOURCES_SECTION_RE, "").trim();
   const citations = uniqueCanonicalDocsUrls(
-    [...body.matchAll(MARKDOWN_LINK_URL_RE)].map((match) => match[1]),
+    [...body.matchAll(MARKDOWN_LINK_URL_RE)].flatMap((match) => match[1] ?? []),
   );
   if (citations.length === 0) {
     throw new Error("Docs query answer must include an inline citation.");
@@ -103,18 +103,19 @@ export function finalizeDocsAnswer(
   };
 }
 
-function createQueryAgent(
+function generateQueryAttempt(
   apiKey: string | undefined,
   fetchedUrls: string[],
-): Agent {
-  return new Agent({
-    defaultOptions: {
-      modelSettings: QUERY_MODEL_SETTINGS,
-    },
-    id: "docs-query-agent",
-    instructions: QUERY_SYSTEM_PROMPT,
+  prompt: string,
+) {
+  return generateText({
+    ...QUERY_MODEL_SETTINGS,
     model: createNativeModelFallbacks(PRIMARY_MODEL, apiKey),
-    name: "Docs Query Agent",
+    prepareStep: ({ stepNumber }) =>
+      stepNumber === MAX_QUERY_STEPS - 1 ? { toolChoice: "none" } : {},
+    prompt,
+    stopWhen: stepCountIs(MAX_QUERY_STEPS),
+    system: QUERY_SYSTEM_PROMPT,
     tools: {
       fetch_doc_page: createFetchDocPageTool(fetchedUrls),
       search_docs: createSearchDocsTool(),
@@ -268,13 +269,10 @@ function generateCitedAnswer(
   return finalizeCitedAttempts(
     async (retry) => {
       const fetchedUrls: string[] = [];
-      const result = await createQueryAgent(apiKey, fetchedUrls).generate(
+      const result = await generateQueryAttempt(
+        apiKey,
+        fetchedUrls,
         `Question: ${query.trim()}${contextPrompt(context)}${retry ? citationRecoveryPrompt() : ""}`,
-        {
-          maxSteps: MAX_QUERY_STEPS,
-          prepareStep: ({ stepNumber }) =>
-            stepNumber === MAX_QUERY_STEPS - 1 ? { toolChoice: "none" } : {},
-        },
       );
       return { fetchedUrls, text: result.text };
     },

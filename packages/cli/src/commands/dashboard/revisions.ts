@@ -49,8 +49,8 @@ type RevisionsResult = {
   orgSlug: string;
   dashboardId: string;
   hasMore: boolean;
-  hasPrev?: boolean;
-  nextCursor?: string;
+  hasPrev?: boolean | undefined;
+  nextCursor?: string | undefined;
 };
 
 function formatRevisionsHuman(result: RevisionsResult): string {

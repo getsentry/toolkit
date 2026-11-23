@@ -44,11 +44,20 @@ const GRANT_TYPES = {
   REFRESH_TOKEN: "refresh_token" as TokenExchangeCallbackOptions["grantType"],
 };
 
+/**
+ * Stored grant props overrides. An explicit `undefined` models a stored grant
+ * that lacks the field, such as one written before the field existed.
+ */
+type StoredPropsOverrides = {
+  [K in keyof WorkerProps]?: WorkerProps[K] | undefined;
+};
+
 function createRefreshOptions(
-  propsOverrides?: Partial<WorkerProps>,
+  propsOverrides?: StoredPropsOverrides,
 ): TokenExchangeCallbackOptions {
   return {
     grantType: GRANT_TYPES.REFRESH_TOKEN,
+    grantId: "test-grant-id",
     clientId: "test-client-id",
     userId: "test-user-id",
     scope: ["org:read", "project:read"],
@@ -100,6 +109,7 @@ describe("tokenExchangeCallback", () => {
   it("should return undefined for non-refresh_token grant types", async () => {
     const options: TokenExchangeCallbackOptions = {
       grantType: GRANT_TYPES.AUTHORIZATION_CODE,
+      grantId: "test-grant-id",
       clientId: "test-client-id",
       userId: "test-user-id",
       scope: ["org:read", "project:read"],

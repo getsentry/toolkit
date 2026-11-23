@@ -6,7 +6,7 @@ import {
   NoOutputGeneratedError,
   RetryError,
   type StepResult,
-  type Tool,
+  type ToolSet,
 } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -64,8 +64,8 @@ describe("callEmbeddedAgent", () => {
         "./provider-factory",
       );
     vi.mocked(getAgentProvider).mockImplementation(actual.getAgentProvider);
-    process.env.OPENAI_API_KEY = "test-key";
-    process.env.OPENROUTER_API_KEY = "";
+    process.env["OPENAI_API_KEY"] = "test-key";
+    process.env["OPENROUTER_API_KEY"] = "";
   });
 
   it("keeps the five-step limit when no finalization condition is supplied", async () => {
@@ -85,9 +85,7 @@ describe("callEmbeddedAgent", () => {
       throw new Error("Expected a stop condition");
     }
 
-    const step = { toolResults: [{ output: false }] } as StepResult<
-      Record<string, Tool>
-    >;
+    const step = { toolResults: [{ output: false }] } as StepResult<ToolSet>;
     const firstFour = Array.from({ length: 4 }, () => step);
     expect(stopWhen({ steps: firstFour })).toBe(false);
     expect(stopWhen({ steps: [...firstFour, step] })).toBe(true);
@@ -397,6 +395,35 @@ describe("callEmbeddedAgent", () => {
       }),
     );
   });
+
+  it.each([
+    [
+      "a provider RetryError",
+      () => new RetryError({ message: "aborted", reason: "abort", errors: [] }),
+    ],
+    ["an unexpected error", () => new Error("The operation was aborted")],
+  ])(
+    "rethrows the abort reason for %s after cancellation without filing an issue",
+    async (_label, makeError) => {
+      const controller = new AbortController();
+      const reason = new Error("client cancelled the tool call");
+      mockGenerateText.mockImplementation(async () => {
+        controller.abort(reason);
+        throw makeError();
+      });
+
+      await expect(
+        callEmbeddedAgent({
+          system: "You are a test agent",
+          prompt: "Test prompt",
+          tools: {},
+          schema: testSchema,
+          abortSignal: controller.signal,
+        }),
+      ).rejects.toBe(reason);
+      expect(logIssue).not.toHaveBeenCalled();
+    },
+  );
 
   it("treats NoOutputGeneratedError as a recoverable UserInputError without filing a Sentry issue", async () => {
     const noOutputError = new NoOutputGeneratedError({

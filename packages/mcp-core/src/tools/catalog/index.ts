@@ -42,6 +42,8 @@ import linkIssue from "./link-issue";
 import unlinkIssue from "./unlink-issue";
 import searchEvents from "./search-events";
 import searchErrors from "./search-errors";
+import renderIssueChart from "./render-issue-chart";
+import renderSentryChart from "./render-sentry-chart";
 import searchLogs from "./search-logs";
 import searchTraces from "./search-traces";
 import searchMetrics from "./search-metrics";
@@ -60,6 +62,7 @@ import analyzeIssueWithSeer from "./analyze-issue-with-seer";
 import searchDocs from "./search-docs";
 import getDoc from "./get-doc";
 import searchIssues from "./search-issues";
+import findRelatedIssues from "./find-related-issues";
 import searchIssueEvents from "./search-issue-events";
 import getProfile from "./get-profile";
 import getProfileDetails from "./get-profile-details";
@@ -82,12 +85,9 @@ const legacyGetAIConversationDetails = {
   title: "Get AI Conversation Details (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["get_agent_conversation_details"] },
-  description: [
-    "Deprecated alias for get_agent_conversation_details.",
-    "",
-    "Use get_agent_conversation_details for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
-} satisfies ToolConfig<any>;
+  description:
+    "Deprecated alias for get_agent_conversation_details; use that tool instead.",
+} satisfies ToolConfig;
 
 const legacySearchAIConversations = {
   ...searchAgentConversations,
@@ -95,19 +95,16 @@ const legacySearchAIConversations = {
   title: "Search AI Conversations (Deprecated)",
   includeInSkillDefinitions: false,
   deprecated: { replacedBy: ["search_agent_conversations"] },
-  description: [
-    "Deprecated alias for search_agent_conversations.",
-    "",
-    "Use search_agent_conversations for new integrations. This alias is kept for backward compatibility.",
-  ].join("\n"),
-} satisfies ToolConfig<any>;
+  description:
+    "Deprecated alias for search_agent_conversations; use that tool instead.",
+} satisfies ToolConfig;
 
 // The docs tools read docs.sentry.io, not the Sentry API, so they have no
 // cached reads to bypass.
 const DOCS_TOOL_NAMES = new Set(["search_docs", "get_doc"]);
 
 /** Give every read tool that calls the Sentry API the shared `fresh` input. */
-function withFreshReadInputs<T extends Record<string, ToolConfig<any>>>(
+function withFreshReadInputs<T extends Record<string, ToolConfig>>(
   tools: T,
 ): T {
   return Object.fromEntries(
@@ -181,6 +178,8 @@ const catalogTools = withFreshReadInputs({
   search_profiles: searchProfiles,
   search_replays: searchReplays,
   search_events: searchEvents,
+  render_sentry_chart: renderSentryChart,
+  render_issue_chart: renderIssueChart,
   create_team: createTeam,
   create_project: createProject,
   update_project: updateProject,
@@ -193,6 +192,7 @@ const catalogTools = withFreshReadInputs({
   search_docs: searchDocs,
   get_doc: getDoc,
   search_issues: searchIssues,
+  find_related_issues: findRelatedIssues,
   search_issue_events: searchIssueEvents,
   find_dropped_events: findDroppedEvents,
   get_profile: getProfile,
@@ -209,7 +209,7 @@ const catalogTools = withFreshReadInputs({
   add_issue_note: addIssueNote,
   onboarding_status_update: onboardingStatusUpdate,
   submit_feedback_to_sentry_team: submitFeedbackToSentryTeam,
-} as const satisfies Record<string, ToolConfig<any>>);
+} as const satisfies Record<string, ToolConfig>);
 
 export default catalogTools;
 export type CatalogToolName = keyof typeof catalogTools;

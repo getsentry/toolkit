@@ -120,7 +120,12 @@ function grammarFiles(): StepFiles {
       ...sources.map((file) => `grammar/${file}`),
       GRAMMAR_SCRIPT,
       packageManifest("peggy", GRAMMAR_SCRIPT),
-      packageManifest("typescript", GRAMMAR_SCRIPT),
+      // The TypeScript 6 compiler API prints the declarations. Its package
+      // re-exports `@typescript/old`, which can update on its own.
+      packageManifest(
+        "@typescript/old",
+        packageManifest("@typescript/typescript6", GRAMMAR_SCRIPT),
+      ),
     ],
     outputs: names.flatMap((name) => [
       `src/generated/${name}-grammar.js`,
@@ -189,6 +194,10 @@ const TREE_STEPS: readonly Step[] = [
   {
     name: "top-level-routes",
     load: () => import("./generate-top-level-routes.js"),
+  },
+  {
+    name: "streaming-commands",
+    load: () => import("./generate-streaming-commands.js"),
   },
   { name: "command-docs", load: () => import("./generate-command-docs.js") },
   { name: "docs-sections", load: () => import("./generate-docs-sections.js") },

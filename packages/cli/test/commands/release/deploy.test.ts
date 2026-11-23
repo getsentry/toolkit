@@ -2,18 +2,22 @@
  * Release Deploy Command Tests
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { deployCommand } from "../../../src/commands/release/deploy.js";
 
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -22,18 +26,15 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as resolveTarget from "../../../src/lib/resolve-target.js";
 import type { SentryDeploy } from "../../../src/types/index.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("release-deploy-");
 
@@ -47,8 +48,8 @@ const sampleDeploy: SentryDeploy = {
 };
 
 function createMockContext(cwd = "/tmp") {
-  const stdoutWrite = vi.fn(() => true);
-  const stderrWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
+  const stderrWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
@@ -61,8 +62,10 @@ function createMockContext(cwd = "/tmp") {
 }
 
 describe("release deploy", () => {
-  let createRelaseDeploySpy: ReturnType<typeof spyOn>;
-  let resolveOrgSpy: ReturnType<typeof spyOn>;
+  let createRelaseDeploySpy: MockInstance<
+    (typeof apiClient)["createReleaseDeploy"]
+  >;
+  let resolveOrgSpy: MockInstance<(typeof resolveTarget)["resolveOrg"]>;
 
   beforeEach(() => {
     createRelaseDeploySpy = vi.spyOn(apiClient, "createReleaseDeploy");
@@ -79,7 +82,7 @@ describe("release deploy", () => {
     createRelaseDeploySpy.mockResolvedValue(sampleDeploy);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     await func.call(context, { json: true }, "my-org/1.0.0", "production");
 
     expect(createRelaseDeploySpy).toHaveBeenCalledWith("my-org", "1.0.0", {
@@ -98,7 +101,7 @@ describe("release deploy", () => {
     });
 
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     // Multi-word deploy names are passed as a single quoted positional.
     await func.call(context, { json: true }, "1.0.0", "staging", "Deploy #42");
 
@@ -114,7 +117,7 @@ describe("release deploy", () => {
     createRelaseDeploySpy.mockResolvedValue(sampleDeploy);
 
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
     await func.call(
       context,
       { url: "https://example.com", json: true },
@@ -134,7 +137,7 @@ describe("release deploy", () => {
 
   test("throws when missing environment", async () => {
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
 
     await expect(func.call(context, { json: false }, "1.0.0")).rejects.toThrow(
       "Environment is required",
@@ -143,7 +146,7 @@ describe("release deploy", () => {
 
   test("throws when no args provided", async () => {
     const { context } = createMockContext();
-    const func = await deployCommand.loader();
+    const func = await loadCommand(deployCommand);
 
     await expect(func.call(context, { json: false })).rejects.toThrow(
       "Release version is required",

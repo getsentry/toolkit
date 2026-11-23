@@ -710,6 +710,7 @@ function unwrapParenGroups(nodes: SearchNode[]): {
   const result: SearchNode[] = [];
   let changed = false;
 
+  // A loop rather than forEach, so the type checker sees `changed` update.
   for (const [i, node] of nodes.entries()) {
     if (node.type !== "paren_group") {
       result.push(node);

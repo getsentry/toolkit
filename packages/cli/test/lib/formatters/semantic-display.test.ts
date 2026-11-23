@@ -14,6 +14,7 @@ import {
   inferSemanticOp,
   mergeTransactionAttributes,
 } from "../../../src/lib/formatters/semantic-display.js";
+import { at } from "../../helpers.js";
 
 describe("formatSemanticSpanDisplay", () => {
   describe("GenAI spans", () => {
@@ -544,7 +545,7 @@ describe("collectSpanAttributes", () => {
     };
     const collected = collectSpanAttributes(event);
     expect(collected).toHaveLength(2);
-    expect(inferSemanticOp(collected[1])).toBe("gen_ai");
+    expect(inferSemanticOp(at(collected, 1))).toBe("gen_ai");
   });
 
   test("skips spans without a data object", () => {

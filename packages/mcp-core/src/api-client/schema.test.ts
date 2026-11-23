@@ -711,7 +711,7 @@ describe("AutofixRunStateSchema", () => {
 
     expect(state.autofix?.status).toBe("processing");
     expect(state.autofix?.blocks).toHaveLength(1);
-    expect(state.autofix?.blocks[0].todos).toEqual([
+    expect(state.autofix?.blocks[0]?.todos).toEqual([
       { content: "Investigate failing request", status: "completed" },
       { content: "Draft fix plan", status: "in_progress" },
     ]);

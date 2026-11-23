@@ -1,4 +1,6 @@
+import { API_MAX_PER_PAGE } from "@sentry/api/client";
 import type { SentryApiService } from "../../api-client";
+import { fetchEveryPage } from "../../api-client/pagination";
 import { UserInputError } from "../../errors";
 import {
   assertProjectConstraintEvidence,
@@ -11,8 +13,8 @@ export async function validateAlertRuleProjectScope(
   params: {
     organizationSlug: string;
     ruleId: string;
-    projectSlug?: string | null;
-    scopedProjectSlug?: string | null;
+    projectSlug?: string | null | undefined;
+    scopedProjectSlug?: string | null | undefined;
   },
 ): Promise<{ id: string; slug: string } | undefined> {
   if (params.projectSlug) {
@@ -59,11 +61,11 @@ export async function resolveAlertRuleConnections(
   params: {
     organizationSlug: string;
     currentDetectorIds: readonly (string | number)[];
-    addProjectSlugs?: readonly string[];
-    removeProjectSlugs?: readonly string[];
-    addDetectorIds?: readonly string[];
-    removeDetectorIds?: readonly string[];
-    scopedProject?: { id: string; slug: string };
+    addProjectSlugs?: readonly string[] | undefined;
+    removeProjectSlugs?: readonly string[] | undefined;
+    addDetectorIds?: readonly string[] | undefined;
+    removeDetectorIds?: readonly string[] | undefined;
+    scopedProject?: { id: string; slug: string } | undefined;
   },
 ): Promise<string[]> {
   const additions = new Set<string>();
@@ -85,27 +87,26 @@ export async function resolveAlertRuleConnections(
         hasEvidence: projectId === params.scopedProject?.id,
       });
 
-      const matches = new Set<string>();
-      let cursor: string | undefined;
-      do {
+      const detectors = await fetchEveryPage(async (cursor) => {
         const page = await api.listDetectorsPage({
           organizationSlug: params.organizationSlug,
           projectId,
           types: ["issue_stream"],
           cursor,
-          limit: 100,
+          limit: API_MAX_PER_PAGE,
         });
-        for (const detector of page.detectors) {
-          if (
-            detector.type === "issue_stream" &&
-            detector.projectId !== null &&
-            String(detector.projectId) === projectId
-          ) {
-            matches.add(String(detector.id));
-          }
-        }
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor);
+        return { data: page.detectors, nextCursor: page.nextCursor };
+      }, "listing the project's issue_stream monitors");
+      const matches = new Set(
+        detectors
+          .filter(
+            (detector) =>
+              detector.type === "issue_stream" &&
+              detector.projectId !== null &&
+              String(detector.projectId) === projectId,
+          )
+          .map((detector) => String(detector.id)),
+      );
 
       const [detectorId] = matches;
       if (!detectorId) {
