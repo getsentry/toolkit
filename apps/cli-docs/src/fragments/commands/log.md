@@ -21,4 +21,4 @@ available scan accuracy.
 
 Use `--json` for machine-readable output.
 
-In streaming mode with `--json`, each log entry is output as a separate JSON object (newline-delimited JSON), making it suitable for piping to other tools.
+With `sentry log tail --json`, each log entry is output as a separate JSON object (newline-delimited JSON), making it suitable for piping to other tools.

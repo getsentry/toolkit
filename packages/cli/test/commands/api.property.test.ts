@@ -383,8 +383,8 @@ describe("setNestedValue security properties", () => {
     }
 
     // Verify no pollution
-    expect((testObj as Record<string, unknown>).polluted).toBeUndefined();
-    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect((testObj as Record<string, unknown>)["polluted"]).toBeUndefined();
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 });
 

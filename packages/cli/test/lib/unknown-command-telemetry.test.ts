@@ -1,6 +1,14 @@
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as Sentry from "@sentry/node";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
 import { runCli } from "../../src/cli.js";
 import { SENTRY_CLI } from "../../src/sentry-cli.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -10,7 +18,7 @@ useTestConfigDir("unknown-command-telemetry-");
 const SECRET = "abcd12efg0";
 const originalExitCode = process.exitCode;
 
-let setContextSpy: ReturnType<typeof vi.spyOn>;
+let setContextSpy: MockInstance<typeof Sentry.setContext>;
 
 beforeEach(() => {
   vi.spyOn(process.stdout, "write").mockReturnValue(true);

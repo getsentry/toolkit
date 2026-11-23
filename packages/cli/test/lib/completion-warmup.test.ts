@@ -236,6 +236,7 @@ describe("warmAttributeCompletions", () => {
           new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener("abort", () => {
               aborted.push(true);
+              // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- fetch rejects with the signal's abort reason, like the platform
               reject(init.signal?.reason);
             });
           }),

@@ -13,7 +13,7 @@ describe("formatIssueLinkResult", () => {
   useEnvSandbox(["SENTRY_PLAIN_OUTPUT"]);
 
   beforeEach(() => {
-    process.env.SENTRY_PLAIN_OUTPUT = "1";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "1";
   });
 
   test.each([

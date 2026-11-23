@@ -29,6 +29,12 @@ ApiError (base class)
   `formatErrorForUser` and embedded agent tools return a **Missing Permission**
   message that names the scopes and says retrying with the same token will not
   help, even when a tool rewrapped the error as its `cause`.
+- Object-level checks, such as who may edit an Alert or Metric Monitor, raise
+  a bare 403 with no challenge for ordinary tokens. A tool whose write has
+  known permission rules wraps that call and appends them to the error
+  message, keeping the `ApiPermissionError`. See
+  `withAlertWritePermissionHint` in
+  `packages/mcp-core/src/tools/support/alert-write-permission.ts`.
 
 ### Application Error Classes (from errors.ts)
 

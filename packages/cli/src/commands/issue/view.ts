@@ -232,7 +232,7 @@ async function buildSingleIssueViewData(
       : await fetchIssueDetails(orgSlug, issue.id, spans);
 
   return {
-    org: orgSlug ?? null,
+    org: orgSlug,
     issue,
     event: event ?? null,
     ...details,

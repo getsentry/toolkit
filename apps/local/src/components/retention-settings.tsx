@@ -13,7 +13,7 @@ type Props = {
   count: number;
   streamUrl: string;
   editable: boolean;
-  unavailableReason?: string;
+  unavailableReason?: string | undefined;
 };
 
 /** Changes the selected session's limit without replacing its live stream. */
@@ -88,7 +88,7 @@ export function RetentionSettings({
   });
   const error =
     form.formState.errors.maxEnvelopes?.message ??
-    form.formState.errors.root?.server?.message;
+    form.formState.errors.root?.["server"]?.message;
   return (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-muted-foreground">
@@ -101,7 +101,13 @@ export function RetentionSettings({
         currently retained.
       </p>
       {editable ? (
-        <form noValidate onSubmit={save} className="space-y-4">
+        <form
+          noValidate
+          onSubmit={(event) => {
+            void save(event);
+          }}
+          className="space-y-4"
+        >
           <div className="space-y-2">
             <label htmlFor="retention-limit" className="text-sm font-medium">
               Envelope limit

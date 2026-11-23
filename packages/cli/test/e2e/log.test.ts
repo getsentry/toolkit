@@ -134,16 +134,19 @@ describe("sentry log list", () => {
     expect(result.stderr + result.stdout).toMatch(/must be between|1.*1000/i);
   });
 
-  test("supports -f flag for follow mode", async () => {
+  test("-f is --fresh, and streaming lives in log tail", async () => {
     await ctx.setAuthToken(TEST_TOKEN);
 
-    // We can't actually test follow mode in e2e since it runs forever,
-    // but we can verify the flag is accepted by checking --help
-    const result = await ctx.run(["log", "list", "--help"]);
+    const list = await ctx.run(["log", "list", "--help"]);
+    expect(list.exitCode).toBe(0);
+    expect(list.stdout).toMatch(/-f.*--fresh/);
+    expect(list.stdout).not.toMatch(/--follow/);
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/-f.*--follow/);
-    expect(result.stdout).toMatch(/poll interval/i);
+    // log tail runs until Ctrl+C, so check its flags through --help
+    const tail = await ctx.run(["log", "tail", "--help"]);
+    expect(tail.exitCode).toBe(0);
+    expect(tail.stdout).toMatch(/-i.*--interval/);
+    expect(tail.stdout).toMatch(/poll interval/i);
   });
 });
 

@@ -1,13 +1,23 @@
 /** Real CLI process coverage for daemon discovery, isolated telemetry and leases. */
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { rmSync } from "node:fs";
-import { readFile, stat, rm, utimes, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  stat,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
 import { runCli } from "../fixture.js";
-import { useTestConfigDir } from "../helpers.js";
+import { at, must, useTestConfigDir } from "../helpers.js";
 
 /** Capability URLs returned explicitly by session creation. */
 type Session = {
@@ -32,6 +42,14 @@ async function cli(...args: string[]) {
   });
 }
 
+/**
+ * A TCP listener that holds a port and never answers. It reads what clients
+ * send, so it sees them disconnect and `close()` does not wait on them.
+ */
+function createSilentServer() {
+  return createServer((socket) => socket.resume());
+}
+
 async function availablePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
@@ -46,6 +64,25 @@ async function availablePort(): Promise<number> {
     server.close((error) => (error ? reject(error) : resolve())),
   );
   return address.port;
+}
+
+/**
+ * Ports Node's fetch refuses to dial ("bad port"), though a server can bind
+ * them. Returns one that is free here, or undefined if all are taken.
+ */
+async function freeFetchBlockedPort(): Promise<number | undefined> {
+  for (const port of [6000, 6665, 6666, 6667, 6668, 6669, 6697, 10080]) {
+    const server = createServer();
+    const bound = await new Promise<boolean>((resolve) => {
+      server.once("error", () => resolve(false));
+      server.listen(port, "127.0.0.1", () => resolve(true));
+    });
+    if (bound) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      return port;
+    }
+  }
+  return undefined;
 }
 
 async function createSession(
@@ -75,7 +112,7 @@ async function ingest(session: Session, eventId: string, message: string) {
     headers: { "Content-Type": "application/x-sentry-envelope" },
     body: `${JSON.stringify({ event_id: eventId })}\n{"type":"event"}\n${JSON.stringify({ event_id: eventId, message })}`,
   });
-  expect(response.status).toBe(204);
+  expect(response.status).toBe(200);
 }
 
 afterEach(async () => {
@@ -133,6 +170,49 @@ describe("Local daemon E2E", () => {
     expect(JSON.parse(json.stdout).label).toBe("viewer-link");
   }, 30_000);
 
+  test("human list output is a table, and event view takes a unique ID prefix", async () => {
+    const env = {
+      SENTRY_CONFIG_DIR: getConfigDir(),
+      SENTRY_CLI_NO_TELEMETRY: "1",
+      SENTRY_AUTH_TOKEN: "",
+      SENTRY_TOKEN: "",
+    };
+    const session = await createSession("lists", await availablePort());
+    const first = `c0ffee00${"1".repeat(24)}`;
+    const second = `c0ffee00${"2".repeat(24)}`;
+    await ingest(session, first, "first listed event");
+    await ingest(session, second, "second listed event");
+
+    for (const command of ["session", "event", "envelope"]) {
+      const human = await runCli(
+        ["local", command, "list", ...(command === "session" ? [] : ["lists"])],
+        { env },
+      );
+      expect(human.exitCode, human.stderr).toBe(0);
+      expect(human.stdout).toMatch(/│ ID +│/);
+      expect(human.stdout).not.toContain("{");
+    }
+    const events = await runCli(["local", "event", "list", "lists"], { env });
+    expect(events.stdout).toContain("c0ffee001");
+    expect(events.stdout).toContain("first listed event");
+    const json = JSON.parse((await cli("event", "list", "lists")).stdout) as {
+      events: { eventId: string }[];
+    };
+    expect(json.events.map(({ eventId }) => eventId).sort()).toEqual([
+      first,
+      second,
+    ]);
+
+    const viewed = await cli("event", "view", "lists", "c0ffee001");
+    expect(viewed.exitCode, viewed.stderr).toBe(0);
+    expect(JSON.parse(viewed.stdout)).toMatchObject({ eventId: first });
+    const ambiguous = await cli("event", "view", "lists", "c0ffee00");
+    expect(ambiguous.exitCode).toBe(23);
+    expect(ambiguous.stderr).toContain(
+      'Local event ID "c0ffee00" matches more than one event in session "lists".',
+    );
+  }, 30_000);
+
   test("hosted session discovery switches isolated streams and preserves retained sessions", async () => {
     const port = await availablePort();
     const web = await createSession("web", port);
@@ -160,7 +240,7 @@ describe("Local daemon E2E", () => {
       }
       expect(text).toContain("event: sentry.local.directory");
       directoryUrl = (
-        JSON.parse(text.match(/data: (.+)/)![1]) as { directoryUrl: string }
+        JSON.parse(at(text.match(/data: (.+)/)!, 1)) as { directoryUrl: string }
       ).directoryUrl;
     } finally {
       await bootstrapReader.cancel();
@@ -204,7 +284,7 @@ describe("Local daemon E2E", () => {
       [web.id, "web-only", "worker-only"],
       [worker.id, "worker-only", "web-only"],
       [web.id, "web-only", "worker-only"],
-    ]) {
+    ] as const) {
       const session = directory.sessions.find((s) => s.id === id)!;
       const stream = await fetch(session.streamUrl, {
         headers: origin,
@@ -363,7 +443,10 @@ describe("Local daemon E2E", () => {
             };
             expect(after.pid).not.toBe(before.pid);
           } else {
-            expect(JSON.parse(result.stdout)).toEqual({ stopped: true });
+            expect(JSON.parse(result.stdout)).toEqual({
+              stopped: true,
+              capturingSessions: [],
+            });
             await expect(readFile(statePath, "utf8")).rejects.toMatchObject({
               code: "ENOENT",
             });
@@ -399,21 +482,42 @@ describe("Local daemon E2E", () => {
     30_000,
   );
 
-  test("surfaces duplicate session name guidance through the CLI", async () => {
+  test("resolves a reused session name to its newest open session through the CLI", async () => {
     const port = await availablePort();
     const first = await createSession("duplicate", port);
-    await createSession("duplicate", port);
+    const second = await createSession("duplicate", port);
     for (const parts of [
       ["session", "view"],
-      ["session", "close"],
       ["event", "list"],
       ["envelope", "list"],
     ]) {
       const result = await cli(...parts, "duplicate");
-      expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("ambiguous; use its session ID");
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stderr).toContain(
+        `2 open sessions share that name; using the newest, ${second.id}.`,
+      );
+      expect(result.stderr).toContain(`${first.id} (open, started`);
+      if (parts[0] === "session")
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: second.id });
     }
-    expect((await cli("session", "view", first.id)).exitCode).toBe(0);
+
+    const refused = await cli("session", "close", "duplicate");
+    expect(refused.exitCode).toBe(23);
+    expect(refused.stderr).toContain(
+      'Local session name "duplicate" matches more than one session.',
+    );
+    expect(refused.stderr).toContain(
+      `Use session ID ${first.id} (open, started`,
+    );
+    const closed = await cli("session", "close", second.id);
+    expect(closed.exitCode, closed.stderr).toBe(0);
+    const remaining = await cli("session", "view", "duplicate");
+    expect(remaining.exitCode, remaining.stderr).toBe(0);
+    expect(remaining.stderr).not.toContain("share that name");
+    expect(JSON.parse(remaining.stdout)).toMatchObject({
+      id: first.id,
+      state: "open",
+    });
   }, 30_000);
 
   test("isolates sessions and capabilities, queries retained telemetry and clears only one session", async () => {
@@ -631,7 +735,7 @@ describe("Local daemon E2E", () => {
           .map((value) => JSON.stringify(value))
           .join("\n"),
       });
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
     }
     const listed = await cli("event", "list", session.id);
     expect(listed.exitCode, listed.stderr).toBe(0);
@@ -656,8 +760,7 @@ describe("Local daemon E2E", () => {
     const { events } = JSON.parse(listed.stdout) as {
       events: { envelopeId: string }[];
     };
-    const envelopeId = events[0]?.envelopeId;
-    expect(envelopeId).toBeDefined();
+    const envelopeId = must(events[0]?.envelopeId, "a listed envelope");
     for (const parts of [["My App"], ["My", "App"]]) {
       const event = await cli("event", "view", ...parts, eventId);
       expect(event.exitCode, event.stderr).toBe(0);
@@ -686,7 +789,7 @@ describe("Local daemon E2E", () => {
       if (url !== process.env.VITE_SENTRY_SPOTLIGHT) process.exit(2);
       fetch(url, {method:'POST', headers:{'Content-Type':'application/x-sentry-envelope'},
       body:'{"event_id":"${"c".repeat(32)}"}\\n{"type":"event"}\\n{"message":"wrapped app"}'})
-      .then(r => {if (r.status !== 204) process.exitCode=3; console.error('app completed');})
+      .then(async r => {const b = await r.json(); if (r.status !== 200 || b.id !== '${"c".repeat(32)}') process.exitCode=3; console.error('app completed');})
       .catch(() => {process.exitCode=4;});`,
     );
     const result = await runCli(
@@ -900,7 +1003,7 @@ describe("Local daemon E2E", () => {
   }, 30000);
 
   test("waits for the port retry window during concurrent daemon startup", async () => {
-    const server = createServer();
+    const server = createSilentServer();
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
@@ -930,7 +1033,7 @@ describe("Local daemon E2E", () => {
   }, 30_000);
 
   test("reports a failed daemon startup without leaving an owner or late listener", async () => {
-    const server = createServer();
+    const server = createSilentServer();
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
@@ -947,7 +1050,7 @@ describe("Local daemon E2E", () => {
         String(address.port),
       );
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("exited before startup");
+      expect(result.stderr).toContain(`Port ${address.port} is already in use`);
       for (const filename of [
         "local-control-plane.owner",
         "local-control-plane.lock",
@@ -1007,11 +1110,92 @@ describe("Local daemon E2E", () => {
     expect(serve.stderr).toContain("--session");
   }, 30_000);
 
+  test("stop names the sessions still capturing, and their run stops waiting for the daemon", async () => {
+    const { spawn } = await import("node:child_process");
+    const { getCliCommand } = await import("../fixture.js");
+    const dir = getConfigDir();
+    const ready = join(dir, "app-ready");
+    const script = join(dir, "long-app.cjs");
+    // Ends by itself so a run that the test kills never leaves it behind.
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(ready)}, "");
+setTimeout(() => {}, 20000);`,
+    );
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const run = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "run",
+        "--session",
+        "capturing",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    run.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    run.stdout.resume();
+    const closed = new Promise<void>((resolve, reject) => {
+      run.once("close", () => resolve());
+      run.once("error", reject);
+    });
+    try {
+      await expect
+        .poll(() => stat(ready).then(Boolean, () => false), {
+          timeout: 15_000,
+        })
+        .toBe(true);
+      const stopped = await cli("daemon", "stop");
+      expect(stopped.exitCode, stopped.stderr).toBe(0);
+      expect(JSON.parse(stopped.stdout)).toMatchObject({
+        stopped: true,
+        capturingSessions: [{ label: "capturing" }],
+      });
+      expect(stopped.stderr).toContain("1 session was still capturing");
+      await expect
+        .poll(() => stderr, { timeout: 10_000 })
+        .toContain(
+          "The Local daemon stopped or restarted, so this session is no longer capturing",
+        );
+      // The app keeps running; only the event tail stops.
+      expect(run.exitCode, stderr).toBeNull();
+      expect(stderr).not.toContain("reconnecting in 2s");
+    } finally {
+      run.kill("SIGTERM");
+      await closed;
+    }
+  }, 30_000);
+
   test("restarts on the configured port and preserves singleton discovery", async () => {
     const port = await availablePort();
-    await createSession("restart", port);
+    const session = await createSession("restart", port);
     const result = await cli("daemon", "restart");
     expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Restarted the Local daemon while 1 session was still capturing: restart (${session.id})`,
+    );
     expect(JSON.parse(result.stdout)).toMatchObject({
       host: "127.0.0.1",
       port,
@@ -1022,6 +1206,265 @@ describe("Local daemon E2E", () => {
 });
 
 describe("Local foreground commands", () => {
+  /** `local run` on 127.0.0.1:`port` with a child that prints a marker. */
+  async function runMarkerApp(port: number) {
+    return await runCli(
+      [
+        "local",
+        "run",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        process.execPath,
+        "-e",
+        'console.log("child-ran")',
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+  }
+
+  test("run --port 0 binds an OS-assigned port and runs the app", async () => {
+    const result = await runMarkerApp(0);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain("child-ran");
+  }, 30000);
+
+  test("run binds a free port that fetch refuses to dial", async () => {
+    const port = await freeFetchBlockedPort();
+    if (port === undefined) return;
+    const result = await runMarkerApp(port);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toContain("child-ran");
+  }, 30000);
+
+  test("run rejects a held port that fetch refuses to dial", async () => {
+    const port = await freeFetchBlockedPort();
+    if (port === undefined) return;
+    const holder = createSilentServer();
+    await new Promise<void>((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    try {
+      const result = await runMarkerApp(port);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stdout).not.toContain("child-ran");
+      expect(result.stderr).toContain(`Port ${port} is already in use`);
+    } finally {
+      await new Promise<void>((resolve) => holder.close(() => resolve()));
+    }
+  }, 30000);
+
+  test.each(["bin", "node_modules/.bin"])(
+    "runs a batch-file command from %s on PATH with its arguments intact",
+    async (binPath) => {
+      // CLI-3T4: on Windows `print-args` is a .cmd file found by bare name,
+      // where spawn alone fails with ENOENT (no PATHEXT) or EINVAL
+      // (CVE-2024-27980). The arguments must reach the program unchanged and
+      // none of them may run as a cmd.exe command (BatBadBut).
+      const dir = getConfigDir();
+      const binDir = join(dir, ...binPath.split("/"));
+      await mkdir(binDir, { recursive: true });
+      const printArgs = join(dir, "print-args.cjs");
+      await writeFile(
+        printArgs,
+        "console.log(JSON.stringify(process.argv.slice(2)));",
+      );
+      const command = join(binDir, "print-args");
+      if (process.platform === "win32") {
+        await writeFile(
+          `${command}.cmd`,
+          `@"${process.execPath}" "${printArgs}" %*\r\n`,
+        );
+      } else {
+        await writeFile(
+          command,
+          `#!/bin/sh\nexec "${process.execPath}" "${printArgs}" "$@"\n`,
+        );
+        await chmod(command, 0o755);
+      }
+      const pathKey =
+        Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
+        "PATH";
+      const args = [
+        "a b",
+        "x&y",
+        'say "hi"',
+        'say "a&b"',
+        'x"&echo INJECTED&"',
+        "100%",
+        "%PATH%",
+        "a^b",
+      ];
+      const result = await runCli(
+        [
+          "local",
+          "run",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(await availablePort()),
+          "--",
+          "print-args",
+          ...args,
+        ],
+        {
+          env: {
+            SENTRY_CONFIG_DIR: dir,
+            SENTRY_CLI_NO_TELEMETRY: "1",
+            [pathKey]: `${binDir}${delimiter}${process.env[pathKey] ?? ""}`,
+          },
+        },
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout).toContain(JSON.stringify(args));
+      const lines = `${result.stdout}\n${result.stderr}`.split(/\r?\n/);
+      expect(lines.map((line) => line.trim())).not.toContain("INJECTED");
+    },
+    30000,
+  );
+
+  /**
+   * An app that counts its SIGINTs in `count` and writes its pid next to it,
+   * then dies from SIGINT half a second after the first one, which leaves
+   * time for a duplicate to arrive.
+   */
+  async function sigintCountingApp() {
+    const dir = getConfigDir();
+    const count = join(dir, "sigint-count");
+    const pidFile = join(dir, "sigint-app.pid");
+    const script = join(dir, "sigint-app.cjs");
+    await writeFile(
+      script,
+      `const fs = require("node:fs");
+let n = 0;
+fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+fs.writeFileSync(${JSON.stringify(count)}, "0");
+process.on("SIGINT", () => {
+  fs.writeFileSync(${JSON.stringify(count)}, String(++n));
+  if (n === 1) setTimeout(() => { process.removeAllListeners("SIGINT"); process.kill(process.pid, "SIGINT"); }, 500);
+});
+setInterval(() => {}, 1000);
+`,
+    );
+    const { getCliCommand } = await import("../fixture.js");
+    const command = [
+      ...getCliCommand(),
+      "local",
+      "run",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(await availablePort()),
+      "--",
+      process.execPath,
+      script,
+    ];
+    const env = {
+      ...process.env,
+      SENTRY_CONFIG_DIR: dir,
+      SENTRY_CLI_NO_TELEMETRY: "1",
+    };
+    /** Kill the app if it outlived the CLI, and say whether it had. */
+    const killOrphan = async () => {
+      const pid = Number(await readFile(pidFile, "utf8").catch(() => "0"));
+      if (pid <= 0) return false;
+      try {
+        process.kill(pid, "SIGKILL");
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    return { command, env, count, killOrphan };
+  }
+
+  test.skipIf(process.platform === "win32")(
+    "passes a SIGINT sent only to the CLI on to the app once and exits like the app",
+    async () => {
+      const app = await sigintCountingApp();
+      const [executable, ...args] = app.command;
+      if (!executable) throw new Error("Missing CLI executable");
+      // Detached: its own session with no terminal, so a Ctrl-C in the
+      // terminal running the tests can't reach the app.
+      const cli = spawn(executable, args, {
+        cwd: join(import.meta.dirname, "../.."),
+        detached: true,
+        env: app.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      cli.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      cli.stdout.resume();
+      const closed = new Promise<number | null>((resolve, reject) => {
+        cli.once("close", (code) => resolve(code));
+        cli.once("error", reject);
+      });
+      try {
+        await expect
+          .poll(() => readFile(app.count, "utf8").catch(() => ""), {
+            timeout: 15000,
+          })
+          .toBe("0");
+        // Only the CLI's own pid, never its process group.
+        cli.kill("SIGINT");
+        expect(await closed, stderr).toBe(130);
+        expect(await readFile(app.count, "utf8")).toBe("1");
+        expect(stderr).not.toContain("Error:");
+      } finally {
+        cli.kill("SIGKILL");
+        await app.killOrphan();
+      }
+    },
+    30000,
+  );
+
+  // On a terminal the app is in the foreground process group with the CLI,
+  // so Ctrl-C reaches both, while `kill -INT <cli pid>` reaches only the CLI.
+  const hasPython =
+    process.platform !== "win32" &&
+    spawnSync("python3", ["--version"]).status === 0;
+  test.skipIf(!hasPython).each([
+    ["Ctrl-C in the terminal", "ctrl-c"],
+    ["a SIGINT sent only to the CLI", "kill"],
+  ])(
+    "on a terminal, %s stops the app with one SIGINT",
+    async (_name, mode) => {
+      const app = await sigintCountingApp();
+      let stdout: string;
+      let orphaned: boolean;
+      try {
+        ({ stdout } = await promisify(execFile)(
+          "python3",
+          [
+            join(import.meta.dirname, "../fixtures/pty-interrupt.py"),
+            app.count,
+            mode,
+            ...app.command,
+          ],
+          { cwd: join(import.meta.dirname, "../.."), env: app.env },
+        ));
+      } finally {
+        orphaned = await app.killOrphan();
+      }
+      expect(orphaned, "the app outlived the CLI").toBe(false);
+      expect(JSON.parse(stdout)).toEqual({ exitCode: 130 });
+      expect(await readFile(app.count, "utf8")).toBe("1");
+    },
+    60000,
+  );
+
   test("rejects verification with a retained session before running the application", async () => {
     const marker = join(getConfigDir(), "verify-session-child-ran");
     const script = join(getConfigDir(), "verify-session-child.cjs");

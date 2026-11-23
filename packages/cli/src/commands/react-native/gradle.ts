@@ -54,8 +54,8 @@ type GradleResult = {
   bundle: string;
   sourcemap: string;
   debugId: string;
-  release?: string;
-  dist?: string[];
+  release?: string | undefined;
+  dist?: string[] | undefined;
   /** Number of upload operations performed (one per distribution). */
   uploads: number;
 };

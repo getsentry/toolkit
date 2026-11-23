@@ -1,4 +1,8 @@
-import { isLoopbackHost, parseStreamEndpoint } from "./spotlight.ts";
+import {
+  isLoopbackHost,
+  parseStreamEndpoint,
+  readConnectionLink,
+} from "./spotlight.ts";
 
 const DIRECTORY_STORAGE_KEY = "sentry.local.session-directory";
 export type ViewerSession = {
@@ -39,7 +43,7 @@ export function parseSessionDirectoryUrl(
 export function getInitialSessionDirectory(
   streamUrl: string,
 ): string | undefined {
-  const fragment = new URLSearchParams(window.location.hash.slice(1));
+  const link = readConnectionLink(window.location.hash);
   let saved: string | null = null;
   try {
     saved = window.sessionStorage.getItem(DIRECTORY_STORAGE_KEY);
@@ -47,12 +51,12 @@ export function getInitialSessionDirectory(
     /* Storage may be disabled. */
   }
   const directory = parseSessionDirectoryUrl(
-    fragment.has("directory") ? fragment.get("directory") : saved,
+    link.directory ?? saved,
     streamUrl,
   );
   // The startup effect removes the fragment before discovery can finish. Save
   // its validated capability now so an early reload cannot lose the picker.
-  if (directory && fragment.has("directory")) saveSessionDirectory(directory);
+  if (directory && link.directory !== null) saveSessionDirectory(directory);
   return directory;
 }
 
@@ -82,7 +86,7 @@ export function parseViewerSessions(
       if (!entry || typeof entry !== "object" || Array.isArray(entry))
         throw new Error("Invalid session");
       const session = entry as Record<string, unknown>;
-      const expiresAt = session.expiresAt;
+      const expiresAt = session["expiresAt"];
       if (
         expiresAt !== undefined &&
         (typeof expiresAt !== "number" ||
@@ -91,29 +95,29 @@ export function parseViewerSessions(
       )
         throw new Error("Invalid session");
       if (
-        typeof session.id !== "string" ||
-        !session.id ||
-        typeof session.label !== "string" ||
-        typeof session.cwd !== "string" ||
-        (session.state !== "open" && session.state !== "retained") ||
-        typeof session.streamUrl !== "string"
+        typeof session["id"] !== "string" ||
+        !session["id"] ||
+        typeof session["label"] !== "string" ||
+        typeof session["cwd"] !== "string" ||
+        (session["state"] !== "open" && session["state"] !== "retained") ||
+        typeof session["streamUrl"] !== "string"
       )
         throw new Error("Invalid session");
-      const stream = parseStreamEndpoint(session.streamUrl);
+      const stream = parseStreamEndpoint(session["streamUrl"]);
       if (stream?.kind !== "loopback")
         throw new Error("Invalid session stream");
       const url = new URL(stream.url);
       if (
         url.origin !== origin ||
         url.pathname !==
-          `/_local/v1/sessions/${encodeURIComponent(session.id)}/stream`
+          `/_local/v1/sessions/${encodeURIComponent(session["id"])}/stream`
       )
         throw new Error("Invalid session stream");
       return {
-        id: session.id,
-        label: session.label,
-        cwd: session.cwd,
-        state: session.state,
+        id: session["id"],
+        label: session["label"],
+        cwd: session["cwd"],
+        state: session["state"],
         streamUrl: stream.url,
         ...(typeof expiresAt === "number" && { expiresAt }),
       };

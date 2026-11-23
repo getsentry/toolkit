@@ -22,6 +22,86 @@ export function formatUtcTimestamp(timestamp: number): string {
     .replace(/\.\d{3}Z$/, "");
 }
 
+/** Parse epoch milliseconds or an ISO date string, or undefined when invalid. */
+function parseTimestamp(
+  timestamp: number | string | null | undefined,
+): Date | undefined {
+  if (timestamp === null || timestamp === undefined || timestamp === "") {
+    return;
+  }
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/**
+ * Format an epoch-millisecond timestamp or ISO date string as a full date and
+ * time in the machine's locale and timezone.
+ *
+ * Numbers are always epoch milliseconds, the unit `Date` takes. Convert
+ * epoch-second values with `seconds * 1000` before calling.
+ *
+ * Returns "—" when the input is missing or not a valid date.
+ */
+export function formatLocalDateTime(
+  timestamp: number | string | null | undefined,
+): string {
+  return parseTimestamp(timestamp)?.toLocaleString() ?? "—";
+}
+
+/**
+ * Format an epoch-millisecond timestamp or ISO date string as a time of day in
+ * the machine's locale and timezone. Takes the same input as
+ * {@link formatLocalDateTime}.
+ *
+ * Returns "—" when the input is missing or not a valid date.
+ */
+export function formatLocalTime(
+  timestamp: number | string | null | undefined,
+): string {
+  return parseTimestamp(timestamp)?.toLocaleTimeString() ?? "—";
+}
+
+const SHORT_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/**
+ * Format an epoch-second timestamp as a chart time-axis label in local time.
+ *
+ * Adapts to the time span the axis covers:
+ * - < 2 days: "HH:MM"
+ * - 2-30 days: "MM/DD"
+ * - > 30 days: "Mon DD"
+ */
+export function formatAxisTimestamp(
+  epochSeconds: number,
+  spanDays: number,
+): string {
+  const date = new Date(epochSeconds * 1000);
+  if (spanDays < 2) {
+    const hh = String(date.getHours()).padStart(2, "0");
+    const mm = String(date.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+  if (spanDays <= 30) {
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${mm}/${dd}`;
+  }
+  return `${SHORT_MONTHS[date.getMonth()] ?? "???"} ${date.getDate()}`;
+}
+
 /**
  * Format a date string as a relative time label.
  *

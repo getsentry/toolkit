@@ -14,7 +14,14 @@ import type { SentryContext } from "../../../src/context.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
 import { setOrgRegion } from "../../../src/lib/db/regions.js";
 import { ApiError } from "../../../src/lib/errors.js";
-import { mockFetch, useEnvSandbox, useTestConfigDir } from "../../helpers.js";
+import {
+  mockFetch,
+  useEnvSandbox,
+  useTestConfigDir,
+  loadCommand,
+  at,
+  must,
+} from "../../helpers.js";
 
 const getConfigDir = useTestConfigDir("issue-tags-", {
   isolateProjectRoot: true,
@@ -205,12 +212,12 @@ describe("sentry issue tags", () => {
   });
 
   test("removes terminal controls from human output while preserving JSON values", async () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const value = "\u001b]52;c;dGVzdA==\u0007\u001b[2J1.2.3\u0008\u202e";
     tagResponse = {
       ...TAG,
       key: "\u001b[2Jrelease\u202e",
-      topValues: [{ ...TAG.topValues![0], value }],
+      topValues: [{ ...at(must(TAG.topValues), 0), value }],
     };
     const args = ["issue", "tags", "test-org/12345", "release"];
     const human = await runCli(args);
@@ -246,7 +253,7 @@ describe("sentry issue tags", () => {
   test("propagates API failures instead of returning an empty distribution", async () => {
     tagStatus = 403;
     const { context, stdout } = captureContext();
-    const func = await tagsCommand.loader();
+    const func = await loadCommand(tagsCommand);
 
     await expect(
       func.call(

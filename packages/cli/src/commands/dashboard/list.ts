@@ -62,10 +62,10 @@ type DashboardListResult = {
   dashboards: DashboardListItem[];
   orgSlug: string;
   hasMore: boolean;
-  hasPrev?: boolean;
-  nextCursor?: string;
+  hasPrev?: boolean | undefined;
+  nextCursor?: string | undefined;
   /** The title filter used (for empty-state messaging) */
-  titleFilter?: string;
+  titleFilter?: string | undefined;
   /** All titles seen during fetch (for fuzzy suggestions on empty filter results) */
   allTitles?: string[];
 };

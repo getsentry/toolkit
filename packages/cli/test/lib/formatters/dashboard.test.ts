@@ -37,6 +37,7 @@ import type {
   TimeseriesResult,
   UnsupportedResult,
 } from "../../../src/types/dashboard.js";
+import { at } from "../../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Constants (must match source)
@@ -73,30 +74,30 @@ function usePlainMode() {
   let savedPlain: string | undefined;
 
   beforeEach(() => {
-    savedNoColor = process.env.NO_COLOR;
-    savedForceColor = process.env.FORCE_COLOR;
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
+    savedNoColor = process.env["NO_COLOR"];
+    savedForceColor = process.env["FORCE_COLOR"];
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
 
-    process.env.NO_COLOR = "1";
-    delete process.env.FORCE_COLOR;
-    delete process.env.SENTRY_PLAIN_OUTPUT;
+    process.env["NO_COLOR"] = "1";
+    delete process.env["FORCE_COLOR"];
+    delete process.env["SENTRY_PLAIN_OUTPUT"];
   });
 
   afterEach(() => {
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
     if (savedForceColor === undefined) {
-      delete process.env.FORCE_COLOR;
+      delete process.env["FORCE_COLOR"];
     } else {
-      process.env.FORCE_COLOR = savedForceColor;
+      process.env["FORCE_COLOR"] = savedForceColor;
     }
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
   });
 }
@@ -114,26 +115,26 @@ function useRenderedMode() {
   let savedChalkLevel: typeof chalk.level;
 
   beforeEach(() => {
-    savedPlain = process.env.SENTRY_PLAIN_OUTPUT;
-    savedNoColor = process.env.NO_COLOR;
+    savedPlain = process.env["SENTRY_PLAIN_OUTPUT"];
+    savedNoColor = process.env["NO_COLOR"];
     savedChalkLevel = chalk.level;
 
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
-    delete process.env.NO_COLOR;
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
+    delete process.env["NO_COLOR"];
     chalk.level = 3;
   });
 
   afterEach(() => {
     chalk.level = savedChalkLevel;
     if (savedPlain === undefined) {
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     } else {
-      process.env.SENTRY_PLAIN_OUTPUT = savedPlain;
+      process.env["SENTRY_PLAIN_OUTPUT"] = savedPlain;
     }
     if (savedNoColor === undefined) {
-      delete process.env.NO_COLOR;
+      delete process.env["NO_COLOR"];
     } else {
-      process.env.NO_COLOR = savedNoColor;
+      process.env["NO_COLOR"] = savedNoColor;
     }
   });
 }
@@ -329,14 +330,14 @@ describe("formatDashboardWithData", () => {
       const output = formatDashboardWithData(data);
       const lines = output.split("\n");
       // First line contains title and period
-      const firstLine = stripAnsi(lines[0]);
+      const firstLine = stripAnsi(at(lines, 0));
       expect(firstLine).toContain("24h");
     });
 
     test("renders environment with green color", () => {
       const data = makeDashboardData({ environment: ["production"] });
       const output = formatDashboardWithData(data);
-      const firstLine = stripAnsi(output.split("\n")[0]);
+      const firstLine = stripAnsi(at(output.split("\n"), 0));
       expect(firstLine).toContain("production");
     });
 
@@ -345,9 +346,9 @@ describe("formatDashboardWithData", () => {
       const data = makeDashboardData({ url });
       const output = formatDashboardWithData(data);
       // Rendered mode: title line, muted underline, blank separator
-      const secondLine = stripAnsi(output.split("\n")[1]);
+      const secondLine = stripAnsi(at(output.split("\n"), 1));
       expect(secondLine).toMatch(/^─+$/);
-      expect(stripAnsi(output.split("\n")[2])).toBe("");
+      expect(stripAnsi(at(output.split("\n"), 2))).toBe("");
     });
   });
 
@@ -771,6 +772,282 @@ describe("formatDashboardWithData", () => {
       // Legend for multi-series
       expect(output).toContain("series-a");
       expect(output).toContain("series-b");
+    });
+  });
+
+  describe("incomplete buckets (plain mode)", () => {
+    const values = Array.from({ length: 20 }, (_, i) => ({
+      timestamp: 1_700_000_000 + i * 3600,
+      value: 10 + (i % 5) * 10,
+      ...(i >= 18 ? { incomplete: true } : {}),
+    }));
+
+    test("marks the latest sparkline value as incomplete", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("(incomplete)");
+    });
+
+    test.each([2, 3])(
+      "keeps the sparkline marker inside the border at layout width %i",
+      (w) => {
+        const data = makeDashboardData({
+          widgets: [
+            makeWidget({
+              layout: { x: 0, y: 0, w, h: 1 },
+              data: makeTimeseriesData({
+                series: [
+                  {
+                    label: "p95(span.duration) long label",
+                    values: values.map((v) => ({
+                      ...v,
+                      value: v.value + 1234.56,
+                    })),
+                    unit: "millisecond",
+                  },
+                ],
+              }),
+            }),
+          ],
+        });
+        const output = formatDashboardWithData(data);
+        expect(output).toMatch(/\(incomplete\) *│/);
+      },
+    );
+
+    /** Same series, but the incomplete tail has no measurement yet. */
+    const unmeasuredTail = values.map((v) =>
+      v.incomplete ? { ...v, value: null } : v,
+    );
+
+    test("does not mark a complete sparkline value before an unmeasured incomplete tail", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: unmeasuredTail }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).not.toContain("(incomplete)");
+    });
+
+    test("marks the latest bar chart value as incomplete", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("(incomplete)");
+    });
+
+    test("does not mark a complete bar chart value before an unmeasured incomplete tail", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: unmeasuredTail }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).not.toContain("(incomplete)");
+      expect(output).toContain("┄");
+    });
+
+    test("does not mark complete sparkline values", () => {
+      const output = formatDashboardWithData(makeDashboardData());
+      expect(output).not.toContain("(incomplete)");
+      expect(output).not.toContain("Ingestion delay");
+    });
+
+    test("dashes the time axis under incomplete bar columns", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const axisLine = output.split("\n").find((line) => line.includes("└"));
+      expect(axisLine).toBeDefined();
+      expect(axisLine).toContain("┄");
+      // Incomplete columns sit at the right end of the axis, after every
+      // solid segment.
+      expect(axisLine?.indexOf("┄")).toBeGreaterThan(
+        axisLine?.lastIndexOf("─") ?? -1,
+      );
+    });
+
+    test("keeps the dashed marker when a tick lands on the last column", () => {
+      // 73 one-hour buckets on a narrow widget: each column is one character
+      // wide and the final tick sits on the incomplete column.
+      const hourly = Array.from({ length: 73 }, (_, i) => ({
+        timestamp: 1_700_000_000 + i * 3600,
+        value: 5 + (i % 7),
+        ...(i >= 71 ? { incomplete: true } : {}),
+      }));
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 3, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values: hourly }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const axisLine = output.split("\n").find((line) => line.includes("└"));
+      expect(axisLine).toContain("┄");
+    });
+
+    test("dashes the axis under incomplete stacked bar columns", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [
+                { label: "series-a", values },
+                {
+                  label: "series-b",
+                  values: values.map((v) => ({ ...v, value: 1 })),
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      expect(output).toContain("┄");
+    });
+
+    test("reports the ingestion delay in the header", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+              ingestion: { status: "delayed", delaySeconds: 90 },
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain("Ingestion delay: ~90s");
+      expect(lines[1]).toContain("┄ buckets may still be filling");
+    });
+
+    test("formats longer ingestion delays in minutes", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              ingestion: { status: "delayed", delaySeconds: 600 },
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain("Ingestion delay: ~10m");
+    });
+
+    test("notes incomplete buckets even without a delay figure", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const lines = formatDashboardWithData(data).split("\n");
+      expect(lines[1]).toContain(
+        "Ingestion delay (┄ buckets may still be filling)",
+      );
+    });
+  });
+
+  describe("incomplete buckets (rendered mode)", () => {
+    useRenderedMode();
+
+    test("dims the incomplete sparkline tail and latest value", () => {
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            data: makeTimeseriesData({
+              series: [
+                {
+                  label: "count()",
+                  values: [
+                    { timestamp: 1, value: 1 },
+                    { timestamp: 2, value: 5 },
+                    { timestamp: 3, value: 3, incomplete: true },
+                  ],
+                },
+              ],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      const plain = stripAnsi(output);
+      // The muted hex color (#898294) wraps the incomplete tail.
+      expect(output).toContain("\u001b[38;2;137;130;148m");
+      expect(plain).not.toContain("(incomplete)");
+      expect(plain).toMatch(/[▁▂▃▄▅▆▇█⎽]{3}/);
+    });
+
+    test("dims incomplete bar columns", () => {
+      const values = Array.from({ length: 10 }, (_, i) => ({
+        timestamp: 1_700_000_000 + i * 3600,
+        value: 10 + i,
+        ...(i === 9 ? { incomplete: true } : {}),
+      }));
+      const data = makeDashboardData({
+        widgets: [
+          makeWidget({
+            displayType: "bar",
+            layout: { x: 0, y: 0, w: 2, h: 3 },
+            data: makeTimeseriesData({
+              series: [{ label: "count()", values }],
+            }),
+          }),
+        ],
+      });
+      const output = formatDashboardWithData(data);
+      // chalk.dim emits SGR 2 around the dimmed columns.
+      expect(output).toContain("\u001b[2m");
+      expect(stripAnsi(output)).toContain("┄");
     });
   });
 

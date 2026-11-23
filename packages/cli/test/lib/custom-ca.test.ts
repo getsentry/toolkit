@@ -140,15 +140,15 @@ describe("custom CA loading", () => {
 
   beforeEach(() => {
     __resetForTests();
-    savedNodeExtra = process.env.NODE_EXTRA_CA_CERTS;
-    delete process.env.NODE_EXTRA_CA_CERTS;
+    savedNodeExtra = process.env["NODE_EXTRA_CA_CERTS"];
+    delete process.env["NODE_EXTRA_CA_CERTS"];
   });
 
   afterEach(() => {
     if (savedNodeExtra !== undefined) {
-      process.env.NODE_EXTRA_CA_CERTS = savedNodeExtra;
+      process.env["NODE_EXTRA_CA_CERTS"] = savedNodeExtra;
     } else {
-      delete process.env.NODE_EXTRA_CA_CERTS;
+      delete process.env["NODE_EXTRA_CA_CERTS"];
     }
   });
 
@@ -174,7 +174,7 @@ describe("custom CA loading", () => {
   test("loads CA from NODE_EXTRA_CA_CERTS", () => {
     const certPath = join(getConfigDir(), "extra-ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     const result = getCustomTlsOptions();
     expect(result).toBeDefined();
@@ -190,7 +190,7 @@ describe("custom CA loading", () => {
     writeFileSync(defaultPath, CERT_PEM);
     writeFileSync(envPath, ENV_PEM);
     setDefaultCaCert(defaultPath);
-    process.env.NODE_EXTRA_CA_CERTS = envPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = envPath;
 
     const result = getCustomTlsOptions();
     expect(result?.tls.ca).toContain(CERT_PEM);
@@ -199,7 +199,7 @@ describe("custom CA loading", () => {
   });
 
   test("returns undefined when cert file does not exist", () => {
-    process.env.NODE_EXTRA_CA_CERTS = "/nonexistent/path/ca.pem";
+    process.env["NODE_EXTRA_CA_CERTS"] = "/nonexistent/path/ca.pem";
 
     const result = getCustomTlsOptions();
     expect(result).toBeUndefined();
@@ -209,7 +209,7 @@ describe("custom CA loading", () => {
   test("returns undefined when cert file is not valid PEM", () => {
     const certPath = join(getConfigDir(), "not-pem.txt");
     writeFileSync(certPath, "this is not a PEM file");
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     const result = getCustomTlsOptions();
     expect(result).toBeUndefined();
@@ -219,11 +219,12 @@ describe("custom CA loading", () => {
   test("caches result across calls", () => {
     const certPath = join(getConfigDir(), "cached.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     const first = getCustomTlsOptions();
     // Even if env var changes, cached result stays
-    process.env.NODE_EXTRA_CA_CERTS = "/different/path";
+    // Even if env var changes, cached result stays
+    process.env["NODE_EXTRA_CA_CERTS"] = "/different/path";
     const second = getCustomTlsOptions();
     expect(first).toBe(second);
   });
@@ -244,15 +245,15 @@ describe("warnIfSaasWithEnvCa", () => {
 
   beforeEach(() => {
     __resetForTests();
-    savedNodeExtra = process.env.NODE_EXTRA_CA_CERTS;
-    delete process.env.NODE_EXTRA_CA_CERTS;
+    savedNodeExtra = process.env["NODE_EXTRA_CA_CERTS"];
+    delete process.env["NODE_EXTRA_CA_CERTS"];
   });
 
   afterEach(() => {
     if (savedNodeExtra !== undefined) {
-      process.env.NODE_EXTRA_CA_CERTS = savedNodeExtra;
+      process.env["NODE_EXTRA_CA_CERTS"] = savedNodeExtra;
     } else {
-      delete process.env.NODE_EXTRA_CA_CERTS;
+      delete process.env["NODE_EXTRA_CA_CERTS"];
     }
   });
 
@@ -270,7 +271,7 @@ describe("warnIfSaasWithEnvCa", () => {
   test("does not warn for env CAs targeting self-hosted", () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
     getCustomTlsOptions();
 
     // Self-hosted URL — no warning
@@ -281,7 +282,7 @@ describe("warnIfSaasWithEnvCa", () => {
   test("warning names @sentry/mcp-server's own ca-cert command", () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
     const stderr = vi
       .spyOn(process.stderr, "write")
       .mockImplementation(() => true);
@@ -325,15 +326,15 @@ describe("getCustomCaCerts", () => {
 
   beforeEach(() => {
     __resetForTests();
-    savedNodeExtra = process.env.NODE_EXTRA_CA_CERTS;
-    delete process.env.NODE_EXTRA_CA_CERTS;
+    savedNodeExtra = process.env["NODE_EXTRA_CA_CERTS"];
+    delete process.env["NODE_EXTRA_CA_CERTS"];
   });
 
   afterEach(() => {
     if (savedNodeExtra !== undefined) {
-      process.env.NODE_EXTRA_CA_CERTS = savedNodeExtra;
+      process.env["NODE_EXTRA_CA_CERTS"] = savedNodeExtra;
     } else {
-      delete process.env.NODE_EXTRA_CA_CERTS;
+      delete process.env["NODE_EXTRA_CA_CERTS"];
     }
   });
 
@@ -344,7 +345,7 @@ describe("getCustomCaCerts", () => {
   test("returns PEM string when CA is loaded", () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     const caCerts = getCustomCaCerts();
     expect(caCerts).toBeDefined();
@@ -354,7 +355,7 @@ describe("getCustomCaCerts", () => {
   test("returns same value as getCustomTlsOptions().tls.ca", () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     const caCerts = getCustomCaCerts();
     const tlsOpts = getCustomTlsOptions();
@@ -376,17 +377,17 @@ describe("customFetch", () => {
 
   beforeEach(() => {
     __resetForTests();
-    savedNodeExtra = process.env.NODE_EXTRA_CA_CERTS;
-    delete process.env.NODE_EXTRA_CA_CERTS;
+    savedNodeExtra = process.env["NODE_EXTRA_CA_CERTS"];
+    delete process.env["NODE_EXTRA_CA_CERTS"];
     originalFetch = globalThis.fetch;
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     if (savedNodeExtra !== undefined) {
-      process.env.NODE_EXTRA_CA_CERTS = savedNodeExtra;
+      process.env["NODE_EXTRA_CA_CERTS"] = savedNodeExtra;
     } else {
-      delete process.env.NODE_EXTRA_CA_CERTS;
+      delete process.env["NODE_EXTRA_CA_CERTS"];
     }
   });
 
@@ -400,13 +401,13 @@ describe("customFetch", () => {
     await customFetch("https://example.com", { headers: { "X-Test": "1" } });
     expect(capturedInit).toBeDefined();
     expect(capturedInit?.headers).toEqual({ "X-Test": "1" });
-    expect((capturedInit as Record<string, unknown>).tls).toBeUndefined();
+    expect((capturedInit as Record<string, unknown>)["tls"]).toBeUndefined();
   });
 
   test("spreads tls options when custom CA is loaded", async () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     let capturedInit: Record<string, unknown> | undefined;
     globalThis.fetch = (_input: unknown, init?: RequestInit) => {
@@ -416,15 +417,15 @@ describe("customFetch", () => {
 
     await customFetch("https://example.com", { headers: { "X-Test": "1" } });
     expect(capturedInit).toBeDefined();
-    expect(capturedInit?.tls).toBeDefined();
+    expect(capturedInit?.["tls"]).toBeDefined();
     // oxlint-disable-next-line no-unsafe-optional-chaining -- Existing test assumes the optional fixture is present.
-    expect((capturedInit?.tls as { ca: string }).ca).toContain(CERT_PEM);
+    expect((capturedInit?.["tls"] as { ca: string }).ca).toContain(CERT_PEM);
   });
 
   test("preserves caller init options alongside tls", async () => {
     const certPath = join(getConfigDir(), "ca.pem");
     writeFileSync(certPath, CERT_PEM);
-    process.env.NODE_EXTRA_CA_CERTS = certPath;
+    process.env["NODE_EXTRA_CA_CERTS"] = certPath;
 
     let capturedInit: Record<string, unknown> | undefined;
     globalThis.fetch = (_input: unknown, init?: RequestInit) => {
@@ -436,10 +437,10 @@ describe("customFetch", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-    expect(capturedInit?.method).toBe("POST");
-    expect(capturedInit?.headers).toEqual({
+    expect(capturedInit?.["method"]).toBe("POST");
+    expect(capturedInit?.["headers"]).toEqual({
       "Content-Type": "application/json",
     });
-    expect(capturedInit?.tls).toBeDefined();
+    expect(capturedInit?.["tls"]).toBeDefined();
   });
 });

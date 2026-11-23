@@ -1,4 +1,5 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { stubOpenRouter } from "./openrouter-stub";
 
 const { fetchDocPage, searchPages } = vi.hoisted(() => ({
   fetchDocPage: vi.fn(),
@@ -22,7 +23,13 @@ import {
   QUERY_MODEL_SETTINGS,
   QUERY_SYSTEM_PROMPT,
   recoverQueryFallbackSources,
+  runQueryAgent,
 } from "../agent/query-agent";
+import { PRIMARY_MODEL } from "../agent/model-fallback";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("finalizeDocsAnswer", () => {
   test("keeps fetched inline citations and appends a deterministic sources section", () => {
@@ -340,5 +347,45 @@ describe("recoverQueryFallbackSources", () => {
     await expect(
       recoverQueryFallbackSources("How do I configure Hono tracing?"),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("runQueryAgent", () => {
+  test("forces toolChoice none on the last step", async () => {
+    const url = "https://docs.sentry.io/platforms/javascript/";
+    fetchDocPage.mockResolvedValue("# JavaScript");
+    const toolStep = (id: string) => ({
+      toolCalls: [
+        {
+          id,
+          input: { path: "/platforms/javascript/" },
+          name: "fetch_doc_page",
+        },
+      ],
+    });
+    const requests = stubOpenRouter({
+      [PRIMARY_MODEL]: [
+        toolStep("c1"),
+        toolStep("c2"),
+        toolStep("c3"),
+        toolStep("c4"),
+        toolStep("c5"),
+        { text: `Use [the JavaScript SDK](${url}).` },
+      ],
+    });
+
+    const result = await runQueryAgent("sk-or-test", "How do I set up JS?");
+
+    expect(result.sources).toEqual([url]);
+    expect(requests).toHaveLength(6);
+    expect(requests.map((request) => request.tool_choice)).toEqual([
+      "auto",
+      "auto",
+      "auto",
+      "auto",
+      "auto",
+      "none",
+    ]);
+    expect(requests[5]!.tools).toHaveLength(2);
   });
 });

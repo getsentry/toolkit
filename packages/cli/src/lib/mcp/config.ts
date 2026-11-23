@@ -32,20 +32,20 @@ export type McpAgentProvider =
 export type McpServerConfig = {
   sentryHost: string;
   sentryProtocol: "http" | "https";
-  mcpUrl?: string;
-  openaiBaseUrl?: string;
-  openaiModel?: string;
-  anthropicBaseUrl?: string;
-  anthropicModel?: string;
-  agentProvider?: McpAgentProvider;
+  mcpUrl?: string | undefined;
+  openaiBaseUrl?: string | undefined;
+  openaiModel?: string | undefined;
+  anthropicBaseUrl?: string | undefined;
+  anthropicModel?: string | undefined;
+  agentProvider?: McpAgentProvider | undefined;
   agentProviderFromFlag: boolean;
   experimental: boolean;
   /** Skills granted for this session. */
   finalSkills: Set<Skill>;
   /** Skills removed with `--disable-skills` or `MCP_DISABLE_SKILLS`. */
   disabledSkills: Skill[];
-  organizationSlug?: string;
-  projectSlug?: string;
+  organizationSlug?: string | undefined;
+  projectSlug?: string | undefined;
 };
 
 const AGENT_PROVIDERS: ReadonlySet<string> = new Set<McpAgentProvider>([
