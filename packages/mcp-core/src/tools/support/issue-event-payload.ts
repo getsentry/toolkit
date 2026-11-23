@@ -354,7 +354,7 @@ function mapPerformance(
   occurrence: Record<string, unknown> | undefined,
   performanceTrace: Trace | undefined,
 ): IssueEventPayload["performance"] {
-  if (event.type !== "transaction" || !occurrence) {
+  if (!occurrence) {
     return null;
   }
   const issueType =
@@ -362,6 +362,13 @@ function mapPerformance(
       ? (OCCURRENCE_TYPE_TO_ISSUE_TYPE[occurrence["type"]] ?? null)
       : (nonEmptyString(occurrence["issueType"]) ??
         nonEmptyString(occurrence["type"]));
+  // performance issues detected from spans arrive as generic events
+  if (
+    event.type !== "transaction" &&
+    !(event.type === "generic" && issueType?.startsWith("performance_"))
+  ) {
+    return null;
+  }
   const evidenceData: N1EvidenceData | undefined = record(
     occurrence["evidenceData"],
   );

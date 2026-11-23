@@ -175,6 +175,62 @@ describe("buildIssueEventPayload", () => {
     expect(result.metricAlert).toBeNull();
   });
 
+  it("maps N+1 evidence on a generic event from span-based detection", () => {
+    // shaped like `GET /issues/{id}/events/{id}/` for an N+1 issue that
+    // Sentry detected from spans: a generic event with no spans entry
+    const event = {
+      id: "5f0c3d1e9a7b4c2d8e6f1a2b3c4d5e6f",
+      type: "generic",
+      title: "N+1 Query",
+      message: null,
+      platform: "node",
+      dateCreated: "2026-11-23T03:20:00.000Z",
+      entries: [],
+      occurrence: {
+        id: "occ-3",
+        projectId: 1,
+        eventId: "5f0c3d1e9a7b4c2d8e6f1a2b3c4d5e6f",
+        fingerprint: ["ghi"],
+        issueTitle: "N+1 Query",
+        type: 1006,
+        culprit: "POST /projects/:projectId/media",
+        evidenceData: {
+          op: "db",
+          transactionName: "POST /projects/:projectId/media",
+          parentSpan: "function - getMediaForProject",
+          parentSpanIds: ["aaaaaaaaaaaaaaaa"],
+          causeSpanIds: ["bbbbbbbbbbbbbbbb"],
+          offenderSpanIds: ["cccccccccccccccc", "dddddddddddddddd"],
+          repeatingSpansCompact: ["select media where id = ?"],
+          numberRepeatingSpans: "2",
+        },
+        evidenceDisplay: [
+          {
+            name: "Offending Spans",
+            value: "db - select media where id = ?",
+            important: true,
+          },
+        ],
+      },
+    } as unknown as Event;
+
+    expect(payload(event).performance).toEqual({
+      issueType: "performance_n_plus_one_db_queries",
+      transactionName: "POST /projects/:projectId/media",
+      parentOperation: "function - getMediaForProject",
+      repeatedOperations: ["select media where id = ?"],
+      repeatCount: 2,
+      spans: ["cccccccccccccccc", "dddddddddddddddd"].map((spanId) => ({
+        spanId,
+        parentSpanId: null,
+        op: null,
+        description: null,
+        durationMs: null,
+        isOffender: true,
+      })),
+    });
+  });
+
   describe("metric alert", () => {
     it("maps the monitor query from camelCased evidence", () => {
       expect(
