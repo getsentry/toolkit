@@ -192,3 +192,16 @@ export const workspaceNavigation: WorkspaceNavigationItem[] = [
     getItems: (snapshot) => snapshot.profiles,
   },
 ];
+
+const navigationByView = new Map(
+  workspaceNavigation.map((entry) => [entry.id, entry]),
+);
+
+/** The navigation entry for a workspace view. Every view has one. */
+export function workspaceNavigationFor(
+  view: WorkspaceView,
+): WorkspaceNavigationItem {
+  const entry = navigationByView.get(view);
+  if (!entry) throw new Error(`No workspace navigation entry for ${view}`);
+  return entry;
+}

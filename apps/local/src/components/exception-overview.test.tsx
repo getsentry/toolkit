@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { getEventExceptions } from "@/lib/exceptions.ts";
+import { getEventMetadata } from "@/lib/spotlight.ts";
 import { ExceptionOverview } from "./exception-overview.tsx";
 
 afterEach(cleanup);
@@ -36,6 +37,18 @@ test("renders exception messages and source as escaped text", () => {
   ).not.toBeNull();
   expect(screen.getByText(source)).not.toBeNull();
   expect(container.querySelector("script, img")).toBeNull();
+});
+
+test("titles a coloured event message like the list, without ANSI escapes", () => {
+  const event = {
+    message: "\u001b[31mCheckout retry limit reached\u001b[0m",
+    exception: { values: [{ value: "Checkout retry limit reached" }] },
+  };
+  const listTitle = getEventMetadata(event, "event").title;
+  expect(listTitle).toBe("Checkout retry limit reached");
+  render(<ExceptionOverview exceptions={getEventExceptions(event)} />);
+  expect(screen.getByRole("heading", { level: 3 }).textContent).toBe(listTitle);
+  expect(event.message).toContain("\u001b[31m");
 });
 
 test("explains when the SDK supplied an exception without frames", () => {

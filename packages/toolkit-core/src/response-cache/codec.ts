@@ -63,9 +63,7 @@ function run<Options>(
  *
  * @param zlib - Defaults to `node:zlib`; tests pass one without zstd
  */
-export function createBodyCodec(
-  zlib: ZlibRuntime = nodeZlib as ZlibRuntime,
-): BodyCodec {
+export function createBodyCodec(zlib: ZlibRuntime = nodeZlib): BodyCodec {
   const zstd =
     typeof zlib.zstdCompress === "function" &&
     typeof zlib.zstdDecompress === "function"

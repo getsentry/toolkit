@@ -53,6 +53,7 @@ import {
 } from "./constants.js";
 import { IgnoreStack } from "./ignore.js";
 import type { IgnoreMatcher, WalkEntry, WalkOptions } from "./types.js";
+import { rethrow } from "../rethrow.js";
 
 const log = logger.withTag("scan-walk");
 
@@ -420,14 +421,14 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
   };
 
   let activeWorkers = 0;
-  let producerError: Error | undefined;
+  let producerError: unknown = null;
   let cancelled = false;
   const workerCount = cfg.concurrency;
   const workers: Promise<void>[] = [];
 
   // worker lifecycle (cancelled, abort, idle-wait, error path, wake coordination) is inherently branchy
   const runWorker = async (): Promise<void> => {
-    while (true) {
+    for (;;) {
       // Outer try catches:
       //   - AbortError from `checkAborted` (crucially including the
       //     first iteration when the signal was pre-fired);
@@ -482,8 +483,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
         // reaching here is either (a) a pre-fired or mid-walk
         // `AbortError` from `checkAborted`, or (b) a genuinely
         // unexpected non-FS error.
-        producerError =
-          error instanceof Error ? error : new Error(String(error));
+        producerError = error;
         // Cascade: peers can't do useful work, so short-circuit
         // them. The consumer sees `producerError` and throws.
         cancelled = true;
@@ -508,7 +508,7 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
   });
 
   try {
-    while (true) {
+    for (;;) {
       if (pending.length > 0) {
         while (pending.length > 0) {
           yield pending.shift() as WalkEntry;
@@ -516,8 +516,8 @@ async function* walkParallel(ctx: WalkContext): AsyncGenerator<WalkEntry> {
         }
         continue;
       }
-      if (producerError) {
-        throw producerError;
+      if (producerError !== null) {
+        rethrow(producerError);
       }
       if (stack.length === 0 && activeWorkers === 0) {
         break;

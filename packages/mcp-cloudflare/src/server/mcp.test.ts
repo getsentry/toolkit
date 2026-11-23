@@ -158,7 +158,7 @@ async function issueTokens(
   expect(code).toBeTruthy();
 
   const tokenCtx = createExecutionContext();
-  const tokenResponse = await handler.fetch!(
+  const tokenResponse = await handler.fetch(
     createTokenExchangeRequest(client.clientId, code!),
     workerEnv,
     tokenCtx,
@@ -166,7 +166,7 @@ async function issueTokens(
 
   expect(tokenResponse.status).toBe(200);
 
-  const tokens = (await tokenResponse.json()) as TokenResponse;
+  const tokens = await tokenResponse.json<TokenResponse>();
 
   expect(tokens.token_type).toBe("bearer");
   expect(tokens.resource).toBe(resource);
@@ -195,7 +195,7 @@ describe("/mcp", () => {
     const accessToken = await issueAccessToken("https://mcp.sentry.dev/mcp");
 
     const ctx = createExecutionContext();
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       createMcpRequest("/mcp", accessToken, "initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
@@ -223,7 +223,7 @@ describe("/mcp", () => {
     );
 
     const ctx = createExecutionContext();
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       createMcpRequest("/mcp/sentry-mcp-evals", accessToken, "tools/list", {}),
       workerEnv,
       ctx,
@@ -243,7 +243,7 @@ describe("/mcp", () => {
     );
 
     const ctx = createExecutionContext();
-    const response = await handler.fetch!(
+    const response = await handler.fetch(
       createMcpRequest("/mcp/org-b/project-b", accessToken, "tools/list", {}),
       workerEnv,
       ctx,
@@ -262,7 +262,7 @@ describe("/mcp", () => {
 
     // Refresh the token
     const refreshCtx = createExecutionContext();
-    const refreshResponse = await handler.fetch!(
+    const refreshResponse = await handler.fetch(
       createRefreshTokenRequest(clientId, tokens.refresh_token!),
       workerEnv,
       refreshCtx,
@@ -270,13 +270,13 @@ describe("/mcp", () => {
 
     expect(refreshResponse.status).toBe(200);
 
-    const refreshed = (await refreshResponse.json()) as TokenResponse;
+    const refreshed = await refreshResponse.json<TokenResponse>();
     expect(refreshed.access_token).toBeTruthy();
     expect(refreshed.access_token).not.toBe(tokens.access_token);
 
     // Use the refreshed token for an MCP request
     const mcpCtx = createExecutionContext();
-    const mcpResponse = await handler.fetch!(
+    const mcpResponse = await handler.fetch(
       createMcpRequest("/mcp", refreshed.access_token, "initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
@@ -324,7 +324,7 @@ describe("/mcp", () => {
 
     // Refresh the token (probe succeeds)
     const refreshCtx = createExecutionContext();
-    const refreshResponse = await handler.fetch!(
+    const refreshResponse = await handler.fetch(
       createRefreshTokenRequest(clientId, tokens.refresh_token!),
       workerEnv,
       refreshCtx,
@@ -332,7 +332,7 @@ describe("/mcp", () => {
 
     expect(refreshResponse.status).toBe(200);
 
-    const refreshed = (await refreshResponse.json()) as TokenResponse;
+    const refreshed = await refreshResponse.json<TokenResponse>();
     expect(refreshed.access_token).toBeTruthy();
 
     // Verify the upstream probe was actually called
@@ -353,7 +353,7 @@ describe("/mcp", () => {
 
     // Use the refreshed token for an MCP request
     const mcpCtx = createExecutionContext();
-    const mcpResponse = await handler.fetch!(
+    const mcpResponse = await handler.fetch(
       createMcpRequest("/mcp", refreshed.access_token, "initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
@@ -405,7 +405,7 @@ describe("/mcp", () => {
       });
 
     const refreshCtx = createExecutionContext();
-    const refreshResponse = await handler.fetch!(
+    const refreshResponse = await handler.fetch(
       createRefreshTokenRequest(clientId, tokens.refresh_token!),
       workerEnv,
       refreshCtx,
@@ -413,11 +413,11 @@ describe("/mcp", () => {
 
     expect(refreshResponse.status).toBe(200);
 
-    const refreshed = (await refreshResponse.json()) as TokenResponse;
+    const refreshed = await refreshResponse.json<TokenResponse>();
     expect(refreshed.access_token).toBeTruthy();
 
     const mcpCtx = createExecutionContext();
-    const mcpResponse = await handler.fetch!(
+    const mcpResponse = await handler.fetch(
       createMcpRequest("/mcp", refreshed.access_token, "tools/list", {}),
       workerEnv,
       mcpCtx,
@@ -456,7 +456,7 @@ describe("/mcp", () => {
       });
 
     const refreshCtx = createExecutionContext();
-    const refreshResponse = await handler.fetch!(
+    const refreshResponse = await handler.fetch(
       createRefreshTokenRequest(clientId, tokens.refresh_token!),
       workerEnv,
       refreshCtx,
@@ -464,11 +464,11 @@ describe("/mcp", () => {
 
     expect(refreshResponse.status).toBe(200);
 
-    const refreshed = (await refreshResponse.json()) as TokenResponse;
+    const refreshed = await refreshResponse.json<TokenResponse>();
     expect(refreshed.access_token).toBeTruthy();
 
     const mcpCtx = createExecutionContext();
-    const mcpResponse = await handler.fetch!(
+    const mcpResponse = await handler.fetch(
       createMcpRequest(
         "/mcp/sentry-mcp-evals",
         refreshed.access_token,

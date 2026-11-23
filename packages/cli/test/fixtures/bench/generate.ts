@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { at } from "../../helpers.js";
 
 /** Parameters for a synthetic repo. Defaults live in `presets.ts`. */
 export type FixtureSpec = {
@@ -105,7 +106,11 @@ class XorShift32 {
 
   /** Pick one element from `arr`. */
   pick<T>(arr: readonly T[]): T {
-    return arr[this.int(arr.length)];
+    const value = arr[this.int(arr.length)];
+    if (value === undefined) {
+      throw new Error("pick() needs a non-empty array");
+    }
+    return value;
   }
 
   /** Boolean true with probability `p`. */
@@ -330,7 +335,7 @@ function buildTextFileContent(
   if (includeDsn) {
     // Put the DSN somewhere non-commented so the DSN scanner accepts it.
     lines.push(`const SENTRY_DSN = "${rng.pick(DSN_TEMPLATES)}";`);
-    bytes += lines[0].length + 1;
+    bytes += at(lines, 0).length + 1;
   }
   while (bytes < targetBytes) {
     const line = rng.pick(FILLER_LINES);

@@ -66,18 +66,18 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
 }> = [
   {
     source: "GITHUB_REPOSITORY/GITHUB_SHA",
-    repository: (env) => env.GITHUB_REPOSITORY,
-    commit: (env) => env.GITHUB_SHA,
+    repository: (env) => env["GITHUB_REPOSITORY"],
+    commit: (env) => env["GITHUB_SHA"],
   },
   {
     source: "CI_PROJECT_PATH/CI_COMMIT_SHA",
-    repository: (env) => env.CI_PROJECT_PATH,
-    commit: (env) => env.CI_COMMIT_SHA,
+    repository: (env) => env["CI_PROJECT_PATH"],
+    commit: (env) => env["CI_COMMIT_SHA"],
   },
   {
     source: "BITBUCKET_REPO_FULL_NAME/BITBUCKET_COMMIT",
-    repository: (env) => env.BITBUCKET_REPO_FULL_NAME,
-    commit: (env) => env.BITBUCKET_COMMIT,
+    repository: (env) => env["BITBUCKET_REPO_FULL_NAME"],
+    commit: (env) => env["BITBUCKET_COMMIT"],
   },
   {
     // Production builds only, like @sentry/bundler-plugins: preview builds
@@ -85,44 +85,44 @@ const CI_CHECKOUT_PROVIDERS: ReadonlyArray<{
     // notifies the authors of unrelated pull requests.
     source: "VERCEL_GIT_REPO_OWNER/VERCEL_GIT_REPO_SLUG/VERCEL_GIT_COMMIT_SHA",
     repository: (env) =>
-      env.VERCEL_TARGET_ENV === "production"
-        ? joinRepo(env.VERCEL_GIT_REPO_OWNER, env.VERCEL_GIT_REPO_SLUG)
+      env["VERCEL_TARGET_ENV"] === "production"
+        ? joinRepo(env["VERCEL_GIT_REPO_OWNER"], env["VERCEL_GIT_REPO_SLUG"])
         : undefined,
-    commit: (env) => env.VERCEL_GIT_COMMIT_SHA,
+    commit: (env) => env["VERCEL_GIT_COMMIT_SHA"],
   },
   {
     source: "RENDER_GIT_REPO_SLUG/RENDER_GIT_COMMIT",
-    repository: (env) => env.RENDER_GIT_REPO_SLUG,
-    commit: (env) => env.RENDER_GIT_COMMIT,
+    repository: (env) => env["RENDER_GIT_REPO_SLUG"],
+    commit: (env) => env["RENDER_GIT_COMMIT"],
   },
   {
     source:
       "RAILWAY_GIT_REPO_OWNER/RAILWAY_GIT_REPO_NAME/RAILWAY_GIT_COMMIT_SHA",
     repository: (env) =>
-      joinRepo(env.RAILWAY_GIT_REPO_OWNER, env.RAILWAY_GIT_REPO_NAME),
-    commit: (env) => env.RAILWAY_GIT_COMMIT_SHA,
+      joinRepo(env["RAILWAY_GIT_REPO_OWNER"], env["RAILWAY_GIT_REPO_NAME"]),
+    commit: (env) => env["RAILWAY_GIT_COMMIT_SHA"],
   },
   {
     source: "CIRCLE_PROJECT_USERNAME/CIRCLE_PROJECT_REPONAME/CIRCLE_SHA1",
     repository: (env) =>
-      joinRepo(env.CIRCLE_PROJECT_USERNAME, env.CIRCLE_PROJECT_REPONAME),
-    commit: (env) => env.CIRCLE_SHA1,
+      joinRepo(env["CIRCLE_PROJECT_USERNAME"], env["CIRCLE_PROJECT_REPONAME"]),
+    commit: (env) => env["CIRCLE_SHA1"],
   },
   {
     source: "BUILDKITE_REPO/BUILDKITE_COMMIT",
-    repository: (env) => repoFromUrl(env.BUILDKITE_REPO),
-    commit: (env) => env.BUILDKITE_COMMIT,
+    repository: (env) => repoFromUrl(env["BUILDKITE_REPO"]),
+    commit: (env) => env["BUILDKITE_COMMIT"],
   },
   {
     source: "REPOSITORY_URL/COMMIT_REF (Netlify)",
     repository: (env) =>
-      env.NETLIFY ? repoFromUrl(env.REPOSITORY_URL) : undefined,
-    commit: (env) => env.COMMIT_REF,
+      env["NETLIFY"] ? repoFromUrl(env["REPOSITORY_URL"]) : undefined,
+    commit: (env) => env["COMMIT_REF"],
   },
   {
     source: "BUILD_REPOSITORY_URI/BUILD_SOURCEVERSION (Azure Pipelines)",
-    repository: (env) => repoFromUrl(env.BUILD_REPOSITORY_URI),
-    commit: (env) => env.BUILD_SOURCEVERSION,
+    repository: (env) => repoFromUrl(env["BUILD_REPOSITORY_URI"]),
+    commit: (env) => env["BUILD_SOURCEVERSION"],
   },
 ];
 

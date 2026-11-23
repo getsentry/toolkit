@@ -22,13 +22,13 @@ import { CONCURRENCY_LIMIT } from "./constants.js";
 /** Common options for the two concurrent helpers. */
 export type ConcurrentOptions = {
   /** Max in-flight tasks. Default: `CONCURRENCY_LIMIT` (50). */
-  concurrency?: number;
+  concurrency?: number | undefined;
   /**
    * Abort mid-stream. When aborted, the next `yield` (stream variant)
    * or the `await` inside `mapFilesConcurrent` throws an
    * `AbortError`. In-flight tasks are left to settle on their own.
    */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 };
 
 /**
@@ -76,6 +76,7 @@ export async function mapFilesConcurrent<TIn, TOut>(
             return;
           }
           const out = await fn(item);
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit while fn is awaited
           if (state.earlyExit || out === null) {
             return;
           }
@@ -134,8 +135,8 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     });
   };
 
-  let producerDone = false;
-  let producerError: Error | undefined;
+  let producerDone = false as boolean;
+  let producerError: unknown = null;
   const tasks: Promise<void>[] = [];
 
   const producer = (async () => {
@@ -151,6 +152,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
               return;
             }
             const out = await fn(item);
+            // oxlint-disable-next-line typescript/no-unnecessary-condition -- another task can set earlyExit while fn is awaited
             if (state.earlyExit || out === null || out.length === 0) {
               return;
             }
@@ -163,7 +165,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
       }
       await Promise.all(tasks);
     } catch (error) {
-      producerError = error instanceof Error ? error : new Error(String(error));
+      producerError = error;
     } finally {
       producerDone = true;
       wakeUp();
@@ -171,7 +173,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
   })();
 
   try {
-    while (true) {
+    for (;;) {
       if (queue.length > 0) {
         // Drain everything already queued before we yield control,
         // so fast consumers don't spin one microtask per result.
@@ -203,7 +205,7 @@ export async function* mapFilesConcurrentStream<TIn, TOut>(
     // the post-try body), so an error thrown outside this block
     // would be silently lost on the break path.
     if (producerError) {
-      // oxlint-disable-next-line no-unsafe-finally -- intentional — this is the only path to surface producer errors on the break path
+      // oxlint-disable-next-line no-unsafe-finally, typescript/only-throw-error -- intentional — this is the only path to surface producer errors on the break path; rethrows the caught value unchanged
       throw producerError;
     }
   }

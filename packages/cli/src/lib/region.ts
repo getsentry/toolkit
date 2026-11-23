@@ -14,7 +14,7 @@ import {
 } from "./db/auth.js";
 import { getOrgByNumericId, getOrgRegion, setOrgRegion } from "./db/regions.js";
 import { stripDsnOrgPrefix } from "./dsn/index.js";
-import { AuthError, stringifyUnknown, withAuthGuard } from "./errors.js";
+import { AuthError, withAuthGuard } from "./errors.js";
 import { logger } from "./logger.js";
 import {
   getApiBaseUrl,
@@ -27,6 +27,7 @@ import {
   normalizeHttpOrigin,
   normalizeRegionBaseUrl,
 } from "./sentry-urls.js";
+import { rethrow } from "./rethrow.js";
 
 /**
  * Promise cache for org region resolution, keyed by orgSlug.
@@ -82,8 +83,12 @@ const NUMERIC_ORG_ID = /^\d+$/;
  * Switch this invocation to the stored account that knows the org, if the
  * current one doesn't. Accepts DSN-style `oNNNN` identifiers and the bare
  * numeric ids DSN resolution can yield too.
+ *
+ * {@link resolveOrgRegion} does this before its lookup. Control-silo
+ * requests, which skip the region lookup, call it directly so the configured
+ * base URL is the server of the org's account.
  */
-function useAccountForOrg(orgSlug: string): void {
+export function useAccountForOrg(orgSlug: string): void {
   const numericId = stripDsnOrgPrefix(orgSlug);
   const orgId =
     numericId !== orgSlug || NUMERIC_ORG_ID.test(orgSlug)
@@ -152,9 +157,8 @@ async function resolveOrgRegionUncached(
 
     // Throw SDK errors so withAuthGuard can discriminate:
     // AuthError propagates, others fall back to default URL
-    const { error } = response;
-    if (error !== undefined) {
-      throw error instanceof Error ? error : new Error(stringifyUnknown(error));
+    if (response.error !== undefined) {
+      rethrow(response.error);
     }
 
     // Self-hosted instances may return a relative regionUrl (e.g. "/") which
@@ -168,7 +172,9 @@ async function resolveOrgRegionUncached(
     const responseIdentity = rawResponse
       ? getResponseCredentialIdentity(rawResponse)
       : undefined;
-    const rawRegionUrl = response.data?.links?.regionUrl;
+    // Sentry before 22.9 sends no `links`.
+    const links = response.data?.links as { regionUrl?: string } | undefined;
+    const rawRegionUrl = links?.regionUrl;
     const regionUrl = getResolvedRegionUrl(
       rawRegionUrl,
       responseOrigin,
@@ -243,6 +249,7 @@ function resolveOrgFromCache(orgSlug: string): string | undefined {
       return match.slug;
     }
   }
+  return undefined;
 }
 
 /**

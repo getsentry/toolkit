@@ -171,8 +171,8 @@ function toDetectorConfig(
 function sourceDetails(
   source: Record<string, unknown>,
 ): z.infer<typeof dataSourceSchema> {
-  const type = typeof source.type === "string" ? source.type : "unknown";
-  const query = source.queryObj;
+  const type = typeof source["type"] === "string" ? source["type"] : "unknown";
+  const query = source["queryObj"];
   const unavailable = {
     type,
     unavailableReason: "Source configuration is unavailable.",

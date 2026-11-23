@@ -43,7 +43,7 @@ export function buildServerInstructions(
   }
   if (toolNames.has("find_organizations")) {
     rules.push(
-      "Do not look up the organization first; tools default to it when the user has one. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.",
+      "Do not look up the organization first; tools default to it when the user has one. Read `org/project` notation as the organization and project slugs. If a tool asks for organizationSlug, call find_organizations and pass the slug and regionUrl it returns.",
     );
   }
   const eventSearchTools = EVENT_SEARCH_TOOL_NAMES.filter((name) =>

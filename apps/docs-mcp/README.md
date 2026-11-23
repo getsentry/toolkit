@@ -2,7 +2,7 @@
 
 An independent Cloudflare Worker for Sentry documentation search, cited answers,
 and tailored SDK integration guides. It reads the Markdown exports and doctree
-from `docs.sentry.io`; AI-backed operations use OpenRouter through Mastra.
+from `docs.sentry.io`; AI-backed operations use OpenRouter through the AI SDK.
 
 Imported from [getsentry/cli-init-api at f3b32b49](https://github.com/getsentry/cli-init-api/tree/f3b32b49ebaa5eb13378e1e5ab9f05be2f39ba5d/apps/docs-mcp).
 The Worker has no build or runtime dependency on Init Server. Its Cloudflare name
@@ -82,8 +82,6 @@ Toolkit's workspace CI discovers the app's build, typecheck, and `test:ci`
 scripts automatically. Keep the app's AI SDK 5 and Sentry 10 dependencies
 separate from Toolkit's newer catalogs until a dedicated upgrade is validated.
 Wrangler follows the shared workspace catalog used by MCP and CLI docs.
-The `execa` alias excludes Mastra's unsupported local-process execution path from
-the Worker bundle.
 
 ## Deployment ownership
 

@@ -7,7 +7,15 @@
  * and pagination DB functions without real HTTP calls or database access.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { eventsCommand } from "../../../src/commands/issue/events.js";
 
 vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
@@ -15,12 +23,8 @@ vi.mock("../../../src/commands/issue/utils.js", async (importOriginal) => {
     await importOriginal<
       typeof import("../../../src/commands/issue/utils.js")
     >();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -29,12 +33,8 @@ import * as issueUtils from "../../../src/commands/issue/utils.js";
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -43,21 +43,16 @@ import * as apiClient from "../../../src/lib/api-client.js";
 vi.mock("../../../src/lib/db/pagination.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/db/pagination.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as paginationDb from "../../../src/lib/db/pagination.js";
 import { parsePeriod } from "../../../src/lib/time-range.js";
 import type { IssueEvent, SentryIssue } from "../../../src/types/sentry.js";
-
-// Reference paginationDb early to prevent import stripping by auto-organize
-const _paginationDbRef = paginationDb;
+import { loadCommand, at } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 // ============================================================================
 // Test fixtures
@@ -97,7 +92,7 @@ function makeMockEvent(overrides?: Partial<IssueEvent>): IssueEvent {
     platform: "javascript",
     dateCreated: new Date().toISOString(),
     crashFile: null,
-    metadata: null,
+    metadata: {},
     ...overrides,
   };
 }
@@ -124,18 +119,22 @@ const sampleEvents: IssueEvent[] = [
 // ============================================================================
 
 describe("eventsCommand.func()", () => {
-  let listIssueEventsSpy: ReturnType<typeof spyOn>;
-  let resolveIssueSpy: ReturnType<typeof spyOn>;
-  let resolveCursorSpy: ReturnType<typeof spyOn>;
-  let advancePaginationStateSpy: ReturnType<typeof spyOn>;
-  let hasPreviousPageSpy: ReturnType<typeof spyOn>;
+  let listIssueEventsSpy: MockInstance<(typeof apiClient)["listIssueEvents"]>;
+  let resolveIssueSpy: MockInstance<(typeof issueUtils)["resolveIssue"]>;
+  let resolveCursorSpy: MockInstance<(typeof paginationDb)["resolveCursor"]>;
+  let advancePaginationStateSpy: MockInstance<
+    (typeof paginationDb)["advancePaginationState"]
+  >;
+  let hasPreviousPageSpy: MockInstance<
+    (typeof paginationDb)["hasPreviousPage"]
+  >;
 
   function createMockContext() {
-    const stdoutWrite = vi.fn(() => true);
+    const stdoutWrite = vi.fn<Writer["write"]>(() => true);
     return {
       context: {
         stdout: { write: stdoutWrite },
-        stderr: { write: vi.fn(() => true) },
+        stderr: { write: vi.fn<Writer["write"]>(() => true) },
         cwd: "/tmp",
       },
       stdoutWrite,
@@ -173,7 +172,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -197,7 +196,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -220,7 +219,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -239,7 +238,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -265,7 +264,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       {
@@ -292,7 +291,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 100, json: false, full: false, period: parsePeriod("7d") },
@@ -309,10 +308,10 @@ describe("eventsCommand.func()", () => {
       org: "test-org",
       issue: makeMockIssue(),
     });
-    listIssueEventsSpy.mockResolvedValue({ data: [sampleEvents[0]] });
+    listIssueEventsSpy.mockResolvedValue({ data: [at(sampleEvents, 0)] });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -332,7 +331,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       {
@@ -362,7 +361,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: [] });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("30d") },
@@ -387,7 +386,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 2, json: true, full: false, period: parsePeriod("7d") },
@@ -408,7 +407,7 @@ describe("eventsCommand.func()", () => {
     listIssueEventsSpy.mockResolvedValue({ data: sampleEvents });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -431,7 +430,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: true, full: false, period: parsePeriod("7d") },
@@ -456,7 +455,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -478,7 +477,7 @@ describe("eventsCommand.func()", () => {
     });
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },
@@ -501,7 +500,7 @@ describe("eventsCommand.func()", () => {
     hasPreviousPageSpy.mockReturnValue(true);
 
     const { context, stdoutWrite } = createMockContext();
-    const func = await eventsCommand.loader();
+    const func = await loadCommand(eventsCommand);
     await func.call(
       context,
       { limit: 25, json: false, full: false, period: parsePeriod("7d") },

@@ -17,10 +17,10 @@ import { getReplayDetailsOutputSchema } from "./get-replay-details";
 import getSentryResource from "./get-sentry-resource.js";
 import { resolveDescription } from "../../tools/types.js";
 
-const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
-const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
-const originalEmbeddedAgentProvider = process.env.EMBEDDED_AGENT_PROVIDER;
+const originalOpenAIApiKey = process.env["OPENAI_API_KEY"];
+const originalAnthropicApiKey = process.env["ANTHROPIC_API_KEY"];
+const originalOpenRouterApiKey = process.env["OPENROUTER_API_KEY"];
+const originalEmbeddedAgentProvider = process.env["EMBEDDED_AGENT_PROVIDER"];
 
 function expectReplayWithDeadClick(result: unknown) {
   const payload = getReplayDetailsOutputSchema.parse(
@@ -42,9 +42,7 @@ function expectReplayWithDeadClick(result: unknown) {
 }
 
 const baseContext = {
-  constraints: {
-    organizationSlug: undefined,
-  },
+  constraints: {},
   accessToken: "access-token",
   userId: "1",
 };
@@ -61,6 +59,10 @@ function mockOrganization(org: string) {
       },
     }),
   );
+}
+
+function issuePayload(result: unknown) {
+  return getIssueDetailsOutputSchema.parse(getStructuredContent(result));
 }
 
 function callHandler(params: {
@@ -151,25 +153,25 @@ describe("get_sentry_resource", () => {
     if (originalOpenAIApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     } else {
-      process.env.OPENAI_API_KEY = originalOpenAIApiKey;
+      process.env["OPENAI_API_KEY"] = originalOpenAIApiKey;
     }
 
     if (originalAnthropicApiKey === undefined) {
       Reflect.deleteProperty(process.env, "ANTHROPIC_API_KEY");
     } else {
-      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+      process.env["ANTHROPIC_API_KEY"] = originalAnthropicApiKey;
     }
 
     if (originalOpenRouterApiKey === undefined) {
       Reflect.deleteProperty(process.env, "OPENROUTER_API_KEY");
     } else {
-      process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+      process.env["OPENROUTER_API_KEY"] = originalOpenRouterApiKey;
     }
 
     if (originalEmbeddedAgentProvider === undefined) {
       Reflect.deleteProperty(process.env, "EMBEDDED_AGENT_PROVIDER");
     } else {
-      process.env.EMBEDDED_AGENT_PROVIDER = originalEmbeddedAgentProvider;
+      process.env["EMBEDDED_AGENT_PROVIDER"] = originalEmbeddedAgentProvider;
     }
   });
 
@@ -188,19 +190,15 @@ describe("get_sentry_resource", () => {
       { organizationSlug: "sentry-mcp-evals", resourceId: "CLOUDFLARE-MCP-41" },
     ])("resolves issue from alias params %o", async (params) => {
       const result = await callHandler(params);
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue from subdomain URL (my-org.sentry.io)", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
-      expect(result).toContain(
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).issue.title).toBe(
         "Error: Tool list_organizations is already registered",
       );
     });
@@ -209,27 +207,21 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry.io/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue from /organizations/{org}/ URL", async () => {
       const result = await callHandler({
         url: "https://sentry.io/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("resolves issue with trailing slash", async () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
   });
 
@@ -239,11 +231,9 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41/events/7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
     });
 
@@ -251,8 +241,8 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry.io/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/events/7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
     });
   });
@@ -430,7 +420,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/daily-backup/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "daily-backup",
         url: "https://my-org.sentry.io/crons/backend/daily-backup/",
       });
@@ -448,7 +438,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/my-project/my-monitor/",
       });
@@ -477,7 +467,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -557,7 +547,7 @@ describe("get_sentry_resource", () => {
         },
       );
 
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         slug: "my-monitor",
         url: "https://my-org.sentry.io/crons/backend/my-monitor/",
       });
@@ -621,7 +611,7 @@ describe("get_sentry_resource", () => {
           sentryProtocol: "http",
         },
       );
-      expect(getStructuredContent(result).monitor).toMatchObject({
+      expect(getStructuredContent(result)["monitor"]).toMatchObject({
         url: "http://sentry.internal:9000/organizations/my-org/crons/backend/daily-backup/",
       });
     });
@@ -652,7 +642,7 @@ describe("get_sentry_resource", () => {
       const result = await callHandler({
         url: "https://sentry-mcp-evals.sentry.io/dashboard/101/",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -664,7 +654,7 @@ describe("get_sentry_resource", () => {
         resourceId: "101",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -676,7 +666,7 @@ describe("get_sentry_resource", () => {
         resourceId: "Errors Overview",
         organizationSlug: "sentry-mcp-evals",
       });
-      expect(getStructuredContent(result).dashboard).toMatchObject({
+      expect(getStructuredContent(result)["dashboard"]).toMatchObject({
         id: "101",
         title: "Errors Overview",
       });
@@ -692,6 +682,71 @@ describe("get_sentry_resource", () => {
           },
         ),
       ).rejects.toThrow("Dashboard resources require the inspect skill");
+    });
+  });
+
+  // ─── URL mode: metric alert URLs ───────────────────────────────────────────
+  describe("URL mode — metric alert URLs", () => {
+    const metricAlertUrl =
+      "https://sentry-mcp-evals.sentry.io/alerts/rules/details/456/?alert=10606471897&referrer=metric-alert-slack";
+
+    it("dispatches a metric alert notification URL to get_alert_rule", async () => {
+      const reads: string[] = [];
+      mswServer.use(
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/alert-rule-detector/",
+          ({ request }) => {
+            reads.push(
+              `mapping:${new URL(request.url).searchParams.get("alert_rule_id")}`,
+            );
+            return HttpResponse.json({ detectorId: "789" });
+          },
+        ),
+        http.get(
+          "https://sentry.io/api/0/organizations/sentry-mcp-evals/detectors/:id/",
+          ({ params }) => {
+            reads.push(`detector:${String(params["id"])}`);
+            return HttpResponse.json({
+              id: "789",
+              alertRuleId: 456,
+              name: "Error count",
+              type: "metric_issue",
+              workflowIds: [],
+              dateCreated: "2025-01-01T00:00:00.000Z",
+              dateUpdated: "2025-01-01T00:00:00.000Z",
+              projectId: "4509109104082945",
+              enabled: true,
+              config: { detectionType: "static" },
+              conditionGroup: {
+                logicType: "any",
+                conditions: [
+                  { type: "gt", comparison: 10, conditionResult: 75 },
+                ],
+              },
+              dataSources: [],
+            });
+          },
+        ),
+      );
+
+      const result = await callHandler({ url: metricAlertUrl });
+
+      expect(getStructuredContent(result)).toMatchObject({
+        metricMonitor: { id: "789", name: "Error count" },
+      });
+      expect(reads).toEqual(["mapping:456", "detector:789"]);
+    });
+
+    it("rejects a metric alert URL when get_alert_rule is not available", async () => {
+      await expect(
+        getSentryResource.handler(
+          { url: metricAlertUrl },
+          {
+            ...baseContext,
+            availableToolNames: new Set(["get_sentry_resource"]),
+          },
+        ),
+      ).rejects.toThrow("Metric alert resources require the inspect skill");
     });
   });
 
@@ -731,9 +786,7 @@ describe("get_sentry_resource", () => {
         url: "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
         resourceType: "issue",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("rejects unsupported override (issue on trace URL)", async () => {
@@ -754,9 +807,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "CLOUDFLARE-MCP-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("uppercases issue resourceId", async () => {
@@ -765,9 +816,7 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "cloudflare-mcp-41",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("fetches event by eventId", async () => {
@@ -776,13 +825,13 @@ describe("get_sentry_resource", () => {
         organizationSlug: "sentry-mcp-evals",
         resourceId: "7ca573c0f4814912aaa9bdc77d1a7d51",
       });
-      expect(result).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
+      expect(issuePayload(result).issue.shortId).toBe("CLOUDFLARE-MCP-41");
+      expect(issuePayload(result).event.id).toBe(
+        "7ca573c0f4814912aaa9bdc77d1a7d51",
       );
-      expect(result).toContain(
-        "**Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51",
-      );
-      expect(result).toContain("**user.geo**: US, United States");
+      expect(issuePayload(result).event.user?.geo).toMatchObject({
+        countryCode: "US",
+      });
     });
 
     it("fetches trace by traceId", async () => {
@@ -1151,8 +1200,22 @@ describe("get_sentry_resource", () => {
         ]),
       });
       expect(desc).toContain("dashboards");
-      expect(desc).toContain("dashboard: <dashboardId or title>");
-      expect(desc).toContain("/dashboard/542438/");
+    });
+
+    it("advertises metric alerts only when get_alert_rule is available", () => {
+      const withoutAlertRule = resolveDescription(
+        getSentryResource.description,
+        {
+          experimentalMode: false,
+          availableToolNames: new Set(["get_sentry_resource"]),
+        },
+      );
+      const withAlertRule = resolveDescription(getSentryResource.description, {
+        experimentalMode: false,
+        availableToolNames: new Set(["get_sentry_resource", "get_alert_rule"]),
+      });
+      expect(withoutAlertRule).not.toContain("metric alerts");
+      expect(withAlertRule).toContain("metric alerts");
     });
 
     it("omits monitor hints when get_monitor_details is unavailable", () => {
@@ -1204,55 +1267,101 @@ describe("event package selection", () => {
         { ...params, packageNames: ["example"] },
         baseContext,
       );
-      expect(result).not.toContain("unrelated");
+      expect(JSON.stringify(result)).not.toContain("unrelated");
       expect(result).toMatchInlineSnapshot(`
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**
-
-        **Description**: Error: Tool list_organizations is already registered
-        **Culprit**: Object.fetch(index)
-        **First Seen**: 2025-04-03T22:51:19.403Z
-        **Last Seen**: 2025-04-12T11:34:11.000Z
-        **Occurrences**: 25
-        **Users Impacted**: 1
-        **Status**: unresolved
-        **Substatus**: ongoing
-        **Assigned To**: Jane Developer (User)
-        **Issue Type**: error
-        **Issue Category**: error
-        **Platform**: javascript
-        **Project**: CLOUDFLARE-MCP
-        **URL**: https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41
-
-        ## Event Details
-
-        **Event ID**: 7ca573c0f4814912aaa9bdc77d1a7d51
-        **Type**: default
-        **Occurred At**: 2025-10-02T12:00:00.000Z
-        **Message**:
-        Something went wrong
-
-        ### Error
-
-        \`\`\`
-        Something went wrong
-        \`\`\`
-
-        ### Tags
-
-        **level**: \`error\`
-        **environment**: \`production\`
-
-
-        ### Selected Package Versions
-
-        - \`example\`: \`1.2.3\`
-
-        ## Response Notes
-
-        - Commit message issue reference: \`Fixes CLOUDFLARE-MCP-41\` automatically closes the issue when the commit is merged.
-        - The stacktrace includes first-party application code and third-party code. First-party frames are usually the best starting point for triage.
-        - Issue event search: Use the Sentry tool \`search_issue_events\`
-        "
+        {
+          "structuredContent": {
+            "aiConversations": null,
+            "codeLocation": null,
+            "event": {
+              "contexts": null,
+              "crashedThread": null,
+              "csp": null,
+              "evidence": null,
+              "exceptions": null,
+              "extra": null,
+              "id": "7ca573c0f4814912aaa9bdc77d1a7d51",
+              "message": "Something went wrong",
+              "metricAlert": null,
+              "occurredAt": "2025-10-02T12:00:00.000Z",
+              "packageVersions": {
+                "metadataAvailable": true,
+                "packages": [
+                  {
+                    "name": "example",
+                    "status": "recorded",
+                    "truncated": false,
+                    "version": "1.2.3",
+                  },
+                ],
+              },
+              "performance": null,
+              "platform": "python",
+              "request": null,
+              "stacktrace": null,
+              "tags": [
+                {
+                  "key": "level",
+                  "value": "error",
+                },
+                {
+                  "key": "environment",
+                  "value": "production",
+                },
+              ],
+              "threadCount": 0,
+              "threads": null,
+              "type": "default",
+              "user": null,
+            },
+            "externalIssues": null,
+            "issue": {
+              "assignedTo": "Jane Developer",
+              "culprit": "Object.fetch(index)",
+              "firstSeen": "2025-04-03T22:51:19.403000Z",
+              "issueCategory": "error",
+              "issueType": "error",
+              "lastSeen": "2025-04-12T11:34:11Z",
+              "location": null,
+              "occurrences": 25,
+              "platform": "javascript",
+              "project": "CLOUDFLARE-MCP",
+              "queryPattern": null,
+              "seerActionability": null,
+              "shortId": "CLOUDFLARE-MCP-41",
+              "status": "unresolved",
+              "substatus": "ongoing",
+              "title": "Error: Tool list_organizations is already registered",
+              "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+              "usersImpacted": 1,
+            },
+            "replays": null,
+            "seer": null,
+            "sideQuests": [
+              {
+                "docs": "https://docs.sentry.io/platforms/python/configuration/options/#attach_stacktrace",
+                "id": "missing_stack_trace",
+                "tip": "This event was captured as a message, which has no stack trace. Report caught errors with \`sentry_sdk.capture_exception(e)\` instead, or set \`attach_stacktrace=True\` to attach the current stack to messages.",
+              },
+              {
+                "docs": "https://docs.sentry.io/platforms/python/enriching-events/identify-user/",
+                "id": "missing_user_identity",
+                "tip": "The event has no user, so it doesn't count toward Users Impacted. Call \`sentry_sdk.set_user({"id": user.id})\` after sign-in; an opaque ID is enough.",
+              },
+            ],
+            "suggestedActions": [
+              {
+                "arguments": {
+                  "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
+                },
+                "reason": "Read the breadcrumb trail leading up to this event.",
+                "toolName": "get_issue_breadcrumbs",
+                "type": "tool_call",
+              },
+            ],
+            "suspectCommit": null,
+          },
+        }
       `);
     },
   );

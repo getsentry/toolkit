@@ -23,7 +23,7 @@ import {
 } from "../../lib/list-command.js";
 import type { IssueArgument } from "../../lib/issue-arguments.js";
 import { logger } from "../../lib/logger.js";
-import { extractRootCauses } from "../../types/seer.js";
+import { extractRootCauses, isSingleRun } from "../../types/seer.js";
 import { type IssuesArguments, issuesPositional } from "./positional.js";
 import {
   ensureRootCauseAnalysis,
@@ -71,7 +71,13 @@ async function analyzeIssue(
       );
     }
 
-    return { issue: issueArg.text, org, issueId, rootCauses };
+    return {
+      issue: issueArg.text,
+      org,
+      issueId,
+      rootCauses,
+      singleRun: isSingleRun(state),
+    };
   } catch (error) {
     if (error instanceof ApiError) {
       throw handleSeerApiError(
@@ -79,6 +85,7 @@ async function analyzeIssue(
         error.detail,
         resolvedOrg,
         error.code,
+        error.denialReason,
       );
     }
     throw error;
@@ -193,7 +200,7 @@ export const explainCommand = buildCommand({
     return isBatch
       ? undefined
       : {
-          hint: `To create a plan, run: ${sentry`issue plan ${primaryArg}`}`,
+          hint: `${results[0]?.singleRun ? "To see the fix" : "To create a plan"}, run: ${sentry`issue plan ${primaryArg}`}`,
         };
   },
 });

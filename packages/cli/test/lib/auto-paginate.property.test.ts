@@ -41,7 +41,10 @@ function makePagedFetcher(total: number, pageSize: number) {
     );
     const nextOffset = offset + data.length;
     const nextCursor = nextOffset < total ? String(nextOffset) : undefined;
-    return Promise.resolve({ data, nextCursor });
+    return Promise.resolve({
+      data,
+      ...(nextCursor !== undefined && { nextCursor }),
+    });
   };
 }
 

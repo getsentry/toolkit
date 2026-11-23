@@ -125,7 +125,7 @@ export type RecoveryResult =
 export type LookupContext = {
   org: string;
   /** When present, scopes the scan to a single project. */
-  project?: string;
+  project?: string | undefined;
   /** Required for span lookup (spans are unique only within a trace). */
   traceId?: string;
   /** Override for the default scan window (e.g. "90d", "7d"). */
@@ -506,7 +506,9 @@ const eventAdapter: FuzzyLookupAdapter = async (ctx) => {
     sort: "-timestamp",
     statsPeriod: ctx.period ?? SCAN_PERIODS.event,
   });
-  return data.data.map((row) => stringifyUnknown(row.id ?? "")).filter(Boolean);
+  return data.data
+    .map((row) => stringifyUnknown(row["id"] ?? ""))
+    .filter(Boolean);
 };
 
 const traceAdapter: FuzzyLookupAdapter = async (ctx) => {

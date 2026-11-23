@@ -1,10 +1,12 @@
 /** Daemon identity and process invocation regression coverage. */
-import { mkdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { useTestConfigDir } from "../../helpers.js";
+import { useTestConfigDir, originalFetch } from "../../helpers.js";
 import {
+  LOCAL_DAEMON_STATE_FILENAME,
   readLocalDaemonState,
   getRunningLocalDaemon,
   requestLocalDaemon,
@@ -16,6 +18,10 @@ import {
   readLocalSessionSnapshot,
 } from "../../../src/commands/local/session-snapshot.js";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, rename: vi.fn(fs.rename) };
+});
 const getConfigDir = useTestConfigDir("local-daemon-lifecycle-");
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,10 +30,7 @@ afterEach(() => {
 
 describe("Local daemon discovery", () => {
   test("rejects stale state when another service answers the public health endpoint", async () => {
-    vi.stubGlobal(
-      "fetch",
-      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
-    );
+    vi.stubGlobal("fetch", originalFetch());
     vi.spyOn(process, "kill").mockImplementation(() => {
       throw Object.assign(new Error("owner exited"), { code: "ESRCH" });
     });
@@ -52,7 +55,7 @@ describe("Local daemon discovery", () => {
       await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
     } finally {
       await new Promise<void>((resolve) => {
-        server.close(resolve);
+        server.close(() => resolve());
         server.closeAllConnections();
       });
     }
@@ -70,6 +73,10 @@ describe("Local daemon discovery", () => {
     const probe = vi
       .fn()
       .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      // The busy daemon still answers health as a daemon.
+      .mockResolvedValueOnce(
+        new Response("OK", { headers: { "X-Sentry-Local-Mode": "daemon" } }),
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ sessions: [] }), { status: 200 }),
       );
@@ -168,6 +175,212 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
+/**
+ * After an unclean exit, the recorded PID can belong to an unrelated live
+ * process (common in containers). Here that process is the test runner, and
+ * nothing listens on the recorded port (CLI-4TA).
+ */
+describe("Local daemon discovery after PID reuse", () => {
+  const ownerPath = () => join(getConfigDir(), "local-control-plane.owner");
+  const statePath = () => join(getConfigDir(), "local-control-plane.json");
+  // Explicit mtimes keep the lock-age checks independent of timestamp precision.
+  const earlier = () => new Date(Date.now() - 60_000);
+  const reusedState = async () => ({
+    host: "127.0.0.1",
+    port: await freePort(),
+    pid: process.pid,
+    token: "stale",
+    version: 1,
+  });
+
+  test("clears discovery when the recorded port refuses connections", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toBeUndefined();
+  });
+
+  test("also clears an owner lock that the same stale daemon wrote first", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    await mkdir(getConfigDir(), { recursive: true });
+    await writeFile(ownerPath(), String(process.pid));
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await utimes(ownerPath(), earlier(), earlier());
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toBeUndefined();
+    await expect(readFile(ownerPath(), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  test("preserves an owner lock newer than discovery, a daemon starting up", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    const state = await reusedState();
+    await writeLocalDaemonState(getConfigDir(), state);
+    await writeFile(ownerPath(), String(process.pid));
+    await utimes(statePath(), earlier(), earlier());
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+    expect(await readFile(ownerPath(), "utf8")).toBe(String(process.pid));
+  });
+
+  test("preserves discovery that another live owner is about to replace", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    const state = await reusedState();
+    await mkdir(getConfigDir(), { recursive: true });
+    await writeFile(ownerPath(), String(process.ppid));
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+    expect(await readFile(ownerPath(), "utf8")).toBe(String(process.ppid));
+  });
+
+  test("finds a daemon that replaces discovery during the stale recheck", async () => {
+    const originalFetch = (globalThis as { __originalFetch: typeof fetch })
+      .__originalFetch;
+    const server = createServer((request, response) => {
+      response.statusCode =
+        request.headers.authorization === "Bearer replacement" ? 200 : 401;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ sessions: [] }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const replacement = {
+      host: "127.0.0.1",
+      port: address.port,
+      pid: process.pid,
+      token: "replacement",
+      version: 1,
+    };
+    let calls = 0;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      // The replacement lands after the first probe, before the recheck.
+      calls += 1;
+      if (calls === 2) await writeLocalDaemonState(getConfigDir(), replacement);
+      return await originalFetch(...args);
+    });
+    try {
+      await writeLocalDaemonState(getConfigDir(), await reusedState());
+      await expect(getRunningLocalDaemon()).resolves.toEqual(replacement);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
+  });
+
+  test("finds a daemon that replaces discovery during the health check", async () => {
+    const state = await reusedState();
+    const replacement = { ...state, port: state.port + 1, token: "new" };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("timeout"))
+        .mockImplementationOnce(async () => {
+          await writeLocalDaemonState(getConfigDir(), replacement);
+          return new Response("OK", {
+            headers: { "X-Sentry-Local-Mode": "daemon" },
+          });
+        })
+        .mockResolvedValueOnce(Response.json({ sessions: [] })),
+    );
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toEqual(replacement);
+  });
+
+  test("uses a daemon that answers the stale recheck", async () => {
+    const originalFetch = (globalThis as { __originalFetch: typeof fetch })
+      .__originalFetch;
+    let calls = 0;
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      calls += 1;
+      if (calls === 1) return await originalFetch(...args);
+      return Response.json({ sessions: [] });
+    });
+    const state = await reusedState();
+    await writeLocalDaemonState(getConfigDir(), state);
+    await expect(getRunningLocalDaemon()).resolves.toEqual(state);
+    await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(state);
+  });
+
+  test("names both files to delete when a live daemon does not answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("timeout")));
+    await writeLocalDaemonState(getConfigDir(), await reusedState());
+    await expect(getRunningLocalDaemon()).rejects.toMatchObject({
+      name: "CliError",
+      message: expect.stringContaining(
+        `delete ${statePath()} and ${ownerPath()}, then retry`,
+      ),
+    });
+  });
+
+  test.each([
+    ["clears discovery when a non-daemon server holds the port", {}],
+    [
+      "keeps discovery when a busy daemon answers health",
+      { "X-Sentry-Local-Mode": "daemon" },
+    ],
+  ])("%s", async (name, healthHeaders) => {
+    vi.stubGlobal(
+      "fetch",
+      (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+    );
+    // Like a foreground `sentry local serve`: it rejects the daemon token.
+    const server = createServer((request, response) => {
+      if (request.url === "/health") response.writeHead(200, healthHeaders);
+      else response.statusCode = 401;
+      response.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Expected a TCP address");
+    const state = { ...(await reusedState()), port: address.port };
+    try {
+      await writeLocalDaemonState(getConfigDir(), state);
+      if (name.startsWith("clears")) {
+        await expect(getRunningLocalDaemon()).resolves.toBeUndefined();
+        await expect(
+          readLocalDaemonState(getConfigDir()),
+        ).resolves.toBeUndefined();
+      } else {
+        await expect(getRunningLocalDaemon()).rejects.toMatchObject({
+          name: "CliError",
+        });
+        await expect(readLocalDaemonState(getConfigDir())).resolves.toEqual(
+          state,
+        );
+      }
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
+  });
+});
+
 /** Poll `read` until it returns a value `done` accepts. */
 async function eventually<T>(
   read: () => T | Promise<T>,
@@ -182,10 +395,7 @@ async function eventually<T>(
 }
 
 test("mirrors its sessions to the completion snapshot and removes it on shutdown", async () => {
-  vi.stubGlobal(
-    "fetch",
-    (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
-  );
+  vi.stubGlobal("fetch", originalFetch());
   const running = runLocalDaemonForeground({
     host: "127.0.0.1",
     port: await freePort(),
@@ -221,6 +431,43 @@ test("mirrors its sessions to the completion snapshot and removes it on shutdown
   await expect(
     readFile(join(getConfigDir(), LOCAL_SESSION_SNAPSHOT_FILENAME)),
   ).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("publishes discovery only while holding the ownership guard", async () => {
+  vi.stubGlobal(
+    "fetch",
+    (globalThis as { __originalFetch: typeof fetch }).__originalFetch,
+  );
+  const directory = getConfigDir();
+  const guardHeld: boolean[] = [];
+  const actual =
+    await vi.importActual<typeof import("node:fs/promises")>(
+      "node:fs/promises",
+    );
+  vi.mocked(rename).mockImplementation(async (from, to) => {
+    if (to === join(directory, LOCAL_DAEMON_STATE_FILENAME)) {
+      guardHeld.push(
+        existsSync(join(directory, "local-control-plane.owner.guard")),
+      );
+    }
+    await actual.rename(from, to);
+  });
+  try {
+    const running = runLocalDaemonForeground({
+      host: "127.0.0.1",
+      port: await freePort(),
+    });
+    const state = await eventually(
+      () => readLocalDaemonState(directory),
+      (value) => value !== undefined,
+    );
+    if (!state) throw new Error("Expected daemon discovery state");
+    await requestLocalDaemon(state, "/daemon/stop", { method: "POST" });
+    await running;
+  } finally {
+    vi.mocked(rename).mockImplementation(actual.rename);
+  }
+  expect(guardHeld).toEqual([true]);
 });
 
 test("closes the listener when discovery persistence fails", async () => {

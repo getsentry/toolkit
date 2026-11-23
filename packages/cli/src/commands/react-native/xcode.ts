@@ -76,9 +76,9 @@ type XcodeResult = {
   mode: "debug" | "fetch" | "wrap";
   bundle?: string;
   sourcemap?: string;
-  debugId?: string;
-  release?: string;
-  dist?: string[];
+  debugId?: string | undefined;
+  release?: string | undefined;
+  dist?: string[] | undefined;
   uploads: number;
 };
 
@@ -110,7 +110,7 @@ function shouldWrap(flags: XcodeFlags, env: NodeJS.ProcessEnv): boolean {
   if (flags.force) {
     return true;
   }
-  const configuration = env.CONFIGURATION;
+  const configuration = env["CONFIGURATION"];
   if (configuration === undefined) {
     throw new ValidationError(
       "Need to run this from Xcode (CONFIGURATION is not set).",
@@ -240,8 +240,8 @@ function runWrappedBuild(
     __SENTRY_RN_WRAP_XCODE_CALL: "1",
   };
   if (existsSync(hermesc)) {
-    env.HERMES_CLI_PATH = self;
-    env.SENTRY_RN_REAL_HERMES_CLI_PATH = hermesc;
+    env["HERMES_CLI_PATH"] = self;
+    env["SENTRY_RN_REAL_HERMES_CLI_PATH"] = hermesc;
   }
 
   const status = runScript(script, scriptArgs, env);
@@ -299,8 +299,8 @@ async function uploadPair(
   ctx: SentryContext,
   flags: XcodeFlags,
 ): Promise<{
-  debugId?: string;
-  release?: string;
+  debugId?: string | undefined;
+  release?: string | undefined;
   dist: string[];
   uploads: number;
 }> {
@@ -517,7 +517,7 @@ export const xcodeCommand = buildCommand({
     const wrap = shouldWrap(flags, this.env);
     const script = resolveScript(flags, this.cwd);
 
-    const simulator = this.env.PLATFORM_NAME?.endsWith("simulator") ?? false;
+    const simulator = this.env["PLATFORM_NAME"]?.endsWith("simulator") ?? false;
     const fetchUrl =
       flags["allow-fetch"] && simulator
         ? (flags["fetch-from"] ?? DEFAULT_PACKAGER_URL)

@@ -55,7 +55,7 @@ async function getAvailableTools(): Promise<string[]> {
   // Convert tools to the format expected by the scorer
   cachedTools = Object.entries(toolsMap).map(([name, tool]) => {
     // Extract the first line of description for a concise summary
-    const shortDescription = (tool as any).description?.split("\n")[0] || "";
+    const shortDescription = tool.description?.split("\n")[0] || "";
     return `${name} - ${shortDescription}`;
   });
 
@@ -68,14 +68,14 @@ async function getAvailableTools(): Promise<string[]> {
 
 export interface ExpectedToolCall {
   name: string;
-  arguments: Record<string, any>;
+  arguments: Record<string, unknown>;
 }
 
 interface ToolPredictionScorerOptions {
   input: string;
   output: string;
   expectedTools?: ExpectedToolCall[];
-  result?: any;
+  result?: unknown;
 }
 
 const predictionSchema = z.object({

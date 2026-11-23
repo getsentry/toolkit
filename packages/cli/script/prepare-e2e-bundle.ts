@@ -4,7 +4,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const child = spawn(pnpm, ["run", "bundle"], {
   env: {
     ...process.env,
-    SENTRY_CLIENT_ID: process.env.SENTRY_CLIENT_ID ?? "test-client-id",
+    SENTRY_CLIENT_ID: process.env["SENTRY_CLIENT_ID"] ?? "test-client-id",
   },
   stdio: "inherit",
 });

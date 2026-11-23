@@ -17,6 +17,7 @@ import {
 import { describe, expect, test } from "vitest";
 import { anyTrue } from "../../src/lib/promises.js";
 import { DEFAULT_NUM_RUNS } from "../model-based/helpers.js";
+import { at } from "../helpers.js";
 
 describe("anyTrue properties", () => {
   test("returns true if and only if at least one predicate returns true", async () => {
@@ -27,7 +28,9 @@ describe("anyTrue properties", () => {
           const items = results.map((_, i) => i);
           const expectedResult = results.includes(true);
 
-          const actualResult = await anyTrue(items, async (i) => results[i]);
+          const actualResult = await anyTrue(items, async (i) =>
+            at(results, i),
+          );
 
           expect(actualResult).toBe(expectedResult);
         },

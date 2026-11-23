@@ -43,7 +43,7 @@ export type CreatePixelCanvasOptions = {
   /** Canvas height in pixels. */
   height: number;
   /** Optional opaque background fill. A missing value leaves pixels transparent. */
-  background?: Rgb;
+  background?: Rgb | undefined;
 };
 
 /** Options for drawing a filled rectangle. */

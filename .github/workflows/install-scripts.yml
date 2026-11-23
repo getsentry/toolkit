@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/install-scripts.yml"
+      - "scripts/check-installer-libc.sh"
       - "packages/cli/install"
       - "packages/cli/install.ps1"
       - "packages/cli/src/commands/cli/setup.ts"
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/install-scripts.yml"
+      - "scripts/check-installer-libc.sh"
       - "packages/cli/install"
       - "packages/cli/install.ps1"
       - "packages/cli/src/commands/cli/setup.ts"
@@ -47,6 +49,32 @@ jobs:
         run: |
           echo "Resolved $(command -v sentry)"
           sentry --version
+
+  # glibc distros with the musl package installed have the musl loader, which
+  # the installer once took as proof of musl. Alpine must still be refused.
+  linux-libc:
+    name: bash detects ${{ matrix.libc }} on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:stable-slim
+            libc: glibc
+          - image: archlinux:latest
+            libc: glibc
+          - image: alpine:latest
+            libc: musl
+    env:
+      EXPECTED_LIBC: ${{ matrix.libc }}
+      SENTRY_CLI_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: sh scripts/check-installer-libc.sh
 
   windows-powershell:
     name: ${{ matrix.shell }} installs latest
@@ -91,7 +119,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22.23.4"
