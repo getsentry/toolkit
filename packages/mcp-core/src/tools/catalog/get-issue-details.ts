@@ -1,7 +1,11 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
 import { ApiClientError, ApiNotFoundError } from "../../api-client";
-import { ISSUE_STATUSES, RELATED_ISSUE_TYPES } from "../../api-client/schema";
+import {
+  INLINE_RELATED_ISSUE_TYPES,
+  ISSUE_STATUSES,
+  RELATED_ISSUE_TYPES,
+} from "../../api-client/schema";
 import type {
   AutofixRunState,
   CommitterList,
@@ -995,6 +999,7 @@ async function maybeFetchRelatedIssues({
     return await apiService.getRelatedIssues({
       organizationSlug,
       issueId,
+      types: INLINE_RELATED_ISSUE_TYPES,
       eventId,
       limit: MAX_RELATED_ISSUES,
     });

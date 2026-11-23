@@ -2066,6 +2066,7 @@ describe("structuredContent", () => {
       const payload = parsePayload(result);
 
       expect(requests).toHaveLength(1);
+      // Not same_title or same_supergroup: each adds a lookup to every call.
       expect(requests[0]?.searchParams.getAll("type")).toEqual([
         "similar_stacktrace",
         "same_trace",

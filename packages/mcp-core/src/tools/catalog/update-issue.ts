@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SentryApiService } from "../../api-client";
+import { INLINE_RELATED_ISSUE_TYPES } from "../../api-client/schema";
 import type {
   AssignedTo,
   Issue,
@@ -914,6 +915,7 @@ async function tryGetRelatedIssues(
     return await apiService.getRelatedIssues({
       organizationSlug,
       issueId,
+      types: INLINE_RELATED_ISSUE_TYPES,
       limit: RELATED_ISSUES_LIMIT,
     });
   } catch (error) {
