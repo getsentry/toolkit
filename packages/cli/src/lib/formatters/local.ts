@@ -471,8 +471,9 @@ export function formatErrorItem(
 
 /**
  * A transaction's attributes for its label: its `contexts.trace.data`, with
- * `contexts.trace.op` as `sentry.op` when the data has none, as spans carry
- * it. A server transaction then shows its path, like a server span.
+ * an `http.server` op from `contexts.trace.op` as `sentry.op` when the data
+ * has none, so the transaction shows its path like a server span. Other ops
+ * stay out: they would make a custom transaction name lose to its URL.
  */
 function transactionLabelAttributes(
   event: Record<string, unknown>,
@@ -481,9 +482,8 @@ function transactionLabelAttributes(
   const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
     "trace"
   ] as Record<string, unknown> | undefined;
-  const op = trace?.["op"];
-  return attrs["sentry.op"] === undefined && typeof op === "string" && op
-    ? { ...attrs, "sentry.op": op }
+  return attrs["sentry.op"] === undefined && trace?.["op"] === "http.server"
+    ? { ...attrs, "sentry.op": "http.server" }
     : attrs;
 }
 

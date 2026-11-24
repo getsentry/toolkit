@@ -309,6 +309,19 @@ describe("formatTransactionItem", () => {
     expect(result).not.toContain("localhost");
   });
 
+  test("keeps a custom transaction name when only its trace context has the op", () => {
+    const event = {
+      timestamp: 1_700_000_001,
+      start_timestamp: 1_700_000_000,
+      transaction: "checkout flow",
+      contexts: {
+        trace: { op: "ui.action", data: { "url.path": "/cart" } },
+      },
+    };
+    const result = stripAnsi(formatTransactionItem(event, browserHeader));
+    expect(result).toContain("[ui.action] checkout flow");
+  });
+
   test("shows non-ok status", () => {
     const event = {
       timestamp: 1_700_000_001,
