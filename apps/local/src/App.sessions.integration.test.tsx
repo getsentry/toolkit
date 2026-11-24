@@ -581,6 +581,43 @@ test("a CLI session link opens that session, not the first one", async () => {
   }
 }, 15_000);
 
+test("retrying a failed session link still opens the linked session", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/retry-link-web");
+    await daemon.ingest(worker, "/retry-link-worker");
+    let failInitialStream = true;
+    vi.stubGlobal(
+      "EventSource",
+      class extends NodeEventSource {
+        constructor(url: string) {
+          super(url, {
+            fetch: (input, init) => {
+              if (failInitialStream && new URL(url).pathname === "/stream") {
+                failInitialStream = false;
+                return Promise.resolve(new Response(null, { status: 503 }));
+              }
+              return fetch(input, init);
+            },
+          });
+        }
+      },
+    );
+    const link = new URL(getLocalUiConnectionUrl(worker.streamUrl)!);
+    window.history.replaceState(null, "", `/${link.search}`);
+    renderViewer();
+    await screen.findByRole("alert", { name: "Receiver connection error" });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await screen.findAllByText("/retry-link-worker");
+    expect(screen.queryByText("/retry-link-web")).toBeNull();
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
 test("a session link for an unknown session says so and falls back to the first session", async () => {
   const daemon = await startDaemon();
   try {

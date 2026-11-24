@@ -325,8 +325,8 @@ export default function App() {
     getInitialSessionDirectory(streamUrl),
   );
   const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
-  // A viewer link can name the session to open first. The next connection,
-  // usually that session, uses it up, so later visits to /stream pick as before.
+  // A viewer link can name the session to open first. Selecting a session uses
+  // it up, so later visits to /stream pick as before.
   const [linkedSessionId, setLinkedSessionId] = useState(() =>
     getSessionIdFromQuery(window.location.search),
   );
@@ -670,7 +670,13 @@ export default function App() {
       return;
     }
     cancelReceiverAttempt();
-    setLinkedSessionId(undefined);
+    // A retry of the daemon's /stream keeps the link's session; any other
+    // target, such as the session itself, uses it up.
+    if (
+      endpoint.kind !== "loopback" ||
+      new URL(endpoint.url).pathname !== "/stream"
+    )
+      setLinkedSessionId(undefined);
     setLinkedSessionNotice(undefined);
     setIsViewCleared(false);
     setIsDisconnected(false);
