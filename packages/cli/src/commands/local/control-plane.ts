@@ -26,7 +26,12 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { AMBIGUOUS_EVENT_CODE, matchEventIds } from "./event-lookup.js";
+import {
+  AMBIGUOUS_EVENT_CODE,
+  envelopeLookupId,
+  matchEventIds,
+  replaySegmentNumber,
+} from "./event-lookup.js";
 import { summarizeEnvelope } from "./event-summary.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
@@ -109,15 +114,6 @@ function isLoopbackBrowserRequest(request: Request): boolean {
   return origin === null || LOOPBACK_ORIGIN_RE.test(origin);
 }
 
-/** Only nonempty string IDs from event-bearing envelope fields are lookup keys. */
-function eventIdFrom(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  const id = (value as Record<string, unknown>)["event_id"];
-  return typeof id === "string" && id.length > 0 ? id : undefined;
-}
-
 /**
  * The segment number of a replay envelope. Replay SDKs send every segment of
  * a replay with the replay ID as the envelope `event_id`, so the segment is
@@ -129,16 +125,16 @@ function replaySegmentId(items: unknown[]): number | undefined {
       continue;
     }
     const [itemHeader, payload] = item as [unknown, unknown];
-    const segmentId =
+    const segmentId = replaySegmentNumber(
       typeof payload === "object" && payload !== null
         ? (payload as Record<string, unknown>)["segment_id"]
-        : undefined;
+        : undefined,
+    );
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
       (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
-      typeof segmentId === "number" &&
-      Number.isInteger(segmentId)
+      segmentId !== undefined
     ) {
       return segmentId;
     }
@@ -155,23 +151,13 @@ function eventSummary(parsed: {
   envelope: [Record<string, unknown>, unknown[]];
 }): { envelopeId: string; eventId: string; itemTypes: string[] } {
   const [header, items] = parsed.envelope;
-  const itemEventId = items.flatMap((item) => {
-    if (
-      !Array.isArray(item) ||
-      typeof item[0] !== "object" ||
-      item[0] === null
-    ) {
-      return [];
-    }
-    const type = (item[0] as Record<string, unknown>)["type"];
-    if (type !== "event" && type !== "transaction") {
-      return [];
-    }
-    const id = eventIdFrom(item[0]) ?? eventIdFrom(item[1]);
-    return id ? [id] : [];
-  })[0];
   const envelopeId = spotlightEnvelopeId(header);
-  const eventId = eventIdFrom(header) ?? itemEventId;
+  const eventId = envelopeLookupId(
+    header,
+    items.flatMap((item) =>
+      Array.isArray(item) ? [{ header: item[0], payload: () => item[1] }] : [],
+    ),
+  );
   const segmentId = replaySegmentId(items);
   return {
     envelopeId,

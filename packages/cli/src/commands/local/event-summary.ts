@@ -3,11 +3,19 @@
  * agents can pick what to open without one `event view` call per entry.
  */
 
-import { summarizeEvent } from "../../lib/formatters/local.js";
+import {
+  type StreamedSpan,
+  spanSegmentLabel,
+  summarizeEvent,
+} from "../../lib/formatters/local.js";
 import { stripAnsi } from "../../lib/formatters/strip-ansi.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { sessionCountsTitle } from "./session-counts.js";
-import { batchSegment } from "./span-segments.js";
+import {
+  batchSegment,
+  countedSpans,
+  groupSpansBySegment,
+} from "./span-segments.js";
 import { parseEventTimestamp } from "./timestamp.js";
 
 /** What an envelope holds, read from its main item. Every field is optional. */
@@ -20,13 +28,20 @@ type LocalEventDetails = {
   type?: string | undefined;
   /** Event or log level, e.g. `error`, `warning`, `info`. */
   level?: string | undefined;
-  /** `TypeError: msg` for errors, the text for messages and logs, or the transaction or span name. */
+  /**
+   * `TypeError: msg` for errors, the text for messages and logs, the message
+   * of a feedback, or the transaction or span name.
+   */
   title?: string | undefined;
   /** When the SDK recorded it, as an ISO 8601 string. */
   timestamp?: string | undefined;
   /** 32-character trace ID, when the item or envelope header has one. */
   traceId?: string | undefined;
-  /** Number of logs or spans in a log or span batch; unset for a standalone span. */
+  /**
+   * Number of logs in a log batch, or of spans in a span batch that the tail
+   * counts (`[N spans]`, `[+N spans]`): every span but the segment spans.
+   * Unset for a standalone span.
+   */
   count?: number | undefined;
 };
 
@@ -129,7 +144,8 @@ function mostSevereLog(
  * Summarize a log batch, or a span item: a v2 batch with an `items` array, or
  * a standalone span whose payload is the span itself. A log batch takes its
  * level, title, and time from its most severe log; a span batch takes its
- * title and time from its segment (see {@link batchSegment}).
+ * title, the one the tail shows, and time from its segment (see
+ * {@link batchSegment}).
  */
 function summarizeContainer(
   itemType: string,
@@ -164,14 +180,15 @@ function summarizeContainer(
       count: entries.length,
     };
   }
-  const segment = batchSegment(entries);
-  const root = segment?.head ?? {};
+  const groups = groupSpansBySegment(entries as StreamedSpan[]);
+  const segment = batchSegment(groups);
+  const root: StreamedSpan = segment?.head ?? {};
   return {
     type: "span",
-    title: segment?.name,
-    timestamp: isoTimestamp(root["end_timestamp"] ?? root["start_timestamp"]),
-    traceId: traceId(root["trace_id"]),
-    count: entries.length,
+    title: segment && spanSegmentLabel(segment),
+    timestamp: isoTimestamp(root.end_timestamp ?? root.start_timestamp),
+    traceId: traceId(root.trace_id),
+    count: groups.reduce((sum, group) => sum + countedSpans(group), 0),
   };
 }
 
@@ -187,11 +204,33 @@ function shortTitle(details: LocalEventDetails): LocalEventDetails {
   const title = stripAnsi(details.title);
   return {
     ...details,
-    title:
-      title.length > MAX_TITLE_LENGTH
-        ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…`
-        : title,
+    title: title.length > MAX_TITLE_LENGTH ? cutTitle(title) : title,
   };
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Cut a title to {@link MAX_TITLE_LENGTH} characters with an ellipsis, on a
+ * grapheme boundary so an emoji is not split.
+ */
+function cutTitle(title: string): string {
+  let end = 0;
+  for (const { index } of graphemes.segment(title)) {
+    if (index > MAX_TITLE_LENGTH - 1) {
+      break;
+    }
+    end = index;
+  }
+  return `${title.slice(0, end)}…`;
+}
+
+/** A feedback's message, unless it is blank. */
+function feedbackMessage(payload: Record<string, unknown>): string | undefined {
+  const message = text(
+    record(record(payload["contexts"])["feedback"])["message"],
+  );
+  return message?.trim() ? message : undefined;
 }
 
 /** Pick the item that best describes the envelope. */
@@ -234,6 +273,9 @@ export function summarizeEnvelope(
     type: itemType,
     level: text(payload["level"]),
     title:
+      // Feedback also carries the page or request it was sent from in
+      // `transaction`; the message says what it is about.
+      (itemType === "feedback" ? feedbackMessage(payload) : undefined) ??
       text(payload["transaction"]) ??
       text(payload["status"]) ??
       (itemType === "sessions" ? sessionCountsTitle(payload) : undefined),

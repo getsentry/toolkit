@@ -9,9 +9,12 @@ import {
   frameFile,
 } from "../../commands/local/exception-values.js";
 import {
+  countedSpans,
   groupSpansBySegment,
   type SpanSegment,
 } from "../../commands/local/span-segments.js";
+import { rawItemEncoding } from "../../commands/local/envelope.js";
+import { replaySegmentNumber } from "../../commands/local/event-lookup.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -21,7 +24,10 @@ import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { blue, bold, cyan, green, muted, red, yellow } from "./colors.js";
 import { stripAnsi } from "./plain-detect.js";
-import type { AttributeSource } from "./semantic-display.js";
+import type {
+  AttributeSource,
+  SemanticSpanDisplay,
+} from "./semantic-display.js";
 import {
   collectSpanAttributes,
   formatSemanticSpanDisplay,
@@ -466,6 +472,24 @@ export function formatErrorItem(
 }
 
 /**
+ * A transaction's attributes for its label: its `contexts.trace.data`, with
+ * an `http.server` op from `contexts.trace.op` as `sentry.op` when the data
+ * has none, so the transaction shows its path like a server span. Other ops
+ * stay out: they would make a custom transaction name lose to its URL.
+ */
+function transactionLabelAttributes(
+  event: Record<string, unknown>,
+): AttributeSource {
+  const attrs = mergeTransactionAttributes(event);
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
+  return attrs["sentry.op"] === undefined && trace?.["op"] === "http.server"
+    ? { ...attrs, "sentry.op": "http.server" }
+    : attrs;
+}
+
+/**
  * Format a transaction event item into a colored one-liner.
  *
  * When OTel semantic attributes are present (e.g. `gen_ai.*`, `mcp.*`,
@@ -489,7 +513,7 @@ export function formatTransactionItem(
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
-  const attrs = mergeTransactionAttributes(event);
+  const attrs = transactionLabelAttributes(event);
   const semantic = formatSemanticSpanDisplay(attrs, sanitize(txnName));
 
   let msg = sanitize(semantic.label);
@@ -900,6 +924,33 @@ function formatSpanCount(count: number, prefix = ""): string {
     : "";
 }
 
+/** A span's label and metadata, from its semantic attributes or its name. */
+function spanDisplay(span: StreamedSpan): SemanticSpanDisplay {
+  return formatSemanticSpanDisplay(
+    flattenSpanAttributes(span.attributes),
+    typeof span.name === "string" ? span.name : UNNAMED_SPAN,
+  );
+}
+
+/**
+ * Whether the tail prints a segment group as its head span: the segment
+ * span, or the only span of a group whose segment is missing.
+ */
+function showsHead(group: SpanSegment<StreamedSpan>): boolean {
+  return group.isSegment || group.spans.length === 1;
+}
+
+/**
+ * The label of a segment group's tail line, unsanitized: its head span's
+ * label, or the segment name for late spans. `local event list` titles span
+ * batches with it, so both name a batch the same way.
+ */
+export function spanSegmentLabel(group: SpanSegment<StreamedSpan>): string {
+  return showsHead(group)
+    ? spanDisplay(group.head).label
+    : (group.name ?? UNNAMED_SPAN);
+}
+
 /**
  * Format a single standalone span into a colored one-liner, using the same
  * semantic rendering as transactions. `spanCount` is a
@@ -912,7 +963,7 @@ export function formatSingleSpan(
   spanCount = "",
 ): string {
   const flat = flattenSpanAttributes(span.attributes);
-  const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
+  const semantic = spanDisplay(span);
 
   let msg = sanitize(semantic.label);
   if (semantic.metadata.length > 0) {
@@ -948,8 +999,8 @@ function formatLateSpansLine(
   header: Record<string, unknown>,
 ): string {
   const msg =
-    sanitize(group.name ?? "unnamed span") +
-    formatSpanCount(group.spans.length, "+") +
+    sanitize(spanSegmentLabel(group)) +
+    formatSpanCount(countedSpans(group), "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
   const source = inferSource(
@@ -988,15 +1039,13 @@ export function formatSpanItem(
     return [];
   }
   return groupSpansBySegment(items).flatMap((group) => {
-    const shown = group.isSegment || group.spans.length === 1;
+    const shown = showsHead(group);
     const lines = [
       shown
         ? formatSingleSpan(
             group.head,
             header,
-            group.isSegment
-              ? formatSpanCount(group.spans.length - 1)
-              : formatSpanCount(1, "+"),
+            formatSpanCount(countedSpans(group), group.isSegment ? "" : "+"),
           )
         : formatLateSpansLine(group, header),
     ];
@@ -1091,10 +1140,40 @@ export function createReplayTracker(): ReplayTracker {
 }
 
 /**
+ * The `segment_id` on the first line of a replay recording, which the
+ * receiver keeps raw because the rest is (usually gzip) rrweb bytes. Only a
+ * short prefix is decoded: that line is `{"segment_id":N}`.
+ */
+function recordingSegmentId(
+  itemHeader: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): number | undefined {
+  const data = payload["data"];
+  if (typeof data !== "string") {
+    return;
+  }
+  const bytes = Buffer.from(data.slice(0, 64), rawItemEncoding(itemHeader));
+  const newline = bytes.indexOf(10);
+  try {
+    const line: unknown = JSON.parse(
+      bytes.subarray(0, newline < 0 ? bytes.length : newline).toString("utf8"),
+    );
+    return typeof line === "object" && line !== null
+      ? replaySegmentNumber((line as Record<string, unknown>)["segment_id"])
+      : undefined;
+  } catch {
+    // A recording without a JSON first line just has no segment number.
+    logger.debug("Local replay recording has no JSON segment line.");
+    return;
+  }
+}
+
+/**
  * Format the first `replay_event` the tail sees for a session replay: its
- * short ID and the page in its `urls`.
+ * short ID, the page in its `urls`, and the segment the tail first saw. The
+ * line never updates, so it names where the tail joined, not a count.
  *
- * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
+ * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/ [from segment 0]`
  */
 function formatReplayItem(
   event: Record<string, unknown>,
@@ -1102,9 +1181,13 @@ function formatReplayItem(
 ): string {
   const id = typeof event["replay_id"] === "string" ? event["replay_id"] : "";
   const url = Array.isArray(event["urls"]) ? event["urls"][0] : undefined;
+  const segment = replaySegmentNumber(event["segment_id"]);
   let msg = `replay ${sanitize(id.slice(0, TRACE_ID_SHORT_LEN))}`;
   if (typeof url === "string" && url) {
     msg += ` ${sanitize(url)}`;
+  }
+  if (segment !== undefined) {
+    msg += ` ${muted(`[from segment ${segment}]`)}`;
   }
   const ts = formatTime(event["timestamp"]);
   return `${muted(ts)} ${formatType("replay")} ${inferSource(header, event)} ${msg}`;
@@ -1274,7 +1357,7 @@ function formatTransactionJson(
   const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
     "trace"
   ] as Record<string, unknown> | undefined;
-  const attrs = mergeTransactionAttributes(payload);
+  const attrs = transactionLabelAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(
@@ -1367,7 +1450,7 @@ function formatSpanJson(
   }
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
-    const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
+    const semantic = spanDisplay(span);
     return formatJsonObservation(
       {
         type: "span",
@@ -1412,6 +1495,7 @@ export function formatItemJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   showAttributes = false,
+  itemHeader: Record<string, unknown> = {},
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorJson(payload, header)];
@@ -1424,6 +1508,26 @@ export function formatItemJson(
   }
   if (itemType === "log") {
     return formatLogJson(payload, header, showAttributes);
+  }
+  // Every segment of a replay carries the replay ID as its event ID, so the
+  // segment number is what tells the records apart.
+  if (itemType === "replay_event" || itemType === "replay_recording") {
+    return [
+      formatJsonObservation(
+        {
+          type: itemType,
+          timestamp: parseEventTimestamp(payload["timestamp"]),
+          replay_id:
+            jsonSafe(payload["replay_id"]) ?? jsonSafe(header["event_id"]),
+          segment_id:
+            itemType === "replay_event"
+              ? replaySegmentNumber(payload["segment_id"])
+              : recordingSegmentId(itemHeader, payload),
+        },
+        payload,
+        header,
+      ),
+    ];
   }
   return [
     formatJsonObservation(
@@ -1605,7 +1709,13 @@ export function formatEnvelopeLinesJson(
       continue;
     }
     lines.push(
-      ...formatItemJson(itemHeader.type, payload, header, showAttributes),
+      ...formatItemJson(
+        itemHeader.type,
+        payload,
+        header,
+        showAttributes,
+        itemHeader,
+      ),
     );
   }
   return lines;

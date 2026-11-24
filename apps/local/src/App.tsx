@@ -89,6 +89,7 @@ import {
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
+  getSessionIdFromQuery,
   getStreamUrlFromHash,
   itemTime,
   readConnectionLink,
@@ -324,6 +325,17 @@ export default function App() {
     getInitialSessionDirectory(streamUrl),
   );
   const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
+  // A viewer link can name the session to open first. Selecting a session uses
+  // it up, so later visits to /stream pick as before.
+  const [linkedSessionId, setLinkedSessionId] = useState(() =>
+    getSessionIdFromQuery(window.location.search),
+  );
+  const [linkedSessionNotice, setLinkedSessionNotice] = useState<string>();
+  const onLinkedSessionMissing = useCallback(
+    (fallback: ViewerSession) =>
+      setLinkedSessionNotice(`Session not found, showing ${fallback.label}`),
+    [],
+  );
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>(
@@ -658,6 +670,14 @@ export default function App() {
       return;
     }
     cancelReceiverAttempt();
+    // A retry of the daemon's /stream keeps the link's session; any other
+    // target, such as the session itself, uses it up.
+    if (
+      endpoint.kind !== "loopback" ||
+      new URL(endpoint.url).pathname !== "/stream"
+    )
+      setLinkedSessionId(undefined);
+    setLinkedSessionNotice(undefined);
     setIsViewCleared(false);
     setIsDisconnected(false);
     saveDisconnected(false);
@@ -1351,6 +1371,9 @@ export default function App() {
                         directoryUrl={activeDirectoryUrl}
                         streamUrl={streamUrl}
                         selectInitialSession={canAutoSelectSession}
+                        preferredSessionId={linkedSessionId}
+                        onPreferredSessionMissing={onLinkedSessionMissing}
+                        notice={linkedSessionNotice}
                         onSelect={connectToEndpoint}
                       />
                     ) : undefined
@@ -1367,6 +1390,9 @@ export default function App() {
                     directoryUrl={activeDirectoryUrl}
                     streamUrl={streamUrl}
                     selectInitialSession={canAutoSelectSession}
+                    preferredSessionId={linkedSessionId}
+                    onPreferredSessionMissing={onLinkedSessionMissing}
+                    notice={linkedSessionNotice}
                     onSelect={connectToEndpoint}
                   />
                 </div>

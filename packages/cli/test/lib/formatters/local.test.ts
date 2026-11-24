@@ -17,6 +17,7 @@ import {
   formatErrorItem,
   formatItem,
   formatItemJson,
+  formatLocalControlResult,
   formatSingleLog,
   formatSingleSpan,
   formatSpanItem,
@@ -286,6 +287,40 @@ describe("formatTransactionItem", () => {
     const result = stripAnsi(formatTransactionItem(event, browserHeader));
     expect(result).not.toContain("[default]");
     expect(result).toContain("my-txn");
+  });
+
+  test("shows only the URL path of a server transaction whose op is in its trace context", () => {
+    // Older SDKs set the op on `contexts.trace.op` and not as `sentry.op`.
+    const event = {
+      timestamp: 1_700_000_001,
+      start_timestamp: 1_700_000_000,
+      transaction: "GET",
+      contexts: {
+        trace: {
+          op: "http.server",
+          data: {
+            "http.request.method": "GET",
+            "url.full": "http://localhost:3107/ok?q=1",
+          },
+        },
+      },
+    };
+    const result = stripAnsi(formatTransactionItem(event, browserHeader));
+    expect(result).toContain("[http.server] GET /ok");
+    expect(result).not.toContain("localhost");
+  });
+
+  test("keeps a custom transaction name when only its trace context has the op", () => {
+    const event = {
+      timestamp: 1_700_000_001,
+      start_timestamp: 1_700_000_000,
+      transaction: "checkout flow",
+      contexts: {
+        trace: { op: "ui.action", data: { "url.path": "/cart" } },
+      },
+    };
+    const result = stripAnsi(formatTransactionItem(event, browserHeader));
+    expect(result).toContain("[ui.action] checkout flow");
   });
 
   test("shows non-ok status", () => {
@@ -1581,5 +1616,35 @@ describe("envelopeHasTelemetry", () => {
     expect(
       envelopeHasTelemetry({ getParsedEnvelope: () => null }, new Set()),
     ).toBe(false);
+  });
+});
+
+describe("formatLocalControlResult", () => {
+  function viewerLink(output: string): URL {
+    const link = output.match(/View events at (\S+)/)?.[1];
+    expect(link).toBeTruthy();
+    return new URL(link!);
+  }
+
+  test("a session summary links the viewer to that session without its capability", () => {
+    const data = {
+      id: "session-1",
+      streamUrl:
+        "http://127.0.0.1:9012/_local/v1/sessions/session-1/stream?cap=stream-secret",
+    };
+    const output = formatLocalControlResult(data);
+    const url = viewerLink(output);
+    expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.searchParams.get("session")).toBe("session-1");
+    expect(url.toString()).not.toContain("stream-secret");
+    expect(JSON.parse(output.split("\n\nView events at")[0]!)).toEqual(data);
+  });
+
+  test("a daemon summary links the viewer to the plain receiver", () => {
+    const url = viewerLink(
+      formatLocalControlResult({ daemon: { host: "127.0.0.1", port: 9012 } }),
+    );
+    expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.searchParams.has("session")).toBe(false);
   });
 });
