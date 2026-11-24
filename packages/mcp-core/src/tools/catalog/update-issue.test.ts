@@ -559,6 +559,48 @@ describe("update_issue", () => {
     );
   });
 
+  it("explains a next-release resolution that Sentry stores in a release", async () => {
+    // Sentry stores resolvedInNextRelease as resolved in a release when it can
+    // already pick one, e.g. the issue's latest release in a semver project.
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({ status: "unresolved", statusDetails: {} }),
+          ),
+      ),
+      http.put(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/issues/CLOUDFLARE-MCP-41/",
+        () =>
+          HttpResponse.json(
+            createIssue({
+              status: "resolved",
+              statusDetails: { inRelease: "my-app@1.2.3" },
+            }),
+          ),
+      ),
+    );
+
+    const result = await updateIssue.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+        status: "resolvedInNextRelease",
+        assignedTo: undefined,
+        issueUrl: undefined,
+        regionUrl: null,
+      },
+      serverContext,
+    );
+
+    const output = structured(result);
+    expect(output.current.status).toBe("resolvedInRelease");
+    expect(output.effect).toBe(
+      "The issue is now resolved in the next release. Sentry stored this as resolved in release my-app@1.2.3: with semantic versioning that is the latest release seen for this issue, otherwise the release after it. Events from releases newer than the issue's latest release will reopen it as a regression",
+    );
+  });
+
   it("skips updates when the issue is already resolved in next release", async () => {
     let putCalled = false;
     const currentIssue = createIssue({
