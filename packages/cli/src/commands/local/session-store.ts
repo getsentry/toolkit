@@ -113,17 +113,15 @@ export type LocalSessionStore = {
    * {@link LEASE_GRACE_MS}.
    */
   detachLease: (id: string, leaseId: string) => void;
+  /** Give back a lease, closing a session that runs created with its last. */
+  release: (id: string, leaseId: string) => LocalSession;
   /**
-   * Give back a lease. With `discardIfEmpty`, a session that closes with its
-   * last lease and never received an envelope is removed instead of
-   * retained, even when its stream connection already gave the lease back.
-   * Returns undefined when the session was removed.
+   * Remove a session that runs created, that closed with its last lease, and
+   * that holds no envelope. Call it only after the session's receiver has
+   * drained, so an ingest admitted before the close is not lost. Returns
+   * whether the session was removed.
    */
-  release: (
-    id: string,
-    leaseId: string,
-    options?: { discardIfEmpty?: boolean },
-  ) => LocalSession | undefined;
+  discardIfEmpty: (id: string) => boolean;
   setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
@@ -360,22 +358,24 @@ export function createLocalSessionStore({
         scheduleLeaseCheck();
       }
     },
-    release(id, leaseId, { discardIfEmpty = false } = {}) {
+    release(id, leaseId) {
       const session = resolveStored(id);
       session.leases.delete(leaseId);
-      const current = closeIfUnleased(session);
+      return toPublicSession(closeIfUnleased(session));
+    },
+    discardIfEmpty(id) {
+      const session = sessions.get(id);
       if (
-        discardIfEmpty &&
-        current.state === "retained" &&
-        current.closesWithLeases &&
-        current.leases.size === 0 &&
-        current.buffer.read({ all: true }).length === 0
+        session?.state !== "retained" ||
+        !session.closesWithLeases ||
+        session.leases.size > 0 ||
+        session.buffer.read({ all: true }).length > 0
       ) {
-        removeStored(current.id);
-        changed();
-        return undefined;
+        return false;
       }
-      return toPublicSession(current);
+      removeStored(id);
+      changed();
+      return true;
     },
     getRetention(reference) {
       return resolveStored(reference).retention;

@@ -729,6 +729,82 @@ describe("Local control plane", () => {
     expect(plane.sessionStore.choose("web").others).toEqual([]);
   });
 
+  test("a release that discards an empty session keeps an ingest that is still decoding", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const listening = await tryListen(plane.app, 0, "127.0.0.1");
+    const base = `http://127.0.0.1:${listening.port}`;
+    const send = (
+      path: string,
+      headers: Record<string, string>,
+      body?: string | Buffer,
+    ) => {
+      let resolveStatus: (status: number) => void = () => {};
+      const status = new Promise<number>((resolve) => {
+        resolveStatus = resolve;
+      });
+      const req = request(
+        `${base}${path}`,
+        { method: "POST", headers },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolveStatus(response.statusCode ?? 0));
+        },
+      );
+      req.on("error", () => resolveStatus(0));
+      if (body !== undefined) req.end(body);
+      return { req, status };
+    };
+    try {
+      const created = await plane.app.request(`${base}/_local/v1/sessions`, {
+        method: "POST",
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+      });
+      const session = (await created.json()) as {
+        id: string;
+        leaseId: string;
+        ingestUrl: string;
+      };
+
+      // The app's last delivery is already admitted and decoding when the
+      // failed run gives the session back.
+      const attachment = Buffer.alloc(24 * 1024 * 1024);
+      const envelope = gzipSync(
+        Buffer.concat([
+          Buffer.from(
+            '{"event_id":"6f0c4a8bbd8f4c4ea0e6dfd3cf2f6a3e"}\n{"type":"event"}\n{"message":"last words"}\n' +
+              `{"type":"attachment","length":${attachment.length},"filename":"dump.bin"}\n`,
+          ),
+          attachment,
+        ]),
+      );
+      const ingest = send(
+        new URL(session.ingestUrl).pathname,
+        {
+          "Content-Type": "application/x-sentry-envelope",
+          "Content-Encoding": "gzip",
+        },
+        envelope,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const release = send(
+        `/_local/v1/sessions/${session.id}/release`,
+        { ...controlHeaders(), "Content-Type": "application/json" },
+        JSON.stringify({ leaseId: session.leaseId, discardIfEmpty: true }),
+      );
+
+      expect(await ingest.status).toBe(200);
+      expect(await release.status).toBe(200);
+      expect(plane.sessionStore.resolve(session.id).state).toBe("retained");
+      expect(
+        plane.sessionStore.getBuffer(session.id).read({ all: true }),
+      ).toHaveLength(1);
+    } finally {
+      listening.server.closeAllConnections();
+      listening.server.close();
+    }
+  });
+
   test("ends a run's lease once its stream stays disconnected, not on a reconnect", async () => {
     let now = 1000;
     const plane = createLocalControlPlane({

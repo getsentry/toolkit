@@ -752,10 +752,24 @@ export function createLocalControlPlane({
     if (typeof leaseId !== "string") {
       return c.json({ error: "leaseId is required." }, 400);
     }
-    const session = sessionStore.release(id, leaseId, {
-      discardIfEmpty: discardIfEmpty === true,
-    });
-    return session ? c.json(session) : c.body(null, 204);
+    const session = sessionStore.release(id, leaseId);
+    if (discardIfEmpty !== true || session.state !== "retained") {
+      return c.json(session);
+    }
+    // An ingest admitted before the close may still be reading or decoding
+    // its body, so the buffer can look empty for a moment. Let it land, then
+    // remove the session only if it is still empty.
+    await drainReceiver(sessionStore.getBuffer(id));
+    if (sessionStore.discardIfEmpty(id)) {
+      return c.body(null, 204);
+    }
+    try {
+      return c.json(sessionStore.resolve(id));
+    } catch (error) {
+      // A concurrent release of the same session removed it while it drained.
+      logger.debug("Local session was removed while it drained", error);
+      return c.body(null, 204);
+    }
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/close`, (c) => {

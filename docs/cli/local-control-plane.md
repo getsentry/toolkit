@@ -11,7 +11,9 @@ seconds (`LEASE_GRACE_MS` in `session-store.ts`), so a run that is killed or
 loses its terminal stops holding the session, while a run whose stream drops
 and reconnects keeps it.
 When the app cannot start, the run removes a session it created that received
-nothing, instead of keeping an empty one. Closed sessions remain queryable for
+nothing, instead of keeping an empty one. The daemon closes the session first
+and waits for deliveries it already accepted, so an envelope still decoding at
+that moment keeps the session. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All
 telemetry disappears when the daemon stops. The daemon exits on its own once it
 has had no sessions, open or closed, for 30 seconds (`LOCAL_DAEMON_IDLE_GRACE_MS`

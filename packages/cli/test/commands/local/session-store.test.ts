@@ -139,8 +139,8 @@ describe("LocalSessionStore", () => {
       session: { id: first.session.id },
     });
     expect(store.list()).toHaveLength(1);
-    expect(store.release(first.session.id, first.leaseId)?.state).toBe("open");
-    expect(store.release(first.session.id, second.leaseId)?.state).toBe(
+    expect(store.release(first.session.id, first.leaseId).state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId).state).toBe(
       "retained",
     );
 
@@ -157,7 +157,7 @@ describe("LocalSessionStore", () => {
     const joined = store.acquire({ label: "web", cwd: "/work/web" });
 
     expect(joined).toMatchObject({ reused: true, session: { id: session.id } });
-    expect(store.release(session.id, joined.leaseId)?.state).toBe("open");
+    expect(store.release(session.id, joined.leaseId).state).toBe("open");
   });
 
   test("releases a lease once, so a repeated release cannot end another run's hold", () => {
@@ -167,8 +167,8 @@ describe("LocalSessionStore", () => {
 
     // The stream connection and the run both give back the first lease.
     store.release(first.session.id, first.leaseId);
-    expect(store.release(first.session.id, first.leaseId)?.state).toBe("open");
-    expect(store.release(first.session.id, second.leaseId)?.state).toBe(
+    expect(store.release(first.session.id, first.leaseId).state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId).state).toBe(
       "retained",
     );
   });
@@ -221,22 +221,24 @@ describe("LocalSessionStore", () => {
       }),
     );
 
-    expect(
-      store.release(empty.session.id, empty.leaseId, { discardIfEmpty: true }),
-    ).toBeUndefined();
+    store.release(empty.session.id, empty.leaseId);
+    expect(store.discardIfEmpty(empty.session.id)).toBe(true);
     expect(() => store.resolve(empty.session.id)).toThrow(/not found/);
-    expect(
-      store.release(kept.session.id, kept.leaseId, { discardIfEmpty: true })
-        ?.state,
-    ).toBe("retained");
+    expect(store.release(kept.session.id, kept.leaseId).state).toBe("retained");
+    expect(store.discardIfEmpty(kept.session.id)).toBe(false);
 
-    // The run's stream closed first, which closed the session; the run's own
-    // release still removes it.
+    // The lease already ended, which closed the session; the run's own
+    // release still lets it be removed.
     const { id } = closedByStream.session;
     store.release(id, closedByStream.leaseId);
-    expect(
-      store.release(id, closedByStream.leaseId, { discardIfEmpty: true }),
-    ).toBeUndefined();
+    store.release(id, closedByStream.leaseId);
+    expect(store.discardIfEmpty(id)).toBe(true);
+
+    // A session still held by another run is never removed.
+    const shared = store.acquire({ label: "shared", cwd: "/work" });
+    store.acquire({ label: "shared", cwd: "/work" });
+    store.release(shared.session.id, shared.leaseId);
+    expect(store.discardIfEmpty(shared.session.id)).toBe(false);
   });
 
   test("reuses a session when an agent retries with the same client ID", () => {
