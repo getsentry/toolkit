@@ -718,11 +718,12 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
-    printLocalViewerHint(daemonStreamUrl ?? url, useJson);
+    const viewerStreamUrl = daemonStreamUrl ?? url;
+    printLocalViewerHint(viewerStreamUrl, useJson);
 
     await openLocalUiIfRequested(
       flags.open,
-      daemonStreamUrl ?? url,
+      viewerStreamUrl,
       daemonDirectoryUrl,
     );
 

@@ -289,6 +289,9 @@ The **View events at** link that `run --session`, `serve --session`, and
 example
 `https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream&session=<id>`.
 The link holds only the daemon address and the session ID, never a capability.
+The viewer's host can see the session ID, but the ID is not a credential and
+cannot read the session on its own. If the session is gone, the viewer says so
+and opens the first session instead.
 
 `sentry local session create <name> --json` returns separate SDK ingest and
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes

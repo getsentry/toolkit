@@ -391,6 +391,57 @@ describe("sentry local serve --open", () => {
     }
   });
 
+  test("scoped serve prints a viewer link to its session without the capability", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createLocalRetentionBuffer(5).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/_local/v1/sessions/web-id/stream?cap=stream-secret`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web-id",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+      });
+    const retain = vi
+      .spyOn(daemon, "retainLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const signal = interceptShutdownSignal();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, open: false, port, session: "web" },
+      );
+      const hints = () =>
+        info.mock.calls
+          .map((c) => String(c[0]))
+          .filter((line) => line.startsWith("View events at "));
+      await vi.waitFor(() => expect(hints()).toHaveLength(1));
+      signal.trigger();
+      await command;
+      const url = new URL(hints()[0]!.slice("View events at ".length));
+      expect(url.searchParams.get("url")).toBe(
+        `http://127.0.0.1:${port}/stream`,
+      );
+      expect(url.searchParams.get("session")).toBe("web-id");
+      expect(url.toString()).not.toContain("stream-secret");
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      retain.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
+
   test("opens the UI after starting an owned receiver", async () => {
     const signal = interceptShutdownSignal();
     const openBrowserMock = vi.mocked(openBrowser);

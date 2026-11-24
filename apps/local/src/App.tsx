@@ -330,6 +330,12 @@ export default function App() {
   const [linkedSessionId, setLinkedSessionId] = useState(() =>
     getSessionIdFromQuery(window.location.search),
   );
+  const [linkedSessionNotice, setLinkedSessionNotice] = useState<string>();
+  const onLinkedSessionMissing = useCallback(
+    (fallback: ViewerSession) =>
+      setLinkedSessionNotice(`Session not found, showing ${fallback.label}`),
+    [],
+  );
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>(
@@ -665,6 +671,7 @@ export default function App() {
     }
     cancelReceiverAttempt();
     setLinkedSessionId(undefined);
+    setLinkedSessionNotice(undefined);
     setIsViewCleared(false);
     setIsDisconnected(false);
     saveDisconnected(false);
@@ -1359,6 +1366,8 @@ export default function App() {
                         streamUrl={streamUrl}
                         selectInitialSession={canAutoSelectSession}
                         preferredSessionId={linkedSessionId}
+                        onPreferredSessionMissing={onLinkedSessionMissing}
+                        notice={linkedSessionNotice}
                         onSelect={connectToEndpoint}
                       />
                     ) : undefined
@@ -1376,6 +1385,8 @@ export default function App() {
                     streamUrl={streamUrl}
                     selectInitialSession={canAutoSelectSession}
                     preferredSessionId={linkedSessionId}
+                    onPreferredSessionMissing={onLinkedSessionMissing}
+                    notice={linkedSessionNotice}
                     onSelect={connectToEndpoint}
                   />
                 </div>

@@ -568,6 +568,7 @@ test("a CLI session link opens that session, not the first one", async () => {
     renderViewer();
     await screen.findAllByText("/linked-worker");
     expect(screen.queryByText("/linked-web")).toBeNull();
+    expect(screen.queryByText(/Session not found/)).toBeNull();
     expect(window.location.search).toBe("");
     await waitFor(() =>
       expect(
@@ -580,7 +581,7 @@ test("a CLI session link opens that session, not the first one", async () => {
   }
 }, 15_000);
 
-test("a session link for an unknown session falls back to the first session", async () => {
+test("a session link for an unknown session says so and falls back to the first session", async () => {
   const daemon = await startDaemon();
   try {
     const web = await daemon.create("web");
@@ -597,6 +598,12 @@ test("a session link for an unknown session falls back to the first session", as
     await screen.findAllByText("/fallback-web");
     expect(screen.queryByText("/fallback-worker")).toBeNull();
     expect(window.location.search).toBe("");
+    expect(
+      await screen.findByText("Session not found, showing web"),
+    ).toBeTruthy();
+    await selectSession("worker");
+    await screen.findAllByText("/fallback-worker");
+    expect(screen.queryByText("Session not found, showing web")).toBeNull();
   } finally {
     cleanup();
     await daemon.stop();
