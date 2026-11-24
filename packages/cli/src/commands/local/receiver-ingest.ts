@@ -6,12 +6,14 @@ import {
   createReceiverEnvelope,
   envelopeEventId,
   readEnvelopeHeader,
+  receiverDuplicateKey,
   type ReceiverBuffer,
   withoutDsnHeader,
   withoutOwnDeliveries,
 } from "./envelope.js";
 export {
   createReceiverEnvelope,
+  duplicateKeyOf,
   prepareReceiverEnvelope,
   receiverEnvelopeId,
   receiverEnvelopeReceivedAt,
@@ -235,6 +237,7 @@ export function ingestReceiverEnvelope(
       const header = readEnvelopeHeader(body);
       if (!header) return rejected("The envelope header is not a JSON object.");
       const eventId = envelopeEventId(header.header);
+      const duplicateKey = receiverDuplicateKey(body, header);
       const accepted: ReceiverAccepted = {
         status: 200,
         body: eventId ? { id: eventId } : {},
@@ -250,6 +253,7 @@ export function ingestReceiverEnvelope(
           body: delivery,
           contentType: CONTENT_TYPE,
           userAgent: input.userAgent,
+          duplicateKey,
         }),
       );
       return accepted;
