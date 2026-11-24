@@ -221,6 +221,27 @@ function hasFields(fields?: string[] | null): fields is string[] {
   return Array.isArray(fields) && fields.length > 0;
 }
 
+/**
+ * Say when the query translator ran different fields than the caller asked
+ * for, such as an aggregate it rewrote or a group-by it took from the query
+ * text. Without it the result is a different table than the caller requested.
+ */
+function formatChangedFieldsNote(
+  requested: string[],
+  executed: string[],
+): string | null {
+  const executedSet = new Set(executed);
+  if (
+    requested.length === executedSet.size &&
+    requested.every((field) => executedSet.has(field))
+  ) {
+    return null;
+  }
+  const list = (values: string[]) =>
+    values.map((field) => `\`${field}\``).join(", ");
+  return `**Note:** The query translator changed the requested fields ${list(requested)} to ${list(executed)}.`;
+}
+
 function appendHints(message: string, hints: readonly string[]): string {
   return hints.length > 0 ? `${message}\n\n${hints.join("\n")}` : message;
 }
@@ -1055,10 +1076,15 @@ async function executeSearchEvents(
     suggestedProjectIds.length > 0
       ? `**Note:** Seer suggested also searching project IDs ${suggestedProjectIds.join(", ")}, for example other services in the same trace. Omit \`projectSlug\` to search all accessible projects.`
       : "";
+  const changedFieldsNote =
+    queryTranslated && dataset !== "replays" && hasFields(params.fields)
+      ? formatChangedFieldsNote(params.fields, fields)
+      : null;
   const leadingNotes = [
     seerTranslation?.warning,
     environmentNote,
     projectSuggestionNote,
+    changedFieldsNote,
   ].filter((note): note is string => Boolean(note));
   // An empty result after Seer or the embedded agent translated the query may
   // be a bad translation. An unknown environment already explains it.
