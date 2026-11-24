@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-react-native
-version: 0.51.0-dev.0
+version: 0.51.0
 description: Upload React Native sourcemaps from build steps
 requires:
   bins: ["sentry"]

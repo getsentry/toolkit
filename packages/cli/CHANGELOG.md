@@ -3,6 +3,119 @@
 Entries through 0.45.0 come from the [original CLI changelog at its 0.45.0 tag](https://github.com/getsentry/cli/blob/0.45.0/CHANGELOG.md).
 
 <!-- Craft generates notes for each CLI release. -->
+## 0.51.0
+
+Developer workflows gain broader setup, chart, authentication, deployment, and issue handling, while fixes and tooling updates improve consistency and correctness.
+
+### New Features ✨
+
+CLI setup and detection, stable MCP charts, and OAuth hint forwarding expand developer workflows.
+
+#### CLI
+
+CLI handoffs can use device approval when a claim lacks a setup code, printing the approval URL and code before continuing setup. \`sentry log tail -f\` consistently means \`--fresh\`, while streaming commands return asynchronous output. The init guide adds platform-specific mobile setup, verification steps, and auth-token guidance. \`sentry local run\` detects Rust, Ruby, Laravel, Rails, and Rack projects with defined fallbacks; use \`--\` to override detection.
+
+- Use device approval for remote agent handoffs by @evanpurkhiser in [#2479](https://github.com/getsentry/toolkit/pull/2479)
+- Stream logs with sentry log tail so -f always means --fresh by @BYK with @sentry-junior in [#2442](https://github.com/getsentry/toolkit/pull/2442)
+- Add mobile setup and verification to the sentry init guide by @antonis and @claude in [#2375](https://github.com/getsentry/toolkit/pull/2375)
+- Detect Rust, Ruby, and Laravel apps in local run by @MathurAditya724 with @sentry-junior in [#2390](https://github.com/getsentry/toolkit/pull/2390)
+
+#### MCP
+
+MCP charting expands from experimental to stable sessions, with inline Sentry and issue charts plus text and structured fallbacks. Issue charts show events and affected users, while positive issue filters on the general chart tool are rejected with guidance to use the issue tool. Chart range changes update model context, and hosts supporting fullscreen can display charts in fullscreen. Related-issue side quests now record listed issue IDs and open-issue counts on spans.
+
+- Ship the chart tools to stable sessions by @dcramer with @sentry-junior in [#2473](https://github.com/getsentry/toolkit/pull/2473)
+- Chart an issue's events and users with render_issue_chart by @dcramer with @sentry-junior in [#2455](https://github.com/getsentry/toolkit/pull/2455)
+- Tell the model about chart range changes and add fullscreen by @sentry-junior in [#2456](https://github.com/getsentry/toolkit/pull/2456)
+- Render Sentry time series charts inline in MCP Apps hosts by @dcramer with @sentry-junior in [#2413](https://github.com/getsentry/toolkit/pull/2413)
+- Record which related issues the side quest lists, and how many are open by @Christinarlong with @sentry-junior in [#2387](https://github.com/getsentry/toolkit/pull/2387)
+
+#### Other
+
+- (oauth) Forward idp_hint to Sentry sign-in by @dcramer with @sentry-junior in [#2448](https://github.com/getsentry/toolkit/pull/2448)
+
+### Bug Fixes 🐛
+
+CLI, viewer, OAuth, deployment, chart, and issue-command fixes correct data, errors, traffic rollout, and responses.
+
+#### CLI
+
+CLI fixes improve local replay, session, and event handling. Replay records expose replay\_id and segment\_id, duplicate retained-ID envelopes are suppressed, IPA permissions are preserved, and invalid or oversized uploads report clearer errors. Local runs reject unusable ports, --timeout stops exit 124, and non-terminal runs stop the whole process group. Event lookup, session selection, telemetry verification, snapshot uploads, span naming, and envelope responses are corrected. When close, reset, or retention operations are ambiguous, specify an ID.
+
+- Add replay and segment IDs to sentry local replay records by @MathurAditya724 with @sentry-junior in [#2483](https://github.com/getsentry/toolkit/pull/2483)
+- Keep one copy of a resent event in sentry local by @MathurAditya724 with @sentry-junior in [#2480](https://github.com/getsentry/toolkit/pull/2480)
+- Preserve file permissions in IPA uploads by @lcian and @codex in [#2461](https://github.com/getsentry/toolkit/pull/2461)
+- Don't attach local run to a port that never answers HTTP by @MathurAditya724 with @sentry-junior in [#2437](https://github.com/getsentry/toolkit/pull/2437)
+- Reject bodies that are not envelopes by @MathurAditya724 and @codex with @sentry-junior in [#2436](https://github.com/getsentry/toolkit/pull/2436)
+- Send snapshot uploads over HTTP/1.1 to stop HTTP/2 stream resets by @lcian in [#2439](https://github.com/getsentry/toolkit/pull/2439)
+- Resolve a reused Local session name to its newest open session by @MathurAditya724 with @sentry-junior in [#2435](https://github.com/getsentry/toolkit/pull/2435)
+- Verify only on telemetry that matches the filters by @MathurAditya724 with @sentry-junior in [#2430](https://github.com/getsentry/toolkit/pull/2430)
+- Exit 124 when local run --timeout stops the app by @MathurAditya724 with @sentry-junior in [#2434](https://github.com/getsentry/toolkit/pull/2434)
+- Don't attach local run or serve to a non-receiver on the port by @MathurAditya724 with @sentry-junior in [#2433](https://github.com/getsentry/toolkit/pull/2433)
+- Answer accepted envelopes with 200 and the event ID by @MathurAditya724 with @sentry-junior in [#2432](https://github.com/getsentry/toolkit/pull/2432)
+- Make event ID prefixes unique without case by @MathurAditya724 with @sentry-junior in [#2427](https://github.com/getsentry/toolkit/pull/2427)
+- Drop the DSN header from session envelopes by @MathurAditya724 with @sentry-junior in [#2423](https://github.com/getsentry/toolkit/pull/2423)
+- Stop the whole app when local run exits without a terminal by @MathurAditya724 with @sentry-junior in [#2420](https://github.com/getsentry/toolkit/pull/2420)
+- Keep custom browser span names when no op is set by @MathurAditya724 with @sentry-junior in [#2399](https://github.com/getsentry/toolkit/pull/2399)
+- Serve Python apps built by any factory call in local run by @MathurAditya724 with @sentry-junior in [#2395](https://github.com/getsentry/toolkit/pull/2395)
+- Keep server-only SDKs out of [BROWSER] and share span segment rules by @MathurAditya724 with @sentry-junior in [#2389](https://github.com/getsentry/toolkit/pull/2389)
+- Show oversized drops that finish after a session closes by @MathurAditya724 with @sentry-junior in [#2400](https://github.com/getsentry/toolkit/pull/2400)
+- Warn that hard-coded SDKs miss the free-port fallback by @MathurAditya724 with @sentry-junior in [#2398](https://github.com/getsentry/toolkit/pull/2398)
+- Open a replay's first segment from its bare ID in local event view by @MathurAditya724 with @sentry-junior in [#2397](https://github.com/getsentry/toolkit/pull/2397)
+- Accept /stream and DSN envelope posts under a session ingest URL by @sentry-junior in [#2396](https://github.com/getsentry/toolkit/pull/2396)
+- Keep SDK log attributes log-only in sentry local by @MathurAditya724 with @sentry-junior in [#2394](https://github.com/getsentry/toolkit/pull/2394)
+- Make sentry local list and event view easier to use by @MathurAditya724 with @sentry-junior in [#2380](https://github.com/getsentry/toolkit/pull/2380)
+
+#### Local
+
+Local viewer and event-list fixes align labels, counts, titles, and trace behavior across SDK data. Go exception-list payloads and Ruby titles are handled correctly, non-string untyped exception values are no longer treated as messages, and HTTP target selection is shared between the CLI and viewer. Trace errors are counted once, method-only segments gain route or path labels, sampled-function controls and search behave more precisely, and session links open the intended session without exposing capabilities.
+
+- Title and count span batches in event list like the tail by @MathurAditya724 with @sentry-junior in [#2485](https://github.com/getsentry/toolkit/pull/2485)
+- Open the linked session from a session's viewer link by @MathurAditya724 with @sentry-junior in [#2482](https://github.com/getsentry/toolkit/pull/2482)
+- Title feedback in event list with its message by @MathurAditya724 with @sentry-junior in [#2481](https://github.com/getsentry/toolkit/pull/2481)
+- Trim Ruby class names on multi-line messages and match viewer titles by @MathurAditya724 with @sentry-junior in [#2424](https://github.com/getsentry/toolkit/pull/2424)
+- Read Go exception lists and Ruby exception titles by @MathurAditya724 with @sentry-junior in [#2419](https://github.com/getsentry/toolkit/pull/2419)
+- Treat only string exception values as message text by @MathurAditya724 with @sentry-junior in [#2418](https://github.com/getsentry/toolkit/pull/2418)
+- Share the HTTP target order and tidy trace review follow-ups by @MathurAditya724 with @sentry-junior in [#2391](https://github.com/getsentry/toolkit/pull/2391)
+- Count trace errors once and label method-only segments by @MathurAditya724 with @sentry-junior in [#2372](https://github.com/getsentry/toolkit/pull/2372)
+
+#### OAuth
+
+OAuth handling now relays validated upstream authorization failures to MCP clients as RFC 6749 error redirects, preserving state and issuer data; invalid state, approval, or redirect checks still return local errors without redirecting. Resource indicators that differ only by query strings or trailing slashes are treated as the same resource, improving login, refresh, and token-audience matching.
+
+- Relay upstream authorization errors to the MCP client by @dcramer with @sentry-junior in [#2330](https://github.com/getsentry/toolkit/pull/2330)
+- Match resource indicators that differ only by query or trailing slash by @dcramer with @sentry-junior in [#2410](https://github.com/getsentry/toolkit/pull/2410)
+
+#### Other
+
+- (cli-docs) Serve the browser install page as HTML by @BYK with @sentry-junior in [#2405](https://github.com/getsentry/toolkit/pull/2405)
+- (deploy) Wait until Cloudflare serves a version before deploying it by @dcramer with @sentry-junior in [#2438](https://github.com/getsentry/toolkit/pull/2438)
+- (mcp) Chart the busiest groups and keep empty buckets empty by @dcramer with @sentry-junior in [#2453](https://github.com/getsentry/toolkit/pull/2453)
+- (seer) Support single-run Autofix responses by @NicoHinderling in [#2407](https://github.com/getsentry/toolkit/pull/2407)
+
+### Internal Changes 🔧
+
+Lint, installation, dependency, workflow, MCP output, and regression-test updates improve consistency across development tooling.
+
+#### Lint
+
+Lint coverage expands with getsentry/sentry-compatible rules, including only-throw-error, prefer-optional-chain, and no-unnecessary-condition across the remaining applicable packages. Existing violations are fixed, and narrowed unknown values are typed as errors where required.
+
+- Enable getsentry/sentry rules with few violations by @JoshuaKGoldberg and @claude in [#2181](https://github.com/getsentry/toolkit/pull/2181)
+- Enable only-throw-error by @JoshuaKGoldberg and @claude in [#2182](https://github.com/getsentry/toolkit/pull/2182)
+- Enable prefer-optional-chain by @JoshuaKGoldberg and @claude in [#2179](https://github.com/getsentry/toolkit/pull/2179)
+- Enable no-unnecessary-condition in remaining packages by @JoshuaKGoldberg and @claude in [#2178](https://github.com/getsentry/toolkit/pull/2178)
+
+#### Other
+
+- (cli) Make the install scripts readable top to bottom by @evanpurkhiser and @BYK with @sentry-junior in [#2404](https://github.com/getsentry/toolkit/pull/2404)
+- (deps) Bump @sentry/api to 2.15.0 by @sentry-release-bot and @github-actions in [#2386](https://github.com/getsentry/toolkit/pull/2386)
+- (github) Close PRs with no activity after 5 days by @dcramer with @sentry-junior in [#2408](https://github.com/getsentry/toolkit/pull/2408)
+- (mcp) Delete the markdown get_issue_details path after the flip proves out by @dcramer, @BYK and @shayna-ch with @sentry-junior in [#2064](https://github.com/getsentry/toolkit/pull/2064)
+- (toolkit-core) Share stats period helpers across CLI and MCP by @BYK with @sentry-junior in [#1831](https://github.com/getsentry/toolkit/pull/1831)
+- Cover the strict-policy fixes and close their typing gaps by @joshuarli and @claude in [#2406](https://github.com/getsentry/toolkit/pull/2406)
+- Move to TypeScript 7, pnpm 12 and a shared strict policy by @JoshuaKGoldberg, @claude and @joshuarli with @sentry-junior in [#2266](https://github.com/getsentry/toolkit/pull/2266)
+
 ## 0.50.0
 
 CLI, integrations, dashboards, documentation, and ownership updates broaden workflows while changing structured outputs, model defaults, routing, and TypeScript compatibility requirements.
