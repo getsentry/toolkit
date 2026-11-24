@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CLIENT_SPOTLIGHT_PREFIXES,
+  needsSessionDsn,
   runCommand,
   shutdownServer,
 } from "../../../src/commands/local/run.js";
@@ -378,8 +379,8 @@ describe("sentry local run", () => {
         ingestUrl: `${base}/ingest/ingest-secret`,
         streamUrl: `${base}/stream?cap=stream-secret`,
       });
-    const retain = vi
-      .spyOn(daemon, "retainLocalDaemonSession")
+    const release = vi
+      .spyOn(daemon, "releaseLocalDaemonSession")
       .mockResolvedValue(undefined);
     const info = vi.spyOn(logger, "info").mockImplementation(() => {});
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
@@ -409,10 +410,112 @@ describe("sentry local run", () => {
       );
     } finally {
       create.mockRestore();
-      retain.mockRestore();
+      release.mockRestore();
       info.mockRestore();
       warn.mockRestore();
     }
+  });
+
+  describe("with --session", () => {
+    const base = "http://127.0.0.1:1/_local/v1/sessions/session-1";
+    const dsn = `http://key@127.0.0.1:1/_local/v1/sessions/session-1/ingest/ingest-secret/0`;
+    let originalDsn: string | undefined;
+
+    beforeEach(() => {
+      originalDsn = process.env["SENTRY_DSN"];
+      delete process.env["SENTRY_DSN"];
+    });
+
+    afterEach(() => {
+      if (originalDsn === undefined) delete process.env["SENTRY_DSN"];
+      else process.env["SENTRY_DSN"] = originalDsn;
+      vi.restoreAllMocks();
+    });
+
+    /** Run `args` with a mocked daemon session; returns the daemon spies. */
+    async function runInSession(args: string[], reused = false) {
+      const create = vi
+        .spyOn(daemon, "createLocalDaemonSession")
+        .mockResolvedValue({
+          cwd: tmpDir,
+          id: "session-1",
+          label: "web",
+          ingestUrl: `${base}/ingest/ingest-secret`,
+          streamUrl: `${base}/stream?cap=stream-secret`,
+          dsn,
+          reused,
+        });
+      const release = vi
+        .spyOn(daemon, "releaseLocalDaemonSession")
+        .mockResolvedValue(undefined);
+      const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+      vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const func = (await runCommand.loader()) as unknown as RunFunc;
+      const result = func.call(
+        makeContext(),
+        { host: "127.0.0.1", verify: false, timeout: 0, session: "web" },
+        ...args,
+      );
+      return { create, release, info, result };
+    }
+
+    async function fakeProgram(name: string): Promise<string> {
+      const path = join(tmpDir, name);
+      await writeFile(path, "#!/bin/sh\nexit 0\n");
+      await chmod(path, 0o755);
+      return path;
+    }
+
+    test("joins the open session with that name and releases it on exit", async () => {
+      const { create, release, info, result } = await runInSession(
+        [process.execPath, "-e", ""],
+        true,
+      );
+      await result;
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ label: "web", reuse: true }),
+      );
+      expect(release).toHaveBeenCalledWith("session-1", {
+        discardIfEmpty: false,
+      });
+      expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("Joining open session"),
+      );
+    });
+
+    test("gives an app without Spotlight support the session DSN", async () => {
+      const { result } = await runInSession([await fakeProgram("go"), "run"]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(dsn);
+      expect(spawnCapture.env?.["SENTRY_SPOTLIGHT"]).toBe(
+        `${base}/ingest/ingest-secret`,
+      );
+    });
+
+    test("keeps SENTRY_DSN unset for Spotlight SDKs, which would send twice", async () => {
+      const { result } = await runInSession([process.execPath, "-e", ""]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBeUndefined();
+    });
+
+    test("keeps a SENTRY_DSN the user set", async () => {
+      process.env["SENTRY_DSN"] = "https://public@example.invalid/1";
+      const { result } = await runInSession([await fakeProgram("cargo")]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(
+        "https://public@example.invalid/1",
+      );
+    });
+
+    test("discards the empty session when the app cannot start", async () => {
+      const { release, result } = await runInSession([
+        join(tmpDir, "missing-program"),
+      ]);
+      await expect(result).rejects.toBeInstanceOf(CliError);
+      expect(release).toHaveBeenCalledWith("session-1", {
+        discardIfEmpty: true,
+      });
+    });
   });
 
   test("prints the Worker setup hint in --verify mode too", async () => {
@@ -2008,4 +2111,32 @@ describe("sentry local run messages", () => {
       warn.mockRestore();
     }
   }, 30_000);
+});
+
+describe("needsSessionDsn", () => {
+  test("names the programs whose SDKs take only a DSN", () => {
+    for (const command of [
+      ["go", "run", "."],
+      ["/usr/local/go/bin/go", "run", "."],
+      ["cargo", "run"],
+      ["C:\\Program Files\\Rust\\cargo.exe", "run"],
+      ["deno", "run", "main.ts"],
+      ["mix", "phx.server"],
+      ["iex", "-S", "mix"],
+      ["bin/rails", "server"],
+      ["bundle", "exec", "rackup"],
+    ]) {
+      expect(needsSessionDsn(command), command.join(" ")).toBe(true);
+    }
+    for (const command of [
+      ["node", "app.js"],
+      ["npm", "run", "dev"],
+      ["python", "manage.py", "runserver"],
+      ["php", "artisan", "serve"],
+      ["./server"],
+      [],
+    ]) {
+      expect(needsSessionDsn(command), command.join(" ")).toBe(false);
+    }
+  });
 });

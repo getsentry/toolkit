@@ -831,6 +831,94 @@ describe("Local daemon E2E", () => {
     ).toContain("wrapped app");
   }, 30_000);
 
+  test("joins an open session and hands an app without Spotlight support its DSN", async () => {
+    const port = await availablePort();
+    const session = await createSession("shared", port);
+    // A stand-in for a Go app, whose SDK reads only SENTRY_DSN.
+    const go = join(getConfigDir(), "go");
+    await writeFile(
+      go,
+      `#!${process.execPath}
+const dsn = new URL(process.env.SENTRY_DSN);
+const path = dsn.pathname.replace(/\\/0$/, "");
+fetch(dsn.origin + path + "/api/0/envelope/", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-sentry-envelope" },
+  body: '{"event_id":"${"d".repeat(32)}"}\\n{"type":"event"}\\n{"message":"dsn only app"}',
+}).then((r) => { if (r.status !== 200) process.exitCode = 3; });
+`,
+    );
+    await chmod(go, 0o755);
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "shared",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        go,
+        "run",
+        ".",
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+          SENTRY_DSN: "",
+        },
+      },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Joining open session shared (${session.id})`,
+    );
+    expect(result.stderr).toContain(
+      "SENTRY_SPOTLIGHT and SENTRY_DSN configured",
+    );
+    // The run joined the session `session create` made, so it stays open.
+    expect(JSON.parse((await cli("session", "list")).stdout)).toMatchObject({
+      sessions: [{ id: session.id, label: "shared", state: "open" }],
+    });
+    expect(
+      (await cli("event", "view", "shared", "d".repeat(32))).stdout,
+    ).toContain("dsn only app");
+  }, 30_000);
+
+  test("leaves no session behind when the app cannot start", async () => {
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "broken",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        join(getConfigDir(), "missing-program"),
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse((await cli("session", "list")).stdout)).toEqual({
+      sessions: [],
+    });
+  }, 30_000);
+
   test("captures telemetry from the real Sentry Node SDK through the injected URL", async () => {
     const port = await availablePort();
     const result = await runCli(

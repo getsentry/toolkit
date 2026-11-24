@@ -123,6 +123,56 @@ describe("LocalSessionStore", () => {
     });
   });
 
+  test("lets runs share the open session with their name until the last one leaves", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const first = store.acquire({ label: "web", cwd: "/work/web" });
+    now = 2000;
+    const second = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(first.reused).toBe(false);
+    expect(second).toMatchObject({
+      reused: true,
+      session: { id: first.session.id },
+    });
+    expect(store.list()).toHaveLength(1);
+    expect(store.release(first.session.id)?.state).toBe("open");
+    expect(store.release(first.session.id)?.state).toBe("retained");
+
+    // A closed session takes no new runs.
+    const next = store.acquire({ label: "web", cwd: "/work/web" });
+    expect(next.reused).toBe(false);
+    expect(next.session.id).not.toBe(first.session.id);
+    expect(store.choose("web").others).toEqual([]);
+  });
+
+  test("leaves a session made with create open when the runs that joined it end", () => {
+    const store = createLocalSessionStore();
+    const session = store.create({ label: "web", cwd: "/work/web" });
+    const joined = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(joined).toMatchObject({ reused: true, session: { id: session.id } });
+    expect(store.release(session.id)?.state).toBe("open");
+  });
+
+  test("removes a run's session that closes without telemetry when asked to", () => {
+    const store = createLocalSessionStore();
+    const empty = store.acquire({ label: "empty", cwd: "/work" }).session;
+    const kept = store.acquire({ label: "kept", cwd: "/work" }).session;
+    store.getBuffer(kept.id).put(
+      createReceiverEnvelope({
+        body: Buffer.from('{}\n{"type":"event"}\n{}'),
+        contentType: "application/x-sentry-envelope",
+      }),
+    );
+
+    expect(store.release(empty.id, { discardIfEmpty: true })).toBeUndefined();
+    expect(() => store.resolve(empty.id)).toThrow(/not found/);
+    expect(store.release(kept.id, { discardIfEmpty: true })?.state).toBe(
+      "retained",
+    );
+  });
+
   test("reuses a session when an agent retries with the same client ID", () => {
     const store = createLocalSessionStore();
     const first = store.create({

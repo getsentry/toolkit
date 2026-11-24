@@ -18,7 +18,7 @@
 
 import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { Server } from "node:http";
-import { basename, resolve } from "node:path";
+import { basename, resolve, win32 } from "node:path";
 import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -69,7 +69,7 @@ import {
 } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
-  retainLocalDaemonSession,
+  releaseLocalDaemonSession,
 } from "./daemon.js";
 import {
   buildApp,
@@ -128,6 +128,37 @@ export const CLIENT_SPOTLIGHT_PREFIXES = [
   "VUE_APP_", // Vue CLI
   "GATSBY_", // Gatsby
 ] as const;
+
+/**
+ * Programs whose Sentry SDKs reach a session only through SENTRY_DSN: Go,
+ * Rust, Deno, and Elixir have no Spotlight support, and Ruby keeps only the
+ * host and port of SENTRY_SPOTLIGHT, which loses the session path.
+ */
+const SESSION_DSN_PROGRAMS = new Set([
+  "go",
+  "cargo",
+  "deno",
+  "mix",
+  "iex",
+  "elixir",
+  "ruby",
+  "bundle",
+  "rails",
+]);
+
+/**
+ * Whether a session run should hand the app its DSN, judged by the program it
+ * starts. Not for SDKs that reach the session through SENTRY_SPOTLIGHT
+ * (Node.js, Python): they also read SENTRY_DSN and would send every event
+ * twice.
+ */
+export function needsSessionDsn(args: readonly string[]): boolean {
+  const program = win32
+    .basename(args[0] ?? "")
+    .toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/, "");
+  return SESSION_DSN_PROGRAMS.has(program);
+}
 
 /**
  * Shut down a background server, closing all connections so keep-alive
@@ -530,8 +561,13 @@ export const runCommand = buildCommand({
       "What your SDK needs:\n" +
       "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
       "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
-      "  - Go and Rust have no Spotlight support. Set\n" +
-      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
+      "  - Go, Rust, Deno, and Elixir have no Spotlight support. Without\n" +
+      "    --session, set SENTRY_DSN=http://key@localhost:<port>/0 and pin\n" +
+      "    that --port.\n" +
+      "  - With --session, go, cargo, deno, mix, iex, elixir, ruby, bundle,\n" +
+      "    and rails commands get the session's DSN as SENTRY_DSN unless it\n" +
+      "    is already set. Other commands can take the dsn from\n" +
+      "    'local session view <session> --json'.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -644,7 +680,8 @@ export const runCommand = buildCommand({
       session: {
         kind: "parsed",
         parse: parseText,
-        brief: "Create a daemon-owned telemetry session with this label",
+        brief:
+          "Capture into the open daemon session with this label, or create one",
         optional: true,
       },
     },
@@ -684,6 +721,7 @@ export const runCommand = buildCommand({
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
     let daemonDirectoryUrl: string | undefined;
+    let daemonDsn: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
@@ -695,8 +733,15 @@ export const runCommand = buildCommand({
             host: flags.host,
             label: flags.session || basename(this.cwd),
             port,
+            reuse: true,
           });
+          if (session.reused) {
+            logger.info(
+              `Joining open session ${bold(session.label)} (${session.id})`,
+            );
+          }
           daemonSessionId = session.id;
+          daemonDsn = session.dsn;
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
           daemonDirectoryUrl = session.directoryUrl;
@@ -739,13 +784,21 @@ export const runCommand = buildCommand({
     logger.info(
       `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
     );
+    // Only when the user set no DSN and the app reaches sessions only that way.
+    const childDsn =
+      daemonDsn && !process.env["SENTRY_DSN"] && needsSessionDsn(args)
+        ? daemonDsn
+        : undefined;
     logger.info(
       daemonSessionId
-        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
+        ? `${childDsn ? "SENTRY_SPOTLIGHT and SENTRY_DSN" : "SENTRY_SPOTLIGHT"} configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL and DSN.`
         : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
     );
 
     const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
+    if (childDsn) {
+      childEnv["SENTRY_DSN"] = childDsn;
+    }
 
     const ownGroup = startsOwnProcessGroup();
     let child: ChildProcess;
@@ -762,7 +815,9 @@ export const runCommand = buildCommand({
     } catch (err) {
       await tail.cleanup();
       if (daemonSessionId) {
-        await retainLocalDaemonSession(daemonSessionId);
+        await releaseLocalDaemonSession(daemonSessionId, {
+          discardIfEmpty: true,
+        });
       }
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
@@ -806,6 +861,8 @@ export const runCommand = buildCommand({
     }
 
     let exit: ChildExit;
+    // An app that never started leaves no telemetry worth keeping.
+    let spawnFailed = false;
     try {
       exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
@@ -819,6 +876,7 @@ export const runCommand = buildCommand({
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
+            spawnFailed = true;
             fail(spawnFailureError(wrangler.args[0] ?? "", err, this.cwd));
           }
         });
@@ -840,7 +898,9 @@ export const runCommand = buildCommand({
       process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
       if (daemonSessionId) {
-        await retainLocalDaemonSession(daemonSessionId);
+        await releaseLocalDaemonSession(daemonSessionId, {
+          discardIfEmpty: spawnFailed,
+        });
       }
     }
 

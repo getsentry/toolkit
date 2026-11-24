@@ -687,6 +687,79 @@ describe("Local control plane", () => {
     });
   });
 
+  test("lets runs join the open session with their name and closes it after the last leaves", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const join = async () => {
+      const response = await plane.app.request("/_local/v1/sessions", {
+        method: "POST",
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as { id: string; reused: boolean },
+      };
+    };
+    const release = (id: string) =>
+      plane.app.request(`/_local/v1/sessions/${id}/release`, {
+        method: "POST",
+        headers: controlHeaders(),
+      });
+
+    const first = await join();
+    const second = await join();
+    expect(first).toMatchObject({ status: 201, body: { reused: false } });
+    expect(second).toMatchObject({
+      status: 200,
+      body: { id: first.body.id, reused: true },
+    });
+    await expect((await release(first.body.id)).json()).resolves.toMatchObject({
+      state: "open",
+    });
+    await expect((await release(first.body.id)).json()).resolves.toMatchObject({
+      state: "retained",
+    });
+    expect((await join()).body.id).not.toBe(first.body.id);
+    expect(plane.sessionStore.choose("web").others).toEqual([]);
+  });
+
+  test("gives a session a DSN that SDKs without Spotlight support can send to", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: { ...controlHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "go", cwd: "/work/go" }),
+    });
+    const session = (await created.json()) as {
+      id: string;
+      ingestUrl: string;
+      dsn: string;
+    };
+    const viewed = (await (
+      await plane.app.request(`/_local/v1/sessions/${session.id}`, {
+        headers: controlHeaders(),
+      })
+    ).json()) as { dsn: string };
+    expect(viewed.dsn).toBe(session.dsn);
+
+    // An SDK keeps the key out of the URL and posts to
+    // `<origin><path>/api/<project>/envelope/`.
+    const dsn = new URL(session.dsn);
+    expect(dsn.username).toBe("key");
+    expect(dsn.host).toBe("127.0.0.1:8969");
+    expect(dsn.pathname).toBe(`${new URL(session.ingestUrl).pathname}/0`);
+    const envelopeUrl = `${dsn.origin}${dsn.pathname.slice(0, -"/0".length)}/api/0/envelope/`;
+    const response = await plane.app.request(envelopeUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"message":"from go"}',
+    });
+    expect(response.status).toBe(200);
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(1);
+  });
+
   test("does not expose the session registry without the control capability", async () => {
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,

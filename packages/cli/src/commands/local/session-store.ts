@@ -39,6 +39,10 @@ type StoredSession = LocalSession & {
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
+  /** Runs that joined the session through `acquire` and are still running. */
+  leases: number;
+  /** Created by `acquire`, so its last lease closes it. */
+  closesWithLeases: boolean;
 };
 
 /** Session label, working directory, and optional retry idempotency key. */
@@ -75,6 +79,24 @@ export type LocalSessionChoice = {
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
+  /**
+   * Join the newest open session with this label, or create one, and take a
+   * lease on it. A session that `acquire` created closes when its last lease
+   * is released; one made by `create` stays open until `close`.
+   */
+  acquire: (input: CreateLocalSessionInput) => {
+    session: LocalSession;
+    reused: boolean;
+  };
+  /**
+   * Give back one lease. With `discardIfEmpty`, a session that closes here
+   * and never received an envelope is removed instead of retained. Returns
+   * undefined when the session was removed.
+   */
+  release: (
+    id: string,
+    options?: { discardIfEmpty?: boolean },
+  ) => LocalSession | undefined;
   setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
@@ -96,12 +118,19 @@ export type LocalSessionStore = {
   resolve: (reference: string) => LocalSession;
 };
 
+/** Newest first; the ID breaks ties between sessions created together. */
+function newestFirst(left: LocalSession, right: LocalSession): number {
+  return right.createdAt - left.createdAt || (left.id < right.id ? 1 : -1);
+}
+
 function toPublicSession(session: StoredSession): LocalSession {
   const {
     buffer: _buffer,
     retention: _retention,
     ingestCapability: _ingestCapability,
     streamCapability: _streamCapability,
+    leases: _leases,
+    closesWithLeases: _closesWithLeases,
     ...publicSession
   } = session;
   return publicSession;
@@ -135,8 +164,8 @@ export function createLocalSessionStore({
 
   /**
    * Resolve a session ID, or a name to the newest of its open sessions, or to
-   * its newest session when none is open. Names repeat because each
-   * `local run --session` creates a session.
+   * its newest session when none is open. Names repeat because a run that
+   * finds no open session with its name creates one.
    */
   const chooseStored = (
     reference: string,
@@ -147,10 +176,7 @@ export function createLocalSessionStore({
     }
     const named = [...sessions.values()]
       .filter((session) => session.label === reference)
-      .sort(
-        (left, right) =>
-          right.createdAt - left.createdAt || (left.id < right.id ? 1 : -1),
-      );
+      .sort(newestFirst);
     const open = named.filter((session) => session.state === "open");
     const [session] = open.length > 0 ? open : named;
     if (!session) {
@@ -172,35 +198,109 @@ export function createLocalSessionStore({
     return next;
   };
 
+  const createStored = (
+    {
+      clientId,
+      label,
+      cwd,
+      maxEnvelopes = DEFAULT_MAX_ENVELOPES,
+    }: CreateLocalSessionInput,
+    leased: boolean,
+  ): StoredSession => {
+    const timestamp = now();
+    const retention = createLocalRetentionBuffer(maxEnvelopes);
+    const session: StoredSession = {
+      id: uuidv7(),
+      clientId,
+      label,
+      cwd,
+      createdAt: timestamp,
+      lastActivityAt: timestamp,
+      state: "open",
+      buffer: retention.buffer,
+      retention,
+      maxEnvelopes,
+      ingestCapability: randomBytes(24).toString("base64url"),
+      streamCapability: randomBytes(24).toString("base64url"),
+      leases: leased ? 1 : 0,
+      closesWithLeases: leased,
+    };
+    sessions.set(session.id, session);
+    if (clientId) {
+      clientSessions.set(clientId, session.id);
+    }
+    changed();
+    return session;
+  };
+
+  const closeStored = (session: StoredSession): StoredSession => {
+    if (session.state === "retained") return session;
+    const timestamp = now();
+    const closed = update(session, {
+      state: "retained",
+      lastActivityAt: timestamp,
+      expiresAt: timestamp + SESSION_RETENTION_MS,
+    });
+    notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
+    changed();
+    return closed;
+  };
+
+  const removeStored = (id: string) => {
+    const session = sessions.get(id);
+    if (session?.clientId && clientSessions.get(session.clientId) === id) {
+      clientSessions.delete(session.clientId);
+    }
+    sessions.delete(id);
+    listeners.delete(id);
+  };
+
   return {
-    create({ clientId, label, cwd, maxEnvelopes = DEFAULT_MAX_ENVELOPES }) {
-      validateMaxEnvelopes(maxEnvelopes);
-      const existingId = clientId ? clientSessions.get(clientId) : undefined;
+    create(input) {
+      validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
+      const existingId = input.clientId
+        ? clientSessions.get(input.clientId)
+        : undefined;
       if (existingId) {
         return toPublicSession(resolveStored(existingId));
       }
-      const timestamp = now();
-      const retention = createLocalRetentionBuffer(maxEnvelopes);
-      const session: StoredSession = {
-        id: uuidv7(),
-        clientId,
-        label,
-        cwd,
-        createdAt: timestamp,
-        lastActivityAt: timestamp,
-        state: "open",
-        buffer: retention.buffer,
-        retention,
-        maxEnvelopes,
-        ingestCapability: randomBytes(24).toString("base64url"),
-        streamCapability: randomBytes(24).toString("base64url"),
-      };
-      sessions.set(session.id, session);
-      if (clientId) {
-        clientSessions.set(clientId, session.id);
+      return toPublicSession(createStored(input, false));
+    },
+    acquire(input) {
+      validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
+      const [open] = [...sessions.values()]
+        .filter(
+          (session) =>
+            session.label === input.label && session.state === "open",
+        )
+        .sort(newestFirst);
+      if (open) {
+        return {
+          session: toPublicSession(update(open, { leases: open.leases + 1 })),
+          reused: true,
+        };
       }
-      changed();
-      return toPublicSession(session);
+      return {
+        session: toPublicSession(createStored(input, true)),
+        reused: false,
+      };
+    },
+    release(id, { discardIfEmpty = false } = {}) {
+      const session = resolveStored(id);
+      if (session.state === "retained" || session.leases === 0) {
+        return toPublicSession(session);
+      }
+      const released = update(session, { leases: session.leases - 1 });
+      if (released.leases > 0 || !released.closesWithLeases) {
+        return toPublicSession(released);
+      }
+      const closed = closeStored(released);
+      if (discardIfEmpty && closed.buffer.read({ all: true }).length === 0) {
+        removeStored(closed.id);
+        changed();
+        return undefined;
+      }
+      return toPublicSession(closed);
     },
     getRetention(reference) {
       return resolveStored(reference).retention;
@@ -213,17 +313,7 @@ export function createLocalSessionStore({
       );
     },
     close(reference) {
-      const session = resolveStored(reference);
-      if (session.state === "retained") return toPublicSession(session);
-      const timestamp = now();
-      const closed = update(session, {
-        state: "retained",
-        lastActivityAt: timestamp,
-        expiresAt: timestamp + SESSION_RETENTION_MS,
-      });
-      notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
-      changed();
-      return toPublicSession(closed);
+      return toPublicSession(closeStored(resolveStored(reference)));
     },
     reset(reference) {
       const session = resolveStored(reference);
@@ -268,14 +358,7 @@ export function createLocalSessionStore({
             session.expiresAt <= timestamp,
         )
         .map((session) => session.id);
-      for (const id of expired) {
-        const session = sessions.get(id);
-        if (session?.clientId && clientSessions.get(session.clientId) === id) {
-          clientSessions.delete(session.clientId);
-        }
-        sessions.delete(id);
-        listeners.delete(id);
-      }
+      for (const id of expired) removeStored(id);
       if (expired.length > 0) {
         changed();
       }

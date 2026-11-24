@@ -76,6 +76,10 @@ export type LocalDaemonSession = {
   readonly streamUrl: string;
   /** Older daemon versions do not advertise browser discovery. */
   readonly directoryUrl?: string;
+  /** DSN for SDKs without Spotlight support; older daemons omit it. */
+  readonly dsn?: string;
+  /** Set when `reuse` joined a session that was already open. */
+  readonly reused?: boolean;
 };
 
 function statePath(directory: string): string {
@@ -766,6 +770,7 @@ export async function createLocalDaemonSession({
   label,
   port,
   maxEnvelopes,
+  reuse,
 }: {
   readonly clientId?: string;
   readonly maxEnvelopes?: number | undefined;
@@ -773,10 +778,15 @@ export async function createLocalDaemonSession({
   readonly host?: string;
   readonly label: string;
   readonly port?: number;
+  /**
+   * Join the open session with this label instead of creating another; give
+   * it back with {@link releaseLocalDaemonSession}.
+   */
+  readonly reuse?: boolean;
 }): Promise<LocalDaemonSession> {
   const state = await ensureLocalDaemon({ host, port });
   const response = await requestLocalDaemon(state, "/sessions", {
-    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes }),
+    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes, reuse }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
@@ -803,4 +813,33 @@ export async function retainLocalDaemonSession(
       method: "POST",
     },
   );
+}
+
+/**
+ * Give back a session joined with `reuse`. The daemon closes it once no run
+ * holds it, unless it was created on its own; with `discardIfEmpty` a session
+ * that closes without telemetry is removed. Daemons without this route close
+ * the session instead.
+ */
+export async function releaseLocalDaemonSession(
+  sessionId: string,
+  { discardIfEmpty = false }: { discardIfEmpty?: boolean } = {},
+): Promise<void> {
+  const state = await getRunningLocalDaemon();
+  if (!state) {
+    return;
+  }
+  const response = await requestLocalDaemon(
+    state,
+    `/sessions/${encodeURIComponent(sessionId)}/release`,
+    {
+      body: JSON.stringify({ discardIfEmpty }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  await response.body?.cancel();
+  if (response.status === 404) {
+    await retainLocalDaemonSession(sessionId);
+  }
 }

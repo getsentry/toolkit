@@ -1,8 +1,14 @@
 # Local daemon and browser viewer
 
 `local run --session <name>` and `local serve --session <name>` capture into an
-isolated session owned by a background, loopback-only daemon. The foreground
-command retains its session when it exits. Closed sessions remain queryable for
+isolated session owned by a background, loopback-only daemon. `local run
+--session <name>` joins the open session with that name and creates one only
+when none is open, so two runs at the same time share a session. A session that
+runs created closes when the last of them exits; one made with `local session
+create` stays open until `local session close`. When the app cannot start, the
+run removes a session it created that received nothing, instead of keeping an
+empty one. `local serve --session` still creates its own session and closes it
+when it exits. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All
 telemetry disappears when the daemon stops. The daemon exits on its own once it
 has had no sessions, open or closed, for 30 seconds (`LOCAL_DAEMON_IDLE_GRACE_MS`
@@ -40,10 +46,14 @@ PHP build from a DSN such as
 `http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
 Node.js and Python post to `ingestUrl` as is. Ruby uses only the host and port
 from `SENTRY_SPOTLIGHT` and posts to `/stream`, so the session path and its key
-are lost, and Ruby needs the DSN form. `local run --session` creates a new
-session on every run and sets only `SENTRY_SPOTLIGHT`, so DSN-based SDKs use a
-session from `local session create <name> --json` and run outside
-`local run`; read their events with `local event list <id>`. Those SDKs copy
+are lost, and Ruby needs the DSN form. Session create and view also return
+that DSN as `dsn`, on the IP address the daemon listens on, such as
+`http://key@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+`local run --session` sets `SENTRY_DSN` to it when `SENTRY_DSN` is unset and the
+command is `go`, `cargo`, `deno`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, or
+`rails`. Other commands get only `SENTRY_SPOTLIGHT`: the Node.js and Python SDKs
+read both variables and would send every event twice. Those apps can take
+`dsn` from `local session view <name> --json`. Those SDKs copy
 the DSN into each envelope header, so the daemon drops the header's `dsn` key
 before it stores or streams a session envelope.
 Treat those URLs as credentials. Terminal output redacts them, including the
@@ -148,7 +158,8 @@ daemon keeps the default port while it retains sessions. With an explicit
 
 Each session or plain receiver retains 500 envelopes by default. Set a limit from
 1 to 50,000 with `--max-envelopes` on `local session create`, `local run`, or
-`local serve`, for example:
+`local serve`. A `local run --session` that joins an open session leaves its
+limit as it is; change it with `local session retention`. For example:
 
 ```sh
 sentry local run --session web --max-envelopes 1000 -- npm run dev
