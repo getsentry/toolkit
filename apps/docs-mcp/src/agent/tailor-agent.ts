@@ -249,6 +249,10 @@ Produce the tailored integration guide.`;
         const fallback = await generateText({
           ...MODEL_SETTINGS,
           messages: [
+            // `response.messages` holds only assistant/tool turns, so the
+            // original request (libs, features, stack, seed paths) must be
+            // replayed first.
+            { role: "user", content: userPrompt },
             ...result.response.messages,
             { role: "user", content: FALLBACK_SYNTHESIS_INSTRUCTION },
           ],

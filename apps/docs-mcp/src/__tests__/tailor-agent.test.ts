@@ -75,7 +75,7 @@ describe("runTailorAgent", () => {
     });
 
     await expect(
-      runTailorAgent("sk-or-test", ["javascript"], []),
+      runTailorAgent("sk-or-test", ["javascript"], ["tracing"], "Next.js app"),
     ).resolves.toBe("# Synthesized guide");
 
     const synthesis = requests.slice(2);
@@ -87,9 +87,16 @@ describe("runTailorAgent", () => {
     expect(synthesis[1]!.tools).toHaveLength(2);
     expect(synthesis[1]!.messages.map((message) => message.role)).toEqual([
       "system",
+      "user",
       "assistant",
       "tool",
       "user",
     ]);
+    const original = JSON.stringify(synthesis[1]!.messages[1]!.content);
+    expect(original).toContain("Libraries: javascript");
+    expect(original).toContain("Selected features: tracing");
+    expect(original).toContain("Project stack: Next.js app");
+    expect(original).toContain("/platforms/javascript/");
+    expect(JSON.stringify(synthesis[1]!.messages[3])).toContain("# JavaScript");
   });
 });
