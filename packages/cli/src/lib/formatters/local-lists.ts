@@ -21,7 +21,7 @@ type LocalEventListEntry = {
   readonly timestamp?: string;
   /** When the receiver accepted the envelope, ISO 8601. */
   readonly receivedAt?: string;
-  /** Logs or spans in a batch. */
+  /** Logs in a log batch, or the spans of a span batch the tail counts. */
   readonly count?: number;
 };
 
@@ -92,8 +92,9 @@ export function formatLocalEventList(data: Record<string, unknown>): string {
     },
     {
       header: "TYPE",
+      // Like the tail, which prints no `[0 spans]`.
       value: ({ type, count }) =>
-        count === undefined ? cell(type) : `${cell(type)} (${count})`,
+        count ? `${cell(type)} (${count})` : cell(type),
     },
     { header: "LEVEL", value: ({ level }) => cell(level) },
     { header: "TITLE", value: ({ title }) => cell(title) },
