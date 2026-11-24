@@ -2157,4 +2157,10 @@ describe("needsSessionDsn", () => {
       expect(needsSessionDsn(command), command.join(" ")).toBe(false);
     }
   });
+
+  test("includes an auto-detected Rails bin/dev that a shell starts", () => {
+    expect(needsSessionDsn(["sh", "bin/dev"], "bin/dev (Rails)")).toBe(true);
+    expect(needsSessionDsn(["bash", "bin/dev"], "bin/dev (Rails)")).toBe(true);
+    expect(needsSessionDsn(["sh", "bin/dev"])).toBe(false);
+  });
 });

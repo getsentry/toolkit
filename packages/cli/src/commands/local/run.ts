@@ -148,11 +148,18 @@ const SESSION_DSN_PROGRAMS = new Set([
 
 /**
  * Whether a session run should hand the app its DSN, judged by the program it
- * starts. Not for SDKs that reach the session through SENTRY_SPOTLIGHT
- * (Node.js, Python): they also read SENTRY_DSN and would send every event
- * twice.
+ * starts, or by the detected app for an auto-detected Rails `bin/dev`, which
+ * starts through `sh` or `bash`. Not for SDKs that reach the session through
+ * SENTRY_SPOTLIGHT (Node.js, Python): they also read SENTRY_DSN and would
+ * send every event twice.
  */
-export function needsSessionDsn(args: readonly string[]): boolean {
+export function needsSessionDsn(
+  args: readonly string[],
+  commandSource = "",
+): boolean {
+  if (commandSource.endsWith("(Rails)")) {
+    return true;
+  }
   const program = win32
     .basename(args[0] ?? "")
     .toLowerCase()
@@ -565,9 +572,9 @@ export const runCommand = buildCommand({
       "    --session, set SENTRY_DSN=http://key@localhost:<port>/0 and pin\n" +
       "    that --port.\n" +
       "  - With --session, go, cargo, deno, mix, iex, elixir, ruby, bundle,\n" +
-      "    and rails commands get the session's DSN as SENTRY_DSN unless it\n" +
-      "    is already set. Other commands can take the dsn from\n" +
-      "    'local session view <session> --json'.\n" +
+      "    and rails commands, and a detected Rails app, get the session's\n" +
+      "    DSN as SENTRY_DSN unless it is already set. Other commands can take\n" +
+      "    the dsn from 'local session view <session> --json'.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -801,7 +808,9 @@ export const runCommand = buildCommand({
       );
       // Only when the user set no DSN and the app reaches sessions only that way.
       const childDsn =
-        daemonDsn && !process.env["SENTRY_DSN"] && needsSessionDsn(args)
+        daemonDsn &&
+        !process.env["SENTRY_DSN"] &&
+        needsSessionDsn(args, commandSource)
           ? daemonDsn
           : undefined;
       logger.info(

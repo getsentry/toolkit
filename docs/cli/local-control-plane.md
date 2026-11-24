@@ -51,7 +51,7 @@ that DSN as `dsn`, on the IP address the daemon listens on, such as
 `http://key@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
 `local run --session` sets `SENTRY_DSN` to it when `SENTRY_DSN` is unset and the
 command is `go`, `cargo`, `deno`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, or
-`rails`. Other commands get only `SENTRY_SPOTLIGHT`: the Node.js and Python SDKs
+`rails`, or a detected Rails app such as one started with `sh bin/dev`. Other commands get only `SENTRY_SPOTLIGHT`: the Node.js and Python SDKs
 read both variables and would send every event twice. Those apps can take
 `dsn` from `local session view <name> --json`. Those SDKs copy
 the DSN into each envelope header, so the daemon drops the header's `dsn` key

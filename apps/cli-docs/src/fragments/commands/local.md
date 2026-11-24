@@ -311,7 +311,7 @@ How an SDK reaches a session depends on its Spotlight support:
 - **Go, Rust, Deno, Elixir, and Ruby** send through a DSN. When you haven't set
   `SENTRY_DSN`, `local run --session` sets it to the session's DSN for `go`,
   `cargo`, `deno`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, and `rails`
-  commands. For anything else, such as a compiled binary, take `dsn` from
+  commands, and for a Rails app that `local run` detects. For anything else, such as a compiled binary, take `dsn` from
   `sentry local session create <name> --json` and start the app with it as
   `SENTRY_DSN`, either on its own or under `local run --session <name>`, which
   joins that session. `local run --session` leaves
