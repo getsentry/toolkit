@@ -51,6 +51,7 @@ export const shortlistAttributesAgentOutputSchema = z.object({
   best: z
     .string()
     .nullable()
+    .default(null)
     .describe(
       "The one key that clearly answers the question, or null when no single key clearly wins",
     ),
@@ -59,6 +60,11 @@ export const shortlistAttributesAgentOutputSchema = z.object({
     .describe(
       "Other plausible keys, most relevant first. Empty when nothing is relevant.",
     ),
+  reason: z
+    .string()
+    .nullable()
+    .default(null)
+    .describe("One sentence on why you picked these keys, or why none fit."),
 });
 
 type ShortlistAttributesAgentOutput = z.output<
@@ -69,6 +75,7 @@ type ShortlistAttributesAgentOutput = z.output<
 export interface AttributeMatches {
   best?: TraceItemAttribute | undefined;
   candidates: TraceItemAttribute[];
+  reason: string | null;
 }
 
 export interface ShortlistAttributesAgentOptions {
@@ -156,5 +163,9 @@ export function toAttributeMatches(
     seen.add(key);
     candidates.push(attribute);
   }
-  return { best, candidates: candidates.slice(0, best ? limit - 1 : limit) };
+  return {
+    best,
+    candidates: candidates.slice(0, best ? limit - 1 : limit),
+    reason: result.reason,
+  };
 }
