@@ -28,7 +28,10 @@ type LocalEventDetails = {
   type?: string | undefined;
   /** Event or log level, e.g. `error`, `warning`, `info`. */
   level?: string | undefined;
-  /** `TypeError: msg` for errors, the text for messages and logs, or the transaction or span name. */
+  /**
+   * `TypeError: msg` for errors, the text for messages and logs, the message
+   * of a feedback, or the transaction or span name.
+   */
   title?: string | undefined;
   /** When the SDK recorded it, as an ISO 8601 string. */
   timestamp?: string | undefined;
@@ -201,11 +204,33 @@ function shortTitle(details: LocalEventDetails): LocalEventDetails {
   const title = stripAnsi(details.title);
   return {
     ...details,
-    title:
-      title.length > MAX_TITLE_LENGTH
-        ? `${title.slice(0, MAX_TITLE_LENGTH - 1)}…`
-        : title,
+    title: title.length > MAX_TITLE_LENGTH ? cutTitle(title) : title,
   };
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * Cut a title to {@link MAX_TITLE_LENGTH} characters with an ellipsis, on a
+ * grapheme boundary so an emoji is not split.
+ */
+function cutTitle(title: string): string {
+  let end = 0;
+  for (const { index } of graphemes.segment(title)) {
+    if (index > MAX_TITLE_LENGTH - 1) {
+      break;
+    }
+    end = index;
+  }
+  return `${title.slice(0, end)}…`;
+}
+
+/** A feedback's message, unless it is blank. */
+function feedbackMessage(payload: Record<string, unknown>): string | undefined {
+  const message = text(
+    record(record(payload["contexts"])["feedback"])["message"],
+  );
+  return message?.trim() ? message : undefined;
 }
 
 /** Pick the item that best describes the envelope. */
@@ -248,6 +273,9 @@ export function summarizeEnvelope(
     type: itemType,
     level: text(payload["level"]),
     title:
+      // Feedback also carries the page or request it was sent from in
+      // `transaction`; the message says what it is about.
+      (itemType === "feedback" ? feedbackMessage(payload) : undefined) ??
       text(payload["transaction"]) ??
       text(payload["status"]) ??
       (itemType === "sessions" ? sessionCountsTitle(payload) : undefined),

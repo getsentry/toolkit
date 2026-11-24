@@ -92,8 +92,9 @@ an event without one (`captureMessage`, Python `logging`), or the item type
 `timestamp` from its segment root, the span marked `is_segment`, else the
 span whose parent is not in the batch, and its `title` from the tail line of
 that segment, such as `GET /ok` for a request span named only `GET`. A
-`sessions` aggregate is
-titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+`feedback` item is titled with its message, not the page or request it was
+sent from. A `sessions` aggregate is titled like the viewer, such as
+`Session counts: 5 exited`. `level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs in a log batch,
 or the spans in a span batch that the tail counts (`[N spans]` and
@@ -396,6 +397,14 @@ sampled function rows are not counted.
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Accepted envelopes get 200 with `{"id":"<event_id>"}`, or `{}` when the header
 has no event ID, as Relay answers; sentry-elixir retries anything else.
+A receiver or session keeps one copy of an error, transaction, or feedback
+envelope per event ID while that copy is retained; a resent copy, such as one
+from an SDK that sends to both Spotlight and a DSN, still gets 200 but is not
+stored or streamed. The event ID is the one `local event list` shows: the
+header `event_id`, else the event or transaction item's. Envelopes with no
+event ID, and other item types that reuse one (replay segments share the
+replay ID, and sentry-java and sentry-elixir give each check-in status the
+check-in ID), are all kept.
 A body that is empty, whose first line is not a JSON object, or that fails to
 decompress gets 400 with an `{"error":"…"}` reason, and the receiver keeps
 nothing for it. Oversized bodies get 413, unsupported media or

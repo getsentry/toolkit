@@ -784,19 +784,21 @@ describe("Local control plane", () => {
     const caps = plane.sessionStore.getCapabilities(session.id);
     const base = `http://127.0.0.1:8969/_local/v1/sessions/${session.id}`;
     const item = '{"message":"hi"}';
-    const envelope = [
-      JSON.stringify({
-        event_id: "dsn-header",
-        dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
-        sdk: { name: "sentry.go" },
-      }),
-      `{"type":"event","length":${item.length}}`,
-      item,
-    ].join("\n");
+    // A distinct event ID each, so the receiver keeps both.
+    const envelope = (eventId: string) =>
+      [
+        JSON.stringify({
+          event_id: eventId,
+          dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
+          sdk: { name: "sentry.go" },
+        }),
+        `{"type":"event","length":${item.length}}`,
+        item,
+      ].join("\n");
     // PHP and Ruby compress their requests.
     for (const [body, headers] of [
-      [envelope, {}],
-      [gzipSync(envelope), { "Content-Encoding": "gzip" }],
+      [envelope("dsn-header"), {}],
+      [gzipSync(envelope("dsn-header-gzip")), { "Content-Encoding": "gzip" }],
     ] as const) {
       const posted = await plane.app.request(
         `${base}/ingest/${caps.ingest}/api/0/envelope/`,
@@ -819,7 +821,7 @@ describe("Local control plane", () => {
     expect(stored).toHaveLength(2);
     for (const data of stored) {
       expect(data).not.toContain(caps.ingest);
-      expect(data).toContain('"event_id":"dsn-header"');
+      expect(data).toContain('"event_id":"dsn-header');
       expect(data.endsWith(`\n${item}`)).toBe(true);
     }
 
