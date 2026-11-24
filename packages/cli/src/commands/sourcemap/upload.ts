@@ -475,6 +475,7 @@ export const uploadCommand = buildCommand({
       release: flags.release,
       dist: flags.dist,
       files: artifactFiles,
+      wait: true,
     });
 
     // Count actually-uploaded pairs (one minified_source entry per pair).

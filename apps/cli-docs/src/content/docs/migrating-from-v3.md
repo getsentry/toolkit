@@ -561,7 +561,9 @@ sentry-cli sourcemaps upload ./dist
 sentry sourcemap upload ./dist
 ```
 
-Two behavioral differences to be aware of:
+v4 waits up to five minutes for Sentry to finish processing the artifact bundle,
+as v3 did with `--wait`. Remove `--wait` from upload commands. If processing
+fails or times out, the command exits with an error.
 
 - **Positional args:** v3 accepted multiple paths (`[PATHS]...`); v4 takes a
   single `<directory>` (both `upload` and `inject`). Run one invocation per

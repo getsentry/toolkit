@@ -383,6 +383,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       expect(callArgs?.org).toBe("test-org");
       expect(callArgs?.project).toBe("test-project");
+      expect(callArgs?.wait).toBe(true);
       expect(callArgs?.files).toHaveLength(2);
       const types = callArgs?.files.map((f) => f.type);
       expect(types).toContain("minified_source");
