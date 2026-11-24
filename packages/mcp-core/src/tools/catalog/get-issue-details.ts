@@ -141,7 +141,16 @@ export const getIssueDetailsOutputSchema = z.object({
         }),
       ),
       investigations: z
-        .array(z.object({ title: z.string(), url: z.string() }))
+        .array(
+          z.object({
+            title: z.string(),
+            url: z.string(),
+            reason: z
+              .string()
+              .nullable()
+              .describe("Why Seer found this issue relevant."),
+          }),
+        )
         .describe("Seer investigations whose evidence pointed to this issue."),
       unavailableTypes: z
         .array(z.enum(RELATED_ISSUE_TYPES))
@@ -295,9 +304,10 @@ function buildRelatedIssues({
         project: nonEmptyString(issue.project.name),
         relations: relations.map((relation) => relation.type),
       })),
-    investigations: related.investigations.map(({ investigation }) => ({
+    investigations: related.investigations.map(({ investigation, reason }) => ({
       title: investigation.title,
       url: apiService.getInvestigationUrl(organizationSlug, investigation.id),
+      reason,
     })),
     unavailableTypes: related.meta.types
       .filter((meta) => meta.status === "unavailable")

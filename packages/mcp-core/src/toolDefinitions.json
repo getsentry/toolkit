@@ -7528,9 +7528,13 @@
                   },
                   "url": {
                     "type": "string"
+                  },
+                  "reason": {
+                    "description": "Why Seer found this issue relevant.",
+                    "type": ["string", "null"]
                   }
                 },
-                "required": ["title", "url"],
+                "required": ["title", "url", "reason"],
                 "additionalProperties": false
               },
               "description": "Seer investigations whose evidence pointed to this issue."

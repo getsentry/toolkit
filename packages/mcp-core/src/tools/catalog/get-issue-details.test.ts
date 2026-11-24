@@ -2273,7 +2273,7 @@ describe("structuredContent", () => {
             {
               investigation: { id: "42", title: "Checkout outage" },
               hypothesisStatement: "A bad deploy broke the payment client.",
-              reason: null,
+              reason: "Its timeouts start with the deploy.",
             },
           ],
           meta: {
@@ -2299,6 +2299,7 @@ describe("structuredContent", () => {
         {
           title: "Checkout outage",
           url: "https://sentry-mcp-evals.sentry.io/seer/investigations/42/",
+          reason: "Its timeouts start with the deploy.",
         },
       ]);
     });
