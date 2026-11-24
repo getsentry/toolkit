@@ -3,6 +3,41 @@
  * or a unique prefix of one, the way `git` accepts a short commit hash.
  */
 
+/** Only nonempty string IDs from event-bearing envelope fields are lookup keys. */
+export function eventIdFrom(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const id = (value as Record<string, unknown>)["event_id"];
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+/**
+ * The event ID `local event list` and `view` use for an envelope: its header
+ * `event_id`, else that of its first event or transaction item, from the item
+ * header or its payload. `payload` is called only when that is needed.
+ */
+export function envelopeLookupId(
+  header: unknown,
+  items: readonly { header: unknown; payload: () => unknown }[],
+): string | undefined {
+  const headerId = eventIdFrom(header);
+  if (headerId) return headerId;
+  for (const item of items) {
+    const type = eventItemType(item.header);
+    if (type !== "event" && type !== "transaction") continue;
+    const id = eventIdFrom(item.header) ?? eventIdFrom(item.payload());
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function eventItemType(itemHeader: unknown): unknown {
+  return typeof itemHeader === "object" && itemHeader !== null
+    ? (itemHeader as Record<string, unknown>)["type"]
+    : undefined;
+}
+
 /** Shortest event ID prefix that `local event view` matches. */
 export const EVENT_ID_PREFIX_MIN_LENGTH = 8;
 
