@@ -818,6 +818,22 @@ export async function retainLocalDaemonSession(
 }
 
 /**
+ * Warn that `--max-envelopes` was ignored because the command joined a
+ * session that was already open, and say how to change its limit.
+ */
+export function warnMaxEnvelopesIgnoredOnJoin(
+  session: Pick<LocalDaemonSession, "id" | "reused">,
+  maxEnvelopes: number | undefined,
+): void {
+  if (!session.reused || maxEnvelopes === undefined) {
+    return;
+  }
+  logger.warn(
+    `--max-envelopes doesn't change a session that is already open. Use ${sentry`local session retention ${session.id} --max-envelopes ${String(maxEnvelopes)}`}.`,
+  );
+}
+
+/**
  * The stream URL a run tails a joined session through. It names the run's
  * lease, so the daemon releases the lease when this connection ends, even when
  * the run is killed before it can call {@link releaseLocalDaemonSession}.

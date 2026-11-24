@@ -73,6 +73,7 @@ import {
   type LocalDaemonSession,
   leasedStreamUrl,
   releaseLocalDaemonSession,
+  warnMaxEnvelopesIgnoredOnJoin,
 } from "./daemon.js";
 import {
   buildApp,
@@ -811,12 +812,8 @@ export const runCommand = buildCommand({
             logger.info(
               `Joining open session ${bold(session.label)} (${session.id})`,
             );
-            if (flags["max-envelopes"] !== undefined) {
-              logger.warn(
-                `--max-envelopes doesn't change a session that is already open. Use ${sentry`local session retention ${session.id} --max-envelopes ${String(flags["max-envelopes"])}`}.`,
-              );
-            }
           }
+          warnMaxEnvelopesIgnoredOnJoin(session, flags["max-envelopes"]);
           daemonSession = session;
           daemonSessionId = session.id;
           daemonDsn = session.dsn;

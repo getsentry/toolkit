@@ -1373,6 +1373,7 @@ export const serverCommand = buildCommand({
         createLocalDaemonSession,
         leasedStreamUrl,
         releaseLocalDaemonSession,
+        warnMaxEnvelopesIgnoredOnJoin,
       } = await import("./daemon.js");
       // Like `local run --session`, join the open session with this name and
       // hold a lease, so serve never closes a session a run still uses.
@@ -1389,6 +1390,7 @@ export const serverCommand = buildCommand({
           ? `Joining open session ${bold(session.label)}`
           : "Sentry Local telemetry session",
       );
+      warnMaxEnvelopesIgnoredOnJoin(session, flags["max-envelopes"]);
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
