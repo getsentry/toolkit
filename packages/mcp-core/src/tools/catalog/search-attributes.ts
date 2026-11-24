@@ -21,7 +21,7 @@ export default defineTool({
   requiredScopes: ["event:read"],
   annotations: SEARCH_EVENTS_ANNOTATIONS,
   onError: (error, params, context) => {
-    logSearchEventsError("searchAttributes", error, params, context);
+    logSearchEventsError("search_attributes", error, params, context);
   },
   name: "search_attributes",
   title: "Search Attributes",
