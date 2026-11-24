@@ -104,6 +104,23 @@ describe("summarizeEnvelope", () => {
     ).toMatchObject({ type: "span", title: "GET /api", count: 0 });
   });
 
+  test("titles a span batch whose span name is not a string", () => {
+    // A malformed span must not break the list for every other event.
+    expect(
+      summarizeEnvelope({
+        envelope: [
+          { __spotlight_envelope_id: "test-envelope" },
+          [
+            [
+              { type: "span" },
+              { items: [{ name: 123, is_segment: true, attributes: {} }] },
+            ],
+          ],
+        ],
+      }),
+    ).toMatchObject({ type: "span", title: "unnamed span", count: 0 });
+  });
+
   /** Summary of one envelope whose only item has this type and payload. */
   const summarize = (type: string, payload: Record<string, unknown>) =>
     summarizeEnvelope({

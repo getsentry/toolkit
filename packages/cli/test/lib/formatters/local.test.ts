@@ -288,6 +288,27 @@ describe("formatTransactionItem", () => {
     expect(result).toContain("my-txn");
   });
 
+  test("shows only the URL path of a server transaction whose op is in its trace context", () => {
+    // Older SDKs set the op on `contexts.trace.op` and not as `sentry.op`.
+    const event = {
+      timestamp: 1_700_000_001,
+      start_timestamp: 1_700_000_000,
+      transaction: "GET",
+      contexts: {
+        trace: {
+          op: "http.server",
+          data: {
+            "http.request.method": "GET",
+            "url.full": "http://localhost:3107/ok?q=1",
+          },
+        },
+      },
+    };
+    const result = stripAnsi(formatTransactionItem(event, browserHeader));
+    expect(result).toContain("[http.server] GET /ok");
+    expect(result).not.toContain("localhost");
+  });
+
   test("shows non-ok status", () => {
     const event = {
       timestamp: 1_700_000_001,

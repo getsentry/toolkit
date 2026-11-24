@@ -470,6 +470,24 @@ export function formatErrorItem(
 }
 
 /**
+ * A transaction's attributes for its label: its `contexts.trace.data`, with
+ * `contexts.trace.op` as `sentry.op` when the data has none, as spans carry
+ * it. A server transaction then shows its path, like a server span.
+ */
+function transactionLabelAttributes(
+  event: Record<string, unknown>,
+): AttributeSource {
+  const attrs = mergeTransactionAttributes(event);
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
+  const op = trace?.["op"];
+  return attrs["sentry.op"] === undefined && typeof op === "string" && op
+    ? { ...attrs, "sentry.op": op }
+    : attrs;
+}
+
+/**
  * Format a transaction event item into a colored one-liner.
  *
  * When OTel semantic attributes are present (e.g. `gen_ai.*`, `mcp.*`,
@@ -493,7 +511,7 @@ export function formatTransactionItem(
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
-  const attrs = mergeTransactionAttributes(event);
+  const attrs = transactionLabelAttributes(event);
   const semantic = formatSemanticSpanDisplay(attrs, sanitize(txnName));
 
   let msg = sanitize(semantic.label);
@@ -908,7 +926,7 @@ function formatSpanCount(count: number, prefix = ""): string {
 function spanDisplay(span: StreamedSpan): SemanticSpanDisplay {
   return formatSemanticSpanDisplay(
     flattenSpanAttributes(span.attributes),
-    span.name ?? UNNAMED_SPAN,
+    typeof span.name === "string" ? span.name : UNNAMED_SPAN,
   );
 }
 
@@ -1303,7 +1321,7 @@ function formatTransactionJson(
   const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
     "trace"
   ] as Record<string, unknown> | undefined;
-  const attrs = mergeTransactionAttributes(payload);
+  const attrs = transactionLabelAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(

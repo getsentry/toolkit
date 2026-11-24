@@ -91,7 +91,8 @@ an event without one (`captureMessage`, Python `logging`), or the item type
 `title`, and `timestamp` from its most severe log. A span batch takes its
 `timestamp` from its segment root, the span marked `is_segment`, else the
 span whose parent is not in the batch, and its `title` from the tail line of
-that segment, such as `GET /ok` for a request span named only `GET`. A `sessions` aggregate is
+that segment, such as `GET /ok` for a request span named only `GET`. A
+`sessions` aggregate is
 titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs in a log batch,
