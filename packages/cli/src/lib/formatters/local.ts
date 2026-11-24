@@ -12,6 +12,8 @@ import {
   groupSpansBySegment,
   type SpanSegment,
 } from "../../commands/local/span-segments.js";
+import { rawItemEncoding } from "../../commands/local/envelope.js";
+import { replaySegmentNumber } from "../../commands/local/event-lookup.js";
 import { parseEventTimestamp } from "../../commands/local/timestamp.js";
 import {
   formatLocalServerUrl,
@@ -1091,10 +1093,40 @@ export function createReplayTracker(): ReplayTracker {
 }
 
 /**
+ * The `segment_id` on the first line of a replay recording, which the
+ * receiver keeps raw because the rest is (usually gzip) rrweb bytes. Only a
+ * short prefix is decoded: that line is `{"segment_id":N}`.
+ */
+function recordingSegmentId(
+  itemHeader: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): number | undefined {
+  const data = payload["data"];
+  if (typeof data !== "string") {
+    return;
+  }
+  const bytes = Buffer.from(data.slice(0, 64), rawItemEncoding(itemHeader));
+  const newline = bytes.indexOf(10);
+  try {
+    const line: unknown = JSON.parse(
+      bytes.subarray(0, newline < 0 ? bytes.length : newline).toString("utf8"),
+    );
+    return typeof line === "object" && line !== null
+      ? replaySegmentNumber((line as Record<string, unknown>)["segment_id"])
+      : undefined;
+  } catch {
+    // A recording without a JSON first line just has no segment number.
+    logger.debug("Local replay recording has no JSON segment line.");
+    return;
+  }
+}
+
+/**
  * Format the first `replay_event` the tail sees for a session replay: its
- * short ID and the page in its `urls`.
+ * short ID, the page in its `urls`, and the segment the tail first saw. The
+ * line never updates, so it names where the tail joined, not a count.
  *
- * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/`
+ * Output: `HH:MM:SS [REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:5173/ [from segment 0]`
  */
 function formatReplayItem(
   event: Record<string, unknown>,
@@ -1102,9 +1134,13 @@ function formatReplayItem(
 ): string {
   const id = typeof event["replay_id"] === "string" ? event["replay_id"] : "";
   const url = Array.isArray(event["urls"]) ? event["urls"][0] : undefined;
+  const segment = replaySegmentNumber(event["segment_id"]);
   let msg = `replay ${sanitize(id.slice(0, TRACE_ID_SHORT_LEN))}`;
   if (typeof url === "string" && url) {
     msg += ` ${sanitize(url)}`;
+  }
+  if (segment !== undefined) {
+    msg += ` ${muted(`[from segment ${segment}]`)}`;
   }
   const ts = formatTime(event["timestamp"]);
   return `${muted(ts)} ${formatType("replay")} ${inferSource(header, event)} ${msg}`;
@@ -1412,6 +1448,7 @@ export function formatItemJson(
   payload: Record<string, unknown>,
   header: Record<string, unknown>,
   showAttributes = false,
+  itemHeader: Record<string, unknown> = {},
 ): string[] {
   if (itemType && ERROR_TYPES.has(itemType)) {
     return [formatErrorJson(payload, header)];
@@ -1424,6 +1461,26 @@ export function formatItemJson(
   }
   if (itemType === "log") {
     return formatLogJson(payload, header, showAttributes);
+  }
+  // Every segment of a replay carries the replay ID as its event ID, so the
+  // segment number is what tells the records apart.
+  if (itemType === "replay_event" || itemType === "replay_recording") {
+    return [
+      formatJsonObservation(
+        {
+          type: itemType,
+          timestamp: parseEventTimestamp(payload["timestamp"]),
+          replay_id:
+            jsonSafe(payload["replay_id"]) ?? jsonSafe(header["event_id"]),
+          segment_id:
+            itemType === "replay_event"
+              ? replaySegmentNumber(payload["segment_id"])
+              : recordingSegmentId(itemHeader, payload),
+        },
+        payload,
+        header,
+      ),
+    ];
   }
   return [
     formatJsonObservation(
@@ -1605,7 +1662,13 @@ export function formatEnvelopeLinesJson(
       continue;
     }
     lines.push(
-      ...formatItemJson(itemHeader.type, payload, header, showAttributes),
+      ...formatItemJson(
+        itemHeader.type,
+        payload,
+        header,
+        showAttributes,
+        itemHeader,
+      ),
     );
   }
   return lines;

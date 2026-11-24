@@ -169,7 +169,7 @@ Events and logs use the same labels: a warning is `[WARNING]` whether the SDK se
 
 The source tag comes from the event's platform and runtime, so a Next.js or SvelteKit app shows `[BROWSER]` for client events and `[SERVER]` for server events. Logs and spans don't carry that, so they're tagged from the SDK name. Server-only SDKs such as Node, Bun, or Cloudflare always show `[SERVER]`. SDKs that run on both sides, such as Next.js, SvelteKit, Nuxt, Remix, or Astro, show `[BROWSER]` when the item has signs of the browser SDK (a `pageload`, `navigation`, `ui.*` or `resource.*` span, a browser instrumentation origin, `browser.*` attributes, or a session replay ID) and `[SERVER]` otherwise. A browser log sent while no replay is recording, or a custom browser span outside a pageload or navigation, has none of these, so it shows `[SERVER]`.
 
-A session replay prints one line the first time the tail sees it, with its short ID and page, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/`. The segments it sends every few seconds after that don't print anything. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
+A session replay prints one line the first time the tail sees it, with its short ID, page, and the segment the tail first saw, such as `[REPLAY]  [BROWSER] replay 4d1c5b0e http://localhost:3000/ [from segment 0]`. The segments it sends every few seconds after that don't print anything, so they don't bury errors and logs; `local event list` lists every segment, and `--format json` has a record for each one. A replay the tail first sees partway through prints without a page, since later segments only list the pages visited during them, which is often none.
 
 Use `--filter` / `-f` to narrow the output to specific event types. The flag is
 repeatable, so `-f error -f log` shows only errors and logs. The `error` filter
@@ -225,10 +225,12 @@ In JSON mode, event records are versioned NDJSON on standard output. Startup,
 connection, and shutdown messages stay on standard error, so an agent can pipe
 the evidence stream without parsing terminal status text. Records include
 `schema_version`, `trace_id`, and, when supplied by the SDK, `event_id` and
-`envelope_id` for exact correlation. `timestamp` is always epoch seconds, even
-when the SDK sends ISO 8601 strings. Strings never contain ANSI color codes, so
-colored log output from tools like werkzeug or uvicorn comes through as plain
-text. Log records list only custom attributes, like the tail; add `-a` to also
+`envelope_id` for exact correlation. Replay records (`replay_event` and
+`replay_recording`) also carry `replay_id` and `segment_id`, since every
+segment of a replay has the replay ID as its `event_id`. `timestamp` is always
+epoch seconds, even when the SDK sends ISO 8601 strings. Strings never contain
+ANSI color codes, so colored log output from tools like werkzeug or uvicorn
+comes through as plain text. Log records list only custom attributes, like the tail; add `-a` to also
 get the attributes the SDK adds (except `sentry.*`). `level` is the value the
 SDK sent, so logs use `warn` and events use `warning`. In `local run --format
 json`, the wrapped app's standard output is also forwarded to standard error,

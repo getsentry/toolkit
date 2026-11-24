@@ -30,6 +30,7 @@ import {
   AMBIGUOUS_EVENT_CODE,
   envelopeLookupId,
   matchEventIds,
+  replaySegmentNumber,
 } from "./event-lookup.js";
 import { summarizeEnvelope } from "./event-summary.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
@@ -124,16 +125,16 @@ function replaySegmentId(items: unknown[]): number | undefined {
       continue;
     }
     const [itemHeader, payload] = item as [unknown, unknown];
-    const segmentId =
+    const segmentId = replaySegmentNumber(
       typeof payload === "object" && payload !== null
         ? (payload as Record<string, unknown>)["segment_id"]
-        : undefined;
+        : undefined,
+    );
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
       (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
-      typeof segmentId === "number" &&
-      Number.isInteger(segmentId)
+      segmentId !== undefined
     ) {
       return segmentId;
     }
