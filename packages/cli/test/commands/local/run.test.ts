@@ -403,6 +403,12 @@ describe("sentry local run", () => {
       expect(logged).toContain("Starting:");
       expect(logged).toContain("/ingest/[REDACTED]");
       expect(logged).not.toContain("secret");
+      // The viewer link names this run's session so it opens that one.
+      const hint = logged.match(/View events at (\S+)/)?.[1];
+      expect(hint).toBeTruthy();
+      const viewer = new URL(hint!);
+      expect(viewer.searchParams.get("url")).toBe("http://127.0.0.1:1/stream");
+      expect(viewer.searchParams.get("session")).toBe("session-1");
       // The wrapped app still gets the working capability.
       expect(spawnCapture.args).toContain(
         `SENTRY_SPOTLIGHT:${base}/ingest/ingest-secret`,

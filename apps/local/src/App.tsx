@@ -89,6 +89,7 @@ import {
 import {
   DEFAULT_STREAM_URL,
   decodeEnvelope,
+  getSessionIdFromQuery,
   getStreamUrlFromHash,
   itemTime,
   readConnectionLink,
@@ -324,6 +325,11 @@ export default function App() {
     getInitialSessionDirectory(streamUrl),
   );
   const activeDirectoryUrl = parseSessionDirectoryUrl(directoryUrl, streamUrl);
+  // A viewer link can name the session to open first. The next connection,
+  // usually that session, uses it up, so later visits to /stream pick as before.
+  const [linkedSessionId, setLinkedSessionId] = useState(() =>
+    getSessionIdFromQuery(window.location.search),
+  );
   const connectionGeneration = useRef(0);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>(
@@ -658,6 +664,7 @@ export default function App() {
       return;
     }
     cancelReceiverAttempt();
+    setLinkedSessionId(undefined);
     setIsViewCleared(false);
     setIsDisconnected(false);
     saveDisconnected(false);
@@ -1351,6 +1358,7 @@ export default function App() {
                         directoryUrl={activeDirectoryUrl}
                         streamUrl={streamUrl}
                         selectInitialSession={canAutoSelectSession}
+                        preferredSessionId={linkedSessionId}
                         onSelect={connectToEndpoint}
                       />
                     ) : undefined
@@ -1367,6 +1375,7 @@ export default function App() {
                     directoryUrl={activeDirectoryUrl}
                     streamUrl={streamUrl}
                     selectInitialSession={canAutoSelectSession}
+                    preferredSessionId={linkedSessionId}
                     onSelect={connectToEndpoint}
                   />
                 </div>

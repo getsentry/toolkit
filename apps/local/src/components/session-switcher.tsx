@@ -22,12 +22,15 @@ export function SessionSwitcher({
   streamUrl,
   onSelect,
   selectInitialSession = false,
+  preferredSessionId,
   refreshKey,
   onRetainedSession,
   onCurrentSessionChange,
   showState = true,
 }: {
   selectInitialSession?: boolean;
+  /** The session to select first when it is in the directory. */
+  preferredSessionId?: string | undefined;
   onCurrentSessionChange?: (session: ViewerSession | undefined) => void;
   showState?: boolean;
   refreshKey?: string | undefined;
@@ -79,8 +82,12 @@ export function SessionSwitcher({
   useEffect(() => {
     // Only the daemon-wide /stream entry point selects an initial run. Expiring
     // or closing a selected scoped session must never silently change feeds.
-    if (selectInitialSession && sessions[0]) onSelect(sessions[0].streamUrl);
-  }, [selectInitialSession, sessions, onSelect]);
+    if (!selectInitialSession) return;
+    const initial =
+      sessions.find((session) => session.id === preferredSessionId) ??
+      sessions[0];
+    if (initial) onSelect(initial.streamUrl);
+  }, [selectInitialSession, preferredSessionId, sessions, onSelect]);
   const current = sessions.find((s) => s.streamUrl === streamUrl);
   useEffect(() => {
     onCurrentSessionChange?.(current);

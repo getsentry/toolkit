@@ -26,6 +26,7 @@ import {
   createLocalSessionStore,
   SESSION_RETENTION_MS,
 } from "../../../packages/cli/src/commands/local/session-store.ts";
+import { getLocalUiConnectionUrl } from "../../../packages/cli/src/commands/local/ui.ts";
 import App from "./App.tsx";
 
 const headers = { Authorization: "Bearer session-switcher-test" };
@@ -548,6 +549,54 @@ test("a CLI viewer query link discovers both runs and does not override the sele
         screen.getByRole("combobox", { name: "Session" }).textContent,
       ).toContain("worker"),
     );
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
+test("a CLI session link opens that session, not the first one", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/linked-web");
+    await daemon.ingest(worker, "/linked-worker");
+    const link = new URL(getLocalUiConnectionUrl(worker.streamUrl)!);
+    expect(link.toString()).not.toContain("cap");
+    window.history.replaceState(null, "", `/${link.search}`);
+    renderViewer();
+    await screen.findAllByText("/linked-worker");
+    expect(screen.queryByText("/linked-web")).toBeNull();
+    expect(window.location.search).toBe("");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Session" }).textContent,
+      ).toContain("worker"),
+    );
+  } finally {
+    cleanup();
+    await daemon.stop();
+  }
+}, 15_000);
+
+test("a session link for an unknown session falls back to the first session", async () => {
+  const daemon = await startDaemon();
+  try {
+    const web = await daemon.create("web");
+    const worker = await daemon.create("worker");
+    await daemon.ingest(web, "/fallback-web");
+    await daemon.ingest(worker, "/fallback-worker");
+    const url = new URL("/stream", web.streamUrl).toString();
+    window.history.replaceState(
+      null,
+      "",
+      `/?${new URLSearchParams({ url, session: "gone" })}`,
+    );
+    renderViewer();
+    await screen.findAllByText("/fallback-web");
+    expect(screen.queryByText("/fallback-worker")).toBeNull();
+    expect(window.location.search).toBe("");
   } finally {
     cleanup();
     await daemon.stop();

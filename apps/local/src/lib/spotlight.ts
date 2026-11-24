@@ -340,6 +340,15 @@ export function getStreamUrlFromQuery(search: string): string | undefined {
   return url.pathname === "/stream" && !url.search ? endpoint.url : undefined;
 }
 
+/**
+ * The session a public viewer link asks to open. It is only an ID, never a
+ * capability, and counts only alongside an accepted `url`.
+ */
+export function getSessionIdFromQuery(search: string): string | undefined {
+  if (!getStreamUrlFromQuery(search)) return;
+  return new URLSearchParams(search).get("session") || undefined;
+}
+
 /** Validate a stream endpoint saved by an earlier CLI-launched tab. */
 export function getStreamUrlFromStorage(
   stream: string | null,

@@ -718,7 +718,7 @@ export const runCommand = buildCommand({
           showAttributes: flags.attributes,
         });
     url = tail.url;
-    printLocalViewerHint(url, useJson);
+    printLocalViewerHint(daemonStreamUrl ?? url, useJson);
 
     await openLocalUiIfRequested(
       flags.open,
