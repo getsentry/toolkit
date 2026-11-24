@@ -435,7 +435,11 @@ describe("sentry local run", () => {
     });
 
     /** Run `args` with a mocked daemon session; returns the daemon spies. */
-    async function runInSession(args: string[], reused = false) {
+    async function runInSession(
+      args: string[],
+      reused = false,
+      flags: Record<string, unknown> = {},
+    ) {
       const create = vi
         .spyOn(daemon, "createLocalDaemonSession")
         .mockResolvedValue({
@@ -446,20 +450,34 @@ describe("sentry local run", () => {
           streamUrl: `${base}/stream?cap=stream-secret`,
           dsn,
           reused,
+          leaseId: "lease-1",
         });
       const release = vi
         .spyOn(daemon, "releaseLocalDaemonSession")
         .mockResolvedValue(undefined);
       const info = vi.spyOn(logger, "info").mockImplementation(() => {});
-      vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
       const func = (await runCommand.loader()) as unknown as RunFunc;
       const result = func.call(
         makeContext(),
-        { host: "127.0.0.1", verify: false, timeout: 0, session: "web" },
+        {
+          host: "127.0.0.1",
+          verify: false,
+          timeout: 0,
+          session: "web",
+          ...flags,
+        },
         ...args,
       );
-      return { create, release, info, result };
+      const warnings = () => warn.mock.calls.map((c) => String(c[0]));
+      return { create, release, info, warnings, result };
     }
+
+    /** The session the mocked daemon hands out, as release receives it. */
+    const session = expect.objectContaining({
+      id: "session-1",
+      leaseId: "lease-1",
+    });
 
     async function fakeProgram(name: string): Promise<string> {
       const path = join(tmpDir, name);
@@ -477,7 +495,7 @@ describe("sentry local run", () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ label: "web", reuse: true }),
       );
-      expect(release).toHaveBeenCalledWith("session-1", {
+      expect(release).toHaveBeenCalledWith(session, {
         discardIfEmpty: false,
       });
       expect(info.mock.calls.map((c) => String(c[0]))).toContainEqual(
@@ -520,9 +538,45 @@ describe("sentry local run", () => {
         "",
       ]);
       await expect(result).rejects.toThrow("unreadable package.json");
-      expect(release).toHaveBeenCalledWith("session-1", {
+      expect(release).toHaveBeenCalledWith(session, {
         discardIfEmpty: true,
       });
+    });
+
+    test("notes that --max-envelopes leaves a joined session's limit alone", async () => {
+      const { result, warnings } = await runInSession(
+        [process.execPath, "-e", ""],
+        true,
+        { "max-envelopes": 50 },
+      );
+      await result;
+      expect(warnings()).toContainEqual(
+        expect.stringContaining("--max-envelopes doesn't change"),
+      );
+    });
+
+    test("warns when a dotenv file also sets SENTRY_DSN", async () => {
+      await writeFile(
+        join(tmpDir, ".env"),
+        "SENTRY_DSN=https://k@example.invalid/1\n",
+      );
+      const { result, warnings } = await runInSession([
+        await fakeProgram("go"),
+        "run",
+      ]);
+      await result;
+      expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(dsn);
+      expect(warnings()).toContainEqual(
+        expect.stringContaining(".env also sets SENTRY_DSN"),
+      );
+    });
+
+    test("keeps the start error when the session cannot be released", async () => {
+      const { release, result } = await runInSession([
+        join(tmpDir, "missing-program"),
+      ]);
+      release.mockRejectedValue(new Error("daemon went away"));
+      await expect(result).rejects.toBeInstanceOf(CliError);
     });
 
     test("discards the empty session when the app cannot start", async () => {
@@ -530,7 +584,7 @@ describe("sentry local run", () => {
         join(tmpDir, "missing-program"),
       ]);
       await expect(result).rejects.toBeInstanceOf(CliError);
-      expect(release).toHaveBeenCalledWith("session-1", {
+      expect(release).toHaveBeenCalledWith(session, {
         discardIfEmpty: true,
       });
     });
@@ -2138,11 +2192,14 @@ describe("needsSessionDsn", () => {
       ["/usr/local/go/bin/go", "run", "."],
       ["cargo", "run"],
       ["C:\\Program Files\\Rust\\cargo.exe", "run"],
-      ["deno", "run", "main.ts"],
       ["mix", "phx.server"],
       ["iex", "-S", "mix"],
       ["bin/rails", "server"],
       ["bundle", "exec", "rackup"],
+      ["puma"],
+      ["rake", "jobs:work"],
+      ["rspec"],
+      ["sidekiq"],
     ]) {
       expect(needsSessionDsn(command), command.join(" ")).toBe(true);
     }
@@ -2151,16 +2208,40 @@ describe("needsSessionDsn", () => {
       ["npm", "run", "dev"],
       ["python", "manage.py", "runserver"],
       ["php", "artisan", "serve"],
+      // @sentry/deno never reads SENTRY_DSN, and npm:@sentry/node reads both.
+      ["deno", "run", "main.ts"],
+      // Compiled Go and Rust binaries are left to the user.
       ["./server"],
+      ["./target/debug/app"],
+      // Without a Gemfile, these could start anything.
+      ["bin/dev"],
+      ["foreman", "start"],
       [],
     ]) {
       expect(needsSessionDsn(command), command.join(" ")).toBe(false);
     }
   });
 
-  test("includes an auto-detected Rails bin/dev that a shell starts", () => {
-    expect(needsSessionDsn(["sh", "bin/dev"], "bin/dev (Rails)")).toBe(true);
-    expect(needsSessionDsn(["bash", "bin/dev"], "bin/dev (Rails)")).toBe(true);
+  test("includes a detected DSN-only app whatever program starts it", () => {
+    expect(needsSessionDsn(["sh", "bin/dev"], { dsnOnlyApp: true })).toBe(true);
     expect(needsSessionDsn(["sh", "bin/dev"])).toBe(false);
+  });
+
+  test("includes a Ruby project's process managers and bin scripts", () => {
+    for (const command of [
+      ["bin/dev"],
+      ["./bin/dev"],
+      ["bin\\dev"],
+      ["foreman", "start", "-f", "Procfile.dev"],
+      ["overmind", "start"],
+    ]) {
+      expect(
+        needsSessionDsn(command, { rubyProject: true }),
+        command.join(" "),
+      ).toBe(true);
+    }
+    expect(needsSessionDsn(["npm", "run", "dev"], { rubyProject: true })).toBe(
+      false,
+    );
   });
 });

@@ -290,9 +290,11 @@ retried session creation idempotent.
 
 `local run --session <name>` joins the open session with that name, and
 creates one only when none is open, so two runs at the same time capture into
-the same session. A session the runs created closes when the last of them
-exits. A session you made with `session create` stays open until you close it.
-If the app can't start, the run drops the empty session it created.
+the same session. `local serve --session <name>` joins the same way. A session
+the runs created closes when the last of them exits, even one that was killed
+or whose terminal closed. A session you made with `session create` stays open
+until you close it. If the app can't start, the run drops the empty session it
+created.
 
 Once a session closes, the next run with that name creates a new one, so names
 can repeat. Commands that read, such as `event list` and `session view`, use the
@@ -308,15 +310,23 @@ How an SDK reaches a session depends on its Spotlight support:
   `local run --session` needs no setup.
 - **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
   it, which the session accepts.
-- **Go, Rust, Deno, Elixir, and Ruby** send through a DSN. When you haven't set
-  `SENTRY_DSN`, `local run --session` sets it to the session's DSN for `go`,
-  `cargo`, `deno`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, and `rails`
-  commands, and for a Rails app that `local run` detects. For anything else, such as a compiled binary, take `dsn` from
+- **Go, Rust, Elixir, and Ruby** send through a DSN. When you haven't set
+  `SENTRY_DSN`, `local run --session` sets it to the session's DSN for:
+  - Ruby, Go, and Rust apps that `local run` detects, such as a Rails `bin/dev`
+  - `go`, `cargo`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, `rails`, `rake`,
+    `rackup`, `puma`, `sidekiq`, and `rspec`
+  - `foreman`, `overmind`, and `bin/` scripts in a project with a `Gemfile`
+
+  If a `.env` file also sets `SENTRY_DSN`, the run warns you: a dotenv loader
+  that keeps existing variables will use the session DSN. For anything else,
+  such as a compiled Go or Rust binary, take `dsn` from
   `sentry local session create <name> --json` and start the app with it as
   `SENTRY_DSN`, either on its own or under `local run --session <name>`, which
-  joins that session. `local run --session` leaves
-  `SENTRY_DSN` alone for Node.js and Python, which would otherwise send every
-  event twice.
+  joins that session. `local run --session` leaves `SENTRY_DSN` alone for
+  Node.js and Python, which would otherwise send every event twice.
+- **Deno**: `@sentry/deno` doesn't read `SENTRY_DSN`, so pass it the `dsn`
+  from `sentry local session view <name> --json`. An app that uses
+  `npm:@sentry/node` reads `SENTRY_SPOTLIGHT` like Node.js.
 
   Ruby uses only the host and port from `SENTRY_SPOTLIGHT` and posts to
   `/stream`, so the session path and its key are lost. Set

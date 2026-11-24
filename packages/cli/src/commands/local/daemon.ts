@@ -80,6 +80,8 @@ export type LocalDaemonSession = {
   readonly dsn?: string;
   /** Set when `reuse` joined a session that was already open. */
   readonly reused?: boolean;
+  /** The run's hold on a session joined with `reuse`; older daemons omit it. */
+  readonly leaseId?: string;
 };
 
 function statePath(directory: string): string {
@@ -816,30 +818,45 @@ export async function retainLocalDaemonSession(
 }
 
 /**
+ * The stream URL a run tails a joined session through. It names the run's
+ * lease, so the daemon releases the lease when this connection ends, even when
+ * the run is killed before it can call {@link releaseLocalDaemonSession}.
+ */
+export function leasedStreamUrl(session: LocalDaemonSession): string {
+  if (!session.leaseId) {
+    return session.streamUrl;
+  }
+  const url = new URL(session.streamUrl);
+  url.searchParams.set("lease", session.leaseId);
+  return url.href;
+}
+
+/**
  * Give back a session joined with `reuse`. The daemon closes it once no run
  * holds it, unless it was created on its own; with `discardIfEmpty` a session
- * that closes without telemetry is removed. Daemons without this route close
- * the session instead.
+ * that closes without telemetry is removed. Daemons without leases close the
+ * session instead.
  */
 export async function releaseLocalDaemonSession(
-  sessionId: string,
+  session: Pick<LocalDaemonSession, "id" | "leaseId">,
   { discardIfEmpty = false }: { discardIfEmpty?: boolean } = {},
 ): Promise<void> {
   const state = await getRunningLocalDaemon();
   if (!state) {
     return;
   }
+  if (!session.leaseId) {
+    await retainLocalDaemonSession(session.id);
+    return;
+  }
   const response = await requestLocalDaemon(
     state,
-    `/sessions/${encodeURIComponent(sessionId)}/release`,
+    `/sessions/${encodeURIComponent(session.id)}/release`,
     {
-      body: JSON.stringify({ discardIfEmpty }),
+      body: JSON.stringify({ leaseId: session.leaseId, discardIfEmpty }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     },
   );
   await response.body?.cancel();
-  if (response.status === 404) {
-    await retainLocalDaemonSession(sessionId);
-  }
 }

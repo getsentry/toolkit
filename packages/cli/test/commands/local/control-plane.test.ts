@@ -1,6 +1,6 @@
 import { request } from "node:http";
 import { gzipSync } from "node:zlib";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
@@ -697,13 +697,18 @@ describe("Local control plane", () => {
       });
       return {
         status: response.status,
-        body: (await response.json()) as { id: string; reused: boolean },
+        body: (await response.json()) as {
+          id: string;
+          reused: boolean;
+          leaseId: string;
+        },
       };
     };
-    const release = (id: string) =>
+    const release = ({ id, leaseId }: { id: string; leaseId: string }) =>
       plane.app.request(`/_local/v1/sessions/${id}/release`, {
         method: "POST",
-        headers: controlHeaders(),
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ leaseId }),
       });
 
     const first = await join();
@@ -713,14 +718,45 @@ describe("Local control plane", () => {
       status: 200,
       body: { id: first.body.id, reused: true },
     });
-    await expect((await release(first.body.id)).json()).resolves.toMatchObject({
+    await expect((await release(first.body)).json()).resolves.toMatchObject({
       state: "open",
     });
-    await expect((await release(first.body.id)).json()).resolves.toMatchObject({
+    await expect((await release(second.body)).json()).resolves.toMatchObject({
       state: "retained",
     });
     expect((await join()).body.id).not.toBe(first.body.id);
     expect(plane.sessionStore.choose("web").others).toEqual([]);
+  });
+
+  test("releases a run's lease when the run's stream connection drops", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const response = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: { ...controlHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+    });
+    const session = (await response.json()) as {
+      id: string;
+      leaseId: string;
+      streamUrl: string;
+    };
+    const stream = new URL(session.streamUrl);
+    stream.searchParams.set("lease", session.leaseId);
+
+    // A run that is killed never calls release; only its stream ends.
+    const controller = new AbortController();
+    const tail = await plane.app.request(`${stream.pathname}${stream.search}`, {
+      signal: controller.signal,
+    });
+    const reader = tail.body!.getReader();
+    await reader.read();
+    expect(plane.sessionStore.resolve(session.id).state).toBe("open");
+    controller.abort();
+    await reader.cancel();
+
+    await vi.waitFor(() =>
+      expect(plane.sessionStore.resolve(session.id).state).toBe("retained"),
+    );
   });
 
   test("gives a session a DSN that SDKs without Spotlight support can send to", async () => {

@@ -18,6 +18,13 @@ import type { LocalSessionEvent } from "./viewer-protocol.js";
 /** Retained sessions remain queryable for three hours after closing. */
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
 
+/**
+ * How long a lease may go without the run's stream connection before it is
+ * dropped. A run attaches right after it takes the lease, so only a run that
+ * died in between leaves one unattached.
+ */
+export const LEASE_ATTACH_MS = 30 * 1000;
+
 /** Open lease or a closed session retained for later queries. */
 export type LocalSessionState = "open" | "retained";
 
@@ -39,8 +46,12 @@ type StoredSession = LocalSession & {
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
-  /** Runs that joined the session through `acquire` and are still running. */
-  leases: number;
+  /**
+   * Leases of the runs that joined through `acquire`, by lease ID. A lease is
+   * attached while the run's stream connection is open, and goes away when
+   * that connection drops, so a killed run cannot hold the session open.
+   */
+  leases: Map<string, { attached: boolean; takenAt: number }>;
   /** Created by `acquire`, so its last lease closes it. */
   closesWithLeases: boolean;
 };
@@ -87,14 +98,22 @@ export type LocalSessionStore = {
   acquire: (input: CreateLocalSessionInput) => {
     session: LocalSession;
     reused: boolean;
+    leaseId: string;
   };
   /**
-   * Give back one lease. With `discardIfEmpty`, a session that closes here
-   * and never received an envelope is removed instead of retained. Returns
-   * undefined when the session was removed.
+   * Tie a lease to the run's stream connection; release it when that
+   * connection closes. Returns false for a lease the session doesn't hold.
+   */
+  attachLease: (id: string, leaseId: string) => boolean;
+  /**
+   * Give back a lease. With `discardIfEmpty`, a session that closes with its
+   * last lease and never received an envelope is removed instead of
+   * retained, even when its stream connection already gave the lease back.
+   * Returns undefined when the session was removed.
    */
   release: (
     id: string,
+    leaseId: string,
     options?: { discardIfEmpty?: boolean },
   ) => LocalSession | undefined;
   setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
@@ -222,7 +241,7 @@ export function createLocalSessionStore({
       maxEnvelopes,
       ingestCapability: randomBytes(24).toString("base64url"),
       streamCapability: randomBytes(24).toString("base64url"),
-      leases: leased ? 1 : 0,
+      leases: new Map(),
       closesWithLeases: leased,
     };
     sessions.set(session.id, session);
@@ -255,6 +274,35 @@ export function createLocalSessionStore({
     listeners.delete(id);
   };
 
+  const takeLease = (session: StoredSession): string => {
+    const leaseId = randomBytes(16).toString("base64url");
+    session.leases.set(leaseId, { attached: false, takenAt: now() });
+    return leaseId;
+  };
+
+  /** Close a session that runs created once none of them holds it. */
+  const closeIfUnleased = (session: StoredSession): StoredSession =>
+    session.state === "open" &&
+    session.closesWithLeases &&
+    session.leases.size === 0
+      ? closeStored(session)
+      : session;
+
+  /** Drop leases whose run never opened its stream, as when it was killed. */
+  const dropStaleLeases = () => {
+    const cutoff = now() - LEASE_ATTACH_MS;
+    for (const session of sessions.values()) {
+      let dropped = false;
+      for (const [leaseId, lease] of session.leases) {
+        if (!lease.attached && lease.takenAt <= cutoff) {
+          session.leases.delete(leaseId);
+          dropped = true;
+        }
+      }
+      if (dropped) closeIfUnleased(session);
+    }
+  };
+
   return {
     create(input) {
       validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
@@ -268,39 +316,41 @@ export function createLocalSessionStore({
     },
     acquire(input) {
       validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
+      dropStaleLeases();
       const [open] = [...sessions.values()]
         .filter(
           (session) =>
             session.label === input.label && session.state === "open",
         )
         .sort(newestFirst);
-      if (open) {
-        return {
-          session: toPublicSession(update(open, { leases: open.leases + 1 })),
-          reused: true,
-        };
-      }
+      const session = open ?? createStored(input, true);
       return {
-        session: toPublicSession(createStored(input, true)),
-        reused: false,
+        leaseId: takeLease(session),
+        session: toPublicSession(session),
+        reused: open !== undefined,
       };
     },
-    release(id, { discardIfEmpty = false } = {}) {
+    attachLease(id, leaseId) {
+      const lease = resolveStored(id).leases.get(leaseId);
+      if (lease) lease.attached = true;
+      return lease !== undefined;
+    },
+    release(id, leaseId, { discardIfEmpty = false } = {}) {
       const session = resolveStored(id);
-      if (session.state === "retained" || session.leases === 0) {
-        return toPublicSession(session);
-      }
-      const released = update(session, { leases: session.leases - 1 });
-      if (released.leases > 0 || !released.closesWithLeases) {
-        return toPublicSession(released);
-      }
-      const closed = closeStored(released);
-      if (discardIfEmpty && closed.buffer.read({ all: true }).length === 0) {
-        removeStored(closed.id);
+      session.leases.delete(leaseId);
+      const current = closeIfUnleased(session);
+      if (
+        discardIfEmpty &&
+        current.state === "retained" &&
+        current.closesWithLeases &&
+        current.leases.size === 0 &&
+        current.buffer.read({ all: true }).length === 0
+      ) {
+        removeStored(current.id);
         changed();
         return undefined;
       }
-      return toPublicSession(closed);
+      return toPublicSession(current);
     },
     getRetention(reference) {
       return resolveStored(reference).retention;
@@ -349,6 +399,7 @@ export function createLocalSessionStore({
     },
     list,
     pruneExpired() {
+      dropStaleLeases();
       const timestamp = now();
       const expired = [...sessions.values()]
         .filter(

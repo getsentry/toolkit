@@ -547,7 +547,11 @@ export function createLocalControlPlane({
     if (reuse) {
       const lease = sessionStore.acquire({ label, cwd, maxEnvelopes });
       return c.json(
-        { ...sessionWithCapabilities(c, lease.session), reused: lease.reused },
+        {
+          ...sessionWithCapabilities(c, lease.session),
+          reused: lease.reused,
+          leaseId: lease.leaseId,
+        },
         lease.reused ? 200 : 201,
       );
     }
@@ -620,6 +624,14 @@ export function createLocalControlPlane({
     if (c.req.query("cap") !== capabilities.stream) {
       return c.body(null, 401);
     }
+    // A run's tail names its lease, which ends with this connection, so a run
+    // that is killed or loses its terminal cannot keep the session open.
+    const requestedLease = c.req.query("lease");
+    const leaseId =
+      requestedLease !== undefined &&
+      sessionStore.attachLease(id, requestedLease)
+        ? requestedLease
+        : undefined;
     return streamSSE(c, async (stream) => {
       const retention = sessionStore.getRetention(id);
       // Serialize metadata and envelopes so a close notification is the final
@@ -694,6 +706,16 @@ export function createLocalControlPlane({
         unsubscribeSettings();
         unsubscribeOversized();
         unsubscribeSession();
+        if (leaseId !== undefined) {
+          try {
+            sessionStore.release(id, leaseId);
+          } catch (error) {
+            logger.debug(
+              "Local session was gone before its lease ended",
+              error,
+            );
+          }
+        }
       }
     });
   });
@@ -743,11 +765,16 @@ export function createLocalControlPlane({
       return c.body(null, 404);
     }
     const input = await c.req.json<unknown>().catch(() => undefined);
-    const discardIfEmpty =
-      typeof input === "object" &&
-      input !== null &&
-      (input as { discardIfEmpty?: unknown }).discardIfEmpty === true;
-    const session = sessionStore.release(id, { discardIfEmpty });
+    const { leaseId, discardIfEmpty } =
+      typeof input === "object" && input !== null
+        ? (input as { leaseId?: unknown; discardIfEmpty?: unknown })
+        : {};
+    if (typeof leaseId !== "string") {
+      return c.json({ error: "leaseId is required." }, 400);
+    }
+    const session = sessionStore.release(id, leaseId, {
+      discardIfEmpty: discardIfEmpty === true,
+    });
     return session ? c.json(session) : c.body(null, 204);
   });
 

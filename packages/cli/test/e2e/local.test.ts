@@ -928,6 +928,86 @@ fetch(dsn.origin + path + "/api/0/envelope/", {
     });
   }, 30_000);
 
+  test("a killed run does not hold its session open for later runs", async () => {
+    const dir = getConfigDir();
+    const pidFile = join(dir, "held-app.pid");
+    const script = join(dir, "held-app.cjs");
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setInterval(() => {}, 1000);
+`,
+    );
+    const port = await availablePort();
+    const { getCliCommand } = await import("../fixture.js");
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const run = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "run",
+        "--session",
+        "held",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        detached: true,
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: "ignore",
+      },
+    );
+    const closed = new Promise((resolve) => run.once("close", resolve));
+    const sessions = async () =>
+      (
+        JSON.parse((await cli("session", "list")).stdout) as {
+          sessions: { id: string; label: string; state: string }[];
+        }
+      ).sessions.filter((session) => session.label === "held");
+    try {
+      await expect
+        .poll(() => readFile(pidFile, "utf8").catch(() => ""), {
+          timeout: 15_000,
+        })
+        .not.toBe("");
+      const [held] = await sessions();
+      expect(held).toMatchObject({ state: "open" });
+      // Like a closed terminal tab or an OOM kill: the run gets no chance to
+      // release its session. Only the CLI's own pid is signalled.
+      run.kill("SIGKILL");
+      await closed;
+      await expect
+        .poll(async () => (await sessions()).map((session) => session.state), {
+          timeout: 15_000,
+        })
+        .toEqual(["retained"]);
+    } finally {
+      run.kill("SIGKILL");
+      const pid = Number(await readFile(pidFile, "utf8").catch(() => "0"));
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // The app already exited.
+        }
+      }
+    }
+  }, 45_000);
+
   test("captures telemetry from the real Sentry Node SDK through the injected URL", async () => {
     const port = await availablePort();
     const result = await runCli(

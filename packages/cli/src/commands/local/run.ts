@@ -17,8 +17,9 @@
  */
 
 import type { ChildProcess, StdioOptions } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
-import { basename, resolve, win32 } from "node:path";
+import { basename, join, resolve, win32 } from "node:path";
 import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -69,6 +70,8 @@ import {
 } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
+  type LocalDaemonSession,
+  leasedStreamUrl,
   releaseLocalDaemonSession,
 } from "./daemon.js";
 import {
@@ -131,40 +134,79 @@ export const CLIENT_SPOTLIGHT_PREFIXES = [
 
 /**
  * Programs whose Sentry SDKs reach a session only through SENTRY_DSN: Go,
- * Rust, Deno, and Elixir have no Spotlight support, and Ruby keeps only the
- * host and port of SENTRY_SPOTLIGHT, which loses the session path.
+ * Rust, and Elixir have no Spotlight support, and Ruby keeps only the host and
+ * port of SENTRY_SPOTLIGHT, which loses the session path.
  */
 const SESSION_DSN_PROGRAMS = new Set([
   "go",
   "cargo",
-  "deno",
   "mix",
   "iex",
   "elixir",
   "ruby",
   "bundle",
   "rails",
+  "rake",
+  "rackup",
+  "puma",
+  "sidekiq",
+  "rspec",
 ]);
 
+/** Process managers that a Ruby project, one with a Gemfile, starts through. */
+const RUBY_PROJECT_RUNNERS = new Set(["foreman", "overmind"]);
+
+/** A script in the project's `bin/`, such as Rails' `bin/dev`. */
+const BIN_SCRIPT_RE = /^(?:\.[\\/])?bin[\\/]/;
+
 /**
- * Whether a session run should hand the app its DSN, judged by the program it
- * starts, or by the detected app for an auto-detected Rails `bin/dev`, which
- * starts through `sh` or `bash`. Not for SDKs that reach the session through
- * SENTRY_SPOTLIGHT (Node.js, Python): they also read SENTRY_DSN and would
- * send every event twice.
+ * Whether a session run should hand the app its DSN: the detected app takes
+ * only a DSN, the program is one whose SDK does, or a Ruby project starts
+ * through a process manager or a `bin/` script. Not for SDKs that reach the
+ * session through SENTRY_SPOTLIGHT (Node.js, Python): they also read
+ * SENTRY_DSN and would send every event twice.
  */
 export function needsSessionDsn(
   args: readonly string[],
-  commandSource = "",
+  { dsnOnlyApp = false, rubyProject = false } = {},
 ): boolean {
-  if (commandSource.endsWith("(Rails)")) {
+  if (dsnOnlyApp) {
     return true;
   }
+  const command = args[0] ?? "";
   const program = win32
-    .basename(args[0] ?? "")
+    .basename(command)
     .toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, "");
-  return SESSION_DSN_PROGRAMS.has(program);
+  if (SESSION_DSN_PROGRAMS.has(program)) {
+    return true;
+  }
+  return (
+    rubyProject &&
+    (RUBY_PROJECT_RUNNERS.has(program) || BIN_SCRIPT_RE.test(command))
+  );
+}
+
+/** Dotenv files whose SENTRY_DSN an app may load over the session DSN. */
+const DOTENV_FILES = [".env", ".env.local", ".env.development"];
+
+/** Matches a `SENTRY_DSN=` line in a dotenv file. */
+const DOTENV_DSN_RE = /^\s*(?:export\s+)?SENTRY_DSN\s*=/m;
+
+/** The first dotenv file in `cwd` that sets SENTRY_DSN, if any. */
+function dotenvWithDsn(cwd: string): string | undefined {
+  return DOTENV_FILES.find((name) => {
+    const path = join(cwd, name);
+    if (!existsSync(path)) {
+      return false;
+    }
+    try {
+      return DOTENV_DSN_RE.test(readFileSync(path, "utf-8"));
+    } catch (error) {
+      logger.debug(`Could not read ${name}`, error);
+      return false;
+    }
+  });
 }
 
 /**
@@ -539,9 +581,9 @@ function buildChildEnv(
 async function resolveArgs(
   stripped: string[],
   cwd: string,
-): Promise<{ args: string[]; commandSource: string }> {
+): Promise<{ args: string[]; commandSource: string; dsnOnlyApp: boolean }> {
   if (stripped.length > 0) {
-    return { args: stripped, commandSource: "" };
+    return { args: stripped, commandSource: "", dsnOnlyApp: false };
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
@@ -551,7 +593,11 @@ async function resolveArgs(
   if (detected.hint) {
     logger.warn(detected.hint);
   }
-  return { args: detected.args, commandSource: detected.source };
+  return {
+    args: detected.args,
+    commandSource: detected.source,
+    dsnOnlyApp: detected.dsnOnly === true,
+  };
 }
 
 export const runCommand = buildCommand({
@@ -571,10 +617,11 @@ export const runCommand = buildCommand({
       "  - Go, Rust, Deno, and Elixir have no Spotlight support. Without\n" +
       "    --session, set SENTRY_DSN=http://key@localhost:<port>/0 and pin\n" +
       "    that --port.\n" +
-      "  - With --session, go, cargo, deno, mix, iex, elixir, ruby, bundle,\n" +
-      "    and rails commands, and a detected Rails app, get the session's\n" +
-      "    DSN as SENTRY_DSN unless it is already set. Other commands can take\n" +
-      "    the dsn from 'local session view <session> --json'.\n" +
+      "  - With --session, Go, Rust, Elixir, and Ruby commands and detected\n" +
+      "    apps, and bin/ scripts or foreman in a project with a Gemfile, get\n" +
+      "    the session's DSN as SENTRY_DSN unless it is already set. Other\n" +
+      "    commands, such as compiled binaries, can take the dsn from\n" +
+      "    'local session view <session> --json'.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -715,7 +762,10 @@ export const runCommand = buildCommand({
     validateOpenHost(flags.open, flags.host);
 
     const stripped = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
-    const { args, commandSource } = await resolveArgs(stripped, this.cwd);
+    const { args, commandSource, dsnOnlyApp } = await resolveArgs(
+      stripped,
+      this.cwd,
+    );
 
     if (flags.verify) {
       yield* runWithVerify(args, flags, this.cwd, commandSource);
@@ -724,6 +774,7 @@ export const runCommand = buildCommand({
 
     const port = flags.port ?? DEFAULT_PORT;
     let url = formatLocalServerUrl(flags.host, port);
+    let daemonSession: LocalDaemonSession | undefined;
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
@@ -733,10 +784,17 @@ export const runCommand = buildCommand({
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
     // Gives back the run's lease. With discardIfEmpty, an empty session that
-    // this run created is removed instead of retained.
+    // this run created is removed instead of retained. A failure here must not
+    // hide why the run stopped; the daemon also drops the lease when the
+    // run's stream closes.
     const releaseSession = async (discardIfEmpty: boolean) => {
-      if (daemonSessionId) {
-        await releaseLocalDaemonSession(daemonSessionId, { discardIfEmpty });
+      if (!daemonSession) {
+        return;
+      }
+      try {
+        await releaseLocalDaemonSession(daemonSession, { discardIfEmpty });
+      } catch (error) {
+        logger.debug("Could not release the Local session", error);
       }
     };
     const tail = flags.session
@@ -753,7 +811,13 @@ export const runCommand = buildCommand({
             logger.info(
               `Joining open session ${bold(session.label)} (${session.id})`,
             );
+            if (flags["max-envelopes"] !== undefined) {
+              logger.warn(
+                `--max-envelopes doesn't change a session that is already open. Use ${sentry`local session retention ${session.id} --max-envelopes ${String(flags["max-envelopes"])}`}.`,
+              );
+            }
           }
+          daemonSession = session;
           daemonSessionId = session.id;
           daemonDsn = session.dsn;
           daemonIngestUrl = session.ingestUrl;
@@ -763,7 +827,7 @@ export const runCommand = buildCommand({
             return attachToExistingServer({
               activeFilters,
               showAttributes: flags.attributes,
-              streamUrl: session.streamUrl,
+              streamUrl: leasedStreamUrl(session),
               url: new URL(session.streamUrl).origin,
               useJson,
             });
@@ -810,9 +874,18 @@ export const runCommand = buildCommand({
       const childDsn =
         daemonDsn &&
         !process.env["SENTRY_DSN"] &&
-        needsSessionDsn(args, commandSource)
+        needsSessionDsn(args, {
+          dsnOnlyApp,
+          rubyProject: existsSync(join(this.cwd, "Gemfile")),
+        })
           ? daemonDsn
           : undefined;
+      const dotenv = childDsn ? dotenvWithDsn(this.cwd) : undefined;
+      if (dotenv) {
+        logger.warn(
+          `${dotenv} also sets SENTRY_DSN. Dotenv loaders that keep existing variables will use the session DSN instead.`,
+        );
+      }
       logger.info(
         daemonSessionId
           ? `${childDsn ? "SENTRY_SPOTLIGHT and SENTRY_DSN" : "SENTRY_SPOTLIGHT"} configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL and DSN.`

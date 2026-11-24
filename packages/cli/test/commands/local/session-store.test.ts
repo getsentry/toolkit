@@ -1,6 +1,9 @@
 import { createReceiverEnvelope } from "../../../src/commands/local/receiver-ingest.js";
 import { describe, expect, test, vi } from "vitest";
-import { createLocalSessionStore } from "../../../src/commands/local/session-store.js";
+import {
+  createLocalSessionStore,
+  LEASE_ATTACH_MS,
+} from "../../../src/commands/local/session-store.js";
 
 describe("LocalSessionStore", () => {
   test("grows retention without losing envelopes, IDs or live subscribers", async () => {
@@ -136,8 +139,10 @@ describe("LocalSessionStore", () => {
       session: { id: first.session.id },
     });
     expect(store.list()).toHaveLength(1);
-    expect(store.release(first.session.id)?.state).toBe("open");
-    expect(store.release(first.session.id)?.state).toBe("retained");
+    expect(store.release(first.session.id, first.leaseId)?.state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId)?.state).toBe(
+      "retained",
+    );
 
     // A closed session takes no new runs.
     const next = store.acquire({ label: "web", cwd: "/work/web" });
@@ -152,25 +157,66 @@ describe("LocalSessionStore", () => {
     const joined = store.acquire({ label: "web", cwd: "/work/web" });
 
     expect(joined).toMatchObject({ reused: true, session: { id: session.id } });
-    expect(store.release(session.id)?.state).toBe("open");
+    expect(store.release(session.id, joined.leaseId)?.state).toBe("open");
+  });
+
+  test("releases a lease once, so a repeated release cannot end another run's hold", () => {
+    const store = createLocalSessionStore();
+    const first = store.acquire({ label: "web", cwd: "/work/web" });
+    const second = store.acquire({ label: "web", cwd: "/work/web" });
+
+    // The stream connection and the run both give back the first lease.
+    store.release(first.session.id, first.leaseId);
+    expect(store.release(first.session.id, first.leaseId)?.state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId)?.state).toBe(
+      "retained",
+    );
+  });
+
+  test("drops a lease whose run never opened its stream, so the next run starts fresh", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const killed = store.acquire({ label: "web", cwd: "/work/web" });
+    const attached = store.acquire({ label: "other", cwd: "/work/other" });
+    expect(store.attachLease(attached.session.id, attached.leaseId)).toBe(true);
+
+    now += LEASE_ATTACH_MS;
+    const next = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(store.resolve(killed.session.id).state).toBe("retained");
+    expect(next.reused).toBe(false);
+    // A run whose stream is open keeps its lease however long it runs.
+    expect(store.resolve(attached.session.id).state).toBe("open");
   });
 
   test("removes a run's session that closes without telemetry when asked to", () => {
     const store = createLocalSessionStore();
-    const empty = store.acquire({ label: "empty", cwd: "/work" }).session;
-    const kept = store.acquire({ label: "kept", cwd: "/work" }).session;
-    store.getBuffer(kept.id).put(
+    const empty = store.acquire({ label: "empty", cwd: "/work" });
+    const kept = store.acquire({ label: "kept", cwd: "/work" });
+    const closedByStream = store.acquire({ label: "stream", cwd: "/work" });
+    store.getBuffer(kept.session.id).put(
       createReceiverEnvelope({
         body: Buffer.from('{}\n{"type":"event"}\n{}'),
         contentType: "application/x-sentry-envelope",
       }),
     );
 
-    expect(store.release(empty.id, { discardIfEmpty: true })).toBeUndefined();
-    expect(() => store.resolve(empty.id)).toThrow(/not found/);
-    expect(store.release(kept.id, { discardIfEmpty: true })?.state).toBe(
-      "retained",
-    );
+    expect(
+      store.release(empty.session.id, empty.leaseId, { discardIfEmpty: true }),
+    ).toBeUndefined();
+    expect(() => store.resolve(empty.session.id)).toThrow(/not found/);
+    expect(
+      store.release(kept.session.id, kept.leaseId, { discardIfEmpty: true })
+        ?.state,
+    ).toBe("retained");
+
+    // The run's stream closed first, which closed the session; the run's own
+    // release still removes it.
+    const { id } = closedByStream.session;
+    store.release(id, closedByStream.leaseId);
+    expect(
+      store.release(id, closedByStream.leaseId, { discardIfEmpty: true }),
+    ).toBeUndefined();
   });
 
   test("reuses a session when an agent retries with the same client ID", () => {
