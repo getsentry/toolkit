@@ -255,6 +255,7 @@ function formatHttpSpanDisplay(
   const statusCode = getAttr(attrs, ["http.response.status_code"]);
   const op = getAttr(attrs, ["sentry.op"]);
   const target = getHttpTarget(attrs, {
+    pathOnly: op === "http.server",
     includeServerTarget: Boolean(method || statusCode),
     // The browser SDK puts the page URL on every segment span, so a custom
     // `ui.action` or `pageload` span is not a request to that URL. Op-less
@@ -700,12 +701,21 @@ function getGenAiModelIdentifier(attrs: AttributeSource): string | undefined {
   return `${provider}/${model}`;
 }
 
+/**
+ * An HTTP span's target. With `pathOnly`, for a server span, a URL shows only
+ * its path, as the viewer shows it: the host is the app's own.
+ */
 function getHttpTarget(
   attrs: AttributeSource,
   {
+    pathOnly = false,
     includeServerTarget = false,
     includeFullUrl = true,
-  }: { includeServerTarget?: boolean; includeFullUrl?: boolean } = {},
+  }: {
+    pathOnly?: boolean;
+    includeServerTarget?: boolean;
+    includeFullUrl?: boolean;
+  } = {},
 ): string | undefined {
   const target = httpTargetAttribute((key) =>
     key === "url.full" && !includeFullUrl
@@ -713,7 +723,7 @@ function getHttpTarget(
       : getAttr(attrs, [key], SPAN_ATTRIBUTE_MAX_LENGTH),
   );
   if (target) {
-    return formatHttpTarget(target.value);
+    return formatHttpTarget(target.value, pathOnly);
   }
   const serverTarget = getServerTarget(attrs);
   if (includeServerTarget && serverTarget) {
@@ -759,7 +769,12 @@ function formatHttpLabel({
   return method || fallbackLabel;
 }
 
-function formatHttpTarget(value: string): string {
+/**
+ * A route, path, or URL without its query and fragment. A URL shows its host
+ * and path, or with `pathOnly` its path alone, such as `/` for
+ * `http://localhost:3000/?q=1`.
+ */
+function formatHttpTarget(value: string, pathOnly = false): string {
   const trimmed = value.trim();
   if (!URL_SCHEME_RE.test(trimmed)) {
     const noFragment = trimmed.split("#")[0] ?? trimmed;
@@ -767,6 +782,9 @@ function formatHttpTarget(value: string): string {
   }
   try {
     const url = new URL(trimmed);
+    if (pathOnly) {
+      return url.pathname;
+    }
     const path = url.pathname === "/" ? "" : url.pathname;
     return `${url.host}${path}`;
   } catch (error) {

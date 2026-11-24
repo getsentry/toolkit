@@ -9,6 +9,7 @@ import {
   frameFile,
 } from "../../commands/local/exception-values.js";
 import {
+  countedSpans,
   groupSpansBySegment,
   type SpanSegment,
 } from "../../commands/local/span-segments.js";
@@ -23,7 +24,10 @@ import { stringifyUnknown } from "../errors.js";
 import { logger } from "../logger.js";
 import { blue, bold, cyan, green, muted, red, yellow } from "./colors.js";
 import { stripAnsi } from "./plain-detect.js";
-import type { AttributeSource } from "./semantic-display.js";
+import type {
+  AttributeSource,
+  SemanticSpanDisplay,
+} from "./semantic-display.js";
 import {
   collectSpanAttributes,
   formatSemanticSpanDisplay,
@@ -468,6 +472,24 @@ export function formatErrorItem(
 }
 
 /**
+ * A transaction's attributes for its label: its `contexts.trace.data`, with
+ * an `http.server` op from `contexts.trace.op` as `sentry.op` when the data
+ * has none, so the transaction shows its path like a server span. Other ops
+ * stay out: they would make a custom transaction name lose to its URL.
+ */
+function transactionLabelAttributes(
+  event: Record<string, unknown>,
+): AttributeSource {
+  const attrs = mergeTransactionAttributes(event);
+  const trace = (event["contexts"] as Record<string, unknown> | undefined)?.[
+    "trace"
+  ] as Record<string, unknown> | undefined;
+  return attrs["sentry.op"] === undefined && trace?.["op"] === "http.server"
+    ? { ...attrs, "sentry.op": "http.server" }
+    : attrs;
+}
+
+/**
  * Format a transaction event item into a colored one-liner.
  *
  * When OTel semantic attributes are present (e.g. `gen_ai.*`, `mcp.*`,
@@ -491,7 +513,7 @@ export function formatTransactionItem(
       : (trace?.description ?? "Transaction");
 
   // Try semantic display from OTel attributes first
-  const attrs = mergeTransactionAttributes(event);
+  const attrs = transactionLabelAttributes(event);
   const semantic = formatSemanticSpanDisplay(attrs, sanitize(txnName));
 
   let msg = sanitize(semantic.label);
@@ -902,6 +924,33 @@ function formatSpanCount(count: number, prefix = ""): string {
     : "";
 }
 
+/** A span's label and metadata, from its semantic attributes or its name. */
+function spanDisplay(span: StreamedSpan): SemanticSpanDisplay {
+  return formatSemanticSpanDisplay(
+    flattenSpanAttributes(span.attributes),
+    typeof span.name === "string" ? span.name : UNNAMED_SPAN,
+  );
+}
+
+/**
+ * Whether the tail prints a segment group as its head span: the segment
+ * span, or the only span of a group whose segment is missing.
+ */
+function showsHead(group: SpanSegment<StreamedSpan>): boolean {
+  return group.isSegment || group.spans.length === 1;
+}
+
+/**
+ * The label of a segment group's tail line, unsanitized: its head span's
+ * label, or the segment name for late spans. `local event list` titles span
+ * batches with it, so both name a batch the same way.
+ */
+export function spanSegmentLabel(group: SpanSegment<StreamedSpan>): string {
+  return showsHead(group)
+    ? spanDisplay(group.head).label
+    : (group.name ?? UNNAMED_SPAN);
+}
+
 /**
  * Format a single standalone span into a colored one-liner, using the same
  * semantic rendering as transactions. `spanCount` is a
@@ -914,7 +963,7 @@ export function formatSingleSpan(
   spanCount = "",
 ): string {
   const flat = flattenSpanAttributes(span.attributes);
-  const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
+  const semantic = spanDisplay(span);
 
   let msg = sanitize(semantic.label);
   if (semantic.metadata.length > 0) {
@@ -950,8 +999,8 @@ function formatLateSpansLine(
   header: Record<string, unknown>,
 ): string {
   const msg =
-    sanitize(group.name ?? "unnamed span") +
-    formatSpanCount(group.spans.length, "+") +
+    sanitize(spanSegmentLabel(group)) +
+    formatSpanCount(countedSpans(group), "+") +
     formatSpanTraceHint(group.head);
   const ts = formatTime(group.head.end_timestamp);
   const source = inferSource(
@@ -990,15 +1039,13 @@ export function formatSpanItem(
     return [];
   }
   return groupSpansBySegment(items).flatMap((group) => {
-    const shown = group.isSegment || group.spans.length === 1;
+    const shown = showsHead(group);
     const lines = [
       shown
         ? formatSingleSpan(
             group.head,
             header,
-            group.isSegment
-              ? formatSpanCount(group.spans.length - 1)
-              : formatSpanCount(1, "+"),
+            formatSpanCount(countedSpans(group), group.isSegment ? "" : "+"),
           )
         : formatLateSpansLine(group, header),
     ];
@@ -1310,7 +1357,7 @@ function formatTransactionJson(
   const trace = (payload["contexts"] as Record<string, unknown> | undefined)?.[
     "trace"
   ] as Record<string, unknown> | undefined;
-  const attrs = mergeTransactionAttributes(payload);
+  const attrs = transactionLabelAttributes(payload);
   const semantic = formatSemanticSpanDisplay(
     attrs,
     stringifyUnknown(
@@ -1403,7 +1450,7 @@ function formatSpanJson(
   }
   return items.map((span) => {
     const flat = flattenSpanAttributes(span.attributes);
-    const semantic = formatSemanticSpanDisplay(flat, span.name ?? UNNAMED_SPAN);
+    const semantic = spanDisplay(span);
     return formatJsonObservation(
       {
         type: "span",

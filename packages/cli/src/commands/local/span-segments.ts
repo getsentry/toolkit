@@ -139,12 +139,21 @@ export function groupSpansBySegment<T extends SegmentSpan>(
 }
 
 /**
- * The segment that names a whole batch: the first group whose segment span
- * is in the batch, else the first group.
+ * The spans of a group the tail counts on its line: every span but the
+ * segment span (`[N spans]`), or every span when the segment is missing
+ * (`[+N spans]`).
+ */
+export function countedSpans(group: SpanSegment<SegmentSpan>): number {
+  return group.isSegment ? group.spans.length - 1 : group.spans.length;
+}
+
+/**
+ * The segment that names a whole batch, from its {@link groupSpansBySegment}
+ * groups: the first group whose segment span is in the batch, else the first
+ * group.
  */
 export function batchSegment<T extends SegmentSpan>(
-  spans: readonly T[],
+  groups: readonly SpanSegment<T>[],
 ): SpanSegment<T> | undefined {
-  const groups = groupSpansBySegment(spans);
   return groups.find((group) => group.isSegment) ?? groups[0];
 }
