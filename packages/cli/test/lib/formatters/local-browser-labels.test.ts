@@ -6,10 +6,13 @@
  * placed by what they carry.
  */
 
+import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
+import { createReceiverEnvelope } from "../../../src/commands/local/envelope.js";
 import {
   createReplayTracker,
   formatEnvelopeLines,
+  formatEnvelopeLinesJson,
   formatErrorItem,
   formatItem,
   formatItemJson,
@@ -490,7 +493,9 @@ describe("session replays", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("[REPLAY]");
     expect(lines[0]).toContain("[BROWSER]");
-    expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/client");
+    expect(lines[0]).toContain(
+      "replay 4d1c5b0e http://localhost:3000/client [segment 0]",
+    );
   });
 
   test("later segments of a replay already shown print nothing", () => {
@@ -508,10 +513,76 @@ describe("session replays", () => {
       (line) => stripAnsi(line),
     );
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("replay 4d1c5b0e http://localhost:3000/cart");
+    expect(lines[0]).toContain(
+      "replay 4d1c5b0e http://localhost:3000/cart [segment 7]",
+    );
     expect(formatEnvelopeLines(envelope, new Set(), false, replays)).toEqual(
       [],
     );
+  });
+
+  /**
+   * A replay segment as the browser SDK sends it, decoded by the receiver:
+   * the recording is `{"segment_id":N}` and gzip rrweb events, kept as base64.
+   */
+  const receivedSegment = (segment_id: number) => {
+    const recording = Buffer.concat([
+      Buffer.from(`${JSON.stringify({ segment_id })}\n`),
+      gzipSync(JSON.stringify([{ type: 3, timestamp: 1_794_949_301_000 }])),
+    ]);
+    return createReceiverEnvelope({
+      body: Buffer.concat([
+        Buffer.from(
+          [
+            JSON.stringify({
+              event_id: replayId,
+              sent_at: "2026-11-19T07:01:41.000Z",
+              sdk: { name: "sentry.javascript.react", version: "11.17.0" },
+            }),
+            JSON.stringify({ type: "replay_event" }),
+            JSON.stringify(
+              replayEvent(
+                segment_id,
+                segment_id === 0 ? ["http://localhost:5173/"] : [],
+              ),
+            ),
+            JSON.stringify({
+              type: "replay_recording",
+              length: recording.length,
+            }),
+            "",
+          ].join("\n"),
+        ),
+        recording,
+      ]),
+    });
+  };
+
+  test("JSON has one record per segment item with its replay and segment", () => {
+    const records = [0, 1, 2].flatMap((segment) =>
+      formatEnvelopeLinesJson(receivedSegment(segment), new Set()).map(
+        (line) => JSON.parse(line) as Record<string, unknown>,
+      ),
+    );
+    expect(
+      records.map(({ type, replay_id, segment_id }) => ({
+        type,
+        replay_id,
+        segment_id,
+      })),
+    ).toEqual(
+      [0, 1, 2].flatMap((segment_id) =>
+        ["replay_event", "replay_recording"].map((type) => ({
+          type,
+          replay_id: replayId,
+          segment_id,
+        })),
+      ),
+    );
+    expect(records[0]).toMatchObject({
+      event_id: replayId,
+      timestamp: 1_794_949_301,
+    });
   });
 
   test("each tail tracks its own replays", () => {
