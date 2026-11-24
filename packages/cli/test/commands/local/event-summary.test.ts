@@ -82,6 +82,8 @@ describe("summarizeEnvelope", () => {
   });
 
   test("counts only a real span batch", () => {
+    // Two root spans are two segments, and like the tail, the count leaves
+    // segment spans out.
     expect(
       summarizeEnvelope({
         envelope: [
@@ -99,7 +101,7 @@ describe("summarizeEnvelope", () => {
           ],
         ],
       }),
-    ).toMatchObject({ type: "span", title: "GET /api", count: 2 });
+    ).toMatchObject({ type: "span", title: "GET /api", count: 0 });
   });
 
   /** Summary of one envelope whose only item has this type and payload. */
@@ -148,7 +150,8 @@ describe("summarizeEnvelope", () => {
       title: "GET /api/hello",
       timestamp: "2026-11-17T20:25:06.425Z",
       traceId,
-      count: 3,
+      // The tail's `[2 spans]`: the segment span itself is not counted.
+      count: 2,
     });
   });
 

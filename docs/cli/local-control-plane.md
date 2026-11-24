@@ -89,12 +89,14 @@ as their `local tail` line: `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
 (`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
 `title`, and `timestamp` from its most severe log. A span batch takes its
-`title` and `timestamp` from its segment root: the span marked `is_segment`,
-else the span whose parent is not in the batch. A `sessions` aggregate is
+`timestamp` from its segment root, the span marked `is_segment`, else the
+span whose parent is not in the batch, and its `title` from the tail line of
+that segment, such as `GET /ok` for a request span named only `GET`. A `sessions` aggregate is
 titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
-appear when the item has them, `count` gives the number of logs or spans in a
-batch (not a standalone span), and `receivedAt` is
+appear when the item has them, `count` gives the number of logs in a log batch,
+or the spans in a span batch that the tail counts (`[N spans]` and
+`[+N spans]`, so not the segment spans), and `receivedAt` is
 when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
 
 A session, event, or envelope that does not exist, or that retention has
