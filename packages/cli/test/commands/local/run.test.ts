@@ -47,6 +47,8 @@ import * as windowsSpawn from "../../../src/lib/windows-spawn.js";
 import * as daemon from "../../../src/commands/local/daemon.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as serverModule from "../../../src/commands/local/server.js";
+// oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
+import * as wranglerModule from "../../../src/lib/wrangler.js";
 import {
   wranglerInjectedMessage,
   wranglerSetupHint,
@@ -505,6 +507,22 @@ describe("sentry local run", () => {
       expect(spawnCapture.env?.["SENTRY_DSN"]).toBe(
         "https://public@example.invalid/1",
       );
+    });
+
+    test("gives the session back when setup fails before the app starts", async () => {
+      vi.spyOn(
+        wranglerModule,
+        "injectWranglerSpotlightBinding",
+      ).mockRejectedValue(new Error("unreadable package.json"));
+      const { release, result } = await runInSession([
+        process.execPath,
+        "-e",
+        "",
+      ]);
+      await expect(result).rejects.toThrow("unreadable package.json");
+      expect(release).toHaveBeenCalledWith("session-1", {
+        discardIfEmpty: true,
+      });
     });
 
     test("discards the empty session when the app cannot start", async () => {

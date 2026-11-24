@@ -725,6 +725,13 @@ export const runCommand = buildCommand({
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
+    // Gives back the run's lease. With discardIfEmpty, an empty session that
+    // this run created is removed instead of retained.
+    const releaseSession = async (discardIfEmpty: boolean) => {
+      if (daemonSessionId) {
+        await releaseLocalDaemonSession(daemonSessionId, { discardIfEmpty });
+      }
+    };
     const tail = flags.session
       ? await (async () => {
           const session = await createLocalDaemonSession({
@@ -745,13 +752,18 @@ export const runCommand = buildCommand({
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
           daemonDirectoryUrl = session.directoryUrl;
-          return attachToExistingServer({
-            activeFilters,
-            showAttributes: flags.attributes,
-            streamUrl: session.streamUrl,
-            url: new URL(session.streamUrl).origin,
-            useJson,
-          });
+          try {
+            return attachToExistingServer({
+              activeFilters,
+              showAttributes: flags.attributes,
+              streamUrl: session.streamUrl,
+              url: new URL(session.streamUrl).origin,
+              useJson,
+            });
+          } catch (err) {
+            await releaseSession(true);
+            throw err;
+          }
         })()
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
@@ -762,42 +774,50 @@ export const runCommand = buildCommand({
           useJson,
           showAttributes: flags.attributes,
         });
-    url = tail.url;
-    printLocalViewerHint(url, useJson);
+    let wrangler: Awaited<ReturnType<typeof injectWranglerSpotlightBinding>>;
+    let childEnv: ReturnType<typeof buildChildEnv>;
+    try {
+      url = tail.url;
+      printLocalViewerHint(url, useJson);
 
-    await openLocalUiIfRequested(
-      flags.open,
-      daemonStreamUrl ?? url,
-      daemonDirectoryUrl,
-    );
+      await openLocalUiIfRequested(
+        flags.open,
+        daemonStreamUrl ?? url,
+        daemonDirectoryUrl,
+      );
 
-    const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
-    const wrangler = await injectWranglerSpotlightBinding(
-      args,
-      spotlightUrl,
-      this.cwd,
-    );
-    if (wrangler.injected) {
-      logger.info(wranglerInjectedMessage());
-    }
-    // A session's Wrangler binding carries its ingest capability.
-    logger.info(
-      `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
-    );
-    // Only when the user set no DSN and the app reaches sessions only that way.
-    const childDsn =
-      daemonDsn && !process.env["SENTRY_DSN"] && needsSessionDsn(args)
-        ? daemonDsn
-        : undefined;
-    logger.info(
-      daemonSessionId
-        ? `${childDsn ? "SENTRY_SPOTLIGHT and SENTRY_DSN" : "SENTRY_SPOTLIGHT"} configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL and DSN.`
-        : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
-    );
+      const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
+      wrangler = await injectWranglerSpotlightBinding(
+        args,
+        spotlightUrl,
+        this.cwd,
+      );
+      if (wrangler.injected) {
+        logger.info(wranglerInjectedMessage());
+      }
+      // A session's Wrangler binding carries its ingest capability.
+      logger.info(
+        `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
+      );
+      // Only when the user set no DSN and the app reaches sessions only that way.
+      const childDsn =
+        daemonDsn && !process.env["SENTRY_DSN"] && needsSessionDsn(args)
+          ? daemonDsn
+          : undefined;
+      logger.info(
+        daemonSessionId
+          ? `${childDsn ? "SENTRY_SPOTLIGHT and SENTRY_DSN" : "SENTRY_SPOTLIGHT"} configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL and DSN.`
+          : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
+      );
 
-    const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
-    if (childDsn) {
-      childEnv["SENTRY_DSN"] = childDsn;
+      childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
+      if (childDsn) {
+        childEnv["SENTRY_DSN"] = childDsn;
+      }
+    } catch (err) {
+      await tail.cleanup();
+      await releaseSession(true);
+      throw err;
     }
 
     const ownGroup = startsOwnProcessGroup();
@@ -814,11 +834,7 @@ export const runCommand = buildCommand({
       forwardChildOutput(child, useJson);
     } catch (err) {
       await tail.cleanup();
-      if (daemonSessionId) {
-        await releaseLocalDaemonSession(daemonSessionId, {
-          discardIfEmpty: true,
-        });
-      }
+      await releaseSession(true);
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
@@ -897,11 +913,7 @@ export const runCommand = buildCommand({
       process.removeListener("SIGTERM", onSigterm);
       process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
-      if (daemonSessionId) {
-        await releaseLocalDaemonSession(daemonSessionId, {
-          discardIfEmpty: spawnFailed,
-        });
-      }
+      await releaseSession(spawnFailed);
     }
 
     // How the app ends once --timeout stops it depends on the app (0, 143,
