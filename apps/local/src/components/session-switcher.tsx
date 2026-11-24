@@ -22,12 +22,20 @@ export function SessionSwitcher({
   streamUrl,
   onSelect,
   selectInitialSession = false,
+  preferredSessionId,
+  onPreferredSessionMissing,
+  notice,
   refreshKey,
   onRetainedSession,
   onCurrentSessionChange,
   showState = true,
 }: {
   selectInitialSession?: boolean;
+  /** The session to select first when it is in the directory. */
+  preferredSessionId?: string | undefined;
+  /** Called with the session opened instead when the preferred one is gone. */
+  onPreferredSessionMissing?: (fallback: ViewerSession) => void;
+  notice?: string | undefined;
   onCurrentSessionChange?: (session: ViewerSession | undefined) => void;
   showState?: boolean;
   refreshKey?: string | undefined;
@@ -79,8 +87,20 @@ export function SessionSwitcher({
   useEffect(() => {
     // Only the daemon-wide /stream entry point selects an initial run. Expiring
     // or closing a selected scoped session must never silently change feeds.
-    if (selectInitialSession && sessions[0]) onSelect(sessions[0].streamUrl);
-  }, [selectInitialSession, sessions, onSelect]);
+    if (!selectInitialSession || !sessions[0]) return;
+    const preferred = sessions.find(
+      (session) => session.id === preferredSessionId,
+    );
+    onSelect((preferred ?? sessions[0]).streamUrl);
+    if (preferredSessionId && !preferred)
+      onPreferredSessionMissing?.(sessions[0]);
+  }, [
+    selectInitialSession,
+    preferredSessionId,
+    sessions,
+    onSelect,
+    onPreferredSessionMissing,
+  ]);
   const current = sessions.find((s) => s.streamUrl === streamUrl);
   useEffect(() => {
     onCurrentSessionChange?.(current);
@@ -212,6 +232,11 @@ export function SessionSwitcher({
       >
         <RefreshCw className="size-3.5" aria-hidden="true" />
       </Button>
+      {notice ? (
+        <output className="block w-full text-xs text-muted-foreground">
+          {notice}
+        </output>
+      ) : null}
       {error ? (
         <output className="block w-full text-xs text-muted-foreground">
           Could not refresh sessions. Your current feed is still available.

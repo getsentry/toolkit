@@ -151,11 +151,14 @@ describe("Local daemon E2E", () => {
       { env },
     );
     expect(created.exitCode, created.stderr).toBe(0);
-    for (const result of [
-      created,
-      await runCli(["local", "session", "view", "viewer-link"], { env }),
-      await runCli(["local", "daemon", "status"], { env }),
-    ]) {
+    const { id } = JSON.parse(
+      (await cli("session", "view", "viewer-link")).stdout,
+    ) as { id: string };
+    for (const [result, session] of [
+      [created, id],
+      [await runCli(["local", "session", "view", "viewer-link"], { env }), id],
+      [await runCli(["local", "daemon", "status"], { env }), null],
+    ] as const) {
       expect(result.exitCode, result.stderr).toBe(0);
       const link = result.stdout.match(/View events at (https:\/\/\S+)/)?.[1];
       expect(link).toBeTruthy();
@@ -164,6 +167,9 @@ describe("Local daemon E2E", () => {
       expect(url.searchParams.get("url")).toBe(
         `http://127.0.0.1:${port}/stream`,
       );
+      // Session summaries name their session; the link never carries a capability.
+      expect(url.searchParams.get("session")).toBe(session);
+      expect(link).not.toContain("cap");
     }
     const json = await cli("session", "view", "viewer-link");
     expect(json.stdout).not.toContain("View events at");
