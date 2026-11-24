@@ -1,6 +1,7 @@
 /** Private byte codec and structural contracts for the Node Local receiver. */
 import { uuidv7 } from "uuidv7";
 import { logger } from "../../lib/logger.js";
+import { envelopeLookupId } from "./event-lookup.js";
 import { isLoopbackHost } from "./loopback.js";
 
 type ItemHeader = Record<string, unknown> & { type?: string };
@@ -56,6 +57,8 @@ export type ReceiverBuffer = {
 const identities = new WeakMap<ReceiverEnvelope, string>();
 /** Epoch milliseconds when each delivery received its identity. */
 const receivedTimes = new WeakMap<ReceiverEnvelope, number>();
+/** Duplicate keys of deliveries; see receiverDuplicateKey. */
+const duplicateKeys = new WeakMap<ReceiverEnvelope, string>();
 
 /** Record a delivery's identity and the time it was received. */
 function trackDelivery(container: ReceiverEnvelope, id: string): void {
@@ -164,7 +167,17 @@ function frame(body: Buffer): {
   headerBytes: Buffer;
   items: FramedItem[];
 } | null {
-  let offset = 0;
+  const newline = body.indexOf(10);
+  const headerBytes = body.subarray(0, newline < 0 ? body.length : newline);
+  const header: unknown = JSON.parse(headerBytes.toString("utf8"));
+  if (!isEnvelopeObject(header)) return null;
+  const items = frameItems(body, newline < 0 ? body.length : newline + 1);
+  return items && { header, headerBytes, items };
+}
+
+/** Frame the items that start at `start`, the byte after the header line. */
+function frameItems(body: Buffer, start: number): FramedItem[] | null {
+  let offset = start;
   function line(): Buffer {
     const newline = body.indexOf(10, offset);
     const end = newline < 0 ? body.length : newline;
@@ -172,9 +185,6 @@ function frame(body: Buffer): {
     offset = newline < 0 ? body.length : end + 1;
     return bytes;
   }
-  const headerBytes = line();
-  const header: unknown = JSON.parse(headerBytes.toString("utf8"));
-  if (!isEnvelopeObject(header)) return null;
   const items: FramedItem[] = [];
   while (offset < body.length) {
     const itemHeaderBytes = line();
@@ -205,7 +215,7 @@ function frame(body: Buffer): {
     }
     items.push({ header: itemHeader, headerBytes: itemHeaderBytes, bytes });
   }
-  return { header, headerBytes, items };
+  return items;
 }
 
 /** Retain opaque items as JSON-safe text/base64 objects for the Local stream protocol. */
@@ -470,11 +480,53 @@ export function readEnvelopeHeader(body: Buffer): EnvelopeHeader | undefined {
   return isEnvelopeObject(header) ? { header, end } : undefined;
 }
 
+/**
+ * Item types whose event ID names one event. Envelopes of other types can
+ * share an event ID and still differ: every segment of a replay carries the
+ * replay ID, and sentry-java and sentry-elixir send each status of a check-in
+ * with the check-in ID.
+ */
+const UNIQUE_EVENT_ITEM_TYPES = new Set(["event", "transaction", "feedback"]);
+
+/**
+ * `<item type>:<event ID>` for an envelope that holds an event, transaction,
+ * or feedback, with the event ID `local event list` shows. An SDK that sends
+ * both to Spotlight and to a DSN on the same receiver delivers each of them
+ * twice with this key. Reads only the item header lines, and an item payload
+ * only when the envelope header has no event ID.
+ */
+export function receiverDuplicateKey(
+  body: Buffer,
+  { header, end }: EnvelopeHeader,
+): string | undefined {
+  let items: FramedItem[] | null;
+  try {
+    items = frameItems(body, Math.min(end + 1, body.length));
+  } catch {
+    logger.debug("Local receiver could not frame envelope items.");
+    return;
+  }
+  const type = items?.find(({ header: itemHeader }) =>
+    UNIQUE_EVENT_ITEM_TYPES.has(itemHeader.type ?? ""),
+  )?.header.type;
+  if (!items || !type) return;
+  const eventId = envelopeLookupId(
+    header,
+    items.map((item) => ({
+      header: item.header,
+      payload: () => parseJson(item.bytes),
+    })),
+  );
+  return eventId && `${type}:${eventId}`;
+}
+
 /** Retain raw bytes synchronously; decode lazily without allowing parse errors out. */
 export function createReceiverEnvelope(input: {
   body: Buffer;
   contentType?: string;
   userAgent?: string | undefined;
+  /** What makes a later delivery a copy of this one; see receiverDuplicateKey. */
+  duplicateKey?: string | undefined;
 }): ReceiverEnvelope {
   const contentType =
     input.contentType?.split(";")[0]?.trim().toLowerCase() ||
@@ -506,5 +558,13 @@ export function createReceiverEnvelope(input: {
         ) ?? null,
   };
   trackDelivery(container, id);
+  if (input.duplicateKey) duplicateKeys.set(container, input.duplicateKey);
   return container;
+}
+
+/** The duplicate key the receiver gave a delivery, if any. */
+export function duplicateKeyOf(
+  container: ReceiverEnvelope,
+): string | undefined {
+  return duplicateKeys.get(container);
 }

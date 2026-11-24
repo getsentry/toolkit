@@ -122,6 +122,8 @@ Sentry.init({
 });
 ```
 
+If an SDK sends to both Spotlight and a DSN on the same receiver, Local keeps the first copy of each error, transaction, and feedback, matched by event ID. Logs and spans carry no event ID, so they still show twice.
+
 If your backend runs on a different origin than the page, even just another port, also add it to `tracePropagationTargets`. By default the browser SDK adds trace headers only to same-origin requests, so without it browser and server traces still do not link. The backend's CORS settings must allow the `sentry-trace` and `baggage` headers:
 
 ```ts

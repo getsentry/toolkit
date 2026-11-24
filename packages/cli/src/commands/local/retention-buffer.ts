@@ -2,6 +2,7 @@
 import { uuidv7 } from "uuidv7";
 import { logger } from "../../lib/logger.js";
 import {
+  duplicateKeyOf,
   prepareReceiverEnvelope,
   withReceiverBarrier,
   type ReceiverEnvelope,
@@ -25,6 +26,8 @@ type RetainedEnvelope = {
   item: ReceiverEnvelope;
   arrivedAt: number;
   position: number;
+  /** What makes a later copy of this envelope a duplicate. */
+  duplicateKey?: string | undefined;
 };
 export type RetentionSettings = {
   maxEnvelopes: number;
@@ -88,6 +91,7 @@ function hasStackFilename(payload: unknown, filename: string): boolean {
     );
   });
 }
+
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,
   default: String(DEFAULT_MAX_ENVELOPES),
@@ -103,6 +107,8 @@ export function createLocalRetentionBuffer(
   validateMaxEnvelopes(maxEnvelopes);
   const subscribers = new Map<string, Subscriber>();
   const entries = new Map<string, RetainedEnvelope>();
+  /** Duplicate keys of retained envelopes, so a resent event is kept once. */
+  const retainedKeys = new Set<string>();
   let newest: RetainedEnvelope | undefined;
   let position = 0;
   const listeners = new Set<(settings: RetentionSettings) => void>();
@@ -112,19 +118,32 @@ export function createLocalRetentionBuffer(
   });
   const clear = () => {
     entries.clear();
+    retainedKeys.clear();
     newest = undefined;
   };
   const buffer: ReceiverBuffer = {
     put(item) {
       const id = prepareReceiverEnvelope(item);
       if (entries.has(id)) return;
+      const key = duplicateKeyOf(item);
+      if (key && retainedKeys.has(key)) return;
       // Replay pending subscription history before any entry can be evicted.
       for (const readerId of subscribers.keys()) buffer.stream(readerId);
-      newest = { item, arrivedAt: Date.now(), position: ++position };
+      newest = {
+        item,
+        arrivedAt: Date.now(),
+        position: ++position,
+        duplicateKey: key,
+      };
       entries.set(id, newest);
+      if (key) retainedKeys.add(key);
       if (entries.size > maxEnvelopes) {
-        const oldest = entries.keys().next().value;
-        if (oldest !== undefined) entries.delete(oldest);
+        const [oldest] = entries;
+        if (oldest !== undefined) {
+          entries.delete(oldest[0]);
+          if (oldest[1].duplicateKey)
+            retainedKeys.delete(oldest[1].duplicateKey);
+        }
       }
       for (const readerId of subscribers.keys()) buffer.stream(readerId);
     },
