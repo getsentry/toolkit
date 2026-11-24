@@ -448,6 +448,208 @@ describe.each([false, true])("own ingest telemetry (scoped: %s)", (scoped) => {
   });
 });
 
+describe.each([false, true])("repeated event IDs (scoped: %s)", (scoped) => {
+  const eventId = "5c0ffee5c0ffee5c0ffee5c0ffee5c0f";
+  const sdk = { name: "sentry.javascript.browser", version: "11.14.0" };
+  const lines = (...values: unknown[]) =>
+    values.map((value) => JSON.stringify(value)).join("\n");
+  const errorEnvelope = lines(
+    { event_id: eventId, sent_at: "2026-01-01T00:00:00.000Z", sdk },
+    { type: "event" },
+    {
+      event_id: eventId,
+      timestamp: 1_767_225_600,
+      platform: "javascript",
+      exception: { values: [{ type: "Error", value: "boom" }] },
+    },
+  );
+  const post = (
+    fixture: ReturnType<typeof receiver>,
+    body: string,
+    path = fixture.path,
+  ) =>
+    Promise.resolve(
+      fixture.app.request(
+        new Request(`http://localhost:8969${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-sentry-envelope" },
+          body,
+        }),
+      ),
+    );
+  // Spotlight posts to the ingest URL; a DSN on the same receiver posts to
+  // its envelope route.
+  const dsnPath = (fixture: ReturnType<typeof receiver>) =>
+    scoped ? `${fixture.path}/api/0/envelope/` : "/api/0/envelope/";
+
+  test.each([
+    ["error", errorEnvelope],
+    [
+      "transaction",
+      lines(
+        { event_id: eventId, sdk },
+        { type: "transaction" },
+        {
+          event_id: eventId,
+          type: "transaction",
+          transaction: "/checkout",
+          start_timestamp: 1_767_225_600,
+          timestamp: 1_767_225_601,
+          contexts: {
+            trace: { trace_id: eventId, span_id: "1111111111111111" },
+          },
+        },
+      ),
+    ],
+    [
+      "feedback",
+      lines(
+        { event_id: eventId, sdk },
+        { type: "feedback" },
+        {
+          event_id: eventId,
+          type: "feedback",
+          timestamp: 1_767_225_600,
+          contexts: { feedback: { message: "the button does nothing" } },
+        },
+      ),
+    ],
+  ])("keeps one %s sent to Spotlight and the DSN", async (_, body) => {
+    const fixture = receiver(scoped);
+    const seen: string[] = [];
+    const reader = fixture.buffer.subscribe((item) =>
+      seen.push(item.getData().toString()),
+    );
+    try {
+      const first = await post(fixture, body);
+      const second = await post(fixture, body, dsnPath(fixture));
+      expect([first.status, second.status]).toEqual([200, 200]);
+      expect(await second.json()).toEqual({ id: eventId });
+      fixture.buffer.stream(reader);
+      expect(fixture.buffer.read({ all: true })).toHaveLength(1);
+      expect(seen).toEqual([body]);
+    } finally {
+      fixture.buffer.unsubscribe(reader);
+    }
+  });
+
+  test.each([
+    [
+      // sentry-java and sentry-elixir use the check-in ID as the event ID.
+      "check-in statuses",
+      ["in_progress", "ok"].map((status) =>
+        lines(
+          { event_id: eventId, sdk: { name: "sentry.java", version: "8.0.0" } },
+          { type: "check_in" },
+          { check_in_id: eventId, monitor_slug: "nightly", status },
+        ),
+      ),
+    ],
+    [
+      "replay segments",
+      [0, 1].map((segmentId) =>
+        lines(
+          { event_id: eventId, sdk },
+          { type: "replay_event" },
+          {
+            type: "replay_event",
+            replay_id: eventId,
+            segment_id: segmentId,
+            timestamp: 1_767_225_600 + segmentId * 5,
+          },
+          { type: "replay_recording", length: 16 },
+          `{"segment_id":${segmentId}}`.padEnd(16),
+        ),
+      ),
+    ],
+    [
+      "log batches",
+      Array(2).fill(
+        lines(
+          { sent_at: "2026-01-01T00:00:00.000Z", sdk },
+          {
+            type: "log",
+            item_count: 1,
+            content_type: "application/vnd.sentry.items.log+json",
+          },
+          {
+            items: [
+              {
+                timestamp: 1_767_225_600,
+                level: "info",
+                body: "same line",
+                trace_id: eventId,
+              },
+            ],
+          },
+        ),
+      ),
+    ],
+    [
+      "span batches",
+      Array(2).fill(
+        lines(
+          { sdk, trace: { trace_id: eventId, public_key: "public" } },
+          {
+            type: "span",
+            item_count: 1,
+            content_type: "application/vnd.sentry.items.span.v2+json",
+          },
+          {
+            version: 2,
+            items: [
+              {
+                trace_id: eventId,
+                span_id: "2222222222222222",
+                name: "work",
+                start_timestamp: 1_767_225_600,
+                end_timestamp: 1_767_225_601,
+                is_segment: true,
+              },
+            ],
+          },
+        ),
+      ),
+    ],
+  ])("keeps both %s", async (_, bodies: string[]) => {
+    const fixture = receiver(scoped);
+    for (const body of bodies) {
+      expect((await post(fixture, body)).status).toBe(200);
+    }
+    expect(
+      fixture.buffer
+        .read({ all: true })
+        .map((item) => item.getData().toString())
+        .reverse(),
+    ).toEqual(bodies);
+  });
+
+  test("keeps an event again once its first copy is cleared", async () => {
+    const fixture = receiver(scoped);
+    await post(fixture, errorEnvelope);
+    fixture.buffer.clear();
+    await post(fixture, errorEnvelope);
+    expect(fixture.buffer.read({ all: true })).toHaveLength(1);
+  });
+});
+
+test("keeps an event again once its first copy is evicted", async () => {
+  const retention = createLocalRetentionBuffer(2);
+  const seen: string[] = [];
+  const reader = retention.buffer.subscribe((item) =>
+    seen.push(JSON.parse(item.getData().toString().split("\n")[2]!).message),
+  );
+  for (const id of ["a", "a", "b", "c", "a"]) {
+    await ingestReceiverEnvelope(retention.buffer, {
+      body: Buffer.from(
+        `{"event_id":"${id.repeat(32)}"}\n{"type":"event"}\n{"message":"${id}"}`,
+      ),
+    });
+  }
+  retention.buffer.unsubscribe(reader);
+  expect(seen).toEqual(["a", "b", "c", "a"]);
+});
+
 test.each([
   "{}\nnot-an-item-header\n{}",
   '{}\n{"type":"event","length":99}\n{}',

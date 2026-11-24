@@ -7,6 +7,7 @@ import {
   type ReceiverEnvelope,
   type ReceiverBuffer,
 } from "./receiver-ingest.js";
+import { envelopeEventId, readEnvelopeHeader } from "./envelope.js";
 import { exceptionValues } from "./exception-values.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -25,6 +26,8 @@ type RetainedEnvelope = {
   item: ReceiverEnvelope;
   arrivedAt: number;
   position: number;
+  /** What makes a later copy of this envelope a duplicate. */
+  duplicateKey?: string | undefined;
 };
 export type RetentionSettings = {
   maxEnvelopes: number;
@@ -88,6 +91,29 @@ function hasStackFilename(payload: unknown, filename: string): boolean {
     );
   });
 }
+
+/**
+ * Item types whose `event_id` names one event. Other envelopes can share an
+ * `event_id` and still differ: every segment of a replay carries the replay
+ * ID, and some SDKs send each status of a check-in with the check-in ID.
+ */
+const UNIQUE_EVENT_ITEM_TYPES = new Set(["event", "transaction", "feedback"]);
+
+/**
+ * `<item type>:<event_id>` for an envelope that holds an event, transaction,
+ * or feedback with a header `event_id`. An SDK that sends both to Spotlight
+ * and to a DSN on the same receiver delivers each of them twice with this key.
+ */
+function duplicateKey(item: ReceiverEnvelope): string | undefined {
+  const header = readEnvelopeHeader(item.getData());
+  const eventId = header && envelopeEventId(header.header);
+  if (!eventId) return undefined;
+  const type = item
+    .getEventTypes()
+    ?.find((itemType) => UNIQUE_EVENT_ITEM_TYPES.has(itemType));
+  return type && `${type}:${eventId}`;
+}
+
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,
   default: String(DEFAULT_MAX_ENVELOPES),
@@ -103,6 +129,8 @@ export function createLocalRetentionBuffer(
   validateMaxEnvelopes(maxEnvelopes);
   const subscribers = new Map<string, Subscriber>();
   const entries = new Map<string, RetainedEnvelope>();
+  /** Duplicate keys of retained envelopes, so a resent event is kept once. */
+  const retainedKeys = new Set<string>();
   let newest: RetainedEnvelope | undefined;
   let position = 0;
   const listeners = new Set<(settings: RetentionSettings) => void>();
@@ -112,19 +140,32 @@ export function createLocalRetentionBuffer(
   });
   const clear = () => {
     entries.clear();
+    retainedKeys.clear();
     newest = undefined;
   };
   const buffer: ReceiverBuffer = {
     put(item) {
       const id = prepareReceiverEnvelope(item);
       if (entries.has(id)) return;
+      const key = duplicateKey(item);
+      if (key && retainedKeys.has(key)) return;
       // Replay pending subscription history before any entry can be evicted.
       for (const readerId of subscribers.keys()) buffer.stream(readerId);
-      newest = { item, arrivedAt: Date.now(), position: ++position };
+      newest = {
+        item,
+        arrivedAt: Date.now(),
+        position: ++position,
+        duplicateKey: key,
+      };
       entries.set(id, newest);
+      if (key) retainedKeys.add(key);
       if (entries.size > maxEnvelopes) {
-        const oldest = entries.keys().next().value;
-        if (oldest !== undefined) entries.delete(oldest);
+        const [oldest] = entries;
+        if (oldest !== undefined) {
+          entries.delete(oldest[0]);
+          if (oldest[1].duplicateKey)
+            retainedKeys.delete(oldest[1].duplicateKey);
+        }
       }
       for (const readerId of subscribers.keys()) buffer.stream(readerId);
     },
