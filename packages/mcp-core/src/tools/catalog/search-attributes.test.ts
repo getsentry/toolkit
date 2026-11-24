@@ -6,6 +6,11 @@ import { z } from "zod";
 import { ApiNotFoundError } from "../../api-client";
 import * as logging from "../../telem/logging";
 import { getServerContext } from "../../test-setup.js";
+import {
+  assertStructuredOnlyResult,
+  getStructuredContent,
+} from "../../test-utils/structured-content.js";
+import type { SearchAttributesOutput } from "../support/search-attributes/format";
 import searchAttributes from "./search-attributes.js";
 
 vi.mock("@ai-sdk/openai", () => {
@@ -90,9 +95,8 @@ function manyAttributes(
 /** A full page of string keys, so the list looks cut off. */
 const FULL_PAGE = manyAttributes(1000);
 
-/** The keys in the output's attribute table, in order. */
-function tableKeys(output: string): string[] {
-  return [...output.matchAll(/^\| `([^`]+)` \|/gm)].map(([, key]) => key!);
+function keys(attributes: { key: string }[]): string[] {
+  return attributes.map(({ key }) => key);
 }
 
 /** Serve attributes per `substringMatch` and record each one requested. */
@@ -111,14 +115,16 @@ function serveAttributes(
   return substrings;
 }
 
-function search(params: Record<string, unknown>) {
-  return searchAttributes.handler(
+async function search(params: Record<string, unknown>) {
+  const result = await searchAttributes.handler(
     z.object(searchAttributes.inputSchema).parse({
       organizationSlug: "sentry-mcp-evals",
       ...params,
     }),
     getServerContext(),
   );
+  assertStructuredOnlyResult(result);
+  return getStructuredContent<SearchAttributesOutput>(result);
 }
 
 describe("search_attributes", () => {
@@ -174,7 +180,8 @@ describe("search_attributes", () => {
         statsPeriod: "7d",
         expand: "context",
       });
-      expect(output).toContain(
+      expect(output.attributes).toEqual([]);
+      expect(output.notes).toContain(
         "No metric attributes were seen in the last 7d.",
       );
       // Nothing to match, so the agent isn't called.
@@ -196,36 +203,45 @@ describe("search_attributes", () => {
 
   describe("without a query", () => {
     it("lists the dataset's attributes", async () => {
-      expect(await search({ dataset: "metrics" })).toMatchInlineSnapshot(`
-        "# Metric Attributes in **sentry-mcp-evals** (last 14d)
+      const output = await search({ dataset: "metrics" });
 
-        **Suggested presentation:** A table works well here, with each attribute's type, description, deprecation status, replacement attributes, and whether it's added by Sentry.
-
-        Please tell the user each attribute's type, description, examples, whether they were added by sentry, and which attributes are deprecated and what replaces them.
-
-        | Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |
-        | --- | --- | --- | --- | --- | --- |
-        | \`environment\` | string | The sentry environment. EXAMPLE VALUES: production | yes | yes | sentry.environment |
-        | \`metric.name\` | string | The name of the metric. EXAMPLE VALUES: http.request.duration | yes |  |  |
-        | \`metric.type\` | string | The type of the metric (counter, gauge, distribution). EXAMPLE VALUES: distribution | yes |  |  |
-        | \`metric.unit\` | string | The unit of the metric value. EXAMPLE VALUES: millisecond | yes |  |  |
-        | \`observed_timestamp\` | number | When Sentry received the metric sample.  | yes |  |  |
-        | \`project\` | string | The name of the project. In some pages of sentry.io, you can also filter on project using a dropdown.  | yes |  |  |
-        | \`timestamp_precise\` | number | When the metric sample was recorded, with nanosecond precision.  | yes |  |  |
-        | \`value\` | number | The recorded value of the metric sample.  | yes |  |  |
-        | \`fleet.deployment_region\` | string | The region the server is scheduled to move to in the next fleet deployment. It is not where the server runs now. EXAMPLE VALUES: eu-west-1 | yes |  |  |
-        | \`fleet.region\` | string | The region the server is currently running in. EXAMPLE VALUES: us-east-1 | yes |  |  |
-        | \`http.method\` | string | The HTTP method used. EXAMPLE VALUES: GET | yes | yes | http.request.method |
-        | \`payload_size\` | number |  | yes |  |  |
-        | \`retry.count\` | number |  | yes |  |  |
-        | \`retry.delay_ms\` | number |  | yes |  |  |
-        | \`transaction\` | string | The sentry transaction (segment name). EXAMPLE VALUES: GET / | yes | yes | sentry.segment.name |
-
-        ## Response Notes
-
-        - There is no pagination. Input a \`query\` to narrow down your search.
-        - Use a key with \`search_metrics\` to query its values."
-      `);
+      expect(output).toMatchObject({
+        dataset: "metrics",
+        period: "14d",
+        query: null,
+        resultType: "list",
+        best: null,
+        totalAttributes: 15,
+        notes: [
+          "There is no pagination. Input a `query` to narrow down your search.",
+          "Use a key with `search_metrics` to query its values.",
+        ],
+      });
+      expect(output.attributes).toHaveLength(15);
+      // A deprecated attribute, with its replacement and examples.
+      expect(
+        output.attributes.find(({ key }) => key === "environment"),
+      ).toMatchObject({
+        type: "string",
+        addedBySentry: true,
+        description: "The sentry environment.",
+        examples: ["production"],
+        deprecated: true,
+        replacementKey: "sentry.environment",
+      });
+      // One with no description or examples.
+      expect(
+        output.attributes.find(({ key }) => key === "retry.count"),
+      ).toMatchObject({
+        addedBySentry: true,
+        aliases: [],
+        deprecated: false,
+        description: "",
+        examples: [],
+        key: "retry.count",
+        replacementKey: null,
+        type: "number",
+      });
 
       expect(mockGenerateText).not.toHaveBeenCalled();
     });
@@ -244,7 +260,7 @@ describe("search_attributes", () => {
 
       const output = await search({ dataset: "spans" });
 
-      expect(tableKeys(output)).toEqual([
+      expect(keys(output.attributes)).toEqual([
         // Search events' fields: environment is a common field, http.method a
         // span field, and project and span.op are recommended.
         "environment",
@@ -257,16 +273,17 @@ describe("search_attributes", () => {
       ]);
     });
 
-    it("says how many are shown when the limit cuts the list", async () => {
+    it("says how many there are when the limit cuts the list", async () => {
       const output = await search({ dataset: "spans", limit: 5 });
 
-      expect(output).toContain("- Showing 5 of 37.");
+      expect(output.attributes).toHaveLength(5);
+      expect(output.totalAttributes).toBe(37);
     });
 
     it("treats a blank query as no query", async () => {
       const output = await search({ query: "   ", dataset: "logs" });
 
-      expect(output).toMatch(/^# Log Attributes in \*\*sentry-mcp-evals\*\*/);
+      expect(output).toMatchObject({ resultType: "list", query: null });
       expect(mockGenerateText).not.toHaveBeenCalled();
     });
   });
@@ -280,29 +297,30 @@ describe("search_attributes", () => {
         }),
       );
 
-      expect(await search({ query: "HTTP status code", dataset: "spans" }))
-        .toMatchInlineSnapshot(`
-        "# Span Attributes Matching "HTTP status code" in **sentry-mcp-evals** (last 14d)
+      const output = await search({
+        query: "HTTP status code",
+        dataset: "spans",
+      });
 
-        ## Best Match: \`http.status_code\`
-
-        **Type**: number
-        **Added by Sentry**
-        **Description**: The status code of the HTTP response.
-        **Examples**: 404
-        **Deprecated**: use \`http.response.status_code\` instead
-
-        ## Other Candidates
-
-        | Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |
-        | --- | --- | --- | --- | --- | --- |
-        | \`span.status\` | string | The span's status (either "ok" or "error"). Older SDKs may set this to a more specific error, but this behaviour is deprecated. EXAMPLE VALUES: ok | yes |  |  |
-        | \`transaction.status\` | string |  | yes |  |  |
-
-        ## Response Notes
-
-        - Use a key with \`search_traces\` to query its values."
-      `);
+      expect(output).toMatchObject({
+        query: "HTTP status code",
+        resultType: "matches",
+        best: {
+          key: "http.status_code",
+          type: "number",
+          addedBySentry: true,
+          description: "The status code of the HTTP response.",
+          examples: [404],
+          deprecated: true,
+          replacementKey: "http.response.status_code",
+        },
+        totalAttributes: 37,
+        notes: ["Use a key with `search_traces` to query its values."],
+      });
+      expect(keys(output.attributes)).toEqual([
+        "span.status",
+        "transaction.status",
+      ]);
       // With a query, the limit defaults to 10.
       expect(mockGenerateText.mock.calls[0]?.[0].prompt).toContain(
         "Return at most 10 keys",
@@ -323,9 +341,9 @@ describe("search_attributes", () => {
         limit: 2,
       });
 
-      expect(output).toContain("## Possible Matches");
-      expect(output).not.toContain("## Best Match");
-      expect(tableKeys(output)).toEqual(["user.username", "user.id"]);
+      expect(output.resultType).toBe("matches");
+      expect(output.best).toBeNull();
+      expect(keys(output.attributes)).toEqual(["user.username", "user.id"]);
     });
 
     it("says so when nothing matches", async () => {
@@ -333,16 +351,17 @@ describe("search_attributes", () => {
         mockAgentResponse({ best: null, candidates: [] }),
       );
 
-      expect(await search({ query: "shopping cart size", dataset: "spans" }))
-        .toMatchInlineSnapshot(`
-        "# Span Attributes Matching "shopping cart size" in **sentry-mcp-evals** (last 14d)
-
-        None of the span attributes searched match this query.
-
-        ## Response Notes
-
-        - Try another \`query\`, or omit \`query\` to list every attribute."
-      `);
+      expect(
+        await search({ query: "shopping cart size", dataset: "spans" }),
+      ).toMatchObject({
+        resultType: "matches",
+        best: null,
+        attributes: [],
+        notes: [
+          "None of the span attributes searched match this query.",
+          "Try another `query`, or omit `query` to list every attribute.",
+        ],
+      });
     });
 
     it.each([
@@ -371,8 +390,9 @@ describe("search_attributes", () => {
           dataset: "spans",
         });
 
-        expect(output.split("\n")[0]).toBe(note);
-        expect(output).toContain("# Span Attributes in **sentry-mcp-evals**");
+        expect(output.resultType).toBe("list");
+        expect(output.notes[0]).toBe(note);
+        expect(output.attributes.length).toBeGreaterThan(0);
       },
     );
   });
@@ -412,7 +432,7 @@ describe("search_attributes", () => {
       expect(shortlistPrompt.match(/^- payment\.processor \(/gm)).toHaveLength(
         1,
       );
-      expect(output).toContain("## Best Match: `payment.processor`");
+      expect(output.best?.key).toBe("payment.processor");
     });
 
     it.each([
@@ -445,7 +465,7 @@ describe("search_attributes", () => {
         const output = await search({ query: "app key", dataset: "spans" });
 
         expect(substrings).toEqual([null]);
-        expect(output).toContain("## Best Match: `app.string_0001`");
+        expect(output.best?.key).toBe("app.string_0001");
       },
     );
 
@@ -464,11 +484,12 @@ describe("search_attributes", () => {
         dataset: "spans",
       });
 
-      expect(output.split("\n")[0]).toBe(
+      expect(output.resultType).toBe("list");
+      expect(output.notes[0]).toBe(
         "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields.",
       );
       // Only the recommended key and the hint match are left, recommended first.
-      expect(tableKeys(output)).toEqual(["span.op", "payment.processor"]);
+      expect(keys(output.attributes)).toEqual(["span.op", "payment.processor"]);
     });
 
     it("skips hint searches that fail and reports only server errors", async () => {
@@ -497,7 +518,7 @@ describe("search_attributes", () => {
         dataset: "spans",
       });
 
-      expect(output).toContain("## Best Match: `payment.processor`");
+      expect(output.best?.key).toBe("payment.processor");
       expect(logIssue).toHaveBeenCalledExactlyOnceWith(
         expect.any(Error),
         expect.objectContaining({

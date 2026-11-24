@@ -1,4 +1,6 @@
-import searchAttributes from "@sentry/mcp-core/tools/search-attributes";
+import searchAttributes, {
+  type SearchAttributesOutput,
+} from "@sentry/mcp-core/tools/search-attributes";
 import type { ServerContext } from "@sentry/mcp-core/types";
 import { mswServer } from "@sentry/mcp-server-mocks";
 import { http, HttpResponse } from "msw";
@@ -9,9 +11,9 @@ import { StructuredOutputScorer } from "./utils/structuredOutputScorer";
 import "../setup-env";
 
 // These run the whole search_attributes tool: the attributes fetch, the
-// cut-off check, the hint searches, the shortlist agent, and the formatted
-// output. The task reads the best match back out of that output, so a call
-// that fell back to listing attributes scores as no match.
+// cut-off check, the hint searches, the shortlist agent, and the structured
+// output. A call that fell back to listing attributes has no best match, so it
+// scores as no match.
 
 const context: ServerContext = {
   accessToken: "mocked-access-token",
@@ -22,8 +24,8 @@ const context: ServerContext = {
 async function searchDatasetAttributes(
   query: string | undefined,
   dataset: string,
-) {
-  const output = await searchAttributes.handler(
+): Promise<SearchAttributesOutput> {
+  const result = await searchAttributes.handler(
     z.object(searchAttributes.inputSchema).parse({
       organizationSlug: FIXTURES.organizationSlug,
       dataset,
@@ -31,16 +33,29 @@ async function searchDatasetAttributes(
     }),
     context,
   );
-  return output;
+  return result.structuredContent;
 }
 
-function bestMatch(output: string): string | null {
-  return output.match(/^## Best Match: `([^`]+)`$/m)?.[1] ?? null;
+/** The fields the expectations below check. */
+function summarize(output: SearchAttributesOutput) {
+  const attributeKeys = output.attributes.map(({ key }) => key);
+  return {
+    result: JSON.stringify({
+      resultType: output.resultType,
+      best: output.best?.key ?? null,
+      bestReplacementKey: output.best?.replacementKey ?? null,
+      // The listed attributes, or the candidates other than best.
+      allAttributeKeys: attributeKeys,
+      matchedKeys: output.best
+        ? [output.best.key, ...attributeKeys]
+        : attributeKeys,
+    }),
+  };
 }
 
-function tableKeys(output: string): string[] {
-  return [...output.matchAll(/^\| `([^`]+)` \|/gm)].map(([, key]) => key ?? "");
-}
+/** Whether every key in `wanted` is in the shortlist. */
+const matchesAll = (wanted: string[]) => (keys: string[]) =>
+  wanted.every((key) => keys.includes(key));
 
 // With no query, the tool lists every attribute and suggests a query. The
 // input is the dataset.
@@ -49,37 +64,31 @@ describeEval("search-attributes-list", {
     {
       input: "spans",
       expected: {
+        resultType: "list",
         best: null,
         allAttributeKeys: (keys: string[]) => keys.length === 37,
-        toolOutput: /Input a `query` to narrow down your search/,
       },
     },
     {
       input: "logs",
       expected: {
+        resultType: "list",
         best: null,
         allAttributeKeys: (keys: string[]) => keys.length === 20,
-        toolOutput: /Input a `query` to narrow down your search/,
       },
     },
     {
       input: "metrics",
       expected: {
+        resultType: "list",
         best: null,
         allAttributeKeys: (keys: string[]) => keys.length === 15,
-        toolOutput: /Input a `query` to narrow down your search/,
       },
     },
   ],
   task: async (input) => {
     const output = await searchDatasetAttributes(undefined, input);
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -101,11 +110,12 @@ describeEval("search-attributes-spans", {
       // A group of HTTP attributes.
       input: "Which attributes are related to HTTP requests?",
       expected: {
-        toolOutput: (output: string) =>
-          output.includes('Matching "') &&
-          ["http.request.method", "http.status_code", "http.url"].every((key) =>
-            output.includes(`\`${key}\``),
-          ),
+        resultType: "matches",
+        matchedKeys: matchesAll([
+          "http.request.method",
+          "http.status_code",
+          "http.url",
+        ]),
       },
     },
     {
@@ -126,19 +136,13 @@ describeEval("search-attributes-spans", {
       input: "Are we still sending the old, deprecated HTTP method attribute?",
       expected: {
         best: "http.method",
-        toolOutput: /\*\*Deprecated\*\*: use `http.request.method` instead/,
+        bestReplacementKey: "http.request.method",
       },
     },
   ],
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "spans");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -160,11 +164,8 @@ describeEval("search-attributes-logs", {
       // A group of attributes.
       input: "Which attributes describe how severe the log is?",
       expected: {
-        toolOutput: (output: string) =>
-          output.includes('Matching "') &&
-          ["severity", "severity_number"].every((key) =>
-            output.includes(`\`${key}\``),
-          ),
+        resultType: "matches",
+        matchedKeys: matchesAll(["severity", "severity_number"]),
       },
     },
     {
@@ -183,13 +184,7 @@ describeEval("search-attributes-logs", {
   ],
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "logs");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -211,11 +206,8 @@ describeEval("search-attributes-metrics", {
       // A group of attributes.
       input: "Which attributes describe the metric itself?",
       expected: {
-        toolOutput: (output: string) =>
-          output.includes('Matching "') &&
-          ["metric.name", "metric.type", "metric.unit"].every((key) =>
-            output.includes(`\`${key}\``),
-          ),
+        resultType: "matches",
+        matchedKeys: matchesAll(["metric.name", "metric.type", "metric.unit"]),
       },
     },
     {
@@ -233,13 +225,7 @@ describeEval("search-attributes-metrics", {
   ],
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "metrics");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -293,13 +279,7 @@ describeEval("search-attributes-spans-large-org", {
   afterEach: () => mswServer.resetHandlers(),
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "spans");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -317,13 +297,7 @@ describeEval("search-attributes-logs-large-org", {
   afterEach: () => mswServer.resetHandlers(),
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "logs");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
@@ -341,13 +315,7 @@ describeEval("search-attributes-metrics-large-org", {
   afterEach: () => mswServer.resetHandlers(),
   task: async (input) => {
     const output = await searchDatasetAttributes(input, "metrics");
-    return {
-      result: JSON.stringify({
-        toolOutput: output,
-        best: bestMatch(output),
-        allAttributeKeys: tableKeys(output),
-      }),
-    };
+    return summarize(output);
   },
   scorers: [StructuredOutputScorer({ match: "fuzzy" })],
   timeout: 60000,
