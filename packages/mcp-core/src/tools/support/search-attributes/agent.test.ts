@@ -3,6 +3,7 @@ import type { TraceItemAttribute } from "../../../api-client";
 import {
   buildShortlistPrompt,
   cleanKeyHints,
+  shortlistAttributesAgentOutputSchema,
   toAttributeMatches,
 } from "./agent";
 
@@ -29,6 +30,26 @@ const ATTRIBUTES = [
 function keys(attributes: TraceItemAttribute[]): string[] {
   return attributes.map(({ key }) => key);
 }
+
+describe("shortlistAttributesAgentOutputSchema", () => {
+  // A failed parse makes search_attributes list attributes instead of
+  // returning the shortlist or a no-match result.
+  it("accepts a null reason", () => {
+    expect(
+      shortlistAttributesAgentOutputSchema.parse({
+        best: null,
+        candidates: [],
+        reason: null,
+      }),
+    ).toEqual({ best: null, candidates: [], reason: null });
+  });
+
+  it("fills in best and reason when the model leaves them out", () => {
+    expect(
+      shortlistAttributesAgentOutputSchema.parse({ candidates: ["span.op"] }),
+    ).toEqual({ best: null, candidates: ["span.op"], reason: null });
+  });
+});
 
 describe("toAttributeMatches", () => {
   it("returns the fetched attributes in the agent's order", () => {
