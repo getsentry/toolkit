@@ -624,6 +624,21 @@ describe.each([false, true])("repeated event IDs (scoped: %s)", (scoped) => {
     ).toEqual(bodies);
   });
 
+  test("keeps one event whose ID is only in its item, as event list shows it", async () => {
+    const fixture = receiver(scoped);
+    // Without a header event ID, event list uses the item's.
+    for (const [itemHeader, payload] of [
+      [{ type: "event" }, { event_id: eventId, message: "payload id" }],
+      [{ type: "event", event_id: eventId }, { message: "item header id" }],
+    ]) {
+      const body = lines({ sdk }, itemHeader, payload);
+      await post(fixture, body);
+      await post(fixture, body, dsnPath(fixture));
+      expect(fixture.buffer.read({ all: true })).toHaveLength(1);
+      fixture.buffer.clear();
+    }
+  });
+
   test("keeps an event again once its first copy is cleared", async () => {
     const fixture = receiver(scoped);
     await post(fixture, errorEnvelope);

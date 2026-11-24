@@ -396,9 +396,11 @@ has no event ID, as Relay answers; sentry-elixir retries anything else.
 A receiver or session keeps one copy of an error, transaction, or feedback
 envelope per event ID while that copy is retained; a resent copy, such as one
 from an SDK that sends to both Spotlight and a DSN, still gets 200 but is not
-stored or streamed. Envelopes without a header event ID, and other item types
-that reuse one (replay segments share the replay ID, and some SDKs give each
-check-in status the check-in ID), are all kept.
+stored or streamed. The event ID is the one `local event list` shows: the
+header `event_id`, else the event or transaction item's. Envelopes with no
+event ID, and other item types that reuse one (replay segments share the
+replay ID, and sentry-java and sentry-elixir give each check-in status the
+check-in ID), are all kept.
 A body that is empty, whose first line is not a JSON object, or that fails to
 decompress gets 400 with an `{"error":"…"}` reason, and the receiver keeps
 nothing for it. Oversized bodies get 413, unsupported media or

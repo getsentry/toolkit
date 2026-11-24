@@ -2,12 +2,12 @@
 import { uuidv7 } from "uuidv7";
 import { logger } from "../../lib/logger.js";
 import {
+  duplicateKeyOf,
   prepareReceiverEnvelope,
   withReceiverBarrier,
   type ReceiverEnvelope,
   type ReceiverBuffer,
 } from "./receiver-ingest.js";
-import { envelopeEventId, readEnvelopeHeader } from "./envelope.js";
 import { exceptionValues } from "./exception-values.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
@@ -92,28 +92,6 @@ function hasStackFilename(payload: unknown, filename: string): boolean {
   });
 }
 
-/**
- * Item types whose `event_id` names one event. Other envelopes can share an
- * `event_id` and still differ: every segment of a replay carries the replay
- * ID, and some SDKs send each status of a check-in with the check-in ID.
- */
-const UNIQUE_EVENT_ITEM_TYPES = new Set(["event", "transaction", "feedback"]);
-
-/**
- * `<item type>:<event_id>` for an envelope that holds an event, transaction,
- * or feedback with a header `event_id`. An SDK that sends both to Spotlight
- * and to a DSN on the same receiver delivers each of them twice with this key.
- */
-function duplicateKey(item: ReceiverEnvelope): string | undefined {
-  const header = readEnvelopeHeader(item.getData());
-  const eventId = header && envelopeEventId(header.header);
-  if (!eventId) return undefined;
-  const type = item
-    .getEventTypes()
-    ?.find((itemType) => UNIQUE_EVENT_ITEM_TYPES.has(itemType));
-  return type && `${type}:${eventId}`;
-}
-
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,
   default: String(DEFAULT_MAX_ENVELOPES),
@@ -147,7 +125,7 @@ export function createLocalRetentionBuffer(
     put(item) {
       const id = prepareReceiverEnvelope(item);
       if (entries.has(id)) return;
-      const key = duplicateKey(item);
+      const key = duplicateKeyOf(item);
       if (key && retainedKeys.has(key)) return;
       // Replay pending subscription history before any entry can be evicted.
       for (const readerId of subscribers.keys()) buffer.stream(readerId);
