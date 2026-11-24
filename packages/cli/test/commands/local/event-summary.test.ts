@@ -230,6 +230,21 @@ describe("summarizeEnvelope", () => {
       summarize("feedback", { contexts: { feedback: { message: long } } })
         .title,
     ).toBe(`${"y".repeat(199)}…`);
+    // A blank message falls back like a missing one.
+    expect(
+      summarize("feedback", {
+        ...feedback,
+        contexts: { feedback: { message: "  \n " } },
+      }).title,
+    ).toBe("GET /feedback");
+  });
+
+  test("cuts a long title without splitting an emoji", () => {
+    const title = (prefix: number) =>
+      summarize("event", { message: `${"x".repeat(prefix)}🐛 broke` }).title;
+    expect(title(197)).toBe(`${"x".repeat(197)}🐛…`);
+    // The emoji would end past the limit, so the cut leaves all of it out.
+    expect(title(198)).toBe(`${"x".repeat(198)}…`);
   });
 
   test("titles session aggregates like the viewer", () => {
