@@ -168,4 +168,82 @@ describe("get_span_details", () => {
       - **Search logs**: Use the Sentry tool \`search_logs\`"
     `);
   });
+
+  it("shows the span status that Sentry returns only on request", async () => {
+    const traceId = "c4d1aae7216b47ff8117cf4e09ce9d0c";
+    const spanId = "bb8e7f3384ef4ff6";
+    mswServer.use(
+      ...httpGetRegional(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/trace-meta/${traceId}/`,
+        () =>
+          HttpResponse.json({
+            logs: 0,
+            errors: 0,
+            performance_issues: 0,
+            span_count: 1,
+            transaction_child_count_map: [],
+            span_count_map: {},
+          }),
+      ),
+      // Mirrors Sentry's SerializedSpan (src/sentry/snuba/trace.py): no
+      // `status` field, and `additional_attributes` holds only the requested
+      // attribute names.
+      ...httpGetRegional(
+        `https://sentry.io/api/0/organizations/sentry-mcp-evals/trace/${traceId}/`,
+        ({ request }) => {
+          const requested = new URL(request.url).searchParams.getAll(
+            "additional_attributes",
+          );
+          return HttpResponse.json([
+            {
+              children: [],
+              errors: [],
+              occurrences: [],
+              event_id: spanId,
+              transaction_id: "bb8e7f3384ef4ff6850ba966b29ed10e",
+              project_id: 4509109107622913,
+              project_slug: "mobile-app",
+              profile_id: "",
+              profiler_id: "",
+              parent_span_id: null,
+              start_timestamp: 1713805458.405616,
+              end_timestamp: 1713805463.804616,
+              measurements: {},
+              browser_web_vital: {},
+              mobile_app_vital: {},
+              duration: 5399,
+              transaction: "registration",
+              is_transaction: false,
+              description: "POST",
+              sdk_name: "sentry.cocoa",
+              op: "http.client",
+              name: "POST",
+              event_type: "span",
+              additional_attributes: requested.includes("span.status")
+                ? { "span.status": "deadline_exceeded" }
+                : {},
+            },
+          ]);
+        },
+      ),
+    );
+
+    const result = await getSpanDetails.handler(
+      {
+        organizationSlug: "sentry-mcp-evals",
+        traceId,
+        spanId,
+        regionUrl: null,
+      },
+      {
+        constraints: {
+          organizationSlug: null,
+        },
+        accessToken: "access-token",
+        userId: "1",
+      },
+    );
+
+    expect(result).toContain("**Status**: deadline_exceeded");
+  });
 });

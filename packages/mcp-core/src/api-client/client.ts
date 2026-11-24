@@ -55,7 +55,6 @@ import {
   getReplay,
   getSnapshot,
   getSnapshotImage,
-  getTrace,
   getTraceMeta,
   getTransactionProfile,
   getUptimeMonitor,
@@ -4996,6 +4995,7 @@ export class SentryApiService {
    * @param params.limit Requested span-count hint (default: 1000). The server currently paginates trace data internally and may ignore this value.
    * @param params.project Project filter hint (-1 for all projects). The current organization trace endpoint ignores this value server-side.
    * @param params.statsPeriod Optional stats period (e.g., "14d", "7d")
+   * @param params.additionalAttributes Span attributes to return in each span's `additional_attributes`. Sentry's serializer only adds the fields it hard-codes, so values such as `span.status` are missing unless requested here.
    * @param opts Request options
    * @returns Complete trace tree structure
    *
@@ -5016,10 +5016,32 @@ export class SentryApiService {
       limit?: number;
       project?: string;
       statsPeriod?: string;
+      additionalAttributes?: readonly string[];
     },
     opts?: RequestOptions,
   ): Promise<Trace> {
-    return await getTrace(this.target(opts?.host), params, TraceSchema);
+    const {
+      organizationSlug,
+      traceId,
+      limit = 1000,
+      project = "-1",
+      statsPeriod = "14d",
+      additionalAttributes = [],
+    } = params;
+    const query = new URLSearchParams({
+      limit: String(limit),
+      project,
+      statsPeriod,
+    });
+    for (const attribute of additionalAttributes) {
+      query.append("additional_attributes", attribute);
+    }
+    const body = await this.requestJSON(
+      `${apiPath`/organizations/${organizationSlug}/trace/${traceId}/`}?${query}`,
+      undefined,
+      opts,
+    );
+    return TraceSchema.parse(body);
   }
 
   /**

@@ -31,6 +31,9 @@ const MAX_QUEUED_CHILDREN_PER_PARENT = 24;
 const MINIMUM_DURATION_THRESHOLD_MS = 10;
 const MIN_AVG_DURATION_MS = 5;
 const MAX_AI_CONVERSATION_REFERENCES = 3;
+// Sentry's trace serializer has no status field; it returns span.status only
+// in `additional_attributes`, and only when the request asks for it.
+const SPAN_STATUS_ATTRIBUTE = "span.status";
 
 interface TraceSummary {
   spanCount: number;
@@ -127,6 +130,7 @@ export default defineTool({
       traceId: params.traceId,
       limit: traceFetchLimit,
       statsPeriod: "14d", // Fixed stats period
+      additionalAttributes: [SPAN_STATUS_ATTRIBUTE],
     });
 
     const summary = {
@@ -340,6 +344,14 @@ function getTraceSpanId(span: TraceSpan): string {
     normalizeSpanId(span.additional_attributes?.["span_id"]) ||
     span.event_id
   );
+}
+
+function getTraceSpanStatus(span: TraceSpan): string | null {
+  const status = span.additional_attributes?.[SPAN_STATUS_ATTRIBUTE];
+  if (typeof status === "string" && status !== "") {
+    return status;
+  }
+  return span.status ?? null;
 }
 
 function createBranchStatsGetter(): (span: TraceSpan) => SpanBranchStats {
@@ -872,9 +884,7 @@ function formatFocusedSpanOutput({
       `**Exclusive Time**: ${formatDuration(focusedSpan.exclusive_time)}`,
     );
   }
-  sections.push(
-    `**Status**: ${focusedSpan.status ?? (focusedSpan.is_transaction ? "transaction" : "unknown")}`,
-  );
+  sections.push(`**Status**: ${getTraceSpanStatus(focusedSpan) ?? "unknown"}`);
   sections.push(
     `**Parent Span ID**: ${focusedSpan.parent_span_id ?? "None (root span)"}`,
   );
