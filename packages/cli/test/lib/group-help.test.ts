@@ -1,11 +1,12 @@
 /**
  * `sentry <group> help` shows the group's help for every command group.
  *
- * `runCli` rewrites a trailing `help` after a group into `sentry help <group>`
- * before dispatch. Without it, Stricli hands `help` to the group's default
- * command, and a default that takes no positionals (`auth`, `status`,
- * `local`) fails with "Too many arguments". This walks the whole route tree
- * so a new group cannot break it again.
+ * Stricli hands a trailing `help` to the group's default command. A default
+ * that takes no positionals (`auth`, `status`, `local`) would fail with "Too
+ * many arguments", so `runCli` rewrites those requests to `sentry help
+ * <group>`. A default that takes a positional runs first, because `help` may
+ * name a real resource, and help shows only when it fails. This walks the
+ * whole route tree so a new group cannot break either path.
  *
  * Each case runs the CLI from a fresh module graph, as a real process does:
  * a run registers the routes it loads, and a cached `app.ts` would not
@@ -15,7 +16,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { routes } from "../../src/app.js";
 import { isRouteMap, publicTargetPaths } from "../../src/lib/introspect.js";
-import { useTestConfigDir } from "../helpers.js";
+import { mockFetch, useTestConfigDir } from "../helpers.js";
 
 useTestConfigDir("group-help-");
 
@@ -40,6 +41,8 @@ async function runFresh(args: string[]): Promise<void> {
 
 let stdout = "";
 let stderr = "";
+let apiRequests: string[] = [];
+const originalFetch = globalThis.fetch;
 
 function capture(chunk: string | Uint8Array): string {
   return typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
@@ -48,7 +51,19 @@ function capture(chunk: string | Uint8Array): string {
 beforeEach(() => {
   stdout = "";
   stderr = "";
+  apiRequests = [];
   process.exitCode = undefined;
+  // Commands that run with `help` as a positional resolve it against the API.
+  // A 404 makes them fail fast, so the help fallback runs.
+  globalThis.fetch = mockFetch(async (input) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes("/api/0/")) {
+      apiRequests.push(url);
+    }
+    return new Response(JSON.stringify({ detail: "Not found" }), {
+      status: 404,
+    });
+  });
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
     stdout += capture(chunk);
     return true;
@@ -60,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
   process.exitCode = originalExitCode;
 });
@@ -84,6 +100,23 @@ describe("sentry <group> help", () => {
       expect(stderr).not.toContain("No command registered");
     },
   );
+
+  test("runs a default that takes a positional before showing help", async () => {
+    // `help` could be a project slug, so `project view help` runs first.
+    await runFresh(["project", "help"]);
+
+    expect(apiRequests.length).toBeGreaterThan(0);
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(stdout).toContain("sentry project");
+    expect(stderr).toContain("sentry project --help");
+  });
+
+  test("rewrites without running a default that takes no positionals", async () => {
+    await runFresh(["auth", "help"]);
+
+    expect(apiRequests).toEqual([]);
+    expect(stdout).toContain("sentry auth");
+  });
 
   test("still shows the update notification", async () => {
     vi.resetModules();

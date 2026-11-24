@@ -176,21 +176,23 @@ async function writeHelpTip(path: readonly string[]): Promise<void> {
 /**
  * The group path and `help` command args for `sentry <group...> help`, with
  * global flags anywhere before `help`, or `undefined` when the args are not
- * that shape.
+ * that shape or `help` could be a real argument.
  *
- * Rewritten before dispatch because Stricli hands a trailing `help` to the
- * group's default command. A default that takes no positionals (`auth`,
- * `status`, `local`) rejects it as "Too many arguments" before any help
- * recovery runs, and a group with no default prints "No command registered"
- * first. `help` is never a subcommand name, so after a group it always asks
- * for help. After a leaf command (`sentry issue view help`), `help` stays a
- * positional and only turns into help when the command fails (see
- * `maybeRecoverWithHelp` in `lib/command.ts`).
+ * Stricli hands a trailing `help` to the group's default command. When that
+ * default takes no positionals (`auth`, `status`, `local`), the argument
+ * scanner always rejects it as "Too many arguments", and a group with no
+ * default always prints "No command registered", before any help recovery
+ * runs. In both cases the normal command cannot succeed, so the request is
+ * rewritten before dispatch.
+ *
+ * When the default takes a positional (`issue` → `view`), `help` may name a
+ * real project, dashboard, or issue, so the normal command runs first and
+ * `maybeRecoverWithHelp` in `lib/command.ts` shows help only if it fails.
  */
-async function groupHelpArgs(
+function groupHelpArgs(
   routes: CliRoutes,
   cliArgs: readonly string[],
-): Promise<{ path: string[]; helpArgs: string[] } | undefined> {
+): { path: string[]; helpArgs: string[] } | undefined {
   if (cliArgs.at(-1) !== "help") {
     return;
   }
@@ -218,15 +220,43 @@ async function groupHelpArgs(
   if (path.length === 0) {
     return;
   }
-  const { resolveCommandPath } = await import("./lib/introspect.js");
-  const resolved = resolveCommandPath(
-    routes as unknown as Parameters<typeof resolveCommandPath>[0],
-    path,
-  );
-  if (resolved?.kind !== "group") {
+  let target: unknown = routes;
+  for (const segment of path) {
+    target = isRouteGroup(target)
+      ? target.getRoutingTargetForInput(segment)
+      : undefined;
+  }
+  if (!isRouteGroup(target)) {
+    return;
+  }
+  const defaultCommand = target.getDefaultCommand();
+  if (defaultCommand && acceptsPositionals(defaultCommand)) {
     return;
   }
   return { path, helpArgs: ["help", ...flags, ...path] };
+}
+
+/** Whether a routing target is a route map (a command group). */
+function isRouteGroup(target: unknown): target is CliRoutes {
+  return (
+    typeof target === "object" &&
+    target !== null &&
+    "getRoutingTargetForInput" in target
+  );
+}
+
+/** Whether a command takes at least one positional argument. */
+function acceptsPositionals(command: {
+  readonly parameters: { readonly positional?: unknown };
+}): boolean {
+  const positional = command.parameters.positional as
+    | { kind: "tuple"; parameters: readonly unknown[] }
+    | { kind: "array" }
+    | undefined;
+  if (!positional) {
+    return false;
+  }
+  return positional.kind === "array" || positional.parameters.length > 0;
 }
 
 /**
@@ -413,7 +443,8 @@ export async function runCli(
   // structured output are all handled inside Stricli now (the patched route
   // scanner's top-level-flags allow-list + `versionRequested` state, and the
   // `documentation.renderHelp` hook in app.ts). The only argv rewrite before
-  // dispatch is `<group> help` → `help <group>` (see `groupHelpArgs`).
+  // dispatch is `<group> help` → `help <group>`, for groups whose default
+  // command cannot take `help` as an argument (see `groupHelpArgs`).
 
   // ---------------------------------------------------------------------------
   // Error-recovery middleware
@@ -773,7 +804,7 @@ export async function runCli(
   }
 
   try {
-    const groupHelp = await groupHelpArgs(routes, cliArgs);
+    const groupHelp = groupHelpArgs(routes, cliArgs);
     if (groupHelp) {
       await writeHelpTip(groupHelp.path);
       await executor(groupHelp.helpArgs);
