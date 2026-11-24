@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-agent-conversation
-version: 0.51.0
+version: 0.52.0-dev.0
 description: List and view agent conversations
 requires:
   bins: ["sentry"]
