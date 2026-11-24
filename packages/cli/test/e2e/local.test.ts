@@ -990,9 +990,11 @@ setInterval(() => {}, 1000);
       // release its session. Only the CLI's own pid is signalled.
       run.kill("SIGKILL");
       await closed;
+      // The daemon waits a short grace for the run's stream to reconnect.
       await expect
         .poll(async () => (await sessions()).map((session) => session.state), {
-          timeout: 15_000,
+          interval: 1000,
+          timeout: 30_000,
         })
         .toEqual(["retained"]);
     } finally {
@@ -1006,7 +1008,7 @@ setInterval(() => {}, 1000);
         }
       }
     }
-  }, 45_000);
+  }, 60_000);
 
   test("captures telemetry from the real Sentry Node SDK through the injected URL", async () => {
     const port = await availablePort();

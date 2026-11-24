@@ -624,8 +624,9 @@ export function createLocalControlPlane({
     if (c.req.query("cap") !== capabilities.stream) {
       return c.body(null, 401);
     }
-    // A run's tail names its lease, which ends with this connection, so a run
-    // that is killed or loses its terminal cannot keep the session open.
+    // A run's tail names its lease. Once the run has had no tail for a short
+    // grace, the lease ends, so a run that is killed or loses its terminal
+    // cannot keep the session open, while a tail that reconnects keeps it.
     const requestedLease = c.req.query("lease");
     const leaseId =
       requestedLease !== undefined &&
@@ -707,14 +708,7 @@ export function createLocalControlPlane({
         unsubscribeOversized();
         unsubscribeSession();
         if (leaseId !== undefined) {
-          try {
-            sessionStore.release(id, leaseId);
-          } catch (error) {
-            logger.debug(
-              "Local session was gone before its lease ended",
-              error,
-            );
-          }
+          sessionStore.detachLease(id, leaseId);
         }
       }
     });

@@ -6,9 +6,10 @@ open session with that name and create one only when none is open, so runs at
 the same time share a session. Each holds a lease on it: a session that runs
 created closes when the last lease ends, and one made with `local session
 create` stays open until `local session close`. A lease ends when the run gives
-it back or when the run's event stream to the daemon closes, so a run that is
-killed or loses its terminal stops holding the session; a lease whose stream
-never opened ends after 30 seconds (`LEASE_ATTACH_MS` in `session-store.ts`).
+it back, or when the run has had no event stream open to the daemon for 15
+seconds (`LEASE_GRACE_MS` in `session-store.ts`), so a run that is killed or
+loses its terminal stops holding the session, while a run whose stream drops
+and reconnects keeps it.
 When the app cannot start, the run removes a session it created that received
 nothing, instead of keeping an empty one. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All

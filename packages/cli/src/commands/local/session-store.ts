@@ -19,11 +19,12 @@ import type { LocalSessionEvent } from "./viewer-protocol.js";
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
 
 /**
- * How long a lease may go without the run's stream connection before it is
- * dropped. A run attaches right after it takes the lease, so only a run that
- * died in between leaves one unattached.
+ * How long a lease may go without one of the run's stream connections before
+ * it is dropped. A run opens its stream right after it takes the lease, and
+ * reconnects within seconds when the stream drops, so only a run that died
+ * stays away this long.
  */
-export const LEASE_ATTACH_MS = 30 * 1000;
+export const LEASE_GRACE_MS = 15 * 1000;
 
 /** Open lease or a closed session retained for later queries. */
 export type LocalSessionState = "open" | "retained";
@@ -47,11 +48,12 @@ type StoredSession = LocalSession & {
   ingestCapability: string;
   streamCapability: string;
   /**
-   * Leases of the runs that joined through `acquire`, by lease ID. A lease is
-   * attached while the run's stream connection is open, and goes away when
-   * that connection drops, so a killed run cannot hold the session open.
+   * Leases of the runs that joined through `acquire`, by lease ID, with the
+   * run's open stream connections. A lease with none since `idleSince` for
+   * {@link LEASE_GRACE_MS} is dropped, so a killed run cannot hold the
+   * session open, while a run whose stream reconnects keeps it.
    */
-  leases: Map<string, { attached: boolean; takenAt: number }>;
+  leases: Map<string, { connections: number; idleSince: number }>;
   /** Created by `acquire`, so its last lease closes it. */
   closesWithLeases: boolean;
 };
@@ -101,10 +103,16 @@ export type LocalSessionStore = {
     leaseId: string;
   };
   /**
-   * Tie a lease to the run's stream connection; release it when that
-   * connection closes. Returns false for a lease the session doesn't hold.
+   * Count a stream connection of the lease's run. Returns false for a lease
+   * the session doesn't hold.
    */
   attachLease: (id: string, leaseId: string) => boolean;
+  /**
+   * End a stream connection counted by {@link attachLease}. When it was the
+   * last one, the lease is dropped unless the run reconnects within
+   * {@link LEASE_GRACE_MS}.
+   */
+  detachLease: (id: string, leaseId: string) => void;
   /**
    * Give back a lease. With `discardIfEmpty`, a session that closes with its
    * last lease and never received an envelope is removed instead of
@@ -274,9 +282,15 @@ export function createLocalSessionStore({
     listeners.delete(id);
   };
 
+  /** Check for idle leases once the grace for one starting now is over. */
+  const scheduleLeaseCheck = () => {
+    setTimeout(dropStaleLeases, LEASE_GRACE_MS + 100).unref();
+  };
+
   const takeLease = (session: StoredSession): string => {
     const leaseId = randomBytes(16).toString("base64url");
-    session.leases.set(leaseId, { attached: false, takenAt: now() });
+    session.leases.set(leaseId, { connections: 0, idleSince: now() });
+    scheduleLeaseCheck();
     return leaseId;
   };
 
@@ -288,20 +302,20 @@ export function createLocalSessionStore({
       ? closeStored(session)
       : session;
 
-  /** Drop leases whose run never opened its stream, as when it was killed. */
-  const dropStaleLeases = () => {
-    const cutoff = now() - LEASE_ATTACH_MS;
+  /** Drop leases whose run has had no stream for the grace, as when killed. */
+  function dropStaleLeases() {
+    const cutoff = now() - LEASE_GRACE_MS;
     for (const session of sessions.values()) {
       let dropped = false;
       for (const [leaseId, lease] of session.leases) {
-        if (!lease.attached && lease.takenAt <= cutoff) {
+        if (lease.connections === 0 && lease.idleSince <= cutoff) {
           session.leases.delete(leaseId);
           dropped = true;
         }
       }
       if (dropped) closeIfUnleased(session);
     }
-  };
+  }
 
   return {
     create(input) {
@@ -332,8 +346,19 @@ export function createLocalSessionStore({
     },
     attachLease(id, leaseId) {
       const lease = resolveStored(id).leases.get(leaseId);
-      if (lease) lease.attached = true;
+      if (lease) lease.connections += 1;
       return lease !== undefined;
+    },
+    detachLease(id, leaseId) {
+      const lease = sessions.get(id)?.leases.get(leaseId);
+      if (!lease || lease.connections === 0) {
+        return;
+      }
+      lease.connections -= 1;
+      if (lease.connections === 0) {
+        lease.idleSince = now();
+        scheduleLeaseCheck();
+      }
     },
     release(id, leaseId, { discardIfEmpty = false } = {}) {
       const session = resolveStored(id);

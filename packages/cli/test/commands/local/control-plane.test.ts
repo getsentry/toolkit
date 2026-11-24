@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
+  LEASE_GRACE_MS,
   createLocalSessionStore,
   SESSION_CHOICE_HEADER,
   SESSION_RETENTION_MS,
@@ -728,8 +729,12 @@ describe("Local control plane", () => {
     expect(plane.sessionStore.choose("web").others).toEqual([]);
   });
 
-  test("releases a run's lease when the run's stream connection drops", async () => {
-    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+  test("ends a run's lease once its stream stays disconnected, not on a reconnect", async () => {
+    let now = 1000;
+    const plane = createLocalControlPlane({
+      controlToken: CONTROL_TOKEN,
+      sessionStore: createLocalSessionStore({ now: () => now }),
+    });
     const response = await plane.app.request("/_local/v1/sessions", {
       method: "POST",
       headers: { ...controlHeaders(), "Content-Type": "application/json" },
@@ -742,21 +747,37 @@ describe("Local control plane", () => {
     };
     const stream = new URL(session.streamUrl);
     stream.searchParams.set("lease", session.leaseId);
+    const tail = async () => {
+      const controller = new AbortController();
+      const opened = await plane.app.request(
+        `${stream.pathname}${stream.search}`,
+        { signal: controller.signal },
+      );
+      const reader = opened.body!.getReader();
+      await reader.read();
+      return async () => {
+        controller.abort();
+        await reader.cancel();
+      };
+    };
+    const state = () => plane.sessionStore.resolve(session.id).state;
 
-    // A run that is killed never calls release; only its stream ends.
-    const controller = new AbortController();
-    const tail = await plane.app.request(`${stream.pathname}${stream.search}`, {
-      signal: controller.signal,
+    // A dropped stream that the run reconnects keeps the session open.
+    const first = await tail();
+    await first();
+    now += LEASE_GRACE_MS - 1;
+    const second = await tail();
+    now += LEASE_GRACE_MS;
+    plane.sessionStore.pruneExpired();
+    expect(state()).toBe("open");
+
+    // A killed run never calls release and never reconnects.
+    await second();
+    await vi.waitFor(() => {
+      now += LEASE_GRACE_MS;
+      plane.sessionStore.pruneExpired();
+      expect(state()).toBe("retained");
     });
-    const reader = tail.body!.getReader();
-    await reader.read();
-    expect(plane.sessionStore.resolve(session.id).state).toBe("open");
-    controller.abort();
-    await reader.cancel();
-
-    await vi.waitFor(() =>
-      expect(plane.sessionStore.resolve(session.id).state).toBe("retained"),
-    );
   });
 
   test("gives a session a DSN that SDKs without Spotlight support can send to", async () => {

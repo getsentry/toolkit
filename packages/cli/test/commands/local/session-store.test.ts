@@ -2,7 +2,7 @@ import { createReceiverEnvelope } from "../../../src/commands/local/receiver-ing
 import { describe, expect, test, vi } from "vitest";
 import {
   createLocalSessionStore,
-  LEASE_ATTACH_MS,
+  LEASE_GRACE_MS,
 } from "../../../src/commands/local/session-store.js";
 
 describe("LocalSessionStore", () => {
@@ -180,13 +180,33 @@ describe("LocalSessionStore", () => {
     const attached = store.acquire({ label: "other", cwd: "/work/other" });
     expect(store.attachLease(attached.session.id, attached.leaseId)).toBe(true);
 
-    now += LEASE_ATTACH_MS;
+    now += LEASE_GRACE_MS;
     const next = store.acquire({ label: "web", cwd: "/work/web" });
 
     expect(store.resolve(killed.session.id).state).toBe("retained");
     expect(next.reused).toBe(false);
     // A run whose stream is open keeps its lease however long it runs.
     expect(store.resolve(attached.session.id).state).toBe("open");
+  });
+
+  test("keeps a lease whose run reconnects its stream within the grace", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const run = store.acquire({ label: "web", cwd: "/work/web" });
+    const killed = store.acquire({ label: "api", cwd: "/work/api" });
+    store.attachLease(run.session.id, run.leaseId);
+    store.attachLease(killed.session.id, killed.leaseId);
+
+    // Both streams drop; only the run that is still alive reconnects.
+    store.detachLease(run.session.id, run.leaseId);
+    store.detachLease(killed.session.id, killed.leaseId);
+    now += LEASE_GRACE_MS - 1;
+    store.attachLease(run.session.id, run.leaseId);
+    now += LEASE_GRACE_MS;
+    store.pruneExpired();
+
+    expect(store.resolve(run.session.id).state).toBe("open");
+    expect(store.resolve(killed.session.id).state).toBe("retained");
   });
 
   test("removes a run's session that closes without telemetry when asked to", () => {
