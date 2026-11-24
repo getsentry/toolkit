@@ -110,8 +110,10 @@ an event without one (`captureMessage`, Python `logging`), or the item type
 (`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
 `title`, and `timestamp` from its most severe log. A span batch takes its
 `title` and `timestamp` from its segment root: the span marked `is_segment`,
-else the span whose parent is not in the batch. A `sessions` aggregate is
-titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+else the span whose parent is not in the batch. A `feedback` item is titled
+with its message, not the page or request it was sent from. A `sessions`
+aggregate is titled like the viewer, such as `Session counts: 5 exited`.
+`level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs or spans in a
 batch (not a standalone span), and `receivedAt` is
@@ -282,14 +284,28 @@ View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstr
 
 Session create/view and daemon start/status summaries include the same link.
 It opens the hosted viewer and connects to the plain receiver address, so named
-sessions appear in the picker automatically. The public `url` query accepts only
-credential-free loopback `/stream` addresses; session capabilities still use the
-existing fragment connection flow. The viewer consumes the query at startup so
-reloading keeps the selected session. JSON and NDJSON output stay unchanged.
+sessions appear in the picker automatically. Output for one session (`run
+--session`, `serve --session`, and session create/view) also adds that
+session's ID, so the viewer opens it instead of the first session:
+
+```text
+View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream&session=<id>
+```
+
+The public `url` query accepts only credential-free loopback `/stream`
+addresses, and `session` is only an ID, so the link never carries a
+capability. The viewer's host can see the session ID, since query strings reach
+it, but the ID is not a credential: reading the session still needs its
+capability, which the viewer gets from the daemon directory. A session stream URL with its `?cap=` is refused in the query;
+session capabilities still use the existing fragment connection flow. The
+viewer consumes both parameters at startup so reloading keeps the selected
+session. JSON and NDJSON output stay unchanged.
 
 Connect to the daemon's plain `http://127.0.0.1:8969/stream` endpoint (using its
 actual host and port) to discover running sessions automatically. The viewer
-selects the first running session and fills the Session picker. If no sessions
+selects the session a link's `session` names when the directory lists it, and
+otherwise the first running session, and fills the Session picker. When the
+named session is not listed, it shows "Session not found, showing <label>". If no sessions
 exist yet, it waits and discovers them as they start. This works in the local
 development viewer and on <https://local.sentry.dev/>. Alternatively, run either
 command with `--session <name> --open` to start on that specific session.

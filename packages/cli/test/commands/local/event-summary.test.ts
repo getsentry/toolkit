@@ -198,6 +198,55 @@ describe("summarizeEnvelope", () => {
     ).toBe("Retrying");
   });
 
+  test("titles feedback with its message, not the request it came from", () => {
+    // @sentry/node 11 `captureFeedback` inside an Express route: the SDK also
+    // sets `transaction` to the route.
+    const feedback = {
+      type: "feedback",
+      level: "info",
+      platform: "node",
+      transaction: "GET /feedback",
+      timestamp: 1_795_504_185.135,
+      contexts: {
+        trace: { trace_id: "157b82a784834ab18d36e980edb751fe" },
+        feedback: {
+          contact_email: "jane@example.com",
+          name: "Jane",
+          message: "The checkout button does nothing",
+        },
+      },
+    };
+    expect(summarize("feedback", feedback)).toMatchObject({
+      type: "feedback",
+      title: "The checkout button does nothing",
+    });
+    // Cloudflare, Bun, and Deno send no `transaction`.
+    const { transaction: _, ...workerFeedback } = feedback;
+    expect(summarize("feedback", workerFeedback).title).toBe(
+      "The checkout button does nothing",
+    );
+    const long = "y".repeat(300);
+    expect(
+      summarize("feedback", { contexts: { feedback: { message: long } } })
+        .title,
+    ).toBe(`${"y".repeat(199)}…`);
+    // A blank message falls back like a missing one.
+    expect(
+      summarize("feedback", {
+        ...feedback,
+        contexts: { feedback: { message: "  \n " } },
+      }).title,
+    ).toBe("GET /feedback");
+  });
+
+  test("cuts a long title without splitting an emoji", () => {
+    const title = (prefix: number) =>
+      summarize("event", { message: `${"x".repeat(prefix)}🐛 broke` }).title;
+    expect(title(197)).toBe(`${"x".repeat(197)}🐛…`);
+    // The emoji would end past the limit, so the cut leaves all of it out.
+    expect(title(198)).toBe(`${"x".repeat(198)}…`);
+  });
+
   test("titles session aggregates like the viewer", () => {
     expect(
       summarize("sessions", {

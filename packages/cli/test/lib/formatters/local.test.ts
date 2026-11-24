@@ -17,6 +17,7 @@ import {
   formatErrorItem,
   formatItem,
   formatItemJson,
+  formatLocalControlResult,
   formatSingleLog,
   formatSingleSpan,
   formatSpanItem,
@@ -1581,5 +1582,35 @@ describe("envelopeHasTelemetry", () => {
     expect(
       envelopeHasTelemetry({ getParsedEnvelope: () => null }, new Set()),
     ).toBe(false);
+  });
+});
+
+describe("formatLocalControlResult", () => {
+  function viewerLink(output: string): URL {
+    const link = output.match(/View events at (\S+)/)?.[1];
+    expect(link).toBeTruthy();
+    return new URL(link!);
+  }
+
+  test("a session summary links the viewer to that session without its capability", () => {
+    const data = {
+      id: "session-1",
+      streamUrl:
+        "http://127.0.0.1:9012/_local/v1/sessions/session-1/stream?cap=stream-secret",
+    };
+    const output = formatLocalControlResult(data);
+    const url = viewerLink(output);
+    expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.searchParams.get("session")).toBe("session-1");
+    expect(url.toString()).not.toContain("stream-secret");
+    expect(JSON.parse(output.split("\n\nView events at")[0]!)).toEqual(data);
+  });
+
+  test("a daemon summary links the viewer to the plain receiver", () => {
+    const url = viewerLink(
+      formatLocalControlResult({ daemon: { host: "127.0.0.1", port: 9012 } }),
+    );
+    expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.searchParams.has("session")).toBe(false);
   });
 });

@@ -849,11 +849,12 @@ export const runCommand = buildCommand({
     let childEnv: ReturnType<typeof buildChildEnv>;
     try {
       url = tail.url;
-      printLocalViewerHint(url, useJson);
+      const viewerStreamUrl = daemonStreamUrl ?? url;
+      printLocalViewerHint(viewerStreamUrl, useJson);
 
       await openLocalUiIfRequested(
         flags.open,
-        daemonStreamUrl ?? url,
+        viewerStreamUrl,
         daemonDirectoryUrl,
       );
 
