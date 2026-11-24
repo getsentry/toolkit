@@ -211,6 +211,7 @@ export default defineTool({
       organizationSlug: parsed.organizationSlug,
       issueId: parsed.issueId,
       relatedIssues,
+      // investigations is never requested here; this only narrows the shared enum
       relationTypes: related.meta.types.flatMap((meta) =>
         meta.type === "investigations"
           ? []

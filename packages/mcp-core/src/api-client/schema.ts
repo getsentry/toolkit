@@ -935,7 +935,6 @@ export const RELATED_ISSUE_TYPE_STATUSES = [
  *
  * Upstream source of truth in getsentry/sentry:
  * - `src/sentry/issues/related/types.py` (`RelatedIssuesResponse`)
- * - `src/sentry/issues/related/investigations.py`
  * - `src/sentry/issues/endpoints/group_related.py`
  */
 export const RelatedIssuesResponseSchema = z.object({
