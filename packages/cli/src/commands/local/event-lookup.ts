@@ -134,3 +134,8 @@ export function uniqueEventIdPrefixes(
     }),
   );
 }
+
+/** A replay `segment_id`, or undefined when it is not a whole number. */
+export function replaySegmentNumber(value: unknown): number | undefined {
+  return Number.isSafeInteger(value) ? (value as number) : undefined;
+}

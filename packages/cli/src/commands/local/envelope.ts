@@ -83,6 +83,21 @@ const TEXT_CONTENT_TYPES = new Set([
   "application/ld+json",
 ]);
 
+/**
+ * How an item that stays raw keeps its bytes in `data`: as text for a text
+ * content type, else as base64.
+ */
+export function rawItemEncoding(
+  itemHeader: Record<string, unknown>,
+): "utf8" | "base64" {
+  const contentType = itemHeader["content_type"];
+  return TEXT_CONTENT_TYPES.has(
+    typeof contentType === "string" ? contentType : "",
+  )
+    ? "utf8"
+    : "base64";
+}
+
 function isEnvelopeObject(value: unknown): value is Record<string, unknown> {
   return (
     value !== null &&
@@ -253,17 +268,7 @@ function decode(
       // Opaque or non-JSON items stay raw; the rest of the envelope decodes.
       if (itemHeader.type === "statsd" && !contentType)
         itemHeader["content_type"] = "text/plain";
-      payload = {
-        data: bytes.toString(
-          TEXT_CONTENT_TYPES.has(
-            typeof itemHeader["content_type"] === "string"
-              ? itemHeader["content_type"]
-              : "",
-          )
-            ? "utf8"
-            : "base64",
-        ),
-      };
+      payload = { data: bytes.toString(rawItemEncoding(itemHeader)) };
     }
     items.push([itemHeader, payload]);
   }

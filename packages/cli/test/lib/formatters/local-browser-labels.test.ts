@@ -494,7 +494,7 @@ describe("session replays", () => {
     expect(lines[0]).toContain("[REPLAY]");
     expect(lines[0]).toContain("[BROWSER]");
     expect(lines[0]).toContain(
-      "replay 4d1c5b0e http://localhost:3000/client [segment 0]",
+      "replay 4d1c5b0e http://localhost:3000/client [from segment 0]",
     );
   });
 
@@ -514,7 +514,7 @@ describe("session replays", () => {
     );
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain(
-      "replay 4d1c5b0e http://localhost:3000/cart [segment 7]",
+      "replay 4d1c5b0e http://localhost:3000/cart [from segment 7]",
     );
     expect(formatEnvelopeLines(envelope, new Set(), false, replays)).toEqual(
       [],
@@ -582,6 +582,30 @@ describe("session replays", () => {
     expect(records[0]).toMatchObject({
       event_id: replayId,
       timestamp: 1_794_949_301,
+    });
+  });
+
+  test("JSON reads the segment of a recording kept as text", () => {
+    // An uncompressed recording with a text content type stays utf8, not base64.
+    const recording = `${JSON.stringify({ segment_id: 4 })}\n[{"type":3}]`;
+    const envelope = createReceiverEnvelope({
+      body: Buffer.from(
+        [
+          JSON.stringify({ event_id: replayId }),
+          JSON.stringify({
+            type: "replay_recording",
+            length: Buffer.byteLength(recording),
+            content_type: "application/json",
+          }),
+          recording,
+        ].join("\n"),
+      ),
+    });
+    const [line] = formatEnvelopeLinesJson(envelope, new Set());
+    expect(JSON.parse(line ?? "{}")).toMatchObject({
+      type: "replay_recording",
+      replay_id: replayId,
+      segment_id: 4,
     });
   });
 

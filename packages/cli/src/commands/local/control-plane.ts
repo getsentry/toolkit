@@ -26,7 +26,11 @@ import { streamSSE } from "hono/streaming";
 import { stringifyUnknown } from "../../lib/errors.js";
 import { SENTRY_CONTENT_TYPE } from "../../lib/formatters/local.js";
 import { formatLocalServerUrl } from "./ui.js";
-import { AMBIGUOUS_EVENT_CODE, matchEventIds } from "./event-lookup.js";
+import {
+  AMBIGUOUS_EVENT_CODE,
+  matchEventIds,
+  replaySegmentNumber,
+} from "./event-lookup.js";
 import { summarizeEnvelope } from "./event-summary.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
 import { isLoopbackHost } from "./loopback.js";
@@ -129,16 +133,16 @@ function replaySegmentId(items: unknown[]): number | undefined {
       continue;
     }
     const [itemHeader, payload] = item as [unknown, unknown];
-    const segmentId =
+    const segmentId = replaySegmentNumber(
       typeof payload === "object" && payload !== null
         ? (payload as Record<string, unknown>)["segment_id"]
-        : undefined;
+        : undefined,
+    );
     if (
       typeof itemHeader === "object" &&
       itemHeader !== null &&
       (itemHeader as Record<string, unknown>)["type"] === "replay_event" &&
-      typeof segmentId === "number" &&
-      Number.isInteger(segmentId)
+      segmentId !== undefined
     ) {
       return segmentId;
     }
