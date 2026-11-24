@@ -1223,7 +1223,13 @@ function processSSEEvent(
         continue;
       }
       const lines = useJson
-        ? formatItemJson(itemHeader.type, payload, header, showAttributes)
+        ? formatItemJson(
+            itemHeader.type,
+            payload,
+            header,
+            showAttributes,
+            itemHeader,
+          )
         : formatItem(
             itemHeader.type,
             payload,
