@@ -835,11 +835,10 @@ describe("Local daemon E2E", () => {
     const port = await availablePort();
     const session = await createSession("shared", port);
     // A stand-in for a Go app, whose SDK reads only SENTRY_DSN.
-    const go = join(getConfigDir(), "go");
+    const app = join(getConfigDir(), "go-app.cjs");
     await writeFile(
-      go,
-      `#!${process.execPath}
-const dsn = new URL(process.env.SENTRY_DSN);
+      app,
+      `const dsn = new URL(process.env.SENTRY_DSN);
 const path = dsn.pathname.replace(/\\/0$/, "");
 fetch(dsn.origin + path + "/api/0/envelope/", {
   method: "POST",
@@ -848,7 +847,17 @@ fetch(dsn.origin + path + "/api/0/envelope/", {
 }).then((r) => { if (r.status !== 200) process.exitCode = 3; });
 `,
     );
-    await chmod(go, 0o755);
+    let go = join(getConfigDir(), "go");
+    if (process.platform === "win32") {
+      go = `${go}.cmd`;
+      await writeFile(go, `@"${process.execPath}" "${app}" %*\r\n`);
+    } else {
+      await writeFile(
+        go,
+        `#!/bin/sh\nexec "${process.execPath}" "${app}" "$@"\n`,
+      );
+      await chmod(go, 0o755);
+    }
     const result = await runCli(
       [
         "local",
