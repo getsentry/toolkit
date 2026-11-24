@@ -90,8 +90,9 @@ an event without one (`captureMessage`, Python `logging`), or the item type
 (`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
 `title`, and `timestamp` from its most severe log. A span batch takes its
 `title` and `timestamp` from its segment root: the span marked `is_segment`,
-else the span whose parent is not in the batch. A `sessions` aggregate is
-titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+else the span whose parent is not in the batch. A `feedback` item is titled
+with its message, not the page or request it was sent from. A `sessions`
+aggregate is titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
 appear when the item has them, `count` gives the number of logs or spans in a
 batch (not a standalone span), and `receivedAt` is

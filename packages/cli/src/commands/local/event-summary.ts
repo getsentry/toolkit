@@ -20,7 +20,10 @@ type LocalEventDetails = {
   type?: string | undefined;
   /** Event or log level, e.g. `error`, `warning`, `info`. */
   level?: string | undefined;
-  /** `TypeError: msg` for errors, the text for messages and logs, or the transaction or span name. */
+  /**
+   * `TypeError: msg` for errors, the text for messages and logs, the message
+   * of a feedback, or the transaction or span name.
+   */
   title?: string | undefined;
   /** When the SDK recorded it, as an ISO 8601 string. */
   timestamp?: string | undefined;
@@ -234,6 +237,11 @@ export function summarizeEnvelope(
     type: itemType,
     level: text(payload["level"]),
     title:
+      // Feedback also carries the page or request it was sent from in
+      // `transaction`; the message says what it is about.
+      (itemType === "feedback"
+        ? text(record(record(payload["contexts"])["feedback"])["message"])
+        : undefined) ??
       text(payload["transaction"]) ??
       text(payload["status"]) ??
       (itemType === "sessions" ? sessionCountsTitle(payload) : undefined),
