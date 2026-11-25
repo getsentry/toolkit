@@ -79,7 +79,7 @@ On Laravel, uncomment this line in `config/sentry.php`:
 'spotlight' => env('SENTRY_SPOTLIGHT', false),
 ```
 
-**Go and Rust.** Their SDKs have no Spotlight support. Point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
+**Go and Rust.** Their SDKs have no Spotlight support. With `--session`, `local run` hands them the session's DSN; see [Daemon-owned sessions](#daemon-owned-sessions). Without it, point the DSN at the local server's regular Sentry ingest path, and pin the port so the two match: set `SENTRY_DSN=http://key@localhost:8970/0` and run `sentry local run --port 8970`. Without `--port`, a run moves to a free port when the Local daemon holds 8969, and the daemon drops DSN-style posts, so events would vanish without an error. Everything the SDK sends then goes to the local server, so leave your real DSN out while you do this.
 
 **Browser apps** (Next.js, Vite, and other bundlers). Pass the prefixed variable to the Spotlight integration in your client config:
 
@@ -301,12 +301,21 @@ and opens the first session instead.
 viewer read capability URLs. Keep these URLs private. `--clientId <key>` makes
 retried session creation idempotent.
 
-Each `local run --session` creates a new session, so names repeat. Commands
-that read, such as `event list` and `session view`, use the name's newest open
-session, or its newest session when none is open. When several open sessions
-share the name, they use the newest and note the others on stderr. `session
-close` and other commands that change a session refuse a name that several open
-sessions share and list them, so pass the session ID instead.
+`local run --session <name>` joins the open session with that name, and
+creates one only when none is open, so two runs at the same time capture into
+the same session. `local serve --session <name>` joins the same way. A session
+the runs created closes when the last of them exits, even one that was killed
+or whose terminal closed. A session you made with `session create` stays open
+until you close it. If the app can't start, the run drops the empty session it
+created.
+
+Once a session closes, the next run with that name creates a new one, so names
+can repeat. Commands that read, such as `event list` and `session view`, use the
+name's newest open session, or its newest session when none is open. When
+several open sessions share the name, they use the newest and note the others
+on stderr. `session close` and other commands that change a session refuse a
+name that several open sessions share and list them, so pass the session ID
+instead.
 
 How an SDK reaches a session depends on its Spotlight support:
 
@@ -314,16 +323,23 @@ How an SDK reaches a session depends on its Spotlight support:
   `local run --session` needs no setup.
 - **PHP**: set the `spotlight` option to the ingest URL. PHP adds `/stream` to
   it, which the session accepts.
-- **Go, Rust, and Ruby** (and PHP, if you prefer) send through a DSN, which
-  `local run --session` doesn't set. It also creates a new session on every
-  run, so create one session and run the app yourself:
+- **Go, Rust, Elixir, and Ruby** send through a DSN. When you haven't set
+  `SENTRY_DSN`, `local run --session` sets it to the session's DSN for:
+  - Ruby, Go, and Rust apps that `local run` detects, such as a Rails `bin/dev`
+  - `go`, `cargo`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, `rails`, `rake`,
+    `rackup`, `puma`, `sidekiq`, and `rspec`
+  - `foreman`, `overmind`, and `bin/` scripts in a project with a `Gemfile`
 
-  1. Run `sentry local session create <name> --json` and take its `ingestUrl`.
-  2. Add `local@` after `http://` and `/0` at the end to get
-     `SENTRY_DSN=http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
-  3. Start the app directly with that `SENTRY_DSN`, not under
-     `local run --session`.
-  4. Read what it sent with `sentry local event list <id>`.
+  If a `.env` file also sets `SENTRY_DSN`, the run warns you: a dotenv loader
+  that keeps existing variables will use the session DSN. For anything else,
+  such as a compiled Go or Rust binary, take `dsn` from
+  `sentry local session create <name> --json` and start the app with it as
+  `SENTRY_DSN`, either on its own or under `local run --session <name>`, which
+  joins that session. `local run --session` leaves `SENTRY_DSN` alone for
+  Node.js and Python, which would otherwise send every event twice.
+- **Deno**: `@sentry/deno` doesn't read `SENTRY_DSN`, so pass it the `dsn`
+  from `sentry local session view <name> --json`. An app that uses
+  `npm:@sentry/node` reads `SENTRY_SPOTLIGHT` like Node.js.
 
   Ruby uses only the host and port from `SENTRY_SPOTLIGHT` and posts to
   `/stream`, so the session path and its key are lost. Set

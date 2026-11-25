@@ -1,3 +1,8 @@
+export const SEARCH_ATTRIBUTES_DATASETS = ["spans", "logs", "metrics"] as const;
+
+export type SearchAttributesDataset =
+  (typeof SEARCH_ATTRIBUTES_DATASETS)[number];
+
 /**
  * Configuration for the search-attributes shortlist agent
  */
@@ -5,6 +10,7 @@ export const shortlistSystemPrompt = `You pick the Sentry attribute keys that ma
 
 You get a question and the attribute keys seen in one dataset (spans, logs, or metrics), one per line:
 - key (type): description. Examples: ... Aliases: ... Deprecated, replaced by other.key.
+Each part after the type appears only when it's known, so a line can be just "- key (type)".
 
 RULES:
 1. Return only keys copied exactly from the list. Never invent, shorten, or change the case of a key.

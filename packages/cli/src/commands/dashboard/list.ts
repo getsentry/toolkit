@@ -33,6 +33,7 @@ import {
 } from "../../lib/list-command.js";
 import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
+import { throwIfHelpMatchedNothing } from "../../lib/help-argument.js";
 import {
   buildDashboardsListUrl,
   buildDashboardUrl,
@@ -487,6 +488,8 @@ export const listCommand = buildListCommand("dashboard", {
           }),
       ),
     );
+
+    throwIfHelpMatchedNothing(titleFilter, results.length);
 
     // Advance the pagination cursor stack
     advancePaginationState(

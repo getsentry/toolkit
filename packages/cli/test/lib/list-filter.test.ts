@@ -49,6 +49,17 @@ describe("filterByName", () => {
     expect(slugs(filterByName(ITEMS, "acme-dev", namesOf))[0]).toBe("acme-dev");
     expect(slugs(filterByName(ITEMS, "widgts", namesOf))).toEqual(["widgets"]);
   });
+
+  test("help matches only names that contain it, never close matches", () => {
+    const teams = [
+      { slug: "helm", name: "Helm" },
+      { slug: "kelp", name: "Kelp" },
+      { slug: "help-desk", name: "Help Desk" },
+    ];
+    // Plain text would also match the first two, as close (fuzzy) matches.
+    expect(slugs(filterByName(teams, "help", namesOf))).toEqual(["help-desk"]);
+    expect(filterByName(teams.slice(0, 2), "help", namesOf)).toEqual([]);
+  });
 });
 
 describe("isGlobFilter", () => {
