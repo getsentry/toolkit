@@ -30,7 +30,7 @@ function authorize() {
     code_challenge: PKCE_CODE_CHALLENGE,
     code_challenge_method: "S256",
   }).toString();
-  return handler.fetch!(new Request(url), workerEnv, createExecutionContext());
+  return handler.fetch(new Request(url), workerEnv, createExecutionContext());
 }
 
 function expectMetadataFailureLogged(extra: Record<string, unknown>) {
