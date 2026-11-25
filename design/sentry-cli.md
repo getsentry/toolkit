@@ -38,6 +38,11 @@ a terminal, with as little setup as the current project allows.
   on a list or view command. List and view commands return once.
 - The library SDK returns an `AsyncIterable` for exactly the invocations that
   stream, in its typed methods and in `sdk.run()` alike.
+- `help` works after any command path (`sentry auth help`), but the command
+  never treats `help` as special while it could be a real value: a project,
+  dashboard, or organization named `help` is still found. Only when the
+  normal command cannot succeed, or finds nothing named `help`, does the CLI
+  show that command's help, with a tip to use `--help`.
 
 ## Gaps
 

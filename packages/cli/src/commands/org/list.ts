@@ -48,6 +48,7 @@ import {
 } from "../../lib/list-command.js";
 import { logger } from "../../lib/logger.js";
 import { withProgress } from "../../lib/polling.js";
+import { throwIfHelpMatchedNothing } from "../../lib/help-argument.js";
 import type {
   SentryOrganization,
   WithOutputFields,
@@ -482,6 +483,7 @@ export const listCommand = buildCommand({
       org.slug,
       org.name,
     ]);
+    throwIfHelpMatchedNothing(filter, orgs.length);
     const limitedOrgs = orgs.slice(0, flags.limit);
 
     // Show regions when one login's orgs span several (e.g. US and EU).

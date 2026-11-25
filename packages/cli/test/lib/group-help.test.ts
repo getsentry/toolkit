@@ -118,6 +118,22 @@ describe("sentry <group> help", () => {
     expect(stdout).toContain("sentry auth");
   });
 
+  test.each([
+    ["auth whoami", "sentry auth whoami"],
+    // A plural alias shows the command it stands for.
+    ["platforms", "sentry platform list"],
+  ])(
+    "rewrites a command that takes no positionals: %s",
+    async (path, usage) => {
+      await runFresh([...path.split(" "), "help"]);
+
+      expect(apiRequests).toEqual([]);
+      expect(stderr).not.toContain("Too many arguments");
+      expect(stderr).toContain(`sentry ${path} --help`);
+      expect(stdout).toContain(usage);
+    },
+  );
+
   test("still shows the update notification", async () => {
     vi.resetModules();
     const versionCheck = await import("../../src/lib/version-check.js");

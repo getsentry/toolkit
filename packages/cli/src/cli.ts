@@ -122,8 +122,8 @@ function isUnknownCommandExit(unknownCode: number): boolean {
  * 3. **A trailing `help` token after an unknown path** (e.g.
  *    `sentry dashboard nope help`) — retried as `sentry help <path...>`, which
  *    prints the unknown-command error with suggestions. A trailing `help` after
- *    a known group never gets here: {@link groupHelpArgs} rewrites it before
- *    dispatch.
+ *    a known group with no default never gets here: {@link trailingHelpArgs}
+ *    rewrites it before dispatch.
  *
  * @param cliArgs - The raw CLI arguments that were dispatched
  * @param executor - The command executor (middleware chain) to retry with
@@ -174,22 +174,22 @@ async function writeHelpTip(path: readonly string[]): Promise<void> {
 }
 
 /**
- * The group path and `help` command args for `sentry <group...> help`, with
+ * The command path and `help` command args for `sentry <path...> help`, with
  * global flags anywhere before `help`, or `undefined` when the args are not
  * that shape or `help` could be a real argument.
  *
- * Stricli hands a trailing `help` to the group's default command. When that
- * default takes no positionals (`auth`, `status`, `local`), the argument
- * scanner always rejects it as "Too many arguments", and a group with no
- * default always prints "No command registered", before any help recovery
- * runs. In both cases the normal command cannot succeed, so the request is
- * rewritten before dispatch.
+ * Stricli hands a trailing `help` to the command it routes to: a group's
+ * default command, or the command itself (`auth whoami`, `platforms`). When
+ * that command takes no positionals, the argument scanner always rejects
+ * `help` as "Too many arguments", and a group with no default always prints
+ * "No command registered", before any help recovery runs. In both cases the
+ * normal command cannot succeed, so the request is rewritten before dispatch.
  *
- * When the default takes a positional (`issue` → `view`), `help` may name a
+ * When the command takes a positional (`issue` → `view`), `help` may name a
  * real project, dashboard, or issue, so the normal command runs first and
  * `maybeRecoverWithHelp` in `lib/command.ts` shows help only if it fails.
  */
-function groupHelpArgs(
+function trailingHelpArgs(
   routes: CliRoutes,
   cliArgs: readonly string[],
 ): { path: string[]; helpArgs: string[] } | undefined {
@@ -226,11 +226,14 @@ function groupHelpArgs(
       ? target.getRoutingTargetForInput(segment)
       : undefined;
   }
-  if (!isRouteGroup(target)) {
+  // A group runs its default command, if it has one.
+  let command: unknown = target;
+  if (isRouteGroup(target)) {
+    command = target.getDefaultCommand();
+  } else if (!isCommand(target)) {
     return;
   }
-  const defaultCommand = target.getDefaultCommand();
-  if (defaultCommand && acceptsPositionals(defaultCommand)) {
+  if (isCommand(command) && acceptsPositionals(command)) {
     return;
   }
   return { path, helpArgs: ["help", ...flags, ...path] };
@@ -245,10 +248,23 @@ function isRouteGroup(target: unknown): target is CliRoutes {
   );
 }
 
-/** Whether a command takes at least one positional argument. */
-function acceptsPositionals(command: {
+/** A routed command, as far as {@link acceptsPositionals} reads it. */
+type RoutedCommand = {
   readonly parameters: { readonly positional?: unknown };
-}): boolean {
+};
+
+/** Whether a routing target is a command. */
+function isCommand(target: unknown): target is RoutedCommand {
+  return (
+    typeof target === "object" &&
+    target !== null &&
+    "parameters" in target &&
+    !isRouteGroup(target)
+  );
+}
+
+/** Whether a command takes at least one positional argument. */
+function acceptsPositionals(command: RoutedCommand): boolean {
   const positional = command.parameters.positional as
     | { kind: "tuple"; parameters: readonly unknown[] }
     | { kind: "array" }
@@ -443,8 +459,8 @@ export async function runCli(
   // structured output are all handled inside Stricli now (the patched route
   // scanner's top-level-flags allow-list + `versionRequested` state, and the
   // `documentation.renderHelp` hook in app.ts). The only argv rewrite before
-  // dispatch is `<group> help` → `help <group>`, for groups whose default
-  // command cannot take `help` as an argument (see `groupHelpArgs`).
+  // dispatch is `<path> help` → `help <path>`, when the routed command
+  // cannot take `help` as an argument (see `trailingHelpArgs`).
 
   // ---------------------------------------------------------------------------
   // Error-recovery middleware
@@ -804,10 +820,10 @@ export async function runCli(
   }
 
   try {
-    const groupHelp = groupHelpArgs(routes, cliArgs);
-    if (groupHelp) {
-      await writeHelpTip(groupHelp.path);
-      await executor(groupHelp.helpArgs);
+    const trailingHelp = trailingHelpArgs(routes, cliArgs);
+    if (trailingHelp) {
+      await writeHelpTip(trailingHelp.path);
+      await executor(trailingHelp.helpArgs);
     } else {
       await executor(cliArgs);
 
