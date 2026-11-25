@@ -53,7 +53,6 @@ function summarize(output: SearchAttributesOutput) {
   };
 }
 
-/** Whether every key in `wanted` is in the shortlist. */
 const matchesAll = (wanted: string[]) => (keys: string[]) =>
   wanted.every((key) => keys.includes(key));
 
@@ -243,9 +242,7 @@ function userAttribute(key: string) {
   };
 }
 
-// Sorted by name, like the endpoint returns them. The 1000 app.* keys fill
-// the first page, so the key each dataset's large-org case looks for is past
-// the cut.
+// the key each dataset's large-org case looks for is past the cut.
 const LARGE_ORG_ATTRIBUTES = [
   ...Array.from({ length: ENDPOINT_KEY_CAP }, (_, i) =>
     userAttribute(`app.feature_${String(i).padStart(4, "0")}`),

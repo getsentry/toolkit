@@ -12,6 +12,7 @@ import {
 } from "../../test-utils/structured-content.js";
 import type { SearchAttributesOutput } from "../support/search-attributes/format";
 import searchAttributes from "./search-attributes.js";
+import { KEY_CAP_NOTE } from "../support/search-attributes/format";
 
 vi.mock("@ai-sdk/openai", () => {
   const mockModel = vi.fn(() => "mocked-model");
@@ -263,7 +264,7 @@ describe("search_attributes", () => {
         addedBySentry: true,
         aliases: [],
         deprecated: false,
-        description: "",
+        description: null,
         examples: [],
         key: "retry.count",
         replacementKey: null,
@@ -293,7 +294,7 @@ describe("search_attributes", () => {
               "addedBySentry": false,
               "aliases": [],
               "deprecated": false,
-              "description": "",
+              "description": null,
               "examples": [],
               "key": "app.tier",
               "replacementKey": null,
@@ -569,6 +570,8 @@ describe("search_attributes", () => {
         1,
       );
       expect(output.best?.key).toBe("payment.processor");
+      // The hint searches looked through every key, so nothing is missing.
+      expect(output.notes).not.toContain(KEY_CAP_NOTE);
     });
 
     it.each([
@@ -602,8 +605,31 @@ describe("search_attributes", () => {
 
         expect(substrings).toEqual([null]);
         expect(output.best?.key).toBe("app.string_0001");
+        // Only the cut-off list was searched.
+        expect(output.notes).toContain(KEY_CAP_NOTE);
       },
     );
+
+    it("leaves the note out when the hint searches find nothing", async () => {
+      // The hint search looked through every key, so a miss is a real miss.
+      const substrings = serveAttributes((substring) =>
+        substring === null ? FULL_PAGE : [],
+      );
+      mockGenerateText
+        .mockResolvedValueOnce(mockAgentResponse({ hints: ["payment"] }))
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: null, candidates: [] }),
+        );
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      expect(substrings).toEqual([null, "payment"]);
+      expect(output.resultType).toBe("matches");
+      expect(output.notes).not.toContain(KEY_CAP_NOTE);
+    });
 
     it("lists the narrowed attributes with a note when the shortlist agent fails", async () => {
       serveAttributes((substring) =>
@@ -626,6 +652,7 @@ describe("search_attributes", () => {
       );
       // Only the recommended key and the hint match are left, recommended first.
       expect(keys(output.attributes)).toEqual(["span.op", "payment.processor"]);
+      expect(output.notes).toContain(KEY_CAP_NOTE);
     });
 
     it("skips hint searches that fail and reports only server errors", async () => {
@@ -676,10 +703,14 @@ describe("search_attributes", () => {
         mockAgentResponse({ best: null, candidates: [] }),
       );
 
-      await search({ query: "payment provider", dataset: "spans" });
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
 
       expect(substrings).toEqual([null]);
       expect(mockGenerateText).toHaveBeenCalledTimes(1);
+      expect(output.notes).not.toContain(KEY_CAP_NOTE);
     });
 
     it("doesn't make hints when listing", async () => {
@@ -689,6 +720,31 @@ describe("search_attributes", () => {
 
       expect(substrings).toEqual([null]);
       expect(mockGenerateText).not.toHaveBeenCalled();
+    });
+
+    it("says the list may be missing keys when a type reaches the cap", async () => {
+      serveAttributes(() => FULL_PAGE);
+
+      const output = await search({ dataset: "spans" });
+
+      expect(output.notes).toEqual([
+        "There is no pagination. Input a `query` to narrow down your search.",
+        KEY_CAP_NOTE,
+        "Use a key with `search_traces` to query its values.",
+      ]);
+    });
+
+    it("says the fallback list may be missing keys when there's no AI provider", async () => {
+      vi.stubEnv("OPENAI_API_KEY", "");
+      serveAttributes(() => FULL_PAGE);
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      expect(output.resultType).toBe("list");
+      expect(output.notes).toContain(KEY_CAP_NOTE);
     });
   });
 });

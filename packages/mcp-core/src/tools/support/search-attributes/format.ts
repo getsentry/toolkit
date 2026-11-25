@@ -76,7 +76,11 @@ type AttributeOutput = z.output<typeof attributeOutputSchema>;
 interface ResultSettings {
   dataset: SearchAttributesDataset;
   period: string;
+  mayBeIncomplete?: boolean | undefined;
 }
+
+export const KEY_CAP_NOTE =
+  "Sentry returns at most about 1,000 keys of each type, sorted by name, and this dataset reached that limit, so keys that sort later may have been missed.";
 
 /**
  * The dataset's attributes, recommended keys first. Also the fallback when the
@@ -89,6 +93,7 @@ export function buildListResult({
   attributes,
   limit,
   fallbackNote,
+  mayBeIncomplete,
 }: ResultSettings & {
   query: string | null;
   attributes: TraceItemAttribute[];
@@ -101,8 +106,12 @@ export function buildListResult({
   if (attributes.length === 0) {
     notes.push(...noneSeenNotes(noun, period));
   } else {
+    const queryNote = query
+      ? `None of the ${noun} searched match this query. Try another \`query\`, or omit \`query\` to list every attribute.`
+      : "There is no pagination. Input a `query` to narrow down your search.";
     notes.push(
-      "There is no pagination. Input a `query` to narrow down your search.",
+      queryNote,
+      ...(mayBeIncomplete ? [KEY_CAP_NOTE] : []),
       `Use a key with \`${associatedTool}\` to query its values.`,
     );
   }
@@ -122,13 +131,14 @@ export function buildListResult({
   };
 }
 
-/** The shortlist for `query`: an optional best match, then the other candidates. */
+/** An optional best match, then the other candidates. */
 export function buildFindResult({
   dataset,
   period,
   query,
   matches,
   totalAttributes,
+  mayBeIncomplete,
 }: ResultSettings & {
   query: string;
   matches: AttributeMatches;
@@ -147,6 +157,7 @@ export function buildFindResult({
   } else {
     notes = [`Use a key with \`${associatedTool}\` to query its values.`];
   }
+  if (mayBeIncomplete) notes.push(KEY_CAP_NOTE);
   return {
     dataset,
     period,
@@ -158,7 +169,7 @@ export function buildFindResult({
     presentationHint: best
       ? "Separate the best result from the rest of the candidates for clarity."
       : candidates.length > 0
-        ? "Use a table to display all the information given about the candidates."
+        ? "A table works well to display all the information given about the candidates."
         : null,
     notes,
   };
@@ -178,7 +189,7 @@ function toAttributeOutput({
   secondaryAliases,
   context,
 }: TraceItemAttribute): AttributeOutput {
-  const description = flatten(context?.brief);
+  const description = flatten(context?.brief) || null;
   return {
     key,
     type,

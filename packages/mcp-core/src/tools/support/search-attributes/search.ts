@@ -90,6 +90,11 @@ export async function runSearchAttributes(
   // Set once the hint searches replace rows with a smaller set related to the
   // query, so the list fallback can say what it's showing.
   let narrowedByHints = false;
+  // Set once any hint is searched. Hint searches look through every key, so
+  // a match past the cut would have turned up.
+  let searchedHints = false;
+
+  const rowsReachesLimit = mayBeCutOff(rows);
 
   const listAttributes = (fallbackNote?: string) =>
     buildListResult({
@@ -99,6 +104,7 @@ export async function runSearchAttributes(
       attributes: rows,
       limit: params.limit ?? LIST_LIMIT,
       fallbackNote,
+      mayBeIncomplete: rowsReachesLimit,
     });
 
   if (!query) return listAttributes();
@@ -112,12 +118,13 @@ export async function runSearchAttributes(
   // The endpoint sorts keys by name and stops at about 1000 per type, so in a
   // large org the right key can be past the cut. A substring search looks
   // through every key, so search again with hints made from the query.
-  if (mayBeCutOff(rows)) {
+  if (rowsReachesLimit) {
     const keyHints = await withAgentFallback<string[]>({
       operation: "search_attributes.key_hints",
       fallback: () => [],
       run: () => generateKeyHintsAgent({ query, dataset }),
     });
+    searchedHints = keyHints.length > 0;
     // A hint search only adds keys, so a failed one is skipped rather than
     // failing the call. 4xx and config errors aren't ours to report.
     const searchHint = (hint: string) =>
@@ -139,7 +146,6 @@ export async function runSearchAttributes(
     // If there are results from the hints, use that + recommended keys
     // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
-    // as long as one of the hint calls have values we should use that
     if (hintRows.some((r) => r.length > 0)) {
       const recommendedKeys = getRecommendedKeysByDataset(dataset);
       const recommendedRows = rows.filter((attribute) =>
@@ -178,8 +184,8 @@ export async function runSearchAttributes(
     period,
     query,
     matches,
-    // What the shortlist searched: every key seen, or the hint matches.
     totalAttributes: rows.length,
+    mayBeIncomplete: !searchedHints && rowsReachesLimit,
   });
 }
 

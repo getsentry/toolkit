@@ -39,7 +39,7 @@ describe("buildFindResult", () => {
         key: "log.legacy_level",
         type: "string",
         addedBySentry: true,
-        description: "",
+        description: null,
         examples: [],
         aliases: ["level"],
         deprecated: true,
@@ -87,7 +87,7 @@ describe("buildListResult", () => {
 
     const byKey = new Map(output.attributes.map((a) => [a.key, a]));
     expect(byKey.get("app.long")?.description).toBe("x".repeat(300));
-    // Line breaks are flattened; pipes no longer need escaping.
+    // Line breaks are flattened
     expect(byKey.get("app.note")).toMatchObject({
       description: "First line second | part",
       examples: ["a|b"],
