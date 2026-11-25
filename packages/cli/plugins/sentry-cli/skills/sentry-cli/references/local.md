@@ -198,7 +198,7 @@ Run a command with the local dev server enabled
 - `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
-- `--session <value> - Create a daemon-owned telemetry session with this label`
+- `--session <value> - Capture into the open daemon session with this label, or create one`
 
 **Examples:**
 

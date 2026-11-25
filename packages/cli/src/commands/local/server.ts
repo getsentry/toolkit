@@ -1369,16 +1369,28 @@ export const serverCommand = buildCommand({
     const url = formatLocalServerUrl(flags.host, flags.port);
 
     if (flags.session) {
-      const { createLocalDaemonSession, retainLocalDaemonSession } =
-        await import("./daemon.js");
+      const {
+        createLocalDaemonSession,
+        leasedStreamUrl,
+        releaseLocalDaemonSession,
+        warnMaxEnvelopesIgnoredOnJoin,
+      } = await import("./daemon.js");
+      // Like `local run --session`, join the open session with this name and
+      // hold a lease, so serve never closes a session a run still uses.
       const session = await createLocalDaemonSession({
         maxEnvelopes: flags["max-envelopes"],
         cwd: this.cwd,
         host: flags.host,
         label: flags.session || basename(this.cwd),
         port: flags.port,
+        reuse: true,
       });
-      logger.info("Sentry Local telemetry session");
+      logger.info(
+        session.reused
+          ? `Joining open session ${bold(session.label)}`
+          : "Sentry Local telemetry session",
+      );
+      warnMaxEnvelopesIgnoredOnJoin(session, flags["max-envelopes"]);
       printLocalViewerHint(session.streamUrl, flags.format === "json");
       logger.info(`  Session: ${bold(session.id)} (${session.label})`);
       logger.info(
@@ -1401,14 +1413,14 @@ export const serverCommand = buildCommand({
           quiet: flags.quiet,
           showAttributes: flags.attributes,
           signal: controller.signal,
-          streamUrl: session.streamUrl,
+          streamUrl: leasedStreamUrl(session),
           url: new URL(session.streamUrl).origin,
           useJson: flags.format === "json",
         });
       } finally {
         process.removeListener("SIGINT", stop);
         process.removeListener("SIGTERM", stop);
-        await retainLocalDaemonSession(session.id);
+        await releaseLocalDaemonSession(session);
       }
       return;
     }

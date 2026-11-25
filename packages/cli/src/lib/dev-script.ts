@@ -14,6 +14,11 @@ export type DetectedCommand = {
   source: string;
   /** Advice to show when the command may not be what the user wants. */
   hint?: string;
+  /**
+   * The app's Sentry SDK reaches a Local session only through SENTRY_DSN
+   * (Ruby, Go, Rust), whatever program starts it.
+   */
+  dsnOnly?: true;
 };
 
 /** Ordered list of npm script names to look for in package.json. */
@@ -680,13 +685,25 @@ async function tryRails(
   if (dev !== null) {
     const shell = shebangShell(dev);
     if (!shell) {
-      return { args: ["ruby", "bin/dev"], source: "bin/dev (Rails)" };
+      return {
+        args: ["ruby", "bin/dev"],
+        source: "bin/dev (Rails)",
+        dsnOnly: true,
+      };
     }
     if (platform !== "win32") {
-      return { args: [shell, "bin/dev"], source: "bin/dev (Rails)" };
+      return {
+        args: [shell, "bin/dev"],
+        source: "bin/dev (Rails)",
+        dsnOnly: true,
+      };
     }
   }
-  return { args: ["ruby", "bin/rails", "server"], source: "bin/rails (Rails)" };
+  return {
+    args: ["ruby", "bin/rails", "server"],
+    source: "bin/rails (Rails)",
+    dsnOnly: true,
+  };
 }
 
 /**
@@ -716,7 +733,11 @@ function tryRack(cwd: string): DetectedCommand | null {
   ) {
     return null;
   }
-  return { args: ["bundle", "exec", "rackup"], source: "config.ru (Rack)" };
+  return {
+    args: ["bundle", "exec", "rackup"],
+    source: "config.ru (Rack)",
+    dsnOnly: true,
+  };
 }
 
 /**
@@ -735,7 +756,9 @@ async function tryCargo(cwd: string): Promise<DetectedCommand | null> {
     CARGO_BINARY_RE.test(manifest) ||
     existsSync(join(cwd, "src", "main.rs")) ||
     existsSync(join(cwd, "src", "bin"));
-  return hasBinary ? { args: ["cargo", "run"], source: "Cargo.toml" } : null;
+  return hasBinary
+    ? { args: ["cargo", "run"], source: "Cargo.toml", dsnOnly: true }
+    : null;
 }
 
 /** Matches the `[package]` table header of a Cargo.toml. */
@@ -754,7 +777,7 @@ async function tryGoMod(cwd: string): Promise<DetectedCommand | null> {
   // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     await access(join(cwd, "go.mod"));
-    return { args: ["go", "run", "."], source: "go.mod" };
+    return { args: ["go", "run", "."], source: "go.mod", dsnOnly: true };
   } catch {
     return null;
   }

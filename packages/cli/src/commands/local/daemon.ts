@@ -76,6 +76,12 @@ export type LocalDaemonSession = {
   readonly streamUrl: string;
   /** Older daemon versions do not advertise browser discovery. */
   readonly directoryUrl?: string;
+  /** DSN for SDKs without Spotlight support; older daemons omit it. */
+  readonly dsn?: string;
+  /** Set when `reuse` joined a session that was already open. */
+  readonly reused?: boolean;
+  /** The run's hold on a session joined with `reuse`; older daemons omit it. */
+  readonly leaseId?: string;
 };
 
 function statePath(directory: string): string {
@@ -766,6 +772,7 @@ export async function createLocalDaemonSession({
   label,
   port,
   maxEnvelopes,
+  reuse,
 }: {
   readonly clientId?: string;
   readonly maxEnvelopes?: number | undefined;
@@ -773,10 +780,15 @@ export async function createLocalDaemonSession({
   readonly host?: string;
   readonly label: string;
   readonly port?: number;
+  /**
+   * Join the open session with this label instead of creating another; give
+   * it back with {@link releaseLocalDaemonSession}.
+   */
+  readonly reuse?: boolean;
 }): Promise<LocalDaemonSession> {
   const state = await ensureLocalDaemon({ host, port });
   const response = await requestLocalDaemon(state, "/sessions", {
-    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes }),
+    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes, reuse }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
@@ -803,4 +815,64 @@ export async function retainLocalDaemonSession(
       method: "POST",
     },
   );
+}
+
+/**
+ * Warn that `--max-envelopes` was ignored because the command joined a
+ * session that was already open, and say how to change its limit.
+ */
+export function warnMaxEnvelopesIgnoredOnJoin(
+  session: Pick<LocalDaemonSession, "id" | "reused">,
+  maxEnvelopes: number | undefined,
+): void {
+  if (!session.reused || maxEnvelopes === undefined) {
+    return;
+  }
+  logger.warn(
+    `--max-envelopes doesn't change a session that is already open. Use ${sentry`local session retention ${session.id} --max-envelopes ${String(maxEnvelopes)}`}.`,
+  );
+}
+
+/**
+ * The stream URL a run tails a joined session through. It names the run's
+ * lease, so the daemon releases the lease when this connection ends, even when
+ * the run is killed before it can call {@link releaseLocalDaemonSession}.
+ */
+export function leasedStreamUrl(session: LocalDaemonSession): string {
+  if (!session.leaseId) {
+    return session.streamUrl;
+  }
+  const url = new URL(session.streamUrl);
+  url.searchParams.set("lease", session.leaseId);
+  return url.href;
+}
+
+/**
+ * Give back a session joined with `reuse`. The daemon closes it once no run
+ * holds it, unless it was created on its own; with `discardIfEmpty` a session
+ * that closes without telemetry is removed. Daemons without leases close the
+ * session instead.
+ */
+export async function releaseLocalDaemonSession(
+  session: Pick<LocalDaemonSession, "id" | "leaseId">,
+  { discardIfEmpty = false }: { discardIfEmpty?: boolean } = {},
+): Promise<void> {
+  const state = await getRunningLocalDaemon();
+  if (!state) {
+    return;
+  }
+  if (!session.leaseId) {
+    await retainLocalDaemonSession(session.id);
+    return;
+  }
+  const response = await requestLocalDaemon(
+    state,
+    `/sessions/${encodeURIComponent(session.id)}/release`,
+    {
+      body: JSON.stringify({ leaseId: session.leaseId, discardIfEmpty }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  await response.body?.cancel();
 }

@@ -1,6 +1,9 @@
 import { createReceiverEnvelope } from "../../../src/commands/local/receiver-ingest.js";
 import { describe, expect, test, vi } from "vitest";
-import { createLocalSessionStore } from "../../../src/commands/local/session-store.js";
+import {
+  createLocalSessionStore,
+  LEASE_GRACE_MS,
+} from "../../../src/commands/local/session-store.js";
 
 describe("LocalSessionStore", () => {
   test("grows retention without losing envelopes, IDs or live subscribers", async () => {
@@ -121,6 +124,121 @@ describe("LocalSessionStore", () => {
       session: { id: older.id },
       others: [],
     });
+  });
+
+  test("lets runs share the open session with their name until the last one leaves", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const first = store.acquire({ label: "web", cwd: "/work/web" });
+    now = 2000;
+    const second = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(first.reused).toBe(false);
+    expect(second).toMatchObject({
+      reused: true,
+      session: { id: first.session.id },
+    });
+    expect(store.list()).toHaveLength(1);
+    expect(store.release(first.session.id, first.leaseId).state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId).state).toBe(
+      "retained",
+    );
+
+    // A closed session takes no new runs.
+    const next = store.acquire({ label: "web", cwd: "/work/web" });
+    expect(next.reused).toBe(false);
+    expect(next.session.id).not.toBe(first.session.id);
+    expect(store.choose("web").others).toEqual([]);
+  });
+
+  test("leaves a session made with create open when the runs that joined it end", () => {
+    const store = createLocalSessionStore();
+    const session = store.create({ label: "web", cwd: "/work/web" });
+    const joined = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(joined).toMatchObject({ reused: true, session: { id: session.id } });
+    expect(store.release(session.id, joined.leaseId).state).toBe("open");
+  });
+
+  test("releases a lease once, so a repeated release cannot end another run's hold", () => {
+    const store = createLocalSessionStore();
+    const first = store.acquire({ label: "web", cwd: "/work/web" });
+    const second = store.acquire({ label: "web", cwd: "/work/web" });
+
+    // The stream connection and the run both give back the first lease.
+    store.release(first.session.id, first.leaseId);
+    expect(store.release(first.session.id, first.leaseId).state).toBe("open");
+    expect(store.release(first.session.id, second.leaseId).state).toBe(
+      "retained",
+    );
+  });
+
+  test("drops a lease whose run never opened its stream, so the next run starts fresh", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const killed = store.acquire({ label: "web", cwd: "/work/web" });
+    const attached = store.acquire({ label: "other", cwd: "/work/other" });
+    expect(store.attachLease(attached.session.id, attached.leaseId)).toBe(true);
+
+    now += LEASE_GRACE_MS;
+    const next = store.acquire({ label: "web", cwd: "/work/web" });
+
+    expect(store.resolve(killed.session.id).state).toBe("retained");
+    expect(next.reused).toBe(false);
+    // A run whose stream is open keeps its lease however long it runs.
+    expect(store.resolve(attached.session.id).state).toBe("open");
+  });
+
+  test("keeps a lease whose run reconnects its stream within the grace", () => {
+    let now = 1000;
+    const store = createLocalSessionStore({ now: () => now });
+    const run = store.acquire({ label: "web", cwd: "/work/web" });
+    const killed = store.acquire({ label: "api", cwd: "/work/api" });
+    store.attachLease(run.session.id, run.leaseId);
+    store.attachLease(killed.session.id, killed.leaseId);
+
+    // Both streams drop; only the run that is still alive reconnects.
+    store.detachLease(run.session.id, run.leaseId);
+    store.detachLease(killed.session.id, killed.leaseId);
+    now += LEASE_GRACE_MS - 1;
+    store.attachLease(run.session.id, run.leaseId);
+    now += LEASE_GRACE_MS;
+    store.pruneExpired();
+
+    expect(store.resolve(run.session.id).state).toBe("open");
+    expect(store.resolve(killed.session.id).state).toBe("retained");
+  });
+
+  test("removes a run's session that closes without telemetry when asked to", () => {
+    const store = createLocalSessionStore();
+    const empty = store.acquire({ label: "empty", cwd: "/work" });
+    const kept = store.acquire({ label: "kept", cwd: "/work" });
+    const closedByStream = store.acquire({ label: "stream", cwd: "/work" });
+    store.getBuffer(kept.session.id).put(
+      createReceiverEnvelope({
+        body: Buffer.from('{}\n{"type":"event"}\n{}'),
+        contentType: "application/x-sentry-envelope",
+      }),
+    );
+
+    store.release(empty.session.id, empty.leaseId);
+    expect(store.discardIfEmpty(empty.session.id)).toBe(true);
+    expect(() => store.resolve(empty.session.id)).toThrow(/not found/);
+    expect(store.release(kept.session.id, kept.leaseId).state).toBe("retained");
+    expect(store.discardIfEmpty(kept.session.id)).toBe(false);
+
+    // The lease already ended, which closed the session; the run's own
+    // release still lets it be removed.
+    const { id } = closedByStream.session;
+    store.release(id, closedByStream.leaseId);
+    store.release(id, closedByStream.leaseId);
+    expect(store.discardIfEmpty(id)).toBe(true);
+
+    // A session still held by another run is never removed.
+    const shared = store.acquire({ label: "shared", cwd: "/work" });
+    store.acquire({ label: "shared", cwd: "/work" });
+    store.release(shared.session.id, shared.leaseId);
+    expect(store.discardIfEmpty(shared.session.id)).toBe(false);
   });
 
   test("reuses a session when an agent retries with the same client ID", () => {
