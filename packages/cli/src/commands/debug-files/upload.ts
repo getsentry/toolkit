@@ -12,7 +12,8 @@
  * and `max_wait` (clamps the processing wait). `.zip` archives are scanned in
  * place (disable with `--no-zips`); `--derived-data` additionally scans Xcode's
  * DerivedData folder on macOS. Managed PE assemblies that embed a Portable PDB
- * have it extracted and uploaded automatically as a separate DIF, and
+ * have it extracted and uploaded automatically as a separate DIF, so does the
+ * `<module>.wasm.map` source map next to a WebAssembly module, and
  * `--il2cpp-mapping` uploads Unity IL2CPP line mappings. BCSymbolMap
  * resolution (legacy `--symbol-maps`) is intentionally not supported: it only
  * applies to Apple Bitcode, which Apple has deprecated and the App Store no
@@ -230,6 +231,35 @@ function appendIl2cppMapping(difs: DebugFileUpload[], file: PreparedDif): void {
 }
 
 /**
+ * Append the source map next to a WebAssembly module as a separate DIF
+ * carrying the module's debug id.
+ *
+ * Emscripten (`-gsource-map`) and dart2wasm write the map as `<module>.map`.
+ * Sentry detects the format from the JSON content and pairs the map with the
+ * module by debug id, so the map must carry the module's build id; the scanner
+ * only prepares modules that have one. A module scanned from inside a `.zip`
+ * has no file next to it, so no map is found. An unreadable map is skipped
+ * with a warning so it never aborts the upload of the module itself.
+ */
+function appendWasmSourceMap(difs: DebugFileUpload[], file: PreparedDif): void {
+  if (!file.objects.some((object) => object.fileFormat === "wasm")) {
+    return;
+  }
+  const mapPath = `${file.path}.map`;
+  if (!existsSync(mapPath)) {
+    return;
+  }
+  let content: Buffer<ArrayBuffer>;
+  try {
+    content = readFileSync(mapPath);
+  } catch (err) {
+    log.warn(`Could not read WebAssembly source map ${mapPath}, skipping`, err);
+    return;
+  }
+  difs.push({ name: basename(mapPath), debugId: file.debugId, content });
+}
+
+/**
  * Convert prepared files into the DIF upload list.
  *
  * For each prepared file this queues the main DIF, then optionally a Unity
@@ -258,6 +288,8 @@ function buildDifList(
       ...(file.shaderGroup ? { shaderGroup: file.shaderGroup } : {}),
       content: file.content,
     });
+
+    appendWasmSourceMap(difs, file);
 
     if (il2cppMapping) {
       appendIl2cppMapping(difs, file);
@@ -554,6 +586,10 @@ export const uploadCommand = buildCommand({
       "recursed.\n\n" +
       "Managed PE assemblies (.NET) that embed a Portable PDB have it extracted " +
       "and uploaded automatically as a separate <name>.pdb debug file.\n\n" +
+      "A WebAssembly module's source map (<name>.wasm.map, next to the " +
+      "module) is uploaded automatically with the module's debug id, so " +
+      "Sentry can symbolicate it without DWARF. The module needs a build id; " +
+      "add one with sentry wasm-split.\n\n" +
       "With --il2cpp-mapping, Unity IL2CPP C++->C# line mappings are computed " +
       "from each file's referenced generated C++ sources and uploaded as " +
       "separate il2cpp debug files; combine with --include-sources to also " +
