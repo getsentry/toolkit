@@ -33,6 +33,12 @@ for (const [name, filename, valid, invalid] of [
     "stdout.write(value);",
   ],
   [
+    "no-help-argument-checks-in-commands",
+    commands,
+    "throwIfHelpMatchedNothing(filter, matches.length);",
+    'if (filter === "help") showHelp();',
+  ],
+  [
     "no-process-stdout-in-commands",
     commands,
     "async function* run() { yield new CommandOutput(value); }",

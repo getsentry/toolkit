@@ -177,6 +177,24 @@ const oAuthProvider = new OAuthProvider({
 });
 ```
 
+#### Client metadata fetch failures
+
+When `/oauth/authorize` cannot resolve a URL-based client's metadata document,
+the provider throws `CimdFetchError`. The redirect URI cannot be validated
+without that document, so the route renders the error locally and never
+redirects, following CIMD §6.1:
+
+- Transient failures (upstream `408`, `429`, `5xx`, or a timeout) return `503`.
+- Terminal failures (other HTTP statuses, oversized or non-JSON responses, and
+  metadata or client ID validation errors) return `400`.
+
+Both are logged with `logWarn` (`clientIdHost`, `failureClass`,
+`failureReason`, `metadataStatus`) and do not create Sentry issues: the client's
+metadata host, not this server, failed. Unrecognized failures, such as fetch
+runtime errors, are re-thrown and still reported. The classification in
+[`client-metadata-failure.ts`](../../packages/mcp-cloudflare/src/server/oauth/client-metadata-failure.ts)
+matches provider error messages, so check it when upgrading the provider.
+
 #### Operator-managed client metadata
 
 URL-based clients normally use Client ID Metadata Documents (CIMD). The provider

@@ -484,7 +484,11 @@ describe("detectDevCommand: Flask", () => {
     const result = await detectDevCommand(tmpDir, {
       env: { FLASK_APP: "app" },
     });
-    expect(result).toEqual({ args: ["go", "run", "."], source: "go.mod" });
+    expect(result).toEqual({
+      args: ["go", "run", "."],
+      source: "go.mod",
+      dsnOnly: true,
+    });
   });
 
   test("an app in app.py wins over FLASK_APP", async () => {
@@ -780,7 +784,11 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
     await writeFile(join(tmpDir, "Cargo.toml"), CARGO);
     await touch("src", "main.rs");
     const result = await detectDevCommand(tmpDir);
-    expect(result).toEqual({ args: ["cargo", "run"], source: "Cargo.toml" });
+    expect(result).toEqual({
+      args: ["cargo", "run"],
+      source: "Cargo.toml",
+      dsnOnly: true,
+    });
   });
 
   test.each([
@@ -817,6 +825,7 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
     expect(result).toEqual({
       args: ["bundle", "exec", "rackup"],
       source: "config.ru (Rack)",
+      dsnOnly: true,
     });
   });
 
@@ -830,6 +839,7 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
       expect(result).toEqual({
         args: ["ruby", "bin/rails", "server"],
         source: "bin/rails (Rails)",
+        dsnOnly: true,
       });
     },
   );
@@ -856,6 +866,7 @@ describe("detectDevCommand: Rust, Ruby, and PHP", () => {
     expect(result).toEqual({
       args: ["ruby", "bin/dev"],
       source: "bin/dev (Rails)",
+      dsnOnly: true,
     });
   });
 

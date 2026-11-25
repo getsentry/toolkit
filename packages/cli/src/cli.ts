@@ -119,8 +119,11 @@ function isUnknownCommandExit(unknownCode: number): boolean {
  *    route resolution fails before the `renderHelp` hook runs, so no JSON is
  *    produced. Retried as the `help` command so agents get a structured
  *    `{ error }` object instead of Stricli's text `UnknownCommand`.
- * 3. **A trailing `help` token** (e.g. `sentry dashboard help`) — retried as
- *    `sentry help <group...>`, which routes to the custom help command.
+ * 3. **A trailing `help` token after an unknown path** (e.g.
+ *    `sentry dashboard nope help`) — retried as `sentry help <path...>`, which
+ *    prints the unknown-command error with suggestions. A trailing `help` after
+ *    a known group with no default never gets here: {@link trailingHelpArgs}
+ *    rewrites it before dispatch.
  *
  * @param cliArgs - The raw CLI arguments that were dispatched
  * @param executor - The command executor (middleware chain) to retry with
@@ -155,14 +158,121 @@ async function recoverUnknownCommandHelp(
   if (cliArgs.length >= 2 && cliArgs.at(-1) === "help") {
     process.exitCode = 0;
     const groupArgs = cliArgs.slice(0, -1);
-    const { warning } = await import("./lib/formatters/colors.js");
-    process.stderr.write(
-      warning(
-        `Tip: use --help for help (e.g., ${sentry`${groupArgs.join(" ")} --help`})\n`,
-      ),
-    );
+    await writeHelpTip(groupArgs);
     await executor(["help", ...groupArgs]);
   }
+}
+
+/** Point a `<path> help` caller at `<path> --help`, on stderr. */
+async function writeHelpTip(path: readonly string[]): Promise<void> {
+  const { warning } = await import("./lib/formatters/colors.js");
+  process.stderr.write(
+    warning(
+      `Tip: use --help for help (e.g., ${sentry`${path.join(" ")} --help`})\n`,
+    ),
+  );
+}
+
+/**
+ * The command path and `help` command args for `sentry <path...> help`, with
+ * global flags anywhere before `help`, or `undefined` when the args are not
+ * that shape or `help` could be a real argument.
+ *
+ * Stricli hands a trailing `help` to the command it routes to: a group's
+ * default command, or the command itself (`auth whoami`, `platforms`). When
+ * that command takes no positionals, the argument scanner always rejects
+ * `help` as "Too many arguments", and a group with no default always prints
+ * "No command registered", before any help recovery runs. In both cases the
+ * normal command cannot succeed, so the request is rewritten before dispatch.
+ *
+ * When the command takes a positional (`issue` → `view`), `help` may name a
+ * real project, dashboard, or issue, so the normal command runs first and
+ * `maybeRecoverWithHelp` in `lib/command.ts` shows help only if it fails.
+ */
+function trailingHelpArgs(
+  routes: CliRoutes,
+  cliArgs: readonly string[],
+): { path: string[]; helpArgs: string[] } | undefined {
+  if (cliArgs.at(-1) !== "help") {
+    return;
+  }
+  // Global flags may sit anywhere before `help` (the patched route scanner
+  // accepts them at any depth); any other flag means this is not a bare
+  // group help request.
+  const flags: string[] = [];
+  const path: string[] = [];
+  const end = cliArgs.length - 1;
+  let index = 0;
+  while (index < end) {
+    const token = cliArgs[index] ?? "";
+    if (!token.startsWith("-")) {
+      path.push(token);
+      index += 1;
+      continue;
+    }
+    const nextIndex = skipLeadingGlobalFlag(cliArgs, index);
+    if (nextIndex === undefined || nextIndex > end) {
+      return;
+    }
+    flags.push(...cliArgs.slice(index, nextIndex));
+    index = nextIndex;
+  }
+  if (path.length === 0) {
+    return;
+  }
+  let target: unknown = routes;
+  for (const segment of path) {
+    target = isRouteGroup(target)
+      ? target.getRoutingTargetForInput(segment)
+      : undefined;
+  }
+  // A group runs its default command, if it has one.
+  let command: unknown = target;
+  if (isRouteGroup(target)) {
+    command = target.getDefaultCommand();
+  } else if (!isCommand(target)) {
+    return;
+  }
+  if (isCommand(command) && acceptsPositionals(command)) {
+    return;
+  }
+  return { path, helpArgs: ["help", ...flags, ...path] };
+}
+
+/** Whether a routing target is a route map (a command group). */
+function isRouteGroup(target: unknown): target is CliRoutes {
+  return (
+    typeof target === "object" &&
+    target !== null &&
+    "getRoutingTargetForInput" in target
+  );
+}
+
+/** A routed command, as far as {@link acceptsPositionals} reads it. */
+type RoutedCommand = {
+  readonly parameters: { readonly positional?: unknown };
+};
+
+/** Whether a routing target is a command. */
+function isCommand(target: unknown): target is RoutedCommand {
+  return (
+    typeof target === "object" &&
+    target !== null &&
+    "parameters" in target &&
+    !isRouteGroup(target)
+  );
+}
+
+/** Whether a command takes at least one positional argument. */
+function acceptsPositionals(command: RoutedCommand): boolean {
+  const positional = command.parameters.positional as
+    | { kind: "tuple"; parameters: readonly unknown[] }
+    | { kind: "array" }
+    | undefined;
+  if (!positional) {
+    return false;
+  }
+  return positional.kind === "array" || positional.parameters.length > 0;
 }
 
 /**
@@ -348,8 +458,9 @@ export async function runCli(
   // Global-flag hoisting, `--version` at any route depth, and `--help --json`
   // structured output are all handled inside Stricli now (the patched route
   // scanner's top-level-flags allow-list + `versionRequested` state, and the
-  // `documentation.renderHelp` hook in app.ts), so no argv preprocessing is
-  // needed before dispatch — the raw args go straight to `run()`.
+  // `documentation.renderHelp` hook in app.ts). The only argv rewrite before
+  // dispatch is `<path> help` → `help <path>`, when the routed command
+  // cannot take `help` as an argument (see `trailingHelpArgs`).
 
   // ---------------------------------------------------------------------------
   // Error-recovery middleware
@@ -709,11 +820,21 @@ export async function runCli(
   }
 
   try {
-    await executor(cliArgs);
+    const trailingHelp = trailingHelpArgs(routes, cliArgs);
+    if (trailingHelp) {
+      await writeHelpTip(trailingHelp.path);
+      await executor(trailingHelp.helpArgs);
+    } else {
+      await executor(cliArgs);
 
-    // Recover help/`--help --json` requests that Stricli's route scanner
-    // rejected as unknown commands (see the helpers below).
-    await recoverUnknownCommandHelp(cliArgs, executor, ExitCode.UnknownCommand);
+      // Recover help/`--help --json` requests that Stricli's route scanner
+      // rejected as unknown commands (see the helpers below).
+      await recoverUnknownCommandHelp(
+        cliArgs,
+        executor,
+        ExitCode.UnknownCommand,
+      );
+    }
   } catch (err) {
     // OutputError: data was already rendered to stdout by the command wrapper.
     // Just set exitCode silently — no stderr message needed.
