@@ -1142,6 +1142,28 @@ Different Sentry API endpoints use different project filtering mechanisms. Never
 
 When adding a new dataset to `explore`, verify which filtering mechanism the underlying API expects and handle it in `resolveDatasetConfig`. The `explore` command centralizes dataset-specific behavior (sort, query, fetch, field validation) in `resolveDatasetConfig` — add new datasets there rather than scattering `if (dataset === ...)` checks through the `func` body.
 
+## Rules: `help` as an argument
+
+`--help` is the help flag. A `help` argument (`sentry project help`,
+`sentry teams help`) is a value first, because any project, dashboard, team,
+or organization can be named `help`. The CLI guesses help only when the
+normal command cannot use the value:
+
+- The routed command takes no positionals, or the group has no default
+  command: `trailingHelpArgs` in `src/cli.ts` rewrites `<path> help` to
+  `help <path>` before dispatch, since the command would always fail.
+- Otherwise the command runs with `help` as its value. When it fails with a
+  `CliError`, `maybeRecoverWithHelp` in `src/lib/command.ts` shows the
+  command's help and a `--help` tip instead of the error.
+- A lookup that succeeds with nothing in it is a failure too: call
+  `throwIfHelpMatchedNothing(raw, count)` from `src/lib/help-argument.ts`
+  after the lookup. `filterByName` matches a `help` filter only against names
+  that contain it, so fuzzy matches don't count as finding something.
+
+Never compare an argument with `"help"` or call `isHelpArgument` in a
+command; the `sentry-cli/no-help-argument-checks-in-commands` lint rule
+rejects both. `test/lib/group-help.test.ts` runs `help` after every group.
+
 ## Commenting & Documentation (JSDoc-first)
 
 ### Default Rule

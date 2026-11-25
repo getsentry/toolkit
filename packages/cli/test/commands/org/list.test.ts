@@ -420,6 +420,13 @@ describe("org list filter", () => {
     expect(await slugsFor("acme-dev", { limit: 1 })).toEqual(["acme-dev"]);
   });
 
+  test("help that matches no organization fails, so the command shows its help", async () => {
+    await expect(runList({}, "help")).rejects.toThrow("Nothing matches 'help'");
+
+    orgsByToken["saas-token"]?.push(org("help-center"));
+    expect(await slugsFor("help")).toEqual(["help-center"]);
+  });
+
   test("no match says how many organizations were filtered out", async () => {
     const out = await runListHuman("initech");
 

@@ -68,6 +68,7 @@ import {
 } from "./formatters/output.js";
 import { isPlainOutput } from "./formatters/plain-detect.js";
 import { GLOBAL_FLAGS } from "./global-flags.js";
+import { isHelpArgument } from "./help-argument.js";
 import { setInteractivePromptsAllowed } from "./interactive-prompts.js";
 import {
   LOG_LEVEL_NAMES,
@@ -79,7 +80,6 @@ import {
 import {
   applyBoundPositionals,
   checkDestructive,
-  isHelpArgument,
   rawPositional,
 } from "./positional-parse.js";
 import { setArgsContext, setFlagContext, withTracing } from "./telemetry.js";
