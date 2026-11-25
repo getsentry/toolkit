@@ -157,7 +157,9 @@ export function buildFindResult({
     totalAttributes,
     presentationHint: best
       ? "Separate the best result from the rest of the candidates for clarity."
-      : "Use a table to display all the information given about the candidates.",
+      : candidates.length > 0
+        ? "Use a table to display all the information given about the candidates."
+        : null,
     notes,
   };
 }

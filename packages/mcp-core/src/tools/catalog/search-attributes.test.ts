@@ -95,6 +95,33 @@ function manyAttributes(
 /** A full page of string keys, so the list looks cut off. */
 const FULL_PAGE = manyAttributes(1000);
 
+/**
+ * One attribute for each kind of detail the output shows: aliases and
+ * examples, a deprecation with its replacement, and a custom key with none.
+ */
+const HTTP_ATTRIBUTES: AttributeFixture[] = [
+  {
+    key: "http.request.method",
+    name: "http.request.method",
+    attributeType: "string",
+    attributeSource: { source_type: "sentry" },
+    secondaryAliases: ["method"],
+    context: { brief: "The HTTP request method.", examples: ["GET", "POST"] },
+  },
+  {
+    key: "http.method",
+    name: "http.method",
+    attributeType: "string",
+    attributeSource: { source_type: "sentry" },
+    context: {
+      brief: "The HTTP method used.",
+      isDeprecated: true,
+      replacementAttribute: "http.request.method",
+    },
+  },
+  userAttribute("app.tier"),
+];
+
 function keys(attributes: { key: string }[]): string[] {
   return attributes.map(({ key }) => key);
 }
@@ -246,6 +273,63 @@ describe("search_attributes", () => {
       expect(mockGenerateText).not.toHaveBeenCalled();
     });
 
+    it("returns the whole list as structured content", async () => {
+      serveAttributes(() => HTTP_ATTRIBUTES);
+
+      expect(await search({ dataset: "spans" })).toMatchInlineSnapshot(`
+        {
+          "attributes": [
+            {
+              "addedBySentry": true,
+              "aliases": [],
+              "deprecated": true,
+              "description": "The HTTP method used.",
+              "examples": [],
+              "key": "http.method",
+              "replacementKey": "http.request.method",
+              "type": "string",
+            },
+            {
+              "addedBySentry": false,
+              "aliases": [],
+              "deprecated": false,
+              "description": "",
+              "examples": [],
+              "key": "app.tier",
+              "replacementKey": null,
+              "type": "string",
+            },
+            {
+              "addedBySentry": true,
+              "aliases": [
+                "method",
+              ],
+              "deprecated": false,
+              "description": "The HTTP request method.",
+              "examples": [
+                "GET",
+                "POST",
+              ],
+              "key": "http.request.method",
+              "replacementKey": null,
+              "type": "string",
+            },
+          ],
+          "best": null,
+          "dataset": "spans",
+          "notes": [
+            "There is no pagination. Input a \`query\` to narrow down your search.",
+            "Use a key with \`search_traces\` to query its values.",
+          ],
+          "period": "14d",
+          "presentationHint": "A table works well here, with each attribute's type, description, examples, whether it's added by Sentry, and, for deprecated attributes, what replaces them.",
+          "query": null,
+          "resultType": "list",
+          "totalAttributes": 3,
+        }
+      `);
+    });
+
     it("lists recommended keys first", async () => {
       serveAttributes(() =>
         [
@@ -325,6 +409,58 @@ describe("search_attributes", () => {
       expect(mockGenerateText.mock.calls[0]?.[0].prompt).toContain(
         "Return at most 10 keys",
       );
+    });
+
+    it("returns the whole shortlist as structured content", async () => {
+      serveAttributes(() => HTTP_ATTRIBUTES);
+      mockGenerateText.mockResolvedValueOnce(
+        mockAgentResponse({
+          best: "http.request.method",
+          candidates: ["http.method"],
+        }),
+      );
+
+      expect(await search({ query: "HTTP method", dataset: "spans" }))
+        .toMatchInlineSnapshot(`
+        {
+          "attributes": [
+            {
+              "addedBySentry": true,
+              "aliases": [],
+              "deprecated": true,
+              "description": "The HTTP method used.",
+              "examples": [],
+              "key": "http.method",
+              "replacementKey": "http.request.method",
+              "type": "string",
+            },
+          ],
+          "best": {
+            "addedBySentry": true,
+            "aliases": [
+              "method",
+            ],
+            "deprecated": false,
+            "description": "The HTTP request method.",
+            "examples": [
+              "GET",
+              "POST",
+            ],
+            "key": "http.request.method",
+            "replacementKey": null,
+            "type": "string",
+          },
+          "dataset": "spans",
+          "notes": [
+            "Use a key with \`search_traces\` to query its values.",
+          ],
+          "period": "14d",
+          "presentationHint": "Separate the best result from the rest of the candidates for clarity.",
+          "query": "HTTP method",
+          "resultType": "matches",
+          "totalAttributes": 3,
+        }
+      `);
     });
 
     it("lists possible matches in the agent's order, up to the limit", async () => {
