@@ -408,6 +408,15 @@ describe("get_issue_details", () => {
               "issueId": "CLOUDFLARE-MCP-41",
               "organizationSlug": "sentry-mcp-evals",
             },
+            "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
+            "toolName": "find_related_issues",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
             "reason": "Chart this issue's events and affected users over time.",
             "toolName": "render_issue_chart",
             "type": "tool_call",
@@ -419,14 +428,6 @@ describe("get_issue_details", () => {
             },
             "reason": "Inspect the distributed trace this event belongs to.",
             "toolName": "get_trace_details",
-            "type": "tool_call",
-          },
-          {
-            "arguments": {
-              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
-            },
-            "reason": "Read the breadcrumb trail leading up to this event.",
-            "toolName": "get_issue_breadcrumbs",
             "type": "tool_call",
           },
         ],
@@ -2117,9 +2118,16 @@ describe("structuredContent", () => {
         ],
         unavailableTypes: [],
       });
-      expect(
-        payload.suggestedActions.map((action) => action.toolName),
-      ).not.toContain("find_related_issues");
+      expect(payload.suggestedActions[0]).toEqual({
+        type: "tool_call",
+        toolName: "find_related_issues",
+        arguments: {
+          organizationSlug: "sentry-mcp-evals",
+          issueId: "CLOUDFLARE-MCP-41",
+        },
+        reason:
+          "List every related issue with its similarity score before resolving or ignoring this one.",
+      });
     });
 
     it("looks them up outside experimental mode too", async () => {
@@ -2133,7 +2141,7 @@ describe("structuredContent", () => {
       expect(payload.relatedIssues?.issues).toHaveLength(2);
     });
 
-    it("keeps an empty list when nothing is related", async () => {
+    it("keeps an empty list when nothing is related, without the suggestion", async () => {
       mockLatestEvent();
       captureRelatedRequest(() =>
         HttpResponse.json({
@@ -2149,6 +2157,9 @@ describe("structuredContent", () => {
         issues: [],
         unavailableTypes: [],
       });
+      expect(
+        payload.suggestedActions.map((action) => action.toolName),
+      ).not.toContain("find_related_issues");
     });
 
     it("names the relation types that failed", async () => {
@@ -3068,6 +3079,15 @@ describe("selected event package versions", () => {
           },
         ],
         "suggestedActions": [
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
+            "toolName": "find_related_issues",
+            "type": "tool_call",
+          },
           {
             "arguments": {
               "issueId": "CLOUDFLARE-MCP-41",
