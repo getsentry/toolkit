@@ -103,18 +103,6 @@ export const OAUTH_SCOPES: readonly string[] = [
   "user_preference:write",
 ];
 
-/**
- * Default scopes newer than some self-hosted servers. Sentry rejects a
- * device-code request that names a scope it doesn't know, so
- * {@link requestDeviceCode} retries without these when the server rejects
- * one, and the upgrade scope check doesn't require them from self-hosted
- * grants.
- */
-export const NEWER_DEFAULT_SCOPES: readonly string[] = [
-  "user_preference:read",
-  "user_preference:write",
-];
-
 /** Space-joined scope string for OAuth requests (full default set). */
 const SCOPES = OAUTH_SCOPES.join(" ");
 
@@ -288,63 +276,6 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  * @param loginHint - Email of the account expected to approve the request
  */
 async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
-  try {
-    return await postDeviceCodeRequest(scope, loginHint);
-  } catch (error) {
-    const fallback = scopeWithoutUnknownNewerDefaults(scope, error);
-    if (fallback === undefined) {
-      throw error;
-    }
-    logger.debug(
-      `Server rejected a newer default scope; retrying the device flow with: ${fallback}`,
-    );
-    return await postDeviceCodeRequest(fallback, loginHint);
-  }
-}
-
-/**
- * The scope string without {@link NEWER_DEFAULT_SCOPES} when `error` is the
- * server rejecting one of them as unknown (`invalid_scope`, "Unknown scope:
- * user_preference:read"). Older self-hosted servers don't know them.
- *
- * @returns `undefined` when the error is anything else, or nothing would be
- *   left to request
- */
-function scopeWithoutUnknownNewerDefaults(
-  scope: string,
-  error: unknown,
-): string | undefined {
-  if (!(error instanceof ApiError) || error.status !== 400 || !error.detail) {
-    return;
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(error.detail);
-  } catch (parseError) {
-    logger.debug("Non-JSON device code error body", parseError);
-    return;
-  }
-  if (
-    !body ||
-    typeof body !== "object" ||
-    !("error" in body) ||
-    body.error !== "invalid_scope" ||
-    !("error_description" in body) ||
-    typeof body.error_description !== "string"
-  ) {
-    return;
-  }
-  const description = body.error_description;
-  const requested = scope.split(" ");
-  const rejected = requested.some(
-    (s) => NEWER_DEFAULT_SCOPES.includes(s) && description.includes(s),
-  );
-  const remaining = requested.filter((s) => !NEWER_DEFAULT_SCOPES.includes(s));
-  return rejected && remaining.length > 0 ? remaining.join(" ") : undefined;
-}
-
-/** POST one device-code request with exactly `scope`. */
-async function postDeviceCodeRequest(scope: string, loginHint?: string) {
   const clientId = getClientId();
   const host = getSentryUrl();
   const response = await fetchWithConnectionError(
