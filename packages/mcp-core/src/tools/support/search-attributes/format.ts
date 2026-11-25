@@ -106,11 +106,14 @@ export function buildListResult({
   if (attributes.length === 0) {
     notes.push(...noneSeenNotes(noun, period));
   } else {
-    const queryNote = query
-      ? `None of the ${noun} searched match this query. Try another \`query\`, or omit \`query\` to list every attribute.`
-      : "There is no pagination. Input a `query` to narrow down your search.";
+    // A query only reaches this list when matching couldn't run, which
+    // fallbackNote explains, so the list is not a search result.
+    if (!query) {
+      notes.push(
+        "There is no pagination. Input a `query` to narrow down your search.",
+      );
+    }
     notes.push(
-      queryNote,
       ...(mayBeIncomplete ? [KEY_CAP_NOTE] : []),
       `Use a key with \`${associatedTool}\` to query its values.`,
     );

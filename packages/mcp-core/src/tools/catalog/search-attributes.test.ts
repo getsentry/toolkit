@@ -528,7 +528,11 @@ describe("search_attributes", () => {
         });
 
         expect(output.resultType).toBe("list");
-        expect(output.notes[0]).toBe(note);
+        // Matching never ran, so nothing says the query matched nothing.
+        expect(output.notes).toEqual([
+          note,
+          "Use a key with `search_traces` to query its values.",
+        ]);
         expect(output.attributes.length).toBeGreaterThan(0);
       },
     );
