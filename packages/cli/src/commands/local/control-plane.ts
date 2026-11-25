@@ -34,7 +34,7 @@ import {
 } from "./event-lookup.js";
 import { summarizeEnvelope } from "./event-summary.js";
 import type { ParsedReceiverEnvelope } from "./envelope.js";
-import { isLoopbackHost } from "./loopback.js";
+import { isLoopbackHost, normalizeLocalHostname } from "./loopback.js";
 import {
   buildSSEHandler,
   MAX_BODY_BYTES,
@@ -44,6 +44,7 @@ import { logger } from "../../lib/logger.js";
 import {
   AMBIGUOUS_SESSION_CODE,
   createLocalSessionStore,
+  type LocalSession,
   type LocalSessionChoice,
   type LocalSessionStore,
   SESSION_CHOICE_HEADER,
@@ -85,6 +86,28 @@ const SESSION_INGEST_RE = new RegExp(
 );
 const VIEWER_SESSIONS_PATH = "/_local/v1/ui/sessions";
 const SESSION_STREAM_RE = /^\/_local\/v1\/sessions\/[^/]+\/stream$/;
+
+/**
+ * Host and port for a session DSN. SDKs without Spotlight support (Go, Rust)
+ * resolve `localhost` on their own and can pick the other IP family than the
+ * daemon bound, so the DSN names the address the request arrived on. Requests
+ * that carry no socket (tests) fall back to 127.0.0.1 for `localhost`.
+ */
+function dsnAuthority(c: Context, host: string, port: number): string {
+  const env: unknown = c.env;
+  const local =
+    typeof env === "object" && env !== null && "incoming" in env
+      ? (env as { incoming?: { socket?: { localAddress?: unknown } } }).incoming
+          ?.socket?.localAddress
+      : undefined;
+  const address =
+    typeof local === "string" && isLoopbackHost(local)
+      ? local
+      : normalizeLocalHostname(host) === "localhost"
+        ? "127.0.0.1"
+        : host;
+  return new URL(formatLocalServerUrl(address, port)).host;
+}
 
 /** Authenticated HTTP application and its in-memory session registry. */
 export type LocalControlPlane = {
@@ -448,20 +471,26 @@ export function createLocalControlPlane({
     return c.json({ sessions: sessionStore.list() });
   });
 
+  /** A session with the capability URLs and DSN that its owner may hand out. */
+  const sessionWithCapabilities = (c: Context, session: LocalSession) => {
+    const capabilities = sessionStore.getCapabilities(session.id);
+    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
+    const ingestPath = `${path}/ingest/${capabilities.ingest}`;
+    return {
+      ...session,
+      directoryUrl,
+      ingestUrl: `${baseUrl}${ingestPath}`,
+      streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
+      dsn: `http://key@${dsnAuthority(c, host, port)}${ingestPath}/0`,
+    };
+  };
+
   app.get(`${CONTROL_PLANE_PREFIX}/sessions/:id`, (c) => {
     const id = routeSessionId(c);
     if (!id) {
       return c.body(null, 404);
     }
-    const session = sessionStore.resolve(id);
-    const capabilities = sessionStore.getCapabilities(session.id);
-    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
-    return c.json({
-      ...session,
-      directoryUrl,
-      ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
-      streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
-    });
+    return c.json(sessionWithCapabilities(c, sessionStore.resolve(id)));
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions`, async (c) => {
@@ -476,15 +505,18 @@ export function createLocalControlPlane({
       typeof (input as { label?: unknown }).label !== "string" ||
       typeof (input as { cwd?: unknown }).cwd !== "string" ||
       ("clientId" in input &&
-        typeof (input as { clientId?: unknown }).clientId !== "string")
+        typeof (input as { clientId?: unknown }).clientId !== "string") ||
+      ("reuse" in input &&
+        typeof (input as { reuse?: unknown }).reuse !== "boolean")
     ) {
       return c.json({ error: "label and cwd are required." }, 400);
     }
-    const { clientId, label, cwd, maxEnvelopes } = input as {
+    const { clientId, label, cwd, maxEnvelopes, reuse } = input as {
       clientId?: string;
       label: string;
       cwd: string;
       maxEnvelopes?: number;
+      reuse?: boolean;
     };
     if (maxEnvelopes !== undefined) {
       try {
@@ -496,18 +528,21 @@ export function createLocalControlPlane({
       }
     }
     sessionStore.pruneExpired();
+    // A run joins the open session with its name, so concurrent runs share
+    // one session instead of creating look-alikes; it releases on exit.
+    if (reuse) {
+      const lease = sessionStore.acquire({ label, cwd, maxEnvelopes });
+      return c.json(
+        {
+          ...sessionWithCapabilities(c, lease.session),
+          reused: lease.reused,
+          leaseId: lease.leaseId,
+        },
+        lease.reused ? 200 : 201,
+      );
+    }
     const session = sessionStore.create({ clientId, label, cwd, maxEnvelopes });
-    const capabilities = sessionStore.getCapabilities(session.id);
-    const path = `${CONTROL_PLANE_PREFIX}/sessions/${session.id}`;
-    return c.json(
-      {
-        ...session,
-        directoryUrl,
-        ingestUrl: `${baseUrl}${path}/ingest/${capabilities.ingest}`,
-        streamUrl: `${baseUrl}${path}/stream?cap=${capabilities.stream}`,
-      },
-      201,
-    );
+    return c.json(sessionWithCapabilities(c, session), 201);
   });
 
   // Node SDK Spotlight transports send pathname only, so the ingest capability
@@ -575,6 +610,15 @@ export function createLocalControlPlane({
     if (c.req.query("cap") !== capabilities.stream) {
       return c.body(null, 401);
     }
+    // A run's tail names its lease. Once the run has had no tail for a short
+    // grace, the lease ends, so a run that is killed or loses its terminal
+    // cannot keep the session open, while a tail that reconnects keeps it.
+    const requestedLease = c.req.query("lease");
+    const leaseId =
+      requestedLease !== undefined &&
+      sessionStore.attachLease(id, requestedLease)
+        ? requestedLease
+        : undefined;
     return streamSSE(c, async (stream) => {
       const retention = sessionStore.getRetention(id);
       // Serialize metadata and envelopes so a close notification is the final
@@ -649,6 +693,9 @@ export function createLocalControlPlane({
         unsubscribeSettings();
         unsubscribeOversized();
         unsubscribeSession();
+        if (leaseId !== undefined) {
+          sessionStore.detachLease(id, leaseId);
+        }
       }
     });
   });
@@ -690,6 +737,39 @@ export function createLocalControlPlane({
     }
     sessionStore.reset(id);
     return c.body(null, 204);
+  });
+
+  app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/release`, async (c) => {
+    const id = routeSessionId(c, "write");
+    if (!id) {
+      return c.body(null, 404);
+    }
+    const input = await c.req.json<unknown>().catch(() => undefined);
+    const { leaseId, discardIfEmpty } =
+      typeof input === "object" && input !== null
+        ? (input as { leaseId?: unknown; discardIfEmpty?: unknown })
+        : {};
+    if (typeof leaseId !== "string") {
+      return c.json({ error: "leaseId is required." }, 400);
+    }
+    const session = sessionStore.release(id, leaseId);
+    if (discardIfEmpty !== true || session.state !== "retained") {
+      return c.json(session);
+    }
+    // An ingest admitted before the close may still be reading or decoding
+    // its body, so the buffer can look empty for a moment. Let it land, then
+    // remove the session only if it is still empty.
+    await drainReceiver(sessionStore.getBuffer(id));
+    if (sessionStore.discardIfEmpty(id)) {
+      return c.body(null, 204);
+    }
+    try {
+      return c.json(sessionStore.resolve(id));
+    } catch (error) {
+      // A concurrent release of the same session removed it while it drained.
+      logger.debug("Local session was removed while it drained", error);
+      return c.body(null, 204);
+    }
   });
 
   app.post(`${CONTROL_PLANE_PREFIX}/sessions/:id/close`, (c) => {

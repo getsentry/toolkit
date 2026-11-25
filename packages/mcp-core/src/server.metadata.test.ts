@@ -56,9 +56,7 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * PENDING: tools whose outputSchema has not landed yet. Delete an entry when
  * its PR merges; a test below fails until you do.
  */
-const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
-  search_attributes: "pending: experimental-only, no outputSchema PR yet",
-};
+const OUTPUT_SCHEMA_PENDING: Record<string, string> = {};
 
 const CATALOG_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

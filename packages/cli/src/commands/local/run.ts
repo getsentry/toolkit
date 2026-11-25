@@ -17,8 +17,9 @@
  */
 
 import type { ChildProcess, StdioOptions } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
-import { basename, resolve } from "node:path";
+import { basename, join, resolve, win32 } from "node:path";
 import type { Hono } from "hono";
 import type { SentryContext } from "../../context.js";
 import { sentry } from "../../lib/app-identity.js";
@@ -69,7 +70,10 @@ import {
 } from "../../lib/wrangler.js";
 import {
   createLocalDaemonSession,
-  retainLocalDaemonSession,
+  type LocalDaemonSession,
+  leasedStreamUrl,
+  releaseLocalDaemonSession,
+  warnMaxEnvelopesIgnoredOnJoin,
 } from "./daemon.js";
 import {
   buildApp,
@@ -128,6 +132,83 @@ export const CLIENT_SPOTLIGHT_PREFIXES = [
   "VUE_APP_", // Vue CLI
   "GATSBY_", // Gatsby
 ] as const;
+
+/**
+ * Programs whose Sentry SDKs reach a session only through SENTRY_DSN: Go,
+ * Rust, and Elixir have no Spotlight support, and Ruby keeps only the host and
+ * port of SENTRY_SPOTLIGHT, which loses the session path.
+ */
+const SESSION_DSN_PROGRAMS = new Set([
+  "go",
+  "cargo",
+  "mix",
+  "iex",
+  "elixir",
+  "ruby",
+  "bundle",
+  "rails",
+  "rake",
+  "rackup",
+  "puma",
+  "sidekiq",
+  "rspec",
+]);
+
+/** Process managers that a Ruby project, one with a Gemfile, starts through. */
+const RUBY_PROJECT_RUNNERS = new Set(["foreman", "overmind"]);
+
+/** A script in the project's `bin/`, such as Rails' `bin/dev`. */
+const BIN_SCRIPT_RE = /^(?:\.[\\/])?bin[\\/]/;
+
+/**
+ * Whether a session run should hand the app its DSN: the detected app takes
+ * only a DSN, the program is one whose SDK does, or a Ruby project starts
+ * through a process manager or a `bin/` script. Not for SDKs that reach the
+ * session through SENTRY_SPOTLIGHT (Node.js, Python): they also read
+ * SENTRY_DSN and would send every event twice.
+ */
+export function needsSessionDsn(
+  args: readonly string[],
+  { dsnOnlyApp = false, rubyProject = false } = {},
+): boolean {
+  if (dsnOnlyApp) {
+    return true;
+  }
+  const command = args[0] ?? "";
+  const program = win32
+    .basename(command)
+    .toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/, "");
+  if (SESSION_DSN_PROGRAMS.has(program)) {
+    return true;
+  }
+  return (
+    rubyProject &&
+    (RUBY_PROJECT_RUNNERS.has(program) || BIN_SCRIPT_RE.test(command))
+  );
+}
+
+/** Dotenv files whose SENTRY_DSN an app may load over the session DSN. */
+const DOTENV_FILES = [".env", ".env.local", ".env.development"];
+
+/** Matches a `SENTRY_DSN=` line in a dotenv file. */
+const DOTENV_DSN_RE = /^\s*(?:export\s+)?SENTRY_DSN\s*=/m;
+
+/** The first dotenv file in `cwd` that sets SENTRY_DSN, if any. */
+function dotenvWithDsn(cwd: string): string | undefined {
+  return DOTENV_FILES.find((name) => {
+    const path = join(cwd, name);
+    if (!existsSync(path)) {
+      return false;
+    }
+    try {
+      return DOTENV_DSN_RE.test(readFileSync(path, "utf-8"));
+    } catch (error) {
+      logger.debug(`Could not read ${name}`, error);
+      return false;
+    }
+  });
+}
 
 /**
  * Shut down a background server, closing all connections so keep-alive
@@ -501,9 +582,9 @@ function buildChildEnv(
 async function resolveArgs(
   stripped: string[],
   cwd: string,
-): Promise<{ args: string[]; commandSource: string }> {
+): Promise<{ args: string[]; commandSource: string; dsnOnlyApp: boolean }> {
   if (stripped.length > 0) {
-    return { args: stripped, commandSource: "" };
+    return { args: stripped, commandSource: "", dsnOnlyApp: false };
   }
   const detected = await detectDevCommand(cwd);
   if (!detected) {
@@ -513,7 +594,11 @@ async function resolveArgs(
   if (detected.hint) {
     logger.warn(detected.hint);
   }
-  return { args: detected.args, commandSource: detected.source };
+  return {
+    args: detected.args,
+    commandSource: detected.source,
+    dsnOnlyApp: detected.dsnOnly === true,
+  };
 }
 
 export const runCommand = buildCommand({
@@ -530,8 +615,14 @@ export const runCommand = buildCommand({
       "What your SDK needs:\n" +
       "  - Node.js, Python, and Ruby servers read SENTRY_SPOTLIGHT on their own.\n" +
       "  - PHP needs 'spotlight' => getenv('SENTRY_SPOTLIGHT') in its options.\n" +
-      "  - Go and Rust have no Spotlight support. Set\n" +
-      "    SENTRY_DSN=http://key@localhost:<port>/0 and pin that --port.\n" +
+      "  - Go, Rust, Deno, and Elixir have no Spotlight support. Without\n" +
+      "    --session, set SENTRY_DSN=http://key@localhost:<port>/0 and pin\n" +
+      "    that --port.\n" +
+      "  - With --session, Go, Rust, Elixir, and Ruby commands and detected\n" +
+      "    apps, and bin/ scripts or foreman in a project with a Gemfile, get\n" +
+      "    the session's DSN as SENTRY_DSN unless it is already set. Other\n" +
+      "    commands, such as compiled binaries, can take the dsn from\n" +
+      "    'local session view <session> --json'.\n" +
       "  - Browser SDKs ignore the prefixed variables. Add\n" +
       "    spotlightBrowserIntegration({ sidecarUrl: <the variable> }).\n" +
       "  - Cloudflare Workers (wrangler dev) need\n" +
@@ -644,7 +735,8 @@ export const runCommand = buildCommand({
       session: {
         kind: "parsed",
         parse: parseText,
-        brief: "Create a daemon-owned telemetry session with this label",
+        brief:
+          "Capture into the open daemon session with this label, or create one",
         optional: true,
       },
     },
@@ -671,7 +763,10 @@ export const runCommand = buildCommand({
     validateOpenHost(flags.open, flags.host);
 
     const stripped = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
-    const { args, commandSource } = await resolveArgs(stripped, this.cwd);
+    const { args, commandSource, dsnOnlyApp } = await resolveArgs(
+      stripped,
+      this.cwd,
+    );
 
     if (flags.verify) {
       yield* runWithVerify(args, flags, this.cwd, commandSource);
@@ -680,13 +775,29 @@ export const runCommand = buildCommand({
 
     const port = flags.port ?? DEFAULT_PORT;
     let url = formatLocalServerUrl(flags.host, port);
+    let daemonSession: LocalDaemonSession | undefined;
     let daemonSessionId: string | undefined;
     let daemonIngestUrl: string | undefined;
     let daemonStreamUrl: string | undefined;
     let daemonDirectoryUrl: string | undefined;
+    let daemonDsn: string | undefined;
 
     const useJson = flags.format === "json";
     const activeFilters = new Set(flags.filter);
+    // Gives back the run's lease. With discardIfEmpty, an empty session that
+    // this run created is removed instead of retained. A failure here must not
+    // hide why the run stopped; the daemon also drops the lease when the
+    // run's stream closes.
+    const releaseSession = async (discardIfEmpty: boolean) => {
+      if (!daemonSession) {
+        return;
+      }
+      try {
+        await releaseLocalDaemonSession(daemonSession, { discardIfEmpty });
+      } catch (error) {
+        logger.debug("Could not release the Local session", error);
+      }
+    };
     const tail = flags.session
       ? await (async () => {
           const session = await createLocalDaemonSession({
@@ -695,18 +806,32 @@ export const runCommand = buildCommand({
             host: flags.host,
             label: flags.session || basename(this.cwd),
             port,
+            reuse: true,
           });
+          if (session.reused) {
+            logger.info(
+              `Joining open session ${bold(session.label)} (${session.id})`,
+            );
+          }
+          warnMaxEnvelopesIgnoredOnJoin(session, flags["max-envelopes"]);
+          daemonSession = session;
           daemonSessionId = session.id;
+          daemonDsn = session.dsn;
           daemonIngestUrl = session.ingestUrl;
           daemonStreamUrl = session.streamUrl;
           daemonDirectoryUrl = session.directoryUrl;
-          return attachToExistingServer({
-            activeFilters,
-            showAttributes: flags.attributes,
-            streamUrl: session.streamUrl,
-            url: new URL(session.streamUrl).origin,
-            useJson,
-          });
+          try {
+            return attachToExistingServer({
+              activeFilters,
+              showAttributes: flags.attributes,
+              streamUrl: leasedStreamUrl(session),
+              url: new URL(session.streamUrl).origin,
+              useJson,
+            });
+          } catch (err) {
+            await releaseSession(true);
+            throw err;
+          }
         })()
       : await openEventTail({
           maxEnvelopes: flags["max-envelopes"],
@@ -717,36 +842,63 @@ export const runCommand = buildCommand({
           useJson,
           showAttributes: flags.attributes,
         });
-    url = tail.url;
-    const viewerStreamUrl = daemonStreamUrl ?? url;
-    printLocalViewerHint(viewerStreamUrl, useJson);
+    let wrangler: Awaited<ReturnType<typeof injectWranglerSpotlightBinding>>;
+    let childEnv: ReturnType<typeof buildChildEnv>;
+    try {
+      url = tail.url;
+      const viewerStreamUrl = daemonStreamUrl ?? url;
+      printLocalViewerHint(viewerStreamUrl, useJson);
 
-    await openLocalUiIfRequested(
-      flags.open,
-      viewerStreamUrl,
-      daemonDirectoryUrl,
-    );
+      await openLocalUiIfRequested(
+        flags.open,
+        viewerStreamUrl,
+        daemonDirectoryUrl,
+      );
 
-    const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
-    const wrangler = await injectWranglerSpotlightBinding(
-      args,
-      spotlightUrl,
-      this.cwd,
-    );
-    if (wrangler.injected) {
-      logger.info(wranglerInjectedMessage());
+      const spotlightUrl = daemonIngestUrl ?? `${url}/stream`;
+      wrangler = await injectWranglerSpotlightBinding(
+        args,
+        spotlightUrl,
+        this.cwd,
+      );
+      if (wrangler.injected) {
+        logger.info(wranglerInjectedMessage());
+      }
+      // A session's Wrangler binding carries its ingest capability.
+      logger.info(
+        `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
+      );
+      // Only when the user set no DSN and the app reaches sessions only that way.
+      const childDsn =
+        daemonDsn &&
+        !process.env["SENTRY_DSN"] &&
+        needsSessionDsn(args, {
+          dsnOnlyApp,
+          rubyProject: existsSync(join(this.cwd, "Gemfile")),
+        })
+          ? daemonDsn
+          : undefined;
+      const dotenv = childDsn ? dotenvWithDsn(this.cwd) : undefined;
+      if (dotenv) {
+        logger.warn(
+          `${dotenv} also sets SENTRY_DSN. Dotenv loaders that keep existing variables will use the session DSN instead.`,
+        );
+      }
+      logger.info(
+        daemonSessionId
+          ? `${childDsn ? "SENTRY_SPOTLIGHT and SENTRY_DSN" : "SENTRY_SPOTLIGHT"} configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL and DSN.`
+          : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
+      );
+
+      childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
+      if (childDsn) {
+        childEnv["SENTRY_DSN"] = childDsn;
+      }
+    } catch (err) {
+      await tail.cleanup();
+      await releaseSession(true);
+      throw err;
     }
-    // A session's Wrangler binding carries its ingest capability.
-    logger.info(
-      `Starting: ${bold(redactCredentialText(wrangler.args.join(" ")))}`,
-    );
-    logger.info(
-      daemonSessionId
-        ? `SENTRY_SPOTLIGHT configured for session ${daemonSessionId}. Use ${sentry`local session view ${daemonSessionId} --json`} for its ingest URL.`
-        : `SENTRY_SPOTLIGHT=${spotlightUrl}`,
-    );
-
-    const childEnv = buildChildEnv(spotlightUrl, commandSource, this.cwd);
 
     const ownGroup = startsOwnProcessGroup();
     let child: ChildProcess;
@@ -762,9 +914,7 @@ export const runCommand = buildCommand({
       forwardChildOutput(child, useJson);
     } catch (err) {
       await tail.cleanup();
-      if (daemonSessionId) {
-        await retainLocalDaemonSession(daemonSessionId);
-      }
+      await releaseSession(true);
       throw spawnFailureError(wrangler.args[0] ?? "", err, this.cwd);
     }
 
@@ -807,6 +957,8 @@ export const runCommand = buildCommand({
     }
 
     let exit: ChildExit;
+    // An app that never started leaves no telemetry worth keeping.
+    let spawnFailed = false;
     try {
       exit = await new Promise<ChildExit>((done, fail) => {
         let settled = false;
@@ -820,6 +972,7 @@ export const runCommand = buildCommand({
           logger.debug(`Child process error: ${err.message}`);
           if (!settled) {
             settled = true;
+            spawnFailed = true;
             fail(spawnFailureError(wrangler.args[0] ?? "", err, this.cwd));
           }
         });
@@ -840,9 +993,7 @@ export const runCommand = buildCommand({
       process.removeListener("SIGTERM", onSigterm);
       process.removeListener("SIGHUP", onSighup);
       await tail.cleanup();
-      if (daemonSessionId) {
-        await retainLocalDaemonSession(daemonSessionId);
-      }
+      await releaseSession(spawnFailed);
     }
 
     // How the app ends once --timeout stops it depends on the app (0, 143,

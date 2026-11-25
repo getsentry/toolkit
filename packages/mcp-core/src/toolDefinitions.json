@@ -13381,6 +13381,164 @@
       },
       "required": ["organizationSlug"]
     },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string",
+          "enum": ["spans", "logs", "metrics"]
+        },
+        "period": {
+          "type": "string"
+        },
+        "query": {
+          "type": ["string", "null"]
+        },
+        "resultType": {
+          "type": "string",
+          "enum": ["list", "matches"],
+          "description": "list: the dataset's attributes. matches: the attributes that answer query."
+        },
+        "best": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["string", "number", "boolean", "array"]
+                },
+                "addedBySentry": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": ["string", "null"]
+                },
+                "examples": {
+                  "type": "array",
+                  "items": {
+                    "type": ["string", "number", "boolean"]
+                  }
+                },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deprecated": {
+                  "type": "boolean"
+                },
+                "replacementKey": {
+                  "description": "The key that replaces this one, when it's deprecated.",
+                  "type": ["string", "null"]
+                }
+              },
+              "required": [
+                "key",
+                "type",
+                "addedBySentry",
+                "description",
+                "examples",
+                "aliases",
+                "deprecated",
+                "replacementKey"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "With matches, the one key that clearly answers query, if any."
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "The exact key to use with search_traces, search_logs, or search_metrics."
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "array"]
+              },
+              "addedBySentry": {
+                "type": "boolean"
+              },
+              "description": {
+                "type": ["string", "null"]
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "type": ["string", "number", "boolean"]
+                }
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "deprecated": {
+                "type": "boolean"
+              },
+              "replacementKey": {
+                "description": "The key that replaces this one, when it's deprecated.",
+                "type": ["string", "null"]
+              }
+            },
+            "required": [
+              "key",
+              "type",
+              "addedBySentry",
+              "description",
+              "examples",
+              "aliases",
+              "deprecated",
+              "replacementKey"
+            ],
+            "additionalProperties": false
+          },
+          "description": "With list, the attributes shown. With matches, the other candidates, most relevant first."
+        },
+        "totalAttributes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "How many attributes this result was picked from, before limit."
+        },
+        "presentationHint": {
+          "description": "How best to present this data.",
+          "type": ["string", "null"]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "dataset",
+        "period",
+        "query",
+        "resultType",
+        "best",
+        "attributes",
+        "totalAttributes",
+        "presentationHint",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
     "requiredScopes": ["event:read"],
     "skills": ["inspect"],
     "surface": "direct"

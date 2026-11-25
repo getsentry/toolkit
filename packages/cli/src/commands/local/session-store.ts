@@ -18,6 +18,14 @@ import type { LocalSessionEvent } from "./viewer-protocol.js";
 /** Retained sessions remain queryable for three hours after closing. */
 export const SESSION_RETENTION_MS = 3 * 60 * 60 * 1000;
 
+/**
+ * How long a lease may go without one of the run's stream connections before
+ * it is dropped. A run opens its stream right after it takes the lease, and
+ * reconnects within seconds when the stream drops, so only a run that died
+ * stays away this long.
+ */
+export const LEASE_GRACE_MS = 15 * 1000;
+
 /** Open lease or a closed session retained for later queries. */
 export type LocalSessionState = "open" | "retained";
 
@@ -39,6 +47,15 @@ type StoredSession = LocalSession & {
   retention: LocalRetentionBuffer;
   ingestCapability: string;
   streamCapability: string;
+  /**
+   * Leases of the runs that joined through `acquire`, by lease ID, with the
+   * run's open stream connections. A lease with none since `idleSince` for
+   * {@link LEASE_GRACE_MS} is dropped, so a killed run cannot hold the
+   * session open, while a run whose stream reconnects keeps it.
+   */
+  leases: Map<string, { connections: number; idleSince: number }>;
+  /** Created by `acquire`, so its last lease closes it. */
+  closesWithLeases: boolean;
 };
 
 /** Session label, working directory, and optional retry idempotency key. */
@@ -75,6 +92,36 @@ export type LocalSessionChoice = {
 /** In-memory session lifecycle and access to isolated telemetry buffers. */
 export type LocalSessionStore = {
   create: (input: CreateLocalSessionInput) => LocalSession;
+  /**
+   * Join the newest open session with this label, or create one, and take a
+   * lease on it. A session that `acquire` created closes when its last lease
+   * is released; one made by `create` stays open until `close`.
+   */
+  acquire: (input: CreateLocalSessionInput) => {
+    session: LocalSession;
+    reused: boolean;
+    leaseId: string;
+  };
+  /**
+   * Count a stream connection of the lease's run. Returns false for a lease
+   * the session doesn't hold.
+   */
+  attachLease: (id: string, leaseId: string) => boolean;
+  /**
+   * End a stream connection counted by {@link attachLease}. When it was the
+   * last one, the lease is dropped unless the run reconnects within
+   * {@link LEASE_GRACE_MS}.
+   */
+  detachLease: (id: string, leaseId: string) => void;
+  /** Give back a lease, closing a session that runs created with its last. */
+  release: (id: string, leaseId: string) => LocalSession;
+  /**
+   * Remove a session that runs created, that closed with its last lease, and
+   * that holds no envelope. Call it only after the session's receiver has
+   * drained, so an ingest admitted before the close is not lost. Returns
+   * whether the session was removed.
+   */
+  discardIfEmpty: (id: string) => boolean;
   setMaxEnvelopes: (reference: string, value: number) => Promise<LocalSession>;
   getRetention: (reference: string) => LocalRetentionBuffer;
   close: (reference: string) => LocalSession;
@@ -96,12 +143,19 @@ export type LocalSessionStore = {
   resolve: (reference: string) => LocalSession;
 };
 
+/** Newest first; the ID breaks ties between sessions created together. */
+function newestFirst(left: LocalSession, right: LocalSession): number {
+  return right.createdAt - left.createdAt || (left.id < right.id ? 1 : -1);
+}
+
 function toPublicSession(session: StoredSession): LocalSession {
   const {
     buffer: _buffer,
     retention: _retention,
     ingestCapability: _ingestCapability,
     streamCapability: _streamCapability,
+    leases: _leases,
+    closesWithLeases: _closesWithLeases,
     ...publicSession
   } = session;
   return publicSession;
@@ -135,8 +189,8 @@ export function createLocalSessionStore({
 
   /**
    * Resolve a session ID, or a name to the newest of its open sessions, or to
-   * its newest session when none is open. Names repeat because each
-   * `local run --session` creates a session.
+   * its newest session when none is open. Names repeat because a run that
+   * finds no open session with its name creates one.
    */
   const chooseStored = (
     reference: string,
@@ -147,10 +201,7 @@ export function createLocalSessionStore({
     }
     const named = [...sessions.values()]
       .filter((session) => session.label === reference)
-      .sort(
-        (left, right) =>
-          right.createdAt - left.createdAt || (left.id < right.id ? 1 : -1),
-      );
+      .sort(newestFirst);
     const open = named.filter((session) => session.state === "open");
     const [session] = open.length > 0 ? open : named;
     if (!session) {
@@ -172,35 +223,159 @@ export function createLocalSessionStore({
     return next;
   };
 
+  const createStored = (
+    {
+      clientId,
+      label,
+      cwd,
+      maxEnvelopes = DEFAULT_MAX_ENVELOPES,
+    }: CreateLocalSessionInput,
+    leased: boolean,
+  ): StoredSession => {
+    const timestamp = now();
+    const retention = createLocalRetentionBuffer(maxEnvelopes);
+    const session: StoredSession = {
+      id: uuidv7(),
+      clientId,
+      label,
+      cwd,
+      createdAt: timestamp,
+      lastActivityAt: timestamp,
+      state: "open",
+      buffer: retention.buffer,
+      retention,
+      maxEnvelopes,
+      ingestCapability: randomBytes(24).toString("base64url"),
+      streamCapability: randomBytes(24).toString("base64url"),
+      leases: new Map(),
+      closesWithLeases: leased,
+    };
+    sessions.set(session.id, session);
+    if (clientId) {
+      clientSessions.set(clientId, session.id);
+    }
+    changed();
+    return session;
+  };
+
+  const closeStored = (session: StoredSession): StoredSession => {
+    if (session.state === "retained") return session;
+    const timestamp = now();
+    const closed = update(session, {
+      state: "retained",
+      lastActivityAt: timestamp,
+      expiresAt: timestamp + SESSION_RETENTION_MS,
+    });
+    notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
+    changed();
+    return closed;
+  };
+
+  const removeStored = (id: string) => {
+    const session = sessions.get(id);
+    if (session?.clientId && clientSessions.get(session.clientId) === id) {
+      clientSessions.delete(session.clientId);
+    }
+    sessions.delete(id);
+    listeners.delete(id);
+  };
+
+  /** Check for idle leases once the grace for one starting now is over. */
+  const scheduleLeaseCheck = () => {
+    setTimeout(dropStaleLeases, LEASE_GRACE_MS + 100).unref();
+  };
+
+  const takeLease = (session: StoredSession): string => {
+    const leaseId = randomBytes(16).toString("base64url");
+    session.leases.set(leaseId, { connections: 0, idleSince: now() });
+    scheduleLeaseCheck();
+    return leaseId;
+  };
+
+  /** Close a session that runs created once none of them holds it. */
+  const closeIfUnleased = (session: StoredSession): StoredSession =>
+    session.state === "open" &&
+    session.closesWithLeases &&
+    session.leases.size === 0
+      ? closeStored(session)
+      : session;
+
+  /** Drop leases whose run has had no stream for the grace, as when killed. */
+  function dropStaleLeases() {
+    const cutoff = now() - LEASE_GRACE_MS;
+    for (const session of sessions.values()) {
+      let dropped = false;
+      for (const [leaseId, lease] of session.leases) {
+        if (lease.connections === 0 && lease.idleSince <= cutoff) {
+          session.leases.delete(leaseId);
+          dropped = true;
+        }
+      }
+      if (dropped) closeIfUnleased(session);
+    }
+  }
+
   return {
-    create({ clientId, label, cwd, maxEnvelopes = DEFAULT_MAX_ENVELOPES }) {
-      validateMaxEnvelopes(maxEnvelopes);
-      const existingId = clientId ? clientSessions.get(clientId) : undefined;
+    create(input) {
+      validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
+      const existingId = input.clientId
+        ? clientSessions.get(input.clientId)
+        : undefined;
       if (existingId) {
         return toPublicSession(resolveStored(existingId));
       }
-      const timestamp = now();
-      const retention = createLocalRetentionBuffer(maxEnvelopes);
-      const session: StoredSession = {
-        id: uuidv7(),
-        clientId,
-        label,
-        cwd,
-        createdAt: timestamp,
-        lastActivityAt: timestamp,
-        state: "open",
-        buffer: retention.buffer,
-        retention,
-        maxEnvelopes,
-        ingestCapability: randomBytes(24).toString("base64url"),
-        streamCapability: randomBytes(24).toString("base64url"),
+      return toPublicSession(createStored(input, false));
+    },
+    acquire(input) {
+      validateMaxEnvelopes(input.maxEnvelopes ?? DEFAULT_MAX_ENVELOPES);
+      dropStaleLeases();
+      const [open] = [...sessions.values()]
+        .filter(
+          (session) =>
+            session.label === input.label && session.state === "open",
+        )
+        .sort(newestFirst);
+      const session = open ?? createStored(input, true);
+      return {
+        leaseId: takeLease(session),
+        session: toPublicSession(session),
+        reused: open !== undefined,
       };
-      sessions.set(session.id, session);
-      if (clientId) {
-        clientSessions.set(clientId, session.id);
+    },
+    attachLease(id, leaseId) {
+      const lease = resolveStored(id).leases.get(leaseId);
+      if (lease) lease.connections += 1;
+      return lease !== undefined;
+    },
+    detachLease(id, leaseId) {
+      const lease = sessions.get(id)?.leases.get(leaseId);
+      if (!lease || lease.connections === 0) {
+        return;
       }
+      lease.connections -= 1;
+      if (lease.connections === 0) {
+        lease.idleSince = now();
+        scheduleLeaseCheck();
+      }
+    },
+    release(id, leaseId) {
+      const session = resolveStored(id);
+      session.leases.delete(leaseId);
+      return toPublicSession(closeIfUnleased(session));
+    },
+    discardIfEmpty(id) {
+      const session = sessions.get(id);
+      if (
+        session?.state !== "retained" ||
+        !session.closesWithLeases ||
+        session.leases.size > 0 ||
+        session.buffer.read({ all: true }).length > 0
+      ) {
+        return false;
+      }
+      removeStored(id);
       changed();
-      return toPublicSession(session);
+      return true;
     },
     getRetention(reference) {
       return resolveStored(reference).retention;
@@ -213,17 +388,7 @@ export function createLocalSessionStore({
       );
     },
     close(reference) {
-      const session = resolveStored(reference);
-      if (session.state === "retained") return toPublicSession(session);
-      const timestamp = now();
-      const closed = update(session, {
-        state: "retained",
-        lastActivityAt: timestamp,
-        expiresAt: timestamp + SESSION_RETENTION_MS,
-      });
-      notify(session.id, { state: "retained", expiresAt: closed.expiresAt });
-      changed();
-      return toPublicSession(closed);
+      return toPublicSession(closeStored(resolveStored(reference)));
     },
     reset(reference) {
       const session = resolveStored(reference);
@@ -259,6 +424,7 @@ export function createLocalSessionStore({
     },
     list,
     pruneExpired() {
+      dropStaleLeases();
       const timestamp = now();
       const expired = [...sessions.values()]
         .filter(
@@ -268,14 +434,7 @@ export function createLocalSessionStore({
             session.expiresAt <= timestamp,
         )
         .map((session) => session.id);
-      for (const id of expired) {
-        const session = sessions.get(id);
-        if (session?.clientId && clientSessions.get(session.clientId) === id) {
-          clientSessions.delete(session.clientId);
-        }
-        sessions.delete(id);
-        listeners.delete(id);
-      }
+      for (const id of expired) removeStored(id);
       if (expired.length > 0) {
         changed();
       }

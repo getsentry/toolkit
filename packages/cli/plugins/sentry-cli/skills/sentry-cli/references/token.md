@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-token
-version: 0.51.0-dev.0
+version: 0.52.0-dev.0
 description: Manage org auth tokens
 requires:
   bins: ["sentry"]

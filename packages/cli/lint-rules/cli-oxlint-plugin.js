@@ -617,6 +617,33 @@ const rules = {
           }
         : {},
   ),
+  "no-help-argument-checks-in-commands": rule(
+    "Look `help` up as a real value first, then call throwIfHelpMatchedNothing when the lookup finds nothing.",
+    (_context, file, report) => {
+      if (!file.includes("/src/commands/")) return {};
+      const isHelp = (node) =>
+        node?.type === "Literal" && node.value === "help";
+      return {
+        BinaryExpression(node) {
+          if (
+            ["===", "!==", "==", "!="].includes(node.operator) &&
+            (isHelp(node.left) || isHelp(node.right))
+          )
+            report(node);
+        },
+        SwitchCase(node) {
+          if (isHelp(node.test)) report(node);
+        },
+        CallExpression(node) {
+          if (
+            node.callee.type === "Identifier" &&
+            node.callee.name === "isHelpArgument"
+          )
+            report(node);
+        },
+      };
+    },
+  ),
   "no-process-stdout-in-commands": rule(
     "Use CommandOutput instead of process.stdout in commands.",
     (_context, file, report) =>

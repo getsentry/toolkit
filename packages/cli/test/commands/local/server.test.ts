@@ -391,6 +391,65 @@ describe("sentry local serve --open", () => {
     }
   });
 
+  test("scoped serve joins the open session and gives back its lease instead of closing it", async () => {
+    const daemon = await import("../../../src/commands/local/daemon.js");
+    const { server, port } = await tryListen(
+      buildApp(createLocalRetentionBuffer(5).buffer),
+      0,
+      "127.0.0.1",
+    );
+    const streamUrl = `http://127.0.0.1:${port}/stream`;
+    const create = vi
+      .spyOn(daemon, "createLocalDaemonSession")
+      .mockResolvedValue({
+        id: "web",
+        cwd: "/web",
+        label: "web",
+        streamUrl,
+        ingestUrl: streamUrl,
+        reused: true,
+        leaseId: "lease-1",
+      });
+    const release = vi
+      .spyOn(daemon, "releaseLocalDaemonSession")
+      .mockResolvedValue(undefined);
+    const retain = vi.spyOn(daemon, "retainLocalDaemonSession");
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const signal = interceptShutdownSignal();
+    const func = (await serverCommand.loader()) as unknown as ServeFunc;
+    try {
+      const command = func.call(
+        { cwd: "/web" },
+        { ...flags, open: false, port, session: "web", "max-envelopes": 50 },
+      );
+      await vi.waitFor(() => expect(create).toHaveBeenCalled());
+      signal.trigger();
+      await command;
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ label: "web", reuse: true }),
+      );
+      // The joined session keeps its own limit, and serve says so.
+      expect(warn.mock.calls.map((c) => String(c[0]))).toContainEqual(
+        expect.stringContaining("--max-envelopes doesn't change"),
+      );
+      // A run that joined the session keeps it open after serve exits.
+      expect(release).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "web", leaseId: "lease-1" }),
+      );
+      expect(retain).not.toHaveBeenCalled();
+    } finally {
+      signal.restore();
+      create.mockRestore();
+      release.mockRestore();
+      retain.mockRestore();
+      warn.mockRestore();
+      await new Promise<void>((r) => {
+        server.close(() => r());
+        server.closeAllConnections();
+      });
+    }
+  });
+
   test("scoped serve prints a viewer link to its session without the capability", async () => {
     const daemon = await import("../../../src/commands/local/daemon.js");
     const { server, port } = await tryListen(

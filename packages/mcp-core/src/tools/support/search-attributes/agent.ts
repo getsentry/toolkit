@@ -1,8 +1,11 @@
 import { z } from "zod";
 import type { TraceItemAttribute } from "../../../api-client";
 import { callEmbeddedAgent } from "../../../internal/agents/callEmbeddedAgent";
-import type { SearchAttributesDataset } from "./search";
-import { keyHintsSystemPrompt, shortlistSystemPrompt } from "./config";
+import {
+  keyHintsSystemPrompt,
+  type SearchAttributesDataset,
+  shortlistSystemPrompt,
+} from "./config";
 import { flatten } from "./format";
 
 const MAX_KEY_HINTS = 5;
@@ -151,14 +154,14 @@ export function toAttributeMatches(
   attributes: TraceItemAttribute[],
   limit: number,
 ): AttributeMatches {
-  const byKey = new Map(
+  const attributesByKey = new Map(
     attributes.map((attribute) => [attribute.key, attribute]),
   );
-  const best = result.best ? byKey.get(result.best) : undefined;
+  const best = result.best ? attributesByKey.get(result.best) : undefined;
   const seen = new Set(best ? [best.key] : []);
   const candidates: TraceItemAttribute[] = [];
   for (const key of result.candidates) {
-    const attribute = byKey.get(key);
+    const attribute = attributesByKey.get(key);
     if (!attribute || seen.has(key)) continue;
     seen.add(key);
     candidates.push(attribute);
