@@ -1,8 +1,19 @@
 # Local daemon and browser viewer
 
 `local run --session <name>` and `local serve --session <name>` capture into an
-isolated session owned by a background, loopback-only daemon. The foreground
-command retains its session when it exits. Closed sessions remain queryable for
+isolated session owned by a background, loopback-only daemon. Both join the
+open session with that name and create one only when none is open, so runs at
+the same time share a session. Each holds a lease on it: a session that runs
+created closes when the last lease ends, and one made with `local session
+create` stays open until `local session close`. A lease ends when the run gives
+it back, or when the run has had no event stream open to the daemon for 15
+seconds (`LEASE_GRACE_MS` in `session-store.ts`), so a run that is killed or
+loses its terminal stops holding the session, while a run whose stream drops
+and reconnects keeps it.
+When the app cannot start, the run removes a session it created that received
+nothing, instead of keeping an empty one. The daemon closes the session first
+and waits for deliveries it already accepted, so an envelope still decoding at
+that moment keeps the session. Closed sessions remain queryable for
 three hours from the first close; each retains 500 envelopes by default. All
 telemetry disappears when the daemon stops. The daemon exits on its own once it
 has had no sessions, open or closed, for 30 seconds (`LOCAL_DAEMON_IDLE_GRACE_MS`
@@ -40,10 +51,21 @@ PHP build from a DSN such as
 `http://local@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
 Node.js and Python post to `ingestUrl` as is. Ruby uses only the host and port
 from `SENTRY_SPOTLIGHT` and posts to `/stream`, so the session path and its key
-are lost, and Ruby needs the DSN form. `local run --session` creates a new
-session on every run and sets only `SENTRY_SPOTLIGHT`, so DSN-based SDKs use a
-session from `local session create <name> --json` and run outside
-`local run`; read their events with `local event list <id>`. Those SDKs copy
+are lost, and Ruby needs the DSN form. Session create and view also return
+that DSN as `dsn`, on the IP address the daemon listens on, such as
+`http://key@127.0.0.1:<port>/_local/v1/sessions/<id>/ingest/<cap>/0`.
+`local run --session` sets `SENTRY_DSN` to it when `SENTRY_DSN` is unset and the
+app is a detected Ruby, Go, or Rust app, the command is a Go, Rust, Elixir, or
+Ruby tool (`go`, `cargo`, `mix`, `iex`, `elixir`, `ruby`, `bundle`, `rails`,
+`rake`, `rackup`, `puma`, `sidekiq`, `rspec`), or a project with a `Gemfile`
+starts through `foreman`, `overmind`, or a `bin/` script. It warns when a
+`.env`, `.env.local`, or `.env.development` file also sets `SENTRY_DSN`, since
+dotenv loaders that keep existing variables then use the session DSN. Other
+commands get only `SENTRY_SPOTLIGHT`: the Node.js and Python SDKs read both
+variables and would send every event twice, and so does a Deno app that uses
+`npm:@sentry/node`. Compiled Go and Rust binaries, and `@sentry/deno`, which
+never reads `SENTRY_DSN`, take `dsn` from `local session view <name> --json`
+by hand. Those SDKs copy
 the DSN into each envelope header, so the daemon drops the header's `dsn` key
 before it stores or streams a session envelope.
 Treat those URLs as credentials. Terminal output redacts them, including the
@@ -89,12 +111,16 @@ as their `local tail` line: `type` is `error` for an exception, `message` for
 an event without one (`captureMessage`, Python `logging`), or the item type
 (`transaction`, `log`, `span`, `session`, …). A log batch takes its `level`,
 `title`, and `timestamp` from its most severe log. A span batch takes its
-`title` and `timestamp` from its segment root: the span marked `is_segment`,
-else the span whose parent is not in the batch. A `sessions` aggregate is
-titled like the viewer, such as `Session counts: 5 exited`. `level`, `title`
+`timestamp` from its segment root, the span marked `is_segment`, else the
+span whose parent is not in the batch, and its `title` from the tail line of
+that segment, such as `GET /ok` for a request span named only `GET`. A
+`feedback` item is titled with its message, not the page or request it was
+sent from. A `sessions` aggregate is titled like the viewer, such as
+`Session counts: 5 exited`. `level`, `title`
 (cut to 200 characters), `timestamp` (ISO 8601, read like the tail reads it), and `traceId`
-appear when the item has them, `count` gives the number of logs or spans in a
-batch (not a standalone span), and `receivedAt` is
+appear when the item has them, `count` gives the number of logs in a log batch,
+or the spans in a span batch that the tail counts (`[N spans]` and
+`[+N spans]`, so not the segment spans), and `receivedAt` is
 when the receiver accepted the envelope. `event view` returns the same fields with the envelope.
 
 A session, event, or envelope that does not exist, or that retention has
@@ -148,7 +174,8 @@ daemon keeps the default port while it retains sessions. With an explicit
 
 Each session or plain receiver retains 500 envelopes by default. Set a limit from
 1 to 50,000 with `--max-envelopes` on `local session create`, `local run`, or
-`local serve`, for example:
+`local serve`. A `local run --session` that joins an open session leaves its
+limit as it is; change it with `local session retention`. For example:
 
 ```sh
 sentry local run --session web --max-envelopes 1000 -- npm run dev
@@ -261,14 +288,28 @@ View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstr
 
 Session create/view and daemon start/status summaries include the same link.
 It opens the hosted viewer and connects to the plain receiver address, so named
-sessions appear in the picker automatically. The public `url` query accepts only
-credential-free loopback `/stream` addresses; session capabilities still use the
-existing fragment connection flow. The viewer consumes the query at startup so
-reloading keeps the selected session. JSON and NDJSON output stay unchanged.
+sessions appear in the picker automatically. Output for one session (`run
+--session`, `serve --session`, and session create/view) also adds that
+session's ID, so the viewer opens it instead of the first session:
+
+```text
+View events at https://local.sentry.dev/?url=http%3A%2F%2Flocalhost%3A8969%2Fstream&session=<id>
+```
+
+The public `url` query accepts only credential-free loopback `/stream`
+addresses, and `session` is only an ID, so the link never carries a
+capability. The viewer's host can see the session ID, since query strings reach
+it, but the ID is not a credential: reading the session still needs its
+capability, which the viewer gets from the daemon directory. A session stream URL with its `?cap=` is refused in the query;
+session capabilities still use the existing fragment connection flow. The
+viewer consumes both parameters at startup so reloading keeps the selected
+session. JSON and NDJSON output stay unchanged.
 
 Connect to the daemon's plain `http://127.0.0.1:8969/stream` endpoint (using its
 actual host and port) to discover running sessions automatically. The viewer
-selects the first running session and fills the Session picker. If no sessions
+selects the session a link's `session` names when the directory lists it, and
+otherwise the first running session, and fills the Session picker. When the
+named session is not listed, it shows "Session not found, showing <label>". If no sessions
 exist yet, it waits and discovers them as they start. This works in the local
 development viewer and on <https://local.sentry.dev/>. Alternatively, run either
 command with `--session <name> --open` to start on that specific session.
@@ -393,6 +434,14 @@ sampled function rows are not counted.
 Receiver ingestion bounds encoded bodies to 10 MiB and decoded bodies to 32 MiB.
 Accepted envelopes get 200 with `{"id":"<event_id>"}`, or `{}` when the header
 has no event ID, as Relay answers; sentry-elixir retries anything else.
+A receiver or session keeps one copy of an error, transaction, or feedback
+envelope per event ID while that copy is retained; a resent copy, such as one
+from an SDK that sends to both Spotlight and a DSN, still gets 200 but is not
+stored or streamed. The event ID is the one `local event list` shows: the
+header `event_id`, else the event or transaction item's. Envelopes with no
+event ID, and other item types that reuse one (replay segments share the
+replay ID, and sentry-java and sentry-elixir give each check-in status the
+check-in ID), are all kept.
 A body that is empty, whose first line is not a JSON object, or that fails to
 decompress gets 400 with an `{"error":"…"}` reason, and the receiver keeps
 nothing for it. Oversized bodies get 413, unsupported media or

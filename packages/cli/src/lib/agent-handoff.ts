@@ -1,11 +1,14 @@
-import {
-  claimAgentHandoff,
-  type ClaimAgentHandoffResponse,
-  SentryApiError,
-} from "@sentry/api";
+import { claimAgentHandoff, SentryApiError } from "@sentry/api";
 import { parseRetryDelayMs } from "@sentry/api/client";
 import { vClaimAgentHandoffResponse } from "@sentry/api/valibot";
-import { looseObject, safeParse, string } from "valibot";
+import {
+  type InferOutput,
+  looseObject,
+  partial,
+  safeParse,
+  string,
+} from "valibot";
+import { pointDefaultUrlAtAccount } from "./account-selection.js";
 import {
   DEFAULT_SENTRY_URL,
   getConfiguredSentryUrl,
@@ -14,13 +17,29 @@ import {
 import { redactCredentialText } from "./credential-redaction.js";
 import { customFetch, warnIfSaasWithEnvCa } from "./custom-ca.js";
 import { applyCustomHeaders } from "./custom-headers.js";
-import { ApiError, HostScopeError, RateLimitError } from "./errors.js";
+import {
+  ApiError,
+  HostScopeError,
+  RateLimitError,
+  ValidationError,
+} from "./errors.js";
+import { getEnv, withEnv } from "./env.js";
+import { inheritEnvTokenHost } from "./env-token-host.js";
+import { runInteractiveLogin } from "./interactive-login.js";
 import {
   buildHostRefusalMessage,
   isAutoLoginHostTrusted,
 } from "./login-host-guard.js";
 import { normalizeHttpOrigin } from "./sentry-urls.js";
 import { bootstrapAuthentication } from "./setup-code.js";
+import { registerLoginTrustAnchor } from "./token-host.js";
+
+// Keep this override until @sentry/api ships the optional setupCode contract.
+const AgentHandoffResponseSchema = partial(vClaimAgentHandoffResponse, [
+  "setupCode",
+]);
+
+type AgentHandoffResponse = InferOutput<typeof AgentHandoffResponseSchema>;
 
 const ErrorResponseSchema = looseObject({ detail: string() });
 
@@ -63,7 +82,7 @@ function responseDetail(body: unknown): string | undefined {
 /** Claim a private handoff code from the configured Sentry instance. */
 export async function exchangeAgentHandoff(
   handoffCode: string,
-): Promise<ClaimAgentHandoffResponse> {
+): Promise<AgentHandoffResponse> {
   const { host, customHeadersTrusted } = getExchangeContext();
   const headers = new Headers();
   applyCustomHeaders(headers, host, customHeadersTrusted);
@@ -104,7 +123,7 @@ export async function exchangeAgentHandoff(
     );
   }
 
-  const parsed = safeParse(vClaimAgentHandoffResponse, result.data);
+  const parsed = safeParse(AgentHandoffResponseSchema, result.data);
   if (!parsed.success) {
     throw new ApiError(
       "Invalid response from the Sentry agent handoff endpoint",
@@ -120,15 +139,47 @@ export async function exchangeAgentHandoff(
 /** Claim a handoff and authenticate its account before returning instructions. */
 export async function completeAgentHandoff(
   handoffCode: string,
-): Promise<ClaimAgentHandoffResponse> {
+): Promise<AgentHandoffResponse> {
   const handoff = await exchangeAgentHandoff(handoffCode);
 
-  await bootstrapAuthentication({
-    code: handoff.setupCode,
-    clientId: handoff.clientId,
-    force: true,
-    url: handoff.sentryUrl,
-  });
+  if (handoff.setupCode !== undefined) {
+    await bootstrapAuthentication({
+      code: handoff.setupCode,
+      clientId: handoff.clientId,
+      force: true,
+      url: handoff.sentryUrl,
+    });
+    return handoff;
+  }
 
+  const { host } = getExchangeContext();
+  if (normalizeHttpOrigin(handoff.sentryUrl) !== host) {
+    throw new HostScopeError(
+      "The handoff response is for a different Sentry instance.",
+    );
+  }
+
+  registerLoginTrustAnchor(host);
+  const env = {
+    ...getEnv(),
+    SENTRY_HOST: host,
+    SENTRY_URL: host,
+    SENTRY_CLIENT_ID: handoff.clientId,
+  };
+  inheritEnvTokenHost(env);
+  const login = await withEnv(env, () =>
+    runInteractiveLogin({
+      expectedEmail: handoff.userEmail,
+      relayDeviceCode: true,
+    }),
+  );
+  if (!login) {
+    throw new ValidationError(
+      "Sentry handoff sign-in failed. Ask the user to copy a new handoff prompt and try again.",
+      "handoff",
+    );
+  }
+
+  pointDefaultUrlAtAccount(host);
   return handoff;
 }

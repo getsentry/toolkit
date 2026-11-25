@@ -529,17 +529,14 @@ function buildIssueSuggestedActions({
     );
   }
 
-  // experimental, like the chart view that renders it
-  if (session.experimentalMode) {
-    candidates.push(
-      buildSuggestedToolAction({
-        toolName: "render_issue_chart",
-        arguments: { organizationSlug, issueId: issue.shortId },
-        reason: "Chart this issue's events and affected users over time.",
-        ...session,
-      }),
-    );
-  }
+  candidates.push(
+    buildSuggestedToolAction({
+      toolName: "render_issue_chart",
+      arguments: { organizationSlug, issueId: issue.shortId },
+      reason: "Chart this issue's events and affected users over time.",
+      ...session,
+    }),
+  );
 
   if (aiConversations?.length) {
     candidates.push(

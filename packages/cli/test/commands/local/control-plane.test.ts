@@ -1,9 +1,10 @@
 import { request } from "node:http";
 import { gzipSync } from "node:zlib";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createLocalControlPlane } from "../../../src/commands/local/control-plane.js";
 import { tryListen } from "../../../src/commands/local/server.js";
 import {
+  LEASE_GRACE_MS,
   createLocalSessionStore,
   SESSION_CHOICE_HEADER,
   SESSION_RETENTION_MS,
@@ -687,6 +688,211 @@ describe("Local control plane", () => {
     });
   });
 
+  test("lets runs join the open session with their name and closes it after the last leaves", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const join = async () => {
+      const response = await plane.app.request("/_local/v1/sessions", {
+        method: "POST",
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as {
+          id: string;
+          reused: boolean;
+          leaseId: string;
+        },
+      };
+    };
+    const release = ({ id, leaseId }: { id: string; leaseId: string }) =>
+      plane.app.request(`/_local/v1/sessions/${id}/release`, {
+        method: "POST",
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ leaseId }),
+      });
+
+    const first = await join();
+    const second = await join();
+    expect(first).toMatchObject({ status: 201, body: { reused: false } });
+    expect(second).toMatchObject({
+      status: 200,
+      body: { id: first.body.id, reused: true },
+    });
+    await expect((await release(first.body)).json()).resolves.toMatchObject({
+      state: "open",
+    });
+    await expect((await release(second.body)).json()).resolves.toMatchObject({
+      state: "retained",
+    });
+    expect((await join()).body.id).not.toBe(first.body.id);
+    expect(plane.sessionStore.choose("web").others).toEqual([]);
+  });
+
+  test("a release that discards an empty session keeps an ingest that is still decoding", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const listening = await tryListen(plane.app, 0, "127.0.0.1");
+    const base = `http://127.0.0.1:${listening.port}`;
+    const send = (
+      path: string,
+      headers: Record<string, string>,
+      body?: string | Buffer,
+    ) => {
+      let resolveStatus: (status: number) => void = () => {};
+      const status = new Promise<number>((resolve) => {
+        resolveStatus = resolve;
+      });
+      const req = request(
+        `${base}${path}`,
+        { method: "POST", headers },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolveStatus(response.statusCode ?? 0));
+        },
+      );
+      req.on("error", () => resolveStatus(0));
+      if (body !== undefined) req.end(body);
+      return { req, status };
+    };
+    try {
+      const created = await plane.app.request(`${base}/_local/v1/sessions`, {
+        method: "POST",
+        headers: { ...controlHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+      });
+      const session = (await created.json()) as {
+        id: string;
+        leaseId: string;
+        ingestUrl: string;
+      };
+
+      // The app's last delivery is already admitted and decoding when the
+      // failed run gives the session back.
+      const attachment = Buffer.alloc(24 * 1024 * 1024);
+      const envelope = gzipSync(
+        Buffer.concat([
+          Buffer.from(
+            '{"event_id":"6f0c4a8bbd8f4c4ea0e6dfd3cf2f6a3e"}\n{"type":"event"}\n{"message":"last words"}\n' +
+              `{"type":"attachment","length":${attachment.length},"filename":"dump.bin"}\n`,
+          ),
+          attachment,
+        ]),
+      );
+      const ingest = send(
+        new URL(session.ingestUrl).pathname,
+        {
+          "Content-Type": "application/x-sentry-envelope",
+          "Content-Encoding": "gzip",
+        },
+        envelope,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const release = send(
+        `/_local/v1/sessions/${session.id}/release`,
+        { ...controlHeaders(), "Content-Type": "application/json" },
+        JSON.stringify({ leaseId: session.leaseId, discardIfEmpty: true }),
+      );
+
+      expect(await ingest.status).toBe(200);
+      expect(await release.status).toBe(200);
+      expect(plane.sessionStore.resolve(session.id).state).toBe("retained");
+      expect(
+        plane.sessionStore.getBuffer(session.id).read({ all: true }),
+      ).toHaveLength(1);
+    } finally {
+      listening.server.closeAllConnections();
+      listening.server.close();
+    }
+  });
+
+  test("ends a run's lease once its stream stays disconnected, not on a reconnect", async () => {
+    let now = 1000;
+    const plane = createLocalControlPlane({
+      controlToken: CONTROL_TOKEN,
+      sessionStore: createLocalSessionStore({ now: () => now }),
+    });
+    const response = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: { ...controlHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "web", cwd: "/work/web", reuse: true }),
+    });
+    const session = (await response.json()) as {
+      id: string;
+      leaseId: string;
+      streamUrl: string;
+    };
+    const stream = new URL(session.streamUrl);
+    stream.searchParams.set("lease", session.leaseId);
+    const tail = async () => {
+      const controller = new AbortController();
+      const opened = await plane.app.request(
+        `${stream.pathname}${stream.search}`,
+        { signal: controller.signal },
+      );
+      const reader = opened.body!.getReader();
+      await reader.read();
+      return async () => {
+        controller.abort();
+        await reader.cancel();
+      };
+    };
+    const state = () => plane.sessionStore.resolve(session.id).state;
+
+    // A dropped stream that the run reconnects keeps the session open.
+    const first = await tail();
+    await first();
+    now += LEASE_GRACE_MS - 1;
+    const second = await tail();
+    now += LEASE_GRACE_MS;
+    plane.sessionStore.pruneExpired();
+    expect(state()).toBe("open");
+
+    // A killed run never calls release and never reconnects.
+    await second();
+    await vi.waitFor(() => {
+      now += LEASE_GRACE_MS;
+      plane.sessionStore.pruneExpired();
+      expect(state()).toBe("retained");
+    });
+  });
+
+  test("gives a session a DSN that SDKs without Spotlight support can send to", async () => {
+    const plane = createLocalControlPlane({ controlToken: CONTROL_TOKEN });
+    const created = await plane.app.request("/_local/v1/sessions", {
+      method: "POST",
+      headers: { ...controlHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "go", cwd: "/work/go" }),
+    });
+    const session = (await created.json()) as {
+      id: string;
+      ingestUrl: string;
+      dsn: string;
+    };
+    const viewed = (await (
+      await plane.app.request(`/_local/v1/sessions/${session.id}`, {
+        headers: controlHeaders(),
+      })
+    ).json()) as { dsn: string };
+    expect(viewed.dsn).toBe(session.dsn);
+
+    // An SDK keeps the key out of the URL and posts to
+    // `<origin><path>/api/<project>/envelope/`.
+    const dsn = new URL(session.dsn);
+    expect(dsn.username).toBe("key");
+    expect(dsn.host).toBe("127.0.0.1:8969");
+    expect(dsn.pathname).toBe(`${new URL(session.ingestUrl).pathname}/0`);
+    const envelopeUrl = `${dsn.origin}${dsn.pathname.slice(0, -"/0".length)}/api/0/envelope/`;
+    const response = await plane.app.request(envelopeUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-sentry-envelope" },
+      body: '{}\n{"type":"event"}\n{"message":"from go"}',
+    });
+    expect(response.status).toBe(200);
+    expect(
+      plane.sessionStore.getBuffer(session.id).read({ all: true }),
+    ).toHaveLength(1);
+  });
+
   test("does not expose the session registry without the control capability", async () => {
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,
@@ -784,19 +990,21 @@ describe("Local control plane", () => {
     const caps = plane.sessionStore.getCapabilities(session.id);
     const base = `http://127.0.0.1:8969/_local/v1/sessions/${session.id}`;
     const item = '{"message":"hi"}';
-    const envelope = [
-      JSON.stringify({
-        event_id: "dsn-header",
-        dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
-        sdk: { name: "sentry.go" },
-      }),
-      `{"type":"event","length":${item.length}}`,
-      item,
-    ].join("\n");
+    // A distinct event ID each, so the receiver keeps both.
+    const envelope = (eventId: string) =>
+      [
+        JSON.stringify({
+          event_id: eventId,
+          dsn: `http://local@127.0.0.1:8969/_local/v1/sessions/${session.id}/ingest/${caps.ingest}/0`,
+          sdk: { name: "sentry.go" },
+        }),
+        `{"type":"event","length":${item.length}}`,
+        item,
+      ].join("\n");
     // PHP and Ruby compress their requests.
     for (const [body, headers] of [
-      [envelope, {}],
-      [gzipSync(envelope), { "Content-Encoding": "gzip" }],
+      [envelope("dsn-header"), {}],
+      [gzipSync(envelope("dsn-header-gzip")), { "Content-Encoding": "gzip" }],
     ] as const) {
       const posted = await plane.app.request(
         `${base}/ingest/${caps.ingest}/api/0/envelope/`,
@@ -819,7 +1027,7 @@ describe("Local control plane", () => {
     expect(stored).toHaveLength(2);
     for (const data of stored) {
       expect(data).not.toContain(caps.ingest);
-      expect(data).toContain('"event_id":"dsn-header"');
+      expect(data).toContain('"event_id":"dsn-header');
       expect(data.endsWith(`\n${item}`)).toBe(true);
     }
 
@@ -1304,16 +1512,14 @@ describe("Local control plane", () => {
   });
 
   test("acknowledges a daemon stop request before closing its listener", async () => {
-    let server: import("node:http").Server | undefined;
     const controlPlane = createLocalControlPlane({
       controlToken: CONTROL_TOKEN,
       onStop: () => {
-        server?.closeAllConnections();
-        server?.close();
+        listening.server.closeAllConnections();
+        listening.server.close();
       },
     });
     const listening = await tryListen(controlPlane.app, 0, "127.0.0.1");
-    server = listening.server;
 
     const statusCode = await new Promise<number>((resolve, reject) => {
       const stopRequest = request(

@@ -82,7 +82,11 @@ export function buildLocalUiUrl(
   return uiUrl.toString();
 }
 
-/** A shareable hosted-viewer link contains only the daemon's plain address. */
+/**
+ * A shareable hosted-viewer link contains only the daemon's plain address.
+ * A session stream adds its ID as `session`, which the viewer uses to pick
+ * that session; its capability never goes in the link.
+ */
 export function getLocalUiConnectionUrl(
   receiverUrl: string,
 ): string | undefined {
@@ -97,6 +101,8 @@ export function getLocalUiConnectionUrl(
       return;
     const ui = new URL(PRODUCTION_UI_URL);
     ui.searchParams.set("url", new URL("/stream", receiver).toString());
+    const session = sessionIdFromStreamPath(receiver.pathname);
+    if (session) ui.searchParams.set("session", session);
     return ui.toString();
   } catch {
     logger.debug(

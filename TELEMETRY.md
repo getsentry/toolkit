@@ -244,6 +244,12 @@ attached to ordinary `/mcp` request spans. HTTPS URL `client_id` values map to
 Named under `app.client.*` (not `app.oauth.*`) so default Sentry data scrubbing
 does not redact values via the `auth` substring in `oauth`.
 
+CIMD clients whose metadata document cannot be fetched or validated at
+`/oauth/authorize` log `OAuth client metadata could not be resolved` with
+`clientIdHost`, `failureClass` (`transient` | `terminal`), `failureReason`, and
+`metadataStatus`, instead of creating issues. Group these logs by
+`clientIdHost` to spot a known client's metadata host blocking the Worker.
+
 Diagnostic OAuth _attributes_ use the readable `app.access.*` namespace for
 the OAuth access lifecycle. This avoids scrubbed substrings (`auth`/`oauth`,
 `token`, `bearer`, `credentials`); error/reason/method buckets avoid them too.

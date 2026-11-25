@@ -151,11 +151,14 @@ describe("Local daemon E2E", () => {
       { env },
     );
     expect(created.exitCode, created.stderr).toBe(0);
-    for (const result of [
-      created,
-      await runCli(["local", "session", "view", "viewer-link"], { env }),
-      await runCli(["local", "daemon", "status"], { env }),
-    ]) {
+    const { id } = JSON.parse(
+      (await cli("session", "view", "viewer-link")).stdout,
+    ) as { id: string };
+    for (const [result, session] of [
+      [created, id],
+      [await runCli(["local", "session", "view", "viewer-link"], { env }), id],
+      [await runCli(["local", "daemon", "status"], { env }), null],
+    ] as const) {
       expect(result.exitCode, result.stderr).toBe(0);
       const link = result.stdout.match(/View events at (https:\/\/\S+)/)?.[1];
       expect(link).toBeTruthy();
@@ -164,6 +167,9 @@ describe("Local daemon E2E", () => {
       expect(url.searchParams.get("url")).toBe(
         `http://127.0.0.1:${port}/stream`,
       );
+      // Session summaries name their session; the link never carries a capability.
+      expect(url.searchParams.get("session")).toBe(session);
+      expect(link).not.toContain("cap");
     }
     const json = await cli("session", "view", "viewer-link");
     expect(json.stdout).not.toContain("View events at");
@@ -830,6 +836,185 @@ describe("Local daemon E2E", () => {
       (await cli("event", "view", "wrapped", "c".repeat(32))).stdout,
     ).toContain("wrapped app");
   }, 30_000);
+
+  test("joins an open session and hands an app without Spotlight support its DSN", async () => {
+    const port = await availablePort();
+    const session = await createSession("shared", port);
+    // A stand-in for a Go app, whose SDK reads only SENTRY_DSN.
+    const app = join(getConfigDir(), "go-app.cjs");
+    await writeFile(
+      app,
+      `const dsn = new URL(process.env.SENTRY_DSN);
+const path = dsn.pathname.replace(/\\/0$/, "");
+fetch(dsn.origin + path + "/api/0/envelope/", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-sentry-envelope" },
+  body: '{"event_id":"${"d".repeat(32)}"}\\n{"type":"event"}\\n{"message":"dsn only app"}',
+}).then((r) => { if (r.status !== 200) process.exitCode = 3; });
+`,
+    );
+    let go = join(getConfigDir(), "go");
+    if (process.platform === "win32") {
+      go = `${go}.cmd`;
+      await writeFile(go, `@"${process.execPath}" "${app}" %*\r\n`);
+    } else {
+      await writeFile(
+        go,
+        `#!/bin/sh\nexec "${process.execPath}" "${app}" "$@"\n`,
+      );
+      await chmod(go, 0o755);
+    }
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "shared",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        go,
+        "run",
+        ".",
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+          SENTRY_DSN: "",
+        },
+      },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stderr).toContain(
+      `Joining open session shared (${session.id})`,
+    );
+    expect(result.stderr).toContain(
+      "SENTRY_SPOTLIGHT and SENTRY_DSN configured",
+    );
+    // The run joined the session `session create` made, so it stays open.
+    expect(JSON.parse((await cli("session", "list")).stdout)).toMatchObject({
+      sessions: [{ id: session.id, label: "shared", state: "open" }],
+    });
+    expect(
+      (await cli("event", "view", "shared", "d".repeat(32))).stdout,
+    ).toContain("dsn only app");
+  }, 30_000);
+
+  test("leaves no session behind when the app cannot start", async () => {
+    const result = await runCli(
+      [
+        "local",
+        "run",
+        "--session",
+        "broken",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(await availablePort()),
+        "--",
+        join(getConfigDir(), "missing-program"),
+      ],
+      {
+        env: {
+          SENTRY_CONFIG_DIR: getConfigDir(),
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+      },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(JSON.parse((await cli("session", "list")).stdout)).toEqual({
+      sessions: [],
+    });
+  }, 30_000);
+
+  test("a killed run does not hold its session open for later runs", async () => {
+    const dir = getConfigDir();
+    const pidFile = join(dir, "held-app.pid");
+    const script = join(dir, "held-app.cjs");
+    await writeFile(
+      script,
+      `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setInterval(() => {}, 1000);
+`,
+    );
+    const port = await availablePort();
+    const { getCliCommand } = await import("../fixture.js");
+    const [executable, ...prefix] = getCliCommand();
+    if (!executable) throw new Error("Missing CLI executable");
+    const run = spawn(
+      executable,
+      [
+        ...prefix,
+        "local",
+        "run",
+        "--session",
+        "held",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--",
+        process.execPath,
+        script,
+      ],
+      {
+        cwd: join(import.meta.dirname, "../.."),
+        detached: true,
+        env: {
+          ...process.env,
+          SENTRY_CONFIG_DIR: dir,
+          SENTRY_CLI_NO_TELEMETRY: "1",
+          SENTRY_AUTH_TOKEN: "",
+          SENTRY_TOKEN: "",
+        },
+        stdio: "ignore",
+      },
+    );
+    const closed = new Promise((resolve) => run.once("close", resolve));
+    const sessions = async () =>
+      (
+        JSON.parse((await cli("session", "list")).stdout) as {
+          sessions: { id: string; label: string; state: string }[];
+        }
+      ).sessions.filter((session) => session.label === "held");
+    try {
+      await expect
+        .poll(() => readFile(pidFile, "utf8").catch(() => ""), {
+          timeout: 15_000,
+        })
+        .not.toBe("");
+      const [held] = await sessions();
+      expect(held).toMatchObject({ state: "open" });
+      // Like a closed terminal tab or an OOM kill: the run gets no chance to
+      // release its session. Only the CLI's own pid is signalled.
+      run.kill("SIGKILL");
+      await closed;
+      // The daemon waits a short grace for the run's stream to reconnect.
+      await expect
+        .poll(async () => (await sessions()).map((session) => session.state), {
+          interval: 1000,
+          timeout: 30_000,
+        })
+        .toEqual(["retained"]);
+    } finally {
+      run.kill("SIGKILL");
+      const pid = Number(await readFile(pidFile, "utf8").catch(() => "0"));
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // The app already exited.
+        }
+      }
+    }
+  }, 60_000);
 
   test("captures telemetry from the real Sentry Node SDK through the injected URL", async () => {
     const port = await availablePort();

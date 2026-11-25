@@ -1,5 +1,6 @@
 import z from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
@@ -7,10 +8,9 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import type { ServerContext } from "../../types";
-import {
-  SEARCH_ATTRIBUTES_DATASETS,
-  runSearchAttributes,
-} from "../support/search-attributes/search";
+import { SEARCH_ATTRIBUTES_DATASETS } from "../support/search-attributes/config";
+import { searchAttributesOutputSchema } from "../support/search-attributes/format";
+import { runSearchAttributes } from "../support/search-attributes/search";
 import { searchToolBase } from "../support/search-events/search";
 
 export default defineTool({
@@ -20,7 +20,7 @@ export default defineTool({
   name: "search_attributes",
   title: "Search Attributes",
   description:
-    "Find span, log, or metric attribute keys in Sentry by meaning or partial name, with their types, descriptions, examples, and deprecation status. Use it to get the exact key before searching traces, logs, or metrics. For attribute values, use search_traces, search_logs, or search_metrics; for issue tag values, use get_issue_tag_values.",
+    "Find span, log, or metric attribute keys in Sentry by meaning or partial name, with their types, descriptions, examples, and deprecation status. Alternatively, list the spans, logs, or metric attributes available. Use it to get information about attributes or find the exact key before searching traces, logs, or metrics. For attribute values, use search_traces, search_logs, or search_metrics; for issue tag values, use get_issue_tag_values.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     projectSlug: ParamProjectSlug.nullable().default(null),
@@ -48,7 +48,8 @@ export default defineTool({
         "Dataset whose attribute keys to list: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
       ),
   },
+  outputSchema: searchAttributesOutputSchema,
   async handler(params, context: ServerContext) {
-    return await runSearchAttributes(params, context);
+    return structuredResult(await runSearchAttributes(params, context));
   },
 });

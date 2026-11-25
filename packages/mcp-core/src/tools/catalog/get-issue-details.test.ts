@@ -381,6 +381,15 @@ describe("get_issue_details", () => {
         "suggestedActions": [
           {
             "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "Chart this issue's events and affected users over time.",
+            "toolName": "render_issue_chart",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
               "organizationSlug": "sentry-mcp-evals",
               "traceId": "3032af8bcdfe4423b937fc5c041d5d82",
             },
@@ -2014,7 +2023,7 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns the same structured payload outside experimental mode, apart from related issues and the chart", async () => {
+  it("returns the same structured payload outside experimental mode, apart from related issues", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
@@ -2025,20 +2034,18 @@ describe("structuredContent", () => {
       experimentalContext,
     );
 
-    // related issues are experimental only until the Seer load is checked,
-    // and render_issue_chart until MCP Apps views are
-    const experimentalOnly = ["find_related_issues", "render_issue_chart"];
+    // related issues are experimental only until the Seer load is checked
     const { relatedIssues, ...rest } = parsePayload(experimental);
     expect(relatedIssues).toBeDefined();
-    expect(rest.suggestedActions.map((action) => action.toolName)).toContain(
-      "render_issue_chart",
-    );
     expect(parsePayload(result)).toEqual({
       ...rest,
       suggestedActions: rest.suggestedActions.filter(
-        (action) => !experimentalOnly.includes(action.toolName),
+        (action) => action.toolName !== "find_related_issues",
       ),
     });
+    expect(
+      parsePayload(result).suggestedActions.map((action) => action.toolName),
+    ).toContain("render_issue_chart");
   });
 
   describe("related issues", () => {
@@ -3062,6 +3069,15 @@ describe("selected event package versions", () => {
           },
         ],
         "suggestedActions": [
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "Chart this issue's events and affected users over time.",
+            "toolName": "render_issue_chart",
+            "type": "tool_call",
+          },
           {
             "arguments": {
               "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",

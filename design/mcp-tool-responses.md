@@ -53,8 +53,3 @@ question, in Sentry's own terms, without reading upstream API payloads.
 - A feedback suggestion appears only when the result likely shows a Sentry
   MCP bug or gap. Input, permission, auth, rate limit, and configuration
   errors, and empty results that are expected, never get one.
-
-## Gaps
-
-- `search_attributes` returns no structured content yet. This breaks "a typed
-  result is one answer" for the one listed tool that has no output schema.

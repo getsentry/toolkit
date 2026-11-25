@@ -1,27 +1,35 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { exchangeAgentHandoff } from "../../src/lib/agent-handoff.js";
-import { at } from "../helpers.js";
+import {
+  completeAgentHandoff,
+  exchangeAgentHandoff,
+} from "../../src/lib/agent-handoff.js";
 import { markPersistedDefaultUrl } from "../../src/lib/constants.js";
+import { getAuthConfig, setAuthToken } from "../../src/lib/db/auth.js";
+import { setDefaultUrl } from "../../src/lib/db/defaults.js";
 import { formatError } from "../../src/lib/errors.js";
 import { setEnv } from "../../src/lib/env.js";
 import {
   registerLoginTrustAnchor,
   resetLoginTrustAnchorForTesting,
 } from "../../src/lib/token-host.js";
+import { at, useTestConfigDir } from "../helpers.js";
 
+const saasHost = "https://sentry.io";
+const selfHostedHost = "https://sentry.example.com";
 const handoffCode = `sntryh_${"a".repeat(43)}`;
-const handoffResponse = (sentryUrl: string) =>
+const handoffResponse = (sentryUrl: string, useDeviceAuth = false) =>
   Response.json({
     sentryUrl,
     userEmail: "user@example.com",
     organizationName: "Example Organization",
     organizationSlug: "example-org",
     clientId: "client-id",
-    setupCode: "private-setup-code",
+    ...(!useDeviceAuth && { setupCode: "private-setup-code" }),
     flowInstructions: "Continue setup.",
   });
 
 describe("agent handoff exchange", () => {
+  const getConfigDir = useTestConfigDir("agent-handoff-");
   afterEach(() => {
     resetLoginTrustAnchorForTesting();
     vi.unstubAllGlobals();
@@ -53,6 +61,82 @@ describe("agent handoff exchange", () => {
       handoff_code: handoffCode,
     });
   });
+
+  test.each([
+    { host: saasHost, email: "user@example.com", accepted: true },
+    { host: saasHost, email: "other@example.com", accepted: false },
+    { host: selfHostedHost, email: "user@example.com", accepted: true },
+  ])(
+    "handles device approval for $email on $host",
+    async ({ host, email, accepted }) => {
+      const selfHosted = host === selfHostedHost;
+      setEnv({
+        SENTRY_HOST: host,
+        SENTRY_CLIENT_ID: "different-client-id",
+        SENTRY_CONFIG_DIR: getConfigDir(),
+        ...(selfHosted && {
+          SENTRY_CUSTOM_HEADERS: "X-IAP-Token: proxy-secret",
+        }),
+      });
+      if (selfHosted) {
+        setAuthToken("previous-token", undefined, undefined, {
+          host: saasHost,
+        });
+        setDefaultUrl(host);
+      }
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(handoffResponse(host, true))
+        .mockResolvedValueOnce(
+          Response.json({
+            device_code: "private-device-code",
+            user_code: "ABCD-EFGH",
+            verification_uri: host + "/oauth/device/",
+            expires_in: 600,
+            interval: 0,
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            access_token: "device-access-token",
+            token_type: "bearer",
+            expires_in: 3600,
+            user: { id: "123", email, name: null },
+          }),
+        );
+      vi.stubGlobal("fetch", fetch);
+
+      const handoff = completeAgentHandoff(handoffCode);
+      if (accepted) {
+        await expect(handoff).resolves.toMatchObject({
+          flowInstructions: "Continue setup.",
+        });
+        expect(getAuthConfig()?.token).toBe("device-access-token");
+      } else {
+        await expect(handoff).rejects.toThrow("Sentry handoff sign-in failed.");
+        expect(getAuthConfig()?.token).toBeUndefined();
+      }
+
+      const [codeUrl, codeInit] = at(fetch.mock.calls, 1);
+      const [, tokenInit] = at(fetch.mock.calls, 2);
+      expect(codeUrl).toBe(host + "/oauth/device/code/");
+      expect(new URLSearchParams(codeInit.body).get("login_hint")).toBe(
+        "user@example.com",
+      );
+      expect(new URLSearchParams(tokenInit.body).get("grant_type")).toBe(
+        "urn:ietf:params:oauth:grant-type:device_code",
+      );
+      for (const request of [codeInit, tokenInit]) {
+        expect(new URLSearchParams(request.body).get("client_id")).toBe(
+          "client-id",
+        );
+        expect(new Headers(request.headers).get("X-IAP-Token")).toBe(
+          selfHosted ? "proxy-secret" : null,
+        );
+        expect(request.redirect).toBe("error");
+      }
+    },
+  );
 
   test("refuses an untrusted configured custom host", async () => {
     setEnv({ SENTRY_HOST: "sentry.example.com" });

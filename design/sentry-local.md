@@ -41,10 +41,16 @@ account.
   `sentry-local#stop-clears`).
 - Each session or receiver keeps its most recent envelopes, 500 by default,
   and a user can set the limit from 1 to 50,000.
+- `local run --session <name>` joins the open session with that name, and
+  creates one only when none is open, so runs at the same time share one
+  session. A run holds the session only while it runs, even when it is killed.
+- A session or receiver stores and shows an error, transaction, or feedback
+  once per event ID while it retains that event, so an SDK that sends to both
+  Spotlight and a DSN does not show it twice. Replay segments, check-ins, logs,
+  and spans are never dropped this way.
 - A session name reads from its newest open session, or its newest session
-  when none is open, because every `local run --session` creates a new one.
-  Close, reset, and retention changes refuse a name that several open sessions
-  share. A session ID always selects that session.
+  when none is open. Close, reset, and retention changes refuse a name that
+  several open sessions share. A session ID always selects that session.
 - A missing or evicted session, event, or envelope is a not-found error that
   names what is missing and the list command to run
   (`sentry-local#missing-session-exit`).
