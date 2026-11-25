@@ -130,7 +130,7 @@ export const getIssueDetailsOutputSchema = z.object({
     })
     .optional()
     .describe(
-      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert).`,
+      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.`,
     ),
   event: issueEventSchema,
   seer: z
