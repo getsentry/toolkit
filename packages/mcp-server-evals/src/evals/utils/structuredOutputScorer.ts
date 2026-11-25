@@ -254,7 +254,7 @@ function fuzzyMatch(expected: unknown, actual: unknown): boolean {
   }
 
   // Handle primitives - fuzzy match allows type coercion (e.g., "1" matches 1)
-  // Intentional for fuzzy matching with type coercion
+  // oxlint-disable-next-line eqeqeq -- fuzzy matching relies on loose-equality type coercion
   return expected == actual;
 }
 
