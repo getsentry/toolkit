@@ -308,7 +308,7 @@ test("log messages hide terminal colour codes while JSON keeps them", () => {
   const [banner] = decodeEnvelope(werkzeugLogEnvelope, "logs");
   if (!banner) throw new Error("Expected log");
   render(<EventDetail item={banner} />);
-  const overview = screen.getByRole("tabpanel").textContent ?? "";
+  const overview = screen.getByRole("tabpanel").textContent;
   expect(overview).toContain("WARNING: This is a development server.");
   expect(overview).not.toContain("\u001b");
   expect(overview).not.toContain("[31m");

@@ -514,7 +514,7 @@ describe("local receiver to viewer integration", () => {
       expect(detail.textContent).toContain("/app/gateway.ts:15:8");
       expect(detail.textContent).not.toContain("No additional event details.");
       const frames = screen.getAllByRole("list", { name: "Stack frames" });
-      expect(frames[0]?.textContent?.indexOf("submitOrder")).toBeLessThan(
+      expect(frames[0]?.textContent.indexOf("submitOrder")).toBeLessThan(
         frames[0]!.textContent.indexOf("runMain"),
       );
       fireEvent.click(screen.getByRole("tab", { name: "JSON" }));
@@ -739,8 +739,9 @@ describe("local receiver to viewer integration", () => {
 
   test("replays bundled envelopes through the receiver into every investigation view", async () => {
     const { server, port } = await startReceiver();
-    const originalCreate = URL.createObjectURL?.bind(URL);
-    const originalRevoke = URL.revokeObjectURL?.bind(URL);
+    const urlStatics: Partial<typeof URL> = URL;
+    const originalCreate = urlStatics.createObjectURL?.bind(URL);
+    const originalRevoke = urlStatics.revokeObjectURL?.bind(URL);
     URL.createObjectURL = () => "blob:fixture";
     URL.revokeObjectURL = () => {};
     try {
@@ -810,8 +811,10 @@ describe("local receiver to viewer integration", () => {
       expect(await screen.findByText("sentry.javascript.node")).toBeDefined();
     } finally {
       cleanup();
-      URL.createObjectURL = originalCreate;
-      URL.revokeObjectURL = originalRevoke;
+      Object.assign(URL, {
+        createObjectURL: originalCreate,
+        revokeObjectURL: originalRevoke,
+      });
       await stopReceiver(server);
     }
   }, 15_000);
@@ -2149,7 +2152,7 @@ describe("local receiver to viewer integration", () => {
 
       const scopedSource = await openLatestReceiver();
       await act(async () => {
-        scopedSource?.dispatchEvent(
+        scopedSource.dispatchEvent(
           new MessageEvent(SENTRY_CONTENT_TYPE, {
             data: JSON.stringify([{}, []]),
             lastEventId: "scoped-envelope",
@@ -2192,7 +2195,7 @@ describe("local receiver to viewer integration", () => {
           signal: expect.any(AbortSignal),
         }),
       );
-      await waitFor(() => expect(scopedSource?.closed).toBe(true));
+      await waitFor(() => expect(scopedSource.closed).toBe(true));
       await screen.findByText("Saved capture", { exact: true });
       expect(
         screen.queryByText(
@@ -2286,7 +2289,7 @@ describe("local receiver to viewer integration", () => {
       const source = await openLatestReceiver();
       await act(async () => {
         for (const transaction of ["GET /alpha", "GET /beta"]) {
-          source?.dispatchEvent(
+          source.dispatchEvent(
             new MessageEvent(SENTRY_CONTENT_TYPE, {
               data: JSON.stringify([
                 {},
@@ -2313,7 +2316,7 @@ describe("local receiver to viewer integration", () => {
       );
       if (state === "closed") {
         fireEvent.click(captureAction("Stop capture"));
-        await waitFor(() => expect(source?.closed).toBe(true));
+        await waitFor(() => expect(source.closed).toBe(true));
         await screen.findByText("Saved capture", { exact: true });
         expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
         expect(
@@ -2331,7 +2334,7 @@ describe("local receiver to viewer integration", () => {
         );
         expect(screen.getAllByLabelText(/^View transaction:/)).toHaveLength(1);
       } else {
-        await act(async () => source?.onerror?.(new Event("error")));
+        await act(async () => source.onerror?.(new Event("error")));
       }
       fireEvent.change(
         screen.getByRole("searchbox", { name: "Filter Events" }),

@@ -103,8 +103,9 @@ test("span start and end times use local time, not raw epoch seconds", () => {
   const span = trace?.spans.find((entry) => entry.id === "root");
   if (!trace || !span) throw new Error("Expected trace span");
   render(<SpanDetail trace={trace} span={span} />);
-  const details =
-    screen.getByRole("table", { name: "Span details" }).textContent ?? "";
+  const details = screen.getByRole("table", {
+    name: "Span details",
+  }).textContent;
   expect(details).not.toContain("1795010400.538");
   expect(details).toContain(
     formatDateTime(1795010400.538, { milliseconds: true }),
