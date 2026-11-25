@@ -381,6 +381,7 @@ function isStatusAlreadySet(
 function getResolvedEffect(
   issue: Issue,
   statusDisplay: IssueStatusDisplay,
+  requestedStatus: string | undefined,
 ): string | null {
   const statusDetails = getIssueStatusDetails(issue);
 
@@ -390,6 +391,12 @@ function getResolvedEffect(
     case "resolvedInNextRelease":
       return "The issue is now marked as resolved in the upcoming release";
     case "resolvedInRelease":
+      // Sentry stores a next-release resolution as resolved in a release when
+      // it can already pick one: the issue's latest release under semver,
+      // otherwise the release after it, if that exists.
+      if (requestedStatus === "resolvedInNextRelease") {
+        return `The issue is now resolved in the next release. Sentry stored this as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}: with semantic versioning that is the latest release seen for this issue, otherwise the release after it. Events from releases newer than the issue's latest release will reopen it as a regression`;
+      }
       return `The issue is now marked as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}. Events from newer releases will reopen it as a regression`;
     case "resolvedInCommit":
       return `The issue is now marked as resolved in commit ${getResolvedCommitId(statusDetails)}. It will be resolved in the first release that contains this commit`;
@@ -1199,7 +1206,7 @@ export default defineTool({
       (ignoreBehaviorChanged || params.status === "ignored");
 
     let effect = statusChanged
-      ? getResolvedEffect(updatedIssue, updatedStatusDisplay)
+      ? getResolvedEffect(updatedIssue, updatedStatusDisplay, params.status)
       : null;
     if (
       effect === null &&

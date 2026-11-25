@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-wasm-split
-version: 0.51.0-dev.0
+version: 0.52.0-dev.0
 description: Add build ids to WebAssembly modules and split out debug data
 requires:
   bins: ["sentry"]
