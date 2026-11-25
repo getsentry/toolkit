@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { TraceItemAttribute } from "../../../api-client";
 import { normalizeEventsDataset } from "../../../utils/events-datasets";
 import {
@@ -6,183 +7,202 @@ import {
   RECOMMENDED_FIELDS,
 } from "../search-events/config";
 import type { AttributeMatches } from "./agent";
-import type { SearchAttributesDataset } from "./search";
+import {
+  SEARCH_ATTRIBUTES_DATASETS,
+  type SearchAttributesDataset,
+} from "./config";
 
 const DATASET_LABELS: Record<
   SearchAttributesDataset,
-  { title: string; associatedTool: string }
+  { noun: string; associatedTool: string }
 > = {
-  spans: {
-    title: "Span Attributes",
-    associatedTool: "search_traces",
-  },
-  logs: {
-    title: "Log Attributes",
-    associatedTool: "search_logs",
-  },
-  metrics: {
-    title: "Metric Attributes",
-    associatedTool: "search_metrics",
-  },
+  spans: { noun: "span attributes", associatedTool: "search_traces" },
+  logs: { noun: "log attributes", associatedTool: "search_logs" },
+  metrics: { noun: "metric attributes", associatedTool: "search_metrics" },
 };
 
-const MAX_DESCRIPTION_LENGTH = 255;
+const attributeOutputSchema = z.object({
+  key: z
+    .string()
+    .describe(
+      "The exact key to use with search_traces, search_logs, or search_metrics.",
+    ),
+  type: z.enum(["string", "number", "boolean", "array"]),
+  addedBySentry: z.boolean(),
+  description: z.string().nullable(),
+  examples: z.array(z.union([z.string(), z.number(), z.boolean()])),
+  aliases: z.array(z.string()),
+  deprecated: z.boolean(),
+  replacementKey: z
+    .string()
+    .nullable()
+    .describe("The key that replaces this one, when it's deprecated."),
+});
 
-interface QuerySettings {
-  organizationSlug: string;
+export const searchAttributesOutputSchema = z.object({
+  dataset: z.enum(SEARCH_ATTRIBUTES_DATASETS),
+  period: z.string(),
+  query: z.string().nullable(),
+  resultType: z
+    .enum(["list", "matches"])
+    .describe(
+      "list: the dataset's attributes. matches: the attributes that answer query.",
+    ),
+  best: attributeOutputSchema
+    .nullable()
+    .describe("With matches, the one key that clearly answers query, if any."),
+  attributes: z
+    .array(attributeOutputSchema)
+    .describe(
+      "With list, the attributes shown. With matches, the other candidates, most relevant first.",
+    ),
+  totalAttributes: z
+    .number()
+    .int()
+    .describe("How many attributes this result was picked from, before limit."),
+  presentationHint: z
+    .string()
+    .nullable()
+    .describe("How best to present this data."),
+  notes: z.array(z.string()),
+});
+
+export type SearchAttributesOutput = z.output<
+  typeof searchAttributesOutputSchema
+>;
+
+type AttributeOutput = z.output<typeof attributeOutputSchema>;
+
+interface ResultSettings {
   dataset: SearchAttributesDataset;
   period: string;
+  mayBeIncomplete?: boolean | undefined;
 }
 
-export function formatListResult({
-  organizationSlug,
+export const KEY_CAP_NOTE =
+  "Sentry returns at most about 1,000 keys of each type, sorted by name, and this dataset reached that limit, so keys that sort later may have been missed.";
+
+/**
+ * The dataset's attributes, recommended keys first. Also the fallback when the
+ * AI can't match `query`, with `fallbackNote` saying why.
+ */
+export function buildListResult({
   dataset,
   period,
+  query,
   attributes,
   limit,
-  notes = [],
-  importantInfo = [],
-}: QuerySettings & {
+  fallbackNote,
+  mayBeIncomplete,
+}: ResultSettings & {
+  query: string | null;
   attributes: TraceItemAttribute[];
   limit: number;
-  notes?: string[] | undefined;
-  importantInfo?: string[] | undefined;
-}): string {
-  const labels = DATASET_LABELS[dataset];
-  const lines: string[] = [];
-
-  lines.push(...importantInfo);
-  lines.push(
-    `# ${labels.title} in **${organizationSlug}** (last ${period})`,
-    "",
-  );
+  fallbackNote?: string | undefined;
+}): SearchAttributesOutput {
+  const { noun, associatedTool } = DATASET_LABELS[dataset];
+  const shown = sortAttributes(attributes, dataset).slice(0, limit);
+  const notes = fallbackNote ? [fallbackNote] : [];
   if (attributes.length === 0) {
-    return formatNoneSeen(lines, labels.title.toLowerCase(), period);
+    notes.push(...noneSeenNotes(noun, period));
+  } else {
+    // A query only reaches this list when matching couldn't run, which
+    // fallbackNote explains, so the list is not a search result.
+    if (!query) {
+      notes.push(
+        "There is no pagination. Input a `query` to narrow down your search.",
+      );
+    }
+    notes.push(
+      ...(mayBeIncomplete ? [KEY_CAP_NOTE] : []),
+      `Use a key with \`${associatedTool}\` to query its values.`,
+    );
   }
-
-  lines.push(
-    "**Suggested presentation:** A table works well here, with each attribute's type, description, deprecation status, replacement attributes, and whether it's added by Sentry.",
-    "",
-    "Please tell the user each attribute's type, description, examples, whether they were added by sentry, and which attributes are deprecated and what replaces them.",
-    "",
-  );
-
-  const sorted = sortAttributes(attributes, dataset);
-  const shown = sorted.slice(0, limit);
-
-  lines.push(...formatAttributeTable(shown), "", "## Response Notes", "");
-  if (shown.length < sorted.length) {
-    lines.push(`- Showing ${shown.length} of ${sorted.length}.`);
-  }
-  lines.push(
-    `- There is no pagination. Input a \`query\` to narrow down your search.`,
-    `- Use a key with \`${labels.associatedTool}\` to query its values.`,
-    ...notes.map((note) => `- ${note}`),
-  );
-  return lines.join("\n");
+  return {
+    dataset,
+    period,
+    query,
+    resultType: "list",
+    best: null,
+    attributes: shown.map(toAttributeOutput),
+    totalAttributes: attributes.length,
+    presentationHint:
+      shown.length > 0
+        ? "A table works well here, with each attribute's type, description, examples, whether it's added by Sentry, and, for deprecated attributes, what replaces them."
+        : null,
+    notes,
+  };
 }
 
-export function formatFindResult({
-  organizationSlug,
+/** An optional best match, then the other candidates. */
+export function buildFindResult({
   dataset,
   period,
   query,
   matches,
   totalAttributes,
-}: QuerySettings & {
+  mayBeIncomplete,
+}: ResultSettings & {
   query: string;
   matches: AttributeMatches;
   totalAttributes: number;
-}): string {
-  const labels = DATASET_LABELS[dataset];
-  const lines = [
-    `# ${labels.title} Matching "${query}" in **${organizationSlug}** (last ${period})`,
-    "",
-  ];
-  if (totalAttributes === 0)
-    return formatNoneSeen(lines, labels.title.toLowerCase(), period);
-
+}): SearchAttributesOutput {
+  const { noun, associatedTool } = DATASET_LABELS[dataset];
   const { best, candidates } = matches;
-  if (!best && candidates.length === 0) {
-    lines.push(
-      // No count: the shortlist may have searched only part of what was seen.
-      `None of the ${labels.title.toLowerCase()} searched match this query.`,
-      "",
-      "## Response Notes",
-      "",
-      "- Try another `query`, or omit `query` to list every attribute.",
-    );
-    return lines.join("\n");
+  let notes: string[];
+  if (totalAttributes === 0) {
+    notes = noneSeenNotes(noun, period);
+  } else if (!best && candidates.length === 0) {
+    notes = [
+      `None of the ${noun} searched match this query.`,
+      "Try another `query`, or omit `query` to list every attribute.",
+    ];
+  } else {
+    notes = [`Use a key with \`${associatedTool}\` to query its values.`];
   }
-
-  if (best) lines.push(...formatBestMatch(best), "");
-  if (candidates.length > 0) {
-    lines.push(
-      best ? "## Other Candidates" : "## Possible Matches",
-      "",
-      ...formatAttributeTable(candidates),
-      "",
-    );
-  }
-  lines.push(
-    "## Response Notes",
-    "",
-    `- Use a key with \`${labels.associatedTool}\` to query its values.`,
-  );
-  return lines.join("\n");
+  if (mayBeIncomplete) notes.push(KEY_CAP_NOTE);
+  return {
+    dataset,
+    period,
+    query,
+    resultType: "matches",
+    best: best ? toAttributeOutput(best) : null,
+    attributes: candidates.map(toAttributeOutput),
+    totalAttributes,
+    presentationHint: best
+      ? "Separate the best result from the rest of the candidates for clarity."
+      : candidates.length > 0
+        ? "A table works well to display all the information given about the candidates."
+        : null,
+    notes,
+  };
 }
 
-function formatBestMatch({
+function noneSeenNotes(noun: string, period: string): string[] {
+  return [
+    `No ${noun} were seen in the last ${period}.`,
+    "Try a longer `period` or a different `dataset`.",
+  ];
+}
+
+function toAttributeOutput({
   key,
   type,
+  attributeSource,
   secondaryAliases,
   context,
-  attributeSource,
-}: TraceItemAttribute): string[] {
-  const lines = [`## Best Match: \`${key}\``, "", `**Type**: ${type}`];
-  if (attributeSource.source_type === "sentry") {
-    lines.push("**Added by Sentry**");
-  }
-  const brief = flatten(context?.brief);
-  if (brief) lines.push(`**Description**: ${brief}`);
-  if (context?.examples?.length) {
-    lines.push(`**Examples**: ${context.examples.join(", ")}`);
-  }
-  if (secondaryAliases?.length) {
-    lines.push(
-      `**Aliases**: ${secondaryAliases.map((alias) => `\`${alias}\``).join(", ")}`,
-    );
-  }
-  if (context?.isDeprecated) {
-    lines.push(
-      context.replacementAttribute
-        ? `**Deprecated**: use \`${context.replacementAttribute}\` instead`
-        : "**Deprecated**",
-    );
-  }
-  return lines;
-}
-
-function formatNoneSeen(lines: string[], noun: string, period: string): string {
-  lines.push(
-    `No ${noun} were seen in the last ${period}.`,
-    "",
-    "## Response Notes",
-    "",
-    "- Try a longer `period` or a different `dataset`.",
-  );
-  return lines.join("\n");
-}
-
-function formatAttributeTable(attributes: TraceItemAttribute[]): string[] {
-  return [
-    "| Attribute | Type | Description | Added by Sentry | Deprecated | Replacement Attribute |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...attributes.map(
-      (attribute) =>
-        `| \`${escapeCell(attribute.key)}\` | ${attribute.type} | ${escapeCell(describeCell(attribute))} | ${attribute.attributeSource.source_type === "sentry" ? "yes" : ""} | ${attribute.context?.isDeprecated ? "yes" : ""} | ${escapeCell(attribute.context?.replacementAttribute ?? "")} |`,
-    ),
-  ];
+}: TraceItemAttribute): AttributeOutput {
+  const description = flatten(context?.brief) || null;
+  return {
+    key,
+    type,
+    addedBySentry: attributeSource.source_type === "sentry",
+    description: description,
+    examples: context?.examples ?? [],
+    aliases: secondaryAliases ?? [],
+    deprecated: context?.isDeprecated ?? false,
+    replacementKey: context?.replacementAttribute ?? null,
+  };
 }
 
 /**
@@ -208,31 +228,6 @@ export function getRecommendedKeysByDataset(dataset: SearchAttributesDataset) {
   ]);
 }
 
-/** Blank when there's no description */
-function describeCell({ context }: TraceItemAttribute): string {
-  const brief = flatten(context?.brief);
-  if (brief) {
-    const examples = flatten(
-      `EXAMPLE VALUES: ${context?.examples?.join(", ")}`,
-    );
-    return truncate(
-      `${brief} ${context?.examples ? examples : ""}`,
-      MAX_DESCRIPTION_LENGTH,
-    );
-  }
-  return "";
-}
-
 export function flatten(text: string | undefined): string {
   return text?.replace(/\s+/g, " ").trim() ?? "";
-}
-
-function truncate(text: string, maxLength: number): string {
-  return text.length <= maxLength
-    ? text
-    : `${text.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function escapeCell(text: string): string {
-  return text.replaceAll("|", "\\|");
 }

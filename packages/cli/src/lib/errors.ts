@@ -89,7 +89,7 @@ export const EXIT = {
   SEER_NO_BUDGET: 41,
   /** AI features disabled by org admin */
   SEER_AI_DISABLED: 42,
-  /** Organization is out of Seer credits or hit its daily Seer spend limit */
+  /** Organization does not have enough Seer credits or hit its daily Seer spend limit */
   SEER_OUT_OF_CREDITS: 43,
   /** Seer needs a GitHub/GitLab integration or repositories connected to the project */
   SEER_SETUP_REQUIRED: 44,
@@ -890,7 +890,7 @@ export class SeerError extends CliError {
       not_enabled: "Seer is not enabled for this organization.",
       no_budget: "Seer requires a paid plan.",
       ai_disabled: "AI features are disabled for this organization.",
-      out_of_credits: "Your organization is out of Seer credits.",
+      out_of_credits: "Your organization does not have enough Seer credits.",
       daily_cap_exceeded:
         "Your organization has reached its daily Seer spend limit.",
       scm_integration_required:

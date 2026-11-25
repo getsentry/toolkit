@@ -58,14 +58,6 @@ const argumentParsers = new WeakMap<object, ArgumentsParser>();
 const skippedArguments = new WeakMap<object, string>();
 
 /**
- * Whether the user typed `help` (or a mistyped help flag) as an argument,
- * which `buildCommand` answers with the command's help.
- */
-export function isHelpArgument(raw: unknown): boolean {
-  return raw === "help" || raw === "--h" || raw === "-help";
-}
-
-/**
  * A parsed positional value bound to its resolver, which runs once, on the
  * first `resolved` read.
  */

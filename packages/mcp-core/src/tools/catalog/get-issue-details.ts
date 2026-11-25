@@ -142,7 +142,7 @@ export const getIssueDetailsOutputSchema = z.object({
         .string()
         .nullable()
         .describe(
-          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization ran out of Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
+          'Why the Seer run failed, when Sentry can explain it. "out_of_credits": the organization does not have enough Seer credits, so someone with billing access must adjust Seer spend and auto-reload in Sentry before the run can continue.',
         ),
     })
     .nullable(),

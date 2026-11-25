@@ -399,7 +399,9 @@ describe("SeerError", () => {
 
   test("format() includes billing URL for out_of_credits with orgSlug", () => {
     const formatted = new SeerError("out_of_credits", "my-org").format();
-    expect(formatted).toContain("Your organization is out of Seer credits.");
+    expect(formatted).toContain(
+      "Your organization does not have enough Seer credits.",
+    );
     expect(formatted).toContain(
       "https://my-org.sentry.io/settings/billing/overview/?product=seer",
     );
