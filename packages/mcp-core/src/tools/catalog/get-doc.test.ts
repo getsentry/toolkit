@@ -298,7 +298,11 @@ describe("get_doc", () => {
     const fetchSpy = vi.spyOn(global, "fetch");
     await expect(
       getDoc.handler({ path: "/product/offsite.md" }, context),
-    ).rejects.toThrow(UserInputError);
+    ).rejects.toThrow(
+      new UserInputError(
+        "This documentation page redirects to https://sentry.io/auth/login/, outside the docs sites that get_doc can read. Do not retry this path.",
+      ),
+    );
     expect(fetchSpy.mock.calls.map(([input]) => (input as URL).href)).toEqual([
       "https://docs.sentry.io/product/offsite.md",
     ]);
@@ -338,7 +342,7 @@ describe("get_doc", () => {
       ),
     ).rejects.toThrow(
       new UserInputError(
-        "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly.",
+        "Documentation not found at this path. The page may have been moved or removed. Use `search_docs()` to find the current path, and pass the `path` from its results exactly. If `search_docs()` returned this path, that result is out of date: try a different result instead of this path again.",
       ),
     );
   });
