@@ -1,5 +1,64 @@
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { mswServer } from "@sentry/mcp-server-mocks";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import getEventAttachment from "./get-event-attachment.js";
+
+const context = {
+  constraints: { organizationSlug: null, projectSlug: null },
+  accessToken: "access-token",
+  userId: "1",
+};
+
+async function downloadMockedAttachment({
+  eventId,
+  attachmentId,
+  filename,
+  contentType,
+  body,
+}: {
+  eventId: string;
+  attachmentId: string;
+  filename: string;
+  contentType: string;
+  body: string;
+}) {
+  const attachmentApi = `https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/events/${eventId}/attachments`;
+  const bodyBytes = new TextEncoder().encode(body);
+
+  mswServer.use(
+    http.get(`${attachmentApi}/`, () =>
+      HttpResponse.json([
+        {
+          id: attachmentId,
+          name: filename,
+          type: "event.attachment",
+          size: bodyBytes.length,
+          mimetype: contentType,
+          dateCreated: "2025-04-08T21:15:04.000Z",
+        },
+      ]),
+    ),
+    http.get(
+      `${attachmentApi}/${attachmentId}/`,
+      () =>
+        new HttpResponse(bodyBytes, {
+          headers: { "Content-Type": contentType },
+        }),
+    ),
+  );
+
+  return await getEventAttachment.handler(
+    {
+      organizationSlug: "sentry-mcp-evals",
+      projectSlug: "cloudflare-mcp",
+      eventId,
+      attachmentId,
+      regionUrl: null,
+    },
+    context,
+  );
+}
 
 describe("get_event_attachment", () => {
   it("lists attachments for an event", async () => {
@@ -157,6 +216,81 @@ describe("get_event_attachment", () => {
     expect(text).toContain("## File Content");
     expect(text).toContain("INFO app started");
     expect(text).toContain("ERROR db connection failed");
+  });
+
+  it.each([
+    {
+      contentType: "application/json",
+      filename: "event.json",
+      payload: '{"event_id":"abc123","level":"error"}',
+    },
+    {
+      contentType: "application/jsonl",
+      filename: "events.jsonl",
+      payload: '{"type":"session"}\n{"type":"event","id":"def456"}',
+    },
+  ])(
+    "decodes $contentType as one schema-valid text block with the exact payload",
+    async ({ contentType, filename, payload }) => {
+      const eventId = "a49541c747cb4d8aa3efb70ca5aba249";
+      const attachmentId = "321";
+      const result = await downloadMockedAttachment({
+        eventId,
+        attachmentId,
+        filename,
+        contentType,
+        body: payload,
+      });
+
+      expect(result).toEqual([
+        {
+          type: "text",
+          text:
+            `# Event Attachment Download\n\n` +
+            `**Event ID:** ${eventId}\n` +
+            `**Attachment ID:** ${attachmentId}\n` +
+            `**Filename:** ${filename}\n` +
+            `**Type:** event.attachment\n` +
+            `**Size:** ${new TextEncoder().encode(payload).length} bytes\n` +
+            `**MIME Type:** ${contentType}\n` +
+            `**Created:** 2025-04-08T21:15:04.000Z\n\n` +
+            `**Download URL:** https://sentry.io/api/0/projects/sentry-mcp-evals/cloudflare-mcp/events/${eventId}/attachments/${attachmentId}/?download=1\n\n` +
+            `## File Content\n\n` +
+            `\`\`\`\n${payload}\n\`\`\`\n\n`,
+        },
+      ]);
+
+      const protocolResult = CallToolResultSchema.parse({ content: result });
+      expect(protocolResult.content).toEqual(result);
+    },
+  );
+
+  it("preserves application/octet-stream as a schema-valid embedded resource", async () => {
+    const eventId = "b49541c747cb4d8aa3efb70ca5aba250";
+    const result = await downloadMockedAttachment({
+      eventId,
+      attachmentId: "654",
+      filename: "core.dmp",
+      contentType: "application/octet-stream",
+      body: "\x00\x01binary",
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      type: "resource",
+      resource: {
+        uri: "file://core.dmp",
+        mimeType: "application/octet-stream",
+        blob: "AAFiaW5hcnk=",
+      },
+    });
+    expect(result[1]).toMatchObject({ type: "text" });
+    expect((result[1] as { text: string }).text).toContain(
+      "## Binary Content\n\nThe attachment is included as a resource and accessible through your client.\n",
+    );
+
+    const protocolResult = CallToolResultSchema.parse({ content: result });
+    expect(protocolResult.content).toEqual(result);
   });
 
   it("returns a presigned direct-download URL for an oversized objectstore attachment", async () => {
