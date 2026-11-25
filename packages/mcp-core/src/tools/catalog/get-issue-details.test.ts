@@ -364,6 +364,30 @@ describe("get_issue_details", () => {
           "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
           "usersImpacted": 1,
         },
+        "relatedIssues": {
+          "issues": [
+            {
+              "project": "CLOUDFLARE-MCP",
+              "relations": [
+                "similar_stacktrace",
+                "same_trace",
+              ],
+              "shortId": "CLOUDFLARE-MCP-42",
+              "status": "resolved",
+              "title": "Error: Tool list_projects is already registered",
+            },
+            {
+              "project": "web",
+              "relations": [
+                "same_trace",
+              ],
+              "shortId": "WEB-1A2",
+              "status": "unresolved",
+              "title": "TypeError: Failed to fetch",
+            },
+          ],
+          "unavailableTypes": [],
+        },
         "replays": null,
         "seer": null,
         "sideQuests": [
@@ -384,6 +408,15 @@ describe("get_issue_details", () => {
               "issueId": "CLOUDFLARE-MCP-41",
               "organizationSlug": "sentry-mcp-evals",
             },
+            "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
+            "toolName": "find_related_issues",
+            "type": "tool_call",
+          },
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
             "reason": "Chart this issue's events and affected users over time.",
             "toolName": "render_issue_chart",
             "type": "tool_call",
@@ -395,14 +428,6 @@ describe("get_issue_details", () => {
             },
             "reason": "Inspect the distributed trace this event belongs to.",
             "toolName": "get_trace_details",
-            "type": "tool_call",
-          },
-          {
-            "arguments": {
-              "issueUrl": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
-            },
-            "reason": "Read the breadcrumb trail leading up to this event.",
-            "toolName": "get_issue_breadcrumbs",
             "type": "tool_call",
           },
         ],
@@ -2023,7 +2048,7 @@ describe("structuredContent", () => {
     expect(() => getIssueDetailsOutputSchema.parse(payload)).not.toThrow();
   });
 
-  it("returns the same structured payload outside experimental mode, apart from related issues", async () => {
+  it("returns the same structured payload outside experimental mode", async () => {
     mockLatestEvent();
 
     const result = await getIssueDetails.handler(params, baseContext);
@@ -2034,15 +2059,8 @@ describe("structuredContent", () => {
       experimentalContext,
     );
 
-    // related issues are experimental only until the Seer load is checked
-    const { relatedIssues, ...rest } = parsePayload(experimental);
-    expect(relatedIssues).toBeDefined();
-    expect(parsePayload(result)).toEqual({
-      ...rest,
-      suggestedActions: rest.suggestedActions.filter(
-        (action) => action.toolName !== "find_related_issues",
-      ),
-    });
+    expect(parsePayload(result).relatedIssues).toBeDefined();
+    expect(parsePayload(result)).toEqual(parsePayload(experimental));
     expect(
       parsePayload(result).suggestedActions.map((action) => action.toolName),
     ).toContain("render_issue_chart");
@@ -2112,15 +2130,15 @@ describe("structuredContent", () => {
       });
     });
 
-    it("doesn't look them up outside experimental mode", async () => {
+    it("looks them up outside experimental mode too", async () => {
       mockLatestEvent();
       const requests = captureRelatedRequest();
 
       const result = await getIssueDetails.handler(params, baseContext);
       const payload = parsePayload(result);
 
-      expect(requests).toHaveLength(0);
-      expect(payload).not.toHaveProperty("relatedIssues");
+      expect(requests).toHaveLength(1);
+      expect(payload.relatedIssues?.issues).toHaveLength(2);
     });
 
     it("keeps an empty list when nothing is related, without the suggestion", async () => {
@@ -3022,6 +3040,30 @@ describe("selected event package versions", () => {
           "url": "https://sentry-mcp-evals.sentry.io/issues/CLOUDFLARE-MCP-41",
           "usersImpacted": 1,
         },
+        "relatedIssues": {
+          "issues": [
+            {
+              "project": "CLOUDFLARE-MCP",
+              "relations": [
+                "similar_stacktrace",
+                "same_trace",
+              ],
+              "shortId": "CLOUDFLARE-MCP-42",
+              "status": "resolved",
+              "title": "Error: Tool list_projects is already registered",
+            },
+            {
+              "project": "web",
+              "relations": [
+                "same_trace",
+              ],
+              "shortId": "WEB-1A2",
+              "status": "unresolved",
+              "title": "TypeError: Failed to fetch",
+            },
+          ],
+          "unavailableTypes": [],
+        },
         "replays": null,
         "seer": null,
         "sideQuests": [
@@ -3037,6 +3079,15 @@ describe("selected event package versions", () => {
           },
         ],
         "suggestedActions": [
+          {
+            "arguments": {
+              "issueId": "CLOUDFLARE-MCP-41",
+              "organizationSlug": "sentry-mcp-evals",
+            },
+            "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
+            "toolName": "find_related_issues",
+            "type": "tool_call",
+          },
           {
             "arguments": {
               "issueId": "CLOUDFLARE-MCP-41",
