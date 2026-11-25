@@ -130,7 +130,7 @@ export const getIssueDetailsOutputSchema = z.object({
     })
     .optional()
     .describe(
-      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.`,
+      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert).`,
     ),
   event: issueEventSchema,
   seer: z
@@ -418,7 +418,6 @@ function buildIssueDetailsPayload({
       event,
       apiService,
       aiConversations,
-      hasRelatedIssues: (related?.issues.length ?? 0) > 0,
       otherThread: findOtherThread(eventPayload.threads),
       session,
     }),
@@ -450,8 +449,8 @@ function toCount(value: unknown): number | null {
 }
 
 /**
- * Follow-up calls, most specific first: a metric issue's monitor and query, the related
- * issues, the issue's chart, the agent conversations in the trace, the trace itself,
+ * Follow-up calls, most specific first: a metric issue's monitor and query, the issue's
+ * chart, the agent conversations in the trace, the trace itself,
  * another thread's stacktrace, and the breadcrumbs.
  */
 function buildIssueSuggestedActions({
@@ -460,7 +459,6 @@ function buildIssueSuggestedActions({
   event,
   apiService,
   aiConversations,
-  hasRelatedIssues,
   otherThread,
   session,
 }: {
@@ -469,7 +467,6 @@ function buildIssueSuggestedActions({
   event: Event;
   apiService: SentryApiService;
   aiConversations?: AIConversationReference[] | undefined;
-  hasRelatedIssues: boolean;
   otherThread: number | string | null;
   session: ToolSession;
 }): SuggestedToolAction[] {
@@ -502,19 +499,6 @@ function buildIssueSuggestedActions({
         }),
       );
     }
-  }
-
-  // the inline list is capped and has no scores; the tool has the full list
-  if (hasRelatedIssues) {
-    candidates.push(
-      buildSuggestedToolAction({
-        toolName: "find_related_issues",
-        arguments: { organizationSlug, issueId: issue.shortId },
-        reason:
-          "List every related issue with its similarity score before resolving or ignoring this one.",
-        ...session,
-      }),
-    );
   }
 
   candidates.push(

@@ -1379,15 +1379,6 @@ describe("event package selection", () => {
                   "issueId": "CLOUDFLARE-MCP-41",
                   "organizationSlug": "sentry-mcp-evals",
                 },
-                "reason": "List every related issue with its similarity score before resolving or ignoring this one.",
-                "toolName": "find_related_issues",
-                "type": "tool_call",
-              },
-              {
-                "arguments": {
-                  "issueId": "CLOUDFLARE-MCP-41",
-                  "organizationSlug": "sentry-mcp-evals",
-                },
                 "reason": "Chart this issue's events and affected users over time.",
                 "toolName": "render_issue_chart",
                 "type": "tool_call",
