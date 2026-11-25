@@ -1,5 +1,6 @@
 import z from "zod";
 import { defineTool } from "../../internal/tool-helpers/define";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamOrganizationSlug,
   ParamPeriod,
@@ -7,10 +8,9 @@ import {
   ParamRegionUrl,
 } from "../../schema";
 import type { ServerContext } from "../../types";
-import {
-  SEARCH_ATTRIBUTES_DATASETS,
-  runSearchAttributes,
-} from "../support/search-attributes/search";
+import { SEARCH_ATTRIBUTES_DATASETS } from "../support/search-attributes/config";
+import { searchAttributesOutputSchema } from "../support/search-attributes/format";
+import { runSearchAttributes } from "../support/search-attributes/search";
 import { searchToolBase } from "../support/search-events/search";
 
 export default defineTool({
@@ -48,7 +48,8 @@ export default defineTool({
         "Dataset whose attribute keys to list: spans for requests, latency, DB, or AI calls; logs for log lines; metrics for counters, gauges, and distributions.",
       ),
   },
+  outputSchema: searchAttributesOutputSchema,
   async handler(params, context: ServerContext) {
-    return await runSearchAttributes(params, context);
+    return structuredResult(await runSearchAttributes(params, context));
   },
 });
