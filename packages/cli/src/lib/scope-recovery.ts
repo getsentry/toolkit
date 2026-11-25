@@ -1,4 +1,5 @@
 import { isatty } from "node:tty";
+import { isSaaSTrustOrigin } from "@sentry/toolkit-core/sentry-origin";
 import { getCurrentAuthScopes } from "./api/auth.js";
 import { SENTRY_SCOPES } from "./api-scope.js";
 import { assertAutoLoginHostTrusted } from "./auto-auth.js";
@@ -14,7 +15,8 @@ import type {
 } from "./interactive-login.js";
 import { interactivePromptsAllowed } from "./interactive-prompts.js";
 import { logger } from "./logger.js";
-import { OAUTH_SCOPES } from "./oauth.js";
+import { NEWER_DEFAULT_SCOPES, OAUTH_SCOPES } from "./oauth.js";
+import { getActiveTokenHost } from "./token-host.js";
 
 type InteractiveLogin = (
   options?: InteractiveLoginOptions,
@@ -38,6 +40,12 @@ export type ScopeRecoveryRuntime = {
    * runtimes default to re-authorizing the active account.
    */
   getReauthorizationAccountId?: () => string | undefined;
+  /**
+   * Whether the stored grant belongs to sentry.io. Self-hosted servers may
+   * predate {@link NEWER_DEFAULT_SCOPES}, so their grants aren't required to
+   * hold them. Optional so test runtimes default to SaaS.
+   */
+  isSaasGrant?: () => boolean;
 };
 
 const defaultRuntime: ScopeRecoveryRuntime = {
@@ -48,6 +56,10 @@ const defaultRuntime: ScopeRecoveryRuntime = {
   promptsAllowed: interactivePromptsAllowed,
   write: (message) => process.stderr.write(message),
   getReauthorizationAccountId,
+  isSaasGrant: () => {
+    const host = getActiveTokenHost();
+    return host !== undefined && isSaaSTrustOrigin(host);
+  },
 };
 
 /**
@@ -122,7 +134,12 @@ async function inspectOAuthScopes(
       return { kind: "invalid" };
     }
     const grantedSet = new Set(granted);
-    const missing = OAUTH_SCOPES.filter((scope) => !grantedSet.has(scope));
+    const saas = runtime.isSaasGrant?.() ?? true;
+    const missing = OAUTH_SCOPES.filter(
+      (scope) =>
+        !grantedSet.has(scope) &&
+        (saas || !NEWER_DEFAULT_SCOPES.includes(scope)),
+    );
     return missing.length > 0
       ? { kind: "missing", scopes: missing }
       : { kind: "current" };

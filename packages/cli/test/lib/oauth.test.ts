@@ -18,6 +18,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { SENTRY_SCOPES } from "../../src/lib/api-scope.js";
 import { ValidationError } from "../../src/lib/errors.js";
 import {
+  NEWER_DEFAULT_SCOPES,
   OAUTH_SCOPES,
   exchangeSetupCode,
   performDeviceFlow,
@@ -31,6 +32,72 @@ const knownScopeArb = constantFrom(...SENTRY_SCOPES);
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("device-code request on servers without newer default scopes", () => {
+  const deviceCode = {
+    device_code: "test-code",
+    user_code: "ABCD",
+    verification_uri: "https://sentry.example/oauth/device/",
+    interval: 1,
+    expires_in: 30,
+  };
+
+  function unknownScope(scope: string): Response {
+    return Response.json(
+      { error: "invalid_scope", error_description: `Unknown scope: ${scope}` },
+      { status: 400 },
+    );
+  }
+
+  function requestedScopes(fetchMock: ReturnType<typeof vi.fn>, call: number) {
+    const init = at(fetchMock.mock.calls, call)[1] as RequestInit;
+    return (init.body as URLSearchParams).get("scope")?.split(" ");
+  }
+
+  test("retries without them when the server rejects one", async () => {
+    const onUserCode = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(unknownScope("user_preference:read"))
+      .mockResolvedValueOnce(Response.json(deviceCode))
+      .mockReturnValue(new Promise(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    void performDeviceFlow({ onUserCode }).catch(() => {});
+    await vi.waitFor(() => expect(onUserCode).toHaveBeenCalledOnce());
+
+    expect(requestedScopes(fetchMock, 0)).toEqual(OAUTH_SCOPES);
+    expect(requestedScopes(fetchMock, 1)).toEqual(
+      OAUTH_SCOPES.filter((s) => !NEWER_DEFAULT_SCOPES.includes(s)),
+    );
+  });
+
+  test("keeps other scopes the server rejects as errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(unknownScope("org:tokens"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      performDeviceFlow({ onUserCode: vi.fn() }, 30_000, "org:read org:tokens"),
+    ).rejects.toMatchObject({ name: "ApiError", status: 400 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  test("doesn't retry when nothing else would be requested", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(unknownScope("user_preference:read"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      performDeviceFlow(
+        { onUserCode: vi.fn() },
+        30_000,
+        "user_preference:read",
+      ),
+    ).rejects.toMatchObject({ name: "ApiError", status: 400 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
 
 describe("performDeviceFlow polling", () => {

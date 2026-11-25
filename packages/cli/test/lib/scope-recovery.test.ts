@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { ApiError, AuthError } from "../../src/lib/errors.js";
-import { OAUTH_SCOPES } from "../../src/lib/oauth.js";
+import { NEWER_DEFAULT_SCOPES, OAUTH_SCOPES } from "../../src/lib/oauth.js";
 import {
   ensureCurrentOAuthScopes,
   ensureScopesForAction,
@@ -293,6 +293,38 @@ describe("upgrade scope check", () => {
   test("does nothing when the stored grant is current", async () => {
     const login = vi.fn();
     expect(await ensureCurrentOAuthScopes(login, runtime())).toBe(false);
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  const withoutNewerDefaults = OAUTH_SCOPES.filter(
+    (scope) => !NEWER_DEFAULT_SCOPES.includes(scope),
+  );
+
+  test("re-authorizes a SaaS grant that lacks a newer default scope", async () => {
+    const login = vi.fn().mockResolvedValue({ method: "oauth" });
+    const refreshed = await ensureCurrentOAuthScopes(
+      login,
+      runtime({
+        getAuthScopes: vi.fn().mockResolvedValue(withoutNewerDefaults),
+        isSaasGrant: () => true,
+      }),
+    );
+
+    expect(refreshed).toBe(true);
+    expect(login).toHaveBeenCalledOnce();
+  });
+
+  test("doesn't require newer default scopes from a self-hosted grant", async () => {
+    const login = vi.fn();
+    const refreshed = await ensureCurrentOAuthScopes(
+      login,
+      runtime({
+        getAuthScopes: vi.fn().mockResolvedValue(withoutNewerDefaults),
+        isSaasGrant: () => false,
+      }),
+    );
+
+    expect(refreshed).toBe(false);
     expect(login).not.toHaveBeenCalled();
   });
 });
