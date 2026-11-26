@@ -79,6 +79,9 @@ function envValue(name: string): string | undefined {
 
 export const wizardCommand = buildCommand({
   auth: false,
+  // The wizard picks the Sentry instance itself (`--url`, `--saas` or a
+  // prompt) before it logs in, like `sentry init`.
+  skipRcUrlCheck: true,
   docs: {
     brief: topLevelBrief("wizard"),
     fullDescription:

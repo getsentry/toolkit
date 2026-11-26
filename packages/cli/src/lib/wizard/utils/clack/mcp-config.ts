@@ -10,6 +10,7 @@ import { Sentry } from "../../telemetry.js";
 import chalk from "chalk";
 import { clack } from "./prompts.js";
 import { abortIfCancelled, showCopyPasteInstructions } from "./index.js";
+import { WizardExitError } from "../../../errors.js";
 import { debug } from "../debug.js";
 
 const SENTRY_MCP_BASE_URL = "https://mcp.sentry.dev/mcp";
@@ -48,14 +49,23 @@ function ensureDir(dirpath: string): void {
   mkdirSync(dirpath, { recursive: true });
 }
 
+/**
+ * The parsed JSON in `filepath`, or `null` when the file doesn't exist.
+ *
+ * @throws {SyntaxError} When the file exists but isn't valid JSON, so the
+ *   caller shows the copy-paste fallback instead of overwriting it
+ */
 async function readJsonIfExists(filepath: string): Promise<unknown> {
+  let txt: string;
   try {
-    const txt = await promises.readFile(filepath, "utf8");
-    return JSON.parse(txt) as unknown;
+    txt = await promises.readFile(filepath, "utf8");
   } catch (error) {
-    debug(error);
-    return null;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
   }
+  return JSON.parse(txt) as unknown;
 }
 
 async function writeJson(filepath: string, obj: unknown): Promise<void> {
@@ -600,6 +610,10 @@ export async function offerProjectScopedMcpConfig(
       }
       Sentry.setTag(`mcp-config-${editor}-success`, true);
     } catch (e) {
+      if (e instanceof WizardExitError) {
+        throw e;
+      }
+      debug(e);
       Sentry.setTag(`mcp-config-${editor}-success`, false);
       Sentry.setTag("mcp-config-fallback", true);
       clack.log.warn(

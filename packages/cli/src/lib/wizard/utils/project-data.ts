@@ -42,8 +42,12 @@ import { logger } from "../../logger.js";
 import { OAUTH_SCOPES, resolveOAuthScopeString } from "../../oauth.js";
 import { resolveOrCreateTeam } from "../../resolve-team.js";
 import { ensureScopesForAction } from "../../scope-recovery.js";
-import { getSentryBaseUrl, isSentrySaasUrl } from "../../sentry-urls.js";
-import { registerLoginTrustAnchor } from "../../token-host.js";
+import { isSentrySaasUrl } from "../../sentry-urls.js";
+import { getApiBaseUrl } from "../../sentry-client.js";
+import {
+  isRequestOriginTrusted,
+  registerLoginTrustAnchor,
+} from "../../token-host.js";
 import { slugify } from "../../utils.js";
 import { sentry } from "../../app-identity.js";
 import type {
@@ -130,7 +134,8 @@ export async function getOrAskForProjectData(
   );
   const handoffOrg = await traceStep("login", ensureLoggedIn);
 
-  const sentryUrl = withTrailingSlash(getSentryBaseUrl());
+  // The chosen instance, or the stored login's when none was chosen.
+  const sentryUrl = withTrailingSlash(getApiBaseUrl());
   const selfHosted = !isSentrySaasUrl(sentryUrl);
   Sentry.setTag("url", sentryUrl);
   Sentry.setTag("self-hosted", selfHosted);
@@ -261,7 +266,8 @@ async function ensureLoggedIn(): Promise<string | undefined> {
     return handoff.organizationSlug;
   }
 
-  if (getAuthConfig()) {
+  // A login for another instance than the selected one can't be used.
+  if (getAuthConfig() && isRequestOriginTrusted(getApiBaseUrl())) {
     Sentry.setTag("login-method", "stored");
     return;
   }
@@ -464,7 +470,7 @@ async function createAuthToken(
   Sentry.setTag("auth-token-created", false);
   const settingsUrl = isSentrySaasUrl(sentryUrl)
     ? `https://${orgSlug}.sentry.io/settings/auth-tokens/`
-    : `${sentryUrl}organizations/${orgSlug}/settings/auth-tokens/`;
+    : `${sentryUrl}settings/${orgSlug}/auth-tokens/`;
   clack.log.warn(
     `Could not create an auth token for you. We'll add a placeholder (${chalk.cyan(
       `"${DUMMY_AUTH_TOKEN}"`,
