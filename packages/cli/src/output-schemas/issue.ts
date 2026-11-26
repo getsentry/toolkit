@@ -20,9 +20,10 @@ import {
   pipe,
   string,
   unknown,
+  type InferOutput,
 } from "valibot";
 import type { SentryEvent } from "../types/index.js";
-import { opaque } from "./output.js";
+import { DryRunOutputField, opaque } from "./output.js";
 
 /**
  * Valibot schema describing the key fields of a {@link SentryIssue} for JSON output.
@@ -143,3 +144,38 @@ export const IssueTagsOutputSchema = object({
     ),
   ),
 });
+
+/** A video attached to an issue comment. */
+const IssueCommentAttachmentOutput = object({
+  id: pipe(string(), description("Attachment ID")),
+  name: pipe(string(), description("Video file name")),
+  url: pipe(string(), description("API URL that streams the video")),
+  savedTo: optional(
+    pipe(
+      string(),
+      description("Local path the video was saved to (--download)"),
+    ),
+  ),
+});
+
+/** JSON output of `issue comment` and each item of `issue comments`. */
+export const IssueCommentOutputSchema = object({
+  id: optional(
+    pipe(string(), description("Comment ID; absent with --dry-run")),
+  ),
+  dateCreated: optional(
+    pipe(string(), description("When the comment was posted")),
+  ),
+  author: optional(pipe(string(), description("Who posted the comment"))),
+  text: pipe(
+    string(),
+    description("Comment text, including links to attached videos"),
+  ),
+  attachments: pipe(
+    array(IssueCommentAttachmentOutput),
+    description("Videos attached to the comment"),
+  ),
+  dryRun: DryRunOutputField,
+});
+
+export type IssueCommentOutput = InferOutput<typeof IssueCommentOutputSchema>;

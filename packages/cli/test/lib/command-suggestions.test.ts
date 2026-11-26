@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { run } from "@stricli/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { app, routes } from "../../src/app.js";
+import { sentry } from "../../src/lib/app-identity.js";
 import { getCommandSuggestion } from "../../src/lib/command-suggestions.js";
 import { isRouteMap, type RouteMap } from "../../src/lib/introspect.js";
 import { useTestConfigDir } from "../helpers.js";
@@ -53,11 +54,11 @@ describe("getCommandSuggestion", () => {
   // --- Pattern 3: mutation commands ---
   test("suggests native resolve for the unambiguous close synonym", () => {
     expect(getCommandSuggestion("issue", "close")).toEqual({
-      command: "sentry issue resolve <issue-id>",
+      command: sentry`issue resolve <issue-id>`,
     });
   });
 
-  test.each(["update", "set-status", "assign", "comment"])(
+  test.each(["update", "set-status", "assign"])(
     "keeps the API suggestion for issue %s without an exact native equivalent",
     (command) => {
       expect(getCommandSuggestion("issue", command)?.command).toMatch(
@@ -90,7 +91,7 @@ describe("getCommandSuggestion", () => {
 
   test("suggests send-event for 'cli/send-event'", () => {
     expect(getCommandSuggestion("cli", "send-event")?.command).toContain(
-      "sentry event send",
+      sentry`event send`,
     );
   });
 
@@ -171,7 +172,7 @@ describe("command error suggestions", () => {
     async (command, flag, value, error) => {
       const output = await runIssue([command, "TEST-1", flag, value]);
       expect(output).toContain(error);
-      expect(output).not.toContain("sentry api");
+      expect(output).not.toContain(sentry`api`);
     },
   );
 });

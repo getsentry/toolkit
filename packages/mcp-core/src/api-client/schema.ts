@@ -798,6 +798,15 @@ export const IssueCommentSchema = IssueActivitySchema.extend({
 
 export const IssueCommentListSchema = z.array(IssueCommentSchema);
 
+/** A video uploaded through an issue's `comment-attachments/` endpoint. */
+export const IssueCommentAttachmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.number(),
+  contentType: z.string(),
+  url: z.string(),
+});
+
 /**
  * Organization tag lists are backed by `TagKeySerializerResponse`, which only
  * guarantees `key` and `name`. Count fields are backend-dependent and may come

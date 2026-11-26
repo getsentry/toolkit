@@ -63,14 +63,6 @@ const SUGGESTIONS: ReadonlyMap<
       explanation: "Issue assignment is available via the API",
     },
   ],
-  [
-    "issue/comment",
-    {
-      command: () =>
-        sentry`api /api/0/organizations/{org}/issues/{issue_id}/comments/ --method POST --data '{"text":"..."}'`,
-      explanation: "Issue commenting is available via the API",
-    },
-  ],
 
   // --- old sentry-cli commands (~5 events) ---
   ["cli/info", { command: () => sentry`auth status` }],

@@ -106,6 +106,14 @@ export {
 } from "./api/infrastructure.js";
 export { getIssueTag } from "./api/issue-tags.js";
 export {
+  createIssueCommentWithVideos,
+  downloadIssueCommentAttachment,
+  type IssueComment,
+  listIssueComments,
+  type LocalVideo,
+  readLocalVideo,
+} from "./api/issue-comments.js";
+export {
   buildIssueListCollapse,
   findIssueInOrgs,
   getIssueByShortId,
