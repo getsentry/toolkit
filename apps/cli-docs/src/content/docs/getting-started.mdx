@@ -150,6 +150,37 @@ Homebrew installs shell completions but can't install agent skills into your hom
 sentry cli setup --no-modify-path --no-completions
 ```
 
+The v3 formula, `getsentry/tools/sentry-cli`, installs the same `sentry`
+binary. It conflicts with `getsentry/tools/sentry`; install only one of them.
+
+## pip
+
+The PyPI package `sentry-cli` installs the standalone binary as `sentry`:
+
+```bash
+pipx install sentry-cli   # or: pip install sentry-cli
+```
+
+It has wheels for macOS, Linux with glibc, and Windows on the platforms listed
+above, and no source distribution, so pip cannot install it elsewhere, such as
+on Alpine Linux. The `sentry` PyPI package (self-hosted Sentry) also installs a
+`sentry` command; do not install both into the same environment.
+
+## Direct Download
+
+Each release's binaries are attached to its
+[GitHub release](https://github.com/getsentry/toolkit/releases) and served
+from `https://downloads.sentry-cdn.com/sentry-cli/<version>/`, as
+`sentry-<os>-<arch>` (`.exe` on Windows) and gzipped as `.gz`. For example:
+
+```bash
+curl -fsSL https://downloads.sentry-cdn.com/sentry-cli/latest/sentry-linux-x64.gz | gunzip > sentry
+chmod +x sentry
+```
+
+The release registry, `https://release-registry.services.sentry.io/apps/sentry-cli/latest`,
+lists their SHA-256 checksums.
+
 ## Package Managers
 
 Install globally with your preferred package manager (the npm packages require **Node.js 20+**; on **22.15+** the built-in `node:sqlite` is used, on 20–22.14 a bundled WASM fallback is used transparently):
@@ -160,6 +191,9 @@ Install globally with your preferred package manager (the npm packages require *
   yarn="yarn global add sentry"
   bun="bun add -g sentry"
 />
+
+The v3 package name, `@sentry/cli`, also has v4 releases with the same code.
+It is deprecated; install `sentry` instead.
 
 Unlike the install script, package manager installs don't set up shell completions or agent skills. Run `sentry cli setup` once to enable them:
 

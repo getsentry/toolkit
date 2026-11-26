@@ -154,6 +154,25 @@ jobs:
         with:
           name: sentry-${{ matrix.target }}-gz
           path: packages/cli/dist-bin/*.gz
+      # PyPI `sentry-cli` (the v3 package name) ships one wheel per binary.
+      - name: Build PyPI wheel
+        working-directory: packages/cli
+        env:
+          TARGET: ${{ matrix.target }}
+        run: pnpm run ts script/build-wheel.ts "$TARGET"
+      - name: Smoke test PyPI wheel
+        if: matrix.target == 'linux-x64'
+        env:
+          SENTRY_AUTH_TOKEN: ""
+          SENTRY_TOKEN: ""
+          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+        run: pipx run --spec packages/cli/dist-wheel/sentry_cli-*.whl sentry --help
+      - name: Upload PyPI wheel artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pypi-wheel-${{ matrix.target }}
+          path: packages/cli/dist-wheel/*.whl
+          if-no-files-found: error
 
   generate-patches:
     name: Generate nightly delta patches
@@ -289,6 +308,17 @@ jobs:
         with:
           name: npm-package
           path: packages/cli/*.tgz
+      # The same package under the v3 name, @sentry/cli. Packed after the
+      # upload above so npm-package holds only the sentry tarball.
+      - name: Pack @sentry/cli
+        working-directory: packages/cli
+        run: pnpm run ts script/pack-npm-alias.ts
+      - name: Upload @sentry/cli npm artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-package-sentry-cli
+          path: packages/cli/sentry-cli-*.tgz
+          if-no-files-found: error
       # Every CLI release also publishes @sentry/mcp-server at the same version.
       - name: Bundle mcp-server
         run: pnpm --filter @sentry/mcp-server run bundle
