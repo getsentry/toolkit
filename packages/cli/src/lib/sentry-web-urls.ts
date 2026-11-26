@@ -11,6 +11,7 @@ import {
   buildMetricAlertsUrl as buildMetricAlertsUrlPure,
   buildOrgSettingsUrl as buildOrgSettingsUrlPure,
   buildOrgUrl as buildOrgUrlPure,
+  buildProjectIssuesUrl as buildProjectIssuesUrlPure,
   buildProjectUrl as buildProjectUrlPure,
   buildReleaseUrl as buildReleaseUrlPure,
   buildReplayUrl as buildReplayUrlPure,
@@ -54,6 +55,13 @@ export function buildIssueUrl(orgSlug: string, issueId: string): string {
 
 export function buildEventSearchUrl(orgSlug: string, eventId: string): string {
   return render(() => buildEventSearchUrlPure(orgSlug, eventId));
+}
+
+export function buildProjectIssuesUrl(
+  orgSlug: string,
+  projectId: string,
+): string {
+  return render(() => buildProjectIssuesUrlPure(orgSlug, projectId));
 }
 
 export function buildOrgSettingsUrl(orgSlug: string, hash?: string): string {
