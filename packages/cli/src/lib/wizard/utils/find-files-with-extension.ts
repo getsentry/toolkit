@@ -16,6 +16,8 @@ export function findFilesWithExtension(
   debug(`Found ${files.length} files in ${dir}`);
   const found = files.filter((file) => file.endsWith(extension));
   debug(`Found ${found.length} files with extension ${extension}`);
-  found.forEach((file) => debug(`  ${file}`));
+  for (const file of found) {
+    debug(`  ${file}`);
+  }
   return found;
 }

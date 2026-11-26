@@ -65,30 +65,6 @@ export type WizardOptions = {
    * `sentry wizard` turns it on when `SENTRY_SPOTLIGHT` is set.
    */
   spotlight?: boolean | undefined;
-
-  /**
-   * Directory that contains the Xcode project, for the Apple wizards.
-   * Defaults to the current directory. Passed via `--xcode-project-dir`.
-   */
-  xcodeProjectDir?: string | undefined;
-
-  /**
-   * Xcode application target that hosts Swift previews, for the Apple
-   * Snapshots wizard. Passed via `--app-target`.
-   */
-  appTarget?: string | undefined;
-
-  /**
-   * Hosted XCTest target to configure, for the Apple Snapshots wizard.
-   * Passed via `--hosted-test-target`.
-   */
-  hostedTestTarget?: string | undefined;
-
-  /**
-   * Fail instead of prompting when a choice is ambiguous. Only the Apple
-   * Snapshots wizard reads it. Passed via `--non-interactive`.
-   */
-  nonInteractive?: boolean | undefined;
 };
 
 export interface Feature {

@@ -1,6 +1,6 @@
 /**
- * Stop a wizard whose platform has no Spotlight setup when `--spotlight` is
- * passed.
+ * Stop a wizard whose platform has no Spotlight setup when Spotlight mode
+ * (`SENTRY_SPOTLIGHT`) is on.
  */
 
 import { clack } from "./clack/prompts.js";

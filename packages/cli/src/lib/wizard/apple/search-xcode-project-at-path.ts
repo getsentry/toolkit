@@ -14,7 +14,9 @@ export function searchXcodeProjectAtPath(searchPath: string): string[] {
   const projs = findFilesWithExtension(searchPath, ".xcodeproj");
   if (projs.length > 0) {
     debug("Found Xcode project at paths:");
-    projs.forEach((proj) => debug("  " + proj));
+    for (const proj of projs) {
+      debug("  " + proj);
+    }
     return projs;
   }
 
@@ -56,6 +58,8 @@ export function searchXcodeProjectAtPath(searchPath: string): string[] {
   }
 
   debug("Found Xcode project at paths:");
-  projs.forEach((proj) => debug("  " + proj));
+  for (const proj of projs) {
+    debug("  " + proj);
+  }
   return projs;
 }

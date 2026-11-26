@@ -1,5 +1,5 @@
 /**
- * The Apple Snapshots wizard (`sentry wizard -i appleSnapshots`): links
+ * The Apple Snapshots wizard (`sentry wizard appleSnapshots`): links
  * SnapshotPreviews to a hosted XCTest target, adds a snapshot test, and
  * prints how to export and upload the snapshots.
  */
@@ -187,19 +187,6 @@ async function resolveAppTargetName(
   options: AppleSnapshotsWizardOptions,
 ): Promise<string | undefined> {
   const appTargetNames = xcodeProject.getAllTargets();
-  if (options.appTarget) {
-    if (appTargetNames.includes(options.appTarget)) {
-      return options.appTarget;
-    }
-
-    clack.log.error(
-      `Xcode app target ${
-        options.appTarget
-      } was not found. Available app targets: ${formatList(appTargetNames)}.`,
-    );
-    return undefined;
-  }
-
   if (appTargetNames.length === 0) {
     clack.log.error("No application target found.");
     return undefined;
@@ -210,7 +197,7 @@ async function resolveAppTargetName(
       [
         "Could not automatically select an Xcode app target in non-interactive mode.",
         `Available app targets: ${formatList(appTargetNames)}.`,
-        "Pass --app-target <target-name> to select the app target that SnapshotPreviews should use.",
+        "Run the wizard in a terminal to choose the app target that SnapshotPreviews should use.",
       ].join(" "),
     );
     return undefined;
@@ -229,22 +216,6 @@ async function resolveHostedTestTargetName(
   options: AppleSnapshotsWizardOptions,
 ): Promise<string | undefined> {
   const hostedTestTargetNames = xcodeProject.getHostedUnitTestTargetNames();
-  if (options.hostedTestTarget) {
-    if (hostedTestTargetNames.includes(options.hostedTestTarget)) {
-      return options.hostedTestTarget;
-    }
-
-    clack.log.error(
-      [
-        `Hosted XCTest target ${options.hostedTestTarget} was not found or does not define TEST_HOST.`,
-        `Available hosted XCTest targets: ${formatList(
-          hostedTestTargetNames,
-        )}.`,
-      ].join(" "),
-    );
-    return undefined;
-  }
-
   const inferredHostedTestTargetNames =
     xcodeProject.getHostedUnitTestTargetNamesForApplicationTarget(
       appTargetName,
@@ -305,7 +276,7 @@ async function selectHostedTestTargetName({
         `Available hosted XCTest targets: ${formatList(
           hostedTestTargetNames,
         )}.`,
-        "Pass --hosted-test-target <target-name> to select the target explicitly.",
+        "Run the wizard in a terminal to choose the target.",
         manualAppleSnapshotsSetupInstructions({
           appTargetName,
           hostedTestTargetName: hostedTestTargetNames[0],

@@ -6,6 +6,7 @@
  * dependencies, such as magicast).
  */
 
+import { isatty } from "node:tty";
 import { ValidationError } from "../errors.js";
 import { abortIfCancelled } from "./utils/clack/index.js";
 import { clack } from "./utils/clack/prompts.js";
@@ -57,18 +58,14 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
   },
   ios: async (options) => {
     const { runAppleWizard } = await import("./apple/apple-wizard.js");
-    await runAppleWizard({ ...options, projectDir: options.xcodeProjectDir });
+    await runAppleWizard(options);
   },
   appleSnapshots: async (options) => {
     const { runAppleSnapshotsWizard } =
       await import("./apple/snapshots/apple-snapshots-wizard.js");
-    await runAppleSnapshotsWizard({
-      ...options,
-      projectDir: options.xcodeProjectDir,
-      appTarget: options.appTarget,
-      hostedTestTarget: options.hostedTestTarget,
-      nonInteractive: options.nonInteractive ?? false,
-    });
+    // Without a terminal to prompt on, pick the only target or fail with
+    // the choices, as the CLI does for auto-login (`isatty(0)`).
+    await runAppleSnapshotsWizard({ ...options, nonInteractive: !isatty(0) });
   },
   reactNative: async (options) => {
     const { runReactNativeWizard } =

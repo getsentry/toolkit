@@ -1,5 +1,5 @@
 /**
- * The iOS wizard (`sentry wizard -i ios`): adds the Sentry Cocoa SDK through
+ * The iOS wizard (`sentry wizard ios`): adds the Sentry Cocoa SDK through
  * Swift Package Manager, a debug-symbol upload build phase, the SDK init
  * snippet, and an optional Fastlane upload step to an Xcode project.
  */

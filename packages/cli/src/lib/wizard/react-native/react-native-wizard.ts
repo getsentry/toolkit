@@ -1,9 +1,10 @@
 /**
- * The React Native wizard (`sentry wizard -i reactNative`): installs
+ * The React Native wizard (`sentry wizard reactNative`): installs
  * `@sentry/react-native`, initializes it, and sets up source map and debug
  * file uploads for Xcode, Gradle, Metro and Expo.
  */
 
+import { buildProjectIssuesUrl } from "../../sentry-web-urls.js";
 import { clack } from "../utils/clack/prompts.js";
 import chalk from "chalk";
 import { existsSync, readFileSync } from "node:fs";
@@ -32,7 +33,6 @@ import {
   getPackageVersion,
   hasPackageInstalled,
 } from "../utils/package-json.js";
-import { getIssueStreamUrl } from "../utils/url.js";
 import {
   isExpoCNG,
   patchExpoAppConfig,
@@ -298,7 +298,6 @@ Or setup using ${chalk.cyan(
   );
 
   const confirmedFirstException = await confirmFirstSentryException(
-    sentryUrl,
     orgSlug,
     projectId,
   );
@@ -322,12 +321,8 @@ Or setup using ${chalk.cyan(
   }
 }
 
-async function confirmFirstSentryException(
-  url: string,
-  orgSlug: string,
-  projectId: string,
-) {
-  const issuesStreamUrl = getIssueStreamUrl({ url, orgSlug, projectId });
+async function confirmFirstSentryException(orgSlug: string, projectId: string) {
+  const issuesStreamUrl = buildProjectIssuesUrl(orgSlug, projectId);
 
   clack.log
     .step(`To make sure everything is set up correctly, put the following code snippet into your application.

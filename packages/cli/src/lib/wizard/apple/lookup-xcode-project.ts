@@ -54,7 +54,7 @@ export async function lookupXcodeProject({
         [
           "Multiple Xcode projects found in non-interactive mode.",
           `Available projects: ${xcodeProjFiles.join(", ")}.`,
-          "Run from a directory with a single .xcodeproj or pass --xcode-project-dir with a narrower project directory.",
+          "Run the wizard in a terminal to choose one, or from a directory with a single .xcodeproj.",
         ].join(" "),
       );
       return await abort();

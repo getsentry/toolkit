@@ -130,7 +130,9 @@ export async function addSentryToFastlane(
     platform.index + platform.length,
   );
   const lanes = findLanes(platformContent);
-  lanes?.forEach((l) => (l.index += platform.index));
+  for (const lane of lanes ?? []) {
+    lane.index += platform.index;
+  }
 
   if (!lanes || lanes.length === 0) {
     clack.log.warn("No suitable lanes in your Fastfile.");

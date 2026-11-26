@@ -76,12 +76,12 @@ export class MacOSSystemHelpers {
       //     ...
       const lines = output.split("\n");
       const settings: Record<string, string> = {};
-      lines.forEach((line) => {
+      for (const line of lines) {
         const match = line.match(/^\s*(\w+)\s+=\s+(.*)$/);
         if (match?.[1] !== undefined && match[2] !== undefined) {
           settings[match[1]] = match[2];
         }
-      });
+      }
 
       return settings;
     } catch (error) {

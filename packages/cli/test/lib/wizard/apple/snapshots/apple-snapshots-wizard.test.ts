@@ -343,24 +343,24 @@ describe("runAppleSnapshotsWizard", () => {
     });
   });
 
-  it("uses explicit app and hosted XCTest targets without prompting", async () => {
+  it("picks the only app and hosted XCTest targets without prompting when non-interactive", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "snapshots-wizard-"));
     const previewFile = path.join(tempDir, "ContentView.swift");
     fs.writeFileSync(previewFile, "#Preview { ContentView() }", "utf8");
     const xcodeProject = {
       getBundleIdentifierForTarget: vi.fn(() => "com.getsentry.App"),
       getSourceFilesForTarget: vi.fn(() => [previewFile]),
-      getAllTargets: vi.fn(() => ["App", "OtherApp"]),
+      getAllTargets: vi.fn(() => ["App"]),
       getHostedUnitTestTargetNames: vi.fn(() => ["AppTests"]),
-      getHostedUnitTestTargetNamesForApplicationTarget: vi.fn(() => []),
+      getHostedUnitTestTargetNamesForApplicationTarget: vi.fn(() => [
+        "AppTests",
+      ]),
       write: mocks.write,
       xcodeprojPath: path.join(tempDir, "App.xcodeproj"),
     };
     mocks.lookupXcodeProject.mockResolvedValue(xcodeProject);
 
     await runAppleSnapshotsWizard({
-      appTarget: "App",
-      hostedTestTarget: "AppTests",
       telemetryEnabled: true,
       projectDir: tempDir,
       ignoreGitChanges: true,
@@ -380,9 +380,6 @@ describe("runAppleSnapshotsWizard", () => {
     expect(mocks.printSnapshotsUploadSetup).toHaveBeenCalledWith(
       expect.objectContaining({ projectDir: tempDir }),
     );
-    expect(
-      xcodeProject.getHostedUnitTestTargetNamesForApplicationTarget,
-    ).not.toHaveBeenCalled();
     expect(mocks.configureSnapshotPreviewsXcodeProject).toHaveBeenCalledWith({
       xcodeProject,
       hostedTestTargetName: "AppTests",
@@ -451,7 +448,9 @@ describe("runAppleSnapshotsWizard", () => {
 
     expect(mocks.askForItemSelection).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalledWith(
-      expect.stringContaining("Pass --app-target <target-name>"),
+      expect.stringContaining(
+        "Run the wizard in a terminal to choose the app target",
+      ),
     );
     expect(mocks.configureSnapshotPreviewsXcodeProject).not.toHaveBeenCalled();
     expect(mocks.abort).toHaveBeenCalledWith(
@@ -486,7 +485,9 @@ describe("runAppleSnapshotsWizard", () => {
 
     expect(mocks.askForItemSelection).not.toHaveBeenCalled();
     expect(mocks.error).toHaveBeenCalledWith(
-      expect.stringContaining("Pass --hosted-test-target <target-name>"),
+      expect.stringContaining(
+        "Run the wizard in a terminal to choose the target",
+      ),
     );
     expect(mocks.error).toHaveBeenCalledWith(
       expect.stringContaining("Manual setup:"),
