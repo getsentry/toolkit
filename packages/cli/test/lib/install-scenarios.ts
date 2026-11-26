@@ -180,7 +180,7 @@ export const INSTALL_SCENARIOS: InstallScenario[] = [
     name: "stops when the release has no build for this platform",
     registry: { status: 200, missingAsset: true },
     ok: false,
-    output: [`Sentry CLI ${LATEST_VERSION} has no`],
+    output: [`Sentry CLI ${LATEST_VERSION} has no`, "npm install -g sentry"],
     requests: () => [`${REGISTRY}/latest`],
   },
   {

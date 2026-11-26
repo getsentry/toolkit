@@ -4,7 +4,8 @@
 #
 # EXPECTED_LIBC=glibc: on a glibc distro, install the musl package, which adds
 #   the musl loader, and check the installer still installs a working binary.
-# EXPECTED_LIBC=musl: check the installer stops and points to the npm package.
+# EXPECTED_LIBC=musl: check the installer names the C++ runtime libraries the
+#   musl binary needs, then installs them and checks it installs the binary.
 set -eu
 
 expected="${EXPECTED_LIBC:?set EXPECTED_LIBC to glibc or musl}"
@@ -30,15 +31,19 @@ if [ ! -e "$loader" ]; then
   exit 1
 fi
 
-SENTRY_INSTALL_DIR=$(mktemp -d)
-export SENTRY_INSTALL_DIR
 log=$(mktemp)
-status=0
-bash packages/cli/install --no-modify-path >"$log" 2>&1 || status=$?
-cat "$log"
+# Sets status, and log to the installer's output.
+run_installer() {
+  SENTRY_INSTALL_DIR=$(mktemp -d)
+  export SENTRY_INSTALL_DIR
+  status=0
+  bash packages/cli/install --no-modify-path >"$log" 2>&1 || status=$?
+  cat "$log"
+}
 
 case "$expected" in
   glibc)
+    run_installer
     if [ "$status" -ne 0 ]; then
       echo "Installer exited $status on glibc with $loader present" >&2
       exit 1
@@ -46,12 +51,23 @@ case "$expected" in
     "$SENTRY_INSTALL_DIR/sentry" --version
     ;;
   musl)
+    run_installer
     if [ "$status" -eq 0 ]; then
-      echo "Installer installed the glibc binary on musl" >&2
+      echo "Installer installed a binary on musl without its C++ runtime libraries" >&2
       exit 1
     fi
-    if ! grep -q "npm install -g sentry" "$log"; then
-      echo "Installer did not point musl users to the npm package" >&2
+    if ! grep -q "apk add libstdc++ libatomic" "$log"; then
+      echo "Installer did not name the libraries the musl binary needs" >&2
+      exit 1
+    fi
+
+    apk add --no-cache libstdc++ libatomic
+    run_installer
+    if [ "$status" -eq 0 ]; then
+      "$SENTRY_INSTALL_DIR/sentry" --version
+    elif ! grep -q "has no sentry-linux-x64-musl build" "$log"; then
+      # Releases before the first musl build have none to install.
+      echo "Installer exited $status on musl with the libraries installed" >&2
       exit 1
     fi
     ;;

@@ -505,29 +505,92 @@ process.exitCode = result.status ?? 1;
     },
   );
 
-  test("directs musl users to the npm package before downloading a glibc binary", () => {
+  /** Make `uname` report this platform, and `ldd` report musl when asked. */
+  function fakePlatform(system: string, machine: string, libc?: "musl") {
     writeFileSync(
       join(binDir, "uname"),
-      '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n',
+      `#!/bin/sh\ncase "$1" in -s) echo ${system} ;; -m) echo ${machine} ;; esac\n`,
       { mode: 0o700 },
     );
-    // Like the real musl ldd: version on stderr, non-zero exit.
-    writeFileSync(
-      join(binDir, "ldd"),
-      "#!/bin/sh\nprintf 'musl libc (x86_64)\\n' >&2\nexit 1\n",
-      {
-        mode: 0o700,
-      },
-    );
-    const result = spawnSync("bash", [installScript, "--no-modify-path"], {
+    if (libc === "musl") {
+      // Like the real musl ldd: version on stderr, non-zero exit.
+      writeFileSync(
+        join(binDir, "ldd"),
+        "#!/bin/sh\nprintf 'musl libc (x86_64)\\n' >&2\nexit 1\n",
+        { mode: 0o700 },
+      );
+    }
+  }
+
+  /** Serve `name` as this platform's release file. */
+  function serve(name: string) {
+    applyScenario(
+      { ...at(INSTALL_SCENARIOS, 0), name },
+      { ...served, name },
+      testDir,
       env,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
+    );
+  }
+
+  test("directs musl arm64 users to the npm package before downloading", () => {
+    fakePlatform("Linux", "aarch64", "musl");
+
+    const result = install();
 
     expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("linux-arm64-musl");
     expect(result.stderr).toContain("npm install -g sentry");
     expect(recorded("curl-urls")).toEqual([]);
+  });
+
+  // The installer looks for these where Alpine installs them. A glibc host
+  // keeps them elsewhere, such as /usr/lib/x86_64-linux-gnu.
+  const hasMuslLibraries = [
+    "libstdc++.so.6",
+    "libgcc_s.so.1",
+    "libatomic.so.1",
+  ].every((lib) =>
+    ["/lib", "/usr/lib", "/usr/local/lib"].some((dir) =>
+      existsSync(join(dir, lib)),
+    ),
+  );
+
+  test.skipIf(hasMuslLibraries)(
+    "names the libraries the musl binary needs before downloading it",
+    () => {
+      fakePlatform("Linux", "x86_64", "musl");
+
+      const result = install();
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("apk add libstdc++ libatomic");
+      expect(result.stderr).toContain("npm install -g sentry");
+      expect(recorded("curl-urls")).toEqual([]);
+    },
+  );
+
+  test.runIf(hasMuslLibraries)("installs the musl build on musl x64", () => {
+    fakePlatform("Linux", "x86_64", "musl");
+    serve("sentry-linux-x64-musl");
+
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(recorded("curl-urls").at(-1)).toBe(
+      toolkitDownload(LATEST_VERSION, "sentry-linux-x64-musl.gz"),
+    );
+  });
+
+  test("installs the arm64 build on Windows ARM64", () => {
+    fakePlatform("MINGW64_NT-10.0-26100", "aarch64");
+    serve("sentry-windows-arm64.exe");
+
+    const result = install();
+
+    expect(result.status, result.output).toBe(0);
+    expect(recorded("curl-urls").at(-1)).toBe(
+      toolkitDownload(LATEST_VERSION, "sentry-windows-arm64.exe.gz"),
+    );
   });
 
   function install() {

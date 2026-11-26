@@ -51,7 +51,8 @@ jobs:
           sentry --version
 
   # glibc distros with the musl package installed have the musl loader, which
-  # the installer once took as proof of musl. Alpine must still be refused.
+  # the installer once took as proof of musl. Alpine must get the musl build,
+  # and only once its C++ runtime libraries are installed.
   linux-libc:
     name: bash detects ${{ matrix.libc }} on ${{ matrix.image }}
     runs-on: ubuntu-latest

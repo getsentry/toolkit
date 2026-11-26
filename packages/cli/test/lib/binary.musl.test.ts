@@ -1,6 +1,7 @@
 /**
- * Tests for isMusl() against simulated libc layouts. Kept in a separate file
- * so the node:child_process and node:fs mocks don't leak into binary.test.ts.
+ * Tests for isMusl() and getPlatformBinaryName() against simulated libc
+ * layouts. Kept in a separate file so the node:child_process and node:fs
+ * mocks don't leak into binary.test.ts.
  */
 
 import type { SpawnSyncReturns } from "node:child_process";
@@ -83,5 +84,43 @@ describe.runIf(process.platform === "linux")("isMusl", () => {
   test("assumes glibc when ldd and the musl loader are both missing", async () => {
     mocks.ldd = missingLdd;
     expect(await detect()).toBe(false);
+  });
+});
+
+// The release file that `sentry cli upgrade` downloads must be one that
+// script/build.ts builds.
+describe("getPlatformBinaryName", () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const arch = Object.getOwnPropertyDescriptor(process, "arch");
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    mocks.ldd = undefined;
+    if (platform && arch) {
+      Object.defineProperty(process, "platform", platform);
+      Object.defineProperty(process, "arch", arch);
+    }
+  });
+
+  test.each([
+    ["sentry-darwin-arm64", "darwin", "arm64", glibcLdd],
+    ["sentry-darwin-x64", "darwin", "x64", glibcLdd],
+    ["sentry-linux-arm64", "linux", "arm64", glibcLdd],
+    ["sentry-linux-x64", "linux", "x64", glibcLdd],
+    ["sentry-linux-x64-musl", "linux", "x64", muslLdd],
+    ["sentry-windows-arm64.exe", "win32", "arm64", glibcLdd],
+    ["sentry-windows-x64.exe", "win32", "x64", glibcLdd],
+  ])("names %s on %s %s", async (expected, os, cpu, ldd) => {
+    mocks.ldd = ldd;
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      value: os,
+    });
+    Object.defineProperty(process, "arch", { configurable: true, value: cpu });
+    const { getPlatformBinaryName } = await import("../../src/lib/binary.js");
+    expect(getPlatformBinaryName()).toBe(expected);
   });
 });

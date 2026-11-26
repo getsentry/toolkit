@@ -51,6 +51,10 @@ jobs:
             os: ubuntu-latest
           - target: linux-arm64
             os: ubuntu-latest
+          - target: linux-x64-musl
+            os: ubuntu-latest
+          - target: windows-arm64
+            os: ubuntu-latest
           - target: windows-x64
             os: ubuntu-latest
     steps:
@@ -126,18 +130,9 @@ jobs:
           SENTRY_AUTH_TOKEN: ""
           SENTRY_TOKEN: ""
           SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
-          NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
-          TARGET: ${{ matrix.target }}
-        shell: bash
-        run: |
-          binary="packages/cli/dist-bin/sentry-${TARGET}"
-          "$binary" --help
-          if [[ "$GITHUB_REF" == 'refs/heads/main' ]]; then
-            test "$("$binary" --version)" = "$NIGHTLY_VERSION"
-          fi
-          output=$("$binary" auth status 2>&1) && status=$? || status=$?
-          test "$status" -eq 10
-          printf '%s\n' "$output" | grep -qi 'not authenticated'
+          EXPECTED_VERSION: ${{ github.ref == 'refs/heads/main' && needs.nightly-version.outputs.version || '' }}
+          BINARY: packages/cli/dist-bin/sentry-${{ matrix.target }}
+        run: node scripts/cli-binary-smoke.mjs
       - name: Verify code signature (darwin)
         if: matrix.target == 'darwin-arm64' && github.event_name == 'push'
         shell: bash
@@ -154,6 +149,49 @@ jobs:
         with:
           name: sentry-${{ matrix.target }}-gz
           path: packages/cli/dist-bin/*.gz
+
+  # The build job smoke-tests only binaries its runner can run. This job runs
+  # the cross-compiled musl and Windows arm64 binaries on their own platform.
+  smoke-binary:
+    name: Smoke Test Binary (${{ matrix.target }})
+    needs: [nightly-version, build-binary]
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64-musl
+            binary: sentry-linux-x64-musl
+            os: ubuntu-latest
+            container: alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+          - target: windows-arm64
+            binary: sentry-windows-arm64.exe
+            os: windows-11-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # Alpine has none of the binary's C++ runtime libraries. Add the ones the
+      # installer asks for, and Node.js for the smoke test script. The
+      # windows-11-arm image comes with Node.js.
+      - name: Install Alpine packages
+        if: matrix.target == 'linux-x64-musl'
+        run: apk add --no-cache libstdc++ libatomic nodejs
+      - name: Download binary artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sentry-${{ matrix.target }}
+          path: dist-bin
+      - name: Smoke test
+        env:
+          SENTRY_AUTH_TOKEN: ""
+          SENTRY_TOKEN: ""
+          SENTRY_CONFIG_DIR: ${{ runner.temp }}/.sentry-smoke
+          EXPECTED_VERSION: ${{ github.ref == 'refs/heads/main' && needs.nightly-version.outputs.version || '' }}
+          BINARY: dist-bin/${{ matrix.binary }}
+        run: node scripts/cli-binary-smoke.mjs
 
   generate-patches:
     name: Generate nightly delta patches
@@ -198,14 +236,18 @@ jobs:
     if: >-
       always() && github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.nightly-version.result == 'success' && needs.build-binary.result == 'success' &&
+      needs.smoke-binary.result == 'success' &&
       (needs.generate-patches.result == 'success' || needs.generate-patches.result == 'failure')
-    needs: [nightly-version, build-binary, generate-patches]
+    needs: [nightly-version, build-binary, smoke-binary, generate-patches]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Download compressed binaries
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -240,22 +282,8 @@ jobs:
       - name: Verify public nightly and immutable version tag
         env:
           NIGHTLY_VERSION: ${{ needs.nightly-version.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          token=$(curl -fsS 'https://ghcr.io/token?scope=repository:getsentry/toolkit:pull' | jq -er '.token')
-          for tag in nightly "nightly-${NIGHTLY_VERSION}"; do
-            manifest=$(curl -fsS \
-              -H "Authorization: Bearer ${token}" \
-              -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
-              "https://ghcr.io/v2/getsentry/toolkit/manifests/${tag}")
-            jq -e --arg version "$NIGHTLY_VERSION" '
-              .annotations.version == $version and
-              .annotations["org.opencontainers.image.source"] == "https://github.com/getsentry/toolkit" and
-              ([.layers[].annotations["org.opencontainers.image.title"]] | sort) ==
-                (["sentry-darwin-arm64.gz", "sentry-darwin-x64.gz", "sentry-linux-arm64.gz", "sentry-linux-x64.gz", "sentry-windows-x64.exe.gz"] | sort)
-            ' <<< "$manifest" > /dev/null
-          done
+          ARTIFACTS_DIR: artifacts
+        run: node scripts/cli-nightly-verify.mjs
 
   build-npm:
     name: Build npm Package

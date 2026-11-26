@@ -229,6 +229,25 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     expect(recorded("post-args")).toEqual(["init"]);
   });
 
+  test("installs the arm64 binary on Windows ARM64", () => {
+    const arm64Asset = "sentry-windows-arm64.exe";
+    env["PROCESSOR_ARCHITECTURE"] = "ARM64";
+    applyScenario(
+      { ...at(INSTALL_SCENARIOS, 0), name: "arm64" },
+      { ...served, name: arm64Asset },
+      testDir,
+      env,
+    );
+
+    const result = run();
+
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(recorded("urls").at(-1)).toBe(
+      toolkitDownload(LATEST_VERSION, `${arm64Asset}.gz`),
+    );
+    expect(existsSync(join(installDir, "sentry.exe"))).toBe(true);
+  });
+
   test("passes --no-modify-path to setup when SENTRY_NO_MODIFY_PATH=1", () => {
     env["SENTRY_NO_MODIFY_PATH"] = "1";
 
@@ -249,9 +268,9 @@ describe.skipIf(!hasPwsh)("PowerShell install script", () => {
     {
       name: "unsupported architectures",
       setup: () => {
-        env["PROCESSOR_ARCHITECTURE"] = "ARM64";
+        env["PROCESSOR_ARCHITECTURE"] = "x86";
       },
-      message: "only windows-x64 is supported",
+      message: "only x64 and arm64 are supported",
     },
     {
       name: "the nightly channel",
