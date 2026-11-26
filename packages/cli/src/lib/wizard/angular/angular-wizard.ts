@@ -50,7 +50,7 @@ import {
 const MIN_SUPPORTED_ANGULAR_VERSION = "14.0.0";
 const MIN_SUPPORTED_WIZARD_ANGULAR_VERSION = "17.0.0";
 
-/** Run the Angular wizard (`sentry wizard -i angular`). */
+/** Run the Angular wizard (`sentry wizard angular`). */
 export async function runAngularWizard(options: WizardOptions): Promise<void> {
   return await withTelemetry(
     {

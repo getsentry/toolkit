@@ -50,7 +50,7 @@ import {
 } from "./sdk-setup.js";
 import { isNuxtV4 } from "./utils.js";
 
-/** Run the Nuxt wizard (`sentry wizard -i nuxt`). */
+/** Run the Nuxt wizard (`sentry wizard nuxt`). */
 export async function runNuxtWizard(options: WizardOptions): Promise<void> {
   return await withTelemetry(
     {
