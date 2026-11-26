@@ -293,7 +293,9 @@ describe("get_dashboard_details", () => {
     expect(dashboard.widgets[0]).toMatchObject({
       id: "unknown",
       title: "Number of Errors",
-      queries: [{ aggregates: ["count()"], conditions: "!event.type:transaction" }],
+      queries: [
+        { aggregates: ["count()"], conditions: "!event.type:transaction" },
+      ],
     });
   });
 
