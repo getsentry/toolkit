@@ -212,6 +212,123 @@ describe("uploadDebugFiles", () => {
     expect(results[0]?.state).toBe("created");
   });
 
+  test("reports upload progress through onProgress", async () => {
+    // Varied bytes, so no two chunks share a checksum (shared chunks are
+    // sent once).
+    const content = Array.from({ length: 20_000 }, (_, i) =>
+      String.fromCharCode(33 + (i % 90)),
+    ).join("");
+    const dif = makeDif("libbar.so", content, "id-1");
+    uploadChunkPayloadsMock.mockImplementationOnce(
+      async ({ chunks, onUploaded }) => {
+        for (const chunk of chunks) {
+          onUploaded?.(chunk.data.length);
+        }
+      },
+    );
+    assembleMock.mockImplementationOnce(
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
+        return {
+          [key]: {
+            state: "not_found",
+            missingChunks: assembleBody[key]?.chunks,
+          },
+        };
+      },
+    );
+    assembleMock.mockImplementationOnce(
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
+        return { [key]: { state: "created" } };
+      },
+    );
+    const onProgress = vi.fn();
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [dif],
+      wait: false,
+      maxWaitMs: 60_000,
+      onProgress,
+    });
+
+    // 20 000 bytes at an 8192-byte chunk size: three chunks.
+    expect(onProgress.mock.calls.map(([event]) => event)).toEqual([
+      { phase: "uploading", files: 1, totalBytes: 20_000 },
+      { phase: "upload-progress", uploadedBytes: 8192, totalBytes: 20_000 },
+      { phase: "upload-progress", uploadedBytes: 16_384, totalBytes: 20_000 },
+      { phase: "upload-progress", uploadedBytes: 20_000, totalBytes: 20_000 },
+      { phase: "uploaded", files: 1 },
+    ]);
+  });
+
+  test("reports up-to-date when the server already holds every chunk", async () => {
+    const dif = makeDif("libfoo.so", "debug bytes", "id-1");
+    assembleMock.mockImplementationOnce(
+      async (_org, _project, assembleBody) => {
+        const key = at(Object.keys(assembleBody), 0);
+        return { [key]: { state: "ok" } };
+      },
+    );
+    const onProgress = vi.fn();
+
+    await uploadDebugFiles({
+      ...SOLE,
+      difs: [dif],
+      wait: false,
+      maxWaitMs: 60_000,
+      onProgress,
+    });
+
+    expect(uploadChunkPayloadsMock).not.toHaveBeenCalled();
+    expect(onProgress.mock.calls.map(([event]) => event)).toEqual([
+      { phase: "up-to-date", files: 1 },
+    ]);
+  });
+
+  test("wait mode reports processing progress on each poll", async () => {
+    vi.useFakeTimers();
+    const difs = [
+      makeDif("a.so", "first debug bytes", "id-a"),
+      makeDif("b.so", "second debug bytes", "id-b"),
+    ];
+    const states = [
+      ["assembling", "assembling"],
+      ["ok", "assembling"],
+      ["ok", "ok"],
+    ] as const;
+    for (const [first, second] of states) {
+      assembleMock.mockImplementationOnce(
+        async (_org, _project, assembleBody) => {
+          const [a, b] = Object.keys(assembleBody);
+          return {
+            [must(a, "first key")]: { state: first },
+            [must(b, "second key")]: { state: second },
+          };
+        },
+      );
+    }
+    const onProgress = vi.fn();
+
+    const promise = uploadDebugFiles({
+      ...SOLE,
+      difs,
+      wait: true,
+      maxWaitMs: 60_000,
+      onProgress,
+    });
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(onProgress.mock.calls.map(([event]) => event)).toEqual([
+      { phase: "up-to-date", files: 2 },
+      { phase: "processing", processed: 0, total: 2 },
+      { phase: "processing", processed: 1, total: 2 },
+      { phase: "processing", processed: 2, total: 2 },
+    ]);
+  });
+
   test("wait mode polls past 'assembling' until terminal 'ok'", async () => {
     vi.useFakeTimers();
     const dif = makeDif("libbaz.so", "debug bytes", "id-2");

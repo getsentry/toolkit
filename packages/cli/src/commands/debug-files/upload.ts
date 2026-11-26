@@ -34,6 +34,7 @@ import {
   DEBUG_FILES_MAX_WAIT_MS,
   type DebugFileUpload,
   type DebugFileUploadResult,
+  type DebugFilesUploadProgress,
   uploadDebugFiles,
 } from "../../lib/api/debug-files.js";
 import { buildCommand, numberParser } from "../../lib/command.js";
@@ -49,6 +50,10 @@ import {
   scanPaths,
   VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
+import {
+  createUploadProgressLogger,
+  logFoundDebugFiles,
+} from "../../lib/dif/upload-progress.js";
 import {
   choiceParser,
   parseFilePath,
@@ -153,6 +158,7 @@ type UploadFlags = {
   "no-upload"?: boolean;
   wait?: boolean;
   "wait-for"?: number;
+  json?: boolean;
 };
 
 // ── Formatter ───────────────────────────────────────────────────────
@@ -494,6 +500,7 @@ async function* doUpload(
     oversizedCount: number;
     maxFileSize: number;
     serverOptions?: ChunkServerOptions | undefined;
+    onProgress?: ((event: DebugFilesUploadProgress) => void) | undefined;
   },
 ) {
   const results = await uploadDebugFiles(params);
@@ -795,6 +802,11 @@ export const uploadCommand = buildCommand({
       }),
     );
     const missingIds = missingRequestedIds(flags.id, prepared);
+    // Progress goes to stderr; JSON mode keeps stderr quiet for agents.
+    const showProgress = !flags.json;
+    if (showProgress && prepared.length > 0) {
+      logFoundDebugFiles(prepared.length);
+    }
 
     // Dry-run is purely informational: report what would upload (and surface
     // size skips) without erroring.
@@ -833,6 +845,7 @@ export const uploadCommand = buildCommand({
       requireAll,
       oversizedCount,
       maxFileSize,
+      onProgress: showProgress ? createUploadProgressLogger() : undefined,
     });
   },
 });
