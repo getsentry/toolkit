@@ -1,0 +1,4 @@
+{
+  "name": "my-worker",
+  "main": "src/index.ts",
+}

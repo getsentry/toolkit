@@ -1,0 +1,5 @@
+{
+  // This is a comment
+  "name": "my-worker",
+  "main": "src/index.ts"
+}
