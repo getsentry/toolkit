@@ -175,13 +175,23 @@ function headersToObject(headers: Headers): Record<string, string> {
 }
 
 /**
- * Whether the server sent `Cache-Control` directives or `Expires`.
- * `timeToLive() === 0` alone is ambiguous: it means both "no headers" (use
- * the caller's TTL) and "max-age=0" (do not reuse).
+ * `Cache-Control` directives that set a private cache's freshness. Others,
+ * such as `private`, only say who may store the response.
+ */
+const FRESHNESS_DIRECTIVES = ["max-age", "no-cache"] as const;
+
+/**
+ * Whether the server set the response's freshness, with `max-age`,
+ * `no-cache`, or `Expires`. `timeToLive() === 0` alone is ambiguous: it
+ * means both "no freshness headers" (use the caller's TTL) and "max-age=0"
+ * (do not reuse).
  */
 function hasServerCacheDirectives(policy: CachePolicy): boolean {
   const { rescc, resh } = policy.toObject();
-  return Object.keys(rescc).length > 0 || resh["expires"] !== undefined;
+  return (
+    FRESHNESS_DIRECTIVES.some((name) => name in rescc) ||
+    resh["expires"] !== undefined
+  );
 }
 
 /** Whether the stored response has an `ETag` or `Last-Modified`. */

@@ -300,6 +300,16 @@ describe("lookupResponse freshness", () => {
     expect((await lookup(cache))?.kind).toBe("stale");
   });
 
+  it("uses the caller's TTL when Cache-Control sets no freshness", async () => {
+    const cache = createMemoryStore();
+    expect(
+      await store(cache, json(BODY, { "cache-control": "private" })),
+    ).toBeGreaterThan(0);
+
+    vi.setSystemTime(Date.now() + TTL - 1);
+    expect((await lookup(cache))?.kind).toBe("hit");
+  });
+
   it("treats max-age=0 as stale rather than falling back to the TTL", async () => {
     const cache = createMemoryStore();
     await store(

@@ -40,8 +40,8 @@ const response = await fetchWithCache({
 
 - `ttlMs` is how long a response serves without a request. `0` revalidates
   every read.
-- Server cache headers (`Cache-Control`, `Expires`) can only shorten `ttlMs`,
-  never extend it, so a server `max-age` cannot make a read skip revalidation
+- Server freshness headers (`Cache-Control: max-age` or `no-cache`, and
+  `Expires`) can only shorten `ttlMs`, never extend it, so a server `max-age` cannot make a read skip revalidation
   longer than you allow. Set `maxTtlMs` to let the server's headers give more,
   such as `Infinity` to follow them.
 - A stale entry with a validator stays in the store for `retainMs` (24 hours by
