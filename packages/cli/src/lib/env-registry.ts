@@ -140,24 +140,6 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     devGuide: "Sentry OAuth app client ID",
   },
   {
-    name: "SENTRY_WIZARD_INTEGRATION",
-    description:
-      "Integration for `sentry wizard` to set up when `-i` is not passed, such as `nextjs`. Kept from `@sentry/wizard`.",
-    example: "nextjs",
-  },
-  {
-    name: "SENTRY_WIZARD_URL",
-    description:
-      "URL of the self-hosted Sentry instance for `sentry wizard` when `--url` is not passed. Kept from `@sentry/wizard`.",
-    example: "https://sentry.example.com",
-  },
-  {
-    name: "SENTRY_WIZARD_DEBUG",
-    description:
-      "Set to `true` to print the debug output of `sentry wizard`, like `--debug`. Kept from `@sentry/wizard`.",
-    example: "true",
-  },
-  {
     name: "SENTRY_HANDOFF",
     description:
       "Private, short-lived agent handoff code. The install and setup flow exchanges it for the intended Sentry account, authenticates that account, and prints its setup instructions.",
@@ -219,6 +201,13 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
       "Used with the PowerShell install script (`install.ps1`). When set to `1`, the installer leaves the user `PATH` unchanged. The bash install script takes the `--no-modify-path` flag instead.",
     example: "1",
     installOnly: true,
+  },
+  // -- Local development --
+  {
+    name: "SENTRY_SPOTLIGHT",
+    description:
+      "Turns on Spotlight, the local debugger, in Sentry SDKs. Set it to `1`, `true`, or a Spotlight URL when running `sentry wizard` to set up Spotlight for local development instead of a Sentry project, with no login. Empty, `0`, `false`, and `off` leave it off. `sentry local run` sets it for the app it runs.",
+    example: "1",
   },
   // -- Games --
   {

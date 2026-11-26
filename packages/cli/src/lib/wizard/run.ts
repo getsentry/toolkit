@@ -9,12 +9,11 @@
 import { ValidationError } from "../errors.js";
 import { abortIfCancelled } from "./utils/clack/index.js";
 import { clack } from "./utils/clack/prompts.js";
-import { enableDebugLogs } from "./utils/debug.js";
 import type { WizardOptions } from "./utils/types.js";
 import { CLI_VERSION } from "../constants.js";
 
 /**
- * The integrations `sentry wizard -i` accepts, in the order the picker lists
+ * The integrations `sentry wizard` accepts, in the order the picker lists
  * them. The ids are the ones `@sentry/wizard -i` took.
  */
 export const WIZARD_INTEGRATIONS = [
@@ -33,12 +32,13 @@ export const WIZARD_INTEGRATIONS = [
   { id: "sourcemaps", label: "Configure Source Maps Upload" },
 ] as const;
 
-/** An integration id `sentry wizard -i` accepts. */
+/** An integration id `sentry wizard` accepts. */
 export type WizardIntegration = (typeof WIZARD_INTEGRATIONS)[number]["id"];
 
 /**
- * Every value `-i` accepts. The Cordova and Electron wizards of
- * `@sentry/wizard` were retired; their setup guides are in the Sentry docs.
+ * Every integration id `sentry wizard` accepts. The Cordova and Electron
+ * wizards of `@sentry/wizard` were retired; their setup guides are in the
+ * Sentry docs.
  */
 export const INTEGRATION_IDS: readonly WizardIntegration[] =
   WIZARD_INTEGRATIONS.map((integration) => integration.id);
@@ -67,10 +67,8 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
 
 /** What `sentry wizard` passes to {@link runWizard}. */
 export type RunWizardArgs = {
-  /** `-i`: the integration to set up; prompts for one when unset. */
-  integration?: string | undefined;
-  /** `--debug`: print the wizard's debug output. */
-  debug: boolean;
+  /** The integration to set up; prompts for one when unset. */
+  integration?: WizardIntegration | undefined;
   /** The options every wizard flow takes. */
   wizardOptions: WizardOptions;
 };
@@ -79,17 +77,11 @@ export type RunWizardArgs = {
  * Run the wizard of `args.integration`, after asking for one when it is
  * unset.
  *
- * @throws {ValidationError} For an unknown integration, or one that has no
- *   flow in this version yet
+ * @throws {ValidationError} For an integration that has no flow in this
+ *   version yet
  */
 export async function runWizard(args: RunWizardArgs): Promise<void> {
-  if (args.debug) {
-    enableDebugLogs();
-  }
-
-  const integration = args.integration
-    ? toWizardIntegration(args.integration)
-    : await askForIntegration();
+  const integration = args.integration ?? (await askForIntegration());
 
   const runner = WIZARD_RUNNERS[integration];
   if (!runner) {
@@ -99,25 +91,6 @@ export async function runWizard(args: RunWizardArgs): Promise<void> {
     );
   }
   await runner(args.wizardOptions);
-}
-
-/**
- * `id` as one of {@link WIZARD_INTEGRATIONS}. `-i` already checks its
- * value; `SENTRY_WIZARD_INTEGRATION` is checked here.
- *
- * @throws {ValidationError} When `id` names no integration
- */
-function toWizardIntegration(id: string): WizardIntegration {
-  const match = WIZARD_INTEGRATIONS.find(
-    (integration) => integration.id === id,
-  );
-  if (!match) {
-    throw new ValidationError(
-      `Unknown integration "${id}". Pick one of: ${INTEGRATION_IDS.join(", ")}.`,
-      "integration",
-    );
-  }
-  return match.id;
 }
 
 /** Ask which integration to set up, out of the ones that have a flow. */

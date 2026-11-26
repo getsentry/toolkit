@@ -3,6 +3,8 @@
  * flow, the Sentry project a flow sets up, and feature prompts.
  */
 
+import type { ParsedOrgProject } from "../../arg-parsing.js";
+
 export interface SentryProjectData {
   id: string;
   slug: string;
@@ -27,30 +29,11 @@ export type WizardOptions = {
   telemetryEnabled: boolean;
 
   /**
-   * The url of the Sentry instance to use.
-   * This can be passed via the `-u` or `--url` arg.
+   * The org and project from `sentry wizard <org>/<project>`, resolved after
+   * the login: an org and project skip both pickers, an org (`<org>/`) skips
+   * the org picker. Unset or auto-detect: the user picks both.
    */
-  url?: string | undefined;
-
-  /**
-   * The org to pre-select in the wizard.
-   * This can be passed via the `--org` arg.
-   * Example: `--org my-org`
-   */
-  orgSlug?: string | undefined;
-
-  /**
-   * Project slug to pre-select in the wizard.
-   * This can be passed via the `--project` arg.
-   * Example: `--project my-project`
-   */
-  projectSlug?: string | undefined;
-
-  /**
-   * If this option is set, the wizard will skip the self-hosted or SaaS
-   * selection step and directly assume that the wizard is used for Sentry SaaS.
-   */
-  saas?: boolean | undefined;
+  target?: ParsedOrgProject | undefined;
 
   /**
    * If this is set, the wizard will skip the login and project selection step.
@@ -69,6 +52,7 @@ export type WizardOptions = {
 
   /**
    * If this is set, the wizard will ignore any git changes in the project and not prompt for confirmation.
+   * `sentry wizard --force` sets it, together with {@link forceInstall}.
    */
   ignoreGitChanges?: boolean | undefined;
 
@@ -78,7 +62,7 @@ export type WizardOptions = {
    * - Skips login and project selection
    * - Uses empty DSN
    * - Skips auth token file creation
-   * This can be passed via the `--spotlight` arg.
+   * `sentry wizard` turns it on when `SENTRY_SPOTLIGHT` is set.
    */
   spotlight?: boolean | undefined;
 };
