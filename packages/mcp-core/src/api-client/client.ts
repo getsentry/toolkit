@@ -2,6 +2,11 @@ import {
   getColumnsAndAggregates,
   isAggregateFieldOrEquation,
 } from "@sentry/toolkit-core/events-fields";
+import type { RetryPolicy } from "@sentry/http";
+import {
+  TRANSPORT_SENDS_ONCE,
+  withSentryRetry,
+} from "@sentry/toolkit-core/sentry-retry";
 import {
   type GetOrganizationIssueEventData,
   getOrganizationIssue,
@@ -29,7 +34,6 @@ import {
   createIdempotentOperationMatcher,
   nextPageCursor,
   readJsonResponse,
-  type RetryPolicy,
   selectIdempotentWrites,
   sentryBearerHeader,
 } from "@sentry/api/client";
@@ -339,8 +343,8 @@ type RequestOptions = {
 };
 
 /**
- * Caps for automatic retries. Which statuses and methods are retried is the
- * shared rule in `@sentry/api/client`.
+ * Caps for automatic retries. Which statuses and methods are retried is
+ * Sentry's rule in `@sentry/toolkit-core/sentry-retry`.
  *
  * Sentry's per-endpoint limits are mostly per second ("Limit is 40 requests
  * in 1 seconds"), so a 429's reset is usually under a second away and two
@@ -355,19 +359,28 @@ const REQUEST_RETRY_POLICY: RetryPolicy = {
   maxTotalDelayMs: 3000,
 };
 
+const isIdempotentOperation = createIdempotentOperationMatcher(() =>
+  selectIdempotentWrites(operations),
+);
+
 /**
- * Every request goes through the shared transport. `SentryApiService` sets its
- * own headers, including Authorization, so the transport only retries; as
- * before, it adds no timeout. `fresh` passes on a tool call's `fresh: true`,
- * for when the transport gets a cache.
+ * Every request goes through the shared transport, which sends it once;
+ * `withSentryRetry` retries around it. `SentryApiService` sets its own
+ * headers, including Authorization, and as before there is no timeout.
+ * `fresh` passes on a tool call's `fresh: true`, for when the transport gets
+ * a cache.
  */
-const transport = createApiTransport({
-  retry: REQUEST_RETRY_POLICY,
-  fresh: isFreshRead,
-  isIdempotent: createIdempotentOperationMatcher(() =>
-    selectIdempotentWrites(operations),
-  ),
-});
+const transport = withSentryRetry(
+  createApiTransport({
+    retry: TRANSPORT_SENDS_ONCE,
+    fresh: isFreshRead,
+    isIdempotent: isIdempotentOperation,
+  }),
+  {
+    policy: REQUEST_RETRY_POLICY,
+    isIdempotent: ({ method, url }) => isIdempotentOperation(method, url),
+  },
+);
 
 /**
  * Default cap for returning attachment bytes inline over the MCP transport.

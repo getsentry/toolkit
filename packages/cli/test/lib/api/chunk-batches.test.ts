@@ -115,6 +115,23 @@ describe("uploadChunkPayloads", () => {
     expect(names.sort()).toEqual(["a", "b", "c", "d"]);
   });
 
+  test("reports each finished batch's bytes through onUploaded", async () => {
+    const chunks = ["a", "b", "c", "d"].map((id) => payload(id, 10));
+    const onUploaded = vi.fn<(bytes: number) => void>();
+
+    await uploadChunkPayloads({
+      chunks,
+      serverOptions: SERVER_OPTIONS,
+      encoding: undefined,
+      regionUrl: "https://us.sentry.io",
+      onUploaded,
+    });
+
+    expect(
+      onUploaded.mock.calls.map(([bytes]) => bytes).sort((a, b) => a - b),
+    ).toEqual([10, 30]);
+  });
+
   test("uploads through a retrying HTTP/1.1 fetch with the chunk-upload timeout", async () => {
     await uploadChunkPayloads({
       chunks: [payload("a", 10)],

@@ -30,6 +30,29 @@ const PULL_REQUEST_EVENTS = [
 ];
 
 const workflowsDirectory = new URL("../.github/workflows/", import.meta.url);
+const craftConfig = new URL("../.craft.yml", import.meta.url);
+
+/**
+ * Directory names under `packages/` that `.craft.yml` releases. Expands a
+ * `packages/{a,b}` key; other globs would need Craft to resolve them.
+ */
+function craftPackageNames(source) {
+  return [...source.matchAll(/^ {2}packages\/([^:\s]+):\s*$/gm)]
+    .flatMap(([, key]) =>
+      key.startsWith("{") && key.endsWith("}")
+        ? key.slice(1, -1).split(",")
+        : [key],
+    )
+    .toSorted((a, b) => a.localeCompare(b));
+}
+
+/** Return the options of release.yml's `product` choice input. */
+function releaseProductOptions(source) {
+  const block = /^ {6}product:\n((?: {8}.*\n)+)/m.exec(source)?.[1] ?? "";
+  return [...block.matchAll(/^ {10}- (\S+)$/gm)]
+    .map(([, name]) => name)
+    .toSorted((a, b) => a.localeCompare(b));
+}
 
 /** Return the text of a workflow's top-level `on` trigger. */
 function workflowTriggers(source) {
@@ -98,5 +121,17 @@ describe("workflow policy", () => {
         `Remove ${file} from PULL_REQUEST_WORKFLOWS; it no longer runs on pull requests.`,
       );
     }
+  });
+
+  it("offers one release.yml product per .craft.yml package", () => {
+    const products = releaseProductOptions(
+      readFileSync(new URL("release.yml", workflowsDirectory), "utf8"),
+    );
+    assert.ok(products.length > 0, "release.yml has no product options");
+    assert.deepEqual(
+      products,
+      craftPackageNames(readFileSync(craftConfig, "utf8")),
+      "release.yml's product options must match the packages/ workspaces in .craft.yml.",
+    );
   });
 });

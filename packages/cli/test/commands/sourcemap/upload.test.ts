@@ -514,7 +514,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       await func.call(ctx, { "no-rewrite": true }, dir);
       expect(uploadSpy).toHaveBeenCalledTimes(1);
       const callArgs = uploadSpy.mock.calls[0]?.[0];
-      // Files should have no debugId when --no-rewrite is used
+      // A pair that carries no debug ID uploads without one
       for (const file of callArgs?.files ?? []) {
         expect(file.debugId).toBeUndefined();
       }
@@ -522,6 +522,84 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const afterJs = await readFile(jsPath, "utf-8");
       expect(afterJs).toBe(originalJs);
       expect(afterJs).not.toContain("_sentryDebugIds");
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
+
+  // getsentry/toolkit#2500: Turbopack and bundler plugins write the ID into
+  // the files themselves, and `--no-rewrite` must still send it, or a bundle
+  // without `--release` is rejected.
+  const existingId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const plainMap = { version: 3, sources: ["app.ts"], names: [], mappings: "" };
+  test.each([
+    {
+      name: "JS comment only",
+      js: `console.log(1)\n//# sourceMappingURL=app.js.map\n//# debugId=${existingId}\n`,
+      map: plainMap,
+    },
+    {
+      name: "JS comment in simple uppercase form",
+      js: `console.log(1)\n//# debugId=${existingId.replaceAll("-", "").toUpperCase()}\n`,
+      map: plainMap,
+    },
+    {
+      name: "map debug_id only",
+      js: "console.log(1)\n",
+      map: { ...plainMap, debug_id: existingId },
+    },
+    {
+      name: "map debugId only",
+      js: "console.log(1)\n",
+      map: { ...plainMap, debugId: existingId },
+    },
+  ])(
+    "--no-rewrite: sends the existing debug ID ($name), files untouched",
+    async ({ js, map }) => {
+      const jsPath = join(dir, "app.js");
+      const mapPath = join(dir, "app.js.map");
+      const mapJson = JSON.stringify(map);
+      await writeFile(jsPath, js);
+      await writeFile(mapPath, mapJson);
+
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        const ctx = makeContext();
+        await func.call(ctx, { "no-rewrite": true }, dir);
+        const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+        expect(files.map((f) => [f.type, f.debugId])).toEqual([
+          ["minified_source", existingId],
+          ["source_map", existingId],
+        ]);
+        expect(await readFile(jsPath, "utf-8")).toBe(js);
+        expect(await readFile(mapPath, "utf-8")).toBe(mapJson);
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    },
+  );
+
+  test("--no-rewrite + inline map: sends the map's existing debug ID", async () => {
+    const jsPath = join(dir, "inline-norw-id.js");
+    const map = { ...plainMap, debug_id: existingId };
+    const dataUrl = `data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString("base64")}`;
+    const js = `console.log(1)\n//# sourceMappingURL=${dataUrl}\n`;
+    await writeFile(jsPath, js);
+
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      const ctx = makeContext();
+      await func.call(ctx, { "no-rewrite": true }, dir);
+      const files = uploadSpy.mock.calls[0]?.[0]?.files ?? [];
+      expect(files.map((f) => [f.type, f.debugId])).toEqual([
+        ["minified_source", existingId],
+        ["source_map", existingId],
+      ]);
+      expect(await readFile(jsPath, "utf-8")).toBe(js);
     } finally {
       uploadSpy.mockRestore();
     }

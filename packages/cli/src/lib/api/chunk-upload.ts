@@ -573,14 +573,18 @@ async function uploadChunkBatch(params: {
 /**
  * Upload chunks in batched requests (see {@link batchChunkPayloads}), with
  * `concurrency` requests in flight at once.
+ *
+ * `onUploaded`, when given, is called after each batch finishes with that
+ * batch's uncompressed byte count, so callers can report upload progress.
  */
 export async function uploadChunkPayloads(params: {
   chunks: readonly ChunkPayload[];
   serverOptions: ChunkServerOptions;
   encoding: UploadEncoding | undefined;
   regionUrl: string;
+  onUploaded?: ((bytes: number) => void) | undefined;
 }): Promise<void> {
-  const { chunks, serverOptions, encoding, regionUrl } = params;
+  const { chunks, serverOptions, encoding, regionUrl, onUploaded } = params;
   if (chunks.length === 0) {
     return;
   }
@@ -590,14 +594,15 @@ export async function uploadChunkPayloads(params: {
   await withChunkUploadFetch(regionUrl, (authFetch) =>
     Promise.all(
       batchChunkPayloads(chunks, serverOptions).map((batch) =>
-        limit(() =>
-          uploadChunkBatch({
+        limit(async () => {
+          await uploadChunkBatch({
             batch,
             encoding,
             fetch: authFetch,
             url: serverOptions.url,
-          }),
-        ),
+          });
+          onUploaded?.(batch.reduce((sum, c) => sum + c.data.length, 0));
+        }),
       ),
     ),
   );
