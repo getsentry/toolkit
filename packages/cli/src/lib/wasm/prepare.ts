@@ -139,13 +139,13 @@ export type PrepareCommandResult = {
 /** Options controlling preparation of one file. */
 export type PrepareOptions = {
   /** Inspect and classify without writing anything. */
-  dryRun?: boolean;
+  dryRun?: boolean | undefined;
   /** Directory for companions. Defaults to alongside the input. */
-  outDir?: string;
+  outDir?: string | undefined;
   /** Build id to inject when a module has none. Defaults to a random UUID. */
-  buildId?: Uint8Array;
+  buildId?: Uint8Array | undefined;
   /** Also drop the `name` section from split deployable modules. */
-  stripNames?: boolean;
+  stripNames?: boolean | undefined;
 };
 
 /**

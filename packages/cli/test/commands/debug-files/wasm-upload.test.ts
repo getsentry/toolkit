@@ -163,14 +163,14 @@ describe("formatPrepareResult", () => {
   });
 
   test("colors the skip label red in terminal output", () => {
-    process.env.SENTRY_PLAIN_OUTPUT = "0";
+    process.env["SENTRY_PLAIN_OUTPUT"] = "0";
     const level = chalk.level;
     chalk.level = 3;
     try {
       expect(report(skippedModule)).toContain(chalk.hex(COLORS.red)("Skipped"));
     } finally {
       chalk.level = level;
-      delete process.env.SENTRY_PLAIN_OUTPUT;
+      delete process.env["SENTRY_PLAIN_OUTPUT"];
     }
   });
 
