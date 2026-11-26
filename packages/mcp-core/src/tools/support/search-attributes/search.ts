@@ -209,8 +209,7 @@ export async function runSearchAttributes(
 }
 
 /**
- * Records how the call ended on the tool span, plus a counter metric that
- * trace sampling does not drop. Outcome values are part of this contract.
+ * Records how the call ended on the tool span
  */
 function recordResult(
   output: SearchAttributesOutput,
