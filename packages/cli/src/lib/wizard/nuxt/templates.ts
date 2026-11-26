@@ -220,9 +220,9 @@ Feel free to delete this file.
         op: 'test'
       },
       async () => {
-        const res = await $fetch('/api/sentry-example-api', { 
+        // The API route always throws, so $fetch rejects with its 500.
+        const res = await $fetch('/api/sentry-example-api', {
           method: 'GET',
-          ignoreResponseError: true 
         }).catch(() => null);
         if (!res) {
           hasSentError.value = true;

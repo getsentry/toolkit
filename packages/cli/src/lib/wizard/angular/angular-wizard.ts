@@ -196,6 +196,7 @@ Apologies for the inconvenience!`,
     packageName: "@sentry/angular@^11",
     packageNameDisplayLabel: "@sentry/angular",
     alreadyInstalled: sdkAlreadyInstalled,
+    forceInstall: options.forceInstall,
   });
 
   // The install may have been skipped (user declined the update prompt), so

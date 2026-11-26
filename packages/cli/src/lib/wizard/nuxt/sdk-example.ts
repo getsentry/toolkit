@@ -77,15 +77,14 @@ export async function createExamplePage(
       clack.log.warn(
         `It seems like a sentry example page already exists. Skipping creation of example page.`,
       );
-      return;
+    } else {
+      await promises.writeFile(
+        path.resolve(examplePage),
+        getSentryExamplePageTemplate(options),
+      );
+
+      clack.log.success(`Created ${chalk.cyan(examplePage)}.`);
     }
-
-    await promises.writeFile(
-      path.resolve(examplePage),
-      getSentryExamplePageTemplate(options),
-    );
-
-    clack.log.success(`Created ${chalk.cyan(examplePage)}.`);
 
     const api = path.join("server", "api");
 
@@ -97,6 +96,13 @@ export async function createExamplePage(
       api,
       isUsingTypeScript() ? "sentry-example-api.ts" : "sentry-example-api.js",
     );
+
+    if (existsSync(path.resolve(exampleApi))) {
+      clack.log.warn(
+        `It seems like a sentry example API route already exists. Skipping creation of example API route.`,
+      );
+      return;
+    }
 
     await promises.writeFile(
       path.resolve(exampleApi),

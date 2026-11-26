@@ -212,7 +212,7 @@ async function runNuxtWizardWithTelemetry(
   );
 }
 
-function buildOutroMessage(
+export function buildOutroMessage(
   shouldCreateExamplePage: boolean,
   shouldCreateExampleButton: boolean,
 ): string {
@@ -225,7 +225,7 @@ function buildOutroMessage(
   }
   if (shouldCreateExampleButton) {
     msg += `\n\nYou can validate your setup by adding the ${chalk.cyan(
-      "`SentryExampleButton`",
+      "`SentryErrorButton`",
     )} component to a page and triggering it.`;
   }
 

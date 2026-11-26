@@ -3,6 +3,7 @@ import {
   getDefaultNuxtConfig,
   getNuxtModuleFallbackTemplate,
   getSentryConfigContents,
+  getSentryExamplePageTemplate,
 } from "../../../../src/lib/wizard/nuxt/templates.js";
 
 vi.mock("../../../../src/lib/wizard/utils/clack/mcp-config.js", () => ({
@@ -478,6 +479,18 @@ describe("Nuxt code templates", () => {
           },
           sourcemap: { client: "hidden" },"
       `);
+    });
+  });
+
+  describe("getSentryExamplePageTemplate", () => {
+    it("lets the API route's 500 reject so the page shows its success state", () => {
+      const template = getSentryExamplePageTemplate({
+        url: "https://sentry.io/",
+        org: "my-org",
+        projectId: "1",
+      });
+      expect(template).toContain("$fetch('/api/sentry-example-api'");
+      expect(template).not.toContain("ignoreResponseError");
     });
   });
 });
