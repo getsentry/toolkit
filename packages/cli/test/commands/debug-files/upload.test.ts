@@ -27,6 +27,12 @@ import {
   watchFatMachO,
 } from "../../fixtures/dif/macho.js";
 import { useTestConfigDir } from "../../helpers.js";
+import {
+  byteVector,
+  customSection,
+  fromHex,
+  wasmModule,
+} from "../../lib/wasm/helpers.js";
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
@@ -125,6 +131,31 @@ async function writeIl2cppFixture(): Promise<void> {
     "1000 10 42 0",
   ].join("\n");
   await writeFile(join(tempDir, "example.sym"), sym);
+}
+
+/** Debug id the scanner reports for the WASM fixture: its build id as a UUID. */
+const WASM_DEBUG_ID = "a1b2c3d4-e5f6-4788-99aa-bbccddeeff00";
+
+/** A minimal version 3 source map; the CLI uploads it without parsing it. */
+const WASM_SOURCE_MAP = JSON.stringify({
+  version: 3,
+  sources: ["app.c"],
+  names: [],
+  mappings: "AAAA",
+});
+
+/** Write `app.wasm`: a module that carries only a `build_id` section. */
+async function writeWasm(): Promise<void> {
+  const buildId = fromHex(WASM_DEBUG_ID.replaceAll("-", ""));
+  await writeFile(
+    join(tempDir, "app.wasm"),
+    wasmModule([customSection("build_id", byteVector(buildId))]),
+  );
+}
+
+/** Write `app.wasm.map` next to it, where Emscripten and dart2wasm put it. */
+async function writeWasmSourceMap(): Promise<void> {
+  await writeFile(join(tempDir, "app.wasm.map"), WASM_SOURCE_MAP);
 }
 
 /** Run `debug-files upload` and capture stdout + exit code. */
@@ -799,5 +830,58 @@ describe("sentry debug-files upload", () => {
     expect(il2cpp).toBeDefined();
     expect(il2cpp?.debugId).toBe(KNOWN_DEBUG_ID);
     expect(il2cpp?.content).toBeInstanceOf(Buffer);
+  });
+
+  // WASM source maps
+
+  test("uploads a .wasm.map next to its .wasm with the module's debug id (dry-run)", async () => {
+    await writeWasm();
+    await writeWasmSourceMap();
+    const { output, exitCode } = await runUpload([
+      tempDir,
+      "--no-upload",
+      "--json",
+    ]);
+    expect(exitCode).toBe(0);
+    const files = JSON.parse(output).files as {
+      name: string;
+      debugId?: string;
+    }[];
+    expect(files).toEqual([
+      { name: "app.wasm", debugId: WASM_DEBUG_ID },
+      { name: "app.wasm.map", debugId: WASM_DEBUG_ID },
+    ]);
+  });
+
+  test("a .wasm without a source map uploads alone", async () => {
+    await writeWasm();
+    const { output } = await runUpload([tempDir, "--no-upload", "--json"]);
+    const files = JSON.parse(output).files as { name: string }[];
+    expect(files.map((f) => f.name)).toEqual(["app.wasm"]);
+  });
+
+  test("a source map whose .wasm has no build id is not uploaded", async () => {
+    // The scanner drops a module with a nil debug id, so its map has nothing to pair with.
+    await writeFile(join(tempDir, "app.wasm"), wasmModule([]));
+    await writeWasmSourceMap();
+    const { output } = await runUpload([tempDir, "--no-upload", "--json"]);
+    expect(JSON.parse(output).files).toEqual([]);
+  });
+
+  test("threads the source map's bytes through to uploadDebugFiles", async () => {
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
+    await writeWasm();
+    await writeWasmSourceMap();
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([]);
+
+    await runUpload([tempDir]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const difs = spy.mock.calls[0]?.[0]?.difs ?? [];
+    const map = difs.find((d) => d.name === "app.wasm.map");
+    expect(map?.debugId).toBe(WASM_DEBUG_ID);
+    expect(map?.content.toString("utf8")).toBe(WASM_SOURCE_MAP);
   });
 });
