@@ -133,6 +133,18 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
+      # The Docker image: cli-build.yml pushes it to GHCR, tagged with the
+      # release commit, and these copy it to Docker Hub.
+      - name: docker
+        id: Docker Hub (release)
+        source: ghcr.io/getsentry/toolkit/sentry-cli
+        target: getsentry/sentry-cli
+      - name: docker
+        id: Docker Hub (latest)
+        source: ghcr.io/getsentry/toolkit/sentry-cli
+        target:
+          image: getsentry/sentry-cli
+          format: "{{{image}}}:latest"
   # No preReleaseCommand: Craft bumps package.json through the npm target.
   packages/logger:
     changelog:

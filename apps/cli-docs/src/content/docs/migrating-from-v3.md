@@ -62,6 +62,24 @@ sentry --version
 sentry auth status
 ```
 
+### Docker
+
+The v4 image keeps the `getsentry/sentry-cli` name and the `/work` working
+directory, so `docker run --rm -v "$PWD:/work" getsentry/sentry-cli <command>`
+keeps working once you update the [command names](#command-changes). v3
+releases stay available under their version tags. What changed:
+
+- The entrypoint runs `sentry` directly. The v3 entrypoint dropped a leading
+  `sentry-cli` argument and ran `sh` when asked; v4 passes every argument to
+  `sentry`. Use `--entrypoint sh` for a shell.
+- The binary is `/usr/local/bin/sentry`. There is no `sentry-cli` on the
+  `PATH`, so scripts that clear the entrypoint, such as GitLab CI jobs, call
+  `sentry`.
+- The base image is Debian (`debian:bookworm-slim`) instead of Alpine, and it
+  includes `git`.
+
+See [Docker](../getting-started/#docker) for usage.
+
 ## The `sentry-cli` → `sentry` rename
 
 If you only ever call the top-level binary, the simplest bridge is a plain

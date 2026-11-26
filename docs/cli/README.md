@@ -14,8 +14,9 @@ CLI releases build it from that workspace. Start here for repository guides:
   [command conventions](../../packages/cli/CONTRIBUTING.md) — implementation
   details and command design.
 - [CLI build workflow](../../.github/workflows/cli-build.yml) and
-  [release configuration](../../.craft.yml) — binaries, npm packaging, and
-  release-gated website artifacts.
+  [release configuration](../../.craft.yml) — binaries, npm packaging, the
+  [Docker image](../../packages/cli/Dockerfile), and release-gated website
+  artifacts.
 - [Website packaging](../../apps/cli-docs/vercel/build-output.mjs) — the
   Vercel routes for `/install`, and the `/install/<handoff code>` function that
   serves the install script with `SENTRY_HANDOFF` set.

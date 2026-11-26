@@ -257,6 +257,57 @@ jobs:
             ' <<< "$manifest" > /dev/null
           done
 
+  # Pushes the multi-arch CLI image, tagged with the commit. At release, the
+  # Craft docker targets copy the release commit's image to Docker Hub.
+  build-docker:
+    name: Build Docker Image
+    needs: build-binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/getsentry/toolkit/sentry-cli:${{ github.sha }}
+      PLATFORMS: linux/amd64,linux/arm64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download Linux x64 binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sentry-linux-x64
+          path: packages/cli/dist-bin
+      - name: Download Linux arm64 binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sentry-linux-arm64
+          path: packages/cli/dist-bin
+      # Node calls the architecture x64; Docker's TARGETARCH calls it amd64.
+      - name: Rename the x64 binary for Docker
+        run: mv packages/cli/dist-bin/sentry-linux-x64 packages/cli/dist-bin/sentry-linux-amd64
+      - name: Login to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The arm64 image runs apt-get at build time and the smoke test runs it.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: packages/cli
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.IMAGE }}
+      - name: Smoke test
+        run: node scripts/cli-docker-smoke-test.mjs "$IMAGE" "$PLATFORMS"
+
   build-npm:
     name: Build npm Package
     runs-on: ubuntu-latest
