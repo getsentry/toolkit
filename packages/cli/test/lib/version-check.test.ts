@@ -4,7 +4,7 @@
 
 import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { UPGRADE_SOURCES } from "../../src/lib/binary.js";
+import { UPGRADE_SOURCE } from "../../src/lib/binary.js";
 import { setReleaseChannel } from "../../src/lib/db/release-channel.js";
 import {
   getVersionCheckInfo,
@@ -654,15 +654,12 @@ describe("maybeCheckForUpdateInBackground", () => {
     expect(getVersionCheckInfo().lastChecked).toBeNull();
   });
 
-  test("passes the Toolkit source from stable discovery to patch prefetch without legacy access", async () => {
-    const toolkitSource = UPGRADE_SOURCES[0];
+  test("passes the Toolkit source from stable discovery to patch prefetch", async () => {
+    const toolkitSource = UPGRADE_SOURCE;
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);
       requestedUrls.push(url);
-      if (url.includes("getsentry/cli")) {
-        throw new Error(`Unexpected legacy access: ${url}`);
-      }
       return new Response(
         JSON.stringify([{ tag_name: "cli@99.0.0", draft: false }]),
         { status: 200 },
@@ -686,56 +683,13 @@ describe("maybeCheckForUpdateInBackground", () => {
     ]);
   });
 
-  test("keeps stable patch prefetch on the legacy source selected after a Toolkit 404", async () => {
-    const legacySource = UPGRADE_SOURCES[1];
-    const requestedUrls: string[] = [];
-    globalThis.fetch = mockFetch(async (input) => {
-      const url = extractInputUrl(input);
-      requestedUrls.push(url);
-      if (url.includes("getsentry/toolkit")) {
-        return new Response("not found", { status: 404 });
-      }
-      if (
-        url === "https://api.github.com/repos/getsentry/cli/releases/latest"
-      ) {
-        return new Response(JSON.stringify({ tag_name: "v99.0.0" }), {
-          status: 200,
-        });
-      }
-      throw new Error(`Unexpected request: ${url}`);
-    });
-    const prefetch = vi
-      .spyOn(deltaUpgrade, "prefetchStablePatches")
-      .mockResolvedValue();
-
-    maybeCheckForUpdateInBackground();
-
-    await vi.waitFor(() => {
-      expect(prefetch).toHaveBeenCalledWith(
-        "99.0.0",
-        expect.any(AbortSignal),
-        legacySource,
-      );
-    });
-    expect(requestedUrls).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit/releases?per_page=100",
-      "https://api.github.com/repos/getsentry/cli/releases/latest",
-    ]);
-  });
-
-  test("passes the Toolkit source from nightly discovery to patch prefetch without legacy access", async () => {
+  test("passes the Toolkit source from nightly discovery to patch prefetch", async () => {
     setReleaseChannel("nightly");
-    const toolkitSource = UPGRADE_SOURCES[0];
+    const toolkitSource = UPGRADE_SOURCE;
     const requestedUrls: string[] = [];
     globalThis.fetch = mockFetch(async (input) => {
       const url = extractInputUrl(input);
       requestedUrls.push(url);
-      if (url.includes("getsentry/cli")) {
-        throw new Error(`Unexpected legacy access: ${url}`);
-      }
-      if (url === "https://api.github.com/repos/getsentry/toolkit") {
-        return new Response("{}", { status: 200 });
-      }
       if (url.includes("/token?scope=repository:getsentry/toolkit:pull")) {
         return new Response(JSON.stringify({ token: "toolkit-token" }), {
           status: 200,
@@ -767,7 +721,6 @@ describe("maybeCheckForUpdateInBackground", () => {
       );
     });
     expect(requestedUrls).toEqual([
-      "https://api.github.com/repos/getsentry/toolkit",
       "https://ghcr.io/token?scope=repository:getsentry/toolkit:pull",
       "https://ghcr.io/v2/getsentry/toolkit/manifests/nightly",
     ]);
