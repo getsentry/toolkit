@@ -24,23 +24,40 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
 ];
 
 /**
- * Ask whether the user builds in CI and, if so, show the auth token to set
- * there.
+ * Where `sentry sourcemap upload` sends source maps. In CI it comes from
+ * `SENTRY_ORG`, `SENTRY_PROJECT` and, for self-hosted Sentry, `SENTRY_URL`.
+ */
+export type SentryCliUploadTarget = {
+  org: string;
+  project: string;
+  /** The self-hosted Sentry URL. Unset for sentry.io. */
+  url?: string | undefined;
+};
+
+/**
+ * Ask whether the user builds in CI and, if so, show the environment
+ * variables to set there.
  *
  * @param selectedTool - The build tool the wizard configured, such as `nextjs`
  * @param authToken - The token written to the local config file
+ * @param uploadTarget - For tools that upload with `sentry` commands, the
+ *   org, project, and self-hosted URL that CI needs as well
  */
 export async function setupCI(
   selectedTool: string,
   authToken: string,
+  uploadTarget?: SentryCliUploadTarget,
 ): Promise<void> {
-  await traceStep("configure-ci", () => configureCI(selectedTool, authToken));
+  await traceStep("configure-ci", () =>
+    configureCI(selectedTool, authToken, uploadTarget),
+  );
 }
 
-/** Ask about CI and show the auth token to set there. */
+/** Ask about CI and show the environment variables to set there. */
 async function configureCI(
   selectedTool: string,
   authToken: string,
+  uploadTarget: SentryCliUploadTarget | undefined,
 ): Promise<void> {
   const isUsingCI = await abortIfCancelled(
     clack.select({
@@ -82,19 +99,47 @@ async function configureCI(
     await traceStep("ci-npm-script-setup", setupNpmScriptInCI);
   }
 
-  await traceStep("ci-auth-token-setup", () => setupAuthTokenInCI(authToken));
+  await traceStep("ci-auth-token-setup", () =>
+    setupAuthTokenInCI(
+      authToken,
+      isCliBasedFlowTool ? uploadTarget : undefined,
+    ),
+  );
 }
 
-/** Show the auth token to add to the CI environment. */
-async function setupAuthTokenInCI(authToken: string): Promise<void> {
+/** The `NAME=value` lines to add to the CI environment. */
+export function getCIEnvVars(
+  authToken: string,
+  uploadTarget: SentryCliUploadTarget | undefined,
+): string[] {
+  const lines = [`SENTRY_AUTH_TOKEN=${authToken}`];
+  if (uploadTarget) {
+    lines.push(
+      `SENTRY_ORG=${uploadTarget.org}`,
+      `SENTRY_PROJECT=${uploadTarget.project}`,
+    );
+    if (uploadTarget.url) {
+      lines.push(`SENTRY_URL=${uploadTarget.url}`);
+    }
+  }
+  return lines;
+}
+
+/** Show the auth token, and the upload target if any, to add to CI. */
+async function setupAuthTokenInCI(
+  authToken: string,
+  uploadTarget: SentryCliUploadTarget | undefined,
+): Promise<void> {
   clack.log.step(
-    "Add the Sentry authentication token as an environment variable to your CI setup:",
+    uploadTarget
+      ? "Add these environment variables to your CI setup:"
+      : "Add the Sentry authentication token as an environment variable to your CI setup:",
   );
 
   // Printed outside clack's gutter so that it can be copied/pasted directly
   clack.rawOutput(
     chalk.greenBright(`
-SENTRY_AUTH_TOKEN=${authToken}
+${getCIEnvVars(authToken, uploadTarget).join("\n")}
 `),
   );
 

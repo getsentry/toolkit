@@ -263,7 +263,11 @@ Apologies for the inconvenience!`,
       true,
     );
 
-    await setupCI("angular", authToken);
+    await setupCI("angular", authToken, {
+      org: selectedProject.organization.slug,
+      project: selectedProject.slug,
+      url: selfHosted ? sentryUrl : undefined,
+    });
   });
 
   const shouldCreateExampleComponent = await askShouldCreateExampleComponent();
