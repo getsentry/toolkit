@@ -22,14 +22,14 @@ import type { DsnDetectionResult } from "./types.js";
 export function formatConflictError(result: DsnDetectionResult): string {
   const lines = ["Error: Multiple Sentry DSNs detected in this project.\n"];
 
-  result.all.forEach((dsn, i) => {
+  for (const [i, dsn] of result.all.entries()) {
     lines.push(`  DSN ${i + 1}: ${dsn.raw}`);
     lines.push(`         Source: ${getDsnSourceDescription(dsn)}`);
     if (dsn.projectId) {
       lines.push(`         Project ID: ${dsn.projectId}`);
     }
     lines.push("");
-  });
+  }
 
   lines.push("To resolve, specify which project to use:");
   lines.push(`  ${sentry`<command> <org>/<project>`}`);

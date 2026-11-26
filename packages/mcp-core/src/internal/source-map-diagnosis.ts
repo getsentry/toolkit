@@ -101,17 +101,17 @@ function getDebugFramesByPath(event: Event, debug: SourceMapDebug) {
     }
     return parsed.data.values ?? (parsed.data.value ? [parsed.data.value] : []);
   });
-  values.forEach((value, exceptionIndex) => {
+  for (const [exceptionIndex, value] of values.entries()) {
     const rawFrames = value?.rawStacktrace?.frames ?? [];
-    rawFrames.forEach((rawFrame, frameIndex) => {
+    for (const [frameIndex, rawFrame] of rawFrames.entries()) {
       const path = rawFrame.absPath;
       // the check can return fewer exceptions or frames than the event has
       const frame = debug.exceptions.at(exceptionIndex)?.frames.at(frameIndex);
       if (path && frame && !frames.has(path)) {
         frames.set(path, frame);
       }
-    });
-  });
+    }
+  }
   return frames;
 }
 

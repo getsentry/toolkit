@@ -1487,9 +1487,9 @@ function logResponse(response: {
   log.debug(
     `< HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`,
   );
-  response.headers.forEach((value, key) => {
+  for (const [key, value] of response.headers) {
     log.debug(`< ${key}: ${value}`);
-  });
+  }
   log.debug("<");
 }
 

@@ -122,9 +122,9 @@ function recordSideQuests(ids: string[], max: number) {
     "app.side_quests.detected": ids.length,
     "app.side_quests.shown": shown.length,
   };
-  ids.forEach((id, index) => {
+  for (const [index, id] of ids.entries()) {
     attributes[`app.side_quest.${id}`] = index < max ? "shown" : "capped";
-  });
+  }
   getActiveSpan()?.setAttributes(attributes);
   for (const id of shown) {
     metrics.count("app.side_quest.shown", 1, {
