@@ -1,18 +1,20 @@
 /**
  * Retries for Sentry API requests, shared by the CLI and MCP. `@sentry/api`
- * sends each request once; the host wraps its transport with these so the
- * retry policy stays the host's choice.
+ * sends each request once unless the host passes a `retry` hook; this
+ * builds that hook on `@sentry/http`, so the retry policy stays the host's
+ * choice.
  */
 
 import {
-  type ApiTransport,
   parseRetryDelayMs,
-  type RetryPolicy,
+  type RetryRequest,
+  type TransportRetry,
 } from "@sentry/api/client";
 import {
+  fetchWithRetry,
   type RetryableStatuses,
-  type RetryingFetchOptions,
-  withRetry,
+  type RetryAttempt,
+  type RetryOptions,
 } from "@sentry/http";
 
 /**
@@ -30,49 +32,33 @@ export const SENTRY_RETRYABLE_STATUSES: RetryableStatuses = new Map([
   [504, "idempotent"],
 ]);
 
-/**
- * The transport's own retry policy: none, since {@link withSentryRetry}
- * retries around it. Remove once `@sentry/api` drops the required `retry`.
- */
-export const TRANSPORT_SENDS_ONCE: RetryPolicy = {
-  maxRetries: 0,
-  baseDelayMs: 0,
-  maxDelayMs: 0,
-  maxTotalDelayMs: 0,
+/** Options for {@link sentryRetry}; the statuses and delays are Sentry's. */
+export type SentryRetryOptions = Pick<
+  RetryOptions,
+  "policy" | "isRetryableError"
+> & {
+  onRetry?: (retry: RetryAttempt, request: RetryRequest) => void;
 };
 
-/** Options for {@link withSentryRetry}; the statuses and delays are Sentry's. */
-export type SentryRetryOptions = Omit<
-  RetryingFetchOptions,
-  "retryableStatuses" | "serverDelayMs"
->;
-
 /**
- * Wrap `transport` so a failed Sentry API request is sent again, waiting
- * for `Retry-After` or Sentry's rate-limit reset when the response gives
- * one. Each attempt is a whole `transport.request` call, so it keeps the
- * transport's timeout, body handling, and credential refresh.
+ * The transport's `retry` hook: send a failed Sentry API request again,
+ * waiting for `Retry-After` or Sentry's rate-limit reset when the response
+ * gives one. The transport looks up the cache and the credential once per
+ * request; each attempt keeps its timeout, body handling, and 401 refresh.
  */
-export function withSentryRetry(
-  transport: ApiTransport,
-  options: SentryRetryOptions,
-): ApiTransport {
-  const request: ApiTransport["request"] = async (
-    input,
-    init,
-    requestOptions,
-  ) =>
-    await withRetry(
-      async (attemptInput, attemptInit) =>
-        await transport.request(attemptInput, attemptInit, requestOptions),
-      {
-        ...options,
-        idempotent:
-          options.idempotent === true || requestOptions?.idempotent === true,
-        retryableStatuses: SENTRY_RETRYABLE_STATUSES,
-        serverDelayMs: (response) =>
-          parseRetryDelayMs(response.status, response.headers),
-      },
-    )(input, init);
-  return { request };
+export function sentryRetry({
+  onRetry,
+  ...options
+}: SentryRetryOptions): TransportRetry {
+  return async (attempt, request) =>
+    await fetchWithRetry(attempt, {
+      ...options,
+      method: request.method,
+      idempotent: request.idempotent,
+      ...(request.signal ? { signal: request.signal } : {}),
+      retryableStatuses: SENTRY_RETRYABLE_STATUSES,
+      serverDelayMs: (response) =>
+        parseRetryDelayMs(response.status, response.headers),
+      ...(onRetry ? { onRetry: (retry) => onRetry(retry, request) } : {}),
+    });
 }

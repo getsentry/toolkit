@@ -42,43 +42,43 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Build a batch response in the server's `multipart/form-data` shape. */
+/**
+ * Build a batch response in the server's layout: one JSON part per
+ * operation, named by its index.
+ */
 function batchResponse(
-  parts: { index: number; status: string; body?: string }[],
+  parts: { index: number; status: number; error?: { detail?: string } }[],
 ): Response {
   const boundary = "os-boundary-00000000000000000000000000000abc";
   let text = "";
-  for (const part of parts) {
+  for (const { index, ...result } of parts) {
     text +=
       `--${boundary}\r\n` +
-      `x-sn-batch-operation-index: ${part.index}\r\n` +
-      `x-sn-batch-operation-status: ${part.status}\r\n` +
-      "content-disposition: form-data; name=part\r\n\r\n" +
-      `${part.body ?? ""}\r\n`;
+      `content-disposition: form-data; name="${index}"\r\n` +
+      "content-type: application/json\r\n\r\n" +
+      `${JSON.stringify(result)}\r\n`;
   }
-  text += `--${boundary}--`;
+  text += `--${boundary}--\r\n`;
   return new Response(text, {
     status: 200,
     headers: { "content-type": `multipart/form-data; boundary="${boundary}"` },
   });
 }
 
-/** Decode a captured batch request body as multipart form data. */
-async function sentParts(init: RequestInit): Promise<FormDataEntryValue[]> {
-  const headers = new Headers(init.headers);
-  const form = await new Response(init.body as BodyInit, {
-    headers: { "content-type": headers.get("content-type") as string },
-  }).formData();
-  return form.getAll("part");
+/** The operations a captured batch request sends, one per index-named part. */
+function sentOperations(init: RequestInit): unknown[] {
+  return [...(init.body as FormData)]
+    .filter(([name]) => /^\d+$/.test(name))
+    .map(([, value]) => JSON.parse(value as string));
 }
 
 describe("findExistingObjects", () => {
   test("sends HEADs as one batch through customFetch", async () => {
     customFetchMock.mockResolvedValue(
       batchResponse([
-        { index: 1, status: "404 Not Found" },
-        { index: 0, status: "200 OK" },
-        { index: 2, status: "200 OK" },
+        { index: 1, status: 404 },
+        { index: 0, status: 200 },
+        { index: 2, status: 200 },
       ]),
     );
 
@@ -90,7 +90,11 @@ describe("findExistingObjects", () => {
     expect(url).toBe(BATCH_URL);
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("x-os-auth")).toBe("Bearer jwt-token");
-    expect(await sentParts(init)).toHaveLength(3);
+    expect(sentOperations(init)).toEqual([
+      { kind: "head", key: "k0" },
+      { kind: "head", key: "k1" },
+      { kind: "head", key: "k2" },
+    ]);
   });
 
   test("throws a CLI ApiError with the request URL when the batch fails", async () => {
@@ -108,8 +112,8 @@ describe("findExistingObjects", () => {
   test("throws a CLI ApiError for a failed operation inside a batch", async () => {
     customFetchMock.mockResolvedValue(
       batchResponse([
-        { index: 0, status: "200 OK" },
-        { index: 1, status: "429 Too Many Requests", body: "slow down" },
+        { index: 0, status: 200 },
+        { index: 1, status: 429, error: { detail: "slow down" } },
       ]),
     );
 
@@ -140,7 +144,7 @@ describe("putObjects", () => {
     await writeFile(large, new Uint8Array(1024 * 1024 + 1));
     customFetchMock.mockImplementation(async (_url, init: RequestInit) =>
       init.method === "POST"
-        ? batchResponse([{ index: 0, status: "201 Created" }])
+        ? batchResponse([{ index: 0, status: 201 }])
         : new Response(null, { status: 201 }),
     );
 
@@ -154,9 +158,10 @@ describe("putObjects", () => {
       ([, init]) => init.method === "POST",
     ) ?? [undefined, undefined];
     expect(batchUrl).toBe(BATCH_URL);
-    const parts = await sentParts(batchInit);
-    // Parts without a filename decode as strings.
-    expect(parts).toEqual(["\x01\x02\x03"]);
+    const payload = (batchInit.body as FormData).get("0.payload") as File;
+    expect(new Uint8Array(await payload.arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
 
     const [putUrl, putInit] = customFetchMock.mock.calls.find(
       ([, init]) => init.method === "PUT",
@@ -171,7 +176,7 @@ describe("putObjects", () => {
     const small = join(dir, "small.png");
     await writeFile(small, new Uint8Array([1]));
     customFetchMock.mockResolvedValue(
-      batchResponse([{ index: 0, status: "500 Internal Server Error" }]),
+      batchResponse([{ index: 0, status: 500 }]),
     );
 
     const error = await putObjects(config, [{ key: "k", path: small }]).catch(
