@@ -230,6 +230,73 @@ describe("get_dashboard_details", () => {
     });
   });
 
+  it("returns prebuilt dashboards whose widgets were never persisted", async () => {
+    const [listedDashboard] = dashboardListFixture;
+    assert(listedDashboard, "Expected a fixture dashboard");
+    mswServer.use(
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/",
+        () =>
+          HttpResponse.json([
+            {
+              ...listedDashboard,
+              id: "default-overview",
+              title: "General",
+              projects: [],
+            },
+          ]),
+      ),
+      http.get(
+        "https://sentry.io/api/0/organizations/sentry-mcp-evals/dashboards/default-overview/",
+        () =>
+          HttpResponse.json({
+            id: "default-overview",
+            title: "General",
+            dateCreated: "",
+            createdBy: "",
+            widgets: [
+              {
+                title: "Number of Errors",
+                displayType: "big_number",
+                interval: "5m",
+                widgetType: "discover",
+                queries: [
+                  {
+                    name: "",
+                    conditions: "!event.type:transaction",
+                    fields: ["count()"],
+                    aggregates: ["count()"],
+                    columns: [],
+                    orderby: "",
+                  },
+                ],
+              },
+            ],
+          }),
+      ),
+    );
+
+    const dashboard = getDashboard(
+      await getDashboardDetails.handler(
+        {
+          organizationSlug: "sentry-mcp-evals",
+          regionUrl: null,
+          dashboardIdOrTitle: "General",
+        },
+        context,
+      ),
+    );
+
+    expect(dashboard.id).toBe("default-overview");
+    expect(dashboard.dateCreated).toBeNull();
+    expect(dashboard.widgets).toHaveLength(1);
+    expect(dashboard.widgets[0]).toMatchObject({
+      id: "unknown",
+      title: "Number of Errors",
+      queries: [{ aggregates: ["count()"], conditions: "!event.type:transaction" }],
+    });
+  });
+
   it("returns a null creator when Sentry has no usable identity", async () => {
     mswServer.use(
       http.get(
