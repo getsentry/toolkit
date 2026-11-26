@@ -14,6 +14,7 @@ import {
 } from "../utils/clack/index.js";
 import { clack } from "../utils/clack/prompts.js";
 import type { WizardOptions } from "../utils/types.js";
+import { setupNpmScriptInCI } from "./tools/sentry-cli.js";
 
 /** Tools that upload with `sentry` commands and read `.sentryclirc`. */
 const CLI_BASED_FLOW_TOOLS: readonly string[] = [
@@ -72,7 +73,9 @@ async function configureCI(
 
   Sentry.setTag("using-ci", isUsingCI);
 
-  const authTokenFile = CLI_BASED_FLOW_TOOLS.includes(selectedTool)
+  const isCliBasedFlowTool = CLI_BASED_FLOW_TOOLS.includes(selectedTool);
+
+  const authTokenFile = isCliBasedFlowTool
     ? SENTRY_CLI_RC_FILE
     : SENTRY_DOT_ENV_FILE;
 
@@ -83,6 +86,10 @@ async function configureCI(
       )} is available whenever you build and deploy your app.`,
     );
     return;
+  }
+
+  if (isCliBasedFlowTool) {
+    await traceStep("ci-npm-script-setup", setupNpmScriptInCI);
   }
 
   await traceStep("ci-auth-token-setup", () => setupAuthTokenInCI(authToken));

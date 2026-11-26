@@ -22,3 +22,9 @@ changes nothing.
 `npx @sentry/wizard`, so `npx @sentry/wizard -i nextjs` and
 `sentry wizard -i nextjs` do the same thing. The Cordova and Electron wizards
 were removed; follow their setup guides in the Sentry docs instead.
+
+Flows that uploaded source maps with `@sentry/cli`, such as Angular, now
+install the `sentry` package instead. The `sentry:sourcemaps` script they add
+to `package.json` runs `sentry sourcemap inject` and `sentry sourcemap upload`
+on your build output. On self-hosted Sentry, set `SENTRY_URL` wherever that
+script runs.
