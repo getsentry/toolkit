@@ -165,20 +165,18 @@ release. Pin a version tag in CI. The image doesn't check for updates; pull a
 newer tag to upgrade.
 
 The image includes `git`, so commands such as `release set-commits --auto` and
-`release propose-version` read the mounted checkout. Credentials and caches are
-not kept between runs, so use `SENTRY_AUTH_TOKEN` rather than `sentry auth
-login`.
+`release propose-version` read a checkout mounted at `/work`. Credentials and
+caches are not kept between runs, so use `SENTRY_AUTH_TOKEN` rather than
+`sentry auth login`.
 
-CI systems that run their own script in the image, such as GitLab CI, need
-the entrypoint cleared. `sentry` is on the `PATH`:
+The image is built on [distroless](https://github.com/GoogleContainerTools/distroless)
+and has no shell, so CI systems that run a script inside the job's image, such
+as GitLab CI, can't use it as the job image. Install the CLI in the job instead,
+or copy the binary into your own glibc-based image. The binary also needs
+`libatomic1`:
 
-```yaml
-upload-sourcemaps:
-  image:
-    name: getsentry/sentry-cli
-    entrypoint: [""]
-  script:
-    - sentry sourcemap upload ./dist
+```dockerfile
+COPY --from=getsentry/sentry-cli /usr/local/bin/sentry /usr/local/bin/sentry
 ```
 
 ## Package Managers
