@@ -10,6 +10,7 @@ import {
   correctRefRepositories,
   explainSetCommitsError,
   getPreviousReleaseCommit,
+  getRelease,
   NO_REPO_INTEGRATIONS_MESSAGE,
   setCommitsAuto,
   setCommitsLocal,
@@ -61,8 +62,9 @@ const FROM_DASHED_REF_NOTE =
  * When `from` is set, reads the whole `from..HEAD` range (bounded by the range
  * itself, so `depth` is omitted); otherwise walks back `depth` commits from
  * HEAD. Optional `paths` restrict the log to commits touching those subtrees.
- * `sincePreviousRelease` says that `from` is the previous release's commit
- * rather than a ref the user passed, so an empty range is not their mistake.
+ * `sincePreviousRelease` says that `from` is the last commit Sentry has for
+ * this release or the one before it, rather than a ref the user passed. An
+ * empty range is then not their mistake, and the release is left alone.
  */
 function setCommitsFromLocal(
   org: string,
@@ -97,8 +99,12 @@ function setCommitsFromLocal(
 
   const commits = getCommitLog(cwd, { depth, paths, from });
   if (commits.length === 0 && sincePreviousRelease) {
-    log.info(`No commits since the previous release's commit ${from}.`);
-  } else if (commits.length === 0) {
+    log.info(
+      `No new commits since ${from}, the last commit Sentry has for this release or the one before it. Leaving the release alone.`,
+    );
+    return getRelease(org, version);
+  }
+  if (commits.length === 0) {
     const hasPaths = paths !== undefined && paths.length > 0;
     const scope = from
       ? `in ${from}..HEAD`

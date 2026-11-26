@@ -608,11 +608,20 @@ describe("release set-commits (default mode, previous release)", () => {
     expect(setCommitsAutoSpy).toHaveBeenCalledTimes(1);
   });
 
-  test("sends no commits when HEAD is the previous release's commit", async () => {
+  test("leaves the release alone when HEAD is the previous release's commit", async () => {
     commit("one");
     getPreviousReleaseCommitSpy.mockResolvedValue(commit("two"));
+    const getReleaseSpy = vi
+      .spyOn(apiClient, "getRelease")
+      .mockResolvedValue(sampleRelease);
 
-    expect(await sentMessages()).toEqual([]);
+    try {
+      expect(await sentMessages()).toBeUndefined();
+      expect(setCommitsLocalSpy).not.toHaveBeenCalled();
+      expect(getReleaseSpy).toHaveBeenCalledWith("my-org", "1.0.0");
+    } finally {
+      getReleaseSpy.mockRestore();
+    }
   });
 
   test("also uses it when no Sentry repository matches", async () => {

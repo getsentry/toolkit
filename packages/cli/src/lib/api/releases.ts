@@ -478,7 +478,6 @@ export async function getPreviousReleaseCommit(
   orgSlug: string,
   version: string,
 ): Promise<string | undefined> {
-  // oxlint-disable-next-line sentry-cli/no-silent-catch -- grandfathered silent catch — see #1531; drain by adding log.debug()/log.warn() or re-throwing.
   try {
     const result = await getOrganizationPreviousReleaseWithCommits({
       ...getOrgSdkConfig(),
@@ -491,10 +490,11 @@ export async function getPreviousReleaseCommit(
     );
     const id = data.lastCommit?.id;
     return typeof id === "string" ? id : undefined;
-  } catch {
+  } catch (error) {
     // Not critical — if we can't get the previous commit, we still send
     // refs without previousCommit. Sentry will try to determine the range
     // from its own data (may result in 0 commits for first releases).
+    log.debug("Could not read the previous release's commit", error);
     return;
   }
 }
