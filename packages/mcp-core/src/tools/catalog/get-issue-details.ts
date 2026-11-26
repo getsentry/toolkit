@@ -11,6 +11,7 @@ import type {
   ExternalIssueList,
   Issue,
   RelatedIssues,
+  RelatedIssueType,
   SourceMapDebug,
   Trace,
 } from "../../api-client/types";
@@ -84,6 +85,16 @@ const AI_CONVERSATION_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRACE_ID_PATTERN = /^[0-9a-fA-F]{32}$/;
 // also the per-type limit sent to /related/, so the top few are the endpoint's own top few
 const MAX_RELATED_ISSUES = 5;
+/**
+ * Because this is a high-volume tool, it asks only for the relation types that are quick to
+ * compute and light on rate limits.
+ */
+const ISSUE_DETAILS_RELATED_TYPES = [
+  "similar_stacktrace",
+  "same_trace",
+  "contributing",
+  "same_supergroup",
+] as const satisfies readonly RelatedIssueType[];
 
 /**
  * The issue payload as `structuredContent`.
@@ -130,7 +141,7 @@ export const getIssueDetailsOutputSchema = z.object({
     })
     .optional()
     .describe(
-      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert). Check them before resolving or ignoring this issue.`,
+      `Up to ${MAX_RELATED_ISSUES} other issues related to this one, most relations first: similar_stacktrace (likely duplicate), same_trace (same request), contributing (behind a metric alert), same_supergroup (same root cause per Seer). Check them before resolving or ignoring this issue.`,
     ),
   event: issueEventSchema,
   seer: z
@@ -248,8 +259,9 @@ function toIssueStatus(
 }
 
 /**
- * The endpoint's top few related issues. Same-trace issues can be in any project, so a
- * project-scoped session drops the ones outside its project, as find_related_issues does.
+ * The endpoint's top few related issues. Same-trace and same-supergroup issues can be in any
+ * project, so a project-scoped session drops the ones outside its project, as
+ * find_related_issues does.
  */
 function buildRelatedIssues(
   related: RelatedIssues,
@@ -992,6 +1004,7 @@ async function maybeFetchRelatedIssues({
     return await apiService.getRelatedIssues({
       organizationSlug,
       issueId,
+      types: ISSUE_DETAILS_RELATED_TYPES,
       eventId,
       limit: MAX_RELATED_ISSUES,
     });

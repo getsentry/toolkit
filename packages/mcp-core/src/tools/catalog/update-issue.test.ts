@@ -2039,6 +2039,8 @@ describe("update_issue", () => {
         "similar_stacktrace",
         "same_trace",
         "contributing",
+        "same_title",
+        "same_supergroup",
       ]);
       expect(requests[0]?.searchParams.get("limit")).toBe("5");
       expect(output.updated).toBe(true);
