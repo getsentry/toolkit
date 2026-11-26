@@ -24,8 +24,9 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
 ];
 
 /**
- * Where `sentry sourcemap upload` sends source maps. In CI it comes from
- * `SENTRY_ORG`, `SENTRY_PROJECT` and, for self-hosted Sentry, `SENTRY_URL`.
+ * Where `sentry sourcemap upload` sends source maps. On sentry.io v4
+ * resolves the org and project from the DSN, so CI needs only the token.
+ * Self-hosted CI also needs `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL`.
  */
 export type SentryCliUploadTarget = {
   org: string;
@@ -41,7 +42,7 @@ export type SentryCliUploadTarget = {
  * @param selectedTool - The build tool the wizard configured, such as `nextjs`
  * @param authToken - The token written to the local config file
  * @param uploadTarget - For tools that upload with `sentry` commands, the
- *   org, project, and self-hosted URL that CI needs as well
+ *   org, project, and self-hosted URL to upload to
  */
 export async function setupCI(
   selectedTool: string,
@@ -107,20 +108,21 @@ async function configureCI(
   );
 }
 
-/** The `NAME=value` lines to add to the CI environment. */
+/**
+ * The `NAME=value` lines to add to the CI environment: the auth token, plus
+ * the org, project, and URL for a self-hosted upload target.
+ */
 export function getCIEnvVars(
   authToken: string,
   uploadTarget: SentryCliUploadTarget | undefined,
 ): string[] {
   const lines = [`SENTRY_AUTH_TOKEN=${authToken}`];
-  if (uploadTarget) {
+  if (uploadTarget?.url) {
     lines.push(
       `SENTRY_ORG=${uploadTarget.org}`,
       `SENTRY_PROJECT=${uploadTarget.project}`,
+      `SENTRY_URL=${uploadTarget.url}`,
     );
-    if (uploadTarget.url) {
-      lines.push(`SENTRY_URL=${uploadTarget.url}`);
-    }
   }
   return lines;
 }
@@ -131,7 +133,7 @@ async function setupAuthTokenInCI(
   uploadTarget: SentryCliUploadTarget | undefined,
 ): Promise<void> {
   clack.log.step(
-    uploadTarget
+    uploadTarget?.url
       ? "Add these environment variables to your CI setup:"
       : "Add the Sentry authentication token as an environment variable to your CI setup:",
   );

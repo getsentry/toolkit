@@ -5,9 +5,9 @@
  * Installs the `sentry` CLI package, adds a `sentry:sourcemaps` npm script
  * that runs `sentry sourcemap inject` and `sentry sourcemap upload` on the
  * build output, optionally appends it to the production build script, and
- * writes the org, project, and auth token to `.sentryclirc`. v4 reads that
- * file: `[defaults]` feeds org/project resolution and `[auth] token` becomes
- * `SENTRY_AUTH_TOKEN`.
+ * writes the org, project, self-hosted URL, and auth token to `.sentryclirc`.
+ * v4 reads that file: `[defaults]` feeds org/project/url resolution and
+ * `[auth] token` becomes `SENTRY_AUTH_TOKEN`.
  *
  * Ported from sentry-wizard's `src/sourcemaps/tools/sentry-cli.ts`, which
  * installed `@sentry/cli`, ran `sentry-cli sourcemaps …`, and also wrote the
@@ -130,7 +130,7 @@ export async function configureSentryCLI(
     );
   }
 
-  await addOrgAndProjectToSentryCliRc(options);
+  await addUploadTargetToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
 
   if (options.selfHosted) {
@@ -184,8 +184,8 @@ export async function setupNpmScriptInCI(): Promise<void> {
 /**
  * The `sentry:sourcemaps` script: inject debug IDs into the build output,
  * then upload it. `sentry sourcemap upload` reads the org and project from
- * `.sentryclirc` locally and from `SENTRY_ORG` / `SENTRY_PROJECT` in CI, and
- * the self-hosted URL from `SENTRY_URL`.
+ * `.sentryclirc` locally. In CI it resolves them from the DSN on sentry.io,
+ * and from `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL` for self-hosted.
  */
 export function getSentryCliNpmScript(
   relativePosixArtifactPath: string,
@@ -261,15 +261,15 @@ export function setSentryCliRcDefaults(
 }
 
 /**
- * Write the org and project to the project's `.sentryclirc`, so that
- * `sentry sourcemap upload` finds them when the script runs locally.
+ * Write the org, project and, for self-hosted Sentry, the URL to the
+ * project's `.sentryclirc`, so that `sentry sourcemap upload` finds them
+ * when the script runs locally.
  *
- * The self-hosted URL stays out of the file. v4 refuses a non-SaaS
- * `[defaults] url` unless the token's host or a stored login vouches for it,
- * and the `[auth] token` from the same file doesn't (see
- * `assertRcUrlTrusted`), so users set `SENTRY_URL` instead.
+ * v4 reads a self-hosted `[defaults] url` only once the CLI trusts an
+ * `[auth] token` from the same file for it. Until that same-file trust fix
+ * lands, `assertRcUrlTrusted` refuses it and users set `SENTRY_URL`.
  */
-async function addOrgAndProjectToSentryCliRc(
+export async function addUploadTargetToSentryCliRc(
   options: SourceMapUploadToolConfigurationOptions,
 ): Promise<void> {
   const configPath = path.join(process.cwd(), SENTRY_CLI_RC_FILE);
@@ -283,6 +283,7 @@ async function addOrgAndProjectToSentryCliRc(
       setSentryCliRcDefaults(contents, {
         org: options.orgSlug,
         project: options.projectSlug,
+        ...(options.selfHosted ? { url: options.url } : {}),
       }),
     );
   } catch (error) {
