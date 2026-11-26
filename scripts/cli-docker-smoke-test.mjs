@@ -1,6 +1,7 @@
 /**
  * Smoke-tests the CLI Docker image that cli-build.yml pushes. On each platform
- * the CLI starts, and git reads the checkout mounted at /work, the image's
+ * the CLI starts, and `release propose-version` reads the commit through the
+ * git copied into the image from the checkout mounted at /work, the image's
  * working directory. Run it from the repository root:
  *
  *   node scripts/cli-docker-smoke-test.mjs <image> <platform>[,<platform>...]
@@ -29,19 +30,22 @@ export function smokeTestImage({ image, platforms, checkout, head, docker }) {
     if (!version) {
       throw new Error(`${platform}: sentry --version printed nothing`);
     }
-    const mountedHead = docker([
+    // propose-version needs a token but makes no API call.
+    const proposed = docker([
       ...run,
+      "--env",
+      "SENTRY_AUTH_TOKEN=smoke-test",
       "--volume",
       `${checkout}:/work`,
-      "--entrypoint",
-      "git",
       image,
-      "rev-parse",
-      "HEAD",
-    ]).trim();
+      "release",
+      "propose-version",
+      "--json",
+    ]);
+    const mountedHead = JSON.parse(proposed).version;
     if (mountedHead !== head) {
       throw new Error(
-        `${platform}: git in /work read ${mountedHead}, expected ${head}`,
+        `${platform}: propose-version in /work read ${mountedHead}, expected ${head}`,
       );
     }
     versions.set(platform, version);
@@ -73,6 +77,6 @@ if (
       }),
   });
   for (const [platform, version] of versions) {
-    console.log(`${platform}: sentry ${version}; git reads /work`);
+    console.log(`${platform}: sentry ${version}; propose-version reads /work`);
   }
 }

@@ -9,7 +9,7 @@
 # `code-mappings upload` read the mounted checkout with git, which needs
 # libpcre2 and zlib. A checkout mounted from the host belongs to another user,
 # so git must trust the /work mount point.
-FROM debian:bookworm-slim AS deps
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS deps
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git libatomic1 \
     && git config --system --add safe.directory /work \
@@ -20,7 +20,7 @@ RUN apt-get update \
         /lib/*-linux-gnu/libz.so.1 \
         /deps/
 
-FROM gcr.io/distroless/cc-debian12
+FROM gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
 
 LABEL org.opencontainers.image.source="https://github.com/getsentry/toolkit" \
       org.opencontainers.image.description="Sentry CLI" \

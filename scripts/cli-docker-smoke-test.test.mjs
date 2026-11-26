@@ -11,7 +11,9 @@ function fakeDocker({ version = "4.0.0", mountedHead = HEAD } = {}) {
   const calls = [];
   const docker = (args) => {
     calls.push(args);
-    return args.includes("--version") ? `${version}\n` : `${mountedHead}\n`;
+    return args.includes("--version")
+      ? `${version}\n`
+      : JSON.stringify({ version: mountedHead, source: "git" });
   };
   return { calls, docker };
 }
@@ -37,19 +39,20 @@ test("runs the CLI and reads the mounted checkout on every platform", () => {
         "--rm",
         "--platform",
         platform,
+        "--env",
+        "SENTRY_AUTH_TOKEN=smoke-test",
         "--volume",
         "/repo:/work",
-        "--entrypoint",
-        "git",
         IMAGE,
-        "rev-parse",
-        "HEAD",
+        "release",
+        "propose-version",
+        "--json",
       ],
     ]),
   );
 });
 
-test("fails when git in /work reads another commit", () => {
+test("fails when propose-version in /work reads another commit", () => {
   const { docker } = fakeDocker({ mountedHead: "def456" });
 
   assert.throws(
@@ -61,7 +64,7 @@ test("fails when git in /work reads another commit", () => {
         head: HEAD,
         docker,
       }),
-    /linux\/amd64: git in \/work read def456, expected abc123/,
+    /linux\/amd64: propose-version in \/work read def456, expected abc123/,
   );
 });
 
