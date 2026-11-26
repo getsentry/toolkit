@@ -2,54 +2,13 @@ name: Post-merge tasks
 
 on:
   push:
-    # The CLI's release branches are built by cli-build.yml.
-    branches: ["main", "release/**", "!release/cli/**"]
+    branches: ["main", "release/**"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # The JUnit report publishes a check run.
-      checks: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-
-      - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: "package.json"
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build
-        run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/logger --if-present run build
-
-      - name: Run linter
-        run: pnpm lint
-
-      - name: Run tests
-        run: pnpm test:ci
-
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
-        if: ${{ !cancelled() }}
-        with:
-          report_paths: "**/*.junit.xml"
-          comment: false
-
   # Every Craft workspace without its own artifact provider is an npm
   # library whose tarball this workflow builds.
   discover-packages:
@@ -59,12 +18,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@v4
         with:
           node-version-file: "package.json"
 
@@ -85,7 +44,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -93,7 +52,7 @@ jobs:
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@v4
         with:
           node-version-file: "package.json"
 
@@ -110,7 +69,7 @@ jobs:
         run: pnpm pack --pack-destination dist
 
       - name: Upload tarball
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@v4
         with:
           name: npm-${{ matrix.name }}
           path: ${{ matrix.workspace }}/dist/*.tgz
@@ -118,12 +77,12 @@ jobs:
 
   # Craft reads every tarball from one artifact named after the commit.
   archive:
-    needs: [test, package]
+    needs: package
     runs-on: ubuntu-latest
 
     steps:
       - name: Archive artifacts
-        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact/merge@v4
         with:
           name: ${{ github.sha }}
           pattern: npm-*

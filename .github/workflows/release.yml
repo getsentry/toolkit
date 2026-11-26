@@ -4,10 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       product:
-        description: "Package to release: a directory under packages/ with a .craft.yml workspace, such as cli, http, or logger"
+        description: Package to release, by its directory under packages/
         required: true
-        type: string
+        type: choice
         default: cli
+        # One per .craft.yml workspace; scripts/workflow-policy.test.mjs
+        # checks that they match.
+        options:
+          - cli
+          - http
+          - logger
       bump:
         description: "Version bump: auto (from commits), pre (next prerelease), or an explicit bump type"
         required: true
@@ -63,7 +69,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          # Craft fails, listing the workspaces it has, for any other name.
           # The `cli` release also publishes @sentry/mcp-server at the same
           # version.
           workspace: packages/${{ inputs.product }}

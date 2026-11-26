@@ -11,7 +11,8 @@ and docs when `SENTRY_CLIENT_ID` is available.
 
 ### test.yml
 
-Runs on pushes to `main`, pull requests, and merge queue entries. Discovery
+Runs on pushes to `main` and release branches, pull requests, and merge queue
+entries. Discovery
 reads pnpm workspace projects and their package scripts. Pull requests check
 changed projects, their workspace consumers, and semantic dependencies (the CLI
 docs depend on `sentry`). Root-level changes and non-PR events check every
@@ -156,19 +157,24 @@ token pushes the branch and opens the PR, so `test.yml` runs on it.
 
 ### release.yml and merge-jobs.yml
 
-`release.yml` prepares a release of one package with Craft. Its `product` input
-is a directory under `packages/`, such as `cli`, `http`, or `logger`, and Craft
-fails for a directory that has no `.craft.yml` workspace.
+`release.yml` prepares a release of one package with Craft. Its `product`
+choice is a directory under `packages/`, such as `cli`, `http`, or `logger`.
+GitHub cannot fill a choice from `.craft.yml`, so
+`scripts/workflow-policy.test.mjs` fails when the options and the `packages/`
+workspaces in `.craft.yml` differ.
 
-`merge-jobs.yml` runs on `main` and on every release branch except the CLI's.
-It lists the Craft workspaces that use the default artifact provider with
+`merge-jobs.yml` runs on `main` and on every release branch. It lists the
+Craft workspaces that use the default artifact provider with
 `scripts/npm-library-workspaces.mjs`, packs each one in a parallel matrix job,
 and merges the tarballs into the artifact named after the commit, where Craft
-reads them. The CLI sets its own artifact provider and is built by
+reads them. `test.yml` runs the tests on the same commits. The CLI sets its own
+artifact provider: it ships platform binaries, a Homebrew formula, the docs
+site, and `@sentry/mcp-server` along with its npm package, all built by
 `cli-build.yml`.
 
 To publish another package from `packages/`, add its directory name to the
-`packages/{...}` workspace key in `.craft.yml`. Neither workflow needs a change.
+`packages/{...}` workspace key in `.craft.yml` and to `release.yml`'s
+`product` options.
 
 ## Package CI checks
 
