@@ -178,6 +178,27 @@ async function runUpload(args: string[]): Promise<{
   return { output, error, exitCode: mockContext.process.exitCode };
 }
 
+/** Capture what the logger writes to `process.stderr` until mocks reset. */
+function captureProcessStderr(): () => string {
+  let captured = "";
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    captured += String(chunk);
+    return true;
+  });
+  return () => captured;
+}
+
+/** A successful upload result for the Breakpad fixture. */
+function uploadedResult(): debugFilesApi.DebugFileUploadResult {
+  return {
+    name: "example.sym",
+    debugId: KNOWN_DEBUG_ID,
+    checksum: "a".repeat(40),
+    state: "ok",
+    detail: null,
+  };
+}
+
 describe("sentry debug-files upload", () => {
   // ── Input validation ─────────────────────────────────────────────
 
@@ -495,6 +516,48 @@ describe("sentry debug-files upload", () => {
       `Uploaded 1 debug file(s) to my-org/${NUMERIC_PROJECT_ID}`,
     );
     expect(exitCode).toBe(0);
+  });
+
+  test("logs progress to stderr and keeps it out of stdout", async () => {
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
+    await writeBreakpad();
+    const stderr = captureProcessStderr();
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockImplementation(async ({ onProgress }) => {
+        onProgress?.({ phase: "uploading", files: 1, totalBytes: 2048 });
+        onProgress?.({ phase: "uploaded", files: 1 });
+        return [uploadedResult()];
+      });
+
+    const { output, exitCode } = await runUpload([tempDir]);
+
+    expect(spy.mock.calls[0]?.[0].onProgress).toBeTypeOf("function");
+    expect(stderr()).toContain("Found 1 debug information file");
+    expect(stderr()).toContain(
+      "Uploading 1 debug information file (2.0 KB)...",
+    );
+    expect(stderr()).toContain("Uploaded 1 debug information file");
+    expect(output).not.toContain("Found 1 debug information file");
+    expect(output).not.toContain("Uploading");
+    expect(exitCode).toBe(0);
+  });
+
+  test("--json logs no progress and keeps stdout parseable", async () => {
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
+    await writeBreakpad();
+    const stderr = captureProcessStderr();
+    const spy = vi
+      .spyOn(debugFilesApi, "uploadDebugFiles")
+      .mockResolvedValue([uploadedResult()]);
+
+    const { output } = await runUpload([tempDir, "--json"]);
+
+    expect(spy.mock.calls[0]?.[0].onProgress).toBeUndefined();
+    expect(stderr()).not.toContain("debug information file");
+    expect(JSON.parse(output).filesUploaded).toBe(1);
   });
 
   test("server maxFileSize gating all files exits non-zero with a clear error", async () => {
