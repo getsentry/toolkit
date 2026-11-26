@@ -7,6 +7,7 @@ import { planComment, upsertTokenCostComment } from "./token-cost-comment.mjs";
 
 const TOKENS = { total_tokens: 100, tools: [{ name: "a", tokens: 100 }] };
 const VIEWS = { view_count: 1, views: [{ uri: "ui://chart", raw_bytes: 10 }] };
+const MAIN_ARTIFACT = "main-stats/token-stats-abc123";
 const REPORT = "## 📊 MCP Server Token Cost Report\n";
 
 test("skips when tools and views match main", () => {
@@ -104,7 +105,7 @@ const core = { info: () => {} };
 
 test("posts nothing on a PR that does not change the MCP surface", async () => {
   writeStats("packages/mcp-core", TOKENS, VIEWS);
-  writeStats("main-stats", TOKENS, VIEWS);
+  writeStats(MAIN_ARTIFACT, TOKENS, VIEWS);
   const github = fakeGithub([]);
 
   await upsertTokenCostComment({ github, context, core });
@@ -117,7 +118,7 @@ test("posts nothing on a PR that does not change the MCP surface", async () => {
 
 test("creates the comment when the MCP surface changed", async () => {
   writeStats("packages/mcp-core", { ...TOKENS, total_tokens: 120 }, VIEWS);
-  writeStats("main-stats", TOKENS, VIEWS);
+  writeStats(MAIN_ARTIFACT, TOKENS, VIEWS);
   const github = fakeGithub([{ id: 1, user: { type: "User" }, body: REPORT }]);
 
   await upsertTokenCostComment({ github, context, core });
@@ -128,9 +129,22 @@ test("creates the comment when the MCP surface changed", async () => {
   ]);
 });
 
+test("skips when main's stats are not in an artifact folder", async () => {
+  writeStats("packages/mcp-core", { ...TOKENS, total_tokens: 120 }, VIEWS);
+  writeStats("main-stats", TOKENS, VIEWS);
+  const github = fakeGithub([]);
+
+  await upsertTokenCostComment({ github, context, core });
+
+  assert.deepEqual(
+    github.calls.map(([name]) => name),
+    ["listComments"],
+  );
+});
+
 test("updates the bot's existing comment", async () => {
   writeStats("packages/mcp-core", TOKENS, VIEWS);
-  writeStats("main-stats", TOKENS, VIEWS);
+  writeStats(MAIN_ARTIFACT, TOKENS, VIEWS);
   const github = fakeGithub([{ id: 9, user: { type: "Bot" }, body: REPORT }]);
 
   await upsertTokenCostComment({ github, context, core });

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
 /**
@@ -15,6 +15,7 @@ const REPORT_FILE = "packages/mcp-core/token-report.md";
 const STATS_FILES = ["token-stats.json", "ui-stats.json"];
 const CURRENT_DIR = "packages/mcp-core";
 const MAIN_DIR = "main-stats";
+const ARTIFACT_PREFIX = "token-stats-";
 
 function readJson(file) {
   return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : undefined;
@@ -22,6 +23,20 @@ function readJson(file) {
 
 function readStats(dir) {
   return STATS_FILES.map((name) => readJson(`${dir}/${name}`));
+}
+
+/**
+ * Reads main's stats, or returns undefined when its artifact is missing. The
+ * download step matches the artifact name by regex, so it unpacks the artifact
+ * into `main-stats/token-stats-<sha>/`.
+ */
+function readMainStats() {
+  if (!existsSync(MAIN_DIR)) return undefined;
+  const artifacts = readdirSync(MAIN_DIR, { withFileTypes: true }).filter(
+    (entry) => entry.isDirectory() && entry.name.startsWith(ARTIFACT_PREFIX),
+  );
+  if (artifacts.length !== 1) return undefined;
+  return readStats(`${MAIN_DIR}/${artifacts[0].name}`);
 }
 
 /**
@@ -49,7 +64,7 @@ export async function upsertTokenCostComment({ github, context, core }) {
 
   const plan = planComment({
     current: readStats(CURRENT_DIR),
-    main: existsSync(MAIN_DIR) ? readStats(MAIN_DIR) : undefined,
+    main: readMainStats(),
     existingCommentId: existing?.id,
   });
 
