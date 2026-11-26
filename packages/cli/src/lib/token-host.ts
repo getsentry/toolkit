@@ -25,6 +25,7 @@ import {
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
 import { invocationState } from "./env.js";
+import { getRcTokenBootHost } from "./env-token-host.js";
 import { HostScopeError } from "./errors.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -215,20 +216,42 @@ export function isHostTrustedForClaim(
 /**
  * Trust check for `applyCustomHeaders` (IAP tokens, mTLS headers, etc.).
  *
- * Token present → same as {@link isRequestOriginTrusted}. No token but an
- * explicit login trust anchor → check against the anchor (allows OAuth
- * device-flow against IAP-protected self-hosted to carry custom headers).
- * No anchor at all → fail closed.
+ * Token present → {@link isRequestOriginTrustedForCustomHeadersInContext}
+ * for the active credential. No token but an explicit login trust
+ * anchor → check against the anchor (allows OAuth device-flow against
+ * IAP-protected self-hosted to carry custom headers). No anchor at all →
+ * fail closed.
  */
 export function isRequestOriginTrustedForCustomHeaders(
   requestInput: string | URL | Request | undefined | null,
 ): boolean {
-  if (getActiveTokenHost()) {
-    return isRequestOriginTrusted(requestInput);
+  const credential = getCredentialContext();
+  if (credential) {
+    return isRequestOriginTrustedForCustomHeadersInContext(
+      requestInput,
+      credential,
+    );
   }
   const { anchor } = loginTrustState();
   if (anchor) {
     return isHostTrusted(requestInput, anchor);
   }
   return false;
+}
+
+/**
+ * {@link isRequestOriginTrustedForCustomHeaders} for the credential captured
+ * for this request. A `.sentryclirc` `sntrys_` token is checked against its
+ * boot host, not its claim, so a host that only the rc file names never
+ * receives `SENTRY_CUSTOM_HEADERS`.
+ */
+export function isRequestOriginTrustedForCustomHeadersInContext(
+  requestInput: string | URL | Request | undefined | null,
+  credential: Pick<CredentialContext, "host" | "identity" | "token">,
+): boolean {
+  return isOriginTrustedFor(
+    requestInput,
+    getRcTokenBootHost(credential.token) ?? credential.host,
+    credential.identity,
+  );
 }

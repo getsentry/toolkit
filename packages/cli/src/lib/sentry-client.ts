@@ -69,6 +69,7 @@ import { isManualHttpTracing, withTracingSpan } from "./telemetry.js";
 import {
   assertCredentialScope,
   isRequestOriginTrustedForContext,
+  isRequestOriginTrustedForCustomHeadersInContext,
 } from "./token-host.js";
 
 const log = logger.withTag("http");
@@ -180,7 +181,7 @@ function prepareHeaders(
   applyCustomHeaders(
     headers,
     input,
-    isRequestOriginTrustedForContext(input, credential),
+    isRequestOriginTrustedForCustomHeadersInContext(input, credential),
   );
 }
 
