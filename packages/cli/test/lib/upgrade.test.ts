@@ -2581,6 +2581,58 @@ describe("executeUpgrade (package managers)", () => {
     expect(capturedOpts).toHaveProperty("shell", process.platform === "win32");
   });
 
+  describe("installed from @sentry/cli", () => {
+    let originalArgv: string[];
+
+    beforeEach(() => {
+      originalArgv = [...process.argv];
+      process.argv[1] = join(
+        "/usr/local/lib",
+        "node_modules",
+        "@sentry",
+        "cli",
+        "dist",
+        "bin.cjs",
+      );
+    });
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    test("npm: upgrades @sentry/cli, not sentry", async () => {
+      let capturedArgs: string[] = [];
+      spawnImpl.fn = (_cmd, args) => {
+        capturedArgs = args;
+        return fakeProcess(0);
+      };
+      await executeUpgrade("npm", "4.1.0");
+      expect(capturedArgs).toEqual(["install", "-g", "@sentry/cli@4.1.0"]);
+    });
+
+    test("yarn: upgrades @sentry/cli, not sentry", async () => {
+      let capturedArgs: string[] = [];
+      spawnImpl.fn = (_cmd, args) => {
+        capturedArgs = args;
+        return fakeProcess(0);
+      };
+      await executeUpgrade("yarn", "4.1.0");
+      expect(capturedArgs).toEqual(["global", "add", "@sentry/cli@4.1.0"]);
+    });
+
+    test("fetchLatestFromNpm reads the @sentry/cli package", async () => {
+      let requestedUrl = "";
+      mockFetch(async (url) => {
+        requestedUrl = extractInputUrl(url);
+        return Response.json({ version: "4.1.0" });
+      });
+      expect(await fetchLatestFromNpm()).toBe("4.1.0");
+      expect(requestedUrl).toBe(
+        "https://registry.npmjs.org/@sentry/cli/latest",
+      );
+    });
+  });
+
   test("npm: throws UpgradeError on non-zero exit", async () => {
     spawnImpl.fn = () => fakeProcess(1);
     try {

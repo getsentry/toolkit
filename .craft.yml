@@ -41,12 +41,19 @@ workspaces:
           Build:
             - "/^sentry-.*$/"
             - "npm-package"
+            - "npm-package-sentry-cli"
+            - "/^pypi-wheel-.*$/"
             - "mcp-server-npm-package"
             - "vercel"
             - "install-scripts"
     targets:
       - name: npm
         includeNames: '/^sentry-\d.*\.tgz$/'
+      # The same package under the v3 name. An npm owner deprecates it in
+      # favor of `sentry` after the first release.
+      - name: npm
+        id: "@sentry/cli"
+        includeNames: &npm-sentry-cli '/^sentry-cli-\d.*\.tgz$/'
       # The standalone MCP server, published at the CLI's version.
       - name: npm
         id: "@sentry/mcp-server"
@@ -57,6 +64,25 @@ workspaces:
         manifest: server.json
       - name: github
         tagPrefix: "cli@"
+      # PyPI and Sentry's internal index, under the v3 package name.
+      - name: pypi
+        includeNames: &wheels '/^sentry_cli-.*\.whl$/'
+      - name: sentry-pypi
+        internalPypiRepo: getsentry/pypi
+        includeNames: *wheels
+      # The v3 download location, downloads.sentry-cdn.com/sentry-cli/. v4
+      # binaries keep their own names, so URLs of v3 binary names keep serving
+      # v3: the v3 releases' files, and the 3.x files left in latest/.
+      - name: gcs
+        bucket: sentry-sdk-assets
+        includeNames: &cdn-binaries '/^sentry-(darwin|linux|windows)-(arm64|x64)(\.exe)?(\.gz)?$/'
+        paths:
+          - path: /sentry-cli/{{version}}/
+            metadata:
+              cacheControl: public, max-age=2592000
+          - path: /sentry-cli/latest/
+            metadata:
+              cacheControl: public, max-age=600
       - name: vercel
         projectId: prj_wVkOnIwI3eIQbGD1Gw7qS1MqFFIK
       - name: registry
@@ -67,6 +93,21 @@ workspaces:
             mainDocsUrl: "https://cli.sentry.dev"
             urlTemplate: "https://github.com/getsentry/toolkit/releases/download/cli@{{version}}/{{file}}"
             includeNames: '/^sentry-.*\.gz$/'
+            checksums:
+              - algorithm: sha256
+                format: hex
+      # The v3 app. Lists only the files the gcs target uploads: the registry
+      # target links every artifact that its target-level includeNames lets
+      # through, and ignores includeNames under an app.
+      - name: registry
+        id: "app:sentry-cli"
+        includeNames: *cdn-binaries
+        apps:
+          "app:sentry-cli":
+            name: "Sentry CLI"
+            packageUrl: "https://www.npmjs.com/package/sentry"
+            mainDocsUrl: "https://cli.sentry.dev"
+            urlTemplate: "https://downloads.sentry-cdn.com/sentry-cli/{{version}}/{{file}}"
             checksums:
               - algorithm: sha256
                 format: hex
@@ -133,6 +174,10 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
+    # Fail before publishing anything if an artifact for the v3 names is missing.
+    requireNames:
+      - *npm-sentry-cli
+      - *wheels
   # No preReleaseCommand: Craft bumps package.json through the npm target.
   packages/logger:
     changelog:

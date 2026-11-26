@@ -22,7 +22,10 @@ a terminal, with as little setup as the current project allows.
 - Targets: `<org>/<project>`, `<org>/`, a project name, or a Sentry URL.
 - `--json` on list and view commands, and `-w`/`--web` on view commands.
 - The npm package `sentry`, release binaries, and the docs at
-  <https://cli.sentry.dev/>.
+  <https://cli.sentry.dev/>. Releases also go out under the v3 names: npm
+  `@sentry/cli`, PyPI `sentry-cli`, and `downloads.sentry-cdn.com/sentry-cli/`.
+  Each installs the `sentry` command. The Homebrew formula
+  `getsentry/tools/sentry-cli` is renamed to `getsentry/tools/sentry`.
 
 ## Rules
 

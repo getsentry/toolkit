@@ -10,6 +10,7 @@ node_modules
 out
 dist
 dist-bin
+dist-wheel
 dist-build
 # Scratch output of script/lib/split-bundle.ts
 .split-*

@@ -18,7 +18,7 @@ import {
 import { chmod, copyFile, mkdir, realpath, unlink } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { compare as semverCompare } from "semver";
-import { getUserAgent } from "./constants.js";
+import { getUserAgent, NODE_MODULES_DIRNAME } from "./constants.js";
 import {
   buildTlsErrorDetail,
   customFetch,
@@ -120,6 +120,54 @@ export function isHomebrewInstall(): boolean {
     logger.debug("realpath of execPath failed, using unresolved path", error);
   }
   return execPath.includes(HOMEBREW_CELLAR_SEGMENT);
+}
+
+/**
+ * npm packages that install the CLI (see `.craft.yml`): `sentry`, and
+ * `@sentry/cli`, which v3 used.
+ */
+type NpmPackageName = "sentry" | "@sentry/cli";
+
+/**
+ * The npm package that a global package-manager install runs from, read from
+ * the script path (`.../node_modules/@sentry/cli/dist/bin.cjs`). Upgrades and
+ * uninstalls must name that package: `sentry` and `@sentry/cli` both install
+ * the `sentry` command, so installing one over the other fails.
+ */
+export function getNpmPackageName(
+  scriptPath = process.argv[1] ?? "",
+): NpmPackageName {
+  const segments = scriptPath.split(/[\\/]/);
+  const packageIndex = segments.lastIndexOf(NODE_MODULES_DIRNAME) + 1;
+  return packageIndex > 0 &&
+    segments[packageIndex] === "@sentry" &&
+    segments[packageIndex + 1] === "cli"
+    ? "@sentry/cli"
+    : "sentry";
+}
+
+/**
+ * The command that removes a package-manager install of the CLI, or
+ * undefined when `method` is not a package manager.
+ */
+export function getPackageManagerUninstallCommand(
+  method: string,
+): string | undefined {
+  const packageName = getNpmPackageName();
+  switch (method) {
+    case "npm":
+      return `npm uninstall -g ${packageName}`;
+    case "pnpm":
+      return `pnpm remove -g ${packageName}`;
+    case "bun":
+      return `bun remove -g ${packageName}`;
+    case "yarn":
+      return `yarn global remove ${packageName}`;
+    case "brew":
+      return "brew uninstall getsentry/tools/sentry";
+    default:
+      return;
+  }
 }
 
 /**

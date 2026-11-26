@@ -28,7 +28,10 @@ import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 import type { SentryContext } from "../../context.js";
 import { getSkillInstallPath } from "../../lib/agent-skills.js";
-import { isHomebrewInstall } from "../../lib/binary.js";
+import {
+  getPackageManagerUninstallCommand,
+  isHomebrewInstall,
+} from "../../lib/binary.js";
 import { getCompletionPath } from "../../lib/completions.js";
 import {
   closeDatabase,
@@ -52,18 +55,6 @@ const SENTRY_MARKER = "# sentry";
 
 /** Regex to strip `.exe` suffix from binary names (Windows). */
 const EXE_SUFFIX_RE = /\.exe$/;
-
-/**
- * Uninstall hints for package manager installs — advise users to use
- * their PM's own uninstall instead.
- */
-const PM_UNINSTALL_HINTS: Record<string, string> = {
-  npm: "npm uninstall -g sentry",
-  pnpm: "pnpm remove -g sentry",
-  bun: "bun remove -g sentry",
-  yarn: "yarn global remove sentry",
-  brew: "brew uninstall getsentry/tools/sentry",
-};
 
 /**
  * Detect if the CLI is running via a package manager even without stored
@@ -481,12 +472,13 @@ export const uninstallCommand = buildDeleteCommand({
     const installInfo = getInstallInfo();
     const pmMethod = isHomebrewInstall()
       ? "brew"
-      : installInfo?.method && installInfo.method in PM_UNINSTALL_HINTS
+      : installInfo?.method &&
+          getPackageManagerUninstallCommand(installInfo.method)
         ? installInfo.method
         : detectRuntimePackageManager();
 
     if (pmMethod) {
-      const hint = PM_UNINSTALL_HINTS[pmMethod] ?? "";
+      const hint = getPackageManagerUninstallCommand(pmMethod) ?? "";
       const result: UninstallResult = {
         removed: [],
         skipped: [],
