@@ -313,9 +313,9 @@ export function renderSnake(
   if (state.food) {
     cells[state.food.y * state.width + state.food.x] = FOOD;
   }
-  state.body.forEach((part, index) => {
+  for (const [index, part] of state.body.entries()) {
     cells[part.y * state.width + part.x] = index === 0 ? HEAD : BODY;
-  });
+  }
 
   const lines: string[] = [];
   for (let row = 0; row < snakeTerminalRows(state.height); row++) {
