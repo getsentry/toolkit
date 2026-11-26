@@ -3,7 +3,8 @@
  *
  * Builds the server with every skill, lists its resources, and reads each
  * `ui://` resource through `resources/read`, as a host does before it renders
- * a view. Reports raw, gzip, and brotli bytes against the view's budget.
+ * a view. Reports raw, gzip, and brotli bytes. The view's generator enforces
+ * its byte limit, not this report.
  *
  * Usage:
  *   pnpm run measure-ui                                # Display table
@@ -17,7 +18,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/server.ts";
 import { ALL_SKILLS } from "../src/skills.ts";
-import { UI_RESOURCES } from "../src/ui-resources.ts";
 
 interface ViewStats {
   uri: string;
@@ -25,8 +25,6 @@ interface ViewStats {
   raw_bytes: number;
   gzip_bytes: number;
   brotli_bytes: number;
-  budget_bytes: number;
-  budget_percentage: number;
 }
 
 function parseArgs() {
@@ -85,10 +83,6 @@ async function readViews(): Promise<ViewStats[]> {
     const { resources } = await client.listResources();
     const views: ViewStats[] = [];
     for (const { uri } of resources.filter((r) => r.uri.startsWith("ui://"))) {
-      const budget = UI_RESOURCES.find((r) => r.uri === uri)?.budgetBytes;
-      if (budget === undefined) {
-        throw new Error(`${uri} is not in UI_RESOURCES, so it has no budget`);
-      }
       const { contents } = await client.readResource({ uri });
       for (const content of contents) {
         const body =
@@ -103,8 +97,6 @@ async function readViews(): Promise<ViewStats[]> {
           brotli_bytes: brotliCompressSync(body, {
             params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
           }).length,
-          budget_bytes: budget,
-          budget_percentage: Number(((body.length / budget) * 100).toFixed(1)),
         });
       }
     }
@@ -129,18 +121,14 @@ function formatMarkdown(views: ViewStats[]): string {
     lines.push("_The server lists no `ui://` resources._");
   } else {
     lines.push(
-      "| View | MIME type | Raw | Gzip | Brotli | Budget | % of budget |",
-      "|------|-----------|-----|------|--------|--------|-------------|",
+      "| View | MIME type | Raw | Gzip | Brotli |",
+      "|------|-----------|-----|------|--------|",
     );
     for (const view of views) {
       lines.push(
-        `| \`${view.uri}\` | \`${view.mime_type}\` | ${bytes(view.raw_bytes)} | ${bytes(view.gzip_bytes)} | ${bytes(view.brotli_bytes)} | ${bytes(view.budget_bytes)} | ${view.budget_percentage}% |`,
+        `| \`${view.uri}\` | \`${view.mime_type}\` | ${bytes(view.raw_bytes)} | ${bytes(view.gzip_bytes)} | ${bytes(view.brotli_bytes)} |`,
       );
     }
-    lines.push(
-      "",
-      "The budget applies to raw bytes, and the view's generator fails over it.",
-    );
   }
   return `${lines.join("\n")}\n`;
 }
@@ -151,7 +139,7 @@ function formatTable(views: ViewStats[]): string {
     lines.push(
       view.uri,
       `  MIME type:  ${view.mime_type}`,
-      `  Raw:        ${bytes(view.raw_bytes)} (${view.budget_percentage}% of ${bytes(view.budget_bytes)})`,
+      `  Raw:        ${bytes(view.raw_bytes)}`,
       `  Gzip:       ${bytes(view.gzip_bytes)}`,
       `  Brotli:     ${bytes(view.brotli_bytes)}`,
     );

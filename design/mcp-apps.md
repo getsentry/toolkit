@@ -40,8 +40,8 @@ client gets the same answer as text.
 - A view is one self-contained HTML document with inline scripts and
   styles. Its declared CSP lists no origins, and it loads nothing from the
   network: no remote scripts, styles, fonts, or images, and no requests.
-- Each view has a byte budget, and the build fails when the view exceeds
-  it. The chart's budget is 24 KiB.
+- Each view has a hard byte limit, and the build fails when the view
+  exceeds it. The chart's limit is 24 KiB.
 - A view's `ui://` URI carries a version, and any change to the view's HTML
   ships under a new version, because hosts cache views by URI.
 - A view treats the tool result and every host message as untrusted. It
