@@ -18,15 +18,17 @@ const SOURCE_BIN = fileURLToPath(
 const NOTICE =
   "`@sentry/wizard` is deprecated. Use `npx sentry wizard` instead.\n";
 
-// A stand-in for the `sentry` package's bin. It prints its arguments and
-// SENTRY_URL, then
-// behaves as FAKE_SENTRY says: exit with a code, die from a signal, or wait
+// A stand-in for the `sentry` package's bin. It prints its arguments,
+// SENTRY_URL and SENTRY_SPOTLIGHT, then behaves as FAKE_SENTRY says: exit with a code, die from a signal, or wait
 // and report the signals it gets.
 const FAKE_SENTRY_BIN = `
 const [mode, value] = (process.env.FAKE_SENTRY ?? "exit:0").split(":");
 process.stdout.write(
-  JSON.stringify({ args: process.argv.slice(2), url: process.env.SENTRY_URL }) +
-    "\\n",
+  JSON.stringify({
+    args: process.argv.slice(2),
+    url: process.env.SENTRY_URL,
+    spotlight: process.env.SENTRY_SPOTLIGHT,
+  }) + "\\n",
 );
 if (mode === "exit") process.exit(Number(value));
 if (mode === "kill") process.kill(process.pid, value);
@@ -74,7 +76,12 @@ type Run = {
 function run(bin: string, args: string[], fake = "exit:0"): Run {
   // `pnpm run` sets NODE_PATH to its store, where Node would find the
   // workspace CLI instead of the fake.
-  const { NODE_PATH: _nodePath, SENTRY_URL: _sentryUrl, ...env } = process.env;
+  const {
+    NODE_PATH: _nodePath,
+    SENTRY_URL: _sentryUrl,
+    SENTRY_SPOTLIGHT: _sentrySpotlight,
+    ...env
+  } = process.env;
   const child = spawn(process.execPath, [bin, ...args], {
     env: { ...env, FAKE_SENTRY: fake },
     stdio: ["ignore", "pipe", "pipe"],
@@ -149,6 +156,30 @@ describe("sentry-wizard", () => {
     });
   });
 
+  test.each([["-f"], ["--force"], ["-f", "--force", "--force-install"]])(
+    "passes %s through as one -f, with no notice",
+    async (...forceArgs) => {
+      const result = run(bin, ["-i", "nextjs", ...forceArgs]);
+
+      expect(await result.done).toEqual({ code: 0, signal: null });
+      expect(result.stderr()).toBe(NOTICE);
+      expect(JSON.parse(result.stdout())).toEqual({
+        args: ["wizard", "nextjs", "-f"],
+      });
+    },
+  );
+
+  test("sets SENTRY_SPOTLIGHT=1 for --spotlight instead of passing it on", async () => {
+    const result = run(bin, ["--spotlight", "-i", "nextjs"]);
+
+    expect(await result.done).toEqual({ code: 0, signal: null });
+    expect(result.stderr()).toBe(NOTICE);
+    expect(JSON.parse(result.stdout())).toEqual({
+      args: ["wizard", "nextjs"],
+      spotlight: "1",
+    });
+  });
+
   test.each([
     ["-u", "https://sentry.example.com"],
     ["--url", "https://sentry.example.com"],
@@ -168,7 +199,6 @@ describe("sentry-wizard", () => {
       "--project",
       "my-app",
       "--saas",
-      "--spotlight",
       "--debug",
       "--disable-telemetry",
       "--promo-code",
@@ -191,7 +221,6 @@ describe("sentry-wizard", () => {
       NOTICE +
         [
           "--saas",
-          "--spotlight",
           "--debug",
           "--disable-telemetry",
           "--promo-code",

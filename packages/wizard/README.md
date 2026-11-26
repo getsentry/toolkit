@@ -25,12 +25,13 @@ the old flags translated:
 - `-i`/`--integration <id>` becomes the integration argument.
 - `--org <org> --project <project>` becomes `<org>/<project>`, and `--org`
   alone becomes `<org>/`.
-- `--force-install` and `--ignore-git-changes` become `-f`.
+- `--force-install`, `--ignore-git-changes`, `-f` and `--force` become `-f`.
 - `-u`/`--url <url>` sets `SENTRY_URL` for the run.
+- `--spotlight` sets `SENTRY_SPOTLIGHT=1` for the run.
+- Positional arguments and `--help` pass through.
 
 Every other old flag is ignored with a notice, including `--project` without
-`--org`, `--saas`, `--spotlight` (set `SENTRY_SPOTLIGHT=1` instead) and the
-sign-up flags (sign up at <https://sentry.io/signup/> first). The exit code
+`--org`, `--saas` and the sign-up flags (sign up at <https://sentry.io/signup/> first). The exit code
 and signals pass through. Version 9 stays on npm for anyone who pins it.
 
 ## Development

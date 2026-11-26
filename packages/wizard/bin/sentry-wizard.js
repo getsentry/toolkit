@@ -53,8 +53,13 @@ const TRANSLATED = new Map([
   ["project", "project"],
 ]);
 
-/** Old flags that `-f` replaces. */
-const FORCE_FLAGS = new Set(["force-install", "ignore-git-changes"]);
+/** Flags that become `-f`, including `-f` itself. */
+const FORCE_FLAGS = new Set([
+  "f",
+  "force",
+  "force-install",
+  "ignore-git-changes",
+]);
 
 /** Old flags without an equivalent that take a value, which is dropped too. */
 const VALUE_FLAGS = new Set([
@@ -70,12 +75,13 @@ const ARRAY_FLAGS = new Set(["p", "platform"]);
 
 /**
  * Translate `@sentry/wizard` arguments to `sentry wizard [<org>/<project>]
- * [<integration>] [-f]`. Other arguments, such as a target or integration
- * already written as positionals, pass through. Values are never printed:
- * some old flags carried tokens.
+ * [<integration>] [-f]`, plus the CLI's environment variables for `--url` and
+ * `--spotlight`. Other arguments, such as a target or integration already
+ * written as positionals, pass through. Values are never printed: some old
+ * flags carried tokens.
  *
  * @param {readonly string[]} args
- * @returns {{ args: string[], url: string | undefined, notices: string[] }}
+ * @returns {{ args: string[], env: Record<string, string>, notices: string[] }}
  */
 function translateArgs(args) {
   /** @type {Map<string, string>} */
@@ -86,6 +92,7 @@ function translateArgs(args) {
   const notices = [];
   let force = false;
   let help = false;
+  let spotlight = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? "";
     if (arg === "--") {
@@ -123,6 +130,8 @@ function translateArgs(args) {
     }
     if (FORCE_FLAGS.has(name)) {
       force = true;
+    } else if (name === "spotlight") {
+      spotlight = true;
     } else if (equivalent === undefined) {
       notices.push(`Ignoring ${flag}: \`sentry wizard\` has no such option.`);
     } else if (value === undefined) {
@@ -140,6 +149,7 @@ function translateArgs(args) {
     );
   }
   const integration = values.get("integration");
+  const url = values.get("url");
   return {
     args: [
       ...(org === undefined ? [] : [`${org}/${project ?? ""}`]),
@@ -148,7 +158,10 @@ function translateArgs(args) {
       ...(force ? ["-f"] : []),
       ...(help ? ["--help"] : []),
     ],
-    url: values.get("url"),
+    env: {
+      ...(url === undefined ? {} : { SENTRY_URL: url }),
+      ...(spotlight ? { SENTRY_SPOTLIGHT: "1" } : {}),
+    },
     notices,
   };
 }
@@ -172,10 +185,7 @@ const child = spawn(
   [sentryBin, "wizard", ...translated.args],
   {
     stdio: "inherit",
-    env:
-      translated.url === undefined
-        ? process.env
-        : { ...process.env, SENTRY_URL: translated.url },
+    env: { ...process.env, ...translated.env },
   },
 );
 
