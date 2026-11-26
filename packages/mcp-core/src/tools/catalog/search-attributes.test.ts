@@ -639,6 +639,34 @@ describe("search_attributes", () => {
       expect(output.notes).toContain(KEY_CAP_NOTE);
     });
 
+    it("keeps the note when only some hint searches fail", async () => {
+      vi.spyOn(logging, "logIssue").mockReturnValue(undefined);
+      // 501 isn't retried, which keeps the test fast.
+      serveAttributes((substring) => {
+        if (substring === null) return FULL_PAGE;
+        if (substring === "processor") {
+          return HttpResponse.json({ detail: "Server error" }, { status: 501 });
+        }
+        return [userAttribute("payment.processor")];
+      });
+      mockGenerateText
+        .mockResolvedValueOnce(
+          mockAgentResponse({ hints: ["payment", "processor"] }),
+        )
+        .mockResolvedValueOnce(
+          mockAgentResponse({ best: "payment.processor", candidates: [] }),
+        );
+
+      const output = await search({
+        query: "payment provider",
+        dataset: "spans",
+      });
+
+      expect(output.best?.key).toBe("payment.processor");
+      // Keys only the failed hint would have found may be missing.
+      expect(output.notes).toContain(KEY_CAP_NOTE);
+    });
+
     it("keeps the note when a hint search reaches the limit too", async () => {
       serveAttributes((substring) =>
         substring === null ? FULL_PAGE : manyAttributes(1000),

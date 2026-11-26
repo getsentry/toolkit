@@ -86,7 +86,7 @@ export async function runSearchAttributes(
   let narrowedByHints = false;
   // Set once hint searches ran without failing or reaching the limit. They
   // look through every key, so a match past the cut would have turned up.
-  let searchedHints = false;
+  let allSearchHintCallsSuccessful = false;
 
   const rowsReachesLimit = mayBeCutOff(rows);
 
@@ -147,9 +147,11 @@ export async function runSearchAttributes(
     // otherwise it defaults to the original exhaustive list
     const hintRows = await Promise.all(keyHints.map(searchHint));
     const searchedRows = hintRows.filter((r) => r !== null);
-    // A hint search that reached the limit itself may be missing keys too.
-    searchedHints =
-      searchedRows.length > 0 && !searchedRows.some((r) => mayBeCutOff(r));
+    allSearchHintCallsSuccessful =
+      hintRows.length > 0 &&
+      searchedRows.length === hintRows.length &&
+      // it's not fully successful if there were some that were potentially cut off
+      !searchedRows.some((r) => mayBeCutOff(r));
     if (searchedRows.some((r) => r.length > 0)) {
       const recommendedKeys = getRecommendedKeysByDataset(dataset);
       const recommendedRows = rows.filter((attribute) =>
@@ -190,7 +192,7 @@ export async function runSearchAttributes(
     query,
     matches,
     totalAttributes: rows.length,
-    mayBeIncomplete: !searchedHints && rowsReachesLimit,
+    mayBeIncomplete: !allSearchHintCallsSuccessful && rowsReachesLimit,
   });
 }
 
