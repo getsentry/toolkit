@@ -101,12 +101,13 @@ export type FileStoreOptions = {
   cleanupProbability?: number;
 };
 
-export type FileStore = CacheStore & {
-  /** Remove every entry. */
-  clear(): Promise<void>;
-  /** Delete expired entries, then evict until within the byte budget. */
-  cleanup(): Promise<void>;
-};
+export type FileStore = CacheStore &
+  Required<Pick<CacheStore, "deleteMatching">> & {
+    /** Remove every entry. */
+    clear(): Promise<void>;
+    /** Delete expired entries, then evict until within the byte budget. */
+    cleanup(): Promise<void>;
+  };
 
 const encoder = new TextEncoder();
 
