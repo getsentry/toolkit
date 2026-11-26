@@ -1,3 +1,4 @@
+import { getActiveSpan } from "@sentry/core";
 import { ApiClientError, type TraceItemAttribute } from "../../../api-client";
 import { ConfigurationError, UserInputError } from "../../../errors";
 import { hasAgentProvider } from "../../../internal/agents/provider-factory";
@@ -101,11 +102,16 @@ export async function runSearchAttributes(
       mayBeIncomplete: rowsReachesLimit,
     });
 
-  if (!query) return listAttributes();
+  if (!query) {
+    return recordResult(listAttributes(), { keyCapReached: rowsReachesLimit });
+  }
 
   if (!hasAgentProvider()) {
-    return listAttributes(
-      "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
+    return recordResult(
+      listAttributes(
+        "Matching by `query` needs an AI provider, so these are the dataset's attributes instead.",
+      ),
+      { keyCapReached: rowsReachesLimit, fallback: "no_ai_provider" },
     );
   }
 
@@ -179,21 +185,58 @@ export async function runSearchAttributes(
         });
 
   if (!matches) {
-    return listAttributes(
-      narrowedByHints
-        ? "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields."
-        : "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
+    return recordResult(
+      listAttributes(
+        narrowedByHints
+          ? "The AI provider couldn't match `query` right now, so these are the attributes with names related to it, plus Sentry's common search fields."
+          : "The AI provider couldn't match `query` right now, so these are the dataset's attributes instead.",
+      ),
+      { keyCapReached: rowsReachesLimit, fallback: "ai_unavailable" },
     );
   }
 
-  return buildFindResult({
-    dataset,
-    period,
-    query,
-    matches,
-    totalAttributes: rows.length,
-    mayBeIncomplete: !allSearchHintCallsSuccessful && rowsReachesLimit,
+  return recordResult(
+    buildFindResult({
+      dataset,
+      period,
+      query,
+      matches,
+      totalAttributes: rows.length,
+      mayBeIncomplete: !allSearchHintCallsSuccessful && rowsReachesLimit,
+    }),
+    { keyCapReached: rowsReachesLimit },
+  );
+}
+
+/**
+ * Records how the call ended on the tool span, plus a counter metric that
+ * trace sampling does not drop. Outcome values are part of this contract.
+ */
+function recordResult(
+  output: SearchAttributesOutput,
+  {
+    keyCapReached,
+    fallback,
+  }: {
+    keyCapReached: boolean;
+    fallback?: "no_ai_provider" | "ai_unavailable";
+  },
+): SearchAttributesOutput {
+  let outcome: string;
+  if (fallback) outcome = fallback;
+  else if (output.totalAttributes === 0) outcome = "none_seen";
+  else if (output.resultType === "list") outcome = "list";
+  else if (output.best) outcome = "best_match";
+  else if (output.attributes.length > 0) outcome = "candidates";
+  else outcome = "no_match";
+
+  getActiveSpan()?.setAttributes({
+    "gen_ai.tool.call.result.count":
+      output.attributes.length + (output.best ? 1 : 0),
+    "app.search_attributes.outcome": outcome,
+    "app.search_attributes.key_cap_reached": keyCapReached,
   });
+  return output;
 }
 
 /**
