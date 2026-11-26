@@ -140,6 +140,24 @@ export const ENV_VAR_REGISTRY: readonly EnvVarEntry[] = [
     devGuide: "Sentry OAuth app client ID",
   },
   {
+    name: "SENTRY_WIZARD_INTEGRATION",
+    description:
+      "Integration for `sentry wizard` to set up when `-i` is not passed, such as `nextjs`. Kept from `@sentry/wizard`.",
+    example: "nextjs",
+  },
+  {
+    name: "SENTRY_WIZARD_URL",
+    description:
+      "URL of the self-hosted Sentry instance for `sentry wizard` when `--url` is not passed. Kept from `@sentry/wizard`.",
+    example: "https://sentry.example.com",
+  },
+  {
+    name: "SENTRY_WIZARD_DEBUG",
+    description:
+      "Set to `true` to print the debug output of `sentry wizard`, like `--debug`. Kept from `@sentry/wizard`.",
+    example: "true",
+  },
+  {
     name: "SENTRY_HANDOFF",
     description:
       "Private, short-lived agent handoff code. The install and setup flow exchanges it for the intended Sentry account, authenticates that account, and prints its setup instructions.",

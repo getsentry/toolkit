@@ -814,6 +814,14 @@ Print instructions for a coding agent to set up Sentry
 
 → Full flags and examples: `references/init.md`
 
+### Wizard
+
+Set up the Sentry SDK in your project interactively
+
+- `sentry wizard` — Set up the Sentry SDK in your project interactively
+
+→ Full flags and examples: `references/wizard.md`
+
 ### Info
 
 Print configuration and verify authentication
