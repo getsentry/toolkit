@@ -25,6 +25,7 @@ import {
 } from "./db/auth.js";
 import { isTrustedRegionOrigin } from "./db/regions.js";
 import { invocationState } from "./env.js";
+import { getRcTokenBootHost } from "./env-token-host.js";
 import { HostScopeError } from "./errors.js";
 import { normalizeHttpOrigin, normalizeOrigin } from "./sentry-urls.js";
 import { parseSntrysClaim } from "./token-claims.js";
@@ -215,16 +216,24 @@ export function isHostTrustedForClaim(
 /**
  * Trust check for `applyCustomHeaders` (IAP tokens, mTLS headers, etc.).
  *
- * Token present → same as {@link isRequestOriginTrusted}. No token but an
- * explicit login trust anchor → check against the anchor (allows OAuth
- * device-flow against IAP-protected self-hosted to carry custom headers).
- * No anchor at all → fail closed.
+ * Token present → same as {@link isRequestOriginTrusted}, except that a
+ * `.sentryclirc` `sntrys_` token is checked against its boot host, not its
+ * claim: the headers come from the user's env, and a host that only the rc
+ * file names must not receive them. No token but an explicit login trust
+ * anchor → check against the anchor (allows OAuth device-flow against
+ * IAP-protected self-hosted to carry custom headers). No anchor at all →
+ * fail closed.
  */
 export function isRequestOriginTrustedForCustomHeaders(
   requestInput: string | URL | Request | undefined | null,
 ): boolean {
-  if (getActiveTokenHost()) {
-    return isRequestOriginTrusted(requestInput);
+  const credential = getCredentialContext();
+  if (credential) {
+    return isOriginTrustedFor(
+      requestInput,
+      getRcTokenBootHost(credential.token) ?? credential.host,
+      credential.identity,
+    );
   }
   const { anchor } = loginTrustState();
   if (anchor) {
