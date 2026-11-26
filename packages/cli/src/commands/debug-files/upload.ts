@@ -51,7 +51,7 @@ import {
   VALID_DIF_TYPES,
 } from "../../lib/dif/scan.js";
 import {
-  createUploadProgressLogger,
+  createUploadProgressReporter,
   logFoundDebugFiles,
 } from "../../lib/dif/upload-progress.js";
 import {
@@ -834,18 +834,24 @@ export const uploadCommand = buildCommand({
       throw new ContextError("Organization and project", usageHint());
     }
 
-    return yield* doUpload(setExitCode, {
-      org: resolved.org,
-      project: resolved.project,
-      serverOptions,
-      difs,
-      wait,
-      maxWaitMs,
-      missingRequestedIds: missingIds,
-      requireAll,
-      oversizedCount,
-      maxFileSize,
-      onProgress: showProgress ? createUploadProgressLogger() : undefined,
-    });
+    const progress = showProgress ? createUploadProgressReporter() : undefined;
+    try {
+      return yield* doUpload(setExitCode, {
+        org: resolved.org,
+        project: resolved.project,
+        serverOptions,
+        difs,
+        wait,
+        maxWaitMs,
+        missingRequestedIds: missingIds,
+        requireAll,
+        oversizedCount,
+        maxFileSize,
+        onProgress: progress?.onProgress,
+      });
+    } finally {
+      // A failed upload can leave a spinner on screen.
+      progress?.stop();
+    }
   },
 });
