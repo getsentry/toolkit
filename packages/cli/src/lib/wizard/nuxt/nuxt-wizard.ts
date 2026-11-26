@@ -65,11 +65,10 @@ export async function runNuxtWizard(options: WizardOptions): Promise<void> {
 async function runNuxtWizardWithTelemetry(
   options: WizardOptions,
 ): Promise<void> {
-  const { promoCode, telemetryEnabled, forceInstall } = options;
+  const { telemetryEnabled, forceInstall } = options;
 
   printWelcome({
     wizardName: "Sentry Nuxt Wizard",
-    promoCode,
     telemetryEnabled,
   });
 

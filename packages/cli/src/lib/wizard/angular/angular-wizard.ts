@@ -67,7 +67,6 @@ async function runAngularWizardWithTelemetry(
 ): Promise<void> {
   printWelcome({
     wizardName: "Sentry Angular Wizard",
-    promoCode: options.promoCode,
     telemetryEnabled: options.telemetryEnabled,
   });
 
@@ -264,7 +263,7 @@ Apologies for the inconvenience!`,
       true,
     );
 
-    await setupCI("angular", authToken, options.comingFrom);
+    await setupCI("angular", authToken);
   });
 
   const shouldCreateExampleComponent = await askShouldCreateExampleComponent();

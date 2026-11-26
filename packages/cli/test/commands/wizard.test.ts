@@ -72,21 +72,39 @@ describe("sentry wizard", () => {
       "force-install": true,
       "ignore-git-changes": true,
       "disable-telemetry": true,
-      "coming-from": "vercel",
     });
 
     expect(runNextjsWizard).toHaveBeenCalledWith({
       telemetryEnabled: false,
-      promoCode: undefined,
       url: "https://sentry.example.com",
       orgSlug: "acme",
       projectSlug: "web",
       saas: false,
       forceInstall: true,
-      comingFrom: "vercel",
       ignoreGitChanges: true,
       spotlight: true,
     });
+  });
+
+  test.each([
+    [{ signup: true }, "--signup is no longer supported."],
+    [{ "promo-code": "PROMO" }, "--promo-code is no longer supported."],
+    [{ "coming-from": "vercel" }, "--coming-from is no longer supported."],
+    [
+      { signup: true, "promo-code": "PROMO" },
+      "--signup, --promo-code are no longer supported.",
+    ],
+  ])("rejects the removed sign-up flags %o", async (flags, message) => {
+    const error = await runWizardCommand({ integration: "nextjs", ...flags })
+      .then(() => undefined)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).message).toContain(message);
+    expect((error as ValidationError).message).toContain(
+      "https://sentry.io/signup/",
+    );
+    expect(runNextjsWizard).not.toHaveBeenCalled();
   });
 
   test("reads the integration and URL from SENTRY_WIZARD_* variables", async () => {

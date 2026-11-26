@@ -13,7 +13,6 @@ import {
   SENTRY_DOT_ENV_FILE,
 } from "../utils/clack/index.js";
 import { clack } from "../utils/clack/prompts.js";
-import type { WizardOptions } from "../utils/types.js";
 import { setupNpmScriptInCI } from "./tools/sentry-cli.js";
 
 /** Tools that upload with `sentry` commands and read `.sentryclirc`. */
@@ -26,25 +25,16 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
 
 /**
  * Ask whether the user builds in CI and, if so, show the auth token to set
- * there. Skipped for partner flows (Vercel) that already set the token.
+ * there.
  *
  * @param selectedTool - The build tool the wizard configured, such as `nextjs`
  * @param authToken - The token written to the local config file
- * @param comingFrom - The partner the command came from (`--coming-from`)
  */
 export async function setupCI(
   selectedTool: string,
   authToken: string,
-  comingFrom: WizardOptions["comingFrom"],
 ): Promise<void> {
-  if (comingFrom === "vercel") {
-    clack.log.info(
-      "Sentry Vercel integration is already configured. Skipping CI setup.",
-    );
-    Sentry.setTag("using-ci", true);
-  } else {
-    await traceStep("configure-ci", () => configureCI(selectedTool, authToken));
-  }
+  await traceStep("configure-ci", () => configureCI(selectedTool, authToken));
 }
 
 /** Ask about CI and show the auth token to set there. */

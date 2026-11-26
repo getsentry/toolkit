@@ -20,8 +20,13 @@ changes nothing.
 
 `sentry wizard` takes the same integrations and flags as
 `npx @sentry/wizard`, so `npx @sentry/wizard -i nextjs` and
-`sentry wizard -i nextjs` do the same thing. The Cordova and Electron wizards
-were removed; follow their setup guides in the Sentry docs instead.
+`sentry wizard -i nextjs` do the same thing. These were removed:
+
+- The sign-up flags `--signup`, `--promo-code` and `--coming-from`. Passing one
+  fails with an explanation. Sign up at https://sentry.io/signup/ (and apply a
+  promo code there), then run the wizard.
+- The Cordova and Electron wizards. Follow their setup guides in the Sentry
+  docs instead.
 
 Flows that uploaded source maps with `@sentry/cli`, such as Angular, now
 install the `sentry` package instead. The `sentry:sourcemaps` script they add
