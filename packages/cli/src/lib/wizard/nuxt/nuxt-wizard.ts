@@ -149,7 +149,7 @@ async function runNuxtWizardWithTelemetry(
   // From v11 on, the SDK collects rich context by default, so offer to
   // reduce collection of data that can identify users.
   const reduceDataCollection =
-    sdkSupportsDataCollection(installedSdkVersion, "^10") &&
+    sdkSupportsDataCollection(installedSdkVersion, "^11") &&
     (await askShouldReduceDataCollection());
 
   await addDotEnvSentryBuildPluginFile(authToken);

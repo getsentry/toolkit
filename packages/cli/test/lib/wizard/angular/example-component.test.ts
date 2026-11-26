@@ -1,3 +1,4 @@
+import { text } from "@clack/prompts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createExampleComponent,
@@ -48,6 +49,25 @@ describe("createExampleComponent", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("rejects an empty path when ./src/app is missing", async () => {
+    fsMocks.existsSyncMock.mockReturnValue(false);
+    vi.mocked(text).mockResolvedValueOnce("custom/app");
+
+    await createExampleComponent({
+      url: "https://sentry.io",
+      orgSlug: "myOrg",
+      projectId: "123456789",
+    });
+    fsMocks.existsSyncMock.mockReturnValue(true);
+
+    const validate = vi.mocked(text).mock.calls[0]?.[0].validate;
+    expect(validate?.("")).toBe("Please enter a path.");
+    expect(validate?.("custom/app")).toBeUndefined();
+    expect(fsMocks.mkdirSyncMock).toHaveBeenCalledWith("custom/app", {
+      recursive: true,
+    });
   });
 
   it("creates an example component file", async () => {

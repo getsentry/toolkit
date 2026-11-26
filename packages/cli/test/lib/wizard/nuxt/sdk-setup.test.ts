@@ -1,6 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SemVer } from "semver";
-import { addNuxtOverrides } from "../../../../src/lib/wizard/nuxt/sdk-setup.js";
+import {
+  addNuxtOverrides,
+  createConfigFiles,
+} from "../../../../src/lib/wizard/nuxt/sdk-setup.js";
 import type { PackageManager } from "../../../../src/lib/wizard/utils/package-manager.js";
 
 const { askShouldAddPackageOverrideMock } = vi.hoisted(() => ({
@@ -8,12 +15,18 @@ const { askShouldAddPackageOverrideMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
-  log: { warn: vi.fn() },
+  log: { warn: vi.fn(), info: vi.fn() },
+  confirm: vi.fn().mockResolvedValue(false),
+  isCancel: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("../../../../src/lib/wizard/utils/clack/index.js", async () => ({
   ...(await vi.importActual("../../../../src/lib/wizard/utils/clack/index.js")),
   askShouldAddPackageOverride: askShouldAddPackageOverrideMock,
+  featureSelectionPrompt: vi.fn().mockResolvedValue({
+    performance: true,
+    replay: false,
+  }),
 }));
 
 describe("addNuxtOverrides", () => {
@@ -57,5 +70,32 @@ describe("addNuxtOverrides", () => {
     await addNuxtOverrides(packageManager, null);
 
     expect(askShouldAddPackageOverrideMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("createConfigFiles", () => {
+  it("prints the dataCollection preset when the user keeps existing configs", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "wizard-nuxt-config-"));
+    const originalCwd = process.cwd();
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    try {
+      writeFileSync(path.join(dir, "sentry.client.config.js"), "");
+      writeFileSync(path.join(dir, "sentry.server.config.js"), "");
+      process.chdir(dir);
+
+      await createConfigFiles("https://key@o1.ingest.sentry.io/2", true);
+
+      const printed = write.mock.calls.map(([chunk]) => String(chunk));
+      expect(printed).toHaveLength(2);
+      for (const snippet of printed) {
+        expect(snippet).toContain("dataCollection: {");
+      }
+    } finally {
+      process.chdir(originalCwd);
+      write.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

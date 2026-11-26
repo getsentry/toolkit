@@ -33,6 +33,12 @@ export async function createExampleComponent(
       clack.text({
         message: "Where should we create the example component?",
         placeholder: appRootPath,
+        validate(value) {
+          if (!value) {
+            return "Please enter a path.";
+          }
+          return undefined;
+        },
       }),
     );
   }

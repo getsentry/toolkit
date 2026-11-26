@@ -22,7 +22,8 @@ const DATA_COLLECTION_HINT = `  dataCollection: {
  * The active PII-reducing preset when the user opted in, the commented-out
  * hint otherwise.
  */
-function getDataCollectionBlock(reduceDataCollection: boolean): string {
+/** The `dataCollection` preset, or a hint about it when not reduced. */
+export function getDataCollectionBlock(reduceDataCollection: boolean): string {
   return reduceDataCollection
     ? getDataCollectionSnippet("  ")
     : DATA_COLLECTION_HINT;

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runAngularWizard } from "../../../../src/lib/wizard/angular/angular-wizard.js";
 import { installPackage } from "../../../../src/lib/wizard/utils/clack/index.js";
+import { askShouldReduceDataCollection } from "../../../../src/lib/wizard/utils/data-collection.js";
 
 /** Thrown by the mocked install to stop the flow right after it. */
 const { STOP } = vi.hoisted(() => ({ STOP: new Error("stop after install") }));
@@ -10,6 +11,14 @@ vi.mock("../../../../src/lib/wizard/telemetry.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   withTelemetry: (_options: unknown, fn: () => Promise<unknown>) => fn(),
 }));
+
+vi.mock(
+  "../../../../src/lib/wizard/utils/data-collection.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    askShouldReduceDataCollection: vi.fn().mockRejectedValue(STOP),
+  }),
+);
 
 vi.mock("../../../../src/lib/wizard/utils/node-version.js", () => ({
   warnIfNodeVersionUnsupportedBySdkV11: vi.fn(),
@@ -39,6 +48,7 @@ vi.mock(
       },
     }),
     installPackage: vi.fn().mockRejectedValue(STOP),
+    featureSelectionPrompt: vi.fn().mockRejectedValue(STOP),
   }),
 );
 
@@ -62,4 +72,14 @@ describe("runAngularWizard", () => {
       );
     },
   );
+
+  it("asks about data collection when the installed SDK version is unknown", async () => {
+    vi.mocked(installPackage).mockResolvedValueOnce({});
+
+    await expect(
+      runAngularWizard({ telemetryEnabled: false, ignoreGitChanges: true }),
+    ).rejects.toBe(STOP);
+
+    expect(askShouldReduceDataCollection).toHaveBeenCalled();
+  });
 });

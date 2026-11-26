@@ -3,11 +3,11 @@
  * version or by `future.compatibilityVersion: 4` in its config.
  */
 
-import { gte, minVersion } from "semver";
 import { loadFile } from "magicast";
 import { abortIfCancelled } from "../utils/clack/index.js";
 import { clack } from "../utils/clack/prompts.js";
 import { debug } from "../utils/debug.js";
+import { getMajorVersion } from "../utils/semver.js";
 
 /**
  * Whether the project uses Nuxt 4.
@@ -19,12 +19,8 @@ export async function isNuxtV4(
   nuxtConfig: string,
   packageVersion: string | undefined,
 ): Promise<boolean> {
-  if (!packageVersion) {
-    return false;
-  }
-
-  const minVer = minVersion(packageVersion);
-  if (minVer && gte(minVer, "4.0.0")) {
+  // Compare majors so prereleases such as 4.0.0-rc.1 count as Nuxt 4.
+  if ((getMajorVersion(packageVersion) ?? 0) >= 4) {
     return true;
   }
 

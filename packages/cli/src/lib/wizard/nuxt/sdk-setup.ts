@@ -21,6 +21,7 @@ import { clack } from "../utils/clack/prompts.js";
 import type { PackageManager } from "../utils/package-manager.js";
 import {
   getConfigBody,
+  getDataCollectionBlock,
   getDefaultNuxtConfig,
   getNuxtModuleFallbackTemplate,
   getSentryConfigContents,
@@ -281,7 +282,7 @@ export async function createConfigFiles(
         );
         // Printed outside clack's gutter so that it can be copied/pasted directly
         clack.rawOutput(
-          `\n\n  ${getConfigBody(dsn, configVariant, selectedFeatures)}\n\n`,
+          `\n\n  ${getConfigBody(dsn, configVariant, selectedFeatures)}\n\n${getDataCollectionBlock(reduceDataCollection)}\n\n`,
         );
       }
     });
