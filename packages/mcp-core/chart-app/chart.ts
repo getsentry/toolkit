@@ -256,7 +256,7 @@ export function drawChart(
   const single = chart.series.length === 1;
   const path = (pts: readonly Point[]) =>
     pts.map(([px, py], i) => `${i ? "L" : "M"}${px},${py}`).join("");
-  chart.series.forEach((series, index) => {
+  for (const [index, series] of chart.series.entries()) {
     const color = SERIES_COLORS[index % SERIES_COLORS.length] ?? "#7553ff";
     // Runs of buckets with data. A null bucket ends a run, so it draws as a
     // gap instead of a drop to 0.
@@ -306,7 +306,7 @@ export function drawChart(
         );
       }
     }
-  });
+  }
 
   const crosshair = svg(
     "line",
@@ -397,11 +397,11 @@ export function drawChart(
     }
     const time = first + ((px - MARGIN.left) / plotWidth) * span;
     let nearest = 0;
-    times.forEach((t, i) => {
+    for (const [i, t] of times.entries()) {
       if (Math.abs(t - time) < Math.abs((times[nearest] ?? 0) - time)) {
         nearest = i;
       }
-    });
+    }
     showAt(nearest);
   });
   root.addEventListener("pointerleave", hide);

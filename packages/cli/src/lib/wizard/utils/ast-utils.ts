@@ -3,27 +3,12 @@
  * that edit JavaScript and TypeScript config files.
  */
 
-import { existsSync } from "node:fs";
-
 import recast from "recast";
 
 import { debug } from "./debug.js";
 import type { namedTypes as t } from "ast-types";
 
 const b = recast.types.builders;
-
-/**
- * Checks if a file where we don't know its concrete file type yet exists
- * and returns the full path to the file with the correct file type.
- */
-export function findFile(
-  filePath: string,
-  fileTypes: string[] = [".js", ".ts", ".mjs", ".cjs"],
-): string | undefined {
-  return fileTypes
-    .map((type) => `${filePath}${type}`)
-    .find((file) => existsSync(file));
-}
 
 /**
  * checks for require('@sentry/*') syntax
@@ -237,7 +222,7 @@ export function printJsonC(ast: t.Program): string {
  */
 export function getLastRequireIndex(program: t.Program): number {
   let lastRequireIdex = -1;
-  program.body.forEach((s, i) => {
+  for (const [i, s] of program.body.entries()) {
     const declaration =
       s.type === "VariableDeclaration" ? s.declarations[0] : undefined;
     if (
@@ -248,7 +233,7 @@ export function getLastRequireIndex(program: t.Program): number {
     ) {
       lastRequireIdex = i;
     }
-  });
+  }
   return lastRequireIdex;
 }
 

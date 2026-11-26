@@ -13,7 +13,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as childProcess from "node:child_process";
+import { WizardExitError } from "../../../../../src/lib/errors.js";
 import { offerProjectScopedMcpConfig } from "../../../../../src/lib/wizard/utils/clack/mcp-config.js";
+
+/** The error `fs.promises.readFile` rejects with for a missing file. */
+function fileNotFound(): NodeJS.ErrnoException {
+  return Object.assign(new Error("ENOENT: no such file or directory"), {
+    code: "ENOENT",
+  });
+}
 
 // Mock types for better type safety
 type ConfigContent = {
@@ -115,9 +123,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -164,9 +170,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -196,9 +200,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -349,9 +351,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -435,9 +435,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi
         .fn()
         .mockRejectedValue(new Error("Permission denied"));
@@ -462,7 +460,7 @@ describe("mcp-config", () => {
       );
     });
 
-    it("should handle file write errors gracefully for Cursor", async () => {
+    it("shows the fallback instead of overwriting an unparseable config", async () => {
       const { clack, clackUtils } = await getMocks();
 
       vi.mocked(clack.select).mockResolvedValueOnce("yes");
@@ -473,7 +471,52 @@ describe("mcp-config", () => {
 
       const mockReadFile = vi
         .fn()
-        .mockRejectedValue(new Error("File not found"));
+        .mockResolvedValue('{ "mcpServers": { "OtherServer": {}, } }');
+      const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+
+      vi.spyOn(fs.promises, "readFile").mockImplementation(mockReadFile);
+      vi.spyOn(fs.promises, "writeFile").mockImplementation(mockWriteFile);
+      vi.spyOn(fs, "mkdirSync").mockImplementation(vi.fn());
+
+      await offerProjectScopedMcpConfig();
+
+      expect(mockWriteFile).not.toHaveBeenCalled();
+      expect(clackUtils.showCopyPasteInstructions).toHaveBeenCalledWith(
+        expect.objectContaining({ filename: path.join(".cursor", "mcp.json") }),
+      );
+    });
+
+    it("lets a WizardExitError from an editor's setup stop the wizard", async () => {
+      const { clack, clackUtils } = await getMocks();
+
+      vi.mocked(clack.select).mockResolvedValueOnce("yes");
+      vi.mocked(clack.multiselect).mockResolvedValueOnce(["cursor", "vscode"]);
+      vi.mocked(clackUtils.abortIfCancelled).mockImplementation(
+        (value: unknown) => Promise.resolve(value),
+      );
+
+      const mockWriteFile = vi.fn().mockRejectedValue(new WizardExitError(0));
+      vi.spyOn(fs.promises, "readFile").mockRejectedValue(fileNotFound());
+      vi.spyOn(fs.promises, "writeFile").mockImplementation(mockWriteFile);
+      vi.spyOn(fs, "mkdirSync").mockImplementation(vi.fn());
+
+      await expect(offerProjectScopedMcpConfig()).rejects.toThrow(
+        WizardExitError,
+      );
+      expect(mockWriteFile).toHaveBeenCalledTimes(1);
+      expect(clackUtils.showCopyPasteInstructions).not.toHaveBeenCalled();
+    });
+
+    it("should handle file write errors gracefully for Cursor", async () => {
+      const { clack, clackUtils } = await getMocks();
+
+      vi.mocked(clack.select).mockResolvedValueOnce("yes");
+      vi.mocked(clack.multiselect).mockResolvedValueOnce(["cursor"]);
+      vi.mocked(clackUtils.abortIfCancelled).mockImplementation(
+        (value: unknown) => Promise.resolve(value),
+      );
+
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi
         .fn()
         .mockRejectedValue(new Error("Permission denied"));
@@ -507,9 +550,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi
         .fn()
         .mockRejectedValue(new Error("Permission denied"));
@@ -539,9 +580,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi
         .fn()
         .mockRejectedValue(new Error("Permission denied"));
@@ -608,9 +647,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn().mockImplementation(() => {
         throw new Error("Permission denied");
@@ -823,9 +860,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -944,9 +979,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi.fn().mockResolvedValue(undefined);
       const mockMkdirSync = vi.fn();
 
@@ -1015,9 +1048,7 @@ describe("mcp-config", () => {
         (value: unknown) => Promise.resolve(value),
       );
 
-      const mockReadFile = vi
-        .fn()
-        .mockRejectedValue(new Error("File not found"));
+      const mockReadFile = vi.fn().mockRejectedValue(fileNotFound());
       const mockWriteFile = vi
         .fn()
         .mockResolvedValueOnce(undefined) // Cursor succeeds

@@ -155,7 +155,7 @@ The wizard will continue, but you may need to upgrade Next.js for the SDK to wor
     await installPackage({
       packageName: "@sentry/nextjs@^11",
       packageNameDisplayLabel: "@sentry/nextjs",
-      alreadyInstalled: !!packageJson.dependencies?.["@sentry/nextjs"],
+      alreadyInstalled: sdkAlreadyInstalled,
       forceInstall,
     });
 
@@ -185,7 +185,8 @@ The wizard will import ${chalk.cyan(
   // From v11 on, the SDK collects rich context by default, so offer to
   // reduce collection of data that can identify users.
   const reduceDataCollection =
-    sdkSupportsDataCollection(installedSdkVersion, "^10.73.0") &&
+    // An unknown version (e.g. `workspace:*`) is the `^11` the wizard asked for.
+    sdkSupportsDataCollection(installedSdkVersion, "^11") &&
     (await askShouldReduceDataCollection());
 
   let selectedProject: SentryProjectData;

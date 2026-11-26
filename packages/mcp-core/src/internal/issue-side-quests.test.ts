@@ -24,11 +24,9 @@ function eventWithFourFiles() {
       if (!("rawStacktrace" in value)) {
         continue;
       }
-      value.rawStacktrace.frames.forEach(
-        (frame: { absPath: string | null }, index: number) => {
-          frame.absPath = files[index] ?? frame.absPath;
-        },
-      );
+      for (const [index, frame] of value.rawStacktrace.frames.entries()) {
+        frame.absPath = files[index] ?? frame.absPath;
+      }
     }
   }
   return EventSchema.parse({
