@@ -39,9 +39,7 @@ type UploadFuncArgs = {
   "strip-common-prefix"?: boolean;
   "no-rewrite"?: boolean;
   "allow-empty"?: boolean;
-  /** Parsed `--wait` limit in milliseconds. */
-  wait?: number;
-  "no-wait"?: boolean;
+  wait?: boolean;
 };
 type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
@@ -401,40 +399,34 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
-  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean, number]>([
-    ["outside CI", {}, {}, false, 300_000],
-    ["in CI", { CI: "true" }, {}, true, 300_000],
+  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean]>([
+    ["outside CI", {}, {}, false],
+    ["in CI", { CI: "true" }, {}, true],
     [
       "in CI with --no-wait",
       { GITHUB_ACTIONS: "true" },
-      { "no-wait": true },
+      { wait: false },
       false,
-      300_000,
     ],
-    ["outside CI with --wait", {}, { wait: 300_000 }, true, 300_000],
-    ["outside CI with --wait 30", {}, { wait: 30_000 }, true, 30_000],
-  ])(
-    "waits for processing %s",
-    async (_name, env, flags, expectedWait, expectedMaxWaitMs) => {
-      await writeFile(join(dir, "app.js"), "console.log(1)\n");
-      await writeFile(
-        join(dir, "app.js.map"),
-        JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
-      );
-      const uploadSpy = vi
-        .spyOn(sourcemapsApi, "uploadSourcemaps")
-        .mockResolvedValue(undefined);
-      try {
-        await func.call(makeContext(env), flags, dir);
-        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
-          wait: expectedWait,
-          maxWaitMs: expectedMaxWaitMs,
-        });
-      } finally {
-        uploadSpy.mockRestore();
-      }
-    },
-  );
+    ["outside CI with --wait", {}, { wait: true }, true],
+  ])("waits for processing %s", async (_name, env, flags, expectedWait) => {
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "app.js.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+    const uploadSpy = vi
+      .spyOn(sourcemapsApi, "uploadSourcemaps")
+      .mockResolvedValue(undefined);
+    try {
+      await func.call(makeContext(env), flags, dir);
+      expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+        wait: expectedWait,
+      });
+    } finally {
+      uploadSpy.mockRestore();
+    }
+  });
 
   test("inline sourcemap: uploads decoded map as a source_map with content", async () => {
     const jsPath = join(dir, "inline.js");
@@ -1158,75 +1150,41 @@ describe("sourcemap upload command — waiting for processing", () => {
     expect(assembleCalls()).toBe(1);
   });
 
-  test("rejects --wait with --no-wait", async () => {
-    const assembleCalls = serveAssembleStates([{ state: "ok" }]);
-
-    await expect(
-      func.call(makeContext(), { wait: 30_000, "no-wait": true }, dir),
-    ).rejects.toThrow("--wait cannot be combined with --no-wait");
-    expect(assembleCalls()).toBe(0);
-  });
-
-  describe("--wait argument", () => {
+  describe("flag parsing", () => {
     const app = buildApplication(
       buildRouteMap({
         routes: { upload: uploadCommand },
         docs: { brief: "Test app" },
       }),
-      { name: "test" },
+      // The CLI's scanner style, which `--no-wait` needs.
+      { name: "test", scanner: { caseStyle: "allow-kebab-for-camel" } },
     );
 
-    /** Run `upload <argv>` and return the options passed to the uploader. */
-    async function uploadWith(argv: string[], env: NodeJS.ProcessEnv = {}) {
-      const stderr: string[] = [];
+    test.each<[string[], NodeJS.ProcessEnv, boolean]>([
+      [["--wait"], {}, true],
+      [["--no-wait"], { CI: "true" }, false],
+      [["--wait"], { CI: "true" }, true],
+    ])("%o with env %o waits: %s", async (flags, env, expectedWait) => {
       const uploadSpy = vi
         .spyOn(sourcemapsApi, "uploadSourcemaps")
         .mockResolvedValue(undefined);
       try {
-        const write = (s: string) => {
-          stderr.push(s);
-          return true;
-        };
+        const writer = { write: () => true };
         const ctx = {
-          process: { stdout: { write: () => true }, stderr: { write } },
-          stdout: { write: () => true },
-          stderr: { write },
+          process: { stdout: writer, stderr: writer },
+          stdout: writer,
+          stderr: writer,
           cwd: dir,
           env,
         };
-        await run(app, ["upload", ...argv], ctx as never);
-        return {
-          options: uploadSpy.mock.calls[0]?.[0],
-          stderr: stderr.join(""),
-        };
+        // `--wait` before the directory must not consume it as a value.
+        await run(app, ["upload", ...flags, dir], ctx as never);
+        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+          wait: expectedWait,
+        });
       } finally {
         uploadSpy.mockRestore();
       }
-    }
-
-    test.each<[string[], number]>([
-      [["--wait"], 300_000],
-      [["--wait", "30"], 30_000],
-      [["--wait=0"], Number.POSITIVE_INFINITY],
-    ])("%o waits with limit %d ms", async (flags, maxWaitMs) => {
-      const { options } = await uploadWith([dir, ...flags]);
-      expect(options).toMatchObject({ wait: true, maxWaitMs });
-    });
-
-    test("bare --wait before another flag keeps the default limit", async () => {
-      const { options } = await uploadWith([dir, "--wait", "--allow-empty"]);
-      expect(options).toMatchObject({ wait: true, maxWaitMs: 300_000 });
-    });
-
-    test("--no-wait skips waiting in CI", async () => {
-      const { options } = await uploadWith([dir, "--no-wait"], { CI: "true" });
-      expect(options).toMatchObject({ wait: false });
-    });
-
-    test("--wait followed by the directory explains the mix-up", async () => {
-      const { options, stderr } = await uploadWith(["--wait", dir]);
-      expect(options).toBeUndefined();
-      expect(stderr).toContain("--wait takes a number of seconds");
     });
   });
 });

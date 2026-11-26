@@ -14,7 +14,6 @@ import {
 import type { SentryContext } from "../../context.js";
 import {
   type ArtifactFile,
-  DEFAULT_UPLOAD_MAX_WAIT_MS,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { isCi } from "../../lib/ci.js";
@@ -25,7 +24,6 @@ import {
   parseFilePath,
   parseRelease,
   parseText,
-  textParser,
 } from "../../lib/completion-target.js";
 import { ContextError, ValidationError } from "../../lib/errors.js";
 import { mdKvTable, renderMarkdown } from "../../lib/formatters/markdown.js";
@@ -215,26 +213,6 @@ function buildArtifactPair(
   ];
 }
 
-/**
- * Parse the `--wait` limit into milliseconds. A bare `--wait` keeps the
- * default limit, and `--wait 0` waits with no limit.
- */
-function parseWaitLimit(input: string): number {
-  if (input === "") {
-    return DEFAULT_UPLOAD_MAX_WAIT_MS;
-  }
-  const seconds = Number(input);
-  if (!Number.isFinite(seconds) || seconds < 0) {
-    // `--wait ./dist` reads the directory as the limit.
-    throw new ValidationError(
-      `--wait takes a number of seconds, not '${input}'. ` +
-        "Put the directory before --wait, or write --wait=<seconds>.",
-      "wait",
-    );
-  }
-  return seconds === 0 ? Number.POSITIVE_INFINITY : seconds * 1000;
-}
-
 export const uploadCommand = buildCommand({
   docs: {
     brief: "Upload sourcemaps to Sentry",
@@ -250,8 +228,7 @@ export const uploadCommand = buildCommand({
       "In CI, the command waits up to five minutes for Sentry to finish " +
       "processing the upload and exits with an error if processing fails. " +
       "Elsewhere it exits once Sentry accepts the upload. Pass --wait or " +
-      "--no-wait to override. --wait takes an optional limit in seconds; " +
-      "--wait 0 waits with no limit.",
+      "--no-wait to override.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -288,10 +265,6 @@ export const uploadCommand = buildCommand({
       {
         description: "Wait for Sentry to process the upload outside CI",
         run: "sourcemap upload ./dist --wait",
-      },
-      {
-        description: "Wait at most two minutes for processing",
-        run: "sourcemap upload ./dist --wait 120",
       },
     ],
   },
@@ -377,20 +350,12 @@ export const uploadCommand = buildCommand({
         default: false,
       },
       wait: {
-        kind: "parsed",
-        parse: textParser(parseWaitLimit),
-        brief:
-          "Wait for the server to fully process the uploaded files, at " +
-          "most this many seconds (default: on in CI, 300; 0: no limit)",
-        optional: true,
-        inferEmpty: true,
-        placeholder: "seconds",
-      },
-      "no-wait": {
         kind: "boolean",
-        brief: "Exit once Sentry accepts the upload, even in CI",
+        brief:
+          "Wait up to five minutes for the server to fully process the " +
+          "uploaded files (default: on in CI)",
         optional: true,
-        default: false,
+        withNegated: true,
       },
     },
   },
@@ -407,21 +372,12 @@ export const uploadCommand = buildCommand({
       "strip-common-prefix"?: boolean;
       "no-rewrite"?: boolean;
       "allow-empty"?: boolean;
-      wait?: number;
-      "no-wait"?: boolean;
+      wait?: boolean;
     },
     dir: string,
   ) {
-    if (flags.wait !== undefined && flags["no-wait"]) {
-      throw new ValidationError(
-        "--wait cannot be combined with --no-wait",
-        "wait",
-      );
-    }
     // CI must fail when Sentry rejects the bundle, so wait there by default.
-    const wait =
-      flags.wait !== undefined || (!flags["no-wait"] && isCi(this.env));
-    const maxWaitMs = flags.wait ?? DEFAULT_UPLOAD_MAX_WAIT_MS;
+    const wait = flags.wait ?? isCi(this.env);
 
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
@@ -541,7 +497,6 @@ export const uploadCommand = buildCommand({
       dist: flags.dist,
       files: artifactFiles,
       wait,
-      maxWaitMs,
     });
 
     // Count actually-uploaded pairs (one minified_source entry per pair).

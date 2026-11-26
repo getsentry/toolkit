@@ -65,8 +65,7 @@ Upload sourcemaps to Sentry
 - `--strip-common-prefix - Automatically strip the longest common path prefix from all files`
 - `--no-rewrite - Upload files as-is without injecting debug IDs`
 - `--allow-empty - Exit successfully when no JS + sourcemap pairs are found (default: error out to catch silent build misconfigurations)`
-- `--wait <value> - Wait for the server to fully process the uploaded files, at most this many seconds (default: on in CI, 300; 0: no limit)`
-- `--no-wait - Exit once Sentry accepts the upload, even in CI`
+- `--wait - Wait up to five minutes for the server to fully process the uploaded files (default: on in CI)`
 
 **Examples:**
 
@@ -97,9 +96,6 @@ sentry sourcemap upload ./dist --ext .js,.mjs
 
 # Wait for Sentry to process the upload outside CI
 sentry sourcemap upload ./dist --wait
-
-# Wait at most two minutes for processing
-sentry sourcemap upload ./dist --wait 120
 ```
 
 ### `sentry sourcemap resolve <directory>`

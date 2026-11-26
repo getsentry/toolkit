@@ -578,8 +578,8 @@ Two behavioral differences to be aware of:
   `CI` or `GITHUB_ACTIONS` is set, `sourcemap upload` waits up to five minutes
   for Sentry to process the upload and exits with an error if processing
   fails or times out. Pass `--no-wait` to return as soon as Sentry accepts the
-  upload. `--wait` takes an optional limit in seconds, so v3's
-  `--wait-for 60` becomes `--wait 60`; `--wait 0` waits with no limit.
+  upload, or `--wait` to wait outside CI. The five-minute limit is fixed, so
+  drop v3's `--wait-for`.
 - **`--debug-id-reference` is now automatic:** in v3 that flag let `sourcemaps
   upload` take the debug ID from the linked sourcemap when it couldn't verify
   one in the bundle itself, for example in binary bundles.
