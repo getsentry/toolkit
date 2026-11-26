@@ -236,13 +236,13 @@ describe("storeResponse", () => {
     expect(cache.ttls).toEqual([TTL + MINUTE]);
   });
 
-  it("caps the server's max-age at the caller's TTL unless maxTtlMs raises it", async () => {
+  it("keeps an entry for the server's max-age unless maxTtlMs caps it", async () => {
     const cache = recordingStore();
     const longLivedResponse = () =>
       json(BODY, { "cache-control": "private, max-age=3600" });
     await store(cache, longLivedResponse());
-    await store(cache, longLivedResponse(), { maxTtlMs: Infinity });
-    expect(cache.ttls).toEqual([TTL, 3_600_000]);
+    await store(cache, longLivedResponse(), { maxTtlMs: TTL });
+    expect(cache.ttls).toEqual([3_600_000, TTL]);
   });
 });
 
@@ -268,19 +268,9 @@ describe("lookupResponse freshness", () => {
     expect((await lookup(cache, { ttlMs: 0 }))?.kind).toBe("stale");
   });
 
-  it("does not let server max-age outlast the caller's TTL", async () => {
+  it("lets server max-age outlast the caller's TTL", async () => {
     const cache = createMemoryStore();
-    const response = json(BODY, {
-      "cache-control": "private, max-age=600",
-      etag: '"v1"',
-    });
-    await store(cache, response, { ttlMs: 0 });
-    expect((await lookup(cache, { ttlMs: 0 }))?.kind).toBe("stale");
-  });
-
-  it("lets server max-age outlast the TTL with maxTtlMs", async () => {
-    const cache = createMemoryStore();
-    const freshness = { ttlMs: MINUTE, maxTtlMs: Infinity };
+    const freshness = { ttlMs: MINUTE };
     await store(
       cache,
       json(BODY, { "cache-control": "private, max-age=600" }),
@@ -288,6 +278,17 @@ describe("lookupResponse freshness", () => {
     );
     vi.setSystemTime(Date.now() + 5 * MINUTE);
     expect((await lookup(cache, freshness))?.kind).toBe("hit");
+  });
+
+  it("revalidates every read despite server max-age with maxTtlMs: 0", async () => {
+    const cache = createMemoryStore();
+    const freshness = { ttlMs: 0, maxTtlMs: 0 };
+    const response = json(BODY, {
+      "cache-control": "private, max-age=600",
+      etag: '"v1"',
+    });
+    await store(cache, response, freshness);
+    expect((await lookup(cache, freshness))?.kind).toBe("stale");
   });
 
   it("lets server max-age shorten the caller's TTL", async () => {

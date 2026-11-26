@@ -45,11 +45,10 @@ const log = logger.withTag("response-cache");
 
 /**
  * Freshness for a Sentry API URL: its fallback tier's TTL when the server
- * sends no cache headers. The server's `max-age` may give more, since Sentry
- * sets it only on endpoints whose data rarely changes.
+ * sends no cache headers. The server's `max-age` wins when it sends one.
  */
 function freshness(url: string): FreshnessOptions {
-  return { ttlMs: FALLBACK_TTL_MS[classifyUrl(url)], maxTtlMs: Infinity };
+  return { ttlMs: FALLBACK_TTL_MS[classifyUrl(url)] };
 }
 
 /**

@@ -38,12 +38,17 @@ const response = await fetchWithCache({
 
 ### Freshness
 
-- `ttlMs` is how long a response serves without a request. `0` revalidates
-  every read.
 - Server freshness headers (`Cache-Control: max-age` or `no-cache`, and
-  `Expires`) can only shorten `ttlMs`, never extend it, so a server `max-age` cannot make a read skip revalidation
-  longer than you allow. Set `maxTtlMs` to let the server's headers give more,
-  such as `Infinity` to follow them.
+  `Expires`) decide how long a response serves without a request, longer or
+  shorter than `ttlMs`, as in standard HTTP caching. If the server says a
+  response is good for longer, a refresh would most likely return the same
+  response.
+- `ttlMs` applies when the server sends none of those headers. `0`
+  revalidates every such read.
+- `maxTtlMs` is an optional hard ceiling, for callers that learn of changes
+  another way. Junior's GitHub reads, for example, rely on webhook
+  invalidation: they pass `ttlMs: 0` and `maxTtlMs: 0`, so a server `max-age`
+  never skips the revalidation that picks up a change.
 - A stale entry with a validator stays in the store for `retainMs` (24 hours by
   default) so it can be revalidated.
 - With `staleIfError`, a stale entry also stays without a validator. When `send`

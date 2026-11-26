@@ -1,8 +1,8 @@
 /**
  * HTTP caching decisions for GET responses, through `http-cache-semantics`
- * (RFC 9111). The caller's `ttlMs` is how long a response stays fresh, and
- * server cache directives can only shorten it, unless the caller raises
- * `maxTtlMs`. A stale entry with an `ETag` or `Last-Modified` is kept for a
+ * (RFC 9111). Server freshness headers set how long a response stays fresh,
+ * up to the caller's optional `maxTtlMs`; the caller's `ttlMs` applies when
+ * the server sends none. A stale entry with an `ETag` or `Last-Modified` is kept for a
  * retention window and renewed by a matching 304; with `staleIfError`, a
  * stale entry is also kept to serve when the server fails.
  *
@@ -46,16 +46,17 @@ const encoder = new TextEncoder();
  */
 export type FreshnessOptions = {
   /**
-   * How long a response serves without asking the server. `0` revalidates
-   * every read. Server cache directives (`max-age`, `no-cache`, `Expires`)
-   * can shorten it.
+   * How long a response serves without asking the server when the server
+   * sends no freshness headers (`max-age`, `no-cache`, `Expires`). `0`
+   * revalidates every such read. When the server sends them, they decide,
+   * longer or shorter.
    */
   ttlMs: number;
   /**
-   * The longest freshness that server directives may give. Defaults to
-   * `ttlMs`, so a server `max-age` never makes a read skip revalidation for
-   * longer than the caller allows. Pass `Infinity` to let the server's
-   * directives win.
+   * A hard ceiling on freshness, whatever the server says. Unset by
+   * default, so the server's headers win. Set it when the caller learns of
+   * changes another way: `0` with webhook invalidation, for example, keeps
+   * a server `max-age` from skipping revalidation.
    */
   maxTtlMs?: number;
   /**
@@ -221,9 +222,9 @@ function varyMatches(policy: CachePolicy, request: GetRequest): boolean {
 }
 
 /**
- * Whether `entry` can be served without revalidation: within the caller's
- * TTL, and, when the server sent directives, within theirs too (capped at
- * `maxTtlMs`).
+ * Whether `entry` can be served without revalidation: within the server's
+ * freshness lifetime when it sent one, otherwise within the caller's TTL,
+ * and never past `maxTtlMs`.
  */
 function isEntryFresh(
   policy: CachePolicy,
@@ -232,11 +233,12 @@ function isEntryFresh(
   options: FreshnessOptions,
 ): boolean {
   const ageMs = Date.now() - entry.createdAt;
-  if (!hasServerCacheDirectives(policy)) {
-    return ageMs < options.ttlMs;
+  if (ageMs >= (options.maxTtlMs ?? Infinity)) {
+    return false;
   }
-  const maxTtlMs = options.maxTtlMs ?? options.ttlMs;
-  return ageMs < maxTtlMs && policy.satisfiesWithoutRevalidation(request);
+  return hasServerCacheDirectives(policy)
+    ? policy.satisfiesWithoutRevalidation(request)
+    : ageMs < options.ttlMs;
 }
 
 /**
@@ -245,9 +247,10 @@ function isEntryFresh(
  * entries for errors.
  */
 function retentionMs(policy: CachePolicy, options: FreshnessOptions): number {
-  const freshMs = hasServerCacheDirectives(policy)
-    ? Math.min(policy.timeToLive(), options.maxTtlMs ?? options.ttlMs)
-    : options.ttlMs;
+  const freshMs = Math.min(
+    hasServerCacheDirectives(policy) ? policy.timeToLive() : options.ttlMs,
+    options.maxTtlMs ?? Infinity,
+  );
   return hasValidator(policy) || options.staleIfError
     ? freshMs + (options.retainMs ?? REVALIDATION_WINDOW_MS)
     : freshMs;
