@@ -568,11 +568,17 @@ Two behavioral differences to be aware of:
   directory.
 - **Flags:** v4 `sourcemap upload` keeps `--release`, `--dist`, `--url-prefix`,
   `--ext`, `--ignore`, `--ignore-file`, `--strip-prefix`,
-  `--strip-common-prefix`, `--no-rewrite`, `--allow-empty`. These v3 flags are
+  `--strip-common-prefix`, `--no-rewrite`, `--allow-empty`, `--wait`,
+  `--wait-for`. These v3 flags are
   **not present** in v4: `--url-suffix`, `--note`, `--validate`, `--decompress`,
-  `--wait`, `--wait-for`, `--no-sourcemap-reference`, `--debug-id-reference`,
+  `--no-sourcemap-reference`, `--debug-id-reference`,
   `--bundle`, `--bundle-sourcemap`, `--strict`. `sourcemap inject` also drops
   `--release`. Run `sentry sourcemap upload --help` for the current set.
+- **`--wait` is on by default in CI:** when a CI environment variable such as
+  `CI` or `GITHUB_ACTIONS` is set, `sourcemap upload` waits up to five minutes
+  for Sentry to process the upload and exits with an error if processing
+  fails or times out. Pass `--no-wait` to return as soon as Sentry accepts the
+  upload. As in v3, `--wait-for` cannot be combined with `--wait`.
 - **`--debug-id-reference` is now automatic:** in v3 that flag let `sourcemaps
   upload` take the debug ID from the linked sourcemap when it couldn't verify
   one in the bundle itself, for example in binary bundles.

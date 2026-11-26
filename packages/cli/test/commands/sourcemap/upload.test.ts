@@ -13,10 +13,13 @@ import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
 import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 import type { Writer } from "../../../src/types/index.js";
+import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -34,14 +37,17 @@ type UploadFuncArgs = {
   "strip-common-prefix"?: boolean;
   "no-rewrite"?: boolean;
   "allow-empty"?: boolean;
+  wait?: boolean;
+  "wait-for"?: number;
 };
 type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
-function makeContext() {
+function makeContext(env: NodeJS.ProcessEnv = {}) {
   return {
     stdout: { write: vi.fn<Writer["write"]>(() => true) },
     stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
+    env,
   };
 }
 
@@ -391,6 +397,41 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       uploadSpy.mockRestore();
     }
   });
+
+  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean, number]>([
+    ["outside CI", {}, {}, false, 300_000],
+    ["in CI", { CI: "true" }, {}, true, 300_000],
+    [
+      "in CI with --no-wait",
+      { GITHUB_ACTIONS: "true" },
+      { wait: false },
+      false,
+      300_000,
+    ],
+    ["outside CI with --wait", {}, { wait: true }, true, 300_000],
+    ["outside CI with --wait-for", {}, { "wait-for": 30 }, true, 30_000],
+  ])(
+    "waits for processing %s",
+    async (_name, env, flags, expectedWait, expectedMaxWaitMs) => {
+      await writeFile(join(dir, "app.js"), "console.log(1)\n");
+      await writeFile(
+        join(dir, "app.js.map"),
+        JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+      );
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        await func.call(makeContext(env), flags, dir);
+        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+          wait: expectedWait,
+          maxWaitMs: expectedMaxWaitMs,
+        });
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    },
+  );
 
   test("inline sourcemap: uploads decoded map as a source_map with content", async () => {
     const jsPath = join(dir, "inline.js");
@@ -999,5 +1040,130 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     } finally {
       uploadSpy.mockRestore();
     }
+  });
+});
+
+describe("sourcemap upload command — waiting for processing", () => {
+  useTestConfigDir("sourcemap-upload-wait-");
+
+  let dir: string;
+  let func: CmdFunc<UploadFuncArgs>;
+  let originalFetch: typeof globalThis.fetch;
+  let savedEnv: Record<string, string | undefined>;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "sentry-upload-wait-"));
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "app.js.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+    savedEnv = {
+      SENTRY_ORG: process.env["SENTRY_ORG"],
+      SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
+    };
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
+    setAuthToken("test-token");
+    setOrgRegion("test-org", "https://us.sentry.io");
+    originalFetch = globalThis.fetch;
+    func = (await uploadCommand.loader()) as unknown as CmdFunc<UploadFuncArgs>;
+  });
+
+  afterEach(async () => {
+    globalThis.fetch = originalFetch;
+    await rm(dir, { recursive: true, force: true });
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = v;
+      }
+    }
+  });
+
+  /**
+   * Answer the chunk-upload options request, and each assemble request with
+   * the next entry of `states` (the last one repeats). Returns the number of
+   * assemble requests made so far.
+   */
+  function serveAssembleStates(
+    states: { state: string; detail?: string }[],
+  ): () => number {
+    let assembleCalls = 0;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      let body: unknown = {};
+      if (req.url.endsWith("/chunk-upload/")) {
+        body = {
+          url: "https://us.sentry.io/api/0/organizations/test-org/chunk-upload/",
+          chunkSize: 8_388_608,
+          chunksPerRequest: 64,
+          maxRequestSize: 33_554_432,
+          hashAlgorithm: "sha1",
+          concurrency: 8,
+          compression: [],
+        };
+      } else if (req.url.endsWith("/artifactbundle/assemble/")) {
+        const next = states[Math.min(assembleCalls, states.length - 1)];
+        assembleCalls += 1;
+        body = { missingChunks: [], ...next };
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    return () => assembleCalls;
+  }
+
+  test("in CI: fails when Sentry reports a processing error after accepting the bundle", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "error", detail: "Invalid source map" },
+    ]);
+
+    const error = await func
+      .call(makeContext({ CI: "true" }), {}, dir)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).message).toBe("Artifact bundle assembly failed");
+    expect((error as ApiError).detail).toBe("Invalid source map");
+    expect(assembleCalls()).toBe(2);
+  });
+
+  test("in CI: polls past created until Sentry reports ok", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "ok" },
+    ]);
+
+    await func.call(makeContext({ CI: "true" }), {}, dir);
+
+    expect(assembleCalls()).toBe(2);
+  });
+
+  test("outside CI: returns once Sentry accepts the bundle", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "error", detail: "Invalid source map" },
+    ]);
+
+    await func.call(makeContext(), {}, dir);
+
+    expect(assembleCalls()).toBe(1);
+  });
+
+  test.each<UploadFuncArgs>([
+    { wait: true, "wait-for": 30 },
+    { wait: false, "wait-for": 30 },
+  ])("rejects --wait-for with --wait or --no-wait (%o)", async (flags) => {
+    const assembleCalls = serveAssembleStates([{ state: "ok" }]);
+
+    await expect(func.call(makeContext(), flags, dir)).rejects.toThrow(
+      "--wait-for cannot be combined with --wait or --no-wait",
+    );
+    expect(assembleCalls()).toBe(0);
   });
 });

@@ -38,3 +38,10 @@ common cause is a bundler that isn't emitting `.map` files:
 For CI steps that may run against legitimately-empty directories (e.g.,
 library-only repos, conditional release skips), pass `--allow-empty` to
 suppress the error.
+
+Sentry processes an upload after it accepts it, and processing can still
+fail. In CI, `sentry sourcemap upload` waits up to five minutes for
+processing to finish and exits with an error if it fails or times out.
+Outside CI it exits once Sentry accepts the upload. Pass `--wait` or
+`--no-wait` to choose, or `--wait-for <seconds>` to wait with a different
+limit.

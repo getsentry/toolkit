@@ -14,9 +14,11 @@ import {
 import type { SentryContext } from "../../context.js";
 import {
   type ArtifactFile,
+  resolveUploadWait,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
-import { buildCommand } from "../../lib/command.js";
+import { isCi } from "../../lib/ci.js";
+import { buildCommand, numberParser } from "../../lib/command.js";
 import {
   choiceListParser,
   parseDirectoryPath,
@@ -223,7 +225,11 @@ export const uploadCommand = buildCommand({
       "Exits with an error if zero JS + sourcemap pairs are discovered " +
       "(typical cause: bundler not emitting .map files). Pass " +
       "--allow-empty to suppress this check for directories that may " +
-      "legitimately be empty.",
+      "legitimately be empty.\n\n" +
+      "In CI, the command waits up to five minutes for Sentry to finish " +
+      "processing the upload and exits with an error if processing fails. " +
+      "Elsewhere it exits once Sentry accepts the upload. Pass --wait or " +
+      "--no-wait to override, or --wait-for to change the time limit.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -256,6 +262,10 @@ export const uploadCommand = buildCommand({
       {
         description: "Only upload some extensions",
         run: "sourcemap upload ./dist --ext .js,.mjs",
+      },
+      {
+        description: "Wait for Sentry to process the upload outside CI",
+        run: "sourcemap upload ./dist --wait",
       },
     ],
   },
@@ -340,6 +350,20 @@ export const uploadCommand = buildCommand({
         optional: true,
         default: false,
       },
+      wait: {
+        kind: "boolean",
+        brief:
+          "Wait for the server to fully process the uploaded files " +
+          "(default: on in CI)",
+        optional: true,
+        withNegated: true,
+      },
+      "wait-for": {
+        kind: "parsed",
+        parse: numberParser,
+        brief: "Wait for processing, but at most this many seconds",
+        optional: true,
+      },
     },
   },
   async *func(
@@ -355,9 +379,24 @@ export const uploadCommand = buildCommand({
       "strip-common-prefix"?: boolean;
       "no-rewrite"?: boolean;
       "allow-empty"?: boolean;
+      wait?: boolean;
+      "wait-for"?: number;
     },
     dir: string,
   ) {
+    // `--wait-for` already turns waiting on, as in v3 and `debug-files upload`.
+    if (flags.wait !== undefined && flags["wait-for"] !== undefined) {
+      throw new ValidationError(
+        "--wait-for cannot be combined with --wait or --no-wait",
+        "wait-for",
+      );
+    }
+    // CI must fail when Sentry rejects the bundle, so wait there by default.
+    const { wait, maxWaitMs } = resolveUploadWait({
+      ...flags,
+      wait: flags.wait ?? isCi(this.env),
+    });
+
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
     // typoed path, missing credentials).
@@ -475,6 +514,8 @@ export const uploadCommand = buildCommand({
       release: flags.release,
       dist: flags.dist,
       files: artifactFiles,
+      wait,
+      maxWaitMs,
     });
 
     // Count actually-uploaded pairs (one minified_source entry per pair).
