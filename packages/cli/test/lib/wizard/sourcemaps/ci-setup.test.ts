@@ -41,22 +41,27 @@ afterEach(() => {
 
 const uploadTarget = { org: "my-org", project: "my-project" };
 
+const selfHostedTarget = {
+  ...uploadTarget,
+  url: "https://sentry.example.com/",
+};
+
 describe("setupCI", () => {
-  it("names the auth token, org and project for Wrangler", async () => {
+  it("names only the auth token for Wrangler on sentry.io", async () => {
     await setupCI("wrangler", "sntrys_tok", uploadTarget);
+
+    expect(stdout).toContain("SENTRY_AUTH_TOKEN=sntrys_tok");
+    expect(stdout).not.toContain("SENTRY_ORG");
+    expect(stdout).not.toContain("SENTRY_PROJECT");
+    expect(stdout).not.toContain("SENTRY_URL");
+  });
+
+  it("adds the org, project and URL for Wrangler on self-hosted Sentry", async () => {
+    await setupCI("wrangler", "sntrys_tok", selfHostedTarget);
 
     expect(stdout).toContain("SENTRY_AUTH_TOKEN=sntrys_tok");
     expect(stdout).toContain("SENTRY_ORG=my-org");
     expect(stdout).toContain("SENTRY_PROJECT=my-project");
-    expect(stdout).not.toContain("SENTRY_URL");
-  });
-
-  it("adds SENTRY_URL for self-hosted Sentry", async () => {
-    await setupCI("wrangler", "sntrys_tok", {
-      ...uploadTarget,
-      url: "https://sentry.example.com/",
-    });
-
     expect(stdout).toContain("SENTRY_URL=https://sentry.example.com/");
   });
 
@@ -68,14 +73,14 @@ describe("setupCI", () => {
   });
 
   it("asks to add the upload script to CI for the generic flow", async () => {
-    await setupCI("sentry-cli", "sntrys_tok", uploadTarget);
+    await setupCI("sentry-cli", "sntrys_tok", selfHostedTarget);
 
     expect(clackMocks.select).toHaveBeenCalledTimes(3);
     expect(stdout).toContain("SENTRY_ORG=my-org");
   });
 
-  it("names only the auth token for bundler plugins", async () => {
-    await setupCI("vite", "sntrys_tok", uploadTarget);
+  it("names only the auth token for bundler plugins, even on self-hosted Sentry", async () => {
+    await setupCI("vite", "sntrys_tok", selfHostedTarget);
 
     expect(stdout).toContain("SENTRY_AUTH_TOKEN=sntrys_tok");
     expect(stdout).not.toContain("SENTRY_ORG");

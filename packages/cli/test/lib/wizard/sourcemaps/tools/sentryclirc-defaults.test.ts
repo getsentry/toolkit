@@ -1,8 +1,7 @@
 /**
  * `addOrgAndProjectToSentryCliRc`, which the generic and Wrangler source
  * maps flows call: the `[defaults]` it writes, read back the way v4 reads
- * `.sentryclirc`, next to the `[auth]` token and the user's other keys. It
- * never writes a self-hosted `url`, which v4 wouldn't trust from this file.
+ * `.sentryclirc`, next to the `[auth]` token and the user's other keys.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -75,7 +74,7 @@ describe("addOrgAndProjectToSentryCliRc", () => {
     );
   });
 
-  it("writes no url for self-hosted Sentry, which users set as SENTRY_URL", async () => {
+  it("writes the url for self-hosted Sentry", async () => {
     await addOrgAndProjectToSentryCliRc({
       ...saasOptions,
       selfHosted: true,
@@ -83,9 +82,8 @@ describe("addOrgAndProjectToSentryCliRc", () => {
     });
 
     expect(readFileSync(rcPath(), "utf8")).toBe(
-      "[defaults]\norg=my-org\nproject=my-project\n",
+      "[defaults]\norg=my-org\nproject=my-project\nurl=https://sentry.example.com/\n",
     );
-    expect((await loadSentryCliRc(projectDir)).url).toBeUndefined();
   });
 
   it("keeps the [auth] token and the user's other keys", async () => {

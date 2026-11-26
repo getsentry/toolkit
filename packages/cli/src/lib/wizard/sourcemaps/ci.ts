@@ -25,8 +25,8 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
 ];
 
 /**
- * Where `sentry sourcemap upload` sends source maps. In CI it comes from
- * `SENTRY_ORG`, `SENTRY_PROJECT` and, for self-hosted Sentry, `SENTRY_URL`.
+ * Where `sentry sourcemap upload` sends source maps. On self-hosted Sentry,
+ * CI gets it from `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_URL`.
  */
 export type SentryCliUploadTarget = {
   org: string;
@@ -42,7 +42,7 @@ export type SentryCliUploadTarget = {
  * @param selectedTool - The build tool the wizard configured, such as `nextjs`
  * @param authToken - The token written to the local config file
  * @param uploadTarget - For tools that upload with `sentry` commands, the
- *   org, project, and self-hosted URL that CI needs as well
+ *   org, project, and URL that CI needs as well on self-hosted Sentry
  */
 export async function setupCI(
   selectedTool: string,
@@ -115,14 +115,14 @@ export function getCIEnvVars(
   uploadTarget: SentryCliUploadTarget | undefined,
 ): string[] {
   const lines = [`SENTRY_AUTH_TOKEN=${authToken}`];
-  if (uploadTarget) {
+  // On sentry.io the auth token is enough. Self-hosted Sentry also needs
+  // the org, project and URL.
+  if (uploadTarget?.url) {
     lines.push(
       `SENTRY_ORG=${uploadTarget.org}`,
       `SENTRY_PROJECT=${uploadTarget.project}`,
+      `SENTRY_URL=${uploadTarget.url}`,
     );
-    if (uploadTarget.url) {
-      lines.push(`SENTRY_URL=${uploadTarget.url}`);
-    }
   }
   return lines;
 }
@@ -133,7 +133,7 @@ async function setupAuthTokenInCI(
   uploadTarget: SentryCliUploadTarget | undefined,
 ): Promise<void> {
   clack.log.step(
-    uploadTarget
+    uploadTarget?.url
       ? "Add these environment variables to your CI setup:"
       : "Add the Sentry authentication token as an environment variable to your CI setup:",
   );

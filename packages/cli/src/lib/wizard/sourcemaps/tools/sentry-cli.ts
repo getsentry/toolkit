@@ -262,13 +262,9 @@ export function setSentryCliRcDefaults(
 }
 
 /**
- * Write the org and project to the project's `.sentryclirc`, so that
- * `sentry sourcemap upload` finds them when the script runs locally.
- *
- * The self-hosted URL stays out of the file. v4 refuses a non-SaaS
- * `[defaults] url` unless the token's host or a stored login vouches for it,
- * and the `[auth] token` from the same file doesn't (see
- * `assertRcUrlTrusted`), so users set `SENTRY_URL` instead.
+ * Write the org, project and, for self-hosted Sentry, the URL to the
+ * project's `.sentryclirc`, so that `sentry sourcemap upload` finds them
+ * when the script runs locally.
  */
 export async function addOrgAndProjectToSentryCliRc(
   options: SourceMapUploadToolConfigurationOptions,
@@ -284,11 +280,12 @@ export async function addOrgAndProjectToSentryCliRc(
       setSentryCliRcDefaults(contents, {
         org: options.orgSlug,
         project: options.projectSlug,
+        ...(options.selfHosted ? { url: options.url } : {}),
       }),
     );
   } catch (error) {
-    // Not fatal, like the auth token write: CI sets SENTRY_ORG and
-    // SENTRY_PROJECT anyway, and the warning says what to do locally.
+    // Not fatal, like the auth token write: the warning says how to set
+    // them instead.
     debug(error);
     clack.log.warning(
       `Failed to add the org and project to ${chalk.cyan(
