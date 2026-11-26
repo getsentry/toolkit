@@ -11,7 +11,10 @@ import { runInNewContext } from "node:vm";
 import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
-import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
+import {
+  parseWaitLimit,
+  uploadCommand,
+} from "../../../src/commands/sourcemap/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { setAuthToken } from "../../../src/lib/db/auth.js";
@@ -39,7 +42,8 @@ type UploadFuncArgs = {
   "strip-common-prefix"?: boolean;
   "no-rewrite"?: boolean;
   "allow-empty"?: boolean;
-  wait?: boolean;
+  wait?: number | string;
+  "no-wait"?: boolean;
 };
 type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
@@ -399,34 +403,62 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     }
   });
 
-  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean]>([
-    ["outside CI", {}, {}, false],
-    ["in CI", { CI: "true" }, {}, true],
+  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean, number]>([
+    ["outside CI", {}, {}, false, 300_000],
+    ["in CI", { CI: "true" }, {}, true, 300_000],
     [
       "in CI with --no-wait",
       { GITHUB_ACTIONS: "true" },
-      { wait: false },
+      { "no-wait": true },
       false,
+      300_000,
     ],
-    ["outside CI with --wait", {}, { wait: true }, true],
-  ])("waits for processing %s", async (_name, env, flags, expectedWait) => {
-    await writeFile(join(dir, "app.js"), "console.log(1)\n");
-    await writeFile(
-      join(dir, "app.js.map"),
-      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
-    );
-    const uploadSpy = vi
-      .spyOn(sourcemapsApi, "uploadSourcemaps")
-      .mockResolvedValue(undefined);
-    try {
-      await func.call(makeContext(env), flags, dir);
-      expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
-        wait: expectedWait,
-      });
-    } finally {
-      uploadSpy.mockRestore();
-    }
+    ["outside CI with --wait", {}, { wait: 300_000 }, true, 300_000],
+    ["outside CI with --wait=600", {}, { wait: 600_000 }, true, 600_000],
+    ['from the SDK with wait: "600"', {}, { wait: "600" }, true, 600_000],
+  ])(
+    "waits for processing %s",
+    async (_name, env, flags, expectedWait, expectedMaxWaitMs) => {
+      await writeFile(join(dir, "app.js"), "console.log(1)\n");
+      await writeFile(
+        join(dir, "app.js.map"),
+        JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+      );
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        await func.call(makeContext(env), flags, dir);
+        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+          wait: expectedWait,
+          maxWaitMs: expectedMaxWaitMs,
+        });
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    },
+  );
+
+  test("rejects --wait with --no-wait", async () => {
+    await expect(
+      func.call(makeContext(), { wait: 300_000, "no-wait": true }, dir),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
+
+  test.each<[string, number]>([
+    ["", 300_000],
+    ["600", 600_000],
+    ["0", Number.POSITIVE_INFINITY],
+  ])("parseWaitLimit(%o) is %d ms", (input, expected) => {
+    expect(parseWaitLimit(input)).toBe(expected);
+  });
+
+  test.each(["./dist", "-1", "1.5", "ten"])(
+    "parseWaitLimit rejects %o",
+    (input) => {
+      expect(() => parseWaitLimit(input)).toThrow(ValidationError);
+    },
+  );
 
   test("inline sourcemap: uploads decoded map as a source_map with content", async () => {
     const jsPath = join(dir, "inline.js");
@@ -1160,28 +1192,57 @@ describe("sourcemap upload command — waiting for processing", () => {
       { name: "test", scanner: { caseStyle: "allow-kebab-for-camel" } },
     );
 
-    test.each<[string[], NodeJS.ProcessEnv, boolean]>([
-      [["--wait"], {}, true],
-      [["--no-wait"], { CI: "true" }, false],
-      [["--wait"], { CI: "true" }, true],
-    ])("%o with env %o waits: %s", async (flags, env, expectedWait) => {
+    function makeRunContext(env: NodeJS.ProcessEnv) {
+      const writer = { write: () => true };
+      return {
+        process: { stdout: writer, stderr: writer },
+        stdout: writer,
+        stderr: writer,
+        cwd: dir,
+        env,
+      };
+    }
+
+    test.each<[string[], NodeJS.ProcessEnv, boolean, number]>([
+      [["--wait"], {}, true, 300_000],
+      [["--wait=600"], {}, true, 600_000],
+      [["--wait=0"], {}, true, Number.POSITIVE_INFINITY],
+      [["--no-wait"], { CI: "true" }, false, 300_000],
+      [["--wait"], { CI: "true" }, true, 300_000],
+    ])(
+      "%o with env %o waits: %s",
+      async (flags, env, expectedWait, expectedMaxWaitMs) => {
+        const uploadSpy = vi
+          .spyOn(sourcemapsApi, "uploadSourcemaps")
+          .mockResolvedValue(undefined);
+        try {
+          // `--wait` before the directory must not consume it as a value.
+          await run(
+            app,
+            ["upload", ...flags, dir],
+            makeRunContext(env) as never,
+          );
+          expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+            wait: expectedWait,
+            maxWaitMs: expectedMaxWaitMs,
+          });
+        } finally {
+          uploadSpy.mockRestore();
+        }
+      },
+    );
+
+    test.each([
+      // A spaced value is not the limit: `600` becomes an extra positional.
+      [["--wait", "600"]],
+      [["--wait=ten"]],
+    ])("%o fails without uploading", async (flags) => {
       const uploadSpy = vi
         .spyOn(sourcemapsApi, "uploadSourcemaps")
         .mockResolvedValue(undefined);
       try {
-        const writer = { write: () => true };
-        const ctx = {
-          process: { stdout: writer, stderr: writer },
-          stdout: writer,
-          stderr: writer,
-          cwd: dir,
-          env,
-        };
-        // `--wait` before the directory must not consume it as a value.
-        await run(app, ["upload", ...flags, dir], ctx as never);
-        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
-          wait: expectedWait,
-        });
+        await run(app, ["upload", ...flags, dir], makeRunContext({}) as never);
+        expect(uploadSpy).not.toHaveBeenCalled();
       } finally {
         uploadSpy.mockRestore();
       }

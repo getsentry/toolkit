@@ -807,7 +807,12 @@ function formatFlagHuman(
   if (alias) {
     syntax = `-${alias}, ${syntax}`;
   }
-  if ((flag.kind === "parsed" || flag.kind === "enum") && !flag.variadic) {
+  if (flag.inlineOnly) {
+    syntax += "[=<value>]";
+  } else if (
+    (flag.kind === "parsed" || flag.kind === "enum") &&
+    !flag.variadic
+  ) {
     syntax += " <value>";
   } else if (flag.variadic) {
     syntax += " <value>...";

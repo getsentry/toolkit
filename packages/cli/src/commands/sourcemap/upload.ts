@@ -14,6 +14,7 @@ import {
 import type { SentryContext } from "../../context.js";
 import {
   type ArtifactFile,
+  DEFAULT_UPLOAD_MAX_WAIT_MS,
   uploadSourcemaps,
 } from "../../lib/api/sourcemaps.js";
 import { isCi } from "../../lib/ci.js";
@@ -77,6 +78,26 @@ function formatUploadResult(data: UploadCommandResult): string {
 }
 
 const usageHint = () => sentry`sourcemap upload <directory>`;
+
+/**
+ * Parse `--wait[=seconds]` into a wait limit in milliseconds.
+ *
+ * Bare `--wait` parses `""` and keeps the default limit. `--wait=0` waits
+ * with no limit.
+ */
+export function parseWaitLimit(input: string): number {
+  if (input === "") {
+    return DEFAULT_UPLOAD_MAX_WAIT_MS;
+  }
+  const seconds = Number(input);
+  if (!Number.isInteger(seconds) || seconds < 0) {
+    throw new ValidationError(
+      `--wait takes a whole number of seconds (got "${input}"). Use --wait=0 to wait with no limit.`,
+      "wait",
+    );
+  }
+  return seconds === 0 ? Number.POSITIVE_INFINITY : seconds * 1000;
+}
 
 /**
  * Compute the longest common directory prefix across a list of paths.
@@ -228,7 +249,8 @@ export const uploadCommand = buildCommand({
       "In CI, the command waits up to five minutes for Sentry to finish " +
       "processing the upload and exits with an error if processing fails. " +
       "Elsewhere it exits once Sentry accepts the upload. Pass --wait or " +
-      "--no-wait to override.",
+      "--no-wait to override, and --wait=<seconds> to change the limit " +
+      "(--wait=0 waits with no limit). The value must be attached with =.",
     examples: [
       {
         description: "Upload sourcemaps from dist/",
@@ -265,6 +287,10 @@ export const uploadCommand = buildCommand({
       {
         description: "Wait for Sentry to process the upload outside CI",
         run: "sourcemap upload ./dist --wait",
+      },
+      {
+        description: "Wait up to ten minutes for processing",
+        run: "sourcemap upload ./dist --wait=600",
       },
     ],
   },
@@ -350,12 +376,20 @@ export const uploadCommand = buildCommand({
         default: false,
       },
       wait: {
-        kind: "boolean",
+        kind: "parsed",
+        parse: parseWaitLimit,
         brief:
-          "Wait up to five minutes for the server to fully process the " +
-          "uploaded files (default: on in CI)",
+          "Wait for the server to fully process the uploaded files, up to " +
+          "the given seconds (default: 300, 0 = no limit; on in CI)",
+        placeholder: "seconds",
         optional: true,
-        withNegated: true,
+        inlineOnly: true,
+      },
+      "no-wait": {
+        kind: "boolean",
+        brief: "Exit once Sentry accepts the upload, even in CI",
+        optional: true,
+        default: false,
       },
     },
   },
@@ -372,12 +406,26 @@ export const uploadCommand = buildCommand({
       "strip-common-prefix"?: boolean;
       "no-rewrite"?: boolean;
       "allow-empty"?: boolean;
-      wait?: boolean;
+      wait?: number | string;
+      "no-wait"?: boolean;
     },
     dir: string,
   ) {
+    if (flags.wait !== undefined && flags["no-wait"]) {
+      throw new ValidationError(
+        "--wait and --no-wait cannot be used together.",
+        "wait",
+      );
+    }
     // CI must fail when Sentry rejects the bundle, so wait there by default.
-    const wait = flags.wait ?? isCi(this.env);
+    const wait = flags["no-wait"]
+      ? false
+      : flags.wait !== undefined || isCi(this.env);
+    // SDK callers supply the public string form without Stricli parsing.
+    const maxWaitMs =
+      typeof flags.wait === "string"
+        ? parseWaitLimit(flags.wait)
+        : (flags.wait ?? DEFAULT_UPLOAD_MAX_WAIT_MS);
 
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
@@ -497,6 +545,7 @@ export const uploadCommand = buildCommand({
       dist: flags.dist,
       files: artifactFiles,
       wait,
+      maxWaitMs,
     });
 
     // Count actually-uploaded pairs (one minified_source entry per pair).

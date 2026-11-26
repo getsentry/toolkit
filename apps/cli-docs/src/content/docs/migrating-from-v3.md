@@ -571,15 +571,16 @@ Two behavioral differences to be aware of:
   `--strip-common-prefix`, `--no-rewrite`, `--allow-empty`, `--wait`. These
   v3 flags are
   **not present** in v4: `--url-suffix`, `--note`, `--validate`, `--decompress`,
-  `--wait-for`, `--no-sourcemap-reference`, `--debug-id-reference`,
+  `--wait-for` (use `--wait=<seconds>`), `--no-sourcemap-reference`, `--debug-id-reference`,
   `--bundle`, `--bundle-sourcemap`, `--strict`. `sourcemap inject` also drops
   `--release`. Run `sentry sourcemap upload --help` for the current set.
 - **`--wait` is on by default in CI:** when a CI environment variable such as
   `CI` or `GITHUB_ACTIONS` is set, `sourcemap upload` waits up to five minutes
   for Sentry to process the upload and exits with an error if processing
   fails or times out. Pass `--no-wait` to return as soon as Sentry accepts the
-  upload, or `--wait` to wait outside CI. The five-minute limit is fixed, so
-  drop v3's `--wait-for`.
+  upload, or `--wait` to wait outside CI. Replace v3's `--wait-for 600` with
+  `--wait=600`; `--wait=0` waits with no limit. The value must be attached
+  with `=`, because `--wait 600` reads `600` as the directory.
 - **`--debug-id-reference` is now automatic:** in v3 that flag let `sourcemaps
   upload` take the debug ID from the linked sourcemap when it couldn't verify
   one in the bundle itself, for example in binary bundles.
