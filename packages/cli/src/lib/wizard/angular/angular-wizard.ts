@@ -280,7 +280,6 @@ Apologies for the inconvenience!`,
       "create-example-component",
       async () =>
         await createExampleComponent({
-          url: sentryUrl,
           orgSlug: selectedProject.organization.slug,
           projectId: selectedProject.id,
         }),

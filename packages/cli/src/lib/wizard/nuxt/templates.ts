@@ -4,7 +4,7 @@
  */
 
 import { getDataCollectionSnippet } from "../utils/data-collection.js";
-import { getIssueStreamUrl } from "../utils/url.js";
+import { buildProjectIssuesUrl } from "../../sentry-web-urls.js";
 
 type SelectedSentryFeatures = {
   performance: boolean;
@@ -180,12 +180,11 @@ Feel free to delete this file.
 }
 
 export function getSentryExamplePageTemplate(options: {
-  url: string;
   org: string;
   projectId: string;
 }): string {
-  const { url, org, projectId } = options;
-  const issuesPageLink = getIssueStreamUrl({ url, orgSlug: org, projectId });
+  const { org, projectId } = options;
+  const issuesPageLink = buildProjectIssuesUrl(org, projectId);
 
   return `<!--
 This is just a very simple page with a button to throw an example error.

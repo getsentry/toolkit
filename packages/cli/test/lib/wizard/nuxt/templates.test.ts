@@ -485,7 +485,6 @@ describe("Nuxt code templates", () => {
   describe("getSentryExamplePageTemplate", () => {
     it("lets the API route's 500 reject so the page shows its success state", () => {
       const template = getSentryExamplePageTemplate({
-        url: "https://sentry.io/",
         org: "my-org",
         projectId: "1",
       });

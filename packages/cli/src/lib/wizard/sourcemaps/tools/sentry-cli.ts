@@ -222,14 +222,14 @@ export function setSentryCliRcDefaults(
   let firstDefaultsHeader = -1;
   let inDefaults = false;
 
-  lines.forEach((line, index) => {
+  for (const [index, line] of lines.entries()) {
     const section = INI_SECTION_RE.exec(line);
     if (section) {
       inDefaults = section[1]?.trim().toLowerCase() === "defaults";
       if (inDefaults && firstDefaultsHeader === -1) {
         firstDefaultsHeader = index;
       }
-      return;
+      continue;
     }
     const key = inDefaults
       ? INI_KEY_RE.exec(line)?.[1]?.toLowerCase()
@@ -239,7 +239,7 @@ export function setSentryCliRcDefaults(
       lines[index] = `${key}=${value}${line.endsWith("\r") ? "\r" : ""}`;
       missing.delete(key);
     }
-  });
+  }
 
   const newLines = [...missing].map(([key, value]) => `${key}=${value}`);
   if (newLines.length === 0) {

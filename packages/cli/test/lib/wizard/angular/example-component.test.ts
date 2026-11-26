@@ -56,7 +56,6 @@ describe("createExampleComponent", () => {
     vi.mocked(text).mockResolvedValueOnce("custom/app");
 
     await createExampleComponent({
-      url: "https://sentry.io",
       orgSlug: "myOrg",
       projectId: "123456789",
     });
@@ -72,7 +71,6 @@ describe("createExampleComponent", () => {
 
   it("creates an example component file", async () => {
     const options = {
-      url: "https://sentry.io",
       orgSlug: "myOrg",
       projectId: "123456789",
     };
@@ -116,7 +114,6 @@ describe("getSentryExampleComponentCode", () => {
     const exampleComponentCode = getSentryExampleComponentCode({
       orgSlug: "myOrg",
       projectId: "123456789",
-      url: "https://sentry.io",
     });
     expect(exampleComponentCode).toContain(
       "https://myorg.sentry.io/issues/?project=123456789",

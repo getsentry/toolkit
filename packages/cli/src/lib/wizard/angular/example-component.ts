@@ -11,10 +11,9 @@ import {
   showCopyPasteInstructions,
 } from "../utils/clack/index.js";
 import { clack } from "../utils/clack/prompts.js";
-import { getIssueStreamUrl } from "../utils/url.js";
+import { buildProjectIssuesUrl } from "../../sentry-web-urls.js";
 
 interface ExampleComponentOptions {
-  url: string;
   orgSlug: string;
   projectId: string;
 }
@@ -88,7 +87,10 @@ export async function createExampleComponent(
 export function getSentryExampleComponentCode(
   options: ExampleComponentOptions,
 ): string {
-  const issueStreamUrl = getIssueStreamUrl(options);
+  const issueStreamUrl = buildProjectIssuesUrl(
+    options.orgSlug,
+    options.projectId,
+  );
 
   return `import { NgIf } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
