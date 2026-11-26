@@ -26,6 +26,7 @@ import {
 import { ApiError } from "../errors.js";
 import { logger } from "../logger.js";
 import { resolveOrgRegion } from "../region.js";
+import { assertOrgInScope } from "../target-scope.js";
 
 import {
   API_MAX_PER_PAGE,
@@ -305,6 +306,7 @@ export async function resolveReplay(
   replayOrTraceId: string,
   options: Pick<ListReplaysOptions, "projectSlugs"> = {},
 ): Promise<ReplayDetails> {
+  assertOrgInScope(orgSlug, `Replay ${replayOrTraceId}`);
   try {
     return await getReplay(orgSlug, replayOrTraceId);
   } catch (error) {

@@ -880,8 +880,12 @@ async function tryEventFallbacks(
       return resolved;
     }
   } catch (sameOrgError) {
-    // Propagate auth errors — they indicate a global problem (expired token)
-    if (sameOrgError instanceof AuthError) {
+    // Propagate auth errors (a global problem, such as an expired token) and
+    // an event outside the invocation's target scope.
+    if (
+      sameOrgError instanceof AuthError ||
+      sameOrgError instanceof ResolutionError
+    ) {
       throw sameOrgError;
     }
     if (sameOrgError instanceof ApiError && sameOrgError.status === 429) {

@@ -2,10 +2,11 @@
  * The organization and project an SDK invocation is limited to: the `org`
  * and `project` of `createSentrySDK()`, unless `limitToTarget` is `false`.
  *
- * The caller checks the targets a call names, but not an issue that an ID
- * alone names: a numeric ID, a share link, or a selector such as `@latest`
- * says nothing about its project. Issue lookups check the issue they find
- * with {@link assertIssueInScope} before a command reads or changes it.
+ * The caller checks the targets a call names, but not what an ID alone
+ * names: a numeric issue ID, an event, trace or replay ID, a share link, or a
+ * selector such as `@latest` says nothing about its project. Lookups check
+ * what they find with {@link assertProjectInScope} (or
+ * {@link assertIssueInScope}) before a command reads or changes it.
  */
 
 import type { SentryIssue } from "../types/index.js";
@@ -27,13 +28,13 @@ export function getTargetScope(): TargetScope | undefined {
   return project ? { org, project } : { org };
 }
 
-function outsideScope(issueId: string, scope: TargetScope): ResolutionError {
+function outsideScope(subject: string, scope: TargetScope): ResolutionError {
   const target = scope.project ? `${scope.org}/${scope.project}` : scope.org;
   return new ResolutionError(
-    `Issue ${issueId}`,
+    subject,
     `is outside this session's scope (${target})`,
     sentry`issue list ${scope.project ? target : `${target}/`}`,
-    [`This session can only read or change issues in ${target}.`],
+    [`This session can only read or change data in ${target}.`],
   );
 }
 
@@ -42,19 +43,40 @@ function outsideScope(issueId: string, scope: TargetScope): ResolutionError {
  * to it.
  *
  * @param org - The organization a lookup asks
- * @param issueId - The issue as given, for the error
+ * @param subject - What is looked up, for the error (`Issue 123`)
  * @throws {ResolutionError} When `org` is not the limit's organization
  */
-export function assertOrgInScope(org: string, issueId: string): void {
+export function assertOrgInScope(org: string, subject: string): void {
   const scope = getTargetScope();
   if (scope && org !== scope.org) {
-    throw outsideScope(issueId, scope);
+    throw outsideScope(subject, scope);
   }
 }
 
 /**
- * Refuse an issue outside the invocation's limit. An issue whose project is
- * unknown is refused in a project-limited invocation.
+ * Refuse something a lookup found outside the invocation's limit. Something
+ * whose project is unknown is refused in a project-limited invocation.
+ *
+ * @param org - The organization it was found in
+ * @param project - The slug of its project, if known
+ * @param subject - What was found, for the error (`Event abc`)
+ * @throws {ResolutionError} When it is in another organization or project
+ */
+export function assertProjectInScope(
+  org: string,
+  project: string | undefined,
+  subject: string,
+): void {
+  assertOrgInScope(org, subject);
+  const scope = getTargetScope();
+  if (scope?.project && project !== scope.project) {
+    throw outsideScope(subject, scope);
+  }
+}
+
+/**
+ * Refuse an issue outside the invocation's limit, as
+ * {@link assertProjectInScope} does.
  *
  * @param org - The organization the issue was found in
  * @param issue - The issue a lookup found
@@ -65,13 +87,5 @@ export function assertIssueInScope(
   org: string,
   issue: Pick<SentryIssue, "id" | "project">,
 ): void {
-  const scope = getTargetScope();
-  if (!scope) {
-    return;
-  }
-  const issueId = issue.id;
-  assertOrgInScope(org, issueId);
-  if (scope.project && issue.project?.slug !== scope.project) {
-    throw outsideScope(issueId, scope);
-  }
+  assertProjectInScope(org, issue.project?.slug, `Issue ${issue.id}`);
 }
