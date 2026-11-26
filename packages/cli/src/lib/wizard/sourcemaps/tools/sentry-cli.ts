@@ -1,16 +1,22 @@
 /**
- * Source maps setup for projects without a supported bundler plugin: install
- * the `sentry` CLI and add a `sentry:sourcemaps` npm script that injects
- * debug IDs into the build output and uploads it.
+ * Source map upload with `sentry` commands, for build tools that have no
+ * Sentry bundler plugin (Angular, tsc, Create React App, …).
  *
- * sentry-wizard installed `@sentry/cli@^2` and wrote `sentry-cli sourcemaps
- * inject/upload` scripts. These are the v4 `sentry sourcemap` commands.
+ * Installs the `sentry` CLI package, adds a `sentry:sourcemaps` npm script
+ * that runs `sentry sourcemap inject` and `sentry sourcemap upload` on the
+ * build output, optionally appends it to the production build script, and
+ * writes the org, project, and auth token to `.sentryclirc`. v4 reads that
+ * file: `[defaults]` feeds org/project resolution and `[auth] token` becomes
+ * `SENTRY_AUTH_TOKEN`.
+ *
+ * Ported from sentry-wizard's `src/sourcemaps/tools/sentry-cli.ts`, which
+ * installed `@sentry/cli`, ran `sentry-cli sourcemaps …`, and also wrote the
+ * token to `.sentryclirc`.
  */
 
-import chalk from "chalk";
-import { promises } from "node:fs";
+import { existsSync, promises, readFileSync } from "node:fs";
 import path from "node:path";
-
+import chalk from "chalk";
 import { Sentry, traceStep } from "../../telemetry.js";
 import {
   abortIfCancelled,
@@ -20,46 +26,43 @@ import {
   getPackageDotJson,
   getPackageManager,
   installPackage,
+  SENTRY_CLI_RC_FILE,
 } from "../../utils/clack/index.js";
 import { clack } from "../../utils/clack/prompts.js";
+import { debug } from "../../utils/debug.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
 import { NPM } from "../../utils/package-manager.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
-
-/** The npm package of the `sentry` CLI. */
-export const SENTRY_CLI_PACKAGE = "sentry";
-
-/** The `sentry` CLI major the generated scripts are written for. */
-export const SENTRY_CLI_PACKAGE_RANGE = `${SENTRY_CLI_PACKAGE}@^4`;
 
 const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
 
 let addedToBuildCommand = false;
 
-type ConfigureSentryCLIOptions = SourceMapUploadToolConfigurationOptions & {
+type configureSentryCLIOptions = SourceMapUploadToolConfigurationOptions & {
   defaultArtifactPath?: string | undefined;
 };
 
 /**
- * Install the `sentry` CLI, ask for the build output directory, and add the
- * `sentry:sourcemaps` script (optionally to the production build command).
+ * Set up source map upload with `sentry sourcemap` commands.
  *
- * @param configureSourcemapGenerationFlow - Tool-specific step that makes
- *   sure the build emits source maps
- * @param skipValidation - Skip `configureSourcemapGenerationFlow`, for
- *   callers (the Angular wizard) that already configured it
+ * @param options - The Sentry project to upload to, and the build output
+ *   path to suggest
+ * @param configureSourcemapGenerationFlow - Asks the user to turn on source
+ *   map generation in their build tool
+ * @param skipValidation - Skip `configureSourcemapGenerationFlow`, for flows
+ *   that already turned source maps on
  */
 export async function configureSentryCLI(
-  options: ConfigureSentryCLIOptions,
+  options: configureSentryCLIOptions,
   configureSourcemapGenerationFlow: () => Promise<void> = defaultConfigureSourcemapGenerationFlow,
   skipValidation = false,
 ): Promise<void> {
   const packageDotJson = await getPackageDotJson();
 
   await installPackage({
-    packageName: SENTRY_CLI_PACKAGE_RANGE,
-    packageNameDisplayLabel: SENTRY_CLI_PACKAGE,
-    alreadyInstalled: hasPackageInstalled(SENTRY_CLI_PACKAGE, packageDotJson),
+    packageName: "sentry@^4",
+    alreadyInstalled: hasPackageInstalled("sentry", packageDotJson),
+    devDependency: true,
   });
 
   let validPath = false;
@@ -114,7 +117,7 @@ export async function configureSentryCLI(
     await configureSourcemapGenerationFlow();
   }
 
-  await createAndAddNpmScript(options, relativePosixArtifactPath);
+  await createAndAddNpmScript(relativePosixArtifactPath);
 
   if (await askShouldAddToBuildCommand()) {
     await traceStep("sentry-cli-add-to-build-cmd", () =>
@@ -128,12 +131,21 @@ export async function configureSentryCLI(
     );
   }
 
+  await addOrgAndProjectToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
+
+  if (options.selfHosted) {
+    clack.log.info(
+      `Set ${chalk.cyan(`SENTRY_URL=${options.url}`)} wherever ${chalk.cyan(
+        SENTRY_NPM_SCRIPT_NAME,
+      )} runs, such as in CI, so that it uploads to your Sentry instance.`,
+    );
+  }
 }
 
 /**
  * Ask the user to run the `sentry:sourcemaps` script in CI, unless the
- * wizard already added it to the build command.
+ * wizard already appended it to the build script.
  */
 export async function setupNpmScriptInCI(): Promise<void> {
   if (addedToBuildCommand) {
@@ -172,29 +184,136 @@ export async function setupNpmScriptInCI(): Promise<void> {
 
 /**
  * The `sentry:sourcemaps` script: inject debug IDs into the build output,
- * then upload it. A self-hosted URL goes in `SENTRY_URL`, which replaced
- * the `--url` flag of sentry-cli.
+ * then upload it. `sentry sourcemap upload` reads the org and project from
+ * `.sentryclirc` locally and from `SENTRY_ORG` / `SENTRY_PROJECT` in CI, and
+ * the self-hosted URL from `SENTRY_URL`.
  */
 export function getSentryCliNpmScript(
-  options: SourceMapUploadToolConfigurationOptions,
   relativePosixArtifactPath: string,
 ): string {
-  const urlEnv = options.selfHosted ? `SENTRY_URL=${options.url} ` : "";
-  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- runs the project's installed `sentry` package from its package.json scripts, not a hint
-  return `sentry sourcemap inject ${relativePosixArtifactPath} && ${urlEnv}sentry sourcemap upload --org ${options.orgSlug} --project ${options.projectSlug} ${relativePosixArtifactPath}`;
+  // The script runs the `sentry` binary of the package installed above, so
+  // it names `sentry` itself, not the program running the wizard.
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint.
+  return `sentry sourcemap inject ${relativePosixArtifactPath} && sentry sourcemap upload ${relativePosixArtifactPath}`;
+}
+
+/** An INI section header line, such as `[defaults]`. */
+const INI_SECTION_RE = /^\s*\[([^\]]*)\]\s*$/;
+
+/** The key of an INI `key = value` line. */
+const INI_KEY_RE = /^\s*([^=;#\s][^=]*?)\s*=/;
+
+/**
+ * Set `values` in the `[defaults]` section of `.sentryclirc` contents and
+ * keep every other line as it is.
+ *
+ * Existing keys are updated in every `[defaults]` section, since the last
+ * one wins when the file is read. Missing keys go into the first
+ * `[defaults]` section, which is appended when there is none.
+ *
+ * @param contents - The current file contents, empty for a new file
+ * @param values - Lowercase keys and their values, such as `{ org, project }`
+ */
+export function setSentryCliRcDefaults(
+  contents: string,
+  values: Record<string, string>,
+): string {
+  const lines = contents === "" ? [] : contents.split("\n");
+  const missing = new Map(Object.entries(values));
+  let firstDefaultsHeader = -1;
+  let inDefaults = false;
+
+  lines.forEach((line, index) => {
+    const section = INI_SECTION_RE.exec(line);
+    if (section) {
+      inDefaults = section[1]?.trim().toLowerCase() === "defaults";
+      if (inDefaults && firstDefaultsHeader === -1) {
+        firstDefaultsHeader = index;
+      }
+      return;
+    }
+    const key = inDefaults
+      ? INI_KEY_RE.exec(line)?.[1]?.toLowerCase()
+      : undefined;
+    const value = key === undefined ? undefined : values[key];
+    if (key !== undefined && value !== undefined) {
+      lines[index] = `${key}=${value}${line.endsWith("\r") ? "\r" : ""}`;
+      missing.delete(key);
+    }
+  });
+
+  const newLines = [...missing].map(([key, value]) => `${key}=${value}`);
+  if (newLines.length === 0) {
+    return lines.join("\n");
+  }
+  if (firstDefaultsHeader !== -1) {
+    lines.splice(firstDefaultsHeader + 1, 0, ...newLines);
+    return lines.join("\n");
+  }
+
+  const prefix = lines.join("\n");
+  let separator = "\n\n";
+  if (prefix === "") {
+    separator = "";
+  } else if (prefix.endsWith("\n")) {
+    separator = "\n";
+  }
+  return `${prefix}${separator}[defaults]\n${newLines.join("\n")}\n`;
+}
+
+/**
+ * Write the org and project to the project's `.sentryclirc`, so that
+ * `sentry sourcemap upload` finds them when the script runs locally.
+ *
+ * The self-hosted URL stays out of the file. v4 refuses a non-SaaS
+ * `[defaults] url` unless the token's host or a stored login vouches for it,
+ * and the `[auth] token` from the same file doesn't (see
+ * `assertRcUrlTrusted`), so users set `SENTRY_URL` instead.
+ */
+export async function addOrgAndProjectToSentryCliRc(
+  options: SourceMapUploadToolConfigurationOptions,
+): Promise<void> {
+  const configPath = path.join(process.cwd(), SENTRY_CLI_RC_FILE);
+  const contents = existsSync(configPath)
+    ? readFileSync(configPath, "utf8")
+    : "";
+
+  try {
+    await promises.writeFile(
+      configPath,
+      setSentryCliRcDefaults(contents, {
+        org: options.orgSlug,
+        project: options.projectSlug,
+      }),
+    );
+  } catch (error) {
+    // Not fatal, like the auth token write: CI sets SENTRY_ORG and
+    // SENTRY_PROJECT anyway, and the warning says what to do locally.
+    debug(error);
+    clack.log.warning(
+      `Failed to add the org and project to ${chalk.cyan(
+        SENTRY_CLI_RC_FILE,
+      )}. Set ${chalk.cyan("SENTRY_ORG")} and ${chalk.cyan(
+        "SENTRY_PROJECT",
+      )} wherever ${chalk.cyan(SENTRY_NPM_SCRIPT_NAME)} runs.`,
+    );
+    return;
+  }
+
+  clack.log.success(
+    `Added the org and project to ${chalk.cyan(SENTRY_CLI_RC_FILE)}.`,
+  );
 }
 
 async function createAndAddNpmScript(
-  options: SourceMapUploadToolConfigurationOptions,
   relativePosixArtifactPath: string,
 ): Promise<void> {
+  const sentryCliNpmScript = getSentryCliNpmScript(relativePosixArtifactPath);
+
   const packageDotJson = await getPackageDotJson();
 
   packageDotJson.scripts = packageDotJson.scripts || {};
-  packageDotJson.scripts[SENTRY_NPM_SCRIPT_NAME] = getSentryCliNpmScript(
-    options,
-    relativePosixArtifactPath,
-  );
+  packageDotJson.scripts[SENTRY_NPM_SCRIPT_NAME] = sentryCliNpmScript;
 
   await promises.writeFile(
     path.join(process.cwd(), "package.json"),
@@ -235,15 +354,16 @@ async function askShouldAddToBuildCommand(): Promise<boolean> {
  * Add the sentry:sourcemaps command to the prod build command in the package.json
  * - Detect the user's build command
  * - Append the sentry:sourcemaps command to it
+ *
+ * @param packageDotJson The package.json which will be modified.
  */
 export async function addSentryCommandToBuildCommand(): Promise<void> {
   const packageDotJson = await getPackageDotJson();
   // This usually shouldn't happen because earlier we added the
   // SENTRY_NPM_SCRIPT_NAME script but just to be sure
   packageDotJson.scripts = packageDotJson.scripts || {};
-  const scripts = packageDotJson.scripts;
 
-  const allNpmScripts = Object.keys(scripts).filter(
+  const allNpmScripts = Object.keys(packageDotJson.scripts).filter(
     (s) => s !== SENTRY_NPM_SCRIPT_NAME,
   );
 
@@ -253,7 +373,7 @@ export async function addSentryCommandToBuildCommand(): Promise<void> {
   // Often, 'build' is the prod build command, so we favour it.
   // If it's not there, commands that include 'build' might be the prod build command.
   let buildCommand =
-    typeof scripts["build"] === "string"
+    typeof packageDotJson.scripts["build"] === "string"
       ? "build"
       : allNpmScripts.find((s) => s.toLocaleLowerCase().includes("build"));
 
@@ -294,7 +414,7 @@ Please add it manually to your prod build command.`,
     return;
   }
 
-  const oldCommand = scripts[buildCommand];
+  const oldCommand = packageDotJson.scripts[buildCommand];
   if (!oldCommand) {
     // very unlikely to happen but nevertheless
     clack.log.warn(
@@ -319,7 +439,7 @@ Would have injected: ${chalk.dim(newCommand)}`,
     return;
   }
 
-  scripts[buildCommand] = newCommand;
+  packageDotJson.scripts[buildCommand] = newCommand;
 
   await promises.writeFile(
     path.join(process.cwd(), "package.json"),

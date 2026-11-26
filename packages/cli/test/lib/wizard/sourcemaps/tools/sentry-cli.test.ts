@@ -1,8 +1,9 @@
-import fs from "node:fs";
+import { promises } from "node:fs";
 
 import {
   addSentryCommandToBuildCommand,
   getSentryCliNpmScript,
+  setSentryCliRcDefaults,
 } from "../../../../../src/lib/wizard/sourcemaps/tools/sentry-cli.js";
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -12,7 +13,7 @@ import { getPackageDotJson } from "../../../../../src/lib/wizard/utils/clack/ind
 import { vi, it, describe, expect, afterEach } from "vitest";
 
 const writeFileSpy = vi
-  .spyOn(fs.promises, "writeFile")
+  .spyOn(promises, "writeFile")
   .mockImplementation(() => Promise.resolve());
 
 vi.mock("@clack/prompts", () => {
@@ -25,7 +26,6 @@ vi.mock("@clack/prompts", () => {
     isCancel: vi.fn().mockReturnValue(false),
   };
 });
-
 vi.mock("../../../../../src/lib/wizard/utils/clack/index.js", async () => ({
   ...(await vi.importActual(
     "../../../../../src/lib/wizard/utils/clack/index.js",
@@ -79,28 +79,78 @@ describe("addSentryCommandToBuildCommand", () => {
 });
 
 describe("getSentryCliNpmScript", () => {
-  const options = {
-    orgSlug: "my-org",
-    projectSlug: "my-project",
-    url: "https://sentry.io",
-    selfHosted: false,
-    authToken: "_ignore",
-  };
+  it("injects debug IDs and uploads with v4 sentry commands, without org or project flags", () => {
+    expect(getSentryCliNpmScript("./dist")).toBe(
+      "sentry sourcemap inject ./dist && sentry sourcemap upload ./dist",
+    );
+  });
+});
 
-  it("injects debug IDs and uploads the build output", () => {
-    expect(getSentryCliNpmScript(options, "./dist")).toBe(
-      "sentry sourcemap inject ./dist && sentry sourcemap upload --org my-org --project my-project ./dist",
+describe("setSentryCliRcDefaults", () => {
+  const values = { org: "my-org", project: "my-project" };
+
+  it("creates a [defaults] section in an empty file", () => {
+    expect(setSentryCliRcDefaults("", values)).toBe(
+      "[defaults]\norg=my-org\nproject=my-project\n",
     );
   });
 
-  it("passes a self-hosted URL in SENTRY_URL", () => {
+  it("appends [defaults] after other sections and keeps them", () => {
+    expect(setSentryCliRcDefaults("[auth]\ntoken=abc\n", values)).toBe(
+      "[auth]\ntoken=abc\n\n[defaults]\norg=my-org\nproject=my-project\n",
+    );
+    expect(setSentryCliRcDefaults("[auth]\ntoken=abc", values)).toBe(
+      "[auth]\ntoken=abc\n\n[defaults]\norg=my-org\nproject=my-project\n",
+    );
+  });
+
+  it("updates existing keys and keeps other keys, comments, and sections", () => {
+    const contents = [
+      "; managed by hand",
+      "[defaults]",
+      "url = https://sentry.example.com/",
+      "org = old-org",
+      "",
+      "[auth]",
+      "token=abc",
+      "",
+    ].join("\n");
+
+    expect(setSentryCliRcDefaults(contents, values)).toBe(
+      [
+        "; managed by hand",
+        "[defaults]",
+        "project=my-project",
+        "url = https://sentry.example.com/",
+        "org=my-org",
+        "",
+        "[auth]",
+        "token=abc",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("does not touch org or project keys outside [defaults]", () => {
     expect(
-      getSentryCliNpmScript(
-        { ...options, selfHosted: true, url: "https://sentry.example.com" },
-        "./dist",
+      setSentryCliRcDefaults("[other]\norg=keep\n[DEFAULTS]\n", values),
+    ).toBe("[other]\norg=keep\n[DEFAULTS]\norg=my-org\nproject=my-project\n");
+  });
+
+  it("updates keys in every [defaults] section", () => {
+    expect(
+      setSentryCliRcDefaults(
+        "[defaults]\norg=a\n[auth]\ntoken=t\n[defaults]\nproject=b\n",
+        values,
       ),
     ).toBe(
-      "sentry sourcemap inject ./dist && SENTRY_URL=https://sentry.example.com sentry sourcemap upload --org my-org --project my-project ./dist",
+      "[defaults]\norg=my-org\n[auth]\ntoken=t\n[defaults]\nproject=my-project\n",
     );
+  });
+
+  it("keeps CRLF line endings on updated lines", () => {
+    expect(
+      setSentryCliRcDefaults("[defaults]\r\norg=a\r\nproject=b\r\n", values),
+    ).toBe("[defaults]\r\norg=my-org\r\nproject=my-project\r\n");
   });
 });

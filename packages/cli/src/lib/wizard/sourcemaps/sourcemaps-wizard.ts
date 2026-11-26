@@ -125,7 +125,13 @@ Thank you for using Sentry :)`,
     ),
   );
 
-  await traceStep("ci-setup", () => setupCI(selectedTool, authToken));
+  await traceStep("ci-setup", () =>
+    setupCI(selectedTool, authToken, {
+      org: selectedProject.organization.slug,
+      project: selectedProject.slug,
+      url: selfHosted ? sentryUrl : undefined,
+    }),
+  );
 
   if (!preSelectedTool) {
     // running prettier is only necessary if the source maps wizard is the main flow

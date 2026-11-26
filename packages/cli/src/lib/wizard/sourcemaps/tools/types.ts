@@ -1,5 +1,5 @@
 /**
- * Options every source maps upload tool setup takes.
+ * Options the source map upload tool setups take.
  */
 
 export type SourceMapUploadToolConfigurationOptions = {

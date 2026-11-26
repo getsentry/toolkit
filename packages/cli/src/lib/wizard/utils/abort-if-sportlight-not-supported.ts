@@ -1,5 +1,5 @@
 /**
- * Stop a wizard that has no Spotlight (`--spotlight`) mode yet.
+ * Stop a wizard flow that has no Spotlight mode yet.
  */
 
 import { abort } from "./clack/index.js";

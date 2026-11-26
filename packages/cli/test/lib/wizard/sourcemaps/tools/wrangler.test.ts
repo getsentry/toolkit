@@ -15,90 +15,37 @@ describe("getSentryCliCommand", () => {
     "wrangler deploy --outdir dist",
   ])("passes the directory from %s literally to sentry", (deployCommand) => {
     const outDir = findOutDir(deployCommand);
-    const command = getSentryCliCommand({
-      selfHosted: false,
-      orgSlug: "myOrg",
-      projectSlug: "myProject",
-      url: "https://sentry.io",
-      authToken: "_ignore",
-      outDir,
-    });
 
-    expect(runSentryCliCommand(command)).toEqual([
+    expect(runSentryCliCommand(getSentryCliCommand(outDir))).toEqual([
       "release",
       "create",
       "release with spaces",
-      "--org=myOrg",
-      "--project=myProject",
       "sourcemap",
       "upload",
-      "--org=myOrg",
-      "--project=myProject",
       "--release=release with spaces",
       "--no-rewrite",
       outDir,
     ]);
   });
 
-  it("preserves quotes and shell syntax in paths and self-hosted arguments", () => {
+  it("preserves quotes and shell syntax in paths", () => {
     const outDir = "worker's dist;$(printf${IFS}INJECTED)";
-    const url = "https://sentry.example/worker's";
-    const orgSlug = "org$(printf${IFS}INJECTED)";
-    const projectSlug = "project`printf INJECTED`";
-    const command = getSentryCliCommand({
-      selfHosted: true,
-      url,
-      orgSlug,
-      projectSlug,
-      authToken: "_ignore",
-      outDir,
-    });
 
-    expect(runSentryCliCommand(command)).toEqual([
-      `SENTRY_URL=${url}`,
+    expect(runSentryCliCommand(getSentryCliCommand(outDir))).toEqual([
       "release",
       "create",
       "release with spaces",
-      `--org=${orgSlug}`,
-      `--project=${projectSlug}`,
-      `SENTRY_URL=${url}`,
       "sourcemap",
       "upload",
-      `--org=${orgSlug}`,
-      `--project=${projectSlug}`,
       "--release=release with spaces",
       "--no-rewrite",
       outDir,
     ]);
   });
 
-  it("returns correct command for SaaS", () => {
-    const command = getSentryCliCommand({
-      selfHosted: false,
-      orgSlug: "myOrg",
-      projectSlug: "myProject",
-      url: "https://sentry.io",
-      authToken: "_ignore",
-      outDir: "dist",
-    });
-
-    expect(command).toBe(
-      "_SENTRY_RELEASE=$(sentry release propose-version | head -n 1) && sentry release create \"$_SENTRY_RELEASE\" --org='myOrg' --project='myProject' && sentry sourcemap upload --org='myOrg' --project='myProject' --release=\"$_SENTRY_RELEASE\" --no-rewrite 'dist'",
-    );
-  });
-
-  it("returns correct command for self-hosted", () => {
-    const command = getSentryCliCommand({
-      selfHosted: true,
-      orgSlug: "myOrg",
-      projectSlug: "myProject",
-      url: "https://santry.io",
-      authToken: "_ignore",
-      outDir: "someplace",
-    });
-
-    expect(command).toBe(
-      "_SENTRY_RELEASE=$(sentry release propose-version | head -n 1) && SENTRY_URL='https://santry.io' sentry release create \"$_SENTRY_RELEASE\" --org='myOrg' --project='myProject' && SENTRY_URL='https://santry.io' sentry sourcemap upload --org='myOrg' --project='myProject' --release=\"$_SENTRY_RELEASE\" --no-rewrite 'someplace'",
+  it("reads the org and project from .sentryclirc instead of flags", () => {
+    expect(getSentryCliCommand("dist")).toBe(
+      '_SENTRY_RELEASE=$(sentry release propose-version | head -n 1) && sentry release create "$_SENTRY_RELEASE" && sentry sourcemap upload --release="$_SENTRY_RELEASE" --no-rewrite \'dist\'',
     );
   });
 });
@@ -304,15 +251,9 @@ function runSentryCliCommand(command: string): string[] {
 sentry() {
   case "$1 $2" in
     'release propose-version') printf '%s\\n' 'release with spaces' 'Detected from git HEAD' ;;
-    'release create' | 'sourcemap upload')
-      if [ -n "$SENTRY_URL" ]; then
-        printf '%s\\n' "SENTRY_URL=$SENTRY_URL"
-      fi
-      printf '%s\\n' "$@"
-      ;;
+    'release create' | 'sourcemap upload') printf '%s\\n' "$@" ;;
   esac
 }
-unset SENTRY_URL
 ${command}`;
   return execFileSync("/bin/bash", ["-c", script], { encoding: "utf8" })
     .trimEnd()

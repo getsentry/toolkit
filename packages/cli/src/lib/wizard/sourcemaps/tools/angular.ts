@@ -1,12 +1,13 @@
 /**
- * Source map generation step for Angular: ask the user to turn on
- * `sourceMap` in `angular.json`.
+ * The source map generation step for Angular: shows the `angular.json`
+ * setting that turns on source maps and asks the user to check it.
  */
 
+import { clack } from "../../utils/clack/prompts.js";
 import chalk from "chalk";
 import { abortIfCancelled, makeCodeSnippet } from "../../utils/clack/index.js";
-import { clack } from "../../utils/clack/prompts.js";
 
+/** The `angular.json` change that turns on source maps. */
 const angularJsonTemplate = makeCodeSnippet(true, (unchanged, plus) =>
   unchanged(`{
   "projects": {
@@ -23,7 +24,7 @@ const angularJsonTemplate = makeCodeSnippet(true, (unchanged, plus) =>
 }`),
 );
 
-/** Show the `angular.json` change and wait until the user made it. */
+/** Show the `angular.json` change and wait until the user confirms it. */
 export async function configureAngularSourcemapGenerationFlow(): Promise<void> {
   clack.log.info(
     `Enable generating source maps in your ${chalk.bold("angular.json")} file:`,

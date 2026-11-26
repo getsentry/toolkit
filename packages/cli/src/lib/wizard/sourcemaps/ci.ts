@@ -21,6 +21,7 @@ const CLI_BASED_FLOW_TOOLS: readonly string[] = [
   "tsc",
   "angular",
   "create-react-app",
+  "wrangler",
 ];
 
 /**
@@ -95,7 +96,8 @@ async function configureCI(
     return;
   }
 
-  if (isCliBasedFlowTool) {
+  // Wrangler's `post<deploy>` script already runs `sentry:sourcemaps`
+  if (isCliBasedFlowTool && selectedTool !== "wrangler") {
     await traceStep("ci-npm-script-setup", setupNpmScriptInCI);
   }
 

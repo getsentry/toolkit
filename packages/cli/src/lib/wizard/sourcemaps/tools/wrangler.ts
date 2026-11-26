@@ -5,7 +5,8 @@
  *
  * sentry-wizard installed `@sentry/cli@^2` and called `sentry-cli releases
  * propose-version/new` and `sentry-cli sourcemaps upload`. These are the v4
- * `sentry release` and `sentry sourcemap` commands.
+ * `sentry release` and `sentry sourcemap` commands, which read the org and
+ * project from `.sentryclirc`.
  */
 
 import chalk from "chalk";
@@ -24,7 +25,7 @@ import {
 import { clack } from "../../utils/clack/prompts.js";
 import { hasPackageInstalled } from "../../utils/package-json.js";
 import { NPM } from "../../utils/package-manager.js";
-import { SENTRY_CLI_PACKAGE, SENTRY_CLI_PACKAGE_RANGE } from "./sentry-cli.js";
+import { addOrgAndProjectToSentryCliRc } from "./sentry-cli.js";
 import type { SourceMapUploadToolConfigurationOptions } from "./types.js";
 
 const SENTRY_NPM_SCRIPT_NAME = "sentry:sourcemaps";
@@ -74,12 +75,8 @@ Otherwise, let's proceed with the Wrangler setup.`,
   }
 
   await installPackage({
-    packageName: SENTRY_CLI_PACKAGE_RANGE,
-    packageNameDisplayLabel: SENTRY_CLI_PACKAGE,
-    alreadyInstalled: hasPackageInstalled(
-      SENTRY_CLI_PACKAGE,
-      await getPackageDotJson(),
-    ),
+    packageName: "sentry@^4",
+    alreadyInstalled: hasPackageInstalled("sentry", await getPackageDotJson()),
     devDependency: true,
   });
 
@@ -94,21 +91,30 @@ Otherwise, let's proceed with the Wrangler setup.`,
 
   const outDir = await getWranglerOutDir(deployCommand);
 
-  await createAndAddSentrySourcemapsScript({ ...options, outDir });
+  await createAndAddSentrySourcemapsScript(outDir);
 
   await writePostDeployCommand(deployCommand);
 
   await modifyDeployCommand(deployCommand, outDir);
 
+  await addOrgAndProjectToSentryCliRc(options);
   await addSentryCliConfig({ authToken: options.authToken });
+
+  if (options.selfHosted) {
+    clack.log.info(
+      `Set ${chalk.cyan(`SENTRY_URL=${options.url}`)} wherever ${chalk.cyan(
+        SENTRY_NPM_SCRIPT_NAME,
+      )} runs, such as in CI, so that it uploads to your Sentry instance.`,
+    );
+  }
 }
 
 async function createAndAddSentrySourcemapsScript(
-  options: SourceMapUploadToolConfigurationOptions & { outDir: string },
-) {
+  outDir: string,
+): Promise<void> {
   const pkgJson = await getPackageDotJson();
   pkgJson.scripts = pkgJson.scripts ?? {};
-  pkgJson.scripts[SENTRY_NPM_SCRIPT_NAME] = getSentryCliCommand(options);
+  pkgJson.scripts[SENTRY_NPM_SCRIPT_NAME] = getSentryCliCommand(outDir);
 
   await promises.writeFile(
     path.join(process.cwd(), "package.json"),
@@ -134,26 +140,20 @@ const PROPOSE_VERSION = "$(sentry release propose-version | head -n 1)";
  * The `sentry:sourcemaps` script: create the release and upload the deploy
  * output for it. The output is uploaded as deployed (`--no-rewrite`): the
  * worker was already deployed without debug IDs, so the files are matched
- * by release and URL, as with sentry-cli.
+ * by release and URL, as with sentry-cli. The org and project come from
+ * `.sentryclirc` (or `SENTRY_ORG` and `SENTRY_PROJECT` in CI), and a
+ * self-hosted URL from `SENTRY_URL`.
  *
  * only exported for testing
  */
-export function getSentryCliCommand(
-  options: SourceMapUploadToolConfigurationOptions & { outDir: string },
-): string {
-  // `SENTRY_URL` replaced the `--url` flag of sentry-cli
-  const urlEnv = options.selfHosted
-    ? `SENTRY_URL=${quoteShellArg(options.url)} `
-    : "";
-  const orgAndProjectArgs = `--org=${quoteShellArg(
-    options.orgSlug,
-  )} --project=${quoteShellArg(options.projectSlug)}`;
-
+export function getSentryCliCommand(outDir: string): string {
   return [
     `_SENTRY_RELEASE=${PROPOSE_VERSION}`,
-    `${urlEnv}sentry release create "$_SENTRY_RELEASE" ${orgAndProjectArgs}`,
-    `${urlEnv}sentry sourcemap upload ${orgAndProjectArgs} --release="$_SENTRY_RELEASE" --no-rewrite ${quoteShellArg(
-      options.outDir,
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint
+    'sentry release create "$_SENTRY_RELEASE"',
+    // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script, not a hint
+    `sentry sourcemap upload --release="$_SENTRY_RELEASE" --no-rewrite ${quoteShellArg(
+      outDir,
     )}`,
   ].join(" && ");
 }
