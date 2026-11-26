@@ -37,51 +37,19 @@ describe("updateBuildScript", () => {
     vi.clearAllMocks();
   });
 
-  it("uses npx @sentry/remix --upload-sourcemaps for the upload command", async () => {
-    await updateBuildScript({
-      org: "my-org",
-      project: "my-project",
-      isHydrogen: false,
-    });
+  it("uploads with sentry sourcemap upload", async () => {
+    await updateBuildScript({ isHydrogen: false });
 
-    expect(writeFileSpy).toHaveBeenCalledWith(
-      expect.stringContaining("package.json"),
-      expect.stringContaining(
-        "npx @sentry/remix --upload-sourcemaps --org my-org --project my-project",
-      ),
-    );
+    expect(JSON.parse(writeFileSpy.mock.calls[0]?.[1] as string)).toEqual({
+      scripts: {
+        build:
+          'remix build --sourcemap && sentry sourcemap upload ./public/build --url-prefix "~/build/"',
+      },
+      version: "1.0.0",
+    });
   });
 
-  it("replaces the remix build command with sourcemap flag and upload", async () => {
-    await updateBuildScript({
-      org: "my-org",
-      project: "my-project",
-      isHydrogen: false,
-    });
-
-    expect(writeFileSpy).toHaveBeenCalledWith(
-      expect.stringContaining("package.json"),
-      expect.stringContaining(
-        "remix build --sourcemap && npx @sentry/remix --upload-sourcemaps",
-      ),
-    );
-  });
-
-  it("includes --url flag when a custom url is provided", async () => {
-    await updateBuildScript({
-      org: "my-org",
-      project: "my-project",
-      url: "https://self-hosted.example.com",
-      isHydrogen: false,
-    });
-
-    expect(writeFileSpy).toHaveBeenCalledWith(
-      expect.stringContaining("package.json"),
-      expect.stringContaining("--url https://self-hosted.example.com"),
-    );
-  });
-
-  it("uses shopify hydrogen build for hydrogen apps", async () => {
+  it("uploads ./dist for hydrogen apps", async () => {
     vi.mocked(getPackageDotJson).mockResolvedValue({
       scripts: {
         build: "shopify hydrogen build",
@@ -89,16 +57,12 @@ describe("updateBuildScript", () => {
       version: "1.0.0",
     });
 
-    await updateBuildScript({
-      org: "my-org",
-      project: "my-project",
-      isHydrogen: true,
-    });
+    await updateBuildScript({ isHydrogen: true });
 
     expect(writeFileSpy).toHaveBeenCalledWith(
       expect.stringContaining("package.json"),
       expect.stringContaining(
-        "shopify hydrogen build --sourcemap && npx @sentry/remix --upload-sourcemaps --org my-org --project my-project --buildPath ./dist",
+        'shopify hydrogen build --sourcemap && sentry sourcemap upload ./dist --url-prefix \\"~/build/\\"',
       ),
     );
   });
@@ -109,16 +73,12 @@ describe("updateBuildScript", () => {
       version: "1.0.0",
     });
 
-    await updateBuildScript({
-      org: "my-org",
-      project: "my-project",
-      isHydrogen: false,
-    });
+    await updateBuildScript({ isHydrogen: false });
 
     expect(writeFileSpy).toHaveBeenCalledWith(
       expect.stringContaining("package.json"),
       expect.stringContaining(
-        "remix build --sourcemap && npx @sentry/remix --upload-sourcemaps",
+        "remix build --sourcemap && sentry sourcemap upload ./public/build",
       ),
     );
   });
@@ -131,12 +91,8 @@ describe("updateBuildScript", () => {
       version: "1.0.0",
     });
 
-    await expect(
-      updateBuildScript({
-        org: "my-org",
-        project: "my-project",
-        isHydrogen: false,
-      }),
-    ).rejects.toThrow("build` script doesn't contain a known build command");
+    await expect(updateBuildScript({ isHydrogen: false })).rejects.toThrow(
+      "build` script doesn't contain a known build command",
+    );
   });
 });

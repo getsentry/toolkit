@@ -82,7 +82,6 @@ async function runReactRouterWizardWithTelemetry(
 ): Promise<void> {
   printWelcome({
     wizardName: "Sentry React Router Wizard",
-    promoCode: options.promoCode,
   });
 
   const packageJson = await getPackageDotJson();

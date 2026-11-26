@@ -14,6 +14,7 @@ import {
   addDotEnvSentryBuildPluginFile,
   addSentryCliConfig,
   askShouldCreateExamplePage,
+  type CliSetupConfig,
   confirmContinueIfNoOrDirtyGitRepo,
   ensurePackageIsInstalled,
   featureSelectionPrompt,
@@ -53,6 +54,16 @@ import { isHydrogenApp } from "./utils.js";
 import { abortIfSpotlightNotSupported } from "../utils/abort-if-sportlight-not-supported.js";
 import { warnIfNodeVersionUnsupportedBySdkV11 } from "../utils/node-version.js";
 
+/**
+ * `.sentryclirc` with `[defaults] url` as well, so `sentry sourcemap upload`
+ * in the build script reaches a self-hosted Sentry.
+ */
+const sentryCliRcWithUrl: CliSetupConfig = {
+  ...rcCliSetupConfig,
+  likelyAlreadyHasUrl: (contents) => /^\s*url\s*=./m.test(contents),
+  urlContent: (url) => `[defaults]\nurl=${url}`,
+};
+
 export async function runRemixWizard(options: WizardOptions): Promise<void> {
   return await withTelemetry(
     {
@@ -67,11 +78,10 @@ export async function runRemixWizard(options: WizardOptions): Promise<void> {
 async function runRemixWizardWithTelemetry(
   options: WizardOptions,
 ): Promise<void> {
-  const { promoCode, telemetryEnabled, forceInstall } = options;
+  const { telemetryEnabled, forceInstall } = options;
 
   printWelcome({
     wizardName: "Sentry Remix Wizard",
-    promoCode,
     telemetryEnabled,
   });
 
@@ -162,14 +172,33 @@ async function runRemixWizardWithTelemetry(
   } else {
     await traceStep("Update build script for sourcemap uploads", async () => {
       try {
-        await updateBuildScript({
-          org: selectedProject.organization.slug,
-          project: selectedProject.slug,
-          url: selfHosted ? sentryUrl : undefined,
-          isHydrogen: isHydrogenApp(packageJson),
+        // The build script runs the project's own `sentry` CLI, so CI
+        // can run it too.
+        await installPackage({
+          packageName: "sentry",
+          alreadyInstalled: hasPackageInstalled("sentry", packageJson),
+          devDependency: true,
+          forceInstall,
         });
 
-        await addSentryCliConfig({ authToken }, rcCliSetupConfig);
+        await updateBuildScript({ isHydrogen: isHydrogenApp(packageJson) });
+
+        await addSentryCliConfig(
+          {
+            authToken,
+            org: selectedProject.organization.slug,
+            project: selectedProject.slug,
+            url: selfHosted ? sentryUrl : undefined,
+          },
+          sentryCliRcWithUrl,
+        );
+        clack.log.info(
+          `${chalk.cyan(".sentryclirc")} stays out of git. In CI, set ${chalk.cyan(
+            "SENTRY_AUTH_TOKEN",
+          )}, ${chalk.cyan("SENTRY_ORG")} and ${chalk.cyan(
+            "SENTRY_PROJECT",
+          )} for the upload.`,
+        );
       } catch (e) {
         clack.log
           .warn(`Could not update build script to generate and upload sourcemaps.

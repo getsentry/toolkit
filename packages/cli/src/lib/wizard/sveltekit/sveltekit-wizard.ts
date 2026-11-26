@@ -66,11 +66,10 @@ export async function runSvelteKitWizard(
 export async function runSvelteKitWizardWithTelemetry(
   options: WizardOptions,
 ): Promise<void> {
-  const { promoCode, telemetryEnabled, forceInstall } = options;
+  const { telemetryEnabled, forceInstall } = options;
 
   printWelcome({
     wizardName: "Sentry SvelteKit Wizard",
-    promoCode,
     telemetryEnabled,
   });
 

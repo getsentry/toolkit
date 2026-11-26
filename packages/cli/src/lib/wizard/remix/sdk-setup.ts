@@ -331,10 +331,12 @@ export async function instrumentRootRoute(isTS?: boolean): Promise<void> {
   );
 }
 
+/**
+ * Make the `build` script build with source maps and upload them with
+ * `sentry sourcemap upload`, which injects the debug IDs. The org, project
+ * and URL come from `.sentryclirc`, which the wizard writes next to it.
+ */
 export async function updateBuildScript(args: {
-  org: string;
-  project: string;
-  url?: string | undefined;
   isHydrogen: boolean;
 }): Promise<void> {
   const packageJson = await getPackageDotJson();
@@ -347,10 +349,11 @@ export async function updateBuildScript(args: {
     ? "shopify hydrogen build"
     : "remix build";
 
-  const instrumentedBuildCommand =
-    `${buildCommand} --sourcemap && npx @sentry/remix --upload-sourcemaps --org ${args.org} --project ${args.project}` +
-    (args.url ? ` --url ${args.url}` : "") +
-    (args.isHydrogen ? " --buildPath ./dist" : "");
+  // The same build path and URL prefix `@sentry/remix --upload-sourcemaps`
+  // used.
+  const buildPath = args.isHydrogen ? "./dist" : "./public/build";
+  // oxlint-disable-next-line sentry-cli/no-hardcoded-sentry-command -- a package.json script that runs the project's own `sentry` devDependency, not a hint
+  const instrumentedBuildCommand = `${buildCommand} --sourcemap && sentry sourcemap upload ${buildPath} --url-prefix "~/build/"`;
 
   if (!packageJson.scripts["build"]) {
     packageJson.scripts["build"] = instrumentedBuildCommand;

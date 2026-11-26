@@ -24,6 +24,11 @@ const UNCHECKED = [
       "codemod input and expected-output fixtures, compared as text by `jssg test`",
   },
   {
+    pattern: /^packages\/cli\/test\/lib\/wizard\/.*\/fixtures\//,
+    reason:
+      "wizard codemod input fixtures copied from sentry-wizard, read as text by the codemod tests",
+  },
+  {
     pattern: /^packages\/logger\/test\/package\/consumer\//,
     reason:
       "packed-package consumer, compiled against the tarball by test/package/check.sh",
