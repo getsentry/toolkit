@@ -40,6 +40,8 @@ import getEventAttachment from "./get-event-attachment";
 import updateIssue from "./update-issue";
 import linkIssue from "./link-issue";
 import unlinkIssue from "./unlink-issue";
+import getInbox from "./get-inbox";
+import updateInboxItems from "./update-inbox-items";
 import searchEvents from "./search-events";
 import searchErrors from "./search-errors";
 import renderIssueChart from "./render-issue-chart";
@@ -170,6 +172,8 @@ const catalogTools = withFreshReadInputs({
   update_issue: updateIssue,
   link_issue: linkIssue,
   unlink_issue: unlinkIssue,
+  get_inbox: getInbox,
+  update_inbox_items: updateInboxItems,
   search_attributes: searchAttributes,
   search_errors: searchErrors,
   search_logs: searchLogs,

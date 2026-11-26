@@ -2744,3 +2744,83 @@ export const DroppedEventsResponseSchema = z
     acceptedEvents: z.array(DroppedEventsBucketSchema),
   })
   .passthrough();
+
+/**
+ * Who caused a Inbox event: a user, or Sentry itself (`system`,
+ * with a null ID). See `src/sentry/inbox/response_types.py`.
+ */
+export const InboxActorSchema = z
+  .object({
+    type: z.string(),
+    id: z.string().nullable(),
+    name: z.string(),
+  })
+  .passthrough();
+
+/** One event in a Inbox item's history. */
+export const InboxItemEventSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    actor: InboxActorSchema,
+    // Event-specific keys, camelCase, with IDs as strings.
+    data: z.record(z.string(), z.unknown()),
+    summary: z.string(),
+    isUnread: z.boolean(),
+    dateAdded: z.string(),
+  })
+  .passthrough();
+
+export const InboxItemEventListSchema = z.array(InboxItemEventSchema);
+
+/**
+ * The issue or Seer investigation (notebook) an inbox item is about. Issue
+ * metadata carries the short ID and project; notebook metadata is empty.
+ */
+export const InboxSubjectSchema = z
+  .object({
+    id: z.string(),
+    type: z.string(),
+    title: z.string(),
+    metadata: z
+      .object({
+        shortId: z.string().optional(),
+        project: z
+          .object({ id: z.string(), slug: z.string() })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+/**
+ * One item in the authenticated user's personal Inbox, grouping the events
+ * for one subject. Sentry leaves out items whose subject no longer exists.
+ */
+export const InboxItemSchema = z
+  .object({
+    id: z.string(),
+    subject: InboxSubjectSchema,
+    // The latest event's URL, such as a link to the activity on the issue.
+    url: z.string(),
+    // The latest event's summary.
+    subtitle: z.string(),
+    eventTypes: z.array(z.string()),
+    eventCount: z.number(),
+    unreadEventCount: z.number(),
+    latestEvent: InboxItemEventSchema,
+    isUnread: z.boolean(),
+    lastActivityAt: z.string(),
+    lastReadAt: z.string().nullable(),
+  })
+  .passthrough();
+
+export const InboxItemListSchema = z.array(InboxItemSchema);
+
+/** Items matching a bulk inbox update, including items already in that state. */
+export const InboxUpdateResponseSchema = z
+  .object({
+    updatedCount: z.number(),
+  })
+  .passthrough();

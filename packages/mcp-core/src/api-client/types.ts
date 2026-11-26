@@ -81,6 +81,8 @@ import type {
   FlamegraphProfileSchema,
   FlamegraphSchema,
   GenericEventSchema,
+  InboxItemEventSchema,
+  InboxItemSchema,
   IssueActivityListResponseSchema,
   IssueActivitySchema,
   IssueAlertRuleListSchema,
@@ -161,6 +163,8 @@ export type AlertActionOption = z.infer<typeof AlertActionOptionSchema>;
 export type AlertConditionOption = z.infer<typeof AlertConditionOptionSchema>;
 export type AlertRuleProjectScope = z.infer<typeof AlertRuleProjectScopeSchema>;
 export type Detector = z.infer<typeof DetectorSchema>;
+export type InboxItem = z.infer<typeof InboxItemSchema>;
+export type InboxItemEvent = z.infer<typeof InboxItemEventSchema>;
 export type MetricMonitorUpdate = {
   name?: string;
   description?: string | null | undefined;
