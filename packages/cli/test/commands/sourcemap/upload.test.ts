@@ -8,15 +8,23 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
+import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
-import { uploadCommand } from "../../../src/commands/sourcemap/upload.js";
+import {
+  parseWaitSeconds,
+  uploadCommand,
+} from "../../../src/commands/sourcemap/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
 import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
-import { ValidationError } from "../../../src/lib/errors.js";
+import { setAuthToken } from "../../../src/lib/db/auth.js";
+import { setOrgRegion } from "../../../src/lib/db/regions.js";
+import { buildRouteMap } from "../../../src/lib/route-map.js";
+import { ApiError, ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
 import type { Writer } from "../../../src/types/index.js";
+import { mockFetch, useTestConfigDir } from "../../helpers.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -34,14 +42,17 @@ type UploadFuncArgs = {
   "strip-common-prefix"?: boolean;
   "no-rewrite"?: boolean;
   "allow-empty"?: boolean;
+  wait?: number | string;
+  "no-wait"?: boolean;
 };
 type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
-function makeContext() {
+function makeContext(env: NodeJS.ProcessEnv = {}) {
   return {
     stdout: { write: vi.fn<Writer["write"]>(() => true) },
     stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
+    env,
   };
 }
 
@@ -391,6 +402,71 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       uploadSpy.mockRestore();
     }
   });
+
+  test.each<[string, NodeJS.ProcessEnv, UploadFuncArgs, boolean, number]>([
+    ["outside CI", {}, {}, false, 300_000],
+    ["in CI", { CI: "true" }, {}, true, 300_000],
+    [
+      "in CI with --no-wait",
+      { GITHUB_ACTIONS: "true" },
+      { "no-wait": true },
+      false,
+      300_000,
+    ],
+    ["outside CI with --wait", {}, { wait: 300 }, true, 300_000],
+    ["outside CI with --wait=600", {}, { wait: 600 }, true, 600_000],
+    ["with wait: 0", {}, { wait: 0 }, true, Number.POSITIVE_INFINITY],
+    [
+      'from the SDK with wait: "0"',
+      {},
+      { wait: "0" },
+      true,
+      Number.POSITIVE_INFINITY,
+    ],
+    ['from the SDK with wait: "600"', {}, { wait: "600" }, true, 600_000],
+  ])(
+    "waits for processing %s",
+    async (_name, env, flags, expectedWait, expectedMaxWaitMs) => {
+      await writeFile(join(dir, "app.js"), "console.log(1)\n");
+      await writeFile(
+        join(dir, "app.js.map"),
+        JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+      );
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        await func.call(makeContext(env), flags, dir);
+        expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+          wait: expectedWait,
+          maxWaitMs: expectedMaxWaitMs,
+        });
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    },
+  );
+
+  test("rejects --wait with --no-wait", async () => {
+    await expect(
+      func.call(makeContext(), { wait: 300, "no-wait": true }, dir),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  test.each<[string, number]>([
+    ["", 300],
+    ["600", 600],
+    ["0", 0],
+  ])("parseWaitSeconds(%o) is %d", (input, expected) => {
+    expect(parseWaitSeconds(input)).toBe(expected);
+  });
+
+  test.each(["./dist", "-1", "1.5", "ten"])(
+    "parseWaitSeconds rejects %o",
+    (input) => {
+      expect(() => parseWaitSeconds(input)).toThrow(ValidationError);
+    },
+  );
 
   test("inline sourcemap: uploads decoded map as a source_map with content", async () => {
     const jsPath = join(dir, "inline.js");
@@ -1077,5 +1153,185 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     } finally {
       uploadSpy.mockRestore();
     }
+  });
+});
+
+describe("sourcemap upload command — waiting for processing", () => {
+  useTestConfigDir("sourcemap-upload-wait-");
+
+  let dir: string;
+  let func: CmdFunc<UploadFuncArgs>;
+  let originalFetch: typeof globalThis.fetch;
+  let savedEnv: Record<string, string | undefined>;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "sentry-upload-wait-"));
+    await writeFile(join(dir, "app.js"), "console.log(1)\n");
+    await writeFile(
+      join(dir, "app.js.map"),
+      JSON.stringify({ version: 3, sources: [], names: [], mappings: "" }),
+    );
+    savedEnv = {
+      SENTRY_ORG: process.env["SENTRY_ORG"],
+      SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
+    };
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
+    setAuthToken("test-token");
+    setOrgRegion("test-org", "https://us.sentry.io");
+    originalFetch = globalThis.fetch;
+    func = (await uploadCommand.loader()) as unknown as CmdFunc<UploadFuncArgs>;
+  });
+
+  afterEach(async () => {
+    globalThis.fetch = originalFetch;
+    await rm(dir, { recursive: true, force: true });
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = v;
+      }
+    }
+  });
+
+  /**
+   * Answer the chunk-upload options request, and each assemble request with
+   * the next entry of `states` (the last one repeats). Returns the number of
+   * assemble requests made so far.
+   */
+  function serveAssembleStates(
+    states: { state: string; detail?: string }[],
+  ): () => number {
+    let assembleCalls = 0;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      let body: unknown = {};
+      if (req.url.endsWith("/chunk-upload/")) {
+        body = {
+          url: "https://us.sentry.io/api/0/organizations/test-org/chunk-upload/",
+          chunkSize: 8_388_608,
+          chunksPerRequest: 64,
+          maxRequestSize: 33_554_432,
+          hashAlgorithm: "sha1",
+          concurrency: 8,
+          compression: [],
+        };
+      } else if (req.url.endsWith("/artifactbundle/assemble/")) {
+        const next = states[Math.min(assembleCalls, states.length - 1)];
+        assembleCalls += 1;
+        body = { missingChunks: [], ...next };
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    return () => assembleCalls;
+  }
+
+  test("in CI: fails when Sentry reports a processing error after accepting the bundle", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "error", detail: "Invalid source map" },
+    ]);
+
+    const error = await func
+      .call(makeContext({ CI: "true" }), {}, dir)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).message).toBe("Artifact bundle assembly failed");
+    expect((error as ApiError).detail).toBe("Invalid source map");
+    expect(assembleCalls()).toBe(2);
+  });
+
+  test("in CI: polls past created until Sentry reports ok", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "ok" },
+    ]);
+
+    await func.call(makeContext({ CI: "true" }), {}, dir);
+
+    expect(assembleCalls()).toBe(2);
+  });
+
+  test("outside CI: returns once Sentry accepts the bundle", async () => {
+    const assembleCalls = serveAssembleStates([
+      { state: "created" },
+      { state: "error", detail: "Invalid source map" },
+    ]);
+
+    await func.call(makeContext(), {}, dir);
+
+    expect(assembleCalls()).toBe(1);
+  });
+
+  describe("flag parsing", () => {
+    const app = buildApplication(
+      buildRouteMap({
+        routes: { upload: uploadCommand },
+        docs: { brief: "Test app" },
+      }),
+      // The CLI's scanner style, which `--no-wait` needs.
+      { name: "test", scanner: { caseStyle: "allow-kebab-for-camel" } },
+    );
+
+    function makeRunContext(env: NodeJS.ProcessEnv) {
+      const writer = { write: () => true };
+      return {
+        process: { stdout: writer, stderr: writer },
+        stdout: writer,
+        stderr: writer,
+        cwd: dir,
+        env,
+      };
+    }
+
+    test.each<[string[], NodeJS.ProcessEnv, boolean, number]>([
+      [["--wait"], {}, true, 300_000],
+      [["--wait=600"], {}, true, 600_000],
+      [["--wait=0"], {}, true, Number.POSITIVE_INFINITY],
+      [["--no-wait"], { CI: "true" }, false, 300_000],
+      [["--wait"], { CI: "true" }, true, 300_000],
+    ])(
+      "%o with env %o waits: %s",
+      async (flags, env, expectedWait, expectedMaxWaitMs) => {
+        const uploadSpy = vi
+          .spyOn(sourcemapsApi, "uploadSourcemaps")
+          .mockResolvedValue(undefined);
+        try {
+          // `--wait` before the directory must not consume it as a value.
+          await run(
+            app,
+            ["upload", ...flags, dir],
+            makeRunContext(env) as never,
+          );
+          expect(uploadSpy.mock.calls[0]?.[0]).toMatchObject({
+            wait: expectedWait,
+            maxWaitMs: expectedMaxWaitMs,
+          });
+        } finally {
+          uploadSpy.mockRestore();
+        }
+      },
+    );
+
+    test.each([
+      // A spaced value is not the limit: `600` becomes an extra positional.
+      [["--wait", "600"]],
+      [["--wait=ten"]],
+    ])("%o fails without uploading", async (flags) => {
+      const uploadSpy = vi
+        .spyOn(sourcemapsApi, "uploadSourcemaps")
+        .mockResolvedValue(undefined);
+      try {
+        await run(app, ["upload", ...flags, dir], makeRunContext({}) as never);
+        expect(uploadSpy).not.toHaveBeenCalled();
+      } finally {
+        uploadSpy.mockRestore();
+      }
+    });
   });
 });

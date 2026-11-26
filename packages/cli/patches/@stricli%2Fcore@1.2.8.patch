@@ -1,8 +1,31 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index a9afbc1..433eefb 100644
+index a9afbc1..74c7fe4 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -1277,6 +1277,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -582,6 +582,12 @@ function isNiladic(namedFlagWithNegation) {
+   if (namedFlagWithNegation.namedFlag[1].kind === "boolean" || namedFlagWithNegation.namedFlag[1].kind === "counter") {
+     return true;
+   }
++  // PATCH(getsentry/cli): an `inlineOnly` parsed flag takes its value only as
++  // `--flag=value`. Written bare, it never consumes the next argument, so
++  // `--wait ./dist` keeps `./dist` as a positional.
++  if (namedFlagWithNegation.namedFlag[1].kind === "parsed" && namedFlagWithNegation.namedFlag[1].inlineOnly) {
++    return true;
++  }
+   return false;
+ }
+ var FLAG_SHORTHAND_PATTERN = /^-([a-z]+)$/i;
+@@ -831,6 +837,9 @@ function buildArgumentScanner(parameters, config) {
+                   nextFlag.namedFlag,
+                   nextFlag.negated ? "false" : "true"
+                 );
++              } else if (nextFlag.namedFlag[1].kind === "parsed") {
++                // PATCH(getsentry/cli): a bare `inlineOnly` flag parses "".
++                storeInput(flagInputs, config.caseStyle, nextFlag.namedFlag, "");
+               } else {
+                 storeInput(flagInputs, config.caseStyle, nextFlag.namedFlag, "1");
+               }
+@@ -1277,6 +1286,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -38,7 +61,7 @@ index a9afbc1..433eefb 100644
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1285,7 +1314,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1285,7 +1323,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -53,7 +76,7 @@ index a9afbc1..433eefb 100644
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1293,6 +1329,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1293,6 +1338,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -68,7 +91,7 @@ index a9afbc1..433eefb 100644
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1300,12 +1344,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1300,12 +1353,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -98,7 +121,7 @@ index a9afbc1..433eefb 100644
          }
        }
        if (target) {
-@@ -1357,6 +1417,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1357,6 +1426,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -106,7 +129,7 @@ index a9afbc1..433eefb 100644
          prefix,
          rootLevel,
          aliases
-@@ -1410,16 +1471,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1410,16 +1480,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -123,7 +146,7 @@ index a9afbc1..433eefb 100644
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1445,7 +1496,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1445,7 +1505,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -161,7 +184,7 @@ index a9afbc1..433eefb 100644
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1514,6 +1595,9 @@ function withDefaults(config) {
+@@ -1514,6 +1604,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -171,7 +194,7 @@ index a9afbc1..433eefb 100644
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1529,7 +1613,10 @@ function withDefaults(config) {
+@@ -1529,7 +1622,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -183,7 +206,18 @@ index a9afbc1..433eefb 100644
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1881,7 +1968,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1783,6 +1879,10 @@ function formatUsageLineForParameters(parameters, args) {
+       return [flag, `${displayName} ${flag.values.join("|")}`];
+     }
+     const placeholder = flag.placeholder ?? "value";
++    if (flag.kind === "parsed" && flag.inlineOnly) {
++      // PATCH(getsentry/cli): show that the value must be attached with `=`.
++      return [flag, `${displayName}[=${placeholder}]`];
++    }
+     return [flag, `${displayName} ${placeholder}`];
+   }).map(([flag, usage]) => {
+     if (flag.kind === "parsed" && flag.variadic) {
+@@ -1881,7 +1981,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -192,7 +226,7 @@ index a9afbc1..433eefb 100644
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1920,7 +2007,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1920,7 +2020,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -201,7 +235,7 @@ index a9afbc1..433eefb 100644
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2057,7 +2144,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2057,7 +2157,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
@@ -211,7 +245,7 @@ index a9afbc1..433eefb 100644
    checkForInvalidVariadicSeparators(flags);
    let loader;
 diff --git a/dist/index.d.cts b/dist/index.d.cts
-index 111d1fd..bc2bb46 100644
+index 111d1fd..6decbb7 100644
 --- a/dist/index.d.cts
 +++ b/dist/index.d.cts
 @@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
@@ -291,7 +325,19 @@ index 111d1fd..bc2bb46 100644
  }
  type BooleanFlagParameter = RequiredBooleanFlagParameter | OptionalBooleanFlagParameter;
  interface BaseCounterFlagParameter extends BaseFlagParameter {
-@@ -824,7 +869,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
+@@ -786,6 +831,11 @@ interface BaseParsedFlagParameter<T, CONTEXT extends CommandContext> extends Par
+      * If flag is specified with no corresponding input, infer an empty string `""` as the input.
+      */
+     readonly inferEmpty?: boolean;
++    /**
++     * PATCH(getsentry/cli): accept a value only as `--flag=value`. Written bare,
++     * the flag parses `""` and never consumes the next argument.
++     */
++    readonly inlineOnly?: boolean;
+     readonly optional?: boolean;
+     readonly variadic?: boolean | string;
+     readonly hidden?: boolean;
+@@ -824,7 +874,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
       * Optional parameters should not have default values.
       * This flag should be required if a value will always be provided.
       */
@@ -303,7 +349,7 @@ index 111d1fd..bc2bb46 100644
       * Parameter does not extend array and cannot be set as variadic.
       */
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 111d1fd..bc2bb46 100644
+index 111d1fd..6decbb7 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -42,7 +42,9 @@ interface StricliProcess extends WritableStreams {
@@ -383,7 +429,19 @@ index 111d1fd..bc2bb46 100644
  }
  type BooleanFlagParameter = RequiredBooleanFlagParameter | OptionalBooleanFlagParameter;
  interface BaseCounterFlagParameter extends BaseFlagParameter {
-@@ -824,7 +869,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
+@@ -786,6 +831,11 @@ interface BaseParsedFlagParameter<T, CONTEXT extends CommandContext> extends Par
+      * If flag is specified with no corresponding input, infer an empty string `""` as the input.
+      */
+     readonly inferEmpty?: boolean;
++    /**
++     * PATCH(getsentry/cli): accept a value only as `--flag=value`. Written bare,
++     * the flag parses `""` and never consumes the next argument.
++     */
++    readonly inlineOnly?: boolean;
+     readonly optional?: boolean;
+     readonly variadic?: boolean | string;
+     readonly hidden?: boolean;
+@@ -824,7 +874,9 @@ interface OptionalParsedFlagParameter<T, CONTEXT extends CommandContext> extends
       * Optional parameters should not have default values.
       * This flag should be required if a value will always be provided.
       */
@@ -395,10 +453,33 @@ index 111d1fd..bc2bb46 100644
       * Parameter does not extend array and cannot be set as variadic.
       */
 diff --git a/dist/index.js b/dist/index.js
-index f766396..63d3a08 100644
+index f766396..0c22510 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1229,6 +1229,35 @@ var RouteMapSymbol = Symbol("RouteMap");
+@@ -534,6 +534,12 @@ function isNiladic(namedFlagWithNegation) {
+   if (namedFlagWithNegation.namedFlag[1].kind === "boolean" || namedFlagWithNegation.namedFlag[1].kind === "counter") {
+     return true;
+   }
++  // PATCH(getsentry/cli): an `inlineOnly` parsed flag takes its value only as
++  // `--flag=value`. Written bare, it never consumes the next argument, so
++  // `--wait ./dist` keeps `./dist` as a positional.
++  if (namedFlagWithNegation.namedFlag[1].kind === "parsed" && namedFlagWithNegation.namedFlag[1].inlineOnly) {
++    return true;
++  }
+   return false;
+ }
+ var FLAG_SHORTHAND_PATTERN = /^-([a-z]+)$/i;
+@@ -783,6 +789,9 @@ function buildArgumentScanner(parameters, config) {
+                   nextFlag.namedFlag,
+                   nextFlag.negated ? "false" : "true"
+                 );
++              } else if (nextFlag.namedFlag[1].kind === "parsed") {
++                // PATCH(getsentry/cli): a bare `inlineOnly` flag parses "".
++                storeInput(flagInputs, config.caseStyle, nextFlag.namedFlag, "");
+               } else {
+                 storeInput(flagInputs, config.caseStyle, nextFlag.namedFlag, "1");
+               }
+@@ -1229,6 +1238,35 @@ var RouteMapSymbol = Symbol("RouteMap");
  var CommandSymbol = Symbol("Command");
  
  // src/routing/scanner.ts
@@ -434,7 +515,7 @@ index f766396..63d3a08 100644
  function buildRouteScanner(root, config, startingPrefix) {
    const prefix = [...startingPrefix];
    const unprocessedInputs = [];
-@@ -1237,7 +1266,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1237,7 +1275,14 @@ function buildRouteScanner(root, config, startingPrefix) {
    let target;
    let rootLevel = true;
    let helpRequested = false;
@@ -449,7 +530,7 @@ index f766396..63d3a08 100644
    return {
      next: (input) => {
        if (!treatInputsAsArguments && config.allowArgumentEscapeSequence && input === "--") {
-@@ -1245,6 +1281,14 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1245,6 +1290,14 @@ function buildRouteScanner(root, config, startingPrefix) {
          unprocessedInputs.push(input);
          return;
        }
@@ -464,7 +545,7 @@ index f766396..63d3a08 100644
        if (!treatInputsAsArguments) {
          if (input === "--help" || input === "-h") {
            helpRequested = true;
-@@ -1252,12 +1296,28 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1252,12 +1305,28 @@ function buildRouteScanner(root, config, startingPrefix) {
              target = current;
            }
            return;
@@ -494,7 +575,7 @@ index f766396..63d3a08 100644
          }
        }
        if (target) {
-@@ -1309,6 +1369,7 @@ function buildRouteScanner(root, config, startingPrefix) {
+@@ -1309,6 +1378,7 @@ function buildRouteScanner(root, config, startingPrefix) {
          target,
          unprocessedInputs,
          helpRequested,
@@ -502,7 +583,7 @@ index f766396..63d3a08 100644
          prefix,
          rootLevel,
          aliases
-@@ -1362,16 +1423,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1362,16 +1432,6 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      }
    }
    const inputs = rawInputs.slice();
@@ -519,7 +600,7 @@ index f766396..63d3a08 100644
    const scanner = buildRouteScanner(root, config.scanner, [config.name]);
    let error;
    while (inputs.length > 0 && !error) {
-@@ -1397,7 +1448,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
+@@ -1397,7 +1457,37 @@ async function runApplication({ root, defaultText, config }, rawInputs, context)
      return ExitCode.UnknownCommand;
    }
    const result = scanner.finish();
@@ -557,7 +638,7 @@ index f766396..63d3a08 100644
      const ansiColor = shouldUseAnsiColor(context.process, context.process.stdout, config.documentation);
      context.process.stdout.write(
        result.target.formatHelp({
-@@ -1466,6 +1547,9 @@ function withDefaults(config) {
+@@ -1466,6 +1556,9 @@ function withDefaults(config) {
    const scannerConfig = {
      caseStyle: scannerCaseStyle,
      allowArgumentEscapeSequence: config.scanner?.allowArgumentEscapeSequence ?? false,
@@ -567,7 +648,7 @@ index f766396..63d3a08 100644
      distanceOptions: config.scanner?.distanceOptions ?? {
        threshold: 7,
        weights: {
-@@ -1481,7 +1565,10 @@ function withDefaults(config) {
+@@ -1481,7 +1574,10 @@ function withDefaults(config) {
      useAliasInUsageLine: config.documentation?.useAliasInUsageLine ?? false,
      onlyRequiredInUsageLine: config.documentation?.onlyRequiredInUsageLine ?? false,
      caseStyle: displayCaseStyle,
@@ -579,7 +660,18 @@ index f766396..63d3a08 100644
    };
    const completionConfig = {
      includeAliases: config.completion?.includeAliases ?? documentationConfig.useAliasInUsageLine,
-@@ -1833,7 +1920,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
+@@ -1735,6 +1831,10 @@ function formatUsageLineForParameters(parameters, args) {
+       return [flag, `${displayName} ${flag.values.join("|")}`];
+     }
+     const placeholder = flag.placeholder ?? "value";
++    if (flag.kind === "parsed" && flag.inlineOnly) {
++      // PATCH(getsentry/cli): show that the value must be attached with `=`.
++      return [flag, `${displayName}[=${placeholder}]`];
++    }
+     return [flag, `${displayName} ${placeholder}`];
+   }).map(([flag, usage]) => {
+     if (flag.kind === "parsed" && flag.variadic) {
+@@ -1833,7 +1933,7 @@ function formatDocumentationForFlagParameters(flags, aliases, args) {
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
      rows.push({
@@ -588,7 +680,7 @@ index f766396..63d3a08 100644
        flagName: atLeastOneOptional ? ` --${helpAllFlagName}` : `--${helpAllFlagName}`,
        brief: briefs.helpAll,
        hidden: !args.config.alwaysShowHelpAllFlag
-@@ -1872,7 +1959,7 @@ function* generateBuiltInFlagUsageLines(args) {
+@@ -1872,7 +1972,7 @@ function* generateBuiltInFlagUsageLines(args) {
    yield args.config.useAliasInUsageLine ? "-h" : "--help";
    if (args.includeHelpAllFlag) {
      const helpAllFlagName = formatForDisplay("helpAll", args.config.caseStyle);
@@ -597,7 +689,7 @@ index f766396..63d3a08 100644
    }
    if (args.includeVersionFlag) {
      yield args.config.useAliasInUsageLine ? "-v" : "--version";
-@@ -2009,7 +2096,7 @@ function checkForInvalidVariadicSeparators(flags) {
+@@ -2009,7 +2109,7 @@ function checkForInvalidVariadicSeparators(flags) {
  function buildCommand(builderArgs) {
    const { flags = {}, aliases = {} } = builderArgs.parameters;
    checkForReservedFlags(flags, ["help", "helpAll", "help-all"]);
