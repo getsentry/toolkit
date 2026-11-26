@@ -2,26 +2,32 @@
  * Tests for `sentry send-envelope` deprecation shim.
  */
 
+import type { SentryContext } from "../../src/context.js";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { sendEnvelopeCommand } from "../../src/commands/send-envelope.js";
 import { CliError } from "../../src/lib/errors.js";
-import { useTestConfigDir } from "../helpers.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+} from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 useTestConfigDir("send-envelope-");
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
 
 describe("sendEnvelopeCommand (deprecation shim)", () => {
-  let func: Awaited<ReturnType<typeof sendEnvelopeCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
 
   beforeEach(async () => {
-    func = await sendEnvelopeCommand.loader();
+    func = await loadCommand(sendEnvelopeCommand);
   });
 
   test("throws CliError suggesting event send --raw", async () => {

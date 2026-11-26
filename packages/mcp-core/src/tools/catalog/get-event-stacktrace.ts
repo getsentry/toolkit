@@ -4,6 +4,7 @@ import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { enhanceNotFoundError } from "../../internal/tool-helpers/enhance-error";
 import { ensureIssueWithinProjectConstraint } from "../../internal/tool-helpers/issue";
+import { structuredResult } from "../../internal/tool-helpers/results";
 import {
   ParamEventIdOrLatest,
   ParamIssueShortId,
@@ -12,33 +13,18 @@ import {
 } from "../../schema";
 import { setTargetTagsAndAttributes } from "../../telem/scope";
 import type { ServerContext } from "../../types";
-import { fetchAndFormatEventStacktrace } from "../support/event-stacktrace";
+import {
+  eventStacktraceOutputSchema,
+  fetchEventStacktrace,
+} from "../support/event-stacktrace";
 
 export default defineTool({
   name: "get_event_stacktrace",
   title: "Get Event Stacktrace",
   skills: ["inspect", "triage", "seer"],
   requiredScopes: ["event:read"],
-  description: [
-    "Get the full stack trace (stacktrace) for one thread of a specific Sentry event.",
-    "",
-    "Use this tool when you need to:",
-    "- Fetch the full stacktrace for a thread listed in issue details",
-    "- Inspect a non-crashed thread from an event with multiple threads",
-    "- Get Sentry's default selected thread stacktrace when no thread is specified",
-    "",
-    "<examples>",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123')",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', eventId='c49541c747cb4d8aa3efb70ca5aba243', thread=259)",
-    "get_event_stacktrace(organizationSlug='my-org', issueId='PROJECT-123', thread='main')",
-    "</examples>",
-    "",
-    "<hints>",
-    "- `thread` is optional. If omitted, this returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
-    "- Pass `thread` as a numeric Thread ID or exact thread Name from the issue details thread list.",
-    "- If the issue details show only one useful thread, omit `thread`.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Get the full stack trace (stacktrace) of one thread in a Sentry event, such as a non-crashed thread listed in the issue details. Lists the threads when the selector matches none or several. For an event with no threads, returns its event-level stacktrace.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug,
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -48,9 +34,10 @@ export default defineTool({
       .union([z.number().int(), z.string().trim().min(1)])
       .optional()
       .describe(
-        "Optional thread selector. Pass a numeric thread ID, or an exact thread name string. If omitted, returns the same default thread Sentry selects: first crashed thread, then first thread with a stacktrace, then first thread.",
+        "Numeric thread ID or exact thread name from the issue details. Omit for Sentry's default: the crashed thread, else the first with a stack trace.",
       ),
   },
+  outputSchema: eventStacktraceOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -71,13 +58,15 @@ export default defineTool({
         projectSlug: context.constraints.projectSlug,
       });
 
-      return await fetchAndFormatEventStacktrace({
-        apiService,
-        organizationSlug: params.organizationSlug,
-        issueId: params.issueId,
-        eventId: params.eventId,
-        thread: params.thread,
-      });
+      return structuredResult(
+        await fetchEventStacktrace({
+          apiService,
+          organizationSlug: params.organizationSlug,
+          issueId: params.issueId,
+          eventId: params.eventId,
+          thread: params.thread,
+        }),
+      );
     } catch (error) {
       if (error instanceof ApiNotFoundError) {
         throw enhanceNotFoundError(error, {

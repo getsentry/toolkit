@@ -11,12 +11,8 @@ import {
 vi.mock("../../../src/lib/api-client.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/api-client.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -30,12 +26,8 @@ import {
 vi.mock("../../../src/lib/resolve-target.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../src/lib/resolve-target.js")>();
-  return Object.fromEntries(
-    Object.entries(actual).map(([k, v]) => [
-      k,
-      typeof v === "function" ? vi.fn(v) : v,
-    ]),
-  );
+  const { mockFunctionExports } = await import("../../mock-exports.js");
+  return mockFunctionExports(actual);
 });
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -49,6 +41,8 @@ vi.mock("../../../src/lib/scope-recovery.js", async (importOriginal) => {
 
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for vi.mocked access
 import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
+import { loadCommand } from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 const sampleIntegration = {
   id: "42",
@@ -62,11 +56,11 @@ const sampleIntegration = {
 const yesFlags = { yes: true, force: false, "dry-run": false, json: false };
 
 function createMockContext() {
-  const stdoutWrite = vi.fn(() => true);
+  const stdoutWrite = vi.fn<Writer["write"]>(() => true);
   return {
     context: {
       stdout: { write: stdoutWrite },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     stdoutWrite,
@@ -140,7 +134,7 @@ describe("integration delete", () => {
 
   test("removes the integration with --yes", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, yesFlags, "my-org/42");
 
     expect(resolveOrgSpy).toHaveBeenCalledWith({ org: "my-org", cwd: "/tmp" });
@@ -152,7 +146,7 @@ describe("integration delete", () => {
   test("elevates to org:integrations before deleting", async () => {
     ensureScopesSpy.mockResolvedValue("elevated");
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, yesFlags, "my-org/42");
 
     expect(ensureScopesSpy).toHaveBeenCalledWith(
@@ -166,7 +160,7 @@ describe("integration delete", () => {
   test("does not delete when authorization is declined", async () => {
     ensureScopesSpy.mockResolvedValue("declined");
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { ...yesFlags, json: true }, "my-org/42");
 
     expect(deleteSpy).not.toHaveBeenCalled();
@@ -175,7 +169,7 @@ describe("integration delete", () => {
 
   test("dry-run does not delete", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { ...yesFlags, "dry-run": true }, "my-org/42");
 
     expect(deleteSpy).not.toHaveBeenCalled();
@@ -185,7 +179,7 @@ describe("integration delete", () => {
 
   test("JSON output reports the removed integration", async () => {
     const { context, stdoutWrite } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
     await func.call(context, { ...yesFlags, json: true }, "my-org/42");
 
     expect(JSON.parse(output(stdoutWrite))).toMatchObject({
@@ -199,7 +193,7 @@ describe("integration delete", () => {
   test("propagates 404 before attempting the delete", async () => {
     getSpy.mockRejectedValue(new ApiError("Not found", 404));
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(func.call(context, yesFlags, "my-org/42")).rejects.toThrow(
       ApiError,
@@ -210,7 +204,7 @@ describe("integration delete", () => {
   test("explains the role requirement on a 403 that survives elevation", async () => {
     deleteSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const error = await func
       .call(context, yesFlags, "my-org/42")
@@ -224,7 +218,7 @@ describe("integration delete", () => {
     ensureScopesSpy.mockResolvedValue("unavailable");
     deleteSpy.mockRejectedValue(new ApiError("Forbidden", 403));
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     const error = await func
       .call(context, yesFlags, "my-org/42")
@@ -239,7 +233,7 @@ describe("integration delete", () => {
   test("throws ContextError when no org can be resolved", async () => {
     resolveOrgSpy.mockResolvedValue(null);
     const { context } = createMockContext();
-    const func = await deleteCommand.loader();
+    const func = await loadCommand(deleteCommand);
 
     await expect(func.call(context, yesFlags, "42")).rejects.toThrow(
       ContextError,

@@ -24,10 +24,11 @@ export function spanInsights(
         )
       )
         continue;
-      const id = `${span.operation}:${span.description}`;
+      const name = span.description.trim() || span.operation?.trim() || span.id;
+      const id = `${span.operation}:${name}`;
       const group = groups.get(id) ?? {
         id,
-        name: span.description,
+        name,
         operation: span.operation ?? "",
         count: 0,
         executions: [],
@@ -50,11 +51,15 @@ export function spanInsights(
     }
     const sizes = group.executions.flatMap((entry) => {
       const data = spanData(entry.span.payload);
-      const size =
-        finite(data["http.response_content_length"]) ??
-        finite(data["http.response.body.size"]) ??
-        finite(data["http.decoded_response_content_length"]);
-      return size === undefined || size < 0 ? [] : [size];
+      for (const key of [
+        "http.response_content_length",
+        "http.response.body.size",
+        "http.decoded_response_content_length",
+      ]) {
+        const size = finite(data[key]);
+        if (size !== undefined && size >= 0) return [size];
+      }
+      return [];
     });
     if (sizes.length)
       group.averageBytes = sizes.reduce((a, b) => a + b, 0) / sizes.length;
@@ -79,37 +84,105 @@ export type VitalVisit = {
   metrics: Partial<Record<VitalName, VitalMeasurement>>;
 };
 export type VitalPage = { name: string; visits: VitalVisit[] };
+function rateVital(name: VitalName, value: number): VitalMeasurement {
+  const config = VITALS[name];
+  return {
+    value,
+    rating:
+      value <= config.good
+        ? "Good"
+        : value <= config.poor
+          ? "Needs improvement"
+          : "Poor",
+  };
+}
+function addVisit(
+  pages: Map<string, VitalPage>,
+  name: string,
+  visit: VitalVisit,
+) {
+  const page = pages.get(name) ?? { name, visits: [] };
+  page.visits.push(visit);
+  pages.set(name, page);
+}
+/** Streamed (span v2) pageloads keep vitals as `browser.web_vital.*` attributes on the segment and on later web vital spans. */
+function streamedVitalVisits(
+  items: readonly LocalFeedItem[],
+  pages: Map<string, VitalPage>,
+) {
+  const visits = new Map<
+    string,
+    {
+      name?: string | undefined;
+      item?: LocalFeedItem | undefined;
+      metrics: VitalVisit["metrics"];
+    }
+  >();
+  for (const item of items) {
+    if (item.type !== "span") continue;
+    const p = record(item.payload),
+      data = spanData(p);
+    const segment = p["is_segment"] === true;
+    const pageloadId = segment
+      ? text(p["span_id"])
+      : (text(data["sentry.pageload.span_id"]) ??
+        text(data["sentry.segment.id"]));
+    if (!pageloadId) continue;
+    const metrics: VitalVisit["metrics"] = {};
+    for (const name of Object.keys(VITALS) as VitalName[]) {
+      const value = finite(data[`browser.web_vital.${name}.value`]);
+      if (value !== undefined && value >= 0)
+        metrics[name] = rateVital(name, value);
+    }
+    if (!segment && !Object.keys(metrics).length) continue;
+    const visit = visits.get(pageloadId) ?? { metrics: {} };
+    Object.assign(visit.metrics, metrics);
+    if (segment || !visit.item) {
+      visit.item = item;
+      // URL-sourced pageload names are generic ("Pageload"); the path identifies the page.
+      visit.name =
+        (data["sentry.segment.name.source"] === "url"
+          ? text(data["url.path"])
+          : undefined) ??
+        text(data["sentry.segment.name"]) ??
+        text(p["name"]);
+    }
+    visits.set(pageloadId, visit);
+  }
+  for (const { name, item, metrics } of visits.values())
+    if (item && Object.keys(metrics).length)
+      addVisit(pages, name ?? item.metadata?.route ?? "Unknown page", {
+        item,
+        metrics,
+      });
+}
 export function webVitalPages(items: readonly LocalFeedItem[]): VitalPage[] {
   const pages = new Map<string, VitalPage>();
   for (const item of items) {
     const p = record(item.payload),
-      measurements = record(p.measurements);
+      measurements = record(p["measurements"]);
     if (item.type !== "transaction" || !Object.keys(measurements).length)
       continue;
     const metrics: VitalVisit["metrics"] = {};
     for (const name of Object.keys(VITALS) as VitalName[]) {
       const metric = record(measurements[name]),
-        value = finite(metric.value);
+        value = finite(metric["value"]);
       if (value === undefined || value < 0) continue;
-      const config = VITALS[name];
       // SDK measurements normally use milliseconds; honor seconds when explicitly supplied.
-      const normalized =
-        config.unit === "ms" && metric.unit === "second" ? value * 1000 : value;
-      metrics[name] = {
-        value: normalized,
-        rating:
-          normalized <= config.good
-            ? "Good"
-            : normalized <= config.poor
-              ? "Needs improvement"
-              : "Poor",
-      };
+      metrics[name] = rateVital(
+        name,
+        VITALS[name].unit === "ms" && metric["unit"] === "second"
+          ? value * 1000
+          : value,
+      );
     }
     if (!Object.keys(metrics).length) continue;
-    const name = text(p.transaction) ?? item.metadata?.route ?? "Unknown page";
-    const page = pages.get(name) ?? { name, visits: [] };
-    page.visits.push({ item, metrics });
-    pages.set(name, page);
+    addVisit(
+      pages,
+      text(p["transaction"]) ?? item.metadata?.route ?? "Unknown page",
+      { item, metrics },
+    );
   }
+  streamedVitalVisits(items, pages);
   return [...pages.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

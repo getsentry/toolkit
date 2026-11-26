@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 function readRootJson(path) {
   return JSON.parse(
@@ -18,10 +21,10 @@ test("Oxlint retains its default correctness plugins alongside accessibility", (
 test("CLI command and color imports retain their wrapper boundary", () => {
   const { overrides } = readRootJson(".oxlintrc.json");
   const cli = overrides.find(({ files }) =>
-    files.includes("packages/cli/src/**/*.{ts,tsx}"),
+    files.includes("packages/cli/src/**/*.ts"),
   );
   const commands = overrides.find(({ files }) =>
-    files.includes("packages/cli/src/commands/**/*.{ts,tsx}"),
+    files.includes("packages/cli/src/commands/**/*.ts"),
   );
   const wrappers = overrides.find(({ files }) =>
     files.includes("packages/cli/src/lib/command.ts"),
@@ -55,8 +58,29 @@ test("editor and staged files use Oxc for root, MCP, and CLI", () => {
     "explicit",
   );
   assert.ok(!formatter.ignorePatterns.includes("packages/cli/**"));
-  assert.deepEqual(extensions.recommendations, ["oxc.oxc-vscode"]);
+  assert.deepEqual(extensions.recommendations, [
+    "oxc.oxc-vscode",
+    "TypeScriptTeam.native-preview",
+  ]);
   assert.deepEqual(Object.keys(packageJson["lint-staged"]), ["*"]);
+});
+
+test("editors use the workspace TypeScript 7 compiler", () => {
+  // TypeScript 7 ships no tsserver, so the legacy `typescript.tsdk` setting
+  // cannot load it; the TypeScript 7 extension reads these settings instead.
+  for (const path of [
+    ".vscode/settings.json",
+    "packages/cli/.vscode/settings.json",
+  ]) {
+    const settings = readRootJson(path);
+    assert.equal(settings["js/ts.experimental.useTsgo"], true, path);
+    assert.equal(
+      settings["js/ts.tsdk.path"],
+      "./node_modules/typescript",
+      path,
+    );
+    assert.equal(settings["typescript.tsdk"], undefined, path);
+  }
 });
 
 test("CI lint checks formatting for commits that skip the pre-commit hook", () => {
@@ -97,4 +121,26 @@ test("mcp-core and toolkit-core cannot import the CLI", () => {
     );
   }
   assert.match(scripts.lint, /pnpm run lint:deps/);
+});
+
+test("mcp-core cannot import the ext-apps SDK at runtime", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const dir = mkdtempSync(join(root, "packages/mcp-core/.lint-fixture-"));
+  try {
+    for (const specifier of [
+      "@modelcontextprotocol/ext-apps",
+      "@modelcontextprotocol/ext-apps/server",
+    ]) {
+      const file = join(dir, "view.ts");
+      writeFileSync(file, `export * from "${specifier}";\n`);
+      const lint = spawnSync("pnpm", ["exec", "oxlint", file], {
+        cwd: root,
+        encoding: "utf8",
+      });
+      assert.notEqual(lint.status, 0, specifier);
+      assert.match(lint.stdout, /no-restricted-imports/, specifier);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -153,7 +153,7 @@ describe("search_traces structured output", () => {
           },
         ],
         "timeSeries": null,
-        "url": "https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&field=id&field=span.op&field=span.description&field=span.duration&field=transaction&field=timestamp&field=project&field=trace&sort=-timestamp&statsPeriod=24h&table=span",
+        "url": "https://test-org.sentry.io/explore/traces/?query=span.op%3Ahttp.client&project=-1&field=id&field=span.op&field=span.description&field=span.duration&field=transaction&field=timestamp&field=project&field=trace&sort=-timestamp&statsPeriod=24h&table=span",
       }
     `);
   });

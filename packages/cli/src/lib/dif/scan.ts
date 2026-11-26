@@ -72,9 +72,9 @@ export const VALID_DIF_TYPES: readonly string[] = Object.keys(TYPE_TO_FORMAT);
 /** Resolved filter set applied to each parsed object. */
 export type DifFilters = {
   /** Accepted file formats (canonical names), or `undefined` for any. */
-  formats?: Set<string>;
+  formats?: Set<string> | undefined;
   /** Accepted debug ids (normalized), or `undefined` for any. */
-  ids?: Set<string>;
+  ids?: Set<string> | undefined;
   /** Whether a symbol table satisfies the feature requirement. */
   symtab: boolean;
   /** Whether debug info satisfies the feature requirement. */
@@ -88,15 +88,15 @@ export type DifFilters = {
 /** Flag inputs used to build a {@link DifFilters}. */
 export type DifFilterOptions = {
   /** Repeatable `--type` values (e.g. `dsym`, `elf`). */
-  types?: string[];
+  types?: string[] | undefined;
   /** Repeatable `--id` values (debug ids). */
-  ids?: string[];
+  ids?: string[] | undefined;
   /** `--no-debug`: drop both debug and symbol-table features. */
-  noDebug?: boolean;
+  noDebug?: boolean | undefined;
   /** `--no-unwind`: drop unwind features. */
-  noUnwind?: boolean;
+  noUnwind?: boolean | undefined;
   /** `--no-sources`: drop source features. */
-  noSources?: boolean;
+  noSources?: boolean | undefined;
 };
 
 /** A debug information file that passed filtering, ready to upload. */
@@ -108,7 +108,7 @@ export type PreparedDif = {
    * file holds more than one object, such as a slice of a fat Mach-O (each
    * object becomes its own `PreparedDif`).
    */
-  content: Buffer;
+  content: Buffer<ArrayBuffer>;
   /**
    * Debug id of the object in `content`. This is the same id used as the
    * source bundle's debug id under `--include-sources`.
@@ -618,7 +618,7 @@ async function prepareFileDif(
  */
 function matchedDifs(
   displayPath: string,
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   filters: DifFilters,
 ): PreparedDif[] {
   if (content.length === 0) {
@@ -675,7 +675,7 @@ function matchedDifs(
  */
 function embeddedPpdbDif(
   displayPath: string,
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   filters: DifFilters,
   maxFileSize: number,
 ): { difs: PreparedDif[]; oversized: boolean } {
@@ -736,7 +736,7 @@ function isDxil(bytes: Uint8Array): boolean {
 }
 
 /** Detect the format of an in-memory buffer from its leading header bytes. */
-function peekBufferFormat(content: Buffer): string {
+function peekBufferFormat(content: Buffer<ArrayBuffer>): string {
   return detectFormat(new Uint8Array(content.subarray(0, PEEK_HEADER_BYTES)));
 }
 
@@ -748,7 +748,7 @@ function peekBufferFormat(content: Buffer): string {
  */
 function dxilDif(
   displayPath: string,
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   filters: DifFilters,
   info?: ShaderInfo,
 ): PreparedDif[] {
@@ -807,7 +807,7 @@ function dxilDif(
  */
 function difFromBuffer(
   displayPath: string,
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   filters: DifFilters,
   maxFileSize: number,
   shaderInfo?: ShaderInfo,
@@ -843,7 +843,7 @@ async function readMatchedDif(
   maxFileSize: number,
   shaderInfo?: ShaderInfo,
 ): Promise<{ difs: PreparedDif[]; oversized: boolean }> {
-  let content: Buffer;
+  let content: Buffer<ArrayBuffer>;
   try {
     content = await readFile(path);
   } catch (err) {
@@ -870,7 +870,7 @@ async function readMatchedDif(
  */
 function difFromCandidateBuffer(
   displayPath: string,
-  content: Buffer,
+  content: Buffer<ArrayBuffer>,
   filters: DifFilters,
   maxFileSize: number,
 ): PreparedDif[] {

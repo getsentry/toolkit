@@ -519,9 +519,10 @@ function main() {
   process.stdout.write(`${JSON.stringify(buildMatrix(selected))}\n`);
 }
 
+const scriptPath = process.argv.at(1);
 const isMain =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+  scriptPath !== undefined &&
+  import.meta.url === pathToFileURL(resolve(scriptPath)).href;
 if (isMain) {
   try {
     main();

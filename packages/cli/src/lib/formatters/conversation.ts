@@ -13,6 +13,7 @@ import type {
 } from "../../types/conversation.js";
 import { colorTag, mdKvTable, renderMarkdown } from "./markdown.js";
 import { type Column, formatTable } from "./table.js";
+import { formatLocalDateTime } from "./time-utils.js";
 
 // ---------------------------------------------------------------------------
 // List formatter
@@ -23,13 +24,6 @@ function truncate(value: string, max = 60): string {
     return value;
   }
   return `${value.slice(0, max - 1)}…`;
-}
-
-function formatTimestamp(epochSeconds: number): string {
-  if (epochSeconds === 0) {
-    return "—";
-  }
-  return new Date(epochSeconds * 1000).toLocaleString();
 }
 
 const USD_FORMAT = new Intl.NumberFormat("en-US", {
@@ -67,7 +61,9 @@ const TITLE_COLUMN: Column<ConversationListItem> = {
 
 const STARTED_COLUMN: Column<ConversationListItem> = {
   header: "Started",
-  value: (c) => formatTimestamp(c.startTimestamp),
+  // The API sends 0 for a conversation with no start time.
+  value: (c) =>
+    c.startTimestamp === 0 ? "—" : formatLocalDateTime(c.startTimestamp),
 };
 
 const TOKENS_COLUMN: Column<ConversationListItem> = {
@@ -149,7 +145,7 @@ export type ToolCall = {
   spanId: string;
   timestamp: number;
   durationMs: number;
-  status?: string | null;
+  status?: string | null | undefined;
 };
 
 export type ConversationTurn = {
@@ -162,10 +158,10 @@ export type ConversationTurn = {
   userContent?: string | null;
   assistantContent?: string | null;
   toolCalls: ToolCall[];
-  model?: string | null;
-  agentName?: string | null;
+  model?: string | null | undefined;
+  agentName?: string | null | undefined;
   totalTokens: number;
-  status?: string | null;
+  status?: string | null | undefined;
 };
 
 function numeric(value: string | number | null | undefined): number {
@@ -225,11 +221,11 @@ function stringifyContent(value: unknown): string | null {
         }
         if (part && typeof part === "object") {
           const r = part as Record<string, unknown>;
-          if (typeof r.text === "string") {
-            return r.text;
+          if (typeof r["text"] === "string") {
+            return r["text"];
           }
-          if (typeof r.content === "string") {
-            return r.content;
+          if (typeof r["content"] === "string") {
+            return r["content"];
           }
         }
         return null;
@@ -239,14 +235,14 @@ function stringifyContent(value: unknown): string | null {
   }
   if (value && typeof value === "object") {
     const r = value as Record<string, unknown>;
-    if (typeof r.text === "string") {
-      return r.text;
+    if (typeof r["text"] === "string") {
+      return r["text"];
     }
-    if (typeof r.content === "string") {
-      return r.content;
+    if (typeof r["content"] === "string") {
+      return r["content"];
     }
-    if (typeof r.message === "string") {
-      return r.message;
+    if (typeof r["message"] === "string") {
+      return r["message"];
     }
   }
   return value === null ? null : JSON.stringify(value);
@@ -257,8 +253,8 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    Array.isArray((value as Record<string, unknown>).messages)
-      ? (value as Record<string, unknown>).messages
+    Array.isArray((value as Record<string, unknown>)["messages"])
+      ? (value as Record<string, unknown>)["messages"]
       : value;
 
   if (!Array.isArray(source)) {
@@ -275,7 +271,7 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
         return null;
       }
       const r = msg as Record<string, unknown>;
-      const raw = r.content ?? r.text ?? r.parts;
+      const raw = r["content"] ?? r["text"] ?? r["parts"];
       if (raw === null || raw === undefined) {
         return null;
       }
@@ -284,7 +280,7 @@ function collectMessages(value: unknown): { role?: string; content: string }[] {
         return null;
       }
       return {
-        role: typeof r.role === "string" ? r.role : undefined,
+        role: typeof r["role"] === "string" ? r["role"] : undefined,
         content,
       };
     })
@@ -523,7 +519,10 @@ export function buildTranscriptResult(
   conversationId: string,
   org: string,
   spans: AgentConversationSpan[],
-  details: { stats?: ConversationStats; title?: string | null } = {},
+  details: {
+    stats?: ConversationStats | undefined;
+    title?: string | null;
+  } = {},
 ): TranscriptResult {
   const { stats, title = null } = details;
   const turns = extractTurns(spans);

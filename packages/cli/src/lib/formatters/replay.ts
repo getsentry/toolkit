@@ -21,6 +21,7 @@ import { mdKvTable, renderMarkdown } from "./markdown.js";
 import {
   formatDurationCompactMs,
   formatDurationVerbose,
+  formatLocalDateTime,
 } from "./time-utils.js";
 import type { ReplayViewOutputFields } from "../../output-schemas/replay.js";
 
@@ -206,22 +207,22 @@ function summarizeTaggedReplayEvent(
 function summarizeReplayEvent(
   event: ReplayRecordingEvent,
 ): ReplayActivityEvent | null {
-  const timestampMs = getEventTimestampMillis(event.timestamp);
-  if (hasReplayTag(event.data)) {
+  const timestampMs = getEventTimestampMillis(event["timestamp"]);
+  if (hasReplayTag(event["data"])) {
     const replayEvent = summarizeTaggedReplayEvent(
-      event.data.tag,
-      event.data.payload,
+      event["data"].tag,
+      event["data"].payload,
     );
     if (replayEvent) {
       return { timestampMs, ...replayEvent };
     }
   }
 
-  if (hasReplayHref(event.data)) {
+  if (hasReplayHref(event["data"])) {
     return {
       timestampMs,
       label: "page.view",
-      details: [`href=${event.data.href}`],
+      details: [`href=${event["data"].href}`],
     };
   }
 
@@ -316,16 +317,12 @@ function buildReplayOverviewRows(
   pushMarkdownRow(
     rows,
     "Started",
-    replay.started_at
-      ? new Date(replay.started_at).toLocaleString()
-      : undefined,
+    replay.started_at ? formatLocalDateTime(replay.started_at) : undefined,
   );
   pushMarkdownRow(
     rows,
     "Finished",
-    replay.finished_at
-      ? new Date(replay.finished_at).toLocaleString()
-      : undefined,
+    replay.finished_at ? formatLocalDateTime(replay.finished_at) : undefined,
   );
   pushMarkdownRow(
     rows,
@@ -593,7 +590,7 @@ export function formatReplayDetails(data: ReplayViewData): string {
 
 /** Build a contextual hint pointing the user to a related trace or issue. */
 export function replayHint(data: ReplayViewData): string | undefined {
-  const traceId = data.replay.trace_ids?.[0];
+  const traceId = data.replay.trace_ids[0];
   if (traceId) {
     return `Related trace: ${sentry`trace view ${data.org}/${traceId}`}`;
   }

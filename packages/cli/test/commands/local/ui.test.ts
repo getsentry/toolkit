@@ -15,7 +15,7 @@ vi.mock("../../../src/lib/browser.js", () => ({
 }));
 
 describe("local UI URLs", () => {
-  test("builds a hosted connection link with the actual receiver port and no session capabilities", () => {
+  test("builds a hosted connection link with the actual receiver port, the session ID, and no session capabilities", () => {
     const url = new URL(
       getLocalUiConnectionUrl(
         "http://127.0.0.1:9012/_local/v1/sessions/web/stream?cap=stream-secret",
@@ -23,12 +23,11 @@ describe("local UI URLs", () => {
     );
     expect(url.origin).toBe("https://local.sentry.dev");
     expect(url.searchParams.get("url")).toBe("http://127.0.0.1:9012/stream");
+    expect(url.searchParams.get("session")).toBe("web");
     expect(url.toString()).not.toContain("stream-secret");
-    expect(
-      new URL(getLocalUiConnectionUrl("http://[::1]:9012")!).searchParams.get(
-        "url",
-      ),
-    ).toBe("http://[::1]:9012/stream");
+    const plain = new URL(getLocalUiConnectionUrl("http://[::1]:9012")!);
+    expect(plain.searchParams.get("url")).toBe("http://[::1]:9012/stream");
+    expect(plain.searchParams.has("session")).toBe(false);
     expect(getLocalUiConnectionUrl("http://0.0.0.0:9012")).toBeUndefined();
   });
   test("never logs a directory capability when a browser launch fails", async () => {
@@ -42,6 +41,37 @@ describe("local UI URLs", () => {
       expect(
         warn.mock.calls.map((call) => String(call[0])).join("\n"),
       ).not.toContain("directory-secret");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("names the session to view when a browser launch fails", async () => {
+    vi.mocked(openBrowser).mockResolvedValueOnce(false);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await openLocalUi(
+        "http://localhost:8969/_local/v1/sessions/session-1/stream?cap=stream-secret",
+        "http://localhost:8969/_local/v1/ui/sessions?cap=directory-secret",
+      );
+      const warned = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(warned).toContain("local session view session-1 --json");
+      expect(warned).not.toContain("<session>");
+      expect(warned).not.toContain("secret");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("falls back to a placeholder when the session ID is malformed", async () => {
+    vi.mocked(openBrowser).mockResolvedValueOnce(false);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      await openLocalUi(
+        "http://localhost:8969/_local/v1/sessions/%E0%A4%A/stream?cap=stream-secret",
+      );
+      const warned = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(warned).toContain("local session view <session> --json");
     } finally {
       warn.mockRestore();
     }

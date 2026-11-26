@@ -135,6 +135,7 @@ export const getProfileOutputSchema = z.object({
   comparison: comparisonSchema
     .nullable()
     .describe("Baseline comparison. Null unless both periods have data."),
+  guidance: z.string().optional(),
 });
 
 type FlamegraphAnalysis = z.infer<typeof analysisSchema>;

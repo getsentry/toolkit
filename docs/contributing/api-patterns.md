@@ -50,7 +50,7 @@ tools.
 ### Where Endpoint Code Lives
 
 Endpoint wrappers live in the shared client, `@sentry/api/client/endpoints`
-([source](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/endpoints)),
+([source](https://github.com/getsentry/sentry/tree/master/static/packages/api/lib/api-client/endpoints)),
 so the CLI and the MCP can call the same one. A wrapper takes an `ApiTarget` (the request
 core and the region origin), its parameters, and a response schema from the
 host, and returns what the schema parses:
@@ -225,9 +225,15 @@ return HttpResponse.json(page, {
 });
 ```
 
-Use `@sentry/api`'s `parseSentryLinkHeader` to read the next cursor. Sentry's
-`Link` header reports whether the next page has results; a URL query alone does
-not establish that another page exists.
+Read the next cursor with `nextPageCursor(response)` from `@sentry/api/client`.
+Sentry's `Link` header reports whether the next page has results; a URL query
+alone does not establish that another page exists.
+
+Do not write the page walk yourself. Use `@sentry/api/client`'s `paginate()` to
+fill a tool's `limit` and return a resumable cursor, and mcp-core's
+`fetchEveryPage()` (`src/api-client/pagination.ts`) when a lookup needs every
+row. The `sentry-cli/no-manual-pagination` lint rule rejects cursor loops that
+count toward a limit in mcp-core and the CLI.
 
 ## Testing with Mocks
 
@@ -284,7 +290,7 @@ helper and maps them to its own exit-coded `ApiError`. Endpoints that have
 moved to the shared client live in `@sentry/api/client/endpoints`;
 `SentryApiService` calls them with its Zod schemas, and a malformed response
 throws `ApiResponseValidationError`. See the
-[`@sentry/api` README](https://github.com/getsentry/sentry-api-schema#shared-client).
+[`@sentry/api` README](https://github.com/getsentry/sentry/tree/master/static/packages/api#shared-client).
 
 ### Automatic Retries
 
@@ -296,13 +302,13 @@ describes the behavior; the values live only in code, so read them there
 instead of copying them here:
 
 - Which statuses retry, and for which methods: `RETRYABLE_STATUSES` in
-  [`retry.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/retry.ts). In short, a
+  [`retry.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/retry.ts). In short, a
   rate-limited request retries for any method, a transient server error only
   for an idempotent one, and other errors never.
 - Which writes count as idempotent: the ones the installed `@sentry/api`
   catalog marks `idempotent`, from Sentry's `x-sentry-idempotent` extension.
   The matcher is in
-  [`idempotent-operations.ts`](https://github.com/getsentry/sentry-api-schema/blob/main/lib/api-client/idempotent-operations.ts);
+  [`idempotent-operations.ts`](https://github.com/getsentry/sentry/blob/master/static/packages/api/lib/api-client/idempotent-operations.ts);
   bumping `@sentry/api` is enough to pick up newly marked writes.
 - How many retries and how long they may wait: `REQUEST_RETRY_POLICY` in
   [`client.ts`](../../packages/mcp-core/src/api-client/client.ts).
@@ -340,6 +346,32 @@ API function can pass `idempotent: true` to its SDK config when the request
 it sends is safe to resend even though Sentry does not mark the whole
 endpoint, such as chunk uploads or a release create without commits; check
 the handler in Sentry's source first.
+
+Node 26's `fetch` uses HTTP/2, and Sentry's edge resets concurrent upload
+streams on one connection with `ENHANCE_YOUR_CALM`. Code that uploads large
+bodies in parallel, such as chunk uploads, passes an HTTP/1.1 dispatcher from
+`createHttp1Dispatcher()` (`packages/cli/src/lib/http1-dispatcher.ts`) as the
+`dispatcher` option of `getSdkConfig`, and destroys it after the upload.
+
+### Cancellation
+
+When an MCP client cancels a tool call, the SDK aborts that call's signal.
+The server puts it on a per-call copy of the context as `context.signal`, and
+`apiServiceFromContext` passes it to `SentryApiService`, which sends it with
+every request. An aborted call's in-flight request, retry waits, and page walks
+stop, and the request rejects with the signal's reason. Concurrent calls on the
+same session keep running.
+
+In a tool:
+
+- Wait with `sleep(ms, context.signal)` from `internal/fetch-utils.ts`, not a
+  bare `setTimeout`, and pass `signal: context.signal` to `retryWithBackoff`
+  and `fetchWithTimeout`.
+- Check `signal.aborted`, not the error, to tell a cancellation apart. The
+  reason can be a string.
+- Key state that calls share, such as caches, on `getSessionContext(context)`,
+  and run shared lookups with it, so one call's cancellation never fails
+  another call waiting on the same lookup.
 
 ## Best Practices
 

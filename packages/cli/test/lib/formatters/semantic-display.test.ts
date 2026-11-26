@@ -14,6 +14,7 @@ import {
   inferSemanticOp,
   mergeTransactionAttributes,
 } from "../../../src/lib/formatters/semantic-display.js";
+import { at } from "../../helpers.js";
 
 describe("formatSemanticSpanDisplay", () => {
   describe("GenAI spans", () => {
@@ -132,6 +133,32 @@ describe("formatSemanticSpanDisplay", () => {
       };
       const result = formatSemanticSpanDisplay(attrs, "fallback");
       expect(result.label).toBe("GET api.example.com/v1/users");
+    });
+
+    test("shows only the path of a server span's URL", () => {
+      // wrangler, Bun, and Deno name a request with no route only `GET`.
+      const server = (url: string): AttributeSource => ({
+        "sentry.op": "http.server",
+        "http.request.method": "GET",
+        "url.full": url,
+      });
+      expect(
+        formatSemanticSpanDisplay(server("http://localhost:8787/ok"), "GET")
+          .label,
+      ).toBe("GET /ok");
+      expect(
+        formatSemanticSpanDisplay(server("http://localhost:8787/?q=1"), "GET")
+          .label,
+      ).toBe("GET /");
+      expect(
+        formatSemanticSpanDisplay(
+          {
+            ...server("http://localhost:8787/?q=1"),
+            "sentry.op": "http.client",
+          },
+          "GET",
+        ).label,
+      ).toBe("GET localhost:8787");
     });
 
     test("renders HTTP method with route", () => {
@@ -544,7 +571,7 @@ describe("collectSpanAttributes", () => {
     };
     const collected = collectSpanAttributes(event);
     expect(collected).toHaveLength(2);
-    expect(inferSemanticOp(collected[1])).toBe("gen_ai");
+    expect(inferSemanticOp(at(collected, 1))).toBe("gen_ai");
   });
 
   test("skips spans without a data object", () => {

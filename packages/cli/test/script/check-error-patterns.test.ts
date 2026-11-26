@@ -22,7 +22,7 @@ import {
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function runCheck(args: string[] = []) {
-  return spawnSync("pnpm", ["tsx", "script/check-error-patterns.ts", ...args], {
+  return spawnSync("pnpm", ["ts", "script/check-error-patterns.ts", ...args], {
     cwd: pkgRoot,
     encoding: "utf-8",
   });

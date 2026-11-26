@@ -1,9 +1,8 @@
-#!/usr/bin/env tsx
 /**
  * Run the CLI's Code Generators in One Process
  *
- * Most generators read the route tree, and loading it through tsx is most of
- * what each of them costs. Run as separate `pnpm tsx` processes, they loaded
+ * Most generators read the route tree, and loading it is most of what each
+ * of them costs. Run as separate `pnpm ts` processes, they loaded
  * the tree once each and paid pnpm's startup every time. This runner loads it
  * once and runs every requested step in two phases:
  *
@@ -24,17 +23,18 @@
  * `prepare`: `command-api` parses `src/` in a worker thread while phase 1
  * runs and the tree loads.
  *
- * Like `pnpm tsx`, the runner loads `.env.local` when it exists and installs
- * `require-shim.mjs` before any step.
+ * Like `pnpm ts`, the runner loads `.env.local` when it exists. Start it
+ * with `--import ./script/require-shim.mjs` (as `package.json` does, or use
+ * `pnpm ts`): the shim's resolve hook must be in place before this file's
+ * imports resolve.
  *
  * Usage:
- *   tsx script/generate.ts docs                    # what generate:docs writes
- *   tsx script/generate.ts docs sdk                # everything, as `build` runs it
- *   tsx script/generate.ts skill                   # one step
- *   tsx script/generate.ts docs-sections --check   # exit 1 if a section is stale
+ *   pnpm ts script/generate.ts docs                    # what generate:docs writes
+ *   pnpm ts script/generate.ts docs sdk                # everything, as `build` runs it
+ *   pnpm ts script/generate.ts skill                   # one step
+ *   pnpm ts script/generate.ts docs-sections --check   # exit 1 if a section is stale
  */
 
-import "./require-shim.mjs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readdirSync } from "node:fs";
@@ -120,7 +120,12 @@ function grammarFiles(): StepFiles {
       ...sources.map((file) => `grammar/${file}`),
       GRAMMAR_SCRIPT,
       packageManifest("peggy", GRAMMAR_SCRIPT),
-      packageManifest("typescript", GRAMMAR_SCRIPT),
+      // The TypeScript 6 compiler API prints the declarations. Its package
+      // re-exports `@typescript/old`, which can update on its own.
+      packageManifest(
+        "@typescript/old",
+        packageManifest("@typescript/typescript6", GRAMMAR_SCRIPT),
+      ),
     ],
     outputs: names.flatMap((name) => [
       `src/generated/${name}-grammar.js`,
@@ -189,6 +194,10 @@ const TREE_STEPS: readonly Step[] = [
   {
     name: "top-level-routes",
     load: () => import("./generate-top-level-routes.js"),
+  },
+  {
+    name: "streaming-commands",
+    load: () => import("./generate-streaming-commands.js"),
   },
   { name: "command-docs", load: () => import("./generate-command-docs.js") },
   { name: "docs-sections", load: () => import("./generate-docs-sections.js") },

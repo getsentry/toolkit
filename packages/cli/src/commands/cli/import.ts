@@ -398,5 +398,6 @@ export const importCommand = buildCommand({
         hint: "Your .sentryclirc file is still active via the env shim. You can remove it once you've verified everything works.",
       };
     }
+    return;
   },
 });

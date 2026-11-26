@@ -33,7 +33,7 @@ export function getAppIdentity(): AppIdentity {
  */
 function launchedThroughNpx(): boolean {
   return (
-    getEnv().npm_command === "exec" ||
+    getEnv()["npm_command"] === "exec" ||
     /[\\/]_npx[\\/]/.test(process.argv[1] ?? "")
   );
 }

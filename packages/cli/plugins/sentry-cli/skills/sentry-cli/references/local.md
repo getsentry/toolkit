@@ -1,6 +1,6 @@
 ---
 name: sentry-cli-local
-version: 0.50.0-dev.0
+version: 0.52.0-dev.0
 description: Sentry for local development
 requires:
   bins: ["sentry"]
@@ -40,7 +40,7 @@ List retained envelopes for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local envelope view <session envelope...>`
 
@@ -60,7 +60,7 @@ List decoded events for a Local session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local event view <session event...>`
 
@@ -70,7 +70,7 @@ View a decoded Local event
 
 | Argument | Description |
 |----------|-------------|
-| `<session event...>` | Session and event ID |
+| `<session event...>` | Session and event ID, or its first 8+ characters |
 
 ### `sentry local serve`
 
@@ -82,7 +82,7 @@ Start the local dev server and tail events
 - `-q, --quiet - Suppress per-envelope tail output`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
-- `-a, --attributes - Show a grouped attribute table (user vs SDK) under each transaction`
+- `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
 - `--session <value> - Create a daemon-owned telemetry session with this label`
@@ -139,7 +139,7 @@ View or change session envelope retention
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 **Flags:**
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
@@ -156,7 +156,7 @@ View a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session close <session...>`
 
@@ -166,7 +166,7 @@ Close a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local session reset <session...>`
 
@@ -176,7 +176,7 @@ Clear a Local telemetry session
 
 | Argument | Description |
 |----------|-------------|
-| `<session...>` | Session ID or unique name |
+| `<session...>` | Session ID or name |
 
 ### `sentry local run <command...>`
 
@@ -189,16 +189,16 @@ Run a command with the local dev server enabled
 | `<command...>` | Command to run |
 
 **Flags:**
-- `-p, --port <value> - Port for the local server - (default: "8969")`
+- `-p, --port <value> - Port for the local server (default: 8969)`
 - `--host <value> - Hostname for the local server - (default: "localhost")`
 - `-f, --filter <value>... - Only show items of this type (repeatable: error, transaction, log, ai)`
-- `-V, --verify - Verify SDK sends events, then exit`
-- `-t, --timeout <value> - Kill the child after N seconds (0 = no timeout; defaults to 30 s in --verify mode) - (default: "0")`
+- `-V, --verify - Wait for the app's first event (of the --filter types, if set), then exit`
+- `-t, --timeout <value> - Stop the child after N seconds and exit 124 (0 = no timeout; defaults to 30 s in --verify mode, which exits 64) - (default: "0")`
 - `-F, --format <value> - Output format: human (default) or json (NDJSON on stdout) - (default: "human")`
-- `-a, --attributes - Include selected event attributes in output`
+- `-a, --attributes - Also show SDK attributes, under each transaction, span and log or in JSON`
 - `--open - Open Sentry Local UI in the browser`
 - `--max-envelopes <value> - Maximum envelopes retained by this receiver or session`
-- `--session <value> - Create a daemon-owned telemetry session with this label`
+- `--session <value> - Capture into the open daemon session with this label, or create one`
 
 **Examples:**
 

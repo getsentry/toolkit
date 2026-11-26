@@ -5,8 +5,11 @@ import { formatExceptionTitle, type EventException } from "@/lib/exceptions.ts";
 /** Render SDK text as text, including source lines; never execute or fetch source. */
 export function ExceptionOverview({
   exceptions,
+  label = "Exception",
 }: {
   exceptions: EventException[];
+  /** Name of the first section; a message's synthetic stack is not an exception. */
+  label?: string;
 }) {
   return (
     <div className="space-y-4">
@@ -15,7 +18,7 @@ export function ExceptionOverview({
           key={index}
           aria-label={
             index === 0
-              ? "Exception"
+              ? label
               : exception.isCause
                 ? "Caused by"
                 : "Additional exception"

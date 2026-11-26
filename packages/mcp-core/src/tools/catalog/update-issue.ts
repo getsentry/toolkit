@@ -1,11 +1,18 @@
 import { z } from "zod";
+import type { SentryApiService } from "../../api-client";
 import type {
   AssignedTo,
   Issue,
   IssueActivityList,
   IssueResolutionDetails,
+  RelatedIssues,
 } from "../../api-client/types";
-import { UserInputError } from "../../errors";
+import { ConfigurationError, UserInputError } from "../../errors";
+import { sideQuestsSchema } from "../../internal/side-quests";
+import {
+  RELATED_ISSUES_LIMIT,
+  buildUpdateIssueSideQuests,
+} from "../../internal/update-issue-side-quests";
 import { apiServiceFromContext } from "../../internal/tool-helpers/api";
 import { defineTool } from "../../internal/tool-helpers/define";
 import { formatAssignedTo } from "../../internal/tool-helpers/formatting";
@@ -54,9 +61,9 @@ type IgnoreUpdate = {
     | "archived_until_condition_met";
   ignoreDuration?: number;
   ignoreCount?: number;
-  ignoreWindow?: number;
+  ignoreWindow?: number | undefined;
   ignoreUserCount?: number;
-  ignoreUserWindow?: number;
+  ignoreUserWindow?: number | undefined;
   behavior: string;
   message: string;
 };
@@ -79,13 +86,13 @@ type IssueStatusDisplay =
   | (string & {});
 
 type IgnoreParams = {
-  status?: string;
-  ignoreMode?: IgnoreMode;
-  ignoreDurationMinutes?: number;
-  ignoreCount?: number;
-  ignoreWindowMinutes?: number;
-  ignoreUserCount?: number;
-  ignoreUserWindowMinutes?: number;
+  status?: string | undefined;
+  ignoreMode?: IgnoreMode | undefined;
+  ignoreDurationMinutes?: number | undefined;
+  ignoreCount?: number | undefined;
+  ignoreWindowMinutes?: number | undefined;
+  ignoreUserCount?: number | undefined;
+  ignoreUserWindowMinutes?: number | undefined;
 };
 
 function pluralize(value: number, noun: string): string {
@@ -130,7 +137,7 @@ function inferIgnoreMode(params: IgnoreParams): IgnoreMode {
 }
 
 function getIssueStatusDetails(issue: Issue): Record<string, unknown> {
-  const statusDetails = issue.statusDetails;
+  const statusDetails = issue["statusDetails"];
 
   if (
     statusDetails &&
@@ -176,7 +183,7 @@ function getResolvedCommitId(
 ): string | undefined {
   const commit = statusDetails[key];
   if (commit && typeof commit === "object" && !Array.isArray(commit)) {
-    const id = (commit as Record<string, unknown>).id;
+    const id = (commit as Record<string, unknown>)["id"];
     if (typeof id === "string" && id.length > 0) {
       return id;
     }
@@ -198,7 +205,7 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
   const statusDetails = getIssueStatusDetails(issue);
 
   if (issue.status === "resolved") {
-    if (statusDetails.inNextRelease === true) {
+    if (statusDetails["inNextRelease"] === true) {
       return "resolvedInNextRelease";
     }
     if (getStatusDetailString(statusDetails, "inRelease")) {
@@ -213,10 +220,10 @@ function getIssueStatusDisplay(issue: Issue): IssueStatusDisplay {
 }
 
 type ResolutionParams = {
-  status?: string;
-  inRelease?: string;
-  inCommit?: string;
-  inCommitRepository?: string;
+  status?: string | undefined;
+  inRelease?: string | undefined;
+  inCommit?: string | undefined;
+  inCommitRepository?: string | undefined;
 };
 
 function buildResolution(
@@ -233,6 +240,12 @@ function buildResolution(
     return undefined;
   }
 
+  if (params.status === "resolvedInNextRelease") {
+    throw new UserInputError(
+      "`resolvedInNextRelease` picks the release itself, so it takes no `inRelease` or `inCommit`. Drop them, or use status `resolved` with `inRelease` to name an existing release.",
+    );
+  }
+
   if (params.status !== "resolved") {
     throw new UserInputError(
       "`inRelease` and `inCommit` can only be used when `status` is `resolved`",
@@ -247,16 +260,39 @@ function buildResolution(
     return { inRelease: params.inRelease };
   }
 
-  if (params.inCommitRepository === undefined) {
+  // With `inRelease` unset, the checks above guarantee `inCommit` is set.
+  if (
+    params.inCommit === undefined ||
+    params.inCommitRepository === undefined
+  ) {
     throw new UserInputError("`inCommit` requires `inCommitRepository`");
   }
 
   return {
     inCommit: {
-      commit: params.inCommit!,
+      commit: params.inCommit,
       repository: params.inCommitRepository,
     },
   };
+}
+
+const inReleaseErrorSchema = z.object({
+  statusDetails: z.object({ inRelease: z.array(z.string()).min(1) }),
+});
+
+// Sentry matches `inRelease` against the stored version exactly, so a short
+// name such as `1.2.3` for `my-app@1.2.3+45` fails. The API client only keeps
+// a field error's body as raw text in `detail`.
+function getInReleaseErrorReason(error: unknown): string | undefined {
+  if (!(error instanceof ApiValidationError) || !error.detail) {
+    return undefined;
+  }
+  try {
+    const parsed = inReleaseErrorSchema.safeParse(JSON.parse(error.detail));
+    return parsed.success ? parsed.data.statusDetails.inRelease[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isResolutionAlreadySet(
@@ -345,6 +381,7 @@ function isStatusAlreadySet(
 function getResolvedEffect(
   issue: Issue,
   statusDisplay: IssueStatusDisplay,
+  requestedStatus: string | undefined,
 ): string | null {
   const statusDetails = getIssueStatusDetails(issue);
 
@@ -354,6 +391,12 @@ function getResolvedEffect(
     case "resolvedInNextRelease":
       return "The issue is now marked as resolved in the upcoming release";
     case "resolvedInRelease":
+      // Sentry stores a next-release resolution as resolved in a release when
+      // it can already pick one: the issue's latest release under semver,
+      // otherwise the release after it, if that exists.
+      if (requestedStatus === "resolvedInNextRelease") {
+        return `The issue is now resolved in the next release. Sentry stored this as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}: with semantic versioning that is the latest release seen for this issue, otherwise the release after it. Events from releases newer than the issue's latest release will reopen it as a regression`;
+      }
       return `The issue is now marked as resolved in release ${getStatusDetailString(statusDetails, "inRelease")}. Events from newer releases will reopen it as a regression`;
     case "resolvedInCommit":
       return `The issue is now marked as resolved in commit ${getResolvedCommitId(statusDetails)}. It will be resolved in the first release that contains this commit`;
@@ -415,7 +458,7 @@ function getIgnoreState(
 
   if (
     issue.substatus === "archived_until_escalating" ||
-    statusDetails.ignoreUntilEscalating === true
+    statusDetails["ignoreUntilEscalating"] === true
   ) {
     return {
       family: "untilEscalating",
@@ -537,6 +580,7 @@ export const updateIssueOutputSchema = z.object({
     })
     .nullable()
     .describe("Null when no reason was given."),
+  sideQuests: sideQuestsSchema,
 });
 
 type UpdateIssueOutput = z.infer<typeof updateIssueOutputSchema>;
@@ -782,9 +826,9 @@ function buildIgnoreUpdate(
             ? `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "more user")}`
             : `The issue is now ignored until it affects ${pluralize(params.ignoreUserCount, "user")} in ${pluralize(params.ignoreUserWindowMinutes, "minute")}`,
       };
+    default:
+      throw new UserInputError("Unsupported ignore mode");
   }
-
-  throw new UserInputError("Unsupported ignore mode");
 }
 
 type ReasonCommentResult =
@@ -863,6 +907,37 @@ function getReasonComment(
 }
 
 /**
+ * The issue's related issues, for the side quests. A failed lookup leaves
+ * them out: the update already happened. Client errors are expected, such as
+ * the endpoint's tight rate limit during bulk updates, or a Sentry version
+ * without the endpoint, so only other failures are reported.
+ */
+async function tryGetRelatedIssues(
+  apiService: SentryApiService,
+  organizationSlug: string,
+  issueId: string,
+): Promise<RelatedIssues | undefined> {
+  try {
+    return await apiService.getRelatedIssues({
+      organizationSlug,
+      issueId,
+      limit: RELATED_ISSUES_LIMIT,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof ApiClientError) &&
+      !(error instanceof ConfigurationError)
+    ) {
+      logIssue(error, {
+        loggerScope: ["tools", "update-issue", "related-issues"],
+        contexts: { request: { organizationSlug, issueId } },
+      });
+    }
+    return undefined;
+  }
+}
+
+/**
  * Identifies an assignee by actor so two users with the same display name
  * still count as different assignees.
  */
@@ -878,24 +953,8 @@ export default defineTool({
   title: "Update Issue",
   skills: ["triage"], // Only available in triage skill
   requiredScopes: ["event:write"],
-  description: [
-    "Update a Sentry issue's status, assignment, or priority.",
-    "",
-    "<examples>",
-    "```",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='resolved')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', assignedTo='user:123456')",
-    "update_issue(organizationSlug='my-org', issueId='PROJECT-123', status='ignored', ignoreMode='forever')",
-    "```",
-    "</examples>",
-    "",
-    "<hints>",
-    "- Provide `issueUrl` or `organizationSlug` + `issueId`.",
-    "- At least one of `status`, `assignedTo`, or `priority` is required.",
-    "- `status='ignored'` defaults to `ignoreMode='untilEscalating'`.",
-    "- To switch an already ignored issue between `untilEscalating`, `forever`, and condition-based ignore modes, first set `status='unresolved'`, then ignore it again.",
-    "</hints>",
-  ].join("\n"),
+  description:
+    "Update a Sentry issue: resolve, ignore (archive), or reopen it, assign it to a user or team, or change its priority.",
   inputSchema: {
     organizationSlug: ParamOrganizationSlug.optional(),
     regionUrl: ParamRegionUrl.nullable().default(null),
@@ -1077,27 +1136,59 @@ export default defineTool({
     }
 
     // Update the issue
-    const updatedIssue = await apiService.updateIssue({
-      organizationSlug: orgSlug,
-      issueId: parsedIssueId,
-      status: updateStatus,
-      statusDetails: updateStatus === undefined ? undefined : resolution,
-      assignedTo: updateAssignedTo,
-      priority: updatePriority,
-      substatus: updateIgnore?.substatus,
-      ignoreDuration: updateIgnore?.ignoreDuration,
-      ignoreCount: updateIgnore?.ignoreCount,
-      ignoreWindow: updateIgnore?.ignoreWindow,
-      ignoreUserCount: updateIgnore?.ignoreUserCount,
-      ignoreUserWindow: updateIgnore?.ignoreUserWindow,
-    });
+    const updatedIssue = await apiService
+      .updateIssue({
+        organizationSlug: orgSlug,
+        issueId: parsedIssueId,
+        status: updateStatus,
+        statusDetails: updateStatus === undefined ? undefined : resolution,
+        assignedTo: updateAssignedTo,
+        priority: updatePriority,
+        substatus: updateIgnore?.substatus,
+        ignoreDuration: updateIgnore?.ignoreDuration,
+        ignoreCount: updateIgnore?.ignoreCount,
+        ignoreWindow: updateIgnore?.ignoreWindow,
+        ignoreUserCount: updateIgnore?.ignoreUserCount,
+        ignoreUserWindow: updateIgnore?.ignoreUserWindow,
+      })
+      .catch((error: unknown) => {
+        const reason =
+          params.inRelease !== undefined && getInReleaseErrorReason(error);
+        if (reason) {
+          throw new UserInputError(
+            `Sentry rejected \`inRelease\` \`${params.inRelease}\`: ${reason} \`inRelease\` must match a release of this issue's project exactly as Sentry stores it, often with a package prefix and build suffix (e.g. \`my-app@1.2.3+45\`). Copy the version from find_releases. The issue was not changed.`,
+            { cause: error },
+          );
+        }
+        throw error;
+      });
 
-    const commentResult = await tryPostReasonComment(
-      apiService,
-      orgSlug,
-      parsedIssueId,
-      params.reason,
-    );
+    // Only closing the issue raises what else the change covers. Each lookup
+    // also calls Seer, and the endpoint's per-user rate limit is tight for
+    // bulk updates; a rate-limited lookup leaves the quest out.
+    const lookUpRelated =
+      updatedIssue.status !== currentIssue.status &&
+      (updatedIssue.status === "resolved" || updatedIssue.status === "ignored");
+    const [commentResult, relatedIssues] = await Promise.all([
+      tryPostReasonComment(apiService, orgSlug, parsedIssueId, params.reason),
+      lookUpRelated
+        ? tryGetRelatedIssues(apiService, orgSlug, String(updatedIssue.id))
+        : undefined,
+    ]);
+    const sideQuests =
+      relatedIssues &&
+      buildUpdateIssueSideQuests(
+        {
+          organizationSlug: orgSlug,
+          relatedIssues,
+          projectSlug: context.constraints.projectSlug,
+        },
+        {
+          experimentalMode: context.experimentalMode ?? false,
+          availableToolNames: context.availableToolNames,
+          directToolNames: context.directToolNames,
+        },
+      );
 
     const updatedIgnoreState = getIgnoreState(updatedIssue, ignoreUpdate);
     const currentStatusDisplay = getIssueStatusDisplay(currentIssue);
@@ -1115,7 +1206,7 @@ export default defineTool({
       (ignoreBehaviorChanged || params.status === "ignored");
 
     let effect = statusChanged
-      ? getResolvedEffect(updatedIssue, updatedStatusDisplay)
+      ? getResolvedEffect(updatedIssue, updatedStatusDisplay, params.status)
       : null;
     if (
       effect === null &&
@@ -1169,6 +1260,7 @@ export default defineTool({
       current: getCurrentState(updatedIssue, updatedIgnoreState),
       effect,
       reasonComment: getReasonComment(params.reason, commentResult),
+      ...(sideQuests && { sideQuests }),
     } satisfies UpdateIssueOutput);
   },
 });

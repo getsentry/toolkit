@@ -77,7 +77,7 @@ const DEFAULT_OAUTH_CLIENT_ID =
 declare const SENTRY_CLIENT_ID_BUILD: string | undefined;
 function getClientId(): string {
   return (
-    getEnv().SENTRY_CLIENT_ID ??
+    getEnv()["SENTRY_CLIENT_ID"] ??
     (typeof SENTRY_CLIENT_ID_BUILD !== "undefined"
       ? SENTRY_CLIENT_ID_BUILD
       : DEFAULT_OAUTH_CLIENT_ID)
@@ -275,13 +275,16 @@ function assertRefreshHostTrusted(refreshUrl: string): string {
  */
 async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
   const clientId = getClientId();
+  const host = getSentryUrl();
   const response = await fetchWithConnectionError(
-    `${getSentryUrl()}/oauth/device/code/`,
+    `${host}/oauth/device/code/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      redirect: "error",
       body: deviceCodeRequestBody(clientId, scope, loginHint),
     },
+    isLoginTrustAnchorFor(host) || undefined,
   );
 
   if (!response.ok) {
@@ -324,13 +327,16 @@ async function requestDeviceCode(scope: string = SCOPES, loginHint?: string) {
  * Poll Sentry's token endpoint for the access token
  */
 async function pollForToken(deviceCode: string): Promise<TokenResponse> {
+  const host = getSentryUrl();
   const response = await fetchWithConnectionError(
-    `${getSentryUrl()}/oauth/token/`,
+    `${host}/oauth/token/`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      redirect: "error",
       body: deviceTokenRequestBody(getClientId(), deviceCode),
     },
+    isLoginTrustAnchorFor(host) || undefined,
   );
 
   let data: unknown;
@@ -402,7 +408,7 @@ async function attemptPoll(
       case "denied":
         return {
           status: "error",
-          message: "Authorization was denied. Please try again.",
+          message: `You denied the authorization request. Y tho? Run '${getLoginCommand()}' if you change your mind.`,
         };
       case "unexpected":
         return { status: "error", message: error.message };
@@ -490,12 +496,12 @@ export type StoreTokenOptions = {
    * re-authentication (`sentry auth login --force`, `sentry auth refresh`,
    * automatic login) expects.
    */
-  newAccount?: boolean;
+  newAccount?: boolean | undefined;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for an account picked for the target org).
    */
-  accountId?: string;
+  accountId?: string | undefined;
 };
 
 /**
@@ -621,6 +627,7 @@ export async function refreshAccessToken(
 export async function exchangeSetupCode(
   code: string,
   host: string,
+  clientId: string = getClientId(),
 ): Promise<TokenResponse> {
   const response = await fetchWithConnectionError(
     host + "/oauth/token/",
@@ -630,7 +637,7 @@ export async function exchangeSetupCode(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:sentry:params:oauth:grant-type:setup_code",
-        client_id: getClientId(),
+        client_id: clientId,
         setup_code: code,
       }),
     },

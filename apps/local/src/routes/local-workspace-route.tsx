@@ -17,8 +17,9 @@ export function LocalWorkspaceRoute({ children }: { children: ReactNode }) {
     if (consumedConnectionLink.current) return;
     consumedConnectionLink.current = true;
     const search = new URLSearchParams(location.search);
-    if (!location.hash && !search.has("url")) return;
+    if (!location.hash && !search.has("url") && !search.has("session")) return;
     search.delete("url");
+    search.delete("session");
     const query = search.toString();
     void navigate(
       {
@@ -69,7 +70,10 @@ export function LocalWorkspaceRoute({ children }: { children: ReactNode }) {
         navigateToCommandEvent: (view, eventId) =>
           navigateToCommandSelection(view, { event: eventId }),
         navigateToCommandTrace: (view, traceId, spanId) =>
-          navigateToCommandSelection(view, { trace: traceId, span: spanId }),
+          navigateToCommandSelection(view, {
+            trace: traceId,
+            ...(spanId !== undefined && { span: spanId }),
+          }),
       }}
     >
       {children}

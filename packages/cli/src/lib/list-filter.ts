@@ -6,6 +6,7 @@
 
 import picomatch from "picomatch";
 import { fuzzyMatch } from "./fuzzy.js";
+import { isHelpArgument } from "./help-argument.js";
 
 /** Glob metacharacters: a filter with any of them is matched as a glob. */
 const GLOB_CHARS_RE = /[*?[\]{}]/;
@@ -25,6 +26,10 @@ export function isGlobFilter(filter: string): boolean {
  * and keeps the input order. Plain text uses {@link fuzzyMatch} search
  * (exact, prefix, substring, then small typos), best matches first; ties
  * keep the input order. An empty filter returns every item.
+ *
+ * A `help` filter matches only names that contain it, never close matches:
+ * when nothing is really named like it, the command finds nothing and shows
+ * its help instead of unrelated items.
  */
 export function filterByName<T>(
   items: readonly T[],
@@ -34,6 +39,11 @@ export function filterByName<T>(
   const needle = filter?.trim().toLowerCase();
   if (!needle) {
     return [...items];
+  }
+  if (isHelpArgument(needle)) {
+    return items.filter((item) =>
+      namesOf(item).some((name) => name.toLowerCase().includes(needle)),
+    );
   }
   if (isGlobFilter(needle)) {
     // Names aren't paths: `bash` lets `*` match `/` too, so `*-sdk` matches
@@ -111,7 +121,7 @@ export async function fetchByName<T>(options: {
   filter: string;
   namesOf: (item: T) => readonly string[];
   fetchAll: () => Promise<T[]>;
-  search?: (query: string) => Promise<T[]>;
+  search?: ((query: string) => Promise<T[]>) | undefined;
 }): Promise<T[]> {
   const { filter, namesOf, fetchAll, search } = options;
   const query = search ? serverSearchText(filter) : undefined;

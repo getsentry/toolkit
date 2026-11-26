@@ -38,6 +38,8 @@ import {
   setNestedValue,
 } from "../../src/commands/api.js";
 import { OutputError, ValidationError } from "../../src/lib/errors.js";
+import { loadCommand } from "../helpers.js";
+import type { Writer } from "../../src/types/index.js";
 
 /**
  * Create a mock stdin stream from a string
@@ -134,11 +136,11 @@ describe("apiCommand tags org from the path", () => {
   });
 
   test("dry-run of a projects path sets sentry.org and sentry.project", async () => {
-    const func = await apiCommand.loader();
+    const func = await loadCommand(apiCommand);
     const context = {
       stdin: createMockStdin(""),
-      stdout: { write: vi.fn(() => true), isTTY: false },
-      stderr: { write: vi.fn(() => true) },
+      stdout: { write: vi.fn<Writer["write"]>(() => true), isTTY: false },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     };
     await func.call(
@@ -649,6 +651,27 @@ describe("buildQueryParams", () => {
     expect(buildQueryParams(["tags=[1,2,3]"])).toEqual({
       tags: ["1", "2", "3"],
     });
+  });
+
+  test("appends repeated scalar and array values in order", () => {
+    expect(
+      buildQueryParams([
+        "project=1",
+        "project=[2,3]",
+        "project=4",
+        "project=[]",
+      ]),
+    ).toEqual({ project: ["1", "2", "3", "4"] });
+  });
+
+  test("keeps parameter names that also exist on Object.prototype", () => {
+    expect(
+      buildQueryParams([
+        "constructor=first",
+        "constructor=second",
+        "toString=value",
+      ]),
+    ).toEqual({ constructor: ["first", "second"], toString: "value" });
   });
 
   test("handles arrays of strings", () => {
@@ -1786,30 +1809,72 @@ describe("dataToQueryParams", () => {
   });
 
   test("throws on null", () => {
-    expect(() =>
-      dataToQueryParams(null as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(null)).toThrow(ValidationError);
   });
 
   test("throws on boolean", () => {
-    expect(() =>
-      dataToQueryParams(true as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(true)).toThrow(ValidationError);
   });
 
   test("throws on number", () => {
-    expect(() =>
-      dataToQueryParams(42 as unknown as Record<string, unknown>),
-    ).toThrow(ValidationError);
+    expect(() => dataToQueryParams(42)).toThrow(ValidationError);
   });
 });
 
 // Dry-run tests
 
 describe("API request preview", () => {
+  test.each(["field", "raw-field"] as const)(
+    "preserves repeated axes and ordered indexed transformations from --%s",
+    async (flag) => {
+      let output = "";
+      const func = await loadCommand(apiCommand);
+      await func.call(
+        {
+          cwd: "/tmp",
+          stdin: createMockStdin(""),
+          stdout: {
+            write(value: string | Uint8Array) {
+              output += String(value);
+              return true;
+            },
+          },
+          stderr: { write: () => true },
+        },
+        {
+          method: "GET",
+          silent: false,
+          verbose: false,
+          "dry-run": true,
+          json: true,
+          [flag]: [
+            "dataset=spans",
+            "yAxis=count()",
+            "yAxis=count()",
+            "transformations[1]=smooth(sma,3)",
+            "transformations[1]=fill(locf)",
+            "interval=5m",
+          ],
+        },
+        "https://de.sentry.io/api/0/organizations/acme/events-timeseries/",
+      );
+
+      const request = JSON.parse(output);
+      expect(request.method).toBe("GET");
+      expect([...new URL(request.url).searchParams]).toEqual([
+        ["dataset", "spans"],
+        ["yAxis", "count()"],
+        ["yAxis", "count()"],
+        ["transformations[1]", "smooth(sma,3)"],
+        ["transformations[1]", "fill(locf)"],
+        ["interval", "5m"],
+      ]);
+    },
+  );
+
   test("absolute URL dry-run preserves the regional origin", async () => {
     let output = "";
-    const func = await apiCommand.loader();
+    const func = await loadCommand(apiCommand);
     await func.call(
       {
         cwd: "/tmp",

@@ -6,8 +6,9 @@
  * `script/generate-api-schema.ts` from Sentry's OpenAPI specification.
  */
 
+import { API_BASE_PATH } from "@sentry/api/client";
 import type { ApiOperation } from "@sentry/api/operations";
-import endpoints from "../generated/api-schema.json";
+import endpoints from "../generated/api-schema.json" with { type: "json" };
 import { fuzzyMatch } from "./fuzzy.js";
 
 /** Searchable query parameter metadata from the pinned OpenAPI specification. */
@@ -21,7 +22,7 @@ export type ApiQueryParameter = {
   /** Whether the request must include this parameter. */
   required: boolean;
   /** Allowed scalar values, or item values for an array parameter. */
-  enum?: (string | number | boolean | null)[];
+  enum?: (string | number | boolean | null)[] | undefined;
 };
 
 /** An API used by a command, with context rather than a claim of equivalence. */
@@ -60,9 +61,9 @@ export type ApiEndpoint = {
   /** Human-readable description of the endpoint */
   description: string;
   /** Short endpoint description from OpenAPI. */
-  summary?: string;
+  summary?: string | undefined;
   /** OpenAPI categories available for discovery. */
-  tags?: string[];
+  tags?: string[] | undefined;
   /** Path parameter names extracted from the URL template */
   pathParams: string[];
   /** Query parameter names from the OpenAPI spec */
@@ -97,7 +98,7 @@ const WHITESPACE = /\s/;
 /** Parsed `METHOD /path` or `/api/...` query used by `sentry schema`. */
 export type ParsedEndpointQuery = {
   /** Uppercase HTTP method when the query starts with one */
-  method?: string;
+  method?: string | undefined;
   /** Normalized API path when the query looks like one */
   path?: string;
   /** Remainder after stripping a leading HTTP method */
@@ -453,15 +454,15 @@ export function getAllEndpoints(): readonly ApiEndpoint[] {
 }
 
 /** The prefix `api` adds to an endpoint, left out of completed paths. */
-const API_PATH_PREFIX = /^\/api\/0\//;
+const API_PATH_PREFIX = `${API_BASE_PATH}/`;
 
 /**
- * Every schema path without its `/api/0/` prefix, each once: the endpoints
+ * Every schema path without the API base path, each once: the endpoints
  * `sentry api <endpoint>` completes (see `CompletionValues.apiPaths`).
  */
 export function getApiCompletionPaths(): string[] {
   return [
-    ...new Set(schema.map(({ path }) => path.replace(API_PATH_PREFIX, ""))),
+    ...new Set(schema.map(({ path }) => path.slice(API_PATH_PREFIX.length))),
   ];
 }
 

@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { at } from "../../helpers.js";
 
 /** Parameters for a synthetic repo. Defaults live in `presets.ts`. */
 export type FixtureSpec = {
@@ -84,6 +85,7 @@ class XorShift32 {
 
   constructor(seed: number) {
     // Ensure seed is non-zero (xorshift degenerates at 0).
+    // oxlint-disable-next-line unicorn/prefer-math-trunc -- `| 0` wraps to int32, which Math.trunc does not
     const coerced = seed | 0;
     this.state = coerced === 0 ? 1 : coerced;
   }
@@ -93,6 +95,7 @@ class XorShift32 {
     x ^= x << 13;
     x ^= x >>> 17;
     x ^= x << 5;
+    // oxlint-disable-next-line unicorn/prefer-math-trunc -- `| 0` keeps state an int32 for V8's small-integer fast path
     this.state = x | 0;
     // Convert to [0, 1) by dividing by 2^32.
     return (x >>> 0) / 4_294_967_296;
@@ -105,7 +108,11 @@ class XorShift32 {
 
   /** Pick one element from `arr`. */
   pick<T>(arr: readonly T[]): T {
-    return arr[this.int(arr.length)];
+    const value = arr[this.int(arr.length)];
+    if (value === undefined) {
+      throw new Error("pick() needs a non-empty array");
+    }
+    return value;
   }
 
   /** Boolean true with probability `p`. */
@@ -330,7 +337,7 @@ function buildTextFileContent(
   if (includeDsn) {
     // Put the DSN somewhere non-commented so the DSN scanner accepts it.
     lines.push(`const SENTRY_DSN = "${rng.pick(DSN_TEMPLATES)}";`);
-    bytes += lines[0].length + 1;
+    bytes += at(lines, 0).length + 1;
   }
   while (bytes < targetBytes) {
     const line = rng.pick(FILLER_LINES);

@@ -7,11 +7,30 @@ import type { RateLimitResult } from "../types/chat";
 import type {
   ComparisonFilter,
   CompoundFilter,
+  AutoRAG,
   AutoRagSearchRequest,
+  AutoRagSearchResponse,
 } from "@cloudflare/workers-types";
 import { logger } from "@sentry/cloudflare";
 import { getClientIp } from "../utils/client-ip";
 import { annotateResponseMetric } from "../metrics";
+
+// Cloudflare's AutoRAG search intermittently rejects with an internal error
+// ("All search methods failed: vector", "Cog prediction failed") for queries
+// that succeed on the next call, so retry it once.
+async function searchWithRetry(
+  autorag: AutoRAG,
+  params: AutoRagSearchRequest,
+): Promise<AutoRagSearchResponse> {
+  try {
+    return await autorag.search(params);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AutoRAGInternalError") {
+      return await autorag.search(params);
+    }
+    throw error;
+  }
+}
 
 // Request schema matching the MCP tool parameters
 const SearchRequestSchema = z.object({
@@ -77,7 +96,7 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
     }
 
     // Parse and validate request body
-    const body = await c.req.json();
+    const body: unknown = await c.req.json();
     const validationResult = SearchRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
@@ -162,13 +181,15 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
         searchParams.filters = filter;
       }
 
-      const searchResult =
-        await c.env.AI.autorag(autoragId).search(searchParams);
+      const searchResult = await searchWithRetry(
+        c.env.AI.autorag(autoragId),
+        searchParams,
+      );
 
       // Process search results - handle the actual response format from Cloudflare AI
       const searchData = searchResult;
 
-      if (searchData.data?.length === 0) {
+      if (searchData.data.length === 0) {
         logger.warn(
           logger.fmt`No results found for query: ${query} with guide: ${guide}`,
           {
@@ -181,30 +202,27 @@ export default new Hono<{ Bindings: Env }>().post("/", async (c) => {
 
       return c.json({
         query,
-        results:
-          searchData.data?.map((result) => {
-            // Extract text from content array
-            const text = result.content?.[0]?.text || "";
+        results: searchData.data.map((result) => {
+          // Extract text from content array
+          const text = result.content[0]?.text || "";
 
-            // Get filename from result - ensure it's a string
-            const rawFilename =
-              result.filename || result.attributes?.filename || "";
-            const filename =
-              typeof rawFilename === "string"
-                ? rawFilename
-                : String(rawFilename);
+          // Get filename from result - ensure it's a string
+          const rawFilename =
+            result.filename || result.attributes["filename"] || "";
+          const filename =
+            typeof rawFilename === "string" ? rawFilename : String(rawFilename);
 
-            // Build URL from filename - remove .md extension
-            const urlPath = filename.replace(/\.md$/, "");
-            const url = urlPath ? `https://docs.sentry.io/${urlPath}` : "";
+          // Build URL from filename - remove .md extension
+          const urlPath = filename.replace(/\.md$/, "");
+          const url = urlPath ? `https://docs.sentry.io/${urlPath}` : "";
 
-            return {
-              id: filename,
-              url: url,
-              snippet: text,
-              relevance: result.score || 0,
-            };
-          }) || [],
+          return {
+            id: filename,
+            url: url,
+            snippet: text,
+            relevance: result.score || 0,
+          };
+        }),
       });
     } catch (error) {
       const eventId = logIssue(error);

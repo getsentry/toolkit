@@ -13,11 +13,11 @@
  *
  * Zero manual config — all commands are auto-discovered.
  *
- * Run: tsx script/generate.ts sdk
+ * Run: pnpm ts script/generate.ts sdk
  */
 
 import { writeFile } from "node:fs/promises";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { routes } from "../src/app.js";
 import type { SchemaFieldInfo } from "../src/lib/formatters/output.js";
 import {
@@ -38,6 +38,7 @@ import {
   withJsDoc,
 } from "./ts-codegen.js";
 import { logger } from "../src/lib/logger.js";
+import { streamingModeOf } from "../src/lib/streaming-commands.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -53,9 +54,6 @@ const INTERNAL_FLAGS = new Set([
   "verbose",
   "fields",
 ]);
-
-/** Flags that trigger streaming mode — included in params but change return type */
-const STREAMING_FLAGS = new Set(["refresh", "follow"]);
 
 /** Regex for stripping angle-bracket/ellipsis decorators from placeholder names */
 const PLACEHOLDER_CLEAN_RE = /[<>.]/g;
@@ -81,7 +79,7 @@ type SdkFlagInfo = {
   kind: "boolean" | "parsed" | "enum";
   type: ts.TypeNode;
   optional: boolean;
-  brief?: string;
+  brief?: string | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -161,7 +159,7 @@ function inferFlagType(def: FlagDef): {
 
 /** Extract SDK-relevant flag info from a Stricli Command's parameters. */
 function extractSdkFlags(command: Command): SdkFlagInfo[] {
-  const flagDefs = command.parameters?.flags;
+  const flagDefs = command.parameters.flags;
   if (!flagDefs) {
     return [];
   }
@@ -203,7 +201,7 @@ function extractSdkFlags(command: Command): SdkFlagInfo[] {
  * - Variadic (e.g., "<args...>") → { name, variadic: true }
  */
 /** One entry of a tuple positional, mapped to its own SDK param. */
-type PositionalEntry = { name: string; brief?: string };
+type PositionalEntry = { name: string; brief?: string | undefined };
 
 type PositionalInfo =
   | null
@@ -211,7 +209,7 @@ type PositionalInfo =
   | { name: string; variadic: true };
 
 function derivePositional(command: Command): PositionalInfo {
-  const params = command.parameters?.positional;
+  const params = command.parameters.positional;
   if (!params) {
     return null;
   }
@@ -222,7 +220,7 @@ function derivePositional(command: Command): PositionalInfo {
     return { name, variadic: true };
   }
 
-  if (params.kind === "tuple" && params.parameters.length > 0) {
+  if (params.parameters.length > 0) {
     // One param per tuple entry. A compound placeholder is a single entry whose own parser
     // splits it ("org/version" → orgVersion), but separate entries are separate argv tokens:
     // joining them into one param made every multi-positional command unusable, because the
@@ -405,13 +403,22 @@ type SdkMethod = {
   flags: SdkFlagInfo[];
   /** Flags that switch the command into streaming mode (`AsyncIterable` result). */
   streamingFlags: SdkFlagInfo[];
+  /** Whether the command always streams (`log tail`), whatever its flags. */
+  alwaysStreams: boolean;
   /** Name of the params type, when the command has named params. */
-  paramsTypeName?: string;
+  paramsTypeName?: string | undefined;
   /** Whether a required flag makes the params object mandatory. */
   paramsRequired: boolean;
   /** Name of the schema-derived result type, or `unknown` when there is none. */
-  resultTypeName?: string;
+  resultTypeName?: string | undefined;
 };
+
+/** `AsyncIterable<unknown>`, the result of a streaming call. */
+function asyncIterableType(): ts.TypeNode {
+  return typeRef("AsyncIterable", [
+    f.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword),
+  ]);
+}
 
 /** The method's result type (`FooResult`, or `unknown`). */
 function resultType(method: SdkMethod): ts.TypeNode {
@@ -464,7 +471,7 @@ function methodParameters(
 
 /**
  * Params type for the streaming overload: the regular params with every streaming
- * flag required (`LogListParams & { follow: string }`).
+ * flag required (`DashboardViewParams & { refresh: string }`).
  */
 function streamingParamsType(method: SdkMethod): ts.TypeNode {
   const base = method.paramsTypeName
@@ -487,6 +494,20 @@ function streamingParamsType(method: SdkMethod): ts.TypeNode {
  * signatures: passing a streaming flag returns an `AsyncIterable`, otherwise a `Promise`.
  */
 function methodTypeMember(method: SdkMethod, name: string): ts.TypeElement {
+  if (method.alwaysStreams) {
+    return withJsDoc(
+      f.createMethodSignature(
+        undefined,
+        propertyName(name),
+        undefined,
+        undefined,
+        methodParameters(method),
+        asyncIterableType(),
+      ),
+      method.brief,
+    );
+  }
+
   const promise = typeRef("Promise", [resultType(method)]);
 
   if (method.streamingFlags.length === 0) {
@@ -507,9 +528,7 @@ function methodTypeMember(method: SdkMethod, name: string): ts.TypeElement {
     f.createCallSignature(
       undefined,
       methodParameters(method, streamingParamsType(method)),
-      typeRef("AsyncIterable", [
-        f.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword),
-      ]),
+      asyncIterableType(),
     ),
     f.createCallSignature(undefined, methodParameters(method), promise),
   ]);
@@ -545,8 +564,15 @@ function positionalArgs(positional: PositionalInfo): ts.Expression {
   );
 }
 
-/** `invoke<Result>(path, flags, positional[, { streaming }])` */
-function invokeCall(method: SdkMethod, streaming: boolean): ts.CallExpression {
+/**
+ * `invoke<Result>(path, flags, positional[, { streaming }])`. `streaming` picks
+ * `meta`: `"runtime"` passes the local `streaming` variable, `"always"` passes
+ * `true`, and omitting it passes no `meta` for commands that never stream.
+ */
+function invokeCall(
+  method: SdkMethod,
+  streaming?: "runtime" | "always",
+): ts.CallExpression {
   const path = f.createArrayLiteralExpression(
     method.path.map((segment) => f.createStringLiteral(segment)),
   );
@@ -562,7 +588,9 @@ function invokeCall(method: SdkMethod, streaming: boolean): ts.CallExpression {
   if (streaming) {
     args.push(
       f.createObjectLiteralExpression([
-        f.createShorthandPropertyAssignment("streaming"),
+        streaming === "always"
+          ? f.createPropertyAssignment("streaming", f.createTrue())
+          : f.createShorthandPropertyAssignment("streaming"),
       ]),
     );
   }
@@ -589,11 +617,24 @@ function sdkMemberType(path: string[]): ts.TypeNode {
  * The method's implementation inside `createSDKMethods`.
  *
  * Regular commands narrow the invoker's `Promise | AsyncIterable` union to a `Promise`,
- * since they never pass `meta.streaming`. Streaming commands decide at runtime whether a
+ * since they never pass `meta.streaming`; always-streaming commands narrow it to the
+ * `AsyncIterable`. Streaming commands decide at runtime whether a
  * streaming flag is present; a single arrow cannot express their overloads, so it is
  * asserted to the overloaded type declared in `SentrySDK`.
  */
 function methodImplementation(method: SdkMethod): ts.Expression {
+  if (method.alwaysStreams) {
+    const iterable = asyncIterableType();
+    return f.createArrowFunction(
+      undefined,
+      undefined,
+      methodParameters(method),
+      iterable,
+      undefined,
+      f.createAsExpression(invokeCall(method, "always"), iterable),
+    );
+  }
+
   const promise = typeRef("Promise", [resultType(method)]);
 
   if (method.streamingFlags.length === 0) {
@@ -603,7 +644,7 @@ function methodImplementation(method: SdkMethod): ts.Expression {
       methodParameters(method),
       promise,
       undefined,
-      f.createAsExpression(invokeCall(method, false), promise),
+      f.createAsExpression(invokeCall(method), promise),
     );
   }
 
@@ -632,7 +673,7 @@ function methodImplementation(method: SdkMethod): ts.Expression {
           ts.NodeFlags.Const,
         ),
       ),
-      f.createReturnStatement(invokeCall(method, true)),
+      f.createReturnStatement(invokeCall(method, "runtime")),
     ],
     true,
   );
@@ -765,6 +806,7 @@ export async function emit(): Promise<void> {
 
   for (const { path, command } of allCommands) {
     const flags = extractSdkFlags(command);
+    const streaming = streamingModeOf(command);
     const positional = derivePositional(command);
 
     const returnType = buildReturnType(command, `${buildTypeName(path)}Result`);
@@ -786,7 +828,10 @@ export async function emit(): Promise<void> {
       brief: command.brief || path.join(" "),
       positional,
       flags,
-      streamingFlags: flags.filter((flag) => STREAMING_FLAGS.has(flag.name)),
+      streamingFlags: flags.filter(
+        (flag) => streaming?.flag !== undefined && flag.name === streaming.flag,
+      ),
+      alwaysStreams: streaming !== undefined && streaming.flag === undefined,
       paramsTypeName: params?.name.text,
       paramsRequired: flags.some((flag) => !flag.optional),
       resultTypeName: returnType?.name.text,

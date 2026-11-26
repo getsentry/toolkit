@@ -449,8 +449,7 @@ export function isExternalDebugInfoSection(section: WasmSection): boolean {
 export function isDebugSection(section: WasmSection): boolean {
   return (
     section.id === CUSTOM_SECTION_ID &&
-    section.name !== undefined &&
-    section.name.startsWith(DEBUG_SECTION_PREFIX)
+    section.name?.startsWith(DEBUG_SECTION_PREFIX) === true
   );
 }
 

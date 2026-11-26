@@ -2,8 +2,14 @@ import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "../packages/cli/lint-rules/cli-oxlint-plugin.js";
 
-RuleTester.describe = describe;
-RuleTester.it = it;
+// node:test tracks the promises its suite functions return; RuleTester only
+// needs void callbacks.
+RuleTester.describe = (text, fn) => {
+  void describe(text, fn);
+};
+RuleTester.it = (text, fn) => {
+  void it(text, fn);
+};
 
 const tester = new RuleTester({
   languageOptions: { parserOptions: { lang: "ts" } },
@@ -25,6 +31,12 @@ for (const [name, filename, valid, invalid] of [
     commands,
     "async function* run() { yield new CommandOutput(value); }",
     "stdout.write(value);",
+  ],
+  [
+    "no-help-argument-checks-in-commands",
+    commands,
+    "throwIfHelpMatchedNothing(filter, matches.length);",
+    'if (filter === "help") showHelp();',
   ],
   [
     "no-process-stdout-in-commands",
@@ -119,6 +131,53 @@ tester.run("no-silent-catch", plugin.rules["no-silent-catch"], {
     {
       filename: source,
       code: "request.catch((error) => { return null; });",
+      errors: 1,
+    },
+  ],
+});
+
+tester.run("no-manual-api-request", plugin.rules["no-manual-api-request"], {
+  valid: [
+    {
+      filename: api,
+      code: "import { apiRequestToRegion } from '../api-client.js'; await listOrganizationReplays(options);",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/users.ts",
+      code: "export async function getCurrentUser() { return await apiRequestToRegion(url, '/auth/'); }",
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/infrastructure.ts",
+      code: "export async function apiRequest(path) { return await apiRequestToRegion(url, path); }",
+    },
+    {
+      filename: source,
+      code: "const sourceFetch: typeof customFetch = fetchImpl;",
+    },
+    {
+      filename: "/repo/packages/cli/test/lib/api/example.test.ts",
+      code: "await apiRequestToRegion(url, '/projects/');",
+    },
+  ],
+  invalid: [
+    {
+      filename: api,
+      code: "await apiRequestToRegion(url, '/projects/');",
+      errors: 1,
+    },
+    {
+      filename: api,
+      code: "await apiRequest('/organizations/');",
+      errors: 1,
+    },
+    {
+      filename: source,
+      code: "const options = { fetch: customFetch };",
+      errors: 1,
+    },
+    {
+      filename: "/repo/packages/cli/src/lib/api/users.ts",
+      code: "export async function listUsers() { return await apiRequestToRegion(url, '/users/'); }",
       errors: 1,
     },
   ],

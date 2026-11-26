@@ -2,6 +2,7 @@
  * Tests for `sentry event send` command func().
  */
 
+import type { SentryContext } from "../../../src/context.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { sendCommand } from "../../../src/commands/event/send.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
@@ -11,7 +12,12 @@ import * as eventSendDsn from "../../../src/lib/envelope/event-send-dsn.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn
 import * as transport from "../../../src/lib/envelope/transport.js";
 import { ConfigError, ValidationError } from "../../../src/lib/errors.js";
-import { useTestConfigDir } from "../../helpers.js";
+import {
+  useTestConfigDir,
+  loadCommand,
+  type TestCommandFunction,
+} from "../../helpers.js";
+import type { Writer } from "../../../src/types/index.js";
 
 useTestConfigDir("send-event-");
 
@@ -27,7 +33,7 @@ function makeContext() {
           return true;
         },
       },
-      stderr: { write: vi.fn(() => true) },
+      stderr: { write: vi.fn<Writer["write"]>(() => true) },
       cwd: "/tmp",
     },
     writes,
@@ -35,13 +41,13 @@ function makeContext() {
 }
 
 describe("sendCommand.func()", () => {
-  let func: Awaited<ReturnType<typeof sendCommand.loader>>;
+  let func: TestCommandFunction<SentryContext>;
   let sendSpy: ReturnType<typeof vi.spyOn>;
   let detectSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     vi.stubEnv("SENTRY_DSN", "");
-    func = await sendCommand.loader();
+    func = await loadCommand(sendCommand);
     sendSpy = vi
       .spyOn(transport, "sendEnvelopeRequest")
       .mockResolvedValue(undefined);

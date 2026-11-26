@@ -364,6 +364,57 @@ describe("search route", () => {
         error: "Failed to search documentation. Please try again later.",
         name: "SEARCH_FAILED",
       });
+      expect(mockAutorag.search).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries once when AutoRAG fails with an internal error", async () => {
+      const internalError = new Error("All search methods failed: vector");
+      internalError.name = "AutoRAGInternalError";
+      mockAutorag.search.mockRejectedValueOnce(internalError);
+
+      const res = await app.request(
+        "/api/search",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": "192.0.2.1",
+          },
+          body: JSON.stringify({ query: "browser console breadcrumbs" }),
+        },
+        {
+          AI: mockAIBinding,
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json<{ results: unknown[] }>();
+      expect(json.results).toHaveLength(1);
+      expect(mockAutorag.search).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns 500 when AutoRAG fails with an internal error twice", async () => {
+      const internalError = new Error("All search methods failed: vector");
+      internalError.name = "AutoRAGInternalError";
+      mockAutorag.search.mockRejectedValue(internalError);
+
+      const res = await app.request(
+        "/api/search",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": "192.0.2.1",
+          },
+          body: JSON.stringify({ query: "test" }),
+        },
+        {
+          AI: mockAIBinding,
+        },
+      );
+
+      expect(res.status).toBe(500);
+      expect(mockAutorag.search).toHaveBeenCalledTimes(2);
     });
 
     it("should extract documentation paths correctly", async () => {
@@ -424,9 +475,9 @@ describe("search route", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as {
+      const json = await res.json<{
         results: Array<{ id: string; url: string }>;
-      };
+      }>();
       expect(json.results[0]).toMatchInlineSnapshot(
         {
           id: "platforms/javascript/index.md",
@@ -493,11 +544,13 @@ describe("search route", () => {
       );
 
       expect(res.status).toBe(200);
-      const json = (await res.json()) as {
+      const json = await res.json<{
         results: Array<{ id: string; url: string }>;
-      };
-      expect(json.results[0].id).toBe("index.md");
-      expect(json.results[0].url).toBe("https://docs.sentry.io/index");
+      }>();
+      expect(json.results[0]).toMatchObject({
+        id: "index.md",
+        url: "https://docs.sentry.io/index",
+      });
     });
   });
 
@@ -633,7 +686,7 @@ describe("search route", () => {
         },
       );
 
-      const firstKey = mockRateLimiter.limit.mock.calls[0][0].key;
+      const firstKey = mockRateLimiter.limit.mock.calls[0]?.[0].key;
 
       // Second request from IP 192.0.2.2
       await app.request(
@@ -652,7 +705,7 @@ describe("search route", () => {
         },
       );
 
-      const secondKey = mockRateLimiter.limit.mock.calls[1][0].key;
+      const secondKey = mockRateLimiter.limit.mock.calls[1]?.[0].key;
 
       expect(firstKey).not.toBe(secondKey);
       expect(firstKey).toMatch(/^search:ip:[a-f0-9]{16}$/);

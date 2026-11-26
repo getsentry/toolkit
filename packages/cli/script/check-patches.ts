@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check Patched Dependency Versions
  *
@@ -33,7 +32,7 @@
  *   dropped the patch.
  *
  * Usage:
- *   tsx script/check-patches.ts
+ *   pnpm ts script/check-patches.ts
  *
  * Exit codes:
  *   0 - All patch versions match (or only non-critical warnings) and all
@@ -42,14 +41,16 @@
  *       (patch did not apply to the installed package)
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import { logger } from "../src/lib/logger.js";
 
 /**
  * Read `patchedDependencies` from the workspace configuration.
  *
- * pnpm 11 reads workspace-root settings from `pnpm-workspace.yaml`.
+ * pnpm reads workspace-root settings from `pnpm-workspace.yaml`.
  */
 const WORKSPACE_PATH = "../../pnpm-workspace.yaml";
 const PATCHED_DEPENDENCIES_SECTION = /^patchedDependencies:\n((?: {2}.+\n)*)/m;
@@ -70,19 +71,44 @@ function parsePatchedDependencies(source: string): Record<string, string> {
 
   const patches: Record<string, string> = {};
   for (const line of section.trimEnd().split("\n")) {
-    const entry = line.match(PATCHED_DEPENDENCY_ENTRY);
-    if (!entry) {
+    const [, key, patchPath] = line.match(PATCHED_DEPENDENCY_ENTRY) ?? [];
+    if (key === undefined || patchPath === undefined) {
       throw new Error(
         `Unsupported patchedDependencies entry in ${WORKSPACE_PATH}: ${line}`,
       );
     }
-    const [, key, patchPath] = entry;
     patches[key] = patchPath;
   }
   return patches;
 }
 
-const require_ = createRequire(import.meta.url);
+/**
+ * Resolvers rooted at this package first, then at every other workspace
+ * package, so a patch for a dependency only another package uses (such as
+ * `mcp-cloudflare`'s OAuth provider) still finds that package's copy.
+ */
+const resolvers = [
+  createRequire(import.meta.url),
+  ...["../../packages", "../../apps"].flatMap((dir) =>
+    readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => resolve(dir, entry.name, "package.json"))
+      .filter((manifest) => existsSync(manifest))
+      .map((manifest) => createRequire(manifest)),
+  ),
+];
+
+/** Resolve a package's main entry from the first workspace package that has it. */
+function resolveMainEntry(pkgName: string): string {
+  for (const resolver of resolvers) {
+    try {
+      return resolver.resolve(pkgName);
+    } catch {
+      // Not a dependency of this workspace package; try the next one.
+    }
+  }
+  throw new Error(`Cannot resolve ${pkgName}`);
+}
 
 /**
  * Resolve an installed package file to the copy THIS package actually uses.
@@ -92,7 +118,8 @@ const require_ = createRequire(import.meta.url);
  * pulled in via another dependency). A naive `node_modules/<pkg>` path may
  * point at the wrong copy. Using `require.resolve` rooted at this package
  * respects pnpm's per-package resolution and finds the patched copy the
- * `sentry` package links to.
+ * `sentry` package links to. Packages the CLI does not depend on resolve
+ * from the workspace package that does.
  *
  * We resolve the package's MAIN entry (not its `package.json`, which many
  * packages exclude from their `exports` map) and then derive the package root
@@ -109,14 +136,12 @@ const require_ = createRequire(import.meta.url);
  * @returns Absolute path to the resolved file, or null if unresolvable.
  */
 function resolvePackageFile(subpath: string): string | null {
-  const parts = subpath.split("/");
-  const pkgName = subpath.startsWith("@")
-    ? `${parts[0]}/${parts[1]}`
-    : parts[0];
+  const [first = "", second = ""] = subpath.split("/");
+  const pkgName = subpath.startsWith("@") ? `${first}/${second}` : first;
   const inner = subpath.slice(pkgName.length + 1);
   try {
     // Resolve the package's main entry to locate the exact installed copy.
-    const mainEntry = require_.resolve(pkgName);
+    const mainEntry = resolveMainEntry(pkgName);
     // The install dir is "<...>/node_modules/<pkgName>". Anchor on the last
     // "node_modules/" boundary, then take the first "<pkgName>/" after it so a
     // self-vendored nested copy can't shift the truncation point.
@@ -323,7 +348,7 @@ for (const assertion of CONTENT_ASSERTIONS) {
 }
 
 // Emit GitHub Actions annotations for CI visibility
-const isCI = !!process.env.CI;
+const isCI = !!process.env["CI"];
 for (const w of warnings) {
   if (isCI) {
     // oxlint-disable-next-line no-console -- GitHub Actions reads workflow commands from stdout; the logger writes to stderr.

@@ -38,15 +38,10 @@ const nonSaasHostArb = simpleHostArb.filter(
 );
 
 /** SaaS host: any subdomain of sentry.io (including bare `sentry.io`) */
-const saasSubdomainArb = HOST_LABEL.filter((label) => {
-  try {
-    new URL(`https://${label}.sentry.io/`);
-    return true;
-  } catch {
-    // Some generated labels (e.g. `xn--`) produce invalid WHATWG URLs.
-    return false;
-  }
-}).map((label) => `${label}.sentry.io`);
+const saasSubdomainArb = HOST_LABEL.filter(
+  // Some generated labels (e.g. `xn--`) produce invalid WHATWG URLs.
+  (label) => URL.canParse(`https://${label}.sentry.io/`),
+).map((label) => `${label}.sentry.io`);
 
 /** Protocol */
 const protoArb = constantFrom("http", "https");

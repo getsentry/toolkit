@@ -46,7 +46,7 @@ import {
 /** Shared widget query flags used by `add` and `edit` commands */
 export type WidgetQueryFlags = {
   readonly display?: string;
-  readonly dataset?: string;
+  readonly dataset?: string | undefined;
   readonly query?: string[];
   readonly where?: string;
   readonly "group-by"?: string[];
@@ -184,7 +184,7 @@ export async function resolveDashboardId(
  * @returns Resolved widget index
  */
 export function resolveWidgetIndex(
-  widgets: DashboardWidget[],
+  widgets: readonly { title?: string }[],
   index: number | undefined,
   title: string | undefined,
 ): number {
@@ -389,12 +389,12 @@ function warnUnknownAggregateFields(
 export function buildWidgetFromFlags(opts: {
   title: string;
   display: string;
-  dataset?: string;
-  query?: string[];
-  where?: string;
-  groupBy?: string[];
-  sort?: string;
-  limit?: number;
+  dataset?: string | undefined;
+  query?: string[] | undefined;
+  where?: string | undefined;
+  groupBy?: string[] | undefined;
+  sort?: string | undefined;
+  limit?: number | undefined;
 }): DashboardWidget {
   const aggregates = (opts.query ?? ["count"]).map(parseAggregate);
   validateAggregateNames(aggregates, opts.dataset);
@@ -514,22 +514,21 @@ async function build404Error(
 function build403Error(
   ctx: DashboardErrorContext,
   org: string,
-  detail: string | undefined,
+  detail = "You do not have permission.",
 ): never {
-  const message = detail ?? "You do not have permission.";
   if (ctx.dashboardId) {
     throw new ResolutionError(
       `Dashboard ${ctx.dashboardId} in ${org}`,
       "access denied",
       sentry`dashboard list ${ctx.orgSlug ?? "<org>"}/`,
-      [message, "Check your organization membership and role"],
+      [detail, "Check your organization membership and role"],
     );
   }
   throw new ResolutionError(
     `Dashboards in ${org}`,
     "access denied",
     sentry`org list`,
-    [message, "Check your organization membership and role"],
+    [detail, "Check your organization membership and role"],
   );
 }
 

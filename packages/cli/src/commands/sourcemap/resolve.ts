@@ -36,15 +36,15 @@ type ResolveFileEntry = {
   /** JS path relative to the scanned directory. */
   path: string;
   /** Companion sourcemap path relative to the scanned directory, if any. */
-  mapPath?: string;
+  mapPath?: string | undefined;
   /** Raw `sourceMappingURL` directive value, if any. */
-  sourceMappingUrl?: string;
+  sourceMappingUrl?: string | undefined;
   /** True when the sourceMappingURL is an inline data: URL. */
   inline: boolean;
   /** True when the sourceMappingURL is a remote http(s) reference. */
   remote: boolean;
   /** The embedded `//# debugId=<uuid>` value, if any. */
-  debugId?: string;
+  debugId?: string | undefined;
 };
 
 /** Result type for the resolve command output. */

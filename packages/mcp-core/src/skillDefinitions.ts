@@ -1,4 +1,4 @@
-import skillDefinitionsData from "./skillDefinitions.json";
+import skillDefinitionsData from "./skillDefinitions.json" with { type: "json" };
 
 // Skill definition for UI/external consumption
 export interface SkillDefinition {

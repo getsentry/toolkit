@@ -16,6 +16,7 @@ import * as sourcemapsApi from "../../../src/lib/api/sourcemaps.js";
 import { ValidationError } from "../../../src/lib/errors.js";
 import { getDebugIdSnippet } from "../../../src/lib/sourcemap/debug-id.js";
 import { buildEmptyDiscoveryError } from "../../../src/lib/sourcemap/inject.js";
+import type { Writer } from "../../../src/types/index.js";
 
 type InjectFuncArgs = {
   ext?: string;
@@ -38,8 +39,8 @@ type CmdFunc<A> = (this: unknown, flags: A, dir: string) => Promise<unknown>;
 
 function makeContext() {
   return {
-    stdout: { write: vi.fn(() => true) },
-    stderr: { write: vi.fn(() => true) },
+    stdout: { write: vi.fn<Writer["write"]>(() => true) },
+    stderr: { write: vi.fn<Writer["write"]>(() => true) },
     cwd: "/tmp",
   };
 }
@@ -264,11 +265,11 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     dir = await mkdtemp(join(tmpdir(), "sentry-upload-cmd-"));
     // Short-circuit resolveOrgAndProject so tests don't need DSN/config.
     savedEnv = {
-      SENTRY_ORG: process.env.SENTRY_ORG,
-      SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+      SENTRY_ORG: process.env["SENTRY_ORG"],
+      SENTRY_PROJECT: process.env["SENTRY_PROJECT"],
     };
-    process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    process.env["SENTRY_ORG"] = "test-org";
+    process.env["SENTRY_PROJECT"] = "test-project";
     func = (await uploadCommand.loader()) as unknown as CmdFunc<UploadFuncArgs>;
   });
 
@@ -307,8 +308,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
     // The library-only / conditional-release-skip cases named in the
     // docs may run without DSN/org/project context. With nothing to
     // upload, the command must not insist on resolving them.
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
     const ctx = makeContext();
     await expect(
       func.call(ctx, { "allow-empty": true }, dir),
@@ -326,8 +327,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
 
   test("non-existent directory: throws before resolving org/project", async () => {
     // Cleared so the dir-check has to fire first to produce a useful error.
-    delete process.env.SENTRY_ORG;
-    delete process.env.SENTRY_PROJECT;
+    delete process.env["SENTRY_ORG"];
+    delete process.env["SENTRY_PROJECT"];
     const missing = join(dir, "does-not-exist");
     const ctx = makeContext();
     try {
@@ -550,8 +551,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.ts"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("other.js"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.ts"))).toBe(true);
+      expect(urls?.some((u) => u.includes("other.js"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -583,8 +584,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       // Only app.js pair should be uploaded (2 files: .js + .map)
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.js"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("vendor"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.js"))).toBe(true);
+      expect(urls?.some((u) => u.includes("vendor"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -616,8 +617,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       expect(callArgs?.files).toHaveLength(2);
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("app.js"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("vendor"))).toBe(false);
+      expect(urls?.some((u) => u.includes("app.js"))).toBe(true);
+      expect(urls?.some((u) => u.includes("vendor"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -645,9 +646,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
         .mockResolvedValue(undefined);
       try {
         await func.call(makeContext(), {}, target);
-        return (uploadSpy.mock.calls[0]?.[0]?.files ?? []).map(
-          (f) => f.url ?? "",
-        );
+        return (uploadSpy.mock.calls[0]?.[0]?.files ?? []).map((f) => f.url);
       } finally {
         uploadSpy.mockRestore();
       }
@@ -786,7 +785,7 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       // Common prefix "build/output/" stripped: "~/main.js", "~/vendor.js"
       expect(urls).toContain("~/main.js");
       expect(urls).toContain("~/vendor.js");
-      expect(urls?.some((u) => u?.includes("build"))).toBe(false);
+      expect(urls?.some((u) => u.includes("build"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }
@@ -839,8 +838,8 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       const callArgs = uploadSpy.mock.calls[0]?.[0];
       // Should have paired concat.js with correct.js.map (last directive)
       const urls = callArgs?.files.map((f) => f.url);
-      expect(urls?.some((u) => u?.includes("correct.js.map"))).toBe(true);
-      expect(urls?.some((u) => u?.includes("wrong.js.map"))).toBe(false);
+      expect(urls?.some((u) => u.includes("correct.js.map"))).toBe(true);
+      expect(urls?.some((u) => u.includes("wrong.js.map"))).toBe(false);
     } finally {
       uploadSpy.mockRestore();
     }

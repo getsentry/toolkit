@@ -23,7 +23,7 @@ import { useEnvSandbox, useTestConfigDir } from "../helpers.js";
 import { createMockServer, type MockServer } from "../mocks/server.js";
 
 const { selectWithFilter } = vi.hoisted(() => ({ selectWithFilter: vi.fn() }));
-vi.mock("../../src/lib/select-ui/ink-ui.js", () => ({ selectWithFilter }));
+vi.mock("../../src/lib/select-ui/terminal.js", () => ({ selectWithFilter }));
 
 useTestConfigDir("test-target-picker-");
 useEnvSandbox([
@@ -68,7 +68,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  server?.stop();
+  server.stop();
 });
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ beforeEach(() => {
       "Test preload did not preserve the real fetch implementation",
     );
   }
-  process.env.SENTRY_URL = server.url;
+  process.env["SENTRY_URL"] = server.url;
   setAuthToken("test-picker-token");
   globalThis.fetch = realFetch;
 });

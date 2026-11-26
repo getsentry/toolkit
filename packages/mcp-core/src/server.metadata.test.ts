@@ -34,15 +34,15 @@ const ALLOWED_TOOL_META: Record<string, readonly string[]> = {
   // Claude Code keeps it loaded so a pasted Sentry URL works without a tool
   // search. See docs/mcp/harnesses.md.
   get_sentry_resource: ["anthropic/alwaysLoad"],
+  // MCP Apps hosts (Claude, VS Code) read `ui`; ChatGPT reads
+  // `openai/outputTemplate`. See src/ui-resources.ts.
+  render_sentry_chart: ["ui", "openai/outputTemplate"],
+  render_issue_chart: ["ui", "openai/outputTemplate"],
 };
 
 /** Tools that return no `structuredContent` by design. */
 const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
-  get_issue_details:
-    "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_trace_details:
-    "markdown-only by policy (docs/contributing/tool-responses.md)",
-  get_event_stacktrace:
     "markdown-only by policy (docs/contributing/tool-responses.md)",
   get_span_details: "delegates to the get_trace_details renderer",
   get_doc: "returns doc text",
@@ -56,9 +56,7 @@ const OUTPUT_SCHEMA_EXEMPT: Record<string, string> = {
  * PENDING: tools whose outputSchema has not landed yet. Delete an entry when
  * its PR merges; a test below fails until you do.
  */
-const OUTPUT_SCHEMA_PENDING: Record<string, string> = {
-  search_attributes: "pending: experimental-only, no outputSchema PR yet",
-};
+const OUTPUT_SCHEMA_PENDING: Record<string, string> = {};
 
 const CATALOG_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -238,8 +236,12 @@ describe("outputSchema skip lists", () => {
   it("name listed tools without an outputSchema", () => {
     const tools = listed();
     const problems = [
-      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map((name) => ["EXEMPT", name]),
-      ...Object.keys(OUTPUT_SCHEMA_PENDING).map((name) => ["PENDING", name]),
+      ...Object.keys(OUTPUT_SCHEMA_EXEMPT).map(
+        (name) => ["EXEMPT", name] as const,
+      ),
+      ...Object.keys(OUTPUT_SCHEMA_PENDING).map(
+        (name) => ["PENDING", name] as const,
+      ),
     ].flatMap(([list, name]) => {
       const tool = tools.get(name);
       if (!tool) return [`${name}: in OUTPUT_SCHEMA_${list} but not listed`];

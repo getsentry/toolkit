@@ -41,6 +41,7 @@ import {
   type WidgetDataResult,
   type WidgetType,
 } from "../../src/types/dashboard.js";
+import { at } from "../helpers.js";
 
 // ---------------------------------------------------------------------------
 // Enum constants
@@ -307,7 +308,7 @@ describe("DashboardWidgetInputSchema", () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect((result.output as Record<string, unknown>).customField).toBe(
+      expect((result.output as Record<string, unknown>)["customField"]).toBe(
         "hello",
       );
     }
@@ -874,7 +875,7 @@ describe("stripWidgetServerFields", () => {
       ],
     };
     const result = stripWidgetServerFields(widget);
-    const query = result.queries![0];
+    const query = at(result.queries!, 0);
     expect(query.id).toBe("q1");
     expect(query).not.toHaveProperty("widgetId");
     expect(query).not.toHaveProperty("dateCreated");
@@ -978,6 +979,43 @@ describe("EventsTimeseriesResponseSchema", () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+
+  test("parses ingestion status and incomplete reasons", () => {
+    const result = safeParse(EventsTimeseriesResponseSchema, {
+      meta: {
+        dataset: "spans",
+        start: 1_700_000_000_000,
+        end: 1_700_003_600_000,
+        ingestion: {
+          status: "delayed",
+          delaySeconds: 90,
+          completeThrough: 1_700_003_510_000,
+        },
+      },
+      timeSeries: [
+        {
+          yAxis: "count()",
+          values: [
+            {
+              timestamp: 1_700_003_600_000,
+              value: 3,
+              incomplete: true,
+              incompleteReason: "ingestion_delay",
+            },
+          ],
+          meta,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.output.meta?.ingestion?.delaySeconds).toBe(90);
+    expect(result.output.timeSeries[0]?.values[0]?.incompleteReason).toBe(
+      "ingestion_delay",
+    );
   });
 });
 

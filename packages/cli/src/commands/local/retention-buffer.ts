@@ -1,5 +1,14 @@
-/** Resize through the Spotlight SDK's public API while keeping a stable buffer facade. */
-import { createSpotlightBuffer } from "@spotlightjs/spotlight/sdk";
+/** Raw receiver retention, indexed by delivery ID independently of decoding. */
+import { uuidv7 } from "uuidv7";
+import { logger } from "../../lib/logger.js";
+import {
+  duplicateKeyOf,
+  prepareReceiverEnvelope,
+  withReceiverBarrier,
+  type ReceiverEnvelope,
+  type ReceiverBuffer,
+} from "./receiver-ingest.js";
+import { exceptionValues } from "./exception-values.js";
 import { textParser } from "../../lib/completion-target.js";
 import { ValidationError } from "../../lib/errors.js";
 import {
@@ -8,30 +17,37 @@ import {
   MAX_ENVELOPES,
 } from "./retention-limits.js";
 
-type SpotlightBuffer = ReturnType<typeof createSpotlightBuffer>;
 type Subscriber = {
-  callback: Parameters<SpotlightBuffer["subscribe"]>[0];
-  id: string;
+  callback: Parameters<ReceiverBuffer["subscribe"]>[0];
+  position: number;
+  scheduled?: NodeJS.Immediate | undefined;
+};
+type RetainedEnvelope = {
+  item: ReceiverEnvelope;
+  arrivedAt: number;
+  position: number;
+  /** What makes a later copy of this envelope a duplicate. */
+  duplicateKey?: string | undefined;
 };
 export type RetentionSettings = {
   maxEnvelopes: number;
   retainedEnvelopes: number;
 };
 export type LocalRetentionBuffer = {
-  buffer: SpotlightBuffer;
+  buffer: ReceiverBuffer;
   getSettings: () => RetentionSettings;
-  resize: (maxEnvelopes: number) => void;
+  resize: (maxEnvelopes: number) => Promise<void>;
   subscribeSettings: (
     listener: (settings: RetentionSettings) => void,
   ) => () => void;
 };
 export class RetentionLimitError extends Error {
-  constructor(
-    message: string,
-    readonly status: 400 | 409 = 400,
-  ) {
+  readonly status: 400 | 409;
+
+  constructor(message: string, status: 400 | 409 = 400) {
     super(message);
     this.name = "RetentionLimitError";
+    this.status = status;
   }
 }
 export function validateMaxEnvelopes(value: unknown): asserts value is number {
@@ -53,6 +69,29 @@ const limitFlag = {
     return parsed;
   }),
 } as const;
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasStackFilename(payload: unknown, filename: string): boolean {
+  return exceptionValues(record(payload)["exception"]).some((value) => {
+    const frames = record(record(value)["stacktrace"])["frames"];
+    return (
+      Array.isArray(frames) &&
+      frames.some((frame) => {
+        // sentry-go frames carry only `abs_path`. Matching a suffix of the full
+        // path is deliberate, unlike frameFile's basename, so `app/main.go` works.
+        const { filename: name, abs_path: path } = record(frame);
+        const candidate = typeof name === "string" && name ? name : path;
+        return typeof candidate === "string" && candidate.endsWith(filename);
+      })
+    );
+  });
+}
+
 export const MAX_ENVELOPES_FLAG = {
   ...limitFlag,
   default: String(DEFAULT_MAX_ENVELOPES),
@@ -66,78 +105,134 @@ export function createLocalRetentionBuffer(
   maxEnvelopes = DEFAULT_MAX_ENVELOPES,
 ): LocalRetentionBuffer {
   validateMaxEnvelopes(maxEnvelopes);
-  let delegate = createSpotlightBuffer(maxEnvelopes);
-  const buffer = createSpotlightBuffer(1);
   const subscribers = new Map<string, Subscriber>();
-  const arrivalTimes = new WeakMap<object, number>();
+  const entries = new Map<string, RetainedEnvelope>();
+  /** Duplicate keys of retained envelopes, so a resent event is kept once. */
+  const retainedKeys = new Set<string>();
+  let newest: RetainedEnvelope | undefined;
+  let position = 0;
   const listeners = new Set<(settings: RetentionSettings) => void>();
   const getSettings = (): RetentionSettings => ({
     maxEnvelopes,
-    retainedEnvelopes: delegate.read({ all: true }).length,
+    retainedEnvelopes: entries.size,
   });
-  buffer.put = (item) => {
-    arrivalTimes.set(item, Date.now());
-    delegate.put(item);
+  const clear = () => {
+    entries.clear();
+    retainedKeys.clear();
+    newest = undefined;
   };
-  buffer.read = (filters = { timeWindow: 60 }) => {
-    if ("timeWindow" in filters && filters.timeWindow !== undefined) {
-      const { timeWindow, ...rest } = filters;
-      return delegate
-        .read({ ...rest, all: true })
-        .filter(
-          (item) =>
-            (arrivalTimes.get(item) ?? 0) > Date.now() - timeWindow * 1000,
-        );
-    }
-    return delegate.read(filters);
+  const buffer: ReceiverBuffer = {
+    put(item) {
+      const id = prepareReceiverEnvelope(item);
+      if (entries.has(id)) return;
+      const key = duplicateKeyOf(item);
+      if (key && retainedKeys.has(key)) return;
+      // Replay pending subscription history before any entry can be evicted.
+      for (const readerId of subscribers.keys()) buffer.stream(readerId);
+      newest = {
+        item,
+        arrivedAt: Date.now(),
+        position: ++position,
+        duplicateKey: key,
+      };
+      entries.set(id, newest);
+      if (key) retainedKeys.add(key);
+      if (entries.size > maxEnvelopes) {
+        const [oldest] = entries;
+        if (oldest !== undefined) {
+          entries.delete(oldest[0]);
+          if (oldest[1].duplicateKey)
+            retainedKeys.delete(oldest[1].duplicateKey);
+        }
+      }
+      for (const readerId of subscribers.keys()) buffer.stream(readerId);
+    },
+    read(filters = { timeWindow: 60 }) {
+      const candidates =
+        "envelopeId" in filters
+          ? [entries.get(filters.envelopeId ?? "")].filter(
+              (entry) => entry !== undefined,
+            )
+          : [...entries.values()].reverse();
+      return candidates
+        .filter((entry) => {
+          if (
+            "timeWindow" in filters &&
+            entry.arrivedAt <= Date.now() - filters.timeWindow * 1000
+          )
+            return false;
+          if ("filename" in filters && filters.filename) {
+            const filename = filters.filename;
+            return (
+              entry.item
+                .getParsedEnvelope()
+                ?.envelope[1].some(([, payload]) => {
+                  return hasStackFilename(payload, filename);
+                }) ?? false
+            );
+          }
+          return true;
+        })
+        .map((entry) => entry.item);
+    },
+    subscribe(callback, lastEventId) {
+      const id = uuidv7();
+      const subscriber: Subscriber = {
+        callback,
+        position: entries.get(lastEventId ?? "")?.position ?? 0,
+      };
+      subscribers.set(id, subscriber);
+      subscriber.scheduled = setImmediate(() => buffer.stream(id));
+      subscriber.scheduled.unref();
+      return id;
+    },
+    unsubscribe(id) {
+      const subscriber = subscribers.get(id);
+      if (subscriber?.scheduled) clearImmediate(subscriber.scheduled);
+      subscribers.delete(id);
+    },
+    stream(id) {
+      const subscriber = subscribers.get(id);
+      if (!subscriber) return;
+      if (subscriber.scheduled) {
+        clearImmediate(subscriber.scheduled);
+        subscriber.scheduled = undefined;
+      }
+      if (subscriber.position >= position) return;
+      const deliver = (entry: RetainedEnvelope) => {
+        if (entry.position <= subscriber.position) return;
+        subscriber.position = entry.position;
+        try {
+          subscriber.callback(entry.item);
+        } catch (error) {
+          logger.debug("Local receiver subscriber failed", error);
+        }
+      };
+      // Live readers need only the new entry, regardless of retention capacity.
+      if (newest?.position === subscriber.position + 1) {
+        deliver(newest);
+      } else {
+        for (const entry of entries.values()) deliver(entry);
+      }
+    },
+    clear,
+    reset: clear,
   };
-  buffer.subscribe = (callback, lastEventId) => {
-    const id = delegate.subscribe(callback, lastEventId);
-    subscribers.set(id, { callback, id });
-    return id;
-  };
-  buffer.unsubscribe = (id) => {
-    const subscriber = subscribers.get(id);
-    if (subscriber) delegate.unsubscribe(subscriber.id);
-    subscribers.delete(id);
-  };
-  buffer.stream = (id) => {
-    const subscriber = subscribers.get(id);
-    if (subscriber) delegate.stream(subscriber.id);
-  };
-  buffer.clear = () => delegate.clear();
-  buffer.reset = () => delegate.reset();
   return {
     buffer,
     getSettings,
     resize(nextLimit) {
       validateMaxEnvelopes(nextLimit);
-      const retained = delegate.read({ all: true });
-      if (nextLimit < retained.length)
-        throw new RetentionLimitError(
-          `Cannot lower the limit below ${retained.length} retained envelopes. Clear envelopes first.`,
-          409,
-        );
-      if (nextLimit === maxEnvelopes) return;
-      // Flush queued deliveries before moving readers, then advance each new reader
-      // past the copied history so an active stream neither misses nor repeats it.
-      for (const subscriber of subscribers.values())
-        delegate.stream(subscriber.id);
-      const next = createSpotlightBuffer(nextLimit);
-      for (const item of retained.reverse()) next.put(item);
-      const previous = delegate;
-      delegate = next;
-      for (const subscriber of subscribers.values()) {
-        previous.unsubscribe(subscriber.id);
-        let replaying = true;
-        subscriber.id = next.subscribe((item) => {
-          if (!replaying) subscriber.callback(item);
-        });
-        next.stream(subscriber.id);
-        replaying = false;
-      }
-      maxEnvelopes = nextLimit;
-      for (const listener of listeners) listener(getSettings());
+      return withReceiverBarrier(buffer, () => {
+        if (nextLimit < entries.size)
+          throw new RetentionLimitError(
+            `Cannot lower the limit below ${entries.size} retained envelopes. Clear envelopes first.`,
+            409,
+          );
+        if (nextLimit === maxEnvelopes) return;
+        maxEnvelopes = nextLimit;
+        for (const listener of listeners) listener(getSettings());
+      });
     },
     subscribeSettings(listener) {
       listeners.add(listener);

@@ -109,7 +109,7 @@ The MCP OAuth Provider is built with `@cloudflare/workers-oauth-provider` and pr
 1. **Dynamic client registration** - MCP clients can register on-demand
 2. **PKCE support** - Secure authorization code flow
 3. **Token management** - Issues and validates MCP tokens
-4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). When the client sends OIDC `prompt=select_account`, `consent`, or `login`, the Sentry redirect carries `force_prompt=1`, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. Metadata advertises `prompt_values_supported: ["consent", "select_account"]`. Without `prompt`, the flow is unchanged.
+4. **Consent UI** - Custom approval screen for permissions. Cancel redirects the MCP client to its registered `redirect_uri` with `error=access_denied` (RFC 6749 §4.1.2.1). When the client sends OIDC `prompt=select_account`, `consent`, or `login`, the Sentry redirect carries `force_prompt=1`, so Sentry shows the signed-in user and **Switch account** instead of silently reusing the browser session. Metadata advertises `prompt_values_supported: ["consent", "select_account"]`. Without `prompt`, the flow is unchanged. A single well-formed `idp_hint` (an identity provider name) is kept in the signed consent state and forwarded to Sentry after approval, together with `force_prompt=1`; Sentry decides what the hint does. A missing, repeated (RFC 6749 §3.1), or malformed hint is dropped. `idp_hint` is not advertised in metadata.
 5. **Token encryption** - Stores Sentry tokens encrypted in MCP token props
 
 ### Sentry OAuth Integration
@@ -117,7 +117,7 @@ The MCP OAuth Provider is built with `@cloudflare/workers-oauth-provider` and pr
 The integration with Sentry OAuth happens through:
 
 1. **Authorization redirect** - After MCP consent, redirect to Sentry OAuth
-2. **Code exchange** - Exchange Sentry auth code for tokens
+2. **Code exchange** - Exchange Sentry auth code for tokens. If the upstream authorization returns an `error` instead of a code, the callback first validates the signed state, the client approval cookie, and that the client's `redirect_uri` is registered, then redirects the MCP client there per RFC 6749 §4.1.2.1 with its original `state`, `iss`, and a fixed `error_description`. `access_denied` and `temporarily_unavailable` pass through; every other code becomes `server_error`. If any validation fails, the callback returns a local error and never redirects.
 3. **Token storage** - Store Sentry tokens in MCP token props
 4. **Token reuse on refresh** - Re-issue MCP tokens while the cached Sentry access token is still usable
 
@@ -176,6 +176,24 @@ const oAuthProvider = new OAuthProvider({
   scopesSupported: Object.keys(SCOPES),
 });
 ```
+
+#### Client metadata fetch failures
+
+When `/oauth/authorize` cannot resolve a URL-based client's metadata document,
+the provider throws `CimdFetchError`. The redirect URI cannot be validated
+without that document, so the route renders the error locally and never
+redirects, following CIMD §6.1:
+
+- Transient failures (upstream `408`, `429`, `5xx`, or a timeout) return `503`.
+- Terminal failures (other HTTP statuses, oversized or non-JSON responses, and
+  metadata or client ID validation errors) return `400`.
+
+Both are logged with `logWarn` (`clientIdHost`, `failureClass`,
+`failureReason`, `metadataStatus`) and do not create Sentry issues: the client's
+metadata host, not this server, failed. Unrecognized failures, such as fetch
+runtime errors, are re-thrown and still reported. The classification in
+[`client-metadata-failure.ts`](../../packages/mcp-cloudflare/src/server/oauth/client-metadata-failure.ts)
+matches provider error messages, so check it when upgrading the provider.
 
 #### Operator-managed client metadata
 
@@ -417,6 +435,18 @@ RFC 8414 URL directly from the `/mcp/...` endpoint path. The compatibility
 response keeps the exact protected-resource query string in the RFC 8707
 `resource` parameter, while emitting a query-free `issuer` so the document
 remains valid RFC 8414 metadata.
+
+Because metadata echoes the query, clients disagree about whether a query such
+as `?utm_source=plugin` or `?codemode=false`, or a trailing slash, is part of
+the resource. A login can name `/mcp?utm_source=plugin` and a later code
+exchange or refresh name `/mcp`. The provider runs with
+`resourceMatchCanonical: true`, so the token endpoint compares the requested
+and granted resources, and `/mcp` compares a token's audience to the request
+URL, by scheme, host, port, and path only. The query and trailing slashes are
+ignored; the `/mcp/{org}/{project}` path binding is unchanged. The option is
+provided by the same version-specific pnpm patch as `clientIdMetadataDocuments`.
+When upgrading the provider, port it and run
+`pnpm --filter @sentry/mcp-cloudflare exec vitest run src/server/oauth/resource-indicator.integration.test.ts`.
 
 When a constrained OAuth request includes `resource=/mcp/{org}` or
 `resource=/mcp/{org}/{project}`, the approval page surfaces that scope to the

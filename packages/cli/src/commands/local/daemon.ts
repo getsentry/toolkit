@@ -23,6 +23,8 @@ import { isSea } from "../../lib/react-native/wrap-call.js";
 import { setTimeout as sleep } from "node:timers/promises";
 import { ensureConfigDir, getConfigDir } from "../../lib/db/index.js";
 import { formatLocalServerUrl } from "./ui.js";
+import { sentry } from "../../lib/app-identity.js";
+import { CliError, EXIT } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import {
   CONTROL_PLANE_PREFIX,
@@ -30,8 +32,11 @@ import {
 } from "./control-plane.js";
 import {
   DEFAULT_PORT,
+  isConnectionRefused,
   isLoopbackHost,
   PORT_RETRY_TIMEOUT_MS,
+  probeLocalHealth,
+  portInUseError,
   tryListen,
 } from "./server.js";
 import {
@@ -43,6 +48,8 @@ import { createLocalSessionStore, type LocalSession } from "./session-store.js";
 export const LOCAL_DAEMON_STATE_FILENAME = "local-control-plane.json";
 export const LOCAL_DAEMON_PROTOCOL_VERSION = 1;
 export const LOCAL_DAEMON_IDLE_GRACE_MS = 30_000;
+/** Pause before a refused connection is probed again, outlasting a shutdown. */
+const STALE_DAEMON_RECHECK_MS = 250;
 /** Listener retries plus time for CLI bootstrap and discovery persistence. */
 const LOCAL_DAEMON_START_TIMEOUT_MS = PORT_RETRY_TIMEOUT_MS + 5_000;
 
@@ -69,6 +76,12 @@ export type LocalDaemonSession = {
   readonly streamUrl: string;
   /** Older daemon versions do not advertise browser discovery. */
   readonly directoryUrl?: string;
+  /** DSN for SDKs without Spotlight support; older daemons omit it. */
+  readonly dsn?: string;
+  /** Set when `reuse` joined a session that was already open. */
+  readonly reused?: boolean;
+  /** The run's hold on a session joined with `reuse`; older daemons omit it. */
+  readonly leaseId?: string;
 };
 
 function statePath(directory: string): string {
@@ -82,7 +95,7 @@ function startupLockPath(directory: string): string {
 function shutdownServer(server: Server): Promise<void> {
   return new Promise((resolve) => {
     server.close(() => resolve());
-    server.closeAllConnections?.();
+    server.closeAllConnections();
   });
 }
 
@@ -147,18 +160,37 @@ function daemonBaseUrl(state: LocalDaemonState): string {
   return formatLocalServerUrl(state.host, state.port);
 }
 
-async function daemonResponds(state: LocalDaemonState): Promise<boolean> {
+/**
+ * Probe the recorded daemon: `ok` when it proves its identity, `refused` when
+ * nothing listens at its address, and `failed` for another protocol version,
+ * a timeout, or any other answer, which a busy daemon can also give.
+ */
+async function probeLocalDaemon(
+  state: LocalDaemonState,
+): Promise<"ok" | "refused" | "failed"> {
+  if (state.version !== LOCAL_DAEMON_PROTOCOL_VERSION) return "failed";
   try {
     const response = await requestLocalDaemon(state, "/sessions", {
       signal: AbortSignal.timeout(500),
     });
-    if (!response.ok) return false;
+    if (!response.ok) return "failed";
     const data = (await response.json()) as { sessions?: unknown };
-    return Array.isArray(data.sessions);
+    return Array.isArray(data.sessions) ? "ok" : "failed";
   } catch (error) {
     logger.debug("Local daemon identity check failed", error);
-    return false;
+    return isConnectionRefused(error) ? "refused" : "failed";
   }
+}
+
+/** Whether two discovery snapshots name the same daemon instance. */
+function isSameDaemonState(a: LocalDaemonState, b: LocalDaemonState): boolean {
+  return (
+    a.pid === b.pid &&
+    a.token === b.token &&
+    a.host === b.host &&
+    a.port === b.port &&
+    a.version === b.version
+  );
 }
 
 /** Arguments for re-executing this CLI as a native binary or Node entrypoint. */
@@ -336,37 +368,113 @@ async function readOwnerPid(path: string): Promise<number> {
   }
 }
 
-/** Keep discovery reads non-destructive; daemon startup replaces stale metadata. */
+/**
+ * Whether a probe proves that no daemon serves the recorded address: the
+ * connection was refused, or a server that is not a Local daemon answers
+ * there, such as a foreground `sentry local serve`. A timeout does not.
+ */
+async function isStaleProbe(
+  state: LocalDaemonState,
+  probe: "ok" | "refused" | "failed",
+): Promise<boolean> {
+  if (probe === "refused") return true;
+  if (probe !== "failed") return false;
+  const holder = await probeLocalHealth(daemonBaseUrl(state), 500);
+  return holder === "receiver" || holder === "foreign";
+}
+
+/**
+ * Whether discovery whose PID is alive but whose address no daemon serves is
+ * stale, as after an unclean exit, PID reuse, or a shutdown in progress;
+ * clears it when it is.
+ *
+ * A daemon writes discovery only after it listens, and closes its listener
+ * just before it removes discovery. So a stale probe that persists after a
+ * pause, while discovery stays unchanged, means no daemon serves it. Under the
+ * ownership guard, discovery is removed only when no other live owner could
+ * be replacing it. The owner lock goes too when it belongs to the same stale
+ * daemon: the same PID, and written no later than discovery. A newer lock
+ * with that PID is a daemon starting up.
+ *
+ * Returns `released` when callers should treat the daemon as not running,
+ * `ok` when the recheck reached the daemon, and `kept` otherwise.
+ */
+async function releaseStaleLocalDaemon(
+  directory: string,
+  state: LocalDaemonState,
+): Promise<"released" | "ok" | "kept"> {
+  await sleep(STALE_DAEMON_RECHECK_MS);
+  const recheck = await probeLocalDaemon(state);
+  if (recheck === "ok") return "ok";
+  if (!(await isStaleProbe(state, recheck))) return "kept";
+  return await withDaemonOwnershipGuard(directory, async () => {
+    const current = await readLocalDaemonState(directory);
+    if (!current) return "released";
+    if (!isSameDaemonState(current, state)) return "kept";
+    const ownerPath = join(directory, "local-control-plane.owner");
+    const owner = await readOwnerPid(ownerPath);
+    if (owner === state.pid) {
+      let stateFile: Awaited<ReturnType<typeof stat>>;
+      try {
+        stateFile = await stat(statePath(directory));
+      } catch (error) {
+        // A daemon shutting down removes discovery outside the guard.
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "ENOENT"
+        )
+          return "released";
+        throw error;
+      }
+      // Owner locks and discovery change only under the guard (a shutdown
+      // only removes discovery), so both still belong to this daemon.
+      const ownerFile = await stat(ownerPath);
+      if (ownerFile.mtimeMs > stateFile.mtimeMs) return "released";
+      await rm(ownerPath, { force: true });
+    } else if (isProcessRunning(owner)) {
+      return "released";
+    }
+    await removeLocalDaemonState(directory);
+    return "released";
+  });
+}
+
+/**
+ * Find the running daemon. Discovery stays in place for a live process that
+ * may be busy; it is cleared only when it is proven stale.
+ */
 async function discoverLocalDaemon(
   waitForResponse = false,
 ): Promise<LocalDaemonState | undefined> {
   const directory = getConfigDir();
   const state = await readLocalDaemonState(directory);
   if (!state) return;
-  const responds =
-    state.version === LOCAL_DAEMON_PROTOCOL_VERSION &&
-    (await daemonResponds(state));
+  const probe = await probeLocalDaemon(state);
   // A startup or shutdown can replace/remove metadata while the probe is in
   // flight. Rediscover changed state and never unlink based on a stale snapshot.
   const current = await readLocalDaemonState(directory);
   if (!current) return;
-  if (
-    current.pid !== state.pid ||
-    current.token !== state.token ||
-    current.host !== state.host ||
-    current.port !== state.port ||
-    current.version !== state.version
-  ) {
+  if (!isSameDaemonState(current, state)) {
     return await discoverLocalDaemon(waitForResponse);
   }
-  if (responds) return state;
-  if (isProcessRunning(state.pid)) {
-    if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
-      return;
-    throw new Error(
-      "The Local daemon is still running but did not respond with a compatible identity. Retry the command; its discovery state has been preserved.",
-    );
-  }
+  if (probe === "ok") return state;
+  if (!isProcessRunning(state.pid)) return;
+  const outcome = (await isStaleProbe(state, probe))
+    ? await releaseStaleLocalDaemon(directory, state)
+    : "kept";
+  if (outcome === "released") return;
+  // A daemon can replace discovery during the health check or stale recheck.
+  const latest = await readLocalDaemonState(directory);
+  if (!latest) return;
+  if (!isSameDaemonState(latest, state))
+    return await discoverLocalDaemon(waitForResponse);
+  if (outcome === "ok") return state;
+  if (waitForResponse && state.version === LOCAL_DAEMON_PROTOCOL_VERSION)
+    return;
+  throw new CliError(
+    `The Local daemon (PID ${state.pid}) is still running but did not respond at ${daemonBaseUrl(state)}. If it is busy, retry in a moment. If you have checked that PID ${state.pid} is not a Sentry Local daemon, delete ${statePath(directory)} and ${join(directory, "local-control-plane.owner")}, then retry.`,
+  );
 }
 
 /** Return authenticated discovery, preserving unreachable live owners for retries. */
@@ -416,13 +524,17 @@ async function waitForLocalDaemon(
       if (!isProcessRunning(owner)) throw error;
     }
   }
+  return undefined;
 }
 
 /** Start the daemon child and wait until its authenticated discovery state is available. */
 export async function ensureLocalDaemon({
   host = "localhost",
   port = DEFAULT_PORT,
-}: { host?: string; port?: number } = {}): Promise<LocalDaemonState> {
+}: {
+  host?: string | undefined;
+  port?: number | undefined;
+} = {}): Promise<LocalDaemonState> {
   if (!isLoopbackHost(host))
     throw new Error("The Local control-plane host must be loopback-only.");
   if (port === 0)
@@ -466,6 +578,22 @@ export async function ensureLocalDaemon({
       join(directory, "local-control-plane.owner"),
     );
     if (!isProcessRunning(owner)) {
+      // A daemon child would only wait out the listener retries behind a
+      // server that is not a Local daemon. A Local daemon there may be a
+      // foreground owner still publishing discovery, so startup waits for it.
+      const holder = await probeLocalHealth(
+        formatLocalServerUrl(host, port),
+        500,
+      );
+      if (holder === "foreign") throw portInUseError(port);
+      if (holder === "receiver") {
+        // A plain receiver answers /health like Spotlight's sidecar does, so
+        // the probe cannot tell `local serve` from `local run`; name both.
+        throw portInUseError(
+          port,
+          `another server, such as '${sentry`local serve`}' or '${sentry`local run`}' without --session`,
+        );
+      }
       child = spawn(process.execPath, buildLocalDaemonArgs(host, port), {
         detached: true,
         env: process.env,
@@ -475,9 +603,18 @@ export async function ensureLocalDaemon({
         startupError = error;
       });
       child.once("exit", (code, signal) => {
-        startupError = new Error(
-          `Local daemon exited before startup (status ${code ?? signal}). Check that the requested port is available.`,
-        );
+        // Exit 21 (EXIT.VALIDATION) means the child's port is in use: its
+        // arguments are this loopback host and nonzero port, which its flag
+        // parsing accepts, and its other startup failures are plain Errors
+        // that exit 1. tryListen's port-in-use error is its only
+        // ValidationError.
+        const hostFlag = host === "localhost" ? "" : ` --host ${host}`;
+        startupError =
+          code === EXIT.VALIDATION
+            ? portInUseError(port)
+            : new CliError(
+                `Local daemon exited before startup (status ${code ?? signal}). Run '${sentry`local daemon start --foreground${hostFlag} --port ${port}`}' to see why.`,
+              );
       });
       child.unref();
     }
@@ -548,7 +685,11 @@ export async function runLocalDaemonForeground({
       version: LOCAL_DAEMON_PROTOCOL_VERSION,
     };
     ownedState = state;
-    await writeLocalDaemonState(directory, state);
+    // Under the guard, so stale-daemon recovery never sees this discovery
+    // appear between its checks and deletes it.
+    await withDaemonOwnershipGuard(directory, () =>
+      writeLocalDaemonState(directory, state),
+    );
     // Replaces the sessions of a daemon that exited without removing them
     snapshotSessions(controlPlane.sessionStore.list());
 
@@ -631,17 +772,23 @@ export async function createLocalDaemonSession({
   label,
   port,
   maxEnvelopes,
+  reuse,
 }: {
   readonly clientId?: string;
-  readonly maxEnvelopes?: number;
+  readonly maxEnvelopes?: number | undefined;
   readonly cwd: string;
   readonly host?: string;
   readonly label: string;
   readonly port?: number;
+  /**
+   * Join the open session with this label instead of creating another; give
+   * it back with {@link releaseLocalDaemonSession}.
+   */
+  readonly reuse?: boolean;
 }): Promise<LocalDaemonSession> {
   const state = await ensureLocalDaemon({ host, port });
   const response = await requestLocalDaemon(state, "/sessions", {
-    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes }),
+    body: JSON.stringify({ clientId, cwd, label, maxEnvelopes, reuse }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
@@ -668,4 +815,64 @@ export async function retainLocalDaemonSession(
       method: "POST",
     },
   );
+}
+
+/**
+ * Warn that `--max-envelopes` was ignored because the command joined a
+ * session that was already open, and say how to change its limit.
+ */
+export function warnMaxEnvelopesIgnoredOnJoin(
+  session: Pick<LocalDaemonSession, "id" | "reused">,
+  maxEnvelopes: number | undefined,
+): void {
+  if (!session.reused || maxEnvelopes === undefined) {
+    return;
+  }
+  logger.warn(
+    `--max-envelopes doesn't change a session that is already open. Use ${sentry`local session retention ${session.id} --max-envelopes ${String(maxEnvelopes)}`}.`,
+  );
+}
+
+/**
+ * The stream URL a run tails a joined session through. It names the run's
+ * lease, so the daemon releases the lease when this connection ends, even when
+ * the run is killed before it can call {@link releaseLocalDaemonSession}.
+ */
+export function leasedStreamUrl(session: LocalDaemonSession): string {
+  if (!session.leaseId) {
+    return session.streamUrl;
+  }
+  const url = new URL(session.streamUrl);
+  url.searchParams.set("lease", session.leaseId);
+  return url.href;
+}
+
+/**
+ * Give back a session joined with `reuse`. The daemon closes it once no run
+ * holds it, unless it was created on its own; with `discardIfEmpty` a session
+ * that closes without telemetry is removed. Daemons without leases close the
+ * session instead.
+ */
+export async function releaseLocalDaemonSession(
+  session: Pick<LocalDaemonSession, "id" | "leaseId">,
+  { discardIfEmpty = false }: { discardIfEmpty?: boolean } = {},
+): Promise<void> {
+  const state = await getRunningLocalDaemon();
+  if (!state) {
+    return;
+  }
+  if (!session.leaseId) {
+    await retainLocalDaemonSession(session.id);
+    return;
+  }
+  const response = await requestLocalDaemon(
+    state,
+    `/sessions/${encodeURIComponent(session.id)}/release`,
+    {
+      body: JSON.stringify({ leaseId: session.leaseId, discardIfEmpty }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  await response.body?.cancel();
 }

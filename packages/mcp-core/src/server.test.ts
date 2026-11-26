@@ -1,16 +1,23 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { type Span, setUser, startSpan } from "@sentry/core";
+import {
+  type Span,
+  captureException,
+  getClient,
+  setUser,
+  startSpan,
+} from "@sentry/core";
 import {
   createDefaultEvent,
   eventFixture,
   issueFixture,
   mswServer,
+  organizationFixture,
   projectFixture,
 } from "@sentry/mcp-server-mocks";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { ApiAuthenticationError } from "./api-client";
@@ -27,7 +34,7 @@ import {
 } from "./test-utils/structured-content";
 import type { GetIssueDetailsPayload } from "./tools/catalog/get-issue-details";
 import { createExecuteTool } from "./tools/special/execute-tool";
-import type { ToolConfig } from "./tools/types";
+import type { DescriptionContext, ToolConfig } from "./tools/types";
 import type { CredentialRouter, ServerContext } from "./types";
 import { LIB_VERSION } from "./version";
 
@@ -53,6 +60,7 @@ vi.mock("@sentry/core", () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
   getClient: vi.fn(),
+  metrics: { count: vi.fn() },
 }));
 
 vi.mock("@sentry/core/server", () => ({
@@ -147,6 +155,8 @@ const DEFAULT_DIRECT_TOOL_NAMES = [
 describe("buildServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // No DSN by default, so submit_feedback_to_sentry_team stays hidden.
+    vi.mocked(getClient).mockReturnValue(undefined);
     startedSpans = [];
     vi.mocked(startSpan).mockImplementation(
       <T>(
@@ -299,12 +309,12 @@ describe("buildServer", () => {
           "https://sentry.io/api/0/organizations/:org/",
           ({ params, request }) => {
             seen.push({
-              org: String(params.org),
+              org: String(params["org"]),
               authorization: request.headers.get("authorization"),
             });
             return HttpResponse.json({
               id: "1",
-              slug: params.org,
+              slug: params["org"],
               name: "Org",
             });
           },
@@ -315,7 +325,7 @@ describe("buildServer", () => {
         tools: {
           org_tool: orgTool(async (params, context) => {
             const org = await apiServiceFromContext(context).getOrganization(
-              String(params.organizationSlug),
+              String(params["organizationSlug"]),
             );
             return org.slug;
           }),
@@ -414,7 +424,7 @@ describe("buildServer", () => {
           return "ok";
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: { ...baseContext, credentialRouter: router },
         tools: registry,
@@ -436,6 +446,192 @@ describe("buildServer", () => {
     });
   });
 
+  describe("cancellation", () => {
+    const INTEGRATIONS_URL =
+      "https://sentry.io/api/0/organizations/org/issues/1/integrations/";
+    const NEXT_PAGE_LINK =
+      '<https://sentry.io/>; rel="previous"; results="false"; cursor="0:0:1", ' +
+      '<https://sentry.io/>; rel="next"; results="true"; cursor="0:100:0"';
+
+    async function withClient<T>(
+      server: ReturnType<typeof buildServer>,
+      fn: (client: Client) => Promise<T>,
+    ): Promise<T> {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "server-test-client", version: "1" });
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      try {
+        return await fn(client);
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    }
+
+    /** A tool whose handler outcome the test can await. */
+    function trackedTool(
+      name: string,
+      run: (context: ServerContext) => Promise<unknown>,
+    ) {
+      let settle!: (outcome: PromiseSettledResult<unknown>) => void;
+      const settled = new Promise<PromiseSettledResult<unknown>>((resolve) => {
+        settle = resolve;
+      });
+      const tool = createMockTool(name, {
+        handler: async (_params, context) => {
+          try {
+            const value = await run(context);
+            settle({ status: "fulfilled", value });
+            return "done";
+          } catch (reason) {
+            settle({ status: "rejected", reason });
+            throw reason;
+          }
+        },
+      });
+      return { tool, settled };
+    }
+
+    it("aborts the in-flight request and fetches no further pages", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      let inFlightAborted = false;
+      mswServer.use(
+        http.get(INTEGRATIONS_URL, async ({ request }) => {
+          requests++;
+          if (requests > 1) {
+            // Cancel while the second page is in flight.
+            controller.abort("client cancelled");
+            await new Promise((resolve) => {
+              if (request.signal.aborted) resolve(undefined);
+              request.signal.addEventListener("abort", resolve);
+            });
+            inFlightAborted = true;
+          }
+          return HttpResponse.json([], {
+            headers: { Link: NEXT_PAGE_LINK },
+          });
+        }),
+      );
+      const { tool, settled } = trackedTool("paged_tool", (context) =>
+        apiServiceFromContext(context).listIssueIntegrations({
+          organizationSlug: "org",
+          issueId: "1",
+        }),
+      );
+      const server = buildServer({
+        context: baseContext,
+        tools: { paged_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "paged_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        // MCP cancellation reasons can be strings, not AbortErrors.
+        await expect(settled).resolves.toEqual({
+          status: "rejected",
+          reason: "client cancelled",
+        });
+      });
+
+      expect(inFlightAborted).toBe(true);
+      expect(requests).toBe(2);
+      expect(captureException).not.toHaveBeenCalled();
+    });
+
+    it("stops retrying a failed request once the call is cancelled", async () => {
+      const controller = new AbortController();
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", () => {
+          requests++;
+          // A 503 GET is retried after a backoff; cancel during it.
+          controller.abort("client cancelled");
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+      const { tool, settled } = trackedTool("retry_tool", (context) =>
+        apiServiceFromContext(context).getOrganization("org"),
+      );
+      const router: CredentialRouter = {
+        resolve: async () => ({ id: "default", accessToken: "routed-token" }),
+        list: async () => [],
+      };
+      const server = buildServer({
+        context: { ...baseContext, credentialRouter: router },
+        tools: { retry_tool: tool },
+      });
+
+      await withClient(server, async (client) => {
+        await expect(
+          client.callTool({ name: "retry_tool", arguments: {} }, undefined, {
+            signal: controller.signal,
+          }),
+        ).rejects.toThrow();
+        await expect(settled).resolves.toMatchObject({ status: "rejected" });
+      });
+
+      expect(requests).toBe(1);
+    });
+
+    it("keeps other calls on the session running", async () => {
+      const controller = new AbortController();
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let requests = 0;
+      mswServer.use(
+        http.get("https://sentry.io/api/0/organizations/org/", async () => {
+          requests++;
+          if (requests === 2) {
+            controller.abort("client cancelled");
+            release();
+          }
+          await released;
+          return HttpResponse.json({ ...organizationFixture, slug: "org" });
+        }),
+      );
+      const fetchOrganization = (context: ServerContext) =>
+        apiServiceFromContext(context).getOrganization("org");
+      const cancelled = trackedTool("cancelled_tool", fetchOrganization);
+      const kept = trackedTool("kept_tool", fetchOrganization);
+      const server = buildServer({
+        context: baseContext,
+        tools: { cancelled_tool: cancelled.tool, kept_tool: kept.tool },
+      });
+
+      const keptResult = await withClient(server, async (client) => {
+        const [cancelledResult, keptResult] = await Promise.allSettled([
+          client.callTool(
+            { name: "cancelled_tool", arguments: {} },
+            undefined,
+            {
+              signal: controller.signal,
+            },
+          ),
+          client.callTool({ name: "kept_tool", arguments: {} }),
+        ]);
+        expect(cancelledResult.status).toBe("rejected");
+        await cancelled.settled;
+        return keptResult;
+      });
+
+      expect(keptResult).toMatchObject({
+        status: "fulfilled",
+        value: { content: [{ type: "text", text: "done" }] },
+      });
+      await expect(kept.settled).resolves.toMatchObject({
+        status: "fulfilled",
+      });
+    });
+  });
+
   describe("tool failure telemetry", () => {
     it("invokes the tool's onError hook when its handler throws", async () => {
       const onError = vi.fn();
@@ -454,7 +650,7 @@ describe("buildServer", () => {
       await callRegisteredTool(server, "boom_tool", {});
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
 
     it("invokes onError when a tool fails via execute_sentry_tool", async () => {
@@ -467,7 +663,7 @@ describe("buildServer", () => {
           },
         }),
       };
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({ context: baseContext, tools: registry });
 
       await callRegisteredTool(server, "execute_sentry_tool", {
@@ -476,7 +672,7 @@ describe("buildServer", () => {
       });
 
       expect(onError).toHaveBeenCalledTimes(1);
-      expect(onError.mock.calls[0][0]).toBeInstanceOf(UserInputError);
+      expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(UserInputError);
     });
   });
 
@@ -503,9 +699,9 @@ describe("buildServer", () => {
       }
     )._registeredTools;
 
-    expect(registeredTools.v2_tool).toBeDefined();
+    expect(registeredTools["v2_tool"]).toBeDefined();
     await expect(
-      registeredTools.v2_tool.handler({ value: "ok" }),
+      registeredTools["v2_tool"]?.handler({ value: "ok" }),
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "v2:ok" }],
     });
@@ -759,7 +955,9 @@ describe("buildServer", () => {
         }
       )._registeredTools;
 
-      await registeredTools.example_tool.handler({}, {});
+      const exampleTool = registeredTools["example_tool"];
+      assert(exampleTool, "example_tool was not registered");
+      await exampleTool.handler({}, {});
 
       expect(setUser).toHaveBeenCalledWith({
         id: "user-123",
@@ -1067,15 +1265,10 @@ describe("buildServer", () => {
 
   describe("dynamic descriptions", () => {
     it("resolves function descriptions with context", () => {
-      const dynamicDescription = vi.fn(
-        (ctx: {
-          experimentalMode: boolean;
-          availableToolNames?: ReadonlySet<string>;
-          directToolNames?: ReadonlySet<string>;
-        }) =>
-          ctx.experimentalMode
-            ? "Experimental description"
-            : "Normal description",
+      const dynamicDescription = vi.fn((ctx: DescriptionContext) =>
+        ctx.experimentalMode
+          ? "Experimental description"
+          : "Normal description",
       );
 
       buildServer({
@@ -1097,12 +1290,12 @@ describe("buildServer", () => {
         }),
       );
       expect(
-        dynamicDescription.mock.calls[0][0].availableToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].availableToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
       expect(
-        dynamicDescription.mock.calls[0][0].directToolNames?.has(
+        dynamicDescription.mock.calls[0]?.[0].directToolNames?.has(
           "dynamic_tool",
         ),
       ).toBe(true);
@@ -1323,7 +1516,7 @@ describe("buildServer", () => {
       expect(experimentalToolNames).toEqual(DEFAULT_DIRECT_TOOL_NAMES);
     });
 
-    it("advertises Sentry tool guidance for snapshot image tools", async () => {
+    it("advertises snapshot image resources", async () => {
       const server = buildServer({
         context: baseContext,
       });
@@ -1333,9 +1526,7 @@ describe("buildServer", () => {
         (tool) => tool.name === "get_sentry_resource",
       );
 
-      expect(getSentryResource?.description).toContain(
-        "Use the Sentry tool `get_snapshot_image` for full-resolution image bytes",
-      );
+      expect(getSentryResource?.description).toContain("snapshot images");
     });
 
     it("does not advertise monitor resources when inspect tools are unavailable", async () => {
@@ -1475,8 +1666,9 @@ describe("buildServer", () => {
           properties: {
             query: { type: "string" },
             results: { type: "array" },
+            notes: { type: "array" },
           },
-          required: ["query", "results"],
+          required: ["query", "results", "notes"],
         },
         annotations: {
           readOnlyHint: true,
@@ -1519,7 +1711,8 @@ describe("buildServer", () => {
           } & Record<string, unknown>
         >;
       }>(result);
-      const firstResult = payload.results[0];
+      const [firstResult] = payload.results;
+      assert(firstResult, "Expected at least one tool search result");
 
       expect(payload.query).toBe("replay");
       expect(getTextContent(result)).toBe(
@@ -1642,6 +1835,47 @@ describe("buildServer", () => {
       }>(result);
 
       expect(payload.results.map((tool) => tool.name)).toContain("whoami");
+    });
+
+    it("search_sentry_tools suggests feedback when no tool matches", async () => {
+      vi.mocked(getClient).mockReturnValue({
+        getDsn: () => ({ host: "o1.ingest.sentry.io" }),
+      } as unknown as ReturnType<typeof getClient>);
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+      const payload = getStructuredContent<{
+        results: unknown[];
+        notes: string[];
+      }>(result);
+
+      expect(payload.results).toEqual([]);
+      expect(payload.notes).toMatchInlineSnapshot(`
+        [
+          "No Sentry tool matched. Try other keywords first. If no Sentry tool can do this task, report it to the Sentry MCP team with \`submit_feedback_to_sentry_team\`.",
+        ]
+      `);
+
+      const matched = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "server version",
+      });
+      expect(getStructuredContent<{ notes: string[] }>(matched).notes).toEqual(
+        [],
+      );
+    });
+
+    it("search_sentry_tools omits the feedback note without a Sentry DSN", async () => {
+      const server = buildServer({ context: baseContext });
+
+      const result = await callRegisteredTool(server, "search_sentry_tools", {
+        query: "zzzz qqqq",
+      });
+
+      expect(getStructuredContent<{ notes: string[] }>(result).notes).toEqual(
+        [],
+      );
     });
 
     it("discovers and executes Sentry MCP server information from the catalog", async () => {
@@ -1925,9 +2159,10 @@ describe("buildServer", () => {
           },
         });
 
-        expect(getTextContent(result)).toContain(
-          "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-        );
+        expect(
+          getStructuredContent<{ issue: { shortId: string } }>(result).issue
+            .shortId,
+        ).toBe("CLOUDFLARE-MCP-41");
       },
     );
 
@@ -1996,9 +2231,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it.each([
@@ -2011,7 +2247,7 @@ describe("buildServer", () => {
           http.post(
             "*/api/0/organizations/:org/issues/:issueId/notes/",
             ({ params }) => {
-              expect(params.org).toBe("sentry-mcp-evals");
+              expect(params["org"]).toBe("sentry-mcp-evals");
               return HttpResponse.json({
                 id: "activity-1",
                 commentId: "comment-1",
@@ -2130,9 +2366,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Event Stacktrace in **sentry-mcp-evals**",
-      );
+      expect(result.structuredContent).toMatchObject({
+        organizationSlug: "sentry-mcp-evals",
+        issueId: "CLOUDFLARE-MCP-41",
+      });
     });
 
     it("execute_sentry_tool dispatches to catalog-only issue user reports", async () => {
@@ -2923,7 +3160,7 @@ describe("buildServer", () => {
         return `${parsed.organizationSlug}:${parsed.filter}:${parsed.nested.limit}`;
       });
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           organizationSlug: z.string(),
           filter: z.string(),
@@ -2931,7 +3168,7 @@ describe("buildServer", () => {
         },
         handler,
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: {
           ...baseContext,
@@ -2980,12 +3217,12 @@ describe("buildServer", () => {
 
     it("marks the catalog tool span as errored when execute_sentry_tool validation fails", async () => {
       const registry: Record<string, ToolConfig> = {};
-      registry.fake_catalog_tool = createMockTool("fake_catalog_tool", {
+      registry["fake_catalog_tool"] = createMockTool("fake_catalog_tool", {
         inputSchema: {
           requiredValue: z.string(),
         },
       });
-      registry.execute_sentry_tool = createExecuteTool(() => registry);
+      registry["execute_sentry_tool"] = createExecuteTool(() => registry);
       const server = buildServer({
         context: baseContext,
         tools: registry,
@@ -3009,9 +3246,9 @@ describe("buildServer", () => {
         expect.any(Function),
       );
       const span = startedSpans[0];
-      expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
+      expect(span?.setStatus).toHaveBeenCalledWith({ code: 2 });
       // Expected validation failures mark the span failed without recording an exception.
-      expect(span.recordException).not.toHaveBeenCalled();
+      expect(span?.recordException).not.toHaveBeenCalled();
     });
 
     it("execute_sentry_tool injects constrained arguments for catalog-only tools", async () => {
@@ -3033,9 +3270,10 @@ describe("buildServer", () => {
         },
       });
 
-      expect(getTextContent(result)).toContain(
-        "# Issue CLOUDFLARE-MCP-41 in **sentry-mcp-evals**",
-      );
+      expect(
+        getStructuredContent<{ issue: { shortId: string } }>(result).issue
+          .shortId,
+      ).toBe("CLOUDFLARE-MCP-41");
     });
 
     it("exposes catalog-only tool safety annotations through search_sentry_tools", async () => {
@@ -3094,9 +3332,9 @@ describe("buildServer", () => {
       }>(result);
       const replayTool = payload.results[0];
 
-      expect(replayTool.name).toBe("get_replay_details");
+      expect(replayTool?.name).toBe("get_replay_details");
       expect(
-        Object.keys(replayTool.inputSchema.properties ?? {}).sort(),
+        Object.keys(replayTool?.inputSchema.properties ?? {}).sort(),
       ).toEqual([
         "categories",
         "endOffsetSeconds",

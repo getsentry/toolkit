@@ -1,7 +1,7 @@
 import { createExecutionContext, env } from "cloudflare:test";
 import { getOAuthApi } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCOPES } from "../../constants";
 import { PKCE_CODE_CHALLENGE, PKCE_CODE_VERIFIER } from "../../test-utils/pkce";
 import app from "../app";
@@ -36,6 +36,7 @@ vi.mock("./helpers", async (importOriginal) => {
 });
 
 const REDIRECT_URI = "https://example.com/callback";
+const CLIENT_STATE = "client-original-state";
 const COOKIE_SECRET = "test-cookie-secret-key-for-hmac";
 
 function createTestApp() {
@@ -89,6 +90,7 @@ async function createSignedCallbackState(
   clientId: string,
   resource?: string,
   skills: string[] = ["inspect"],
+  overrides: { req?: Record<string, unknown>; exp?: number } = {},
 ): Promise<string> {
   const now = Date.now();
   const payload: OAuthState = {
@@ -101,9 +103,10 @@ async function createSignedCallbackState(
       codeChallenge: PKCE_CODE_CHALLENGE,
       codeChallengeMethod: "S256",
       ...(resource ? { resource } : {}),
+      ...overrides.req,
     },
     iat: now,
-    exp: now + 10 * 60 * 1000,
+    exp: overrides.exp ?? now + 10 * 60 * 1000,
   };
 
   return await signState(payload, COOKIE_SECRET);
@@ -145,7 +148,9 @@ async function approveClient(
 
   expect(response.status).toBe(302);
 
-  return response.headers.get("Set-Cookie")?.split(";")[0];
+  const cookie = response.headers.get("Set-Cookie")?.split(";")[0];
+  assert(cookie, "approval response should set the approval cookie");
+  return cookie;
 }
 
 async function callCallback(
@@ -174,7 +179,7 @@ async function callCallback(
   return await oauthApp.fetch(
     new Request(url, {
       method: "GET",
-      headers: options.cookie ? { Cookie: options.cookie } : undefined,
+      ...(options.cookie ? { headers: { Cookie: options.cookie } } : {}),
     }),
     testEnv,
   );
@@ -304,6 +309,7 @@ describe("oauth callback routes", () => {
       );
       expect(approval.status).toBe(302);
       const cookie = approval.headers.get("Set-Cookie")?.split(";")[0];
+      assert(cookie, "approval response should set the approval cookie");
 
       const now = Date.now();
       const state = await signState(
@@ -332,7 +338,91 @@ describe("oauth callback routes", () => {
       expect(response.status).toBe(302);
     });
 
-    it("renders a safe upstream oauth error page and skips token exchange", async () => {
+    it("relays upstream access_denied to the client with its original state and iss", async () => {
+      const testEnv = createTestEnv();
+      const oauthApp = createTestApp();
+      const client = await createClient(testEnv);
+      const cookie = await approveClient(oauthApp, testEnv, client.clientId);
+      const state = await createSignedCallbackState(
+        client.clientId,
+        undefined,
+        undefined,
+        { req: { state: CLIENT_STATE } },
+      );
+
+      const response = await callCallback(oauthApp, testEnv, {
+        state,
+        cookie,
+        error: "access_denied",
+        errorDescription: "<script>upstream text</script>",
+      });
+
+      expect(response.status).toBe(302);
+      const location = new URL(response.headers.get("location")!);
+      expect(`${location.origin}${location.pathname}`).toBe(REDIRECT_URI);
+      expect(Object.fromEntries(location.searchParams)).toEqual({
+        error: "access_denied",
+        error_description: "The user denied the authorization request",
+        state: CLIENT_STATE,
+        iss: "http://localhost",
+      });
+      expect(logWarn).toHaveBeenCalledWith(
+        "[oauth] Upstream authorization callback error",
+        expect.objectContaining({
+          loggerScope: ["cloudflare", "oauth", "callback"],
+        }),
+      );
+      expect(logIssue).not.toHaveBeenCalled();
+      expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["temporarily_unavailable", "temporarily_unavailable", true],
+      ["server_error", "server_error", true],
+      ["invalid_request", "server_error", false],
+      ["invalid_scope", "server_error", true],
+      ["provider_broke_it", "server_error", true],
+    ])(
+      "relays upstream %s to the client as %s",
+      async (upstreamError, clientError, shouldLogIssue) => {
+        const testEnv = createTestEnv();
+        const oauthApp = createTestApp();
+        const client = await createClient(testEnv);
+        const cookie = await approveClient(oauthApp, testEnv, client.clientId);
+        const state = await createSignedCallbackState(
+          client.clientId,
+          undefined,
+          undefined,
+          { req: { state: CLIENT_STATE } },
+        );
+
+        const response = await callCallback(oauthApp, testEnv, {
+          state,
+          cookie,
+          error: upstreamError,
+          errorDescription: "upstream text",
+        });
+
+        expect(response.status).toBe(302);
+        const location = new URL(response.headers.get("location")!);
+        expect(location.searchParams.get("error")).toBe(clientError);
+        expect(location.searchParams.get("error_description")).not.toContain(
+          "upstream text",
+        );
+        expect(location.searchParams.get("state")).toBe(CLIENT_STATE);
+        expect(location.searchParams.get("iss")).toBe("http://localhost");
+        expect(shouldLogIssue ? logIssue : logWarn).toHaveBeenCalledWith(
+          "[oauth] Upstream authorization callback error",
+          expect.objectContaining({
+            loggerScope: ["cloudflare", "oauth", "callback"],
+          }),
+        );
+        expect(shouldLogIssue ? logWarn : logIssue).not.toHaveBeenCalled();
+        expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
+      },
+    );
+
+    it("omits state from the error redirect when the client sent none", async () => {
       const testEnv = createTestEnv();
       const oauthApp = createTestApp();
       const client = await createClient(testEnv);
@@ -343,111 +433,118 @@ describe("oauth callback routes", () => {
         state,
         cookie,
         error: "access_denied",
-        errorDescription: "The user denied access",
       });
 
-      const body = await response.text();
+      expect(response.status).toBe(302);
+      const location = new URL(response.headers.get("location")!);
+      expect(location.searchParams.get("error")).toBe("access_denied");
+      expect(location.searchParams.has("state")).toBe(false);
+    });
+
+    it("does not redirect an upstream error when the state is expired", async () => {
+      const testEnv = createTestEnv();
+      const oauthApp = createTestApp();
+      const client = await createClient(testEnv);
+      const cookie = await approveClient(oauthApp, testEnv, client.clientId);
+      const state = await createSignedCallbackState(
+        client.clientId,
+        undefined,
+        undefined,
+        { req: { state: CLIENT_STATE }, exp: Date.now() - 1000 },
+      );
+
+      const response = await callCallback(oauthApp, testEnv, {
+        state,
+        cookie,
+        error: "access_denied",
+      });
+
       expect(response.status).toBe(400);
-      expect(body).toContain("OAuth Error:</strong> access_denied");
-      expect(body).toContain("Authorization was denied");
-      expect(body).not.toContain("Event ID:");
-      expect(logWarn).toHaveBeenCalledWith(
-        "[oauth] Upstream authorization callback error",
-        expect.objectContaining({
-          loggerScope: ["cloudflare", "oauth", "callback"],
-        }),
-      );
-      expect(logIssue).not.toHaveBeenCalled();
-      expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
+      expect(response.headers.get("location")).toBeNull();
+      expect(await response.text()).toBe("Invalid state");
     });
 
-    it("renders an event ID for upstream system oauth errors", async () => {
-      logIssue.mockReturnValue("oauth-event-id");
-
+    it("does not redirect an upstream error when the state signature is tampered", async () => {
       const testEnv = createTestEnv();
       const oauthApp = createTestApp();
       const client = await createClient(testEnv);
       const cookie = await approveClient(oauthApp, testEnv, client.clientId);
-      const state = await createSignedCallbackState(client.clientId);
-
-      const response = await callCallback(oauthApp, testEnv, {
-        state,
-        cookie,
-        error: "server_error",
-      });
-
-      const body = await response.text();
-      expect(response.status).toBe(502);
-      expect(body).toContain("Sentry OAuth encountered an internal error");
-      expect(body).toContain("Event ID:</strong> <code>oauth-event-id</code>");
-      expect(logIssue).toHaveBeenCalledWith(
-        "[oauth] Upstream authorization callback error",
-        expect.objectContaining({
-          loggerScope: ["cloudflare", "oauth", "callback"],
-        }),
+      const signedState = await createSignedCallbackState(
+        client.clientId,
+        undefined,
+        undefined,
+        { req: { state: CLIENT_STATE } },
       );
-      expect(logWarn).not.toHaveBeenCalled();
-      expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
-    });
-
-    it("treats invalid_request callback errors as user-correctable", async () => {
-      const testEnv = createTestEnv();
-      const oauthApp = createTestApp();
-      const client = await createClient(testEnv);
-      const cookie = await approveClient(oauthApp, testEnv, client.clientId);
-      const state = await createSignedCallbackState(client.clientId);
+      const [signature, payload] = signedState.split(".");
+      assert(
+        signature && payload,
+        "signed state should be <signature>.<payload>",
+      );
+      const tamperedDigit = signature.endsWith("a") ? "b" : "a";
+      const tamperedState = `${signature.slice(0, -1)}${tamperedDigit}.${payload}`;
 
       const response = await callCallback(oauthApp, testEnv, {
-        state,
+        state: tamperedState,
         cookie,
-        error: "invalid_request",
+        error: "access_denied",
       });
 
-      const body = await response.text();
       expect(response.status).toBe(400);
-      expect(body).toContain(
-        "The authorization request was rejected. Please try again.",
-      );
-      expect(body).not.toContain("Event ID:");
-      expect(logWarn).toHaveBeenCalledWith(
-        "[oauth] Upstream authorization callback error",
-        expect.objectContaining({
-          loggerScope: ["cloudflare", "oauth", "callback"],
-        }),
-      );
-      expect(logIssue).not.toHaveBeenCalled();
-      expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
+      expect(response.headers.get("location")).toBeNull();
+      expect(await response.text()).toBe("Invalid state");
     });
 
-    it("treats unknown callback errors as system failures", async () => {
-      logIssue.mockReturnValue("oauth-event-id");
+    it("does not redirect an upstream error without an approved client cookie", async () => {
+      const testEnv = createTestEnv();
+      const oauthApp = createTestApp();
+      const client = await createClient(testEnv);
+      const state = await createSignedCallbackState(
+        client.clientId,
+        undefined,
+        undefined,
+        { req: { state: CLIENT_STATE } },
+      );
 
+      const response = await callCallback(oauthApp, testEnv, {
+        state,
+        error: "access_denied",
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get("location")).toBeNull();
+      expect(await response.text()).toBe(
+        "Authorization failed: Client not approved",
+      );
+    });
+
+    it("never redirects an upstream error to an unregistered redirect URI", async () => {
       const testEnv = createTestEnv();
       const oauthApp = createTestApp();
       const client = await createClient(testEnv);
       const cookie = await approveClient(oauthApp, testEnv, client.clientId);
-      const state = await createSignedCallbackState(client.clientId);
+      const state = await createSignedCallbackState(
+        client.clientId,
+        undefined,
+        undefined,
+        {
+          req: {
+            redirectUri: "https://attacker.example/callback",
+            state: CLIENT_STATE,
+          },
+        },
+      );
 
       const response = await callCallback(oauthApp, testEnv, {
         state,
         cookie,
-        error: "provider_broke_it",
+        error: "access_denied",
       });
 
-      const body = await response.text();
-      expect(response.status).toBe(502);
-      expect(body).toContain(
-        "There was an internal error authenticating your account. Please try again shortly.",
+      expect(response.status).toBe(400);
+      expect(response.headers.get("location")).toBeNull();
+      expect(await response.text()).toBe(
+        "Authorization failed: Invalid redirect URL",
       );
-      expect(body).toContain("Event ID:</strong> <code>oauth-event-id</code>");
-      expect(logIssue).toHaveBeenCalledWith(
-        "[oauth] Upstream authorization callback error",
-        expect.objectContaining({
-          loggerScope: ["cloudflare", "oauth", "callback"],
-        }),
-      );
-      expect(logWarn).not.toHaveBeenCalled();
-      expect(exchangeCodeForAccessToken).not.toHaveBeenCalled();
     });
 
     it("renders a safe error page when the callback is missing a code", async () => {
@@ -557,6 +654,10 @@ describe("oauth callback routes", () => {
       const cookie = await approveClient(oauthApp, testEnv, client.clientId);
       const signedState = await createSignedCallbackState(client.clientId);
       const [signature, payload] = signedState.split(".");
+      assert(
+        signature && payload,
+        "signed state should be <signature>.<payload>",
+      );
       const tamperedDigit = signature.endsWith("a") ? "b" : "a";
       const tamperedState = `${signature.slice(0, -1)}${tamperedDigit}.${payload}`;
 
@@ -632,7 +733,7 @@ describe("oauth callback routes", () => {
       expect(redirectUrl.searchParams.get("iss")).toBe("http://localhost");
 
       const tokenCtx = createExecutionContext();
-      const tokenResponse = await handler.fetch!(
+      const tokenResponse = await handler.fetch(
         createTokenExchangeRequest(client.clientId, authorizationCode!),
         testEnv,
         tokenCtx,
@@ -640,18 +741,18 @@ describe("oauth callback routes", () => {
 
       expect(tokenResponse.status).toBe(200);
 
-      const tokenPayload = (await tokenResponse.json()) as {
+      const tokenPayload = await tokenResponse.json<{
         access_token: string;
         token_type: string;
         resource?: string;
-      };
+      }>();
 
       expect(tokenPayload.access_token).toBeTruthy();
       expect(tokenPayload.token_type).toBe("bearer");
       expect(tokenPayload.resource).toBe("http://localhost/mcp");
 
       const mcpCtx = createExecutionContext();
-      const mcpResponse = await handler.fetch!(
+      const mcpResponse = await handler.fetch(
         createMcpInitializeRequest(tokenPayload.access_token),
         testEnv,
         mcpCtx,
@@ -699,20 +800,19 @@ describe("oauth callback routes", () => {
 
       expect(callbackResponse.status).toBe(302);
       expect(completeAuthorization).toHaveBeenCalledOnce();
-      const props = completeAuthorization.mock.calls[0][0].props as Record<
-        string,
-        unknown
-      >;
+      const call = completeAuthorization.mock.calls[0];
+      assert(call, "completeAuthorization should have been called");
+      const props = call[0].props as Record<string, unknown>;
 
-      expect(props.upstreamScopes).toEqual([
+      expect(props["upstreamScopes"]).toEqual([
         "alerts:write",
         "event:write",
         "org:read",
         "project:write",
         "team:write",
       ]);
-      expect(props.grantedSkills).toEqual(["inspect"]);
-      expect(props.grantedScopes).not.toEqual(props.upstreamScopes);
+      expect(props["grantedSkills"]).toEqual(["inspect"]);
+      expect(props["grantedScopes"]).not.toEqual(props["upstreamScopes"]);
     });
 
     it("omits upstreamScopes when Sentry's token response has no scope", async () => {
@@ -733,11 +833,10 @@ describe("oauth callback routes", () => {
       });
 
       expect(callbackResponse.status).toBe(302);
-      const props = completeAuthorization.mock.calls[0][0].props as Record<
-        string,
-        unknown
-      >;
-      expect(props.upstreamScopes).toBeUndefined();
+      const call = completeAuthorization.mock.calls[0];
+      assert(call, "completeAuthorization should have been called");
+      const props = call[0].props as Record<string, unknown>;
+      expect(props["upstreamScopes"]).toBeUndefined();
     });
 
     it("completes callback for a scoped resource, exchanges the code, and uses the token at the same scoped /mcp path", async () => {
@@ -772,7 +871,7 @@ describe("oauth callback routes", () => {
       expect(redirectUrl.searchParams.get("iss")).toBe("http://localhost");
 
       const tokenCtx = createExecutionContext();
-      const tokenResponse = await handler.fetch!(
+      const tokenResponse = await handler.fetch(
         createTokenExchangeRequest(client.clientId, authorizationCode!),
         testEnv,
         tokenCtx,
@@ -780,15 +879,15 @@ describe("oauth callback routes", () => {
 
       expect(tokenResponse.status).toBe(200);
 
-      const tokenPayload = (await tokenResponse.json()) as {
+      const tokenPayload = await tokenResponse.json<{
         access_token: string;
         resource?: string;
-      };
+      }>();
 
       expect(tokenPayload.resource).toBe(scopedResource);
 
       const mcpCtx = createExecutionContext();
-      const mcpResponse = await handler.fetch!(
+      const mcpResponse = await handler.fetch(
         createMcpInitializeRequest(
           tokenPayload.access_token,
           "/mcp/sentry-mcp-evals/cloudflare-mcp",

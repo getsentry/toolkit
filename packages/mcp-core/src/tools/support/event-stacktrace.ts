@@ -1,11 +1,17 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { ThreadsEntrySchema } from "../../api-client";
 import type { SentryApiService, ThreadEntrySchema } from "../../api-client";
 import type { Event } from "../../api-client/types";
+import { findEventStacktrace } from "../../internal/formatting";
 import {
-  formatAvailableThreadList,
-  formatThreadStacktraceOutput,
-} from "../../internal/formatting";
+  mapStructuredStacktrace,
+  mapStructuredThread,
+  mapStructuredThreadSummary,
+  nonEmptyString,
+  structuredStacktraceSchema,
+  structuredThreadSchema,
+  structuredThreadSummarySchema,
+} from "./structured-stacktrace";
 
 type Thread = z.infer<typeof ThreadEntrySchema>;
 type ThreadSelector = string | number | undefined;
@@ -14,17 +20,59 @@ type SelectedThread =
   | {
       kind: "selected";
       thread: Thread;
-      reason: string;
     }
   | {
       kind: "not_found" | "ambiguous";
       message: string;
     };
 
+const SELECTOR_HINT =
+  "Pass `thread` as a numeric thread id or exact thread name.";
+
+export const eventStacktraceOutputSchema = z.object({
+  organizationSlug: z.string(),
+  issueId: z.string(),
+  eventId: z.string(),
+  platform: z
+    .string()
+    .nullable()
+    .describe("The event platform, which sets how to read frames."),
+  threadCount: z.number(),
+  selection: z.object({
+    status: z
+      .enum(["selected", "not_found", "ambiguous", "no_threads"])
+      .describe(
+        "`selected` returns `thread`. Otherwise `thread` is null and `message` says why.",
+      ),
+    message: z
+      .string()
+      .nullable()
+      .describe("Why no thread was selected; null when one was."),
+  }),
+  thread: structuredThreadSchema
+    .nullable()
+    .describe("The selected thread and its stacktrace."),
+  availableThreads: z
+    .array(structuredThreadSummarySchema)
+    .nullable()
+    .describe(
+      "Every thread on the event, listed only when the `thread` selector matched none or several.",
+    ),
+  stacktrace: structuredStacktraceSchema
+    .nullable()
+    .describe(
+      "The event-level stacktrace, when the event has no threads but has a stack outside them, as on a captured message.",
+    ),
+});
+
+export type EventStacktracePayload = z.output<
+  typeof eventStacktraceOutputSchema
+>;
+
 /**
- * Fetches an issue event and formats the selected thread stacktrace.
+ * Fetches an issue event and maps the selected thread stacktrace.
  */
-export async function fetchAndFormatEventStacktrace({
+export async function fetchEventStacktrace({
   apiService,
   organizationSlug,
   issueId,
@@ -35,8 +83,8 @@ export async function fetchAndFormatEventStacktrace({
   organizationSlug: string;
   issueId: string;
   eventId: string;
-  thread?: string | number;
-}): Promise<string> {
+  thread?: string | number | undefined;
+}): Promise<EventStacktracePayload> {
   const event = await apiService.getEventForIssue({
     organizationSlug,
     issueId,
@@ -44,30 +92,52 @@ export async function fetchAndFormatEventStacktrace({
   });
 
   const threads = getThreads(event);
-
-  let output = `# Event Stacktrace in **${organizationSlug}**\n\n`;
-  output += `**Issue ID**: ${issueId}\n`;
-  output += `**Event ID**: ${event.id}\n\n`;
+  const base = {
+    organizationSlug,
+    issueId,
+    eventId: event.id,
+    platform: nonEmptyString(event.platform),
+    threadCount: threads.length,
+  };
 
   if (threads.length === 0) {
-    output += "No thread stacktraces were found for this event.\n";
-    return output;
+    const stacktrace = mapStructuredStacktrace(findEventStacktrace(event));
+    return {
+      ...base,
+      selection: {
+        status: "no_threads",
+        message: stacktrace
+          ? "This event has no threads; its event-level stacktrace is in `stacktrace`."
+          : "No thread stacktraces were found for this event.",
+      },
+      thread: null,
+      availableThreads: null,
+      stacktrace,
+    };
   }
 
   const selected = selectThread(threads, thread);
 
   if (selected.kind !== "selected") {
-    output += `${selected.message}\n\n`;
-    output += formatAvailableThreadList(threads);
-    return output;
+    return {
+      ...base,
+      selection: {
+        status: selected.kind,
+        message: `${selected.message} ${SELECTOR_HINT}`,
+      },
+      thread: null,
+      availableThreads: threads.map(mapStructuredThreadSummary),
+      stacktrace: null,
+    };
   }
 
-  output += formatThreadStacktraceOutput({
-    event,
-    thread: selected.thread,
-    selectionReason: selected.reason,
-  });
-  return output;
+  return {
+    ...base,
+    selection: { status: "selected", message: null },
+    thread: mapStructuredThread(selected.thread),
+    availableThreads: null,
+    stacktrace: null,
+  };
 }
 
 function getThreads(event: Event): Thread[] {
@@ -82,12 +152,9 @@ function selectThread(
 ): SelectedThread {
   if (selector === undefined) {
     const selected = selectSentryDefaultThread(threads);
-    return {
-      kind: "selected",
-      thread: selected,
-      reason:
-        "Sentry default selection: first crashed thread, then first thread with a stacktrace, then first thread.",
-    };
+    return selected
+      ? { kind: "selected", thread: selected }
+      : { kind: "not_found", message: "No threads were found." };
   }
 
   if (typeof selector === "number") {
@@ -126,7 +193,7 @@ function selectThread(
 
 // Mirrors Sentry's thread UI default: crashed first, otherwise a thread with a
 // stacktrace, otherwise the first available thread.
-function selectSentryDefaultThread(threads: Thread[]): Thread {
+function selectSentryDefaultThread(threads: Thread[]): Thread | undefined {
   const sortedThreads = [...threads].sort(
     (a, b) => Number(Boolean(b.crashed)) - Number(Boolean(a.crashed)),
   );
@@ -148,8 +215,9 @@ function selectUnique(
   ambiguousMessage: string,
 ): SelectedThread {
   const matches = threads.filter(predicate);
+  const [match] = matches;
 
-  if (matches.length === 0) {
+  if (!match) {
     return { kind: "not_found", message: notFoundMessage };
   }
 
@@ -157,9 +225,5 @@ function selectUnique(
     return { kind: "ambiguous", message: ambiguousMessage };
   }
 
-  return {
-    kind: "selected",
-    thread: matches[0],
-    reason: "Matched the provided thread selector.",
-  };
+  return { kind: "selected", thread: match };
 }

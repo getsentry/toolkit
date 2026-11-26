@@ -1,10 +1,11 @@
 import {
   AuthorizationError,
   type AuthRequest,
+  CimdFetchError,
 } from "@cloudflare/workers-oauth-provider";
 import * as Sentry from "@sentry/cloudflare";
 import { logWarn } from "@sentry/mcp-core/telem/logging";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { SCOPES } from "../../../constants";
 import {
   getRememberedSkillsForClient,
@@ -15,12 +16,15 @@ import { resolveClientFamilyFromName } from "../../lib/client-family";
 import { redirectUriHasUserInfo } from "../../lib/html-utils";
 import { isRegisteredRedirectUri } from "../../lib/redirect-uri";
 import type { Env } from "../../types";
+import { classifyClientMetadataFailure } from "../client-metadata-failure";
 import { SENTRY_AUTH_URL } from "../constants";
 import {
+  ACCESS_DENIED_DESCRIPTION,
   createAuthorizationErrorRedirect,
   createResourceValidationError,
   getAuthorizationServerIssuer,
   getUpstreamAuthorizeUrl,
+  parseIdpHint,
   promptRequestsAccountSelection,
   validateResourceParameter,
 } from "../helpers";
@@ -39,13 +43,20 @@ interface AuthRequestWithSkills extends AuthRequest {
   resource?: string;
 }
 
+// Long enough to sign in, sign up for Sentry, and approve consent on Sentry.
+const UPSTREAM_STATE_TTL_MS = 30 * 60 * 1000;
+
 async function redirectToUpstream(
   env: Env,
   request: Request,
-  oauthReqInfo: AuthRequest | AuthRequestWithSkills,
+  // Only serialized into the upstream state when no override is given.
+  oauthReqInfo: object,
   headers: HeadersInit = {},
   stateOverride?: string,
-  forcePrompt = false,
+  {
+    forcePrompt = false,
+    idpHint,
+  }: { forcePrompt?: boolean; idpHint?: string | undefined } = {},
 ) {
   const responseHeaders = new Headers(headers);
   responseHeaders.set(
@@ -60,6 +71,7 @@ async function redirectToUpstream(
       redirect_uri: new URL("/oauth/callback", request.url).href,
       state: stateOverride ?? btoa(JSON.stringify(oauthReqInfo)),
       force_prompt: forcePrompt,
+      idp_hint: idpHint,
     }),
   );
 
@@ -67,6 +79,54 @@ async function redirectToUpstream(
     status: 302,
     headers: responseHeaders,
   });
+}
+
+function getUrlHost(value: string): string | undefined {
+  try {
+    return new URL(value).host;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Renders a failure to resolve a CIMD client's metadata document locally.
+ * Without client metadata the redirect URI cannot be validated, so the error
+ * is never relayed to the client (CIMD draft §6.1). Returns undefined for
+ * unclassified failures so they keep reaching Sentry.
+ */
+function createClientMetadataFailureResponse(
+  c: Context<{ Bindings: Env }>,
+  error: unknown,
+): Response | undefined {
+  if (!(error instanceof CimdFetchError)) {
+    return undefined;
+  }
+  const failure = classifyClientMetadataFailure(error);
+  if (!failure) {
+    return undefined;
+  }
+
+  logWarn("OAuth client metadata could not be resolved", {
+    loggerScope: ["cloudflare", "oauth", "authorize"],
+    extra: {
+      clientIdHost: getUrlHost(error.metadataUrl),
+      failureClass: failure.failureClass,
+      failureReason: failure.reason,
+      metadataStatus: failure.status,
+    },
+  });
+
+  if (failure.failureClass === "transient") {
+    return c.text(
+      "Client metadata is temporarily unavailable. Try again later.",
+      503,
+    );
+  }
+  return c.text(
+    "Invalid client_id: client metadata could not be retrieved or is invalid",
+    400,
+  );
 }
 
 // Export Hono app for /authorize endpoints
@@ -137,6 +197,10 @@ export default new Hono<{ Bindings: Env }>()
 
         return c.text(errorMessage, 400);
       }
+      const clientMetadataFailure = createClientMetadataFailureResponse(c, err);
+      if (clientMetadataFailure) {
+        return clientMetadataFailure;
+      }
       // Re-throw other errors to be captured by Sentry
       throw err;
     }
@@ -180,7 +244,7 @@ export default new Hono<{ Bindings: Env }>()
       if (oauthReqInfo.redirectUri) {
         return createResourceValidationError(
           oauthReqInfo.redirectUri,
-          oauthReqInfo.state ?? undefined,
+          oauthReqInfo.state,
           c.req.url,
         );
       }
@@ -235,6 +299,7 @@ export default new Hono<{ Bindings: Env }>()
         forcePrompt: promptRequestsAccountSelection(
           requestUrl.searchParams.get("prompt"),
         ),
+        idpHint: parseIdpHint(requestUrl.searchParams.getAll("idp_hint")),
       },
       cookieSecret: c.env.COOKIE_SECRET,
       defaultSkills,
@@ -277,10 +342,6 @@ export default new Hono<{ Bindings: Env }>()
     }
 
     const { state, headers, skills, decision } = result;
-
-    if (!state.oauthReqInfo) {
-      return c.text("Invalid request", 400);
-    }
 
     // Store the selected skills in the OAuth request info
     // This will be passed through to the callback via the state parameter
@@ -335,8 +396,8 @@ export default new Hono<{ Bindings: Env }>()
       return createAuthorizationErrorRedirect(
         oauthReqWithSkills.redirectUri,
         "access_denied",
-        "The user denied the authorization request",
-        oauthReqWithSkills.state ?? undefined,
+        ACCESS_DENIED_DESCRIPTION,
+        oauthReqWithSkills.state,
         getAuthorizationServerIssuer(c.req.url),
       );
     }
@@ -362,12 +423,11 @@ export default new Hono<{ Bindings: Env }>()
       );
     }
 
-    // Build signed state for redirect to Sentry (10 minute validity)
     const now = Date.now();
     const payload: OAuthState = {
       req: oauthReqWithSkills,
       iat: now,
-      exp: now + 10 * 60 * 1000,
+      exp: now + UPSTREAM_STATE_TTL_MS,
     };
     const signedState = await signState(payload, c.env.COOKIE_SECRET);
 
@@ -391,6 +451,11 @@ export default new Hono<{ Bindings: Env }>()
       oauthReqWithSkills,
       headers,
       signedState,
-      state.forcePrompt === true,
+      {
+        // A hinted sign-in always ends on Sentry's consent screen, so the
+        // user sees which account and org they are connecting.
+        forcePrompt: state.forcePrompt === true || state.idpHint !== undefined,
+        idpHint: state.idpHint,
+      },
     );
   });

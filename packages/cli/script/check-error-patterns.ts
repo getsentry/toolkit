@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Check for Error Class Misuse Patterns
  *
@@ -17,7 +16,7 @@
  * shrink). See #1531.
  *
  * Usage:
- *   tsx script/check-error-patterns.ts   # check (fails CI on any violation)
+ *   pnpm ts script/check-error-patterns.ts   # check (fails CI on any violation)
  *
  * Exit codes:
  *   0 - No anti-patterns found

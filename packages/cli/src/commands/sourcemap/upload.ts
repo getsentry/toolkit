@@ -49,9 +49,9 @@ type UploadCommandResult = {
   /** Project slug. Omitted in the same short-circuit case. */
   project?: string;
   /** Release version, if provided. */
-  release?: string;
+  release?: string | undefined;
   /** Distribution identifier, if provided. */
-  dist?: string;
+  dist?: string | undefined;
   /** Number of file pairs uploaded. */
   filesUploaded: number;
 };
@@ -491,5 +491,6 @@ export const uploadCommand = buildCommand({
       dist: flags.dist,
       filesUploaded,
     });
+    return;
   },
 });

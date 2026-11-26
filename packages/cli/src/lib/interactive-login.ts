@@ -24,11 +24,18 @@ export type LoginResult = {
   /** Authentication method used. */
   method: "oauth" | "token";
   /** User identity if available. */
-  user?: { name?: string; email?: string; username?: string; id?: string };
+  user?:
+    | {
+        name?: string | undefined;
+        email?: string | undefined;
+        username?: string | undefined;
+        id?: string | undefined;
+      }
+    | undefined;
   /** Path where credentials are stored. */
   configPath: string;
   /** Token lifetime in seconds, if known. */
-  expiresIn?: number;
+  expiresIn?: number | undefined;
   /** Whether the OAuth access token can be refreshed automatically. */
   refreshEnabled?: boolean;
 };
@@ -41,9 +48,9 @@ export type LoginResult = {
  */
 export function toLoginUser(user: {
   id: string;
-  name?: string | null;
-  email?: string | null;
-  username?: string | null;
+  name?: string | null | undefined;
+  email?: string | null | undefined;
+  username?: string | null | undefined;
 }): NonNullable<LoginResult["user"]> {
   return Object.fromEntries(
     Object.entries(user).filter(([k, v]) => k === "id" || Boolean(v)),
@@ -58,7 +65,7 @@ export type InteractiveLoginOptions = {
    * Space-joined OAuth scope string to request. When omitted, the device flow
    * requests the full default scope set. Build via `resolveOAuthScopeString`.
    */
-  scope?: string;
+  scope?: string | undefined;
   /**
    * Store the login as a new account instead of replacing the active
    * account's credentials (see {@link completeOAuthFlow}). Default: false.
@@ -70,7 +77,9 @@ export type InteractiveLoginOptions = {
    * Servers that ignore the hint let the browser's user approve, so the
    * token is checked here too: a mismatching token is discarded, not stored.
    */
-  expectedEmail?: string;
+  expectedEmail?: string | undefined;
+  /** Ask the agent to relay the approval URL and code to the user. */
+  relayDeviceCode?: boolean;
   /**
    * Re-authorize this stored account in place instead of the active one
    * (scope recovery for the account an invocation picked for its target
@@ -219,11 +228,16 @@ export async function runInteractiveLogin(
           verificationUriComplete,
         ) => {
           urlToCopy = verificationUriComplete;
+          const relay = options?.relayDeviceCode;
+          const isTTY = !relay && process.stdin.isTTY;
+          const browserOpened =
+            !relay && (await openBrowser(verificationUriComplete));
 
-          // Try to open browser (best effort)
-          const browserOpened = await openBrowser(verificationUriComplete);
-
-          if (browserOpened) {
+          if (relay) {
+            log.info(
+              "To finish signing in to the Sentry CLI, ask the user to open the URL below and approve the request. Keep this command running while they approve.",
+            );
+          } else if (browserOpened) {
             log.info("Opening in browser...");
           } else {
             // Show QR code as fallback when browser can't open
@@ -243,7 +257,7 @@ export async function runInteractiveLogin(
             userCode,
             verificationUriComplete,
             browserOpened,
-            process.stdin.isTTY ?? false,
+            isTTY,
           );
           for (const line of displayLines) {
             log.log(line);
@@ -253,7 +267,7 @@ export async function runInteractiveLogin(
           log.start("Waiting for authorization...");
 
           // Setup keyboard listener for 'c' to copy URL
-          if (process.stdin.isTTY) {
+          if (isTTY) {
             keyListener.cleanup = setupCopyKeyListener(
               process.stdin,
               () => urlToCopy,

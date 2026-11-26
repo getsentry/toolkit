@@ -1,11 +1,16 @@
+import { parseEventTimestamp } from "../../../../packages/cli/src/commands/local/timestamp.ts";
+import { httpTargetAttribute } from "../../../../packages/cli/src/commands/local/http-target.ts";
 import {
   getEventMetadata,
   type EventMetadata,
   type LocalFeedItem,
 } from "./spotlight.js";
-import { isErrorEvent } from "./workspace.js";
+import { withoutUndefined } from "./objects.ts";
+import { addProfileSpans, profileSources } from "./profile-spans.ts";
+import { eventKind, spanData } from "./inspection.ts";
 
 export type TraceSpan = {
+  sampled?: boolean;
   id: string;
   parentId?: string;
   operation?: string;
@@ -20,11 +25,18 @@ export type TraceSpan = {
 };
 
 export type TraceGroup = {
+  profileSpansTruncated?: boolean;
   id: string;
   title: string;
   items: LocalFeedItem[];
   roots: TraceSpan[];
   spans: TraceSpan[];
+  /**
+   * Captured spans below the trace's transactions and segments. Like the
+   * tail's `[N spans]`, it leaves out the transaction or segment span itself
+   * and sampled profile rows.
+   */
+  spanCount: number;
   logCount: number;
   errorCount: number;
   itemCount: number;
@@ -33,9 +45,13 @@ export type TraceGroup = {
   durationMs?: number;
 };
 
-type MutableTraceGroup = Omit<TraceGroup, "roots" | "spans" | "itemCount"> & {
+type MutableTraceGroup = Omit<
+  TraceGroup,
+  "roots" | "spans" | "spanCount" | "itemCount"
+> & {
   spanMap: Map<string, TraceSpan>;
-  titlePriority: number;
+  spanUpdates: Map<string, TraceSpan[]>;
+  titleCandidates: Set<string>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,23 +62,12 @@ function getString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-function getTimestamp(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
 function getTraceContext(payload: unknown): Record<string, unknown> {
   if (!isRecord(payload)) {
     return {};
   }
-  const contexts = isRecord(payload.contexts) ? payload.contexts : {};
-  return isRecord(contexts.trace) ? contexts.trace : {};
+  const contexts = isRecord(payload["contexts"]) ? payload["contexts"] : {};
+  return isRecord(contexts["trace"]) ? contexts["trace"] : {};
 }
 
 function getPayloadSpan(
@@ -71,27 +76,32 @@ function getPayloadSpan(
 ): TraceSpan | undefined {
   const event = isRecord(payload) ? payload : {};
   const trace = getTraceContext(payload);
-  const id = getString(trace.span_id) ?? item.metadata?.spanId;
+  const id = getString(trace["span_id"]) ?? item.metadata?.spanId;
   if (!id) {
     return undefined;
   }
-  const startTimestamp = getTimestamp(event.start_timestamp);
+  const startTimestamp = parseEventTimestamp(event["start_timestamp"]);
   const endTimestamp =
-    getTimestamp(event.timestamp) ??
-    getTimestamp(event.end_timestamp) ??
-    getTimestamp(item.timestamp);
-  const operation = getString(trace.op) ?? item.metadata?.operation;
-  const description =
-    getString(event.transaction) ??
-    item.metadata?.route ??
-    item.metadata?.title ??
-    operation ??
-    item.type;
+    parseEventTimestamp(event["timestamp"]) ??
+    parseEventTimestamp(event["end_timestamp"]) ??
+    parseEventTimestamp(item.timestamp);
+  const operation = getString(trace["op"]) ?? item.metadata?.operation;
+  const titleMeta = item.metadata;
+  const title = titleMeta?.title.trim();
+  const description = withCapturedUrl(
+    getString(event["transaction"]) ??
+      (title && title !== item.type ? title : undefined) ??
+      item.metadata?.route ??
+      operation ??
+      item.type,
+    payload,
+    operation,
+  );
 
-  return {
+  return withoutUndefined({
     id,
     parentId:
-      getString(trace.parent_span_id) ?? getString(event.parent_span_id),
+      getString(trace["parent_span_id"]) ?? getString(event["parent_span_id"]),
     operation,
     description,
     startTimestamp,
@@ -101,32 +111,201 @@ function getPayloadSpan(
     payload,
     metadata: item.metadata ?? getEventMetadata(payload, item.type),
     children: [],
+  });
+}
+
+/**
+ * A trace's errors are its error events: exceptions, as the shared event
+ * classifier names them, and other events at error or fatal level. Failing
+ * spans and error logs are not counted again; the waterfall marks failing
+ * spans and logs have their own count.
+ */
+function isTraceError(item: LocalFeedItem): boolean {
+  if (item.type !== "event") return false;
+  if (eventKind(item.payload) === "Exception") return true;
+  const { level } = item.metadata ?? getEventMetadata(item.payload, item.type);
+  return level === "error" || level === "fatal";
+}
+
+const HTTP_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "CONNECT",
+  "TRACE",
+]);
+
+/**
+ * Browser resource and fetch spans can be named by host only
+ * ("localhost", "GET localhost"), with the resource in `url.full`
+ * (span v2 attributes or transaction span data).
+ * Label them with the URL's origin and path so rows can be told apart,
+ * grouped and searched. The query (cache busters, tokens) and fragment
+ * stay in the span's attributes.
+ *
+ * Spans named by method only ("GET", any case) get a target after the
+ * method, read in the CLI's `httpTargetAttribute` order. A server span
+ * (`http.server`) shows the route or path; any other span keeps the
+ * host it called, such as `GET api.stripe.com/v1/charges`.
+ */
+function withCapturedUrl(
+  description: string,
+  payload: unknown,
+  operation: string | undefined,
+): string {
+  const data = spanData(payload);
+  const url = getString(data["url.full"]);
+  let parsed: URL | undefined;
+  try {
+    parsed = url ? new URL(url) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  if (HTTP_METHODS.has(description.toUpperCase())) {
+    if (operation !== "http.server" && parsed)
+      return `${description} ${parsed.host}${parsed.pathname}`;
+    // A `url.full` that isn't an absolute URL has no path to show, so
+    // skip it and fall through to `url.path`.
+    const target = httpTargetAttribute((key) =>
+      key === "url.full" && !parsed ? undefined : getString(data[key]),
+    );
+    const path = target?.key === "url.full" ? parsed?.pathname : target?.value;
+    return path ? `${description} ${path}` : description;
+  }
+  if (!parsed) return description;
+  const match = description.match(/^([a-z]+ )?(.*)$/i);
+  const method = match?.[1] ?? "";
+  const target = match?.[2] ?? description;
+  return target === parsed.hostname || target === parsed.host
+    ? `${method}${parsed.origin}${parsed.pathname}`
+    : description;
+}
+
+function defined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  );
+}
+
+function mergeSpan(
+  previous: TraceSpan | undefined,
+  next: TraceSpan,
+): TraceSpan {
+  if (!previous) return next;
+  // Completion time decides conflicting captured values. Name quality is
+  // independent: a later fallback label must not erase a captured name.
+  // Raw feed items stay untouched.
+  const rank = (span: TraceSpan) => {
+    const description = span.description.trim();
+    const named =
+      description &&
+      description !== span.operation &&
+      description !== span.id &&
+      description !== span.item.type;
+    const payload = isRecord(span.payload) ? span.payload : {};
+    const captured = [
+      payload["transaction"],
+      payload["description"],
+      payload["name"],
+    ].some(
+      (value) =>
+        typeof value === "string" &&
+        withCapturedUrl(value.trim(), span.payload, span.operation) ===
+          description,
+    );
+    return named ? (captured ? 4 : 2) : 0;
   };
+  const [primary, secondary] =
+    (previous.endTimestamp ?? -Infinity) > (next.endTimestamp ?? -Infinity)
+      ? [previous, next]
+      : [next, previous];
+  const description =
+    rank(secondary) > rank(primary)
+      ? secondary.description
+      : primary.description;
+  const merge = (left: unknown, right: unknown) => ({
+    ...defined(isRecord(left) ? left : {}),
+    ...defined(isRecord(right) ? right : {}),
+  });
+  const payload = merge(secondary.payload, primary.payload);
+  for (const key of ["data", "attributes", "contexts"]) {
+    const left = isRecord(secondary.payload)
+      ? secondary.payload[key]
+      : undefined;
+    const right = isRecord(primary.payload) ? primary.payload[key] : undefined;
+    if (isRecord(left) || isRecord(right)) payload[key] = merge(left, right);
+  }
+  const leftTrace = getTraceContext(secondary.payload);
+  const rightTrace = getTraceContext(primary.payload);
+  if (Object.keys(leftTrace).length || Object.keys(rightTrace).length) {
+    const contexts = isRecord(payload["contexts"]) ? payload["contexts"] : {};
+    payload["contexts"] = {
+      ...contexts,
+      trace: {
+        ...merge(leftTrace, rightTrace),
+        data: merge(leftTrace["data"], rightTrace["data"]),
+      },
+    };
+  }
+  const starts = [previous.startTimestamp, next.startTimestamp].filter(
+    (value): value is number => value !== undefined,
+  );
+  const ends = [previous.endTimestamp, next.endTimestamp].filter(
+    (value): value is number => value !== undefined,
+  );
+  const startTimestamp = starts.length ? Math.min(...starts) : undefined;
+  const endTimestamp = ends.length ? Math.max(...ends) : undefined;
+  const durationMs = getDurationMs(startTimestamp, endTimestamp);
+  return withoutUndefined({
+    ...secondary,
+    ...primary,
+    description,
+    parentId: primary.parentId ?? secondary.parentId,
+    operation: primary.operation ?? secondary.operation,
+    startTimestamp,
+    endTimestamp,
+    durationMs,
+    payload,
+    metadata: withoutUndefined({
+      ...defined(secondary.metadata),
+      ...defined(primary.metadata),
+      title: description,
+      durationMs,
+    }),
+  });
 }
 
 function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
   const event = isRecord(payload) ? payload : {};
-  if (!Array.isArray(event.spans)) {
+  if (!Array.isArray(event["spans"])) {
     return [];
   }
 
-  return event.spans.flatMap((value) => {
+  return event["spans"].flatMap((value) => {
     if (!isRecord(value)) {
       return [];
     }
-    const id = getString(value.span_id);
+    const id = getString(value["span_id"]);
     if (!id) {
       return [];
     }
-    const startTimestamp = getTimestamp(value.start_timestamp);
-    const endTimestamp = getTimestamp(value.timestamp);
-    const operation = getString(value.op);
+    const startTimestamp = parseEventTimestamp(value["start_timestamp"]);
+    const endTimestamp = parseEventTimestamp(value["timestamp"]);
+    const operation = getString(value["op"]);
     return [
-      {
+      withoutUndefined({
         id,
-        parentId: getString(value.parent_span_id),
+        parentId: getString(value["parent_span_id"]),
         operation,
-        description: getString(value.description) ?? operation ?? id,
+        description: withCapturedUrl(
+          getString(value["description"]) ?? operation ?? id,
+          value,
+          operation,
+        ),
         startTimestamp,
         endTimestamp,
         durationMs: getDurationMs(startTimestamp, endTimestamp),
@@ -134,7 +313,7 @@ function getChildSpans(payload: unknown, item: LocalFeedItem): TraceSpan[] {
         payload: value,
         metadata: getEventMetadata(value, "span"),
         children: [],
-      },
+      }),
     ];
   });
 }
@@ -178,7 +357,7 @@ function updateTraceTiming(trace: MutableTraceGroup): void {
     end = Math.max(end, timestamp);
   }
   for (const item of trace.items)
-    includeTimestamp(getTimestamp(item.timestamp));
+    includeTimestamp(parseEventTimestamp(item.timestamp));
   for (const span of trace.spanMap.values()) {
     includeTimestamp(span.startTimestamp);
     includeTimestamp(span.endTimestamp);
@@ -186,7 +365,9 @@ function updateTraceTiming(trace: MutableTraceGroup): void {
   if (start === Infinity) return;
   trace.startTimestamp = start;
   trace.endTimestamp = end;
-  trace.durationMs = getDurationMs(start, end);
+  const durationMs = getDurationMs(start, end);
+  if (durationMs === undefined) delete trace.durationMs;
+  else trace.durationMs = durationMs;
 }
 
 /** Build a small, read-only trace model once for every view in Local. */
@@ -194,8 +375,10 @@ export function buildTraceGroups(
   items: readonly LocalFeedItem[],
 ): TraceGroup[] {
   const traces = new Map<string, MutableTraceGroup>();
+  const profiles = profileSources(items);
 
   for (const item of items) {
+    if (item.type === "profile" || item.type === "profile_chunk") continue;
     const traceId = traceIdForItem(item);
     if (!traceId) {
       continue;
@@ -204,11 +387,12 @@ export function buildTraceGroups(
     const trace: MutableTraceGroup = traces.get(traceId) ?? {
       id: traceId,
       title: item.metadata?.title ?? item.type,
-      titlePriority: 0,
+      titleCandidates: new Set(),
       items: [],
       logCount: 0,
       errorCount: 0,
       spanMap: new Map(),
+      spanUpdates: new Map(),
     };
     if (!traces.has(traceId)) {
       traces.set(traceId, trace);
@@ -218,44 +402,100 @@ export function buildTraceGroups(
     if (item.type === "log") {
       trace.logCount += 1;
     }
-    if (isErrorEvent(item)) {
+    if (isTraceError(item)) {
       trace.errorCount += 1;
     }
 
     if (item.type === "transaction" || item.type === "span") {
       const rootSpan = getPayloadSpan(item.payload, item);
       if (rootSpan) {
-        trace.spanMap.set(rootSpan.id, rootSpan);
+        const updates = trace.spanUpdates.get(rootSpan.id) ?? [];
+        updates.push(rootSpan);
+        trace.spanUpdates.set(rootSpan.id, updates);
         const isSegment =
-          isRecord(item.payload) && item.payload.is_segment === true;
+          isRecord(item.payload) && item.payload["is_segment"] === true;
         if (item.type === "transaction" || isSegment) {
-          // A local segment can have a remote parent absent from this receiver.
-          const priority = rootSpan.parentId ? 1 : 2;
-          if (priority > trace.titlePriority) {
-            trace.title = item.metadata?.title ?? rootSpan.description;
-            trace.titlePriority = priority;
-          }
+          trace.titleCandidates.add(rootSpan.id);
         }
       }
     }
     for (const childSpan of getChildSpans(item.payload, item)) {
-      trace.spanMap.set(childSpan.id, childSpan);
+      const updates = trace.spanUpdates.get(childSpan.id) ?? [];
+      updates.push(childSpan);
+      trace.spanUpdates.set(childSpan.id, updates);
     }
   }
 
   return [...traces.values()]
     .map((trace) => {
+      // Fold original captures in completion order: a partial update's maximum
+      // end time must not become the clock of older fields it merely retained.
+      for (const [id, updates] of trace.spanUpdates) {
+        updates.sort(
+          (left, right) =>
+            (left.endTimestamp ?? -Infinity) -
+            (right.endTimestamp ?? -Infinity),
+        );
+        let merged: TraceSpan | undefined;
+        for (const update of updates) merged = mergeSpan(merged, update);
+        if (merged) trace.spanMap.set(id, merged);
+      }
       updateTraceTiming(trace);
+      // A partial update can turn a former root into a child. Select from final
+      // merged spans rather than retaining a priority from an earlier delivery.
+      let titlePriority = -1;
+      for (const id of trace.titleCandidates) {
+        const span = trace.spanMap.get(id);
+        if (!span) continue;
+        const named =
+          span.description.trim() &&
+          span.description !== span.operation &&
+          span.description !== span.id &&
+          span.description !== span.item.type;
+        const priority = (span.parentId ? 1 : 2) * 10 + (named ? 1 : 0);
+        if (priority > titlePriority) {
+          trace.title = named
+            ? span.description.trim()
+            : (span.operation ?? span.id);
+          titlePriority = priority;
+        }
+      }
       const spans = sortByTimestamp([...trace.spanMap.values()]);
       const roots: TraceSpan[] = [];
       for (const span of spans) {
         span.children = [];
       }
+      // Parent links form a functional graph. Break one edge per cycle for
+      // display, preserving the wire parentId and visiting each node once.
+      const visited = new Set<string>();
+      const cycleRoots = new Set<string>();
+      for (const span of spans) {
+        const path: string[] = [];
+        const positions = new Map<string, number>();
+        let current: TraceSpan | undefined = span;
+        while (current && !visited.has(current.id)) {
+          const position = positions.get(current.id);
+          if (position !== undefined) {
+            let rootId = current.id;
+            for (const pathId of path.slice(position)) {
+              if (pathId < rootId) rootId = pathId;
+            }
+            cycleRoots.add(rootId);
+            break;
+          }
+          positions.set(current.id, path.length);
+          path.push(current.id);
+          current = current.parentId
+            ? trace.spanMap.get(current.parentId)
+            : undefined;
+        }
+        for (const id of path) visited.add(id);
+      }
       for (const span of spans) {
         const parent = span.parentId
           ? trace.spanMap.get(span.parentId)
           : undefined;
-        if (parent && parent !== span) {
+        if (parent && parent !== span && !cycleRoots.has(span.id)) {
           parent.children.push(span);
         } else {
           roots.push(span);
@@ -265,21 +505,35 @@ export function buildTraceGroups(
         sortByTimestamp(span.children);
       }
 
-      return {
+      return withoutUndefined({
         id: trace.id,
         title: trace.title,
         items: trace.items,
         roots: sortByTimestamp(roots),
         spans,
+        spanCount: spans.filter((span) => !trace.titleCandidates.has(span.id))
+          .length,
         logCount: trace.logCount,
         errorCount: trace.errorCount,
         itemCount: trace.items.length,
         startTimestamp: trace.startTimestamp,
         endTimestamp: trace.endTimestamp,
         durationMs: trace.durationMs,
-      };
+      });
     })
+    .map((trace) => addProfileSpans(trace, profiles))
     .sort(
-      (left, right) => (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
+      (left, right) =>
+        Number(isLogOnlyTrace(left)) - Number(isLogOnlyTrace(right)) ||
+        (right.endTimestamp ?? 0) - (left.endTimestamp ?? 0),
     );
+}
+
+/**
+ * Logs without spans, such as server startup and access logs that share a
+ * process-wide trace ID. They keep receiving logs, so they are listed after
+ * traces with spans instead of staying on top.
+ */
+export function isLogOnlyTrace(trace: TraceGroup): boolean {
+  return trace.spans.length === 0 && trace.logCount === trace.itemCount;
 }

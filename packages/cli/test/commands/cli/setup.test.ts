@@ -62,9 +62,16 @@ vi.mock("../../../src/lib/windows-path.js", async (importOriginal) => ({
 import { app } from "../../../src/app.js";
 import { warmCachesAfterLogin } from "../../../src/lib/completion-warmup.js";
 import type { SentryContext } from "../../../src/context.js";
-import { getAccountRow } from "../../../src/lib/db/accounts.js";
+import {
+  getAccountRow,
+  listAccountRows,
+} from "../../../src/lib/db/accounts.js";
 import { EXIT } from "../../../src/lib/errors.js";
-import { getAuthConfig, setAuthToken } from "../../../src/lib/db/auth.js";
+import {
+  getActiveAccountId,
+  getAuthConfig,
+  setAuthToken,
+} from "../../../src/lib/db/auth.js";
 import {
   getOnOffPreference,
   setOnOffPreference,
@@ -74,6 +81,7 @@ import {
   getInstallInfo,
 } from "../../../src/lib/db/install-info.js";
 import { getReleaseChannel } from "../../../src/lib/db/release-channel.js";
+import { setUserInfo } from "../../../src/lib/db/user.js";
 import {
   getProcessInfoFromOS,
   setProcessInfoProvider,
@@ -87,7 +95,7 @@ import * as scopeRecovery from "../../../src/lib/scope-recovery.js";
 import { resetAuthenticatedFetch } from "../../../src/lib/sentry-client.js";
 import { whichSync } from "../../../src/lib/which.js";
 import { addToWindowsUserPath } from "../../../src/lib/windows-path.js";
-import { useTestConfigDir } from "../../helpers.js";
+import { at, useTestConfigDir } from "../../helpers.js";
 
 /** Store original fetch for restoration */
 let originalFetch: typeof globalThis.fetch;
@@ -1033,6 +1041,49 @@ describe("sentry cli setup", () => {
       };
     }
 
+    const handoffCode = `sntryh_${"b".repeat(43)}`;
+    const handoffSetupCode = `sntryc_${Buffer.from(
+      JSON.stringify({ url: "https://sentry.io", iat: 1 }),
+    ).toString("base64")}_${"a".repeat(43)}`;
+    const handoffToken = {
+      access_token: "handoff-token",
+      refresh_token: "handoff-refresh-token",
+      expires_in: 3600,
+      token_type: "bearer",
+      user: {
+        id: "new-user",
+        name: "New User",
+        email: "new@example.com",
+      },
+    };
+    const handoffSummary =
+      "Authenticated as new@example.com for New Organization (slug: new-org) on https://sentry.io.";
+
+    function stubHandoffFetch({
+      flowInstructions = "Continue the requested setup.",
+      tokenResponse = Response.json(handoffToken),
+    }: {
+      flowInstructions?: string;
+      tokenResponse?: Response;
+    } = {}) {
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({
+            sentryUrl: "https://sentry.io",
+            userEmail: "new@example.com",
+            organizationName: "New Organization",
+            organizationSlug: "new-org",
+            clientId: "handoff-client",
+            setupCode: handoffSetupCode,
+            flowInstructions,
+          }),
+        )
+        .mockResolvedValueOnce(tokenResponse);
+      vi.stubGlobal("fetch", fetch);
+      return fetch;
+    }
+
     test.each([true, false])(
       "redeems a setup code with completions=%s without opening a browser",
       async (completions) => {
@@ -1052,6 +1103,7 @@ describe("sentry cli setup", () => {
             refresh_token: "refresh-token",
             expires_in: 3600,
             token_type: "bearer",
+            user: { id: "setup-user", name: null, email: "setup@example.com" },
           }),
         );
         vi.stubGlobal("fetch", fetch);
@@ -1066,7 +1118,7 @@ describe("sentry cli setup", () => {
             completions ? 1 : 0,
           );
           expect(fixture.getOutput()).toContain(
-            "Authenticated with Sentry using the setup code",
+            "Authenticated as setup@example.com on https://sentry.io.",
           );
           expect(fixture.getOutput()).not.toContain(code);
           expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
@@ -1076,6 +1128,137 @@ describe("sentry cli setup", () => {
         }
       },
     );
+
+    test.each([
+      { name: "a first install", existingBinary: false, completions: true },
+      {
+        name: "an existing unauthenticated install",
+        existingBinary: true,
+        completions: false,
+      },
+    ])(
+      "completes an agent handoff during $name",
+      async ({ existingBinary, completions }) => {
+        vi.mocked(warmCachesAfterLogin).mockClear();
+        const instructions = "First instruction.\n\nSecond instruction.";
+        const fixture = createInstall({
+          existingBinary,
+          completions,
+          env: { SENTRY_HANDOFF: handoffCode },
+        });
+        const fetch = stubHandoffFetch({ flowInstructions: instructions });
+
+        try {
+          await fixture.run();
+
+          expect(fetch).toHaveBeenCalledTimes(2);
+          const [, tokenInit] = at(fetch.mock.calls, 1);
+          expect(tokenInit.body.get("setup_code")).toBe(handoffSetupCode);
+          expect(tokenInit.body.get("client_id")).toBe("handoff-client");
+          expect(getAuthConfig()?.token).toBe("handoff-token");
+          expect(warmCachesAfterLogin).toHaveBeenCalledTimes(
+            completions ? 1 : 0,
+          );
+          expect(fixture.getOutput()).toContain(
+            `${handoffSummary}\n${instructions}`,
+          );
+          expect(fixture.getOutput()).not.toContain(handoffCode);
+          expect(fixture.getOutput()).not.toContain(handoffSetupCode);
+          expect(interactiveLogin.runInteractiveLogin).not.toHaveBeenCalled();
+          expect(fixture.context.process.exitCode).toBe(0);
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      },
+    );
+
+    test("omits empty handoff instructions from setup output", async () => {
+      const fixture = createInstall({
+        install: false,
+        flags: ["--json"],
+        env: { SENTRY_HANDOFF: handoffCode },
+      });
+      stubHandoffFetch({ flowInstructions: "" });
+
+      try {
+        await fixture.run();
+
+        const { messages } = JSON.parse(fixture.getOutput());
+        expect(messages).toContain(handoffSummary);
+        expect(messages).not.toContain("");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test.each([
+      {
+        name: "the intended account",
+        host: "https://sentry.io",
+        userId: "new-user",
+      },
+      {
+        name: "another account on the intended host",
+        host: "https://sentry.io",
+        userId: "old-user",
+      },
+      {
+        name: "an account on another Sentry host",
+        host: "https://sentry.example.com",
+        userId: "old-user",
+      },
+    ])("agent handoff supersedes $name", async ({ host, userId }) => {
+      const fixture = createInstall({
+        install: false,
+        env: { SENTRY_HANDOFF: handoffCode },
+      });
+      setAuthToken("old-token", 3600, "old-refresh", { host });
+      setUserInfo({ userId, email: `${userId}@example.com` });
+      stubHandoffFetch();
+
+      try {
+        await fixture.run();
+
+        expect(getAuthConfig()?.token).toBe("handoff-token");
+        expect(getAccountRow(getActiveAccountId() ?? "")?.host).toBe(
+          "https://sentry.io",
+        );
+        if (host === "https://sentry.example.com") {
+          expect(
+            listAccountRows().some((row) => row.token === "old-token"),
+          ).toBe(true);
+        }
+        expect(fixture.context.process.exitCode).toBe(0);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test("does not print flow instructions when handoff authentication fails", async () => {
+      const fixture = createInstall({
+        install: false,
+        env: { SENTRY_HANDOFF: handoffCode },
+      });
+      const instructions = "Do not print these instructions.";
+      stubHandoffFetch({
+        flowInstructions: instructions,
+        tokenResponse: Response.json(
+          { error: "invalid_grant" },
+          { status: 400 },
+        ),
+      });
+
+      try {
+        await fixture.run();
+
+        expect(fixture.context.process.exitCode).toBeGreaterThan(0);
+        expect(fixture.getOutput()).not.toContain(instructions);
+        expect(fixture.getOutput()).not.toContain(handoffSummary);
+        expect(getAuthConfig()).toBeUndefined();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
 
     test("finishes installation configuration when setup-code redemption fails", async () => {
       const claim = Buffer.from(
@@ -1738,7 +1921,7 @@ describe("sentry cli setup — legacy migration records new path", () => {
       homeDir: testHome,
       env: {
         SENTRY_INSTALL_DIR: installDir,
-        SENTRY_CONFIG_DIR: process.env.SENTRY_CONFIG_DIR,
+        SENTRY_CONFIG_DIR: process.env["SENTRY_CONFIG_DIR"],
       },
     });
     restoreStderr = restore;

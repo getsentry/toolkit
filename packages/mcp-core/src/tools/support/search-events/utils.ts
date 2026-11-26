@@ -272,13 +272,13 @@ const FULL_TEXT_SEARCH_KEYS = new Set(["message", "log.body"]);
  * transaction:"handle message:hello"). Length is preserved so offsets still
  * map back to the original query.
  */
-function maskQuotedRegions(query: string): string {
+export function maskQuotedRegions(query: string): string {
   let out = "";
   let quote: '"' | "'" | null = null;
   let escaped = false;
 
   for (let i = 0; i < query.length; i += 1) {
-    const char = query[i];
+    const char = query.charAt(i);
     if (escaped) {
       escaped = false;
       out += quote ? "x" : char;
@@ -314,6 +314,29 @@ function maskQuotedRegions(query: string): string {
   }
 
   return out;
+}
+
+// `issue:` followed by a numeric ID or an all-numeric list, e.g. `issue:123`,
+// `!issue:"123"`, or `issue:[123, 456]`. Matches only the key, at a token start.
+const NUMERIC_ISSUE_FILTER_PATTERN =
+  /(?<=(?:^|[\s(])!?)issue:(?=(?:"?\d+"?|\[\s*"?\d+"?(?:\s*,\s*"?\d+"?)*\s*\])(?=[\s)]|$))/g;
+
+/**
+ * Rewrite `issue:<numeric id>` filters to `issue.id:<numeric id>`.
+ *
+ * The errors dataset resolves `issue:` values as short IDs (`PROJECT-123`) and
+ * rejects numeric group IDs with "Issue IDs do not exist". Other tools, such as
+ * get_sentry_resource, return and accept numeric IDs, so normalize them here.
+ */
+export function normalizeNumericIssueFilters(query: string): string {
+  const masked = maskQuotedRegions(query);
+  let result = "";
+  let lastIndex = 0;
+  for (const match of masked.matchAll(NUMERIC_ISSUE_FILTER_PATTERN)) {
+    result += `${query.slice(lastIndex, match.index)}issue.id:`;
+    lastIndex = match.index + match[0].length;
+  }
+  return lastIndex === 0 ? query : result + query.slice(lastIndex);
 }
 
 type SearchFilterOccurrence = {
@@ -379,7 +402,9 @@ function searchFilterOccurrences(query: string): SearchFilterOccurrence[] {
   // Read key://pattern// on every dataset: outside logs it is a literal match,
   // so a structured filter rewritten into one is still a downgrade.
   for (const match of masked.matchAll(SENTRY_SEARCH_TOKEN_WITH_REGEX_PATTERN)) {
-    const key = (match.groups?.regexKey ?? match.groups?.key)?.toLowerCase();
+    const key = (
+      match.groups?.["regexKey"] ?? match.groups?.["key"]
+    )?.toLowerCase();
     if (!key) {
       continue;
     }
@@ -584,7 +609,7 @@ function isPrimitive(
 
 function isTagPair(value: unknown): value is { key: string; value: unknown } {
   return (
-    isPlainObject(value) && typeof value.key === "string" && "value" in value
+    isPlainObject(value) && typeof value["key"] === "string" && "value" in value
   );
 }
 
@@ -616,14 +641,14 @@ function hasUserSummaryFields(
 ): boolean {
   return (
     hasUserIdentityFields(value) ||
-    (options.allowId === true && value.id != null)
+    (options.allowId === true && value["id"] != null)
   );
 }
 
 function formatUserSummary(
   value: Record<string, unknown>,
   options: {
-    includeGeo?: boolean;
+    includeGeo?: boolean | undefined;
     allowIdOnly?: boolean;
   } = {},
 ): string | null {
@@ -638,7 +663,7 @@ function formatUserSummary(
   const parts = USER_FIELDS.filter((f) => value[f] != null).map(
     (f) => `${f}=${formatSimpleValue(value[f])}`,
   );
-  const geoSummary = formatUserGeoSummary(value.geo);
+  const geoSummary = formatUserGeoSummary(value["geo"]);
   if (includeGeo && geoSummary) {
     parts.push(`geo=${geoSummary}`);
   }
@@ -674,7 +699,7 @@ function truncateString(value: string, maxLength: number): string {
 
 function safeJsonStringify(value: unknown): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(value, (_key, currentValue) => {
+  return JSON.stringify(value, (_key, currentValue: unknown) => {
     if (typeof currentValue === "bigint") {
       return currentValue.toString();
     }
@@ -802,9 +827,9 @@ export async function fetchCustomAttributes(
   projectId?: string,
   timeParams?: { statsPeriod?: string; start?: string; end?: string },
   options: {
-    attributeTypes?: TraceItemAttributeType[];
-    substringMatch?: string;
-    query?: string;
+    attributeTypes?: TraceItemAttributeType[] | undefined;
+    substringMatch?: string | undefined;
+    query?: string | undefined;
     context?: boolean;
   } = {},
 ): Promise<{
@@ -894,7 +919,7 @@ function formatValidationStatusLine({
   valid: boolean;
   name?: string;
   type?: string;
-  error?: string;
+  error?: string | undefined;
   indent?: number;
 }): string {
   const status = valid ? "OK" : "INVALID";
@@ -1083,11 +1108,11 @@ export async function validateEventsSearch(
     fields: string[];
     query: string;
     sort: string;
-    projectId?: string;
-    environment?: string | string[];
-    statsPeriod?: string;
-    start?: string;
-    end?: string;
+    projectId?: string | undefined;
+    environment?: string | string[] | undefined;
+    statsPeriod?: string | undefined;
+    start?: string | undefined;
+    end?: string | undefined;
   },
 ): Promise<EventsValidationResult> {
   return await apiService.validateEvents({
@@ -1202,7 +1227,10 @@ function resolveAvailableFields(
       const replacementAttribute = { ...field, key: replacementKey };
       available.set(replacementKey, replacementAttribute);
       replaced.push(field);
-      fieldTypes[replacementKey] = fieldTypes[key];
+      const fieldType = fieldTypes[key];
+      if (fieldType !== undefined) {
+        fieldTypes[replacementKey] = fieldType;
+      }
       delete fieldTypes[key];
     } else if (!attributeDeprecated && !available.has(key)) {
       available.set(key, field);
@@ -1234,7 +1262,7 @@ function describeField(field: AttributeDescriptor): string {
 export function createDatasetAttributesTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
   const traceItemAttributeTypeSchema = z.enum([
@@ -1440,7 +1468,7 @@ Use these examples as patterns for constructing your query.`;
 export function createValidateEventsSearchTool(options: {
   apiService: SentryApiService;
   organizationSlug: string;
-  projectId?: string;
+  projectId?: string | undefined;
 }) {
   const { apiService, organizationSlug, projectId } = options;
 

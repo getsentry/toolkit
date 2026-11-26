@@ -33,6 +33,7 @@ import {
 } from "../../lib/list-command.js";
 import type { ListEnvelope } from "../../lib/org-list.js";
 import { withProgress } from "../../lib/polling.js";
+import { throwIfHelpMatchedNothing } from "../../lib/help-argument.js";
 import {
   buildDashboardsListUrl,
   buildDashboardUrl,
@@ -62,10 +63,10 @@ type DashboardListResult = {
   dashboards: DashboardListItem[];
   orgSlug: string;
   hasMore: boolean;
-  hasPrev?: boolean;
-  nextCursor?: string;
+  hasPrev?: boolean | undefined;
+  nextCursor?: string | undefined;
   /** The title filter used (for empty-state messaging) */
-  titleFilter?: string;
+  titleFilter?: string | undefined;
   /** All titles seen during fetch (for fuzzy suggestions on empty filter results) */
   allTitles?: string[];
 };
@@ -487,6 +488,8 @@ export const listCommand = buildListCommand("dashboard", {
           }),
       ),
     );
+
+    throwIfHelpMatchedNothing(titleFilter, results.length);
 
     // Advance the pagination cursor stack
     advancePaginationState(

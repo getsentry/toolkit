@@ -139,8 +139,10 @@ Or use existing projects and read their DSNs:
 
 ```bash
 sentry project list my-org/
-sentry dsn list my-org/my-project --json --fields name,dsn
+sentry dsn list my-org/my-project --json --fields name,dsn,isActive
 ```
+
+Use a key whose `isActive` is `true`. Sentry silently drops events sent with a disabled key.
 
 ## 5. Choose features
 
@@ -207,8 +209,24 @@ you didn't skip them:
 - AI agent monitoring: in the handlers that make AI calls, set the
   conversation ID and the user with the SDK's API, using IDs the handler
   already has.
-- iOS and React Native need changes to the Xcode project, and Android and
-  React Native need changes to the Gradle build.
+- Mobile apps need build-time setup if the user wants readable stack traces
+  (step 5). Look up each piece that applies in the docs:
+  - Native iOS: a build phase that uploads debug symbols (dSYMs), and the
+    `dwarf-with-dsym` debug information format. Import the module that matches
+    the Swift package product you added; the docs say which one.
+  - Native Android: the Sentry Android Gradle Plugin.
+  - React Native: the Metro plugin, `sentry.gradle`, the Xcode bundle phase
+    wrapper, and the build phase that uploads debug symbols. The Sentry
+    Android Gradle Plugin is optional.
+  - Expo: install with `npx expo install` and use the config plugin. Don't
+    edit the `ios` and `android` folders when Expo generates them.
+  - Flutter: `sentry_dart_plugin`, which uploads the debug symbols for every
+    platform. Add the Sentry Android Gradle Plugin only when R8 or ProGuard
+    is enabled.
+  - If a tool generates the Xcode project (XcodeGen's `project.yml`, Tuist),
+    change its configuration instead of the `.xcodeproj`.
+  - Uploads need an auth token. Set them up so that the app still builds when
+    no token is set, and tell the user how to add one.
 
 ## 7. Verify the setup
 
@@ -230,7 +248,12 @@ sentry local run --verify -- npm run dev
 
 If it times out, the SDK may not read `SENTRY_SPOTLIGHT`; that doesn't mean
 the setup failed. For a browser app, load the page instead, or ask the user
-to. Either way, confirm that the issue reached Sentry. It can take a minute to
+to. For a mobile app, build a debug build, run it on a simulator or emulator
+that is already set up, and trigger the test error. Don't install simulator
+runtimes or create emulators; ask the user instead. If you can't build or run
+the app, say so in your report and give the user the steps; don't report the
+setup as verified.
+Either way, confirm that the issue reached Sentry. It can take a minute to
 show up:
 
 ```bash

@@ -27,7 +27,7 @@
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=tests.junit.xml",
     "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "catalog:",
@@ -35,11 +35,11 @@
     "@cloudflare/workers-types": "catalog:",
     "@sentry/mcp-core": "workspace:*",
     "@sentry/mcp-server-mocks": "workspace:*",
-    "@sentry/mcp-server-tsconfig": "workspace:*",
     "@sentry/toolkit-core": "workspace:*",
     "@sentry/vite-plugin": "catalog:",
     "@tailwindcss/typography": "catalog:",
     "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/react-scroll-to-bottom": "^4.2.5",
@@ -63,7 +63,7 @@
     "@sentry/react": "catalog:",
     "agents": "catalog:",
     "ai": "catalog:",
-    "asciinema-player": "^3.17.0",
+    "asciinema-player": "^3.18.1",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "hono": "catalog:",
@@ -71,12 +71,11 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-markdown": "catalog:",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.18.2",
     "react-scroll-to-bottom": "^4.2.0",
     "remark-gfm": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:",
-    "workers-mcp": "catalog:",
     "zod": "catalog:"
   }
 }

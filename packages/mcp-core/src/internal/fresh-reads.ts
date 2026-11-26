@@ -21,7 +21,7 @@ export function isFreshRead(): boolean {
  * Add the `fresh` input to a read tool. The handler runs in a fresh scope when
  * the caller sets it, and never sees the input itself.
  */
-export function withFreshReadInput<T extends ToolConfig<any>>(tool: T): T {
+export function withFreshReadInput<T extends ToolConfig>(tool: T): T {
   return {
     ...tool,
     inputSchema: { ...tool.inputSchema, fresh: ParamFresh },

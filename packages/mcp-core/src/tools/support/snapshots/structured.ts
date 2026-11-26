@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { omitUndefined } from "../../../internal/type-guards";
 import type { SnapshotImageEntry, SnapshotVcsInfo } from "./formatting";
 
 // Field-by-field projections of preprod snapshot API objects. Snapshot API
@@ -46,12 +47,6 @@ export function snapshotString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function withoutUndefined<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined),
-  ) as T;
-}
-
 /** Keeps only object entries; snapshot API arrays are untyped. */
 export function snapshotImageEntries(value: unknown): SnapshotImageEntry[] {
   return Array.isArray(value)
@@ -63,10 +58,10 @@ export function snapshotImageEntries(value: unknown): SnapshotImageEntry[] {
 }
 
 export function toSnapshotImage(image: SnapshotImageEntry): SnapshotImage {
-  return withoutUndefined({
+  return omitUndefined({
     imageFileName: snapshotString(image.image_file_name),
     displayName: snapshotString(image.display_name),
-    description: snapshotString(image.description),
+    description: snapshotString(image["description"]),
   });
 }
 
@@ -102,7 +97,7 @@ export function toSnapshotVcs(
   if (!vcsInfo || typeof vcsInfo !== "object") {
     return null;
   }
-  return withoutUndefined({
+  return omitUndefined({
     repoName: snapshotString(vcsInfo.repo_name),
     headRef: snapshotString(vcsInfo.head_ref),
     headSha: snapshotString(vcsInfo.head_sha),

@@ -14,7 +14,7 @@
  * source of truth for custom content.
  *
  * Usage:
- *   tsx script/generate.ts command-docs
+ *   pnpm ts script/generate.ts command-docs
  *
  * Output:
  *   docs/src/content/docs/commands/{route}.md  (one per visible route)
@@ -182,7 +182,7 @@ function generateCommandSection(cmd: CommandInfo): string {
 function isStandaloneCommand(route: RouteInfo): boolean {
   return (
     route.commands.length === 1 &&
-    route.commands[0].path === `sentry ${route.name}`
+    route.commands[0]?.path === `sentry ${route.name}`
   );
 }
 

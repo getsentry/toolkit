@@ -35,6 +35,7 @@ import {
 } from "@sentry/core";
 import { wrapMcpServerWithSentry } from "@sentry/core/server";
 import { isApiAuthenticationErrorDeep } from "./api-client";
+import { withCallSignal } from "./internal/tool-helpers/call-signal";
 import { isUnauthorizedHandled } from "./internal/tool-helpers/credential-routing";
 import { MAX_TOOL_INPUT_ELEMENTS } from "@sentry/toolkit-core/mcp-limits";
 import { MCP_SERVER_INFO } from "./constants";
@@ -58,6 +59,7 @@ import tools from "./tools/index";
 import { isCatalogInfrastructureToolName } from "./tools/surfaces";
 import type { StructuredToolOutput } from "./tools/types";
 import type { ServerContext } from "./types";
+import { registerUiResources } from "./ui-resources";
 import { getServerVersion } from "./version";
 
 function getSkillGrantedAttributeName(skill: Skill): string {
@@ -129,7 +131,7 @@ function markUnknownToolCalls(
   }
 
   requestHandlers.set("tools/call", async (request, ctx) => {
-    const name = request.params?.name;
+    const name = request.params?.["name"];
     if (typeof name !== "string" || registeredToolNames.has(name)) {
       return await handleToolsCall(request, ctx);
     }
@@ -230,17 +232,18 @@ function toWellFormedOutput<T>(value: T): T {
     return value;
   }
   if (Array.isArray(value)) {
+    const items: unknown[] = value;
     let copy: unknown[] | undefined;
-    for (let index = 0; index < value.length; index++) {
-      const next = toWellFormedOutput(value[index]);
-      if (next !== value[index]) {
-        copy ??= [...value];
+    for (let index = 0; index < items.length; index++) {
+      const next = toWellFormedOutput(items[index]);
+      if (next !== items[index]) {
+        copy ??= [...items];
         copy[index] = next;
       }
     }
     return (copy ?? value) as T;
   }
-  const prototype = Object.getPrototypeOf(value);
+  const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     return value;
   }
@@ -310,6 +313,9 @@ export function buildServer({
     tools: customTools,
     toolCallSpanAttributes,
   });
+  const instructions = buildServerInstructions(
+    new Set(registrations.map(({ name }) => name)),
+  );
   const server = new McpServer(
     {
       ...MCP_SERVER_INFO,
@@ -317,9 +323,7 @@ export function buildServer({
     },
     {
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
-      instructions: buildServerInstructions(
-        new Set(registrations.map(({ name }) => name)),
-      ),
+      ...(instructions !== undefined && { instructions }),
     },
   );
   server.server.onerror = (error) => {
@@ -337,6 +341,10 @@ export function buildServer({
   for (const { name, config, handler } of registrations) {
     server.registerTool(name, config, handler);
   }
+  registerUiResources(
+    server,
+    registrations.map(({ config }) => config),
+  );
   // Registration enables this by default, but each server's tool catalog is fixed.
   if (registrations.length > 0) {
     server.server.registerCapabilities({ tools: { listChanged: false } });
@@ -364,7 +372,7 @@ function configureServer({
 }: {
   context: ServerContext;
   experimentalMode?: boolean;
-  tools?: ToolRegistry;
+  tools?: ToolRegistry | undefined;
   toolCallSpanAttributes: Record<string, SpanAttributeValue>;
 }) {
   const registrations = [];
@@ -404,8 +412,16 @@ function configureServer({
       inputSchema: filteredInputSchema,
       outputSchema: tool.outputSchema,
       annotations: tool.annotations,
+      ...(tool._meta && { _meta: tool._meta }),
     };
-    const handleToolCall = async (params: unknown): Promise<CallToolResult> => {
+    const handleToolCall = async (
+      params: unknown,
+      mcpContext?: { mcpReq?: { signal?: AbortSignal } },
+    ): Promise<CallToolResult> => {
+      // Cancellation stays scoped to this call; concurrent calls on the
+      // session keep running.
+      const signal = mcpContext?.mcpReq?.signal;
+      const callContext = withCallSignal(contextWithToolAvailability, signal);
       // Get the active MCP server span and attach request-scoped attributes.
       const activeSpan = getActiveSpan();
 
@@ -464,7 +480,7 @@ function configureServer({
           await executeToolHandler({
             tool,
             params: rawParams,
-            context: contextWithToolAvailability,
+            context: callContext,
           }),
         );
 
@@ -503,6 +519,16 @@ function configureServer({
           `Invalid tool output: ${typeof output === "object" ? JSON.stringify(output) : String(output)}`,
         );
       } catch (error) {
+        // The SDK drops the response of a cancelled call, and the error is
+        // only the abort reason (which MCP clients may send as a string), so
+        // it is neither recorded nor formatted.
+        if (signal?.aborted) {
+          activeSpan?.setStatus({ code: 2, message: "cancelled" });
+          return {
+            content: [{ type: "text" as const, text: "Tool call cancelled." }],
+            isError: true,
+          };
+        }
         if (activeSpan) {
           activeSpan.setStatus({
             code: 2, // error
@@ -557,6 +583,7 @@ function configureServer({
               text: (
                 await formatErrorForUser(error, {
                   transport: context.transport,
+                  session: contextWithToolAvailability,
                 })
               ).toWellFormed(),
             },

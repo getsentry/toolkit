@@ -302,8 +302,8 @@ test.each([
     );
     const create = vi.fn((_blob: Blob) => "blob:attachment");
     class TestURL extends URL {
-      static createObjectURL = create;
-      static revokeObjectURL = vi.fn();
+      static override createObjectURL = create;
+      static override revokeObjectURL = vi.fn();
     }
     vi.stubGlobal("URL", TestURL);
     render(<AttachmentDetail item={item!} />);
@@ -329,8 +329,8 @@ test("raw SSE envelopes decode attachment previews on demand and keep the origin
   ]);
   const create = vi.fn((_blob: Blob) => "blob:attachment");
   class TestURL extends URL {
-    static createObjectURL = create;
-    static revokeObjectURL = vi.fn();
+    static override createObjectURL = create;
+    static override revokeObjectURL = vi.fn();
   }
   vi.stubGlobal("URL", TestURL);
   render(

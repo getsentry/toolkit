@@ -11,7 +11,7 @@
  *   - index.json: skill discovery manifest for .well-known
  *
  * Usage:
- *   tsx script/generate-skill.ts
+ *   pnpm ts script/generate-skill.ts
  *
  * Output:
  *   plugins/sentry-cli/skills/sentry-cli/SKILL.md
@@ -137,7 +137,7 @@ async function loadDoc(relativePath: string): Promise<string | null> {
 /** Extract npm command from PackageManagerCode Astro component */
 function extractPackageManagerCommand(rawContent: string): string | null {
   const match = rawContent.match(PACKAGE_MANAGER_REGEX);
-  return match ? match[1] : null;
+  return match?.[1] ?? null;
 }
 
 /** Generate installation section from docs content */
@@ -407,7 +407,10 @@ function generateReferenceFile(
   groupRoutes: RouteInfo[],
   version: string,
 ): string {
-  const route = groupRoutes[0];
+  const [route] = groupRoutes;
+  if (!route) {
+    throw new Error(`No route for reference file ${refName}`);
+  }
   const title = `${capitalize(refName)} Commands`;
   const description = route.brief;
 
