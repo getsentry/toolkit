@@ -475,9 +475,10 @@ export const uploadCommand = buildCommand({
           target.dir,
           await diagnoseEmptyDiscovery(target.dir, {
             extensions,
+            ignoreMatcher,
             include: target.include,
           }),
-          { include: target.include },
+          { ignoreMatcher, include: target.include },
         );
         throw buildEmptyDiscoveryError(dir, diag);
       }

@@ -287,19 +287,19 @@ export async function discoverWasmPairs(
  * independently of modules, so a map left behind by a missing module is still
  * recognised as wasm.
  *
- * Narrowed by the glob target only, exactly as `diagnoseEmptyDiscovery` is:
- * the `.wasm.map` count is subtracted from the JS tally, so both walks must
- * see the same files.
+ * Narrowed by the same ignore matcher and glob target as
+ * `diagnoseEmptyDiscovery`: the `.wasm.map` count is subtracted from the JS
+ * tally, so both walks must see the same files.
  *
  * @param dir - Directory to scan
  * @param js - The diagnostic from `diagnoseEmptyDiscovery`
- * @param options - The glob filter the JS diagnostic used
+ * @param options - The ignore matcher and glob filter the JS diagnostic used
  * @returns The diagnostic with wasm counts filled in
  */
 export async function addWasmDiscoveryCounts(
   dir: string,
   js: DiscoveryDiagnostic,
-  options: Pick<WasmDiscoveryOptions, "include"> = {},
+  options: WasmDiscoveryOptions = {},
 ): Promise<DiscoveryDiagnostic> {
   const absDir = resolvePath(dir);
   let wasmFiles = 0;

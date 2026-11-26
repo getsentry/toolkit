@@ -47,6 +47,7 @@ async function writeWasmPair(
 
 type InjectFuncArgs = {
   ext?: string;
+  ignore?: string;
   "dry-run"?: boolean;
   "allow-empty"?: boolean;
 };
@@ -333,6 +334,47 @@ describe("sourcemap inject command — --allow-empty behavior", () => {
 
     expect(await readFile(wasmPath)).toEqual(wasmBefore);
     expect(await readFile(mapPath)).toEqual(mapBefore);
+  });
+
+  test("--dry-run over a wasm pair: reports the pair it would change", async () => {
+    await writeWasmPair(dir, "stamped", WASM_DEBUG_ID);
+    await writeWasmPair(dir, "unstamped");
+    const ctx = makeContext();
+
+    await func.call(ctx, { "dry-run": true }, dir);
+
+    const out = ctx.stdout.write.mock.calls.map((c) => String(c[0])).join("");
+    expect(out).toMatch(/Files modified\W+2/);
+    expect(out).toMatch(new RegExp(`✓ \\S*stamped\\.wasm → ${WASM_DEBUG_ID}`));
+    expect(out).toMatch(/✓ \S*unstamped\.wasm → \(pending\)/);
+  });
+
+  test("--ignore: ignored wasm files are not counted in the zero-pairs error", async () => {
+    await writeWasmPair(dir, "app", WASM_DEBUG_ID);
+    const ctx = makeContext();
+    try {
+      await func.call(ctx, { ignore: "*.wasm" }, dir);
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ValidationError);
+      const msg = (err as Error).message;
+      expect(msg).not.toContain("none pair up");
+      expect(msg).toContain("1 .wasm.map file(s)");
+    }
+  });
+
+  test("--ignore: ignored JS files are not counted in the zero-pairs error", async () => {
+    await mkdir(join(dir, "vendor"));
+    await writeFile(join(dir, "vendor", "lib.js"), "console.log(1)\n");
+    await writeFile(join(dir, "vendor", "lib.js.map"), '{"version":3}\n');
+    const ctx = makeContext();
+    try {
+      await func.call(ctx, { ignore: "vendor/**" }, dir);
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as Error).message).toMatch(/no JS or sourcemap files/i);
+    }
   });
 
   test("sourceMappingURL: invalid inline base64 is skipped (zero pairs)", async () => {

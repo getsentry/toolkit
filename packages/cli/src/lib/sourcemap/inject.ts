@@ -747,8 +747,13 @@ export async function diagnoseEmptyDiscovery(
     maxFileSize: Number.POSITIVE_INFINITY,
   })) {
     const isMap = entry.absolutePath.endsWith(".map");
+    const rel = relativePosix(absDir, entry.absolutePath);
+    // Discovery skips ignored files, so counting them would describe files
+    // the command never considered.
+    if (options.ignoreMatcher?.ignores(rel)) {
+      continue;
+    }
     if (options.include) {
-      const rel = relativePosix(absDir, entry.absolutePath);
       const matched =
         options.include(rel) ||
         (isMap && options.include(rel.slice(0, -".map".length)));

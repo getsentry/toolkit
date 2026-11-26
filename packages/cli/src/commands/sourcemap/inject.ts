@@ -213,7 +213,8 @@ export const injectCommand = buildCommand({
     if (pairs.length === 0 && wasmPairs.length === 0 && !flags["allow-empty"]) {
       const diag = await addWasmDiscoveryCounts(
         dir,
-        await diagnoseEmptyDiscovery(dir, { extensions }),
+        await diagnoseEmptyDiscovery(dir, { extensions, ignoreMatcher }),
+        { ignoreMatcher },
       );
       throw buildEmptyDiscoveryError(dir, diag);
     }
