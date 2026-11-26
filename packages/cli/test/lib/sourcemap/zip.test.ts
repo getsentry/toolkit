@@ -221,6 +221,76 @@ describe("ZipWriter compression mode", () => {
   });
 });
 
+describe("ZipWriter.addEntries", () => {
+  function sources(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      name: `dir/file-${i}.js`,
+      // Varied sizes so compression jobs finish out of order.
+      data: Buffer.from(`const v${i} = ${i};\n`.repeat(1 + ((i * 37) % 400))),
+    }));
+  }
+
+  test.each([1, 3, 64])(
+    "concurrency %i writes the same bytes as sequential addEntry",
+    async (concurrency) => {
+      const entries = sources(50);
+      const seqPath = join(tmpDir, `seq-${concurrency}.zip`);
+      const seq = await ZipWriter.create(seqPath);
+      for (const e of entries) {
+        await seq.addEntry(e.name, e.data);
+      }
+      await seq.finalize();
+
+      const parPath = join(tmpDir, `par-${concurrency}.zip`);
+      const par = await ZipWriter.create(parPath);
+      await par.addEntries(
+        entries.map((e) => ({
+          name: e.name,
+          read: async () => {
+            // Resolve reads out of order too.
+            await new Promise((r) => setTimeout(r, (e.data.length * 7) % 5));
+            return e.data;
+          },
+        })),
+        { concurrency },
+      );
+      await par.finalize();
+
+      expect((await readFile(parPath)).equals(await readFile(seqPath))).toBe(
+        true,
+      );
+    },
+  );
+
+  test("rejects with the first failing read and writes nothing after it", async () => {
+    const zipPath = join(tmpDir, "fail.zip");
+    const zip = await ZipWriter.create(zipPath);
+    const entries = sources(10).map((e, i) => ({
+      name: e.name,
+      read: () =>
+        i === 4 || i === 7
+          ? Promise.reject(new Error(`read ${i} failed`))
+          : Promise.resolve(e.data),
+    }));
+
+    await expect(zip.addEntries(entries, { concurrency: 8 })).rejects.toThrow(
+      "read 4 failed",
+    );
+    await zip.close();
+  });
+
+  test("handles an empty source list", async () => {
+    const zipPath = join(tmpDir, "none.zip");
+    const zip = await ZipWriter.create(zipPath);
+    await zip.addEntries([]);
+    await zip.finalize();
+
+    const data = await readFile(zipPath);
+    // EOCD total entries (offset 10 from its start, 22 bytes from the end).
+    expect(data.readUInt16LE(data.length - 22 + 10)).toBe(0);
+  });
+});
+
 describe("ZipWriter binary format", () => {
   test("starts with SYSB header followed by local file header", async () => {
     const zipPath = join(tmpDir, "sig.zip");

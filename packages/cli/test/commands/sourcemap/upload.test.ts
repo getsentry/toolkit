@@ -1257,6 +1257,59 @@ describe("sourcemap upload command — waiting for processing", () => {
     expect(assembleCalls()).toBe(2);
   });
 
+  test("uploads a DEFLATE bundle with no wire codec even when zstd is offered", async () => {
+    const uploads: {
+      encoding: string | null;
+      fields: string[];
+      zip: Buffer;
+    }[] = [];
+    let assembleCalls = 0;
+    globalThis.fetch = mockFetch(async (input, init) => {
+      const req = new Request(input, init);
+      let body: unknown = {};
+      if (req.url.endsWith("/chunk-upload/") && req.method === "POST") {
+        const form = await req.formData();
+        const blob = form.get("file");
+        uploads.push({
+          encoding: req.headers.get("Content-Encoding"),
+          fields: [...form.keys()],
+          zip: Buffer.from(await (blob as Blob).arrayBuffer()),
+        });
+      } else if (req.url.endsWith("/chunk-upload/")) {
+        body = {
+          url: "https://us.sentry.io/api/0/organizations/test-org/chunk-upload/",
+          chunkSize: 8_388_608,
+          chunksPerRequest: 64,
+          maxRequestSize: 33_554_432,
+          hashAlgorithm: "sha1",
+          concurrency: 8,
+          compression: ["gzip", "zstd"],
+        };
+      } else if (req.url.endsWith("/artifactbundle/assemble/")) {
+        const { chunks } = (await req.json()) as { chunks: string[] };
+        assembleCalls += 1;
+        body =
+          assembleCalls === 1
+            ? { state: "not_found", missingChunks: chunks }
+            : { state: "ok", missingChunks: [] };
+      }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await func.call(makeContext(), {}, dir);
+
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.encoding).toBeNull();
+    expect(uploads[0]?.fields).toEqual(["file"]);
+    // SYSB header (8 bytes), then the first local file header; its
+    // compression method sits at offset 8: 8 = DEFLATE.
+    expect(uploads[0]?.zip.subarray(0, 4).toString("ascii")).toBe("SYSB");
+    expect(uploads[0]?.zip.readUInt16LE(16)).toBe(8);
+  });
+
   test("outside CI: returns once Sentry accepts the bundle", async () => {
     const assembleCalls = serveAssembleStates([
       { state: "created" },

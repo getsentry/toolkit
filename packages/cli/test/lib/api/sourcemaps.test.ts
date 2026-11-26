@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -145,26 +146,15 @@ describe("buildArtifactBundle", () => {
     ];
   }
 
-  test("default compression is DEFLATE", async () => {
+  test("entries are DEFLATE'd", async () => {
     const files = await makePair();
     const out = join(tmpDir, "bundle-default.zip");
     await buildArtifactBundle(out, files, { org: "o", project: "p" });
 
     const bytes = await readFile(out);
     expect(bytes.readUInt16LE(LOCAL_HEADER_METHOD_OFFSET)).toBe(8);
-  });
-
-  test("compression: 'stored' writes entries uncompressed", async () => {
-    const files = await makePair();
-    const out = join(tmpDir, "bundle-stored.zip");
-    await buildArtifactBundle(out, files, {
-      org: "o",
-      project: "p",
-      compression: "stored",
-    });
-
-    const bytes = await readFile(out);
-    expect(bytes.readUInt16LE(LOCAL_HEADER_METHOD_OFFSET)).toBe(0);
+    // Redundant input must actually shrink.
+    expect(bytes.length).toBeLessThan("console.log('hello');\n".length * 500);
   });
 
   test("uses in-memory content and never reads disk for inline maps", async () => {
@@ -185,31 +175,15 @@ describe("buildArtifactBundle", () => {
           url: "~/app.js.map",
         },
       ],
-      { org: "o", project: "p", compression: "stored" },
+      { org: "o", project: "p" },
     );
 
-    // Build succeeded (no ENOENT) and the STORED archive contains the bytes.
-    const bytes = await readFile(out);
-    expect(bytes.includes(mapBytes)).toBe(true);
-  });
-
-  test("STORED archive is larger than DEFLATE for the same redundant input", async () => {
-    const files = await makePair();
-    const deflateOut = join(tmpDir, "bundle-deflate.zip");
-    const storedOut = join(tmpDir, "bundle-stored-size.zip");
-    await buildArtifactBundle(deflateOut, files, { org: "o", project: "p" });
-    await buildArtifactBundle(storedOut, files, {
-      org: "o",
-      project: "p",
-      compression: "stored",
+    // Build succeeded (no ENOENT) and the entry holds the in-memory bytes.
+    const proc = spawnSync("unzip", ["-p", out, "_/_/app.js.map"], {
+      stdio: ["pipe", "pipe", "pipe"],
     });
-
-    const deflateSize = (await readFile(deflateOut)).length;
-    const storedSize = (await readFile(storedOut)).length;
-    // Sanity: redundant input should DEFLATE meaningfully smaller than
-    // STORED. If this ever fails, either the ZIP layout changed or the
-    // payload stopped being compressible.
-    expect(storedSize).toBeGreaterThan(deflateSize * 2);
+    expect(proc.status).toBe(0);
+    expect(Buffer.from(proc.stdout).equals(mapBytes)).toBe(true);
   });
 });
 
