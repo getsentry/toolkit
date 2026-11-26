@@ -961,6 +961,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 4.20260405.1
+      '@sentry/api':
+        specifier: 'catalog:'
+        version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
       '@sentry/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core

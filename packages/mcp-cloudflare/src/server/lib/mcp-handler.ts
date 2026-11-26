@@ -47,6 +47,7 @@ import {
 } from "./attribution";
 import { resolveClientFamily } from "./client-family";
 import { verifyConstraintsAccess } from "./constraint-utils";
+import { getResponseCache, resolveResponseCacheMode } from "./response-cache";
 
 /**
  * ExecutionContext with OAuth props injected by the OAuth provider.
@@ -60,6 +61,8 @@ type OAuthMcpContext = {
   accessToken: string;
   grantedSkills: Set<Skill>;
   userId: string;
+  /** From the wrapper token; scopes the response cache. */
+  grantId: string | null;
   clientId: string;
   // Copied from the grant props, which may lack these fields; undefined means
   // absent.
@@ -445,6 +448,18 @@ async function handleAuthenticatedMcpRequest(
     return constraints;
   }
 
+  // Only an MCP grant gives a cache identity; direct tokens are not cached.
+  const responseCache =
+    auth.kind === "oauth" && auth.grantId
+      ? await getResponseCache({
+          mode: resolveResponseCacheMode(env.MCP_RESPONSE_CACHE),
+          userId: auth.userId,
+          grantId: auth.grantId,
+          sentryHost,
+          waitUntil: (promise) => ctx.waitUntil(promise),
+        })
+      : undefined;
+
   const serverContext: ServerContext = {
     ...(auth.kind === "oauth" && {
       userId: auth.userId,
@@ -462,6 +477,7 @@ async function handleAuthenticatedMcpRequest(
     ...(env.MCP_URL !== undefined && { mcpUrl: env.MCP_URL }),
     experimentalMode: isExperimentalMode,
     transport: "http",
+    ...(responseCache !== undefined && { responseCache }),
   };
 
   // `createMcpHandler` from agents only forwards `maxRequestBodySize` to the
@@ -613,6 +629,7 @@ const mcpHandler = {
     return await handleAuthenticatedMcpRequest(request, env, ctx, {
       kind: "oauth",
       userId,
+      grantId: requestGrantId,
       clientId,
       clientName,
       accessToken,
