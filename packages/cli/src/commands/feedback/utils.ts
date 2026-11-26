@@ -16,7 +16,11 @@ import {
   parseIssueArgument,
 } from "../../lib/issue-arguments.js";
 import { resolveEffectiveOrg } from "../../lib/region.js";
-import { resolveOrg } from "../../lib/resolve-target.js";
+import {
+  resolveOrg,
+  resolveProjectIdsInOrg,
+} from "../../lib/resolve-target.js";
+import { assertIssueInScope, getTargetScope } from "../../lib/target-scope.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import type { SentryFeedback } from "../../types/index.js";
 import { buildCommandHint, resolveIssue } from "../issue/utils.js";
@@ -53,9 +57,15 @@ async function resolveFeedbackSelector(
     );
   }
 
+  // A project-scoped invocation picks the latest Feedback of its project.
+  const scopeProject = getTargetScope()?.project;
+  const [projectId] = scopeProject
+    ? await resolveProjectIdsInOrg(org, [scopeProject])
+    : [];
   const { feedback } = await listFeedback(org, "", {
     limit: 1,
     status: "unresolved",
+    projectId,
   });
   const latest = feedback[0];
   if (!latest) {
@@ -67,6 +77,7 @@ async function resolveFeedbackSelector(
     );
   }
 
+  assertIssueInScope(org, latest);
   setOrgProjectContext(
     [org],
     latest.project?.slug ? [latest.project.slug] : [],

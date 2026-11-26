@@ -72,6 +72,14 @@ const INTERNAL_ENV_VARS = new Map<string, string>([
     "SENTRY_CLI_NO_PERSISTENCE",
     "set by createSentrySDK() unless persist: true, for one invocation",
   ],
+  [
+    "SENTRY_CLI_SCOPE_ORG",
+    "set by createSentrySDK({ limitToTarget: true }), for one invocation",
+  ],
+  [
+    "SENTRY_CLI_SCOPE_PROJECT",
+    "set by createSentrySDK({ limitToTarget: true }), for one invocation",
+  ],
   ["SENTRY_RN_BUNDLE_COMMAND", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_NO_DEBUG_ID", "internal react-native wrapper plumbing"],
   ["SENTRY_RN_REAL_HERMES_CLI_PATH", "internal react-native wrapper plumbing"],

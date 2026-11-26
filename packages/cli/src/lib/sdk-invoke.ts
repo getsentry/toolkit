@@ -18,7 +18,12 @@ import { homedir } from "node:os";
 import type { Span } from "@sentry/core";
 import type { Writer } from "../types/index.js";
 import { type AsyncChannel, createAsyncChannel } from "./async-channel.js";
-import { NO_PERSISTENCE_ENV_VAR, withInvocation } from "./env.js";
+import {
+  NO_PERSISTENCE_ENV_VAR,
+  SCOPE_ORG_ENV_VAR,
+  SCOPE_PROJECT_ENV_VAR,
+  withInvocation,
+} from "./env.js";
 import { stringifyUnknown } from "./errors.js";
 import { SentryError, type SentryOptions } from "./sdk-types.js";
 import generatedStreamingCommands from "../generated/streaming-commands.json" with { type: "json" };
@@ -32,8 +37,9 @@ const STREAMING_COMMANDS: StreamingCommands = generatedStreamingCommands;
 
 /**
  * Build an isolated env from options, starting from `options.env` or the
- * consumer's process.env. Sets auth token, host URL, default org/project,
- * output format, and the no-persistence flag.
+ * consumer's process.env. Sets auth token, host URL, default org/project
+ * (and the target scope with `limitToTarget`), output format, and the
+ * no-persistence flag.
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
@@ -55,6 +61,12 @@ function buildIsolatedEnv(
   }
   if (options?.project) {
     env["SENTRY_PROJECT"] = options.project;
+  }
+  if (options?.limitToTarget && options.org) {
+    env[SCOPE_ORG_ENV_VAR] = options.org;
+    if (options.project) {
+      env[SCOPE_PROJECT_ENV_VAR] = options.project;
+    }
   }
   if (jsonByDefault && !options?.text) {
     env["SENTRY_OUTPUT_FORMAT"] = "json";
