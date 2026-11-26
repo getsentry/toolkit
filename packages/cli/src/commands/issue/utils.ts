@@ -58,7 +58,6 @@ import {
 } from "../../lib/resolve-target.js";
 import { applySentryUrlContext } from "../../lib/sentry-url-parser.js";
 import { buildIssueUrl } from "../../lib/sentry-web-urls.js";
-import { assertIssueInScope, getTargetScope } from "../../lib/target-scope.js";
 import { setOrgProjectContext } from "../../lib/telemetry.js";
 import { isAllDigits, shellQuote } from "../../lib/utils.js";
 import type { SentryIssue } from "../../types/index.js";
@@ -600,15 +599,14 @@ async function resolveSelector(
  * @param org - Organization slug
  * @param project - Project slug to look in, selected by its numeric ID
  *   (a `project:<slug>` filter misses projects that are not actively
- *   selected, #1317); omit for the whole organization, or for the project
- *   of the invocation's target scope when it has one
- * @throws {ResolutionError} When no unresolved issue matches, the project
- *   does not exist, or the issue is outside the target scope
+ *   selected, #1317); omit for the whole organization
+ * @throws {ResolutionError} When no unresolved issue matches, or the
+ *   project does not exist
  */
 export async function findSelectorIssue(
   selector: IssueSelector,
   org: string,
-  project = getTargetScope()?.project,
+  project?: string,
 ): Promise<SentryIssue> {
   const projects = project
     ? await resolveProjectIdsInOrg(org, [project])
@@ -635,7 +633,6 @@ export async function findSelectorIssue(
       ],
     );
   }
-  assertIssueInScope(org, issue);
   return issue;
 }
 
@@ -665,18 +662,13 @@ async function resolveIssueSearch(
     throw new ContextError("Organization", commandHint);
   }
   const { org } = resolved;
-  const scopeProject = getTargetScope()?.project;
   const { data: issues, nextCursor } = await listIssuesPaginated(org, "", {
     query,
     perPage: SEARCH_CANDIDATES,
     collapse: ISSUE_DETAIL_COLLAPSE,
-    projects: scopeProject
-      ? await resolveProjectIdsInOrg(org, [scopeProject])
-      : undefined,
   });
   const [issue] = issues;
   if (issue && issues.length === 1) {
-    assertIssueInScope(org, issue);
     return { org, issue };
   }
 
