@@ -55,6 +55,26 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
   },
+  ios: async (options) => {
+    const { runAppleWizard } = await import("./apple/apple-wizard.js");
+    await runAppleWizard({ ...options, projectDir: options.xcodeProjectDir });
+  },
+  appleSnapshots: async (options) => {
+    const { runAppleSnapshotsWizard } =
+      await import("./apple/snapshots/apple-snapshots-wizard.js");
+    await runAppleSnapshotsWizard({
+      ...options,
+      projectDir: options.xcodeProjectDir,
+      appTarget: options.appTarget,
+      hostedTestTarget: options.hostedTestTarget,
+      nonInteractive: options.nonInteractive ?? false,
+    });
+  },
+  reactNative: async (options) => {
+    const { runReactNativeWizard } =
+      await import("./react-native/react-native-wizard.js");
+    await runReactNativeWizard(options);
+  },
 };
 
 /** What `sentry wizard` passes to {@link runWizard}. */

@@ -153,6 +153,7 @@
     "valibot": "^1.4.2",
     "vitest": "catalog:",
     "wrap-ansi": "^10.0.0",
+    "xcode": "3.0.1",
     "yauzl": "3.4.0"
   }
 }

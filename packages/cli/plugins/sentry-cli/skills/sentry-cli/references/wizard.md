@@ -26,6 +26,9 @@ Set up the Sentry SDK in your project interactively
 - `--ignore-git-changes - Don't ask before changing a project with uncommitted changes`
 - `--disable-telemetry - Don't send telemetry about this run to Sentry`
 - `--debug - Print the wizard's debug output`
+- `--app-target <value> - Xcode app target that hosts Swift previews (Apple Snapshots)`
+- `--hosted-test-target <value> - Hosted XCTest target to configure (Apple Snapshots)`
+- `--non-interactive - Fail instead of prompting when a choice is ambiguous`
 
 **Examples:**
 

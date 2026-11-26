@@ -14,6 +14,7 @@
 import type { SentryContext } from "../context.js";
 import { buildCommand } from "../lib/command.js";
 import {
+  parseDirectoryPath,
   parseOrgSlug,
   parseProjectSlug,
   parseText,
@@ -45,6 +46,10 @@ type WizardFlags = {
   readonly "skip-connect": boolean;
   readonly quiet: boolean;
   readonly uninstall: boolean;
+  readonly "xcode-project-dir"?: string;
+  readonly "app-target"?: string;
+  readonly "hosted-test-target"?: string;
+  readonly "non-interactive": boolean;
 };
 
 /**
@@ -173,6 +178,34 @@ export const wizardCommand = buildCommand({
         brief: "Print the wizard's debug output",
         default: false,
       },
+      "app-target": {
+        kind: "parsed",
+        parse: parseText,
+        brief: "Xcode app target that hosts Swift previews (Apple Snapshots)",
+        placeholder: "target",
+        optional: true,
+      },
+      "hosted-test-target": {
+        kind: "parsed",
+        parse: parseText,
+        brief: "Hosted XCTest target to configure (Apple Snapshots)",
+        placeholder: "target",
+        optional: true,
+      },
+      "non-interactive": {
+        kind: "boolean",
+        brief: "Fail instead of prompting when a choice is ambiguous",
+        default: false,
+      },
+      // Internal `@sentry/wizard` option: where the Xcode project lives.
+      "xcode-project-dir": {
+        kind: "parsed",
+        parse: parseDirectoryPath,
+        brief: "Directory that contains the Xcode project (Apple wizards)",
+        placeholder: "dir",
+        optional: true,
+        hidden: true as const,
+      },
       // `@sentry/wizard`'s sign-up and partner flags. The wizard logs in
       // with the CLI's login, which has no sign-up or partner step, so these
       // fail with an explanation instead of being dropped silently.
@@ -241,6 +274,10 @@ export const wizardCommand = buildCommand({
           forceInstall: flags["force-install"],
           ignoreGitChanges: flags["ignore-git-changes"],
           spotlight: flags.spotlight,
+          xcodeProjectDir: flags["xcode-project-dir"],
+          appTarget: flags["app-target"],
+          hostedTestTarget: flags["hosted-test-target"],
+          nonInteractive: flags["non-interactive"],
         },
       });
     } catch (error) {
