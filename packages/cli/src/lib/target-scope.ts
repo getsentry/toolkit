@@ -1,6 +1,6 @@
 /**
- * The organization and project an SDK invocation is limited to
- * (`createSentrySDK({ limitToTarget: true })`).
+ * The organization and project an SDK invocation is limited to: the `org`
+ * and `project` of `createSentrySDK()`, unless `limitToTarget` is `false`.
  *
  * The caller checks the targets a call names, but not an issue that an ID
  * alone names: a numeric ID, a share link, or a selector such as `@latest`
@@ -69,7 +69,7 @@ export function assertIssueInScope(
   if (!scope) {
     return;
   }
-  const issueId = issue.id ?? "";
+  const issueId = issue.id;
   assertOrgInScope(org, issueId);
   if (scope.project && issue.project?.slug !== scope.project) {
     throw outsideScope(issueId, scope);

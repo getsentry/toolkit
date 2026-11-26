@@ -169,9 +169,9 @@ const sdk = createSentrySDK({ token: "...", text: true, cwd: "/my/project" });
 |--------|------|---------|-------------|
 | `token` | `string` | Auto-detected | Auth token for this invocation |
 | `url` | `string` | `sentry.io` | Sentry instance URL for self-hosted |
-| `org` | `string` | Auto-detected | Default organization slug |
-| `project` | `string` | Auto-detected | Default project slug |
-| `limitToTarget` | `boolean` | `false` | Refuse an issue outside `org` and `project`, even one an ID alone names (`12345`, `@latest`) |
+| `org` | `string` | Auto-detected | Organization slug; also a limit while `limitToTarget` is on |
+| `project` | `string` | Auto-detected | Project slug; also a limit while `limitToTarget` is on |
+| `limitToTarget` | `boolean` | `true` | Refuse an issue outside `org` and `project`, even one an ID alone names (`12345`, `@latest`). Set `false` to use `org` and `project` only as defaults |
 | `text` | `boolean` | `false` | Return human-readable text instead of parsed JSON (`run()` only) |
 | `cwd` | `string` | `process.cwd()` | Working directory for DSN auto-detection |
 | `headers` | `Record<string, string>` | — | Extra HTTP headers for self-hosted instances behind a reverse proxy (same as [`SENTRY_CUSTOM_HEADERS`](../configuration/#sentry_custom_headers)); ignored for sentry.io |

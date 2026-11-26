@@ -39,9 +39,10 @@ export type SentryOptions = {
 
   /**
    * Treat `org` and `project` as a limit, not only as defaults (default
-   * `false`). A command then refuses an issue outside them, including one
+   * `true`). A command then refuses an issue outside them, including one
    * named by an ID that says nothing about its project (a numeric ID, a
-   * share link, `@latest`). Has no effect without `org`.
+   * share link, `@latest`). Has no effect without `org`. Set `false` to use
+   * `org` and `project` only as defaults.
    */
   limitToTarget?: boolean;
 

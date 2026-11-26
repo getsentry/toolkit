@@ -37,9 +37,9 @@ const STREAMING_COMMANDS: StreamingCommands = generatedStreamingCommands;
 
 /**
  * Build an isolated env from options, starting from `options.env` or the
- * consumer's process.env. Sets auth token, host URL, default org/project
- * (and the target scope with `limitToTarget`), output format, and the
- * no-persistence flag.
+ * consumer's process.env. Sets auth token, host URL, org/project (as
+ * defaults and, unless `limitToTarget` is `false`, as the target scope),
+ * output format, and the no-persistence flag.
  */
 function buildIsolatedEnv(
   options?: SentryOptions,
@@ -62,7 +62,7 @@ function buildIsolatedEnv(
   if (options?.project) {
     env["SENTRY_PROJECT"] = options.project;
   }
-  if (options?.limitToTarget && options.org) {
+  if (options?.limitToTarget !== false && options?.org) {
     env[SCOPE_ORG_ENV_VAR] = options.org;
     if (options.project) {
       env[SCOPE_PROJECT_ENV_VAR] = options.project;

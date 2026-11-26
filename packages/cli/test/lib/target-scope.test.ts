@@ -11,7 +11,10 @@ import {
 import { ResolutionError } from "../../src/lib/errors.js";
 import { assertIssueInScope } from "../../src/lib/target-scope.js";
 
-const WEB_ISSUE = { id: "100", project: { id: "1", slug: "web" } };
+const WEB_ISSUE = {
+  id: "100",
+  project: { id: "1", name: "web", slug: "web", platform: null },
+};
 
 function check(
   env: Record<string, string>,
@@ -39,7 +42,10 @@ describe("assertIssueInScope", () => {
     [
       "another project",
       "acme",
-      { ...WEB_ISSUE, project: { id: "2", slug: "api" } },
+      {
+        ...WEB_ISSUE,
+        project: { id: "2", name: "api", slug: "api", platform: null },
+      },
     ],
     ["another organization", "other", WEB_ISSUE],
     ["an unknown project", "acme", { id: "100" }],

@@ -88,8 +88,8 @@ export function isPersistenceDisabled(): boolean {
 }
 
 /**
- * Internal env vars `createSentrySDK({ limitToTarget: true })` sets to the
- * organization and project an invocation is limited to. See
+ * Internal env vars `createSentrySDK()` sets to the organization and project
+ * an invocation is limited to, unless `limitToTarget` is `false`. See
  * `target-scope.ts`.
  */
 export const SCOPE_ORG_ENV_VAR = "SENTRY_CLI_SCOPE_ORG";
