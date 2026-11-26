@@ -336,9 +336,38 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(ValidationError);
-      const msg = (err as Error).message;
-      expect(msg).toMatch(/does not exist/i);
+      expect((err as Error).message).toBe(
+        `Directory '${missing}' does not exist.`,
+      );
     }
+  });
+
+  test("non-existent directory with --allow-empty: skips it and names it", async () => {
+    // Bundler plugins upload each build output in turn with allowEmpty, so a
+    // missing output must not abort the outputs after it.
+    const missing = join(dir, "does-not-exist");
+    const ctx = makeContext();
+    await func.call(ctx, { "allow-empty": true }, missing);
+    const out = ctx.stdout.write.mock.calls.join("");
+    expect(out).toMatch(/Files uploaded\W+0/);
+    expect(out).toContain(`Directory '${missing}' does not exist`);
+  });
+
+  test("path that is a file with --allow-empty: still throws", async () => {
+    const file = join(dir, "bundle.js");
+    await writeFile(file, "console.log(1)\n");
+    await expect(
+      func.call(makeContext(), { "allow-empty": true }, file),
+    ).rejects.toThrow(`Path '${file}' is not a directory.`);
+  });
+
+  test("stat failure other than ENOENT with --allow-empty: still throws", async () => {
+    // A path under a file fails with ENOTDIR, which is not a missing directory.
+    await writeFile(join(dir, "bundle.js"), "console.log(1)\n");
+    const target = join(dir, "bundle.js", "dist");
+    await expect(
+      func.call(makeContext(), { "allow-empty": true }, target),
+    ).rejects.toThrow(`Cannot read directory '${target}'`);
   });
 
   test("error path does not mutate files (js-only dir)", async () => {
@@ -702,6 +731,16 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       await expect(
         func.call(makeContext(), {}, join(dir, "missing", "**")),
       ).rejects.toThrow(`Directory '${join(dir, "missing")}' does not exist.`);
+    });
+
+    test("missing glob base with --allow-empty: skips the base directory", async () => {
+      const ctx = makeContext();
+      await func.call(ctx, { "allow-empty": true }, join(dir, "missing", "**"));
+      const out = ctx.stdout.write.mock.calls.join("");
+      expect(out).toMatch(/Files uploaded\W+0/);
+      expect(out).toContain(
+        `Directory '${join(dir, "missing")}' does not exist`,
+      );
     });
 
     test("glob that matches no pairs: throws the zero-pairs error", async () => {
