@@ -12,7 +12,7 @@ import { buildApplication, run } from "@stricli/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { injectCommand } from "../../../src/commands/sourcemap/inject.js";
 import {
-  parseWaitLimit,
+  parseWaitSeconds,
   uploadCommand,
 } from "../../../src/commands/sourcemap/upload.js";
 // oxlint-disable-next-line sentry-cli/no-namespace-import -- needed for spyOn mocking
@@ -413,8 +413,16 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
       false,
       300_000,
     ],
-    ["outside CI with --wait", {}, { wait: 300_000 }, true, 300_000],
-    ["outside CI with --wait=600", {}, { wait: 600_000 }, true, 600_000],
+    ["outside CI with --wait", {}, { wait: 300 }, true, 300_000],
+    ["outside CI with --wait=600", {}, { wait: 600 }, true, 600_000],
+    ["with wait: 0", {}, { wait: 0 }, true, Number.POSITIVE_INFINITY],
+    [
+      'from the SDK with wait: "0"',
+      {},
+      { wait: "0" },
+      true,
+      Number.POSITIVE_INFINITY,
+    ],
     ['from the SDK with wait: "600"', {}, { wait: "600" }, true, 600_000],
   ])(
     "waits for processing %s",
@@ -441,22 +449,22 @@ describe("sourcemap upload command — --allow-empty behavior", () => {
 
   test("rejects --wait with --no-wait", async () => {
     await expect(
-      func.call(makeContext(), { wait: 300_000, "no-wait": true }, dir),
+      func.call(makeContext(), { wait: 300, "no-wait": true }, dir),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   test.each<[string, number]>([
-    ["", 300_000],
-    ["600", 600_000],
-    ["0", Number.POSITIVE_INFINITY],
-  ])("parseWaitLimit(%o) is %d ms", (input, expected) => {
-    expect(parseWaitLimit(input)).toBe(expected);
+    ["", 300],
+    ["600", 600],
+    ["0", 0],
+  ])("parseWaitSeconds(%o) is %d", (input, expected) => {
+    expect(parseWaitSeconds(input)).toBe(expected);
   });
 
   test.each(["./dist", "-1", "1.5", "ten"])(
-    "parseWaitLimit rejects %o",
+    "parseWaitSeconds rejects %o",
     (input) => {
-      expect(() => parseWaitLimit(input)).toThrow(ValidationError);
+      expect(() => parseWaitSeconds(input)).toThrow(ValidationError);
     },
   );
 

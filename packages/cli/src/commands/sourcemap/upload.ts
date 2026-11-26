@@ -80,14 +80,13 @@ function formatUploadResult(data: UploadCommandResult): string {
 const usageHint = () => sentry`sourcemap upload <directory>`;
 
 /**
- * Parse `--wait[=seconds]` into a wait limit in milliseconds.
+ * Parse `--wait[=seconds]` into a wait limit in seconds.
  *
- * Bare `--wait` parses `""` and keeps the default limit. `--wait=0` waits
- * with no limit.
+ * Bare `--wait` parses `""` and keeps the default limit. `0` means no limit.
  */
-export function parseWaitLimit(input: string): number {
+export function parseWaitSeconds(input: string): number {
   if (input === "") {
-    return DEFAULT_UPLOAD_MAX_WAIT_MS;
+    return DEFAULT_UPLOAD_MAX_WAIT_MS / 1000;
   }
   const seconds = Number(input);
   if (!Number.isInteger(seconds) || seconds < 0) {
@@ -96,7 +95,7 @@ export function parseWaitLimit(input: string): number {
       "wait",
     );
   }
-  return seconds === 0 ? Number.POSITIVE_INFINITY : seconds * 1000;
+  return seconds;
 }
 
 /**
@@ -377,7 +376,7 @@ export const uploadCommand = buildCommand({
       },
       wait: {
         kind: "parsed",
-        parse: parseWaitLimit,
+        parse: parseWaitSeconds,
         brief:
           "Wait for the server to fully process the uploaded files, up to " +
           "the given seconds (default: 300, 0 = no limit; on in CI)",
@@ -421,11 +420,16 @@ export const uploadCommand = buildCommand({
     const wait = flags["no-wait"]
       ? false
       : flags.wait !== undefined || isCi(this.env);
-    // SDK callers supply the public string form without Stricli parsing.
-    const maxWaitMs =
+    // SDK callers may supply the public string form without Stricli parsing.
+    const waitSeconds =
       typeof flags.wait === "string"
-        ? parseWaitLimit(flags.wait)
-        : (flags.wait ?? DEFAULT_UPLOAD_MAX_WAIT_MS);
+        ? parseWaitSeconds(flags.wait)
+        : flags.wait;
+    let maxWaitMs = DEFAULT_UPLOAD_MAX_WAIT_MS;
+    if (waitSeconds !== undefined) {
+      maxWaitMs =
+        waitSeconds === 0 ? Number.POSITIVE_INFINITY : waitSeconds * 1000;
+    }
 
     // Validate the directory and discover pairs read-only first so we
     // don't write debug IDs when the upload won't proceed (empty dir,
