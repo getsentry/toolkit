@@ -55,6 +55,14 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
   },
+  android: async (options) => {
+    const { runAndroidWizard } = await import("./android/android-wizard.js");
+    await runAndroidWizard(options);
+  },
+  flutter: async (options) => {
+    const { runFlutterWizard } = await import("./flutter/flutter-wizard.js");
+    await runFlutterWizard(options);
+  },
 };
 
 /** What `sentry wizard` passes to {@link runWizard}. */
