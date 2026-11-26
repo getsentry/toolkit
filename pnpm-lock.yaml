@@ -1070,6 +1070,9 @@ importers:
       '@sentry/core':
         specifier: 'catalog:'
         version: 11.12.0
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0
@@ -1251,6 +1254,9 @@ importers:
       '@sentry/api':
         specifier: 'catalog:'
         version: 2.15.0(valibot@1.4.2(typescript@7.0.2))(zod@4.6.7)
+      '@sentry/http':
+        specifier: workspace:*
+        version: link:../http
       '@sentry/search-syntax':
         specifier: 'catalog:'
         version: 1.0.0

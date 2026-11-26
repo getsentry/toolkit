@@ -2,8 +2,9 @@
  * HTTP response caching and retries over the Fetch API: freshness and
  * revalidation through `http-cache-semantics`, stale-if-error, identity-scoped
  * keys, a pluggable `CacheStore` with a byte-budgeted memory store, and
- * idempotency-aware retries with backoff and `Retry-After`. No Node APIs; the
- * compressing body codec is in `@sentry/http/codec`.
+ * idempotency-aware retries with backoff and `Retry-After`, as a loop or a
+ * fetch wrapper. No Node APIs; the compressing body codec is in
+ * `@sentry/http/codec`.
  */
 
 export {
@@ -13,6 +14,12 @@ export {
   identityCodec,
 } from "./body.js";
 export { type CachedFetchOptions, fetchWithCache } from "./fetch.js";
+export {
+  type FetchLike,
+  type RetryingFetchOptions,
+  type RetryRequest,
+  withRetry,
+} from "./fetch-retry.js";
 export { buildCacheKey, normalizeUrl } from "./keys.js";
 export {
   createMemoryStore,

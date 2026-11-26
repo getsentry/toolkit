@@ -192,10 +192,27 @@ function hasValidator(policy: CachePolicy): boolean {
 }
 
 /**
+ * Whether the request has the headers the stored response varies on. A
+ * response with `Vary: *` matches no request.
+ */
+function varyMatches(policy: CachePolicy, request: GetRequest): boolean {
+  const { resh, reqh } = policy.toObject();
+  const vary = resh["vary"];
+  if (vary === undefined) {
+    return true;
+  }
+  const stored = reqh ?? {};
+  return String(vary)
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean)
+    .every((name) => name !== "*" && stored[name] === request.headers[name]);
+}
+
+/**
  * Whether `entry` can be served without revalidation: within the caller's
  * TTL, and, when the server sent directives, within theirs too (capped at
- * `maxTtlMs`). Server freshness counts only when the request matches the
- * stored `Vary` headers.
+ * `maxTtlMs`).
  */
 function isEntryFresh(
   policy: CachePolicy,
@@ -247,13 +264,25 @@ function buildResponseHeaders(
   return result;
 }
 
+/** Statuses whose `Response` must have a null body. */
+const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([204, 205, 304]);
+
 /**
- * A decoded body as a `Response` body. TypeScript's DOM `BodyInit` takes
- * only `ArrayBuffer`-backed views; stored bodies never sit on a
- * `SharedArrayBuffer`.
+ * The response served from `entry` with a decoded body. TypeScript's DOM
+ * `BodyInit` takes only `ArrayBuffer`-backed views; stored bodies never sit
+ * on a `SharedArrayBuffer`.
  */
-function responseBody(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-  return bytes as Uint8Array<ArrayBuffer>;
+function cachedResponse(
+  entry: CacheEntry,
+  body: Uint8Array,
+  headers: Record<string, string>,
+): Response {
+  return new Response(
+    NULL_BODY_STATUSES.has(entry.status)
+      ? null
+      : (body as Uint8Array<ArrayBuffer>),
+    { status: entry.status, headers },
+  );
 }
 
 /** The validators to send for a stale entry; empty without one. */
@@ -289,15 +318,12 @@ function staleLookup(
   }
   const { store, codec, key, onRenewError } = options;
 
-  async function cachedResponse(
+  async function decoded(
     responsePolicy: CachePolicy,
   ): Promise<Response | undefined> {
     const body = await codec.decode(entry.body);
     return body
-      ? new Response(responseBody(body), {
-          status: entry.status,
-          headers: buildResponseHeaders(responsePolicy, entry),
-        })
+      ? cachedResponse(entry, body, buildResponseHeaders(responsePolicy, entry))
       : undefined;
   }
 
@@ -318,7 +344,7 @@ function staleLookup(
       if (result.modified || !result.matches) {
         return;
       }
-      const cached = await cachedResponse(result.policy);
+      const cached = await decoded(result.policy);
       if (!cached) {
         return;
       }
@@ -334,7 +360,7 @@ function staleLookup(
       return cached;
     },
     ...(options.staleIfError
-      ? { serveStale: async () => await cachedResponse(policy) }
+      ? { serveStale: async () => await decoded(policy) }
       : {}),
   };
 }
@@ -344,9 +370,9 @@ function staleLookup(
  * returned for conditional revalidation or, with `staleIfError`, for
  * serving on an error.
  *
- * @returns The lookup, or `undefined` on a miss: no entry, a stale entry
- *   without a validator (and no `staleIfError`), or a body this runtime
- *   cannot decode
+ * @returns The lookup, or `undefined` on a miss: no entry, a request that
+ *   differs in a header the entry varies on, a stale entry without a
+ *   validator (and no `staleIfError`), or a body this runtime cannot decode
  * @throws When the stored policy or body is corrupt; the host may drop the
  *   entry and treat it as a miss
  */
@@ -367,6 +393,10 @@ export async function lookupResponse(
     method: "GET",
     headers: await policyRequestHeaders(requestHeaders),
   };
+  // Another variant of the resource: neither fresh nor usable when stale.
+  if (!varyMatches(policy, request)) {
+    return;
+  }
   if (!isEntryFresh(policy, entry, request, options)) {
     return staleLookup(options, entry, policy, request);
   }
@@ -377,10 +407,7 @@ export async function lookupResponse(
   }
   return {
     kind: "hit",
-    response: new Response(responseBody(body), {
-      status: entry.status,
-      headers: buildResponseHeaders(policy, entry),
-    }),
+    response: cachedResponse(entry, body, buildResponseHeaders(policy, entry)),
     createdAt: entry.createdAt,
     size: body.byteLength,
   };
@@ -398,6 +425,7 @@ export async function storeResponse(options: StoreOptions): Promise<number> {
   const { store, codec, key, identity, url, requestHeaders, response } =
     options;
   if (!response.ok) {
+    discardBody(response);
     return 0;
   }
 
@@ -412,6 +440,7 @@ export async function storeResponse(options: StoreOptions): Promise<number> {
   );
   const ttlMs = retentionMs(policy, options);
   if (!policy.storable() || !(ttlMs > 0)) {
+    discardBody(response);
     return 0;
   }
 
@@ -436,4 +465,15 @@ export async function storeResponse(options: StoreOptions): Promise<number> {
     ttlMs,
   );
   return body.bytes.byteLength;
+}
+
+/**
+ * Release a body the cache will not read, so a clone does not buffer the
+ * whole response while the caller reads the original. Not awaited:
+ * cancelling one branch of a tee settles only once the other is read.
+ */
+function discardBody(response: Response): void {
+  if (response.body && !response.bodyUsed) {
+    response.body.cancel().catch(() => undefined);
+  }
 }

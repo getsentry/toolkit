@@ -133,6 +133,39 @@ const response = await fetchWithRetry(() => fetch(url, { method: "POST" }), {
 
 `nextRetryDelayMs` is the decision on its own, for hosts with their own loop.
 
+### As a fetch wrapper
+
+`withRetry` wraps a `fetch` with the same loop. The method and URL come from
+the request, a `Request` input is cloned for each attempt, and a stream body
+is read once so it can be sent again. An abort from the caller's signal stops
+at once.
+
+```ts
+import { withRetry } from "@sentry/http";
+
+const retryingFetch = withRetry(fetch, {
+  policy: {
+    maxRetries: 2,
+    baseDelayMs: 250,
+    maxDelayMs: 5_000,
+    maxTotalDelayMs: 10_000,
+  },
+  isIdempotent: ({ method, url }) =>
+    method === "PUT" && url.includes("/uploads/"),
+});
+```
+
+The wrapped function can be a whole client request rather than `fetch`, such
+as the transport in `@sentry/api/client`. Each attempt then keeps that
+client's timeout, body handling, and credential refresh:
+
+```ts
+const request = withRetry(
+  (input, init) => transport.request(input, init, { responseBody: "buffer" }),
+  { policy },
+);
+```
+
 ## License
 
 [FSL-1.1-Apache-2.0](LICENSE.md)

@@ -432,3 +432,92 @@ describe("lookupResponse with staleIfError", () => {
     expect(await response?.json()).toEqual(BODY);
   });
 });
+
+describe("lookupResponse with Vary", () => {
+  async function storeVarying(
+    cache: CacheStore,
+    vary: string,
+    requestHeaders: Record<string, string>,
+  ): Promise<void> {
+    await storeResponse({
+      ttlMs: TTL,
+      staleIfError: true,
+      store: cache,
+      codec,
+      key: KEY,
+      identity: IDENTITY,
+      url: URL,
+      requestHeaders,
+      response: json(BODY, { vary }),
+    });
+  }
+
+  function lookupWith(
+    cache: CacheStore,
+    requestHeaders: Record<string, string>,
+  ): Promise<CacheLookup | undefined> {
+    return lookupResponse({
+      ttlMs: TTL,
+      staleIfError: true,
+      store: cache,
+      codec,
+      key: KEY,
+      url: URL,
+      requestHeaders,
+    });
+  }
+
+  it("serves an entry without server directives only to a matching request", async () => {
+    const cache = createMemoryStore();
+    await storeVarying(cache, "Accept", { accept: "application/json" });
+
+    expect(
+      (await lookupWith(cache, { accept: "application/json" }))?.kind,
+    ).toBe("hit");
+    expect(await lookupWith(cache, { accept: "text/html" })).toBeUndefined();
+  });
+
+  it("does not offer another variant as stale", async () => {
+    const cache = createMemoryStore();
+    await storeVarying(cache, "Accept", { accept: "application/json" });
+    vi.setSystemTime(Date.now() + TTL + MINUTE);
+
+    expect(await lookupWith(cache, { accept: "text/html" })).toBeUndefined();
+    expect(
+      (await lookupWith(cache, { accept: "application/json" }))?.kind,
+    ).toBe("stale");
+  });
+
+  it("matches no request for Vary: *", async () => {
+    const cache = createMemoryStore();
+    await storeVarying(cache, "*", {});
+
+    expect(await lookupWith(cache, {})).toBeUndefined();
+  });
+});
+
+describe("null-body statuses", () => {
+  it("serves a cached 204 with a null body", async () => {
+    const cache = createMemoryStore();
+    await store(cache, new Response(null, { status: 204 }));
+
+    const hit = await lookup(cache);
+    if (hit?.kind !== "hit") {
+      throw new Error(`expected a hit, got ${hit?.kind}`);
+    }
+    expect(hit.response.status).toBe(204);
+    expect(hit.response.body).toBeNull();
+  });
+});
+
+describe("storeResponse body release", () => {
+  it.each([
+    ["Cache-Control: no-store", json(BODY, { "cache-control": "no-store" })],
+    ["a non-2xx status", json({ detail: "Not found" }, {}, 404)],
+  ])("cancels the body it does not store for %s", async (_, response) => {
+    const cancel = vi.spyOn(response.body as ReadableStream, "cancel");
+
+    expect(await store(createMemoryStore(), response)).toBe(0);
+    expect(cancel).toHaveBeenCalled();
+  });
+});

@@ -4,7 +4,7 @@ import {
   type CacheStore,
   createMemoryStore,
   fetchWithCache,
-  fetchWithRetry,
+  withRetry,
 } from "@sentry/http";
 import { createBodyCodec } from "@sentry/http/codec";
 
@@ -19,7 +19,7 @@ const read = () =>
     ttlMs: 60_000,
     send: async () => {
       requests++;
-      return await fetchWithRetry(
+      const retrying = withRetry(
         async () => Response.json({ items: "x".repeat(1024) }),
         {
           policy: {
@@ -28,9 +28,10 @@ const read = () =>
             maxDelayMs: 1,
             maxTotalDelayMs: 1,
           },
-          method: "GET",
+          retryableStatuses: new Map([[429, "any"]]),
         },
       );
+      return await retrying("https://api.example.com/items/");
     },
   });
 
