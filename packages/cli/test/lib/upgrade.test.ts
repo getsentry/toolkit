@@ -1368,6 +1368,16 @@ describe("Homebrew detection (detectInstallationMethod)", () => {
     expect(method).toBe("brew");
   });
 
+  test("detects brew for the sentry-cli formula (v3 name)", async () => {
+    Object.defineProperty(process, "execPath", {
+      value: "/opt/homebrew/Cellar/sentry-cli/4.0.0/bin/sentry",
+      configurable: true,
+    });
+
+    const method = await detectInstallationMethod();
+    expect(method).toBe("brew");
+  });
+
   test("Homebrew detection overrides stale stored install info", async () => {
     // Simulate a user who previously had curl recorded in the DB but then
     // switched to Homebrew — the /Cellar/ check should win.
@@ -2657,6 +2667,28 @@ describe("executeUpgrade (brew)", () => {
     expect(capturedArgs).toEqual(["upgrade", "getsentry/tools/sentry"]);
     expect(capturedOpts).toHaveProperty("shell", process.platform === "win32");
   });
+
+  test("upgrades the sentry-cli formula when installed from it", async () => {
+    const originalExecPath = process.execPath;
+    Object.defineProperty(process, "execPath", {
+      value: "/opt/homebrew/Cellar/sentry-cli/4.0.0/bin/sentry",
+      configurable: true,
+    });
+    let capturedArgs: string[] = [];
+    spawnImpl.fn = (_cmd, args) => {
+      capturedArgs = args;
+      return fakeProcess(0);
+    };
+    try {
+      await executeUpgrade("brew", "4.1.0");
+    } finally {
+      Object.defineProperty(process, "execPath", {
+        value: originalExecPath,
+        configurable: true,
+      });
+    }
+    expect(capturedArgs).toEqual(["upgrade", "getsentry/tools/sentry-cli"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2719,6 +2751,58 @@ describe("executeUpgrade (package managers)", () => {
     expect(capturedCmd).toBe("yarn");
     expect(capturedArgs).toEqual(["global", "add", "sentry@1.2.3"]);
     expect(capturedOpts).toHaveProperty("shell", process.platform === "win32");
+  });
+
+  describe("installed from @sentry/cli", () => {
+    let originalArgv: string[];
+
+    beforeEach(() => {
+      originalArgv = [...process.argv];
+      process.argv[1] = join(
+        "/usr/local/lib",
+        "node_modules",
+        "@sentry",
+        "cli",
+        "dist",
+        "bin.cjs",
+      );
+    });
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    test("npm: upgrades @sentry/cli, not sentry", async () => {
+      let capturedArgs: string[] = [];
+      spawnImpl.fn = (_cmd, args) => {
+        capturedArgs = args;
+        return fakeProcess(0);
+      };
+      await executeUpgrade("npm", "4.1.0");
+      expect(capturedArgs).toEqual(["install", "-g", "@sentry/cli@4.1.0"]);
+    });
+
+    test("yarn: upgrades @sentry/cli, not sentry", async () => {
+      let capturedArgs: string[] = [];
+      spawnImpl.fn = (_cmd, args) => {
+        capturedArgs = args;
+        return fakeProcess(0);
+      };
+      await executeUpgrade("yarn", "4.1.0");
+      expect(capturedArgs).toEqual(["global", "add", "@sentry/cli@4.1.0"]);
+    });
+
+    test("fetchLatestFromNpm reads the @sentry/cli package", async () => {
+      let requestedUrl = "";
+      mockFetch(async (url) => {
+        requestedUrl = extractInputUrl(url);
+        return Response.json({ version: "4.1.0" });
+      });
+      expect(await fetchLatestFromNpm()).toBe("4.1.0");
+      expect(requestedUrl).toBe(
+        "https://registry.npmjs.org/@sentry/cli/latest",
+      );
+    });
   });
 
   test("npm: throws UpgradeError on non-zero exit", async () => {

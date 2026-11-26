@@ -23,6 +23,8 @@ import { sentry } from "../../lib/app-identity.js";
 import {
   compareVersions,
   determineInstallDir,
+  getHomebrewFormulaRef,
+  getPackageManagerUninstallCommand,
   isDowngrade,
   isNightlyVersion,
   LEGACY_INSTALL_SUBDIR,
@@ -430,7 +432,7 @@ function validateMethod(
     }
     throw new UpgradeError(
       "unsupported_operation",
-      "Homebrew does not support installing a specific version. Run 'brew upgrade getsentry/tools/sentry' to upgrade to the latest formula version.",
+      `Homebrew does not support installing a specific version. Run 'brew upgrade ${getHomebrewFormulaRef()}' to upgrade to the latest formula version.`,
     );
   }
   // Offline mode is only supported for curl-installed binaries — package
@@ -1035,18 +1037,11 @@ async function migrateToStandaloneForNightly(opts: {
   // Build warnings about the potentially shadowing old installation.
   // Note: install info is already recorded by the child `setup --install`
   // process, so no redundant setInstallInfo call is needed here.
-  const uninstallHints: Record<string, string> = {
-    npm: "npm uninstall -g sentry",
-    pnpm: "pnpm remove -g sentry",
-    bun: "bun remove -g sentry",
-    yarn: "yarn global remove sentry",
-    brew: "brew uninstall getsentry/tools/sentry",
-  };
   const warnings: string[] = [];
   warnings.push(
     `Your ${method}-installed sentry may still appear earlier in PATH.`,
   );
-  const hint = uninstallHints[method];
+  const hint = getPackageManagerUninstallCommand(method);
   if (hint) {
     warnings.push(`Consider removing it: ${hint}`);
   }

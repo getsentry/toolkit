@@ -27,6 +27,8 @@ import {
   getBinaryPaths,
   getGitHubReleaseByTagUrl,
   getLegacyInstallDirs,
+  getNpmPackageName,
+  getPackageManagerUninstallCommand,
   getPlatformBinaryName,
   installBinary,
   isDowngrade,
@@ -914,6 +916,75 @@ describe("isDowngrade", () => {
     expect(isDowngrade("0.14.0-dev.1772724107", "0.14.0-dev.1772732047")).toBe(
       false,
     );
+  });
+});
+
+describe("getNpmPackageName", () => {
+  test("reads @sentry/cli from an npm global install path", () => {
+    expect(
+      getNpmPackageName("/usr/local/lib/node_modules/@sentry/cli/dist/bin.cjs"),
+    ).toBe("@sentry/cli");
+  });
+
+  test("reads @sentry/cli from a pnpm store path", () => {
+    expect(
+      getNpmPackageName(
+        "/home/u/.local/share/pnpm/global/5/node_modules/.pnpm/@sentry+cli@4.0.0/node_modules/@sentry/cli/dist/bin.cjs",
+      ),
+    ).toBe("@sentry/cli");
+  });
+
+  test("reads @sentry/cli from a Windows path", () => {
+    expect(
+      getNpmPackageName(
+        "C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\@sentry\\cli\\dist\\bin.cjs",
+      ),
+    ).toBe("@sentry/cli");
+  });
+
+  test("returns sentry for the sentry package and for non-npm installs", () => {
+    expect(
+      getNpmPackageName("/usr/local/lib/node_modules/sentry/dist/bin.cjs"),
+    ).toBe("sentry");
+    // A dependency of the sentry package is not the installed package.
+    expect(
+      getNpmPackageName(
+        "/usr/local/lib/node_modules/@sentry/cli/node_modules/sentry/dist/bin.cjs",
+      ),
+    ).toBe("sentry");
+    expect(getNpmPackageName("issue")).toBe("sentry");
+  });
+});
+
+describe("getPackageManagerUninstallCommand", () => {
+  let originalArgv: string[];
+
+  beforeEach(() => {
+    originalArgv = [...process.argv];
+  });
+
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  test("names the package the CLI runs from", () => {
+    process.argv[1] = "/usr/local/lib/node_modules/@sentry/cli/dist/bin.cjs";
+    expect(getPackageManagerUninstallCommand("npm")).toBe(
+      "npm uninstall -g @sentry/cli",
+    );
+    expect(getPackageManagerUninstallCommand("yarn")).toBe(
+      "yarn global remove @sentry/cli",
+    );
+
+    process.argv[1] = "/usr/local/lib/node_modules/sentry/dist/bin.cjs";
+    expect(getPackageManagerUninstallCommand("pnpm")).toBe(
+      "pnpm remove -g sentry",
+    );
+  });
+
+  test("returns undefined for non-package-manager methods", () => {
+    expect(getPackageManagerUninstallCommand("curl")).toBeUndefined();
+    expect(getPackageManagerUninstallCommand("unknown")).toBeUndefined();
   });
 });
 

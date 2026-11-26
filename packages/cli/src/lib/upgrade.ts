@@ -35,6 +35,8 @@ import {
   getGitHubLatestReleaseUrl,
   getGitHubReleaseByTagUrl,
   getGitHubRepositoryUrl,
+  getHomebrewFormulaRef,
+  getNpmPackageName,
   getPlatformBinaryName,
   type InstallationMethod,
   isHomebrewInstall,
@@ -95,8 +97,10 @@ export type OfflineMode = false | "explicit" | "network-fallback";
 /** The git tag used for the rolling nightly GitHub release (stable fallback only). */
 export const NIGHTLY_TAG = "nightly";
 
-/** npm registry base URL */
-const NPM_REGISTRY_URL = "https://registry.npmjs.org/sentry";
+/** npm registry URL of the package the CLI runs from. */
+function getNpmRegistryUrl(): string {
+  return `https://registry.npmjs.org/${getNpmPackageName()}`;
+}
 
 /** Regex to strip 'v' prefix from version strings */
 export const VERSION_PREFIX_REGEX = /^v/;
@@ -547,7 +551,7 @@ export async function fetchLatestFromGitHub(
  */
 export async function fetchLatestFromNpm(): Promise<string> {
   const response = await fetchWithUpgradeError(
-    `${NPM_REGISTRY_URL}/latest`,
+    `${getNpmRegistryUrl()}/latest`,
     { headers: { Accept: "application/json" } },
     "npm registry",
   );
@@ -861,7 +865,7 @@ export async function versionExists(
   validateStableVersion(version, "Requested package version");
 
   const response = await fetchWithUpgradeError(
-    `${NPM_REGISTRY_URL}/${version}`,
+    `${getNpmRegistryUrl()}/${version}`,
     { method: "HEAD" },
     "npm registry",
   );
@@ -1352,7 +1356,8 @@ async function downloadFullBinary(
 /**
  * Execute upgrade via Homebrew.
  *
- * Runs `brew upgrade getsentry/tools/sentry` which fetches the latest
+ * Runs `brew upgrade getsentry/tools/<formula>` for the formula the CLI was
+ * installed from (`sentry` or `sentry-cli`), which fetches the latest
  * formula from the tap and installs the new version. The version argument
  * is intentionally ignored: Homebrew manages versioning through the formula
  * file in the tap and does not support pinning to an arbitrary release.
@@ -1361,7 +1366,7 @@ async function downloadFullBinary(
  */
 function executeUpgradeHomebrew(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("brew", ["upgrade", "getsentry/tools/sentry"], {
+    const proc = spawn("brew", ["upgrade", getHomebrewFormulaRef()], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });
@@ -1388,7 +1393,8 @@ function executeUpgradeHomebrew(): Promise<void> {
 }
 
 /**
- * Execute upgrade via package manager global install.
+ * Execute upgrade via package manager global install of the package the CLI
+ * runs from (`sentry` or `@sentry/cli`).
  *
  * @param pm - Package manager to use
  * @param version - Target version to install
@@ -1399,10 +1405,9 @@ function executeUpgradePackageManager(
   version: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const spec = `${getNpmPackageName()}@${version}`;
     const args =
-      pm === "yarn"
-        ? ["global", "add", `sentry@${version}`]
-        : ["install", "-g", `sentry@${version}`];
+      pm === "yarn" ? ["global", "add", spec] : ["install", "-g", spec];
 
     // npm/pnpm/yarn are .cmd batch files on Windows; spawn() without
     // shell: true cannot execute .cmd files (ENOENT).

@@ -78,7 +78,7 @@ installs `sentry-cli`. Pin the major version to stay on v3.
 | PyPI `sentry-cli` | Installs the standalone v4 binary as `sentry`. | `sentry-cli<4` |
 | `downloads.sentry-cdn.com/sentry-cli/<version>/` | v4 versions hold the v4 binaries, named like `sentry-linux-x64` and `sentry-darwin-arm64.gz`. | Use a 3.x version in the URL |
 | Release registry `app:sentry-cli` | `latest` is v4, with download URLs on `downloads.sentry-cdn.com`. | `apps/sentry-cli/3` |
-| `https://sentry.io/get-cli/` | Finds no v4 binary under a v3 name, so it fails unless you pin v3. Use `https://cli.sentry.dev/install` for v4. | `SENTRY_CLI_VERSION=3` |
+| `https://sentry.io/get-cli/` | Installs v4 with `https://cli.sentry.dev/install`, which needs bash. | `SENTRY_CLI_VERSION=3.8.2` |
 | `sentry-cli update` | Finds no v4 binary under a v3 name, so it stops with "Could not get the latest release version." | Nothing to do |
 
 The v3 file names, such as `sentry-cli-Linux-x86_64`, exist only for v3 versions,
@@ -88,7 +88,9 @@ downloads one of them keeps getting v3, never a v4 binary that it would run as
 
 A global install of `@sentry/cli@4` and one of `sentry` both provide the
 `sentry` command, so npm refuses to install the second. Uninstall
-`@sentry/cli` first.
+`@sentry/cli` first. `sentry cli upgrade` keeps upgrading the npm package or
+Homebrew formula that you installed, so it upgrades `@sentry/cli` and
+`sentry-cli` installs in place.
 
 The PyPI wheels need macOS 13.5 or later, or Linux with glibc 2.28 or later, on
 x64 or arm64, or Windows on x64. There are no musl (Alpine) wheels; use
