@@ -2,7 +2,7 @@
  * GHCR (GitHub Container Registry) Client
  *
  * Encapsulates the OCI download protocol for fetching nightly CLI binaries
- * from ghcr.io/getsentry/cli. Nightly builds are pushed as OCI artifacts
+ * from ghcr.io/getsentry/toolkit. Nightly builds are pushed as OCI artifacts
  * via ORAS with the version baked into the manifest annotation.
  *
  * Key design decisions:
@@ -19,7 +19,7 @@
 
 import { valid as semverValid } from "semver";
 import {
-  PRIMARY_UPGRADE_SOURCE,
+  UPGRADE_SOURCE,
   parseUpgradeJson,
   type UpgradeSource,
 } from "./binary.js";
@@ -140,7 +140,7 @@ async function fetchWithRetry(
 }
 
 /** Default GHCR repository for CLI distribution. */
-export const GHCR_REPO = PRIMARY_UPGRADE_SOURCE.ghcrRepo;
+export const GHCR_REPO = UPGRADE_SOURCE.ghcrRepo;
 
 /** OCI tag for nightly builds */
 export const GHCR_TAG = "nightly";
@@ -247,7 +247,7 @@ function isOciManifest(value: unknown): value is OciManifest {
 
 /**
  * Fetch a short-lived anonymous bearer token for read-only access to the
- * public `ghcr.io/getsentry/cli` package.
+ * public `ghcr.io/getsentry/toolkit` package.
  *
  * The token exchange endpoint returns a JSON object with a `token` field.
  * No credentials are required for public packages.
@@ -256,11 +256,10 @@ function isOciManifest(value: unknown): value is OciManifest {
  * @throws {UpgradeError} On network failure or malformed response
  */
 export async function getAnonymousToken(
-  sourceOrSignal: UpgradeSource | AbortSignal = PRIMARY_UPGRADE_SOURCE,
+  sourceOrSignal: UpgradeSource | AbortSignal = UPGRADE_SOURCE,
   signal?: AbortSignal,
 ): Promise<string> {
-  const source =
-    "ghcrRepo" in sourceOrSignal ? sourceOrSignal : PRIMARY_UPGRADE_SOURCE;
+  const source = "ghcrRepo" in sourceOrSignal ? sourceOrSignal : UPGRADE_SOURCE;
   const externalSignal = "ghcrRepo" in sourceOrSignal ? signal : sourceOrSignal;
   const url = `${GHCR_REGISTRY}/token?scope=repository:${source.ghcrRepo}:pull`;
   const response = await fetchWithRetry(
@@ -311,7 +310,7 @@ export async function fetchManifest(
   token: string,
   tag: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<OciManifest> {
   const url = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/manifests/${tag}`;
   const response = await fetchWithRetry(
@@ -357,7 +356,7 @@ export async function fetchManifest(
 export async function fetchNightlyManifest(
   token: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<OciManifest> {
   return await fetchManifest(token, GHCR_TAG, signal, source);
 }
@@ -433,7 +432,7 @@ export async function downloadNightlyBlob(
   token: string,
   digest: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<Response> {
   const blobUrl = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/blobs/${digest}`;
 
@@ -531,7 +530,7 @@ async function fetchTagPage(
   token: string,
   lastTag?: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<string[]> {
   let url = `${GHCR_REGISTRY}/v2/${source.ghcrRepo}/tags/list?n=${TAGS_PAGE_SIZE}`;
   if (lastTag) {
@@ -600,7 +599,7 @@ export async function listTags(
   token: string,
   prefix?: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<string[]> {
   const allTags: string[] = [];
   const visitedCursors = new Set<string>();
@@ -652,7 +651,7 @@ export async function downloadLayerBlob(
   token: string,
   digest: string,
   signal?: AbortSignal,
-  source: UpgradeSource = PRIMARY_UPGRADE_SOURCE,
+  source: UpgradeSource = UPGRADE_SOURCE,
 ): Promise<ArrayBuffer> {
   const response = await downloadNightlyBlob(token, digest, signal, source);
   return await response.arrayBuffer();
