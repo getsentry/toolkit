@@ -338,15 +338,15 @@ export function compareFrameStats(
     { baselineIdx?: number; currentIdx?: number }
   >();
 
-  baselineFrames.forEach((frame, idx) => {
+  for (const [idx, frame] of baselineFrames.entries()) {
     const existing = frameMap.get(frame.fingerprint) || {};
     frameMap.set(frame.fingerprint, { ...existing, baselineIdx: idx });
-  });
+  }
 
-  currentFrames.forEach((frame, idx) => {
+  for (const [idx, frame] of currentFrames.entries()) {
     const existing = frameMap.get(frame.fingerprint) || {};
     frameMap.set(frame.fingerprint, { ...existing, currentIdx: idx });
-  });
+  }
 
   // Compare frames that exist in both
   const comparisons: FrameComparison[] = [];

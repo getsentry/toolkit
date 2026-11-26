@@ -14,7 +14,7 @@ import {
   testErrorSnippet,
   testErrorSnippetKt,
 } from "./templates.js";
-import { findFile } from "../utils/ast-utils.js";
+import { findFile } from "../../dsn/fs-utils.js";
 
 /**
  * Looks in src/main/java or src/main/kotlin for the specified {@link packageName} and
@@ -34,11 +34,11 @@ import { findFile } from "../utils/ast-utils.js";
  * @param activityName
  * @returns path to the Main Activity
  */
-export function findActivitySourceFile(
+export async function findActivitySourceFile(
   appDir: string,
   packageName: string,
   activityName: string,
-): string | undefined {
+): Promise<string | undefined> {
   const javaSrcDir = path.join(appDir, "src", "main", "java");
   let possibleActivityPath;
   // if activity name starts with a dot, this means we need to concat packagename with it, otherwise
@@ -49,7 +49,7 @@ export function findActivitySourceFile(
   const activityNameParts = activityName.split(".");
 
   if (existsSync(javaSrcDir)) {
-    possibleActivityPath = findFile(
+    possibleActivityPath = await findFile(
       path.join(javaSrcDir, ...packageNameParts, ...activityNameParts),
       [".kt", ".java"],
     );
@@ -58,7 +58,7 @@ export function findActivitySourceFile(
   if (!possibleActivityPath || !existsSync(possibleActivityPath)) {
     const kotlinSrcDir = path.join(appDir, "src", "main", "kotlin");
     if (existsSync(kotlinSrcDir)) {
-      possibleActivityPath = findFile(
+      possibleActivityPath = await findFile(
         path.join(kotlinSrcDir, ...packageNameParts, ...activityNameParts),
         [".kt"],
       );

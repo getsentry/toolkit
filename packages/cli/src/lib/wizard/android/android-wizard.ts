@@ -161,7 +161,7 @@ async function runAndroidWizardWithTelemetry(
     return await abort();
   }
   const packageNameStable = packageName;
-  const activityFile = traceStep("Find Main Activity Source File", () =>
+  const activityFile = await traceStep("Find Main Activity Source File", () =>
     findActivitySourceFile(appDir, packageNameStable, activityName),
   );
 

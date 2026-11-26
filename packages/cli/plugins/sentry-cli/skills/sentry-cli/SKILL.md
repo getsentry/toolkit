@@ -818,7 +818,7 @@ Print instructions for a coding agent to set up Sentry
 
 Set up the Sentry SDK in your project interactively
 
-- `sentry wizard` — Set up the Sentry SDK in your project interactively
+- `sentry wizard [<org>/<project>] [<integration>]` — Set up the Sentry SDK in your project interactively
 
 → Full flags and examples: `references/wizard.md`
 

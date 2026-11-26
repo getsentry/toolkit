@@ -312,7 +312,7 @@ export function formatReplayResults(params: FormatReplayResultsParams): string {
 
   output += `Found **${replays.length}** replay${replays.length === 1 ? "" : "s"}:\n\n`;
 
-  replays.forEach((replay, index) => {
+  for (const [index, replay] of replays.entries()) {
     const replayUrl = apiService.getReplayUrl(organizationSlug, replay.id);
     const user = formatReplayUser(replay);
     const clickSummary = [
@@ -343,7 +343,7 @@ export function formatReplayResults(params: FormatReplayResultsParams): string {
     }
 
     output += "\n";
-  });
+  }
 
   output += "## Next Steps\n\n";
   const replayDetailsInstruction = formatToolCallInstruction({
