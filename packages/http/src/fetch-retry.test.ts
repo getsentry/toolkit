@@ -125,6 +125,27 @@ describe("withRetry", () => {
     ]);
   });
 
+  it("replays a stream body that overrides a Request input's body", async () => {
+    const { fetch, sent } = scripted(
+      () => new Response("", { status: 500 }),
+      () => new Response("ok"),
+    );
+
+    await withRetry(fetch, { policy, idempotent: true })(
+      new Request(URL_, { method: "POST", body: "original" }),
+      {
+        body: new Response("override").body,
+        // Node needs `duplex` for a stream body.
+        duplex: "half",
+      },
+    );
+
+    expect(sent.map((request) => request.body)).toEqual([
+      "override",
+      "override",
+    ]);
+  });
+
   it("stops at once when the caller aborts", async () => {
     const fetch = hanging();
     const controller = new AbortController();

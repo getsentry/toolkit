@@ -106,13 +106,12 @@ async function replayable(
 ): Promise<
   () => { input: Request | string | URL; init: RequestInit | undefined }
 > {
-  if (input instanceof Request) {
-    return () => ({ input: input.clone(), init });
-  }
   const body = init?.body;
-  if (body instanceof ReadableStream) {
-    const snapshot = await new Response(body).arrayBuffer();
-    return () => ({ input, init: { ...init, body: snapshot } });
-  }
-  return () => ({ input, init });
+  const nextInit =
+    body instanceof ReadableStream
+      ? { ...init, body: await new Response(body).arrayBuffer() }
+      : init;
+  return input instanceof Request
+    ? () => ({ input: input.clone(), init: nextInit })
+    : () => ({ input, init: nextInit });
 }

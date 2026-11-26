@@ -488,6 +488,16 @@ describe("lookupResponse with Vary", () => {
     ).toBe("stale");
   });
 
+  it("matches request header names in any case", async () => {
+    const cache = createMemoryStore();
+    await storeVarying(cache, "Accept", { Accept: "application/json" });
+
+    expect(
+      (await lookupWith(cache, { ACCEPT: "application/json" }))?.kind,
+    ).toBe("hit");
+    expect(await lookupWith(cache, { Accept: "text/html" })).toBeUndefined();
+  });
+
   it("matches no request for Vary: *", async () => {
     const cache = createMemoryStore();
     await storeVarying(cache, "*", {});

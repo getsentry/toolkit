@@ -153,11 +153,12 @@ async function policyRequestHeaders(
   headers: Record<string, string>,
 ): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
+  // Lowercase names, as `http-cache-semantics` stores them and `Vary`
+  // matching compares them.
+  for (const [rawName, value] of Object.entries(headers)) {
+    const name = rawName.toLowerCase();
     result[name] =
-      name.toLowerCase() === "authorization" && value
-        ? await sha256Hex(value)
-        : value;
+      name === "authorization" && value ? await sha256Hex(value) : value;
   }
   return result;
 }
