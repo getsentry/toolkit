@@ -56,6 +56,7 @@ install the `sentry` package instead. The `sentry:sourcemaps` script they add
 to `package.json` runs `sentry sourcemap inject` and `sentry sourcemap upload`
 on your build output. The wizard writes your org and project to the
 `[defaults]` section of the project's `.sentryclirc`, next to the auth token,
-and adds the file to `.gitignore`. In CI, set `SENTRY_AUTH_TOKEN`,
-`SENTRY_ORG` and `SENTRY_PROJECT` instead. On self-hosted Sentry, also set
+and adds the file to `.gitignore`. In CI on sentry.io, set only
+`SENTRY_AUTH_TOKEN`; self-hosted CI also needs `SENTRY_ORG`, `SENTRY_PROJECT`
+and `SENTRY_URL`. On self-hosted Sentry, also set
 `SENTRY_URL` wherever that script runs.
