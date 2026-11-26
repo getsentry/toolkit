@@ -55,6 +55,20 @@ const WIZARD_RUNNERS: Partial<Record<WizardIntegration, WizardRunner>> = {
     const { runNextjsWizard } = await import("./nextjs/nextjs-wizard.js");
     await runNextjsWizard(options);
   },
+  remix: async (options) => {
+    const { runRemixWizard } = await import("./remix/remix-wizard.js");
+    await runRemixWizard(options);
+  },
+  reactRouter: async (options) => {
+    const { runReactRouterWizard } =
+      await import("./react-router/react-router-wizard.js");
+    await runReactRouterWizard(options);
+  },
+  sveltekit: async (options) => {
+    const { runSvelteKitWizard } =
+      await import("./sveltekit/sveltekit-wizard.js");
+    await runSvelteKitWizard(options);
+  },
 };
 
 /** What `sentry wizard` passes to {@link runWizard}. */

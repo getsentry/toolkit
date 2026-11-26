@@ -12,6 +12,23 @@ vi.mock("../../src/lib/wizard/nextjs/nextjs-wizard.js", () => ({
   runNextjsWizard,
 }));
 
+const { runRemixWizard, runReactRouterWizard, runSvelteKitWizard } = vi.hoisted(
+  () => ({
+    runRemixWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    runReactRouterWizard: vi.fn<(options: unknown) => Promise<void>>(),
+    runSvelteKitWizard: vi.fn<(options: unknown) => Promise<void>>(),
+  }),
+);
+vi.mock("../../src/lib/wizard/remix/remix-wizard.js", () => ({
+  runRemixWizard,
+}));
+vi.mock("../../src/lib/wizard/react-router/react-router-wizard.js", () => ({
+  runReactRouterWizard,
+}));
+vi.mock("../../src/lib/wizard/sveltekit/sveltekit-wizard.js", () => ({
+  runSvelteKitWizard,
+}));
+
 import { wizardCommand } from "../../src/commands/wizard.js";
 import type { SentryContext } from "../../src/context.js";
 import { ValidationError, WizardExitError } from "../../src/lib/errors.js";
@@ -107,9 +124,21 @@ describe("sentry wizard", () => {
     expect(runNextjsWizard).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ["remix", runRemixWizard],
+    ["reactRouter", runReactRouterWizard],
+    ["sveltekit", runSvelteKitWizard],
+  ])("runs the %s wizard", async (integration, runner) => {
+    await runWizardCommand({ integration, org: "acme" });
+
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ orgSlug: "acme" }),
+    );
+  });
+
   test("reports an integration this version can't set up yet", async () => {
-    await expect(runWizardCommand({ integration: "remix" })).rejects.toThrow(
-      "The remix wizard is not available in this version yet.",
+    await expect(runWizardCommand({ integration: "flutter" })).rejects.toThrow(
+      "The flutter wizard is not available in this version yet.",
     );
   });
 
