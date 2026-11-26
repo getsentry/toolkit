@@ -154,6 +154,22 @@ token pushes the branch and opens the PR, so `test.yml` runs on it.
   branch by hand are lost.
 - The PR is never merged automatically.
 
+### release.yml and merge-jobs.yml
+
+`release.yml` prepares a release of one package with Craft. Its `product` input
+is a directory under `packages/`, such as `cli`, `http`, or `logger`, and Craft
+fails for a directory that has no `.craft.yml` workspace.
+
+`merge-jobs.yml` runs on `main` and on every release branch except the CLI's.
+It lists the Craft workspaces that use the default artifact provider with
+`scripts/npm-library-workspaces.mjs`, packs each one in a parallel matrix job,
+and merges the tarballs into the artifact named after the commit, where Craft
+reads them. The CLI sets its own artifact provider and is built by
+`cli-build.yml`.
+
+To publish another package from `packages/`, add its directory name to the
+`packages/{...}` workspace key in `.craft.yml`. Neither workflow needs a change.
+
 ## Package CI checks
 
 Add a check for one workspace package to that package's `package.json`, not to

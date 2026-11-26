@@ -133,18 +133,12 @@ workspaces:
               assert_match version.to_s, shell_output("#{bin}/sentry --version").chomp
             end
           end
-  # No preReleaseCommand: Craft bumps package.json through the npm target.
-  packages/http:
-    changelog:
-      policy: auto
-    releaseBranchPrefix: "release/{{workspaceName}}"
-    targets:
-      - name: github
-        tagPrefix: "{{workspaceName}}@"
-        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
-      - name: npm
-        includeNames: '/^{{packageSimpleName}}-\d.*\.tgz$/'
-  packages/logger:
+  # Standalone npm libraries. Each is released on its own, with
+  # `<name>@<version>` tags and `release/<name>/<version>` branches, and
+  # `merge-jobs.yml` packs every one of them. To publish another package
+  # from `packages/`, add its directory name here. No preReleaseCommand:
+  # Craft bumps package.json through the npm target.
+  packages/{http,logger}:
     changelog:
       policy: auto
     releaseBranchPrefix: "release/{{workspaceName}}"

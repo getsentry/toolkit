@@ -2,31 +2,36 @@ name: Post-merge tasks
 
 on:
   push:
-    branches: ["main", "release/*", "release/http/**", "release/logger/**"]
+    # The CLI's release branches are built by cli-build.yml.
+    branches: ["main", "release/**", "!release/cli/**"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build-publish:
+  test:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: "package.json"
-          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install
 
       - name: Build
-        run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/http --filter @sentry/logger --if-present run build
+        run: pnpm --filter '@sentry/mcp-core...' --filter @sentry/logger --if-present run build
 
       - name: Run linter
         run: pnpm lint
@@ -34,25 +39,88 @@ jobs:
       - name: Run tests
         run: pnpm test:ci
 
-      - name: Package http
-        working-directory: packages/http
-        run: pnpm pack --pack-destination dist
-
-      - name: Package logger
-        working-directory: packages/logger
-        run: pnpm pack --pack-destination dist
-
-      - name: Archive artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.sha }}
-          path: |
-            ${{ github.workspace }}/packages/http/dist/*.tgz
-            ${{ github.workspace }}/packages/logger/dist/*.tgz
-
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
         if: ${{ !cancelled() }}
         with:
           report_paths: "**/*.junit.xml"
           comment: false
+
+  # Every Craft workspace without its own artifact provider is an npm
+  # library whose tarball this workflow builds.
+  discover-packages:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.packages.outputs.matrix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: "package.json"
+
+      # The same major version as release.yml's getsentry/craft@v3.
+      - name: Install Craft
+        run: npm install --global @sentry/craft@3 # zizmor: ignore[adhoc-packages]
+
+      - name: List packages
+        id: packages
+        run: node scripts/npm-library-workspaces.mjs
+
+  package:
+    needs: discover-packages
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.discover-packages.outputs.matrix) }}
+    name: Package ${{ matrix.name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: "package.json"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        env:
+          WORKSPACE: ${{ matrix.workspace }}
+        run: pnpm --filter "{./$WORKSPACE}..." --if-present run build
+
+      - name: Package
+        working-directory: ${{ matrix.workspace }}
+        run: pnpm pack --pack-destination dist
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-${{ matrix.name }}
+          path: ${{ matrix.workspace }}/dist/*.tgz
+          if-no-files-found: error
+
+  # Craft reads every tarball from one artifact named after the commit.
+  archive:
+    needs: [test, package]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Archive artifacts
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ github.sha }}
+          pattern: npm-*
+          delete-merged: true

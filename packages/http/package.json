@@ -1,9 +1,9 @@
 {
   "name": "@sentry/http",
-  "version": "0.1.0-dev.0",
+  "version": "1.0.0-dev.0",
   "description": "HTTP response caching, body compression, and retries over the Fetch API, with pluggable cache stores",
   "type": "module",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "MIT",
   "author": "Sentry",
   "homepage": "https://github.com/getsentry/toolkit/tree/main/packages/http#readme",
   "keywords": [
@@ -31,7 +31,7 @@
   },
   "files": [
     "dist",
-    "LICENSE.md",
+    "LICENSE",
     "README.md"
   ],
   "exports": {
