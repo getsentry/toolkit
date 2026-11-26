@@ -4763,8 +4763,10 @@ export class SentryApiService {
       /**
        * One series per value of `groupBy`, for the `limit` values with the
        * highest `rankBy` (default `yAxis`), without an "Other" series. A
-       * `rankBy` other than `yAxis` is fetched as a second yAxis, because
-       * Sentry only sorts top events by a selected column.
+       * `rankBy` other than `yAxis` is fetched as a second yAxis. Sentry only
+       * sorts top events by a selected column, and the errors dataset selects
+       * only the `groupBy` columns, so `rankBy` is sent as a `groupBy` too, as
+       * the Sentry UI does.
        */
       topEvents?:
         | { groupBy: string; limit: number; rankBy?: string | undefined }
@@ -4785,7 +4787,8 @@ export class SentryApiService {
       const rankBy = topEvents.rankBy ?? yAxes[0];
       if (!yAxes.includes(rankBy)) queryParams.append("yAxis", rankBy);
       queryParams.set("topEvents", String(topEvents.limit));
-      queryParams.set("groupBy", topEvents.groupBy);
+      queryParams.append("groupBy", topEvents.groupBy);
+      queryParams.append("groupBy", rankBy);
       queryParams.set("sort", `-${rankBy}`);
       queryParams.set("excludeOther", "1");
     }
